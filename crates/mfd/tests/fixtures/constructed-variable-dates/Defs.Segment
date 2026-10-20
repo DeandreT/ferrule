@@ -1,0 +1,10 @@
+<Config><Elements>
+  <Data name="Text" type="string"/><Data name="Date" type="string"/><Data name="Picked" type="string"/>
+  <Segment name="ISA"><Data ref="Text"/></Segment>
+  <Segment name="GS"><Data ref="Text"/></Segment>
+  <Segment name="ST"><Data ref="Text"/></Segment>
+  <Segment name="N1"><Data ref="Text"/><Data ref="Date"/><Data ref="Picked"/></Segment>
+  <Segment name="SE"><Data ref="Text"/></Segment>
+  <Segment name="GE"><Data ref="Text"/></Segment>
+  <Segment name="IEA"><Data ref="Text"/></Segment>
+</Elements></Config>

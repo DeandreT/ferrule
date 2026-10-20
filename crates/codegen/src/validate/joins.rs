@@ -132,6 +132,31 @@ pub(super) fn validate_plan(
     Ok(())
 }
 
+/// A root-context join has no active item frame, so each singleton must
+/// resolve from the primary root or a named source rather than from a
+/// descendant that exists only beneath some other collection.
+pub(super) fn validate_root_plan(
+    sources: SourceCatalog<'_>,
+    join: &InnerJoin,
+) -> Result<(), ProgramValidationError> {
+    validate_plan(sources, join)?;
+    for source in join.plan().sources() {
+        if source.cardinality() == JoinSourceCardinality::Singleton
+            && !sources
+                .root_direct_target(source.collection())
+                .is_some_and(|candidate| {
+                    !candidate.node().repeating && candidate.node().is_scalar()
+                })
+        {
+            return Err(ProgramValidationError::UnresolvedRootJoinSingleton {
+                join: join.id(),
+                collection: source.collection().to_vec(),
+            });
+        }
+    }
+    Ok(())
+}
+
 fn validate_key(
     sources: SourceCatalog<'_>,
     join: JoinId,
@@ -213,7 +238,7 @@ pub(super) fn validate_expression(
                 if !root_context {
                     validate_correlated_aggregate(node, sources, current_source, join)?;
                 } else {
-                    validate_plan(sources, join)?;
+                    validate_root_plan(sources, join)?;
                 }
                 if let Some(expression) = expression {
                     validate_expression(

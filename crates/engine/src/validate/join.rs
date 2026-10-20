@@ -5,7 +5,9 @@ use mapping::{Graph, JoinId, JoinPlan, JoinSourceCardinality, Node, NodeId, Proj
 
 use super::ValidationIssue;
 use super::graph::{node_inputs, validate_collection_value};
-use super::schema::{display_path, source_path_matches, source_path_matches_direct};
+use super::schema::{
+    display_path, root_source_path_direct, source_path_matches, source_path_matches_direct,
+};
 
 pub(super) fn validate_plan(
     project: &Project,
@@ -74,10 +76,48 @@ pub(super) fn validate_plan(
     }
 }
 
+/// Whether `source` is the primary root schema, where expressions see no
+/// active item frame. Identity iterations reuse that schema and resolve
+/// paths identically.
+pub(super) fn is_root_context(project: &Project, source: Option<&SchemaNode>) -> bool {
+    source.is_some_and(|source| std::ptr::eq(source, &project.source))
+}
+
+/// A root-context join has no active item frame, so each singleton must
+/// resolve from the primary root or a named source rather than from a
+/// descendant that exists only beneath some other collection.
+pub(super) fn validate_root_singletons(
+    project: &Project,
+    join: JoinId,
+    plan: &JoinPlan,
+    location: &str,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let singleton = |node: &SchemaNode| !node.repeating && node.is_scalar();
+    for source in plan.sources() {
+        let collection = source.collection();
+        // Missing or repetition-crossing paths already have their own issue.
+        if source.cardinality() == JoinSourceCardinality::Singleton
+            && source_path_matches_direct(project, collection, singleton)
+            && !root_source_path_direct(project, collection).is_some_and(singleton)
+        {
+            issues.push(ValidationIssue::new(
+                location,
+                format!(
+                    "join {} singleton collection `{}` does not resolve from the root source context; use a path from the source root or a named source",
+                    join.get(),
+                    display_path(collection)
+                ),
+            ));
+        }
+    }
+}
+
 pub(super) fn validate_scope_nodes(
     graph: &Graph,
     scope: &Scope,
     active_joins: &[(JoinId, Vec<Vec<String>>)],
+    root_context: bool,
     location: &str,
     project: &Project,
     issues: &mut Vec<ValidationIssue>,
@@ -98,20 +138,31 @@ pub(super) fn validate_scope_nodes(
                 .flat_map(|binding| [binding.key, binding.value]),
         )
         .chain(scope.dynamic_children.iter().map(|child| child.key));
-    validate_roots(graph, roots, active_joins, location, project, issues);
+    validate_roots(
+        graph,
+        roots,
+        active_joins,
+        root_context,
+        location,
+        project,
+        issues,
+    );
 }
 
+/// `root_context` says whether `roots` evaluate without an active item frame;
+/// per-item expression inputs never do.
 pub(super) fn validate_roots(
     graph: &Graph,
     roots: impl IntoIterator<Item = NodeId>,
     active_joins: &[(JoinId, Vec<Vec<String>>)],
+    root_context: bool,
     location: &str,
     project: &Project,
     issues: &mut Vec<ValidationIssue>,
 ) {
     validate_roots_inner(
         graph,
-        roots,
+        roots.into_iter().map(|root| (root, root_context)),
         active_joins,
         location,
         project,
@@ -120,9 +171,10 @@ pub(super) fn validate_roots(
     );
 }
 
+/// Each pending root carries whether it evaluates in the root context.
 fn validate_roots_inner(
     graph: &Graph,
-    roots: impl IntoIterator<Item = NodeId>,
+    roots: impl IntoIterator<Item = (NodeId, bool)>,
     active_joins: &[(JoinId, Vec<Vec<String>>)],
     location: &str,
     project: &Project,
@@ -131,8 +183,8 @@ fn validate_roots_inner(
 ) {
     let mut pending: Vec<_> = roots.into_iter().collect();
     let mut visited = BTreeSet::new();
-    while let Some(id) = pending.pop() {
-        if ancestors.contains(&id) || !visited.insert(id) {
+    while let Some((id, root_context)) = pending.pop() {
+        if ancestors.contains(&id) || !visited.insert((id, root_context)) {
             continue;
         }
         let Some(node) = graph.nodes.get(&id) else {
@@ -188,7 +240,10 @@ fn validate_roots_inner(
                 arg,
                 ..
             } => {
-                pending.extend(arg);
+                if root_context {
+                    validate_root_singletons(project, *join, plan, location, issues);
+                }
+                pending.extend(arg.map(|arg| (arg, root_context)));
                 if let Some(expression) = expression {
                     let mut local_joins = active_joins.to_vec();
                     local_joins.push((
@@ -200,7 +255,7 @@ fn validate_roots_inner(
                     ancestors.insert(id);
                     validate_roots_inner(
                         graph,
-                        [*expression],
+                        [(*expression, false)],
                         &local_joins,
                         location,
                         project,
@@ -210,7 +265,37 @@ fn validate_roots_inner(
                     ancestors.remove(&id);
                 }
             }
-            _ => pending.extend(node_inputs(node).into_iter().map(|(_, input)| input)),
+            _ => {
+                let item_inputs = item_context_inputs(node);
+                pending.extend(
+                    node_inputs(node)
+                        .into_iter()
+                        .map(|(_, input)| (input, root_context && !item_inputs.contains(&input))),
+                );
+            }
         }
+    }
+}
+
+/// Inputs evaluated in a collection item, generated item, or mixed-content
+/// occurrence context rather than in their consumer's context.
+fn item_context_inputs(node: &Node) -> Vec<NodeId> {
+    match node {
+        Node::Aggregate { expression, .. } => expression.iter().copied().collect(),
+        Node::CollectionFind {
+            predicate, value, ..
+        } => vec![*predicate, *value],
+        Node::SequenceExists { predicate, .. } => vec![*predicate],
+        Node::SequenceAggregate {
+            predicate,
+            expression,
+            ..
+        } => predicate.iter().chain(expression).copied().collect(),
+        Node::Lookup { matches, .. } => vec![*matches],
+        Node::XmlMixedContent { replacements, .. } => replacements
+            .iter()
+            .map(|replacement| replacement.expression)
+            .collect(),
+        _ => Vec::new(),
     }
 }

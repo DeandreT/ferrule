@@ -461,6 +461,25 @@ pub(super) fn source_path_matches_direct(
         })
 }
 
+/// Resolves a root-context path without crossing repetition. The primary root
+/// owns paths whose first field it declares, matching runtime frame selection;
+/// other paths need an explicit named-source prefix.
+pub(super) fn root_source_path_direct<'a>(
+    project: &'a Project,
+    path: &[String],
+) -> Option<&'a SchemaNode> {
+    let primary = &project.source;
+    if path.is_empty() || follow_schema_direct_from(primary, primary, &path[..1]).is_some() {
+        return follow_schema_direct_from(primary, primary, path);
+    }
+    let (name, rest) = path.split_first()?;
+    let extra = project
+        .extra_sources
+        .iter()
+        .find(|source| source.name == *name)?;
+    follow_schema_direct_from(&extra.schema, &extra.schema, rest)
+}
+
 fn any_schema_path_direct_from(
     root: &SchemaNode,
     schema: &SchemaNode,

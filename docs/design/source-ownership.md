@@ -66,6 +66,15 @@ beside the target-control profile. Inherited closed contexts and owned failure
 eligibility remain authoritative. See [the ItemAt contract](owned-sequence-item-at.md)
 for admission, complete named catalogues and resource boundaries.
 
+## Failure-rule endpoint walks
+
+An owned failure rule walks rows from exactly its declared endpoint, beside the
+unchanged legacy `source` and `sequence` forms. The selected owner's absent or
+empty collection yields no rows and is never repaired by another endpoint with
+the same path; an unsupplied owner is a typed failure. Rule order, selection and
+lazy messages keep their legacy meaning. See the
+[failure contract](owned-failure-sources.md).
+
 ## Existing coordinated issues
 
 Reuse these existing scopes; the capability column concerns **explicit ownership**.

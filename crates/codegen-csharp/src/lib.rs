@@ -15,6 +15,7 @@ mod json5_output;
 mod literal;
 mod mapping;
 mod owned_basic;
+mod primary_filename;
 mod runtime;
 mod static_documents;
 mod x12_output;
@@ -43,6 +44,7 @@ pub use csv_json::CsvJsonEmitError;
 pub use csv_x12::CsvX12EmitError;
 pub use error::EmitError;
 pub use json5_output::Json5EmitError;
+pub use primary_filename::emit_with_primary_filename;
 pub use static_documents::StaticDocumentEmitError;
 pub use x12_output::X12EmitError;
 
@@ -201,6 +203,15 @@ pub fn emit_with_basic_owned_group_ending_with(
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emit EndingWith-profile targets with explicitly owned failure-rule walks
+/// over one exact Primary or named endpoint. Older emitters keep refusing them.
+pub fn emit_with_basic_owned_failure_sources(program: &Program) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_failure_sources(program)?;
+    codegen::validate_basic_owned_failure_source_emission(program)?;
+    let generated_mapping = owned_basic::render_public_basic_owned_failure_source_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,
@@ -300,6 +311,8 @@ fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitE
 mod tests {
     #[path = "owned_basic.rs"]
     mod owned_basic;
+    #[path = "owned_failure_sources.rs"]
+    mod owned_failure_sources;
     use ::mapping::FunctionId;
     use codegen::{
         AggregateFunction, Binding, Expression, ExpressionNode, FailureIteration, FailureRule,

@@ -8,6 +8,7 @@ use crate::canonical_function;
 use super::schema::parse_u32;
 
 mod clock;
+mod count;
 mod parse_date;
 #[cfg(test)]
 #[path = "function/total_string_tests.rs"]
@@ -222,6 +223,9 @@ pub(super) struct FnComponent {
     /// Exact inputless `lang` `now` / `xpath2` `current-dateTime` signature.
     /// Separate from the bounded scalar contract and the general clock lowering.
     pub(super) raw_clock_signature_valid: bool,
+    /// Exact `core` `count` signature: keyless context slot, keyed sequence
+    /// input, and one keyed output. Separate from general aggregate lowering.
+    pub(super) raw_count_signature_valid: bool,
     /// Dedicated raw owner and source-position proof for String group-by keys.
     pub(super) group_by_ownership: Option<RawGroupByOwnership>,
     /// Scalar coercion declared by a transparent kind=6 input parameter.
@@ -362,6 +366,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         .then(|| parse_date::ownership(component))
         .flatten();
     let raw_clock_signature_valid = clock::signature_valid(component, &output_pins);
+    let raw_count_signature_valid = count::signature_valid(component, &inputs, &output_pins);
 
     let data = component
         .children()
@@ -514,6 +519,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         raw_parse_date_pins_valid,
         parse_date_ownership,
         raw_clock_signature_valid,
+        raw_count_signature_valid,
         group_by_ownership: group_by::ownership(component),
         input_type,
         input_parameter_name,

@@ -24,10 +24,12 @@ mod failure;
 mod json5_api;
 mod owned_basic;
 mod owned_json_api;
+mod primary_filename;
 mod scalar_sequence;
 mod selected_json_api;
 
 pub use json5_api::{Json5EmitError, emit_with_json5};
+pub use primary_filename::emit_with_primary_filename;
 mod x12_api;
 mod xml_api;
 pub use x12_api::{X12EmitError, emit_with_x12};
@@ -340,6 +342,26 @@ pub fn emit_with_basic_owned_group_ending_with(
     codegen::validate_basic_owned_group_ending_with_emission(program)?;
     let manifest = render_manifest(options);
     let source = owned_basic::render_public_basic_owned_group_ending_with_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
+/// Emit EndingWith-profile targets with explicitly owned failure-rule walks
+/// over one exact Primary or named endpoint. Older emitters keep refusing them.
+pub fn emit_with_basic_owned_failure_sources(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_failure_sources(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_failure_source_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_failure_source(program)?;
     ArtifactSet::new([
         GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
         GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
@@ -698,7 +720,8 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
                 .iter()
                 .filter_map(|rule| match &rule.iteration {
                     codegen::FailureIteration::Generated(sequence) => Some(sequence.item()),
-                    codegen::FailureIteration::Source(_) => None,
+                    codegen::FailureIteration::Source(_)
+                    | codegen::FailureIteration::OwnedSource(_) => None,
                 }),
         )
         .collect();

@@ -68,35 +68,49 @@ impl TargetControls {
 struct TargetExtension {
     controls: TargetControls,
     sequence_item_at: SequenceItemAtPolicy,
+    /// Explicitly owned failure walks, beside the primary-row permission.
+    failure_sources: bool,
 }
 
 impl TargetExtension {
     const CLOSED: Self = Self {
         controls: TargetControls::Closed,
         sequence_item_at: SequenceItemAtPolicy::Closed,
+        failure_sources: false,
     };
     const GROUP_BY: Self = Self {
         controls: TargetControls::By,
         sequence_item_at: SequenceItemAtPolicy::Closed,
+        failure_sources: false,
     };
     const SEQUENCE_ITEM_AT: Self = Self {
         controls: TargetControls::By,
         sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
+        failure_sources: false,
     };
 
     const GROUP_ADJACENT_BY: Self = Self {
         controls: TargetControls::ByAndAdjacent,
         sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
+        failure_sources: false,
     };
 
     const GROUP_STARTING_WITH: Self = Self {
         controls: TargetControls::ByAndAdjacentAndStarting,
         sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
+        failure_sources: false,
+    };
+
+    const FAILURE_SOURCES: Self = Self {
+        controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
+        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
+        failure_sources: true,
     };
 
     const GROUP_ENDING_WITH: Self = Self {
         controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
         sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
+        failure_sources: false,
     };
 
     fn permits_ending_with(self) -> bool {
@@ -152,7 +166,9 @@ fn render_basic_owned_mapping_profile(
 ) -> Result<String, EmitError> {
     let allow_scoped_groups = extension.controls.has_scoped_groups();
     // Select the control/consumer pair before the older ItemAt-only companion.
-    if extension.permits_ending_with() {
+    if extension.failure_sources {
+        codegen::validate_program_with_basic_owned_failure_sources(program)?;
+    } else if extension.permits_ending_with() {
         codegen::validate_program_with_basic_owned_group_ending_with(program)?;
     } else if extension.permits_starting_with() {
         codegen::validate_program_with_basic_owned_group_starting_with(program)?;
@@ -243,7 +259,12 @@ fn render_basic_owned_mapping_profile(
         output.push_str(&format!("        if (global::System.String.Equals(name, {}, global::System.StringComparison.Ordinal)) return {};\n", literal::string(name), index + 1));
     }
     output.push_str("        throw new global::Ferrule.Runtime.FerruleRuntimeException(\n            global::Ferrule.Runtime.FerruleRuntimeError.UnknownTarget,\n            $\"project has no named target `{name}`\",\n            detail: name);\n    }\n");
-    render_basic_failures(program, &mut output, allow_row_failures)?;
+    render_basic_failures(
+        program,
+        &mut output,
+        allow_row_failures,
+        extension.failure_sources,
+    )?;
     if program.expressions.iter().any(|node| {
         retained.contains(&node.id)
             && matches!(&node.expression, Expression::OwnedSourceField(field)
@@ -593,7 +614,9 @@ fn validate_private_inventory(
             false,
         )?;
     }
-    if extension.permits_ending_with() {
+    if extension.failure_sources {
+        codegen::validate_basic_owned_failure_source_emission(program)?;
+    } else if extension.permits_ending_with() {
         codegen::validate_basic_owned_group_ending_with_emission(program)?;
     } else if extension.permits_starting_with() {
         codegen::validate_basic_owned_group_starting_with_emission(program)?;
@@ -789,7 +812,7 @@ pub(super) fn render_owned_leaf(
 // Failure traversal remains the ordinary legacy walk inside a paired view. It
 // acquires one complete bounded source cohort before selecting its first item;
 // neither a second source walk nor an inferred owner is introduced.
-fn failure_refusal(index: usize, reason: Reason) -> EmitError {
+pub(crate) fn failure_refusal(index: usize, reason: Reason) -> EmitError {
     capability(
         Location::Iteration {
             scope: SourceScopeLocation::root(SourceScopeTarget::Primary),
@@ -890,6 +913,7 @@ fn render_basic_failures(
     program: &Program,
     output: &mut String,
     allow_row_failures: bool,
+    allow_failure_sources: bool,
 ) -> Result<(), EmitError> {
     use codegen::{FailureIteration, FailureSelection};
     if program.failure_rules.is_empty() {
@@ -901,6 +925,12 @@ fn render_basic_failures(
     }
     output.push_str("    }\n");
     for (index, rule) in program.failure_rules.iter().enumerate() {
+        if let (true, FailureIteration::OwnedSource(source)) =
+            (allow_failure_sources, &rule.iteration)
+        {
+            row_failures::render_owned_source_rule(index, rule, source.source(), output);
+            continue;
+        }
         if allow_row_failures && row_failures::needs_owned_rows(program, rule) {
             row_failures::render_rule(index, rule, output)?;
             continue;
@@ -973,7 +1003,9 @@ fn render_checked_basic_owned_mapping_profile(
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = if extension.permits_ending_with() {
+    let plan = if extension.failure_sources {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_failure_sources(program)?
+    } else if extension.permits_ending_with() {
         codegen::legacy_named_input_admission_plan_with_basic_owned_group_ending_with(program)?
     } else if extension.permits_starting_with() {
         codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(program)?
@@ -1382,6 +1414,22 @@ pub(crate) fn render_public_basic_owned_group_ending_with_mapping(
         true,
         true,
         TargetExtension::GROUP_ENDING_WITH,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_failure_source_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::FAILURE_SOURCES,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)

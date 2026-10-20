@@ -1,0 +1,133 @@
+[
+  {
+    "input": "{\"Choose\":true,\"Raw\":\"2024-02-29\",\"Alt\":\"31/12/1999\",\"Note\":\"kept\"}",
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Date": "2024-02-29",
+          "Picked": "1999-12-31"
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Choose\":true,\"Raw\":\"2000-01-01\",\"Alt\":\"1/2/2003\",\"Note\":\"kept\"}",
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Date": "2000-01-01",
+          "Picked": "2003-02-01"
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Raw\":\"2024-2-9\",\"Alt\":\"not a date\",\"Note\":\"kept\"}",
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Date": "2024-02-09",
+          "Picked": "kept"
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Raw\":\"1999-12-31\",\"Note\":\"\"}",
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Date": "1999-12-31",
+          "Picked": ""
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Raw\":\"1999-12-31\"}",
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Date": "1999-12-31"
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Choose\":true,\"Raw\":\"2024-02-29\",\"Alt\":\"29/02/2023\",\"Note\":\"kept\"}",
+    "execution_error": {
+      "function": "parse_date",
+      "message": "requires a value matching a supported date/time picture"
+    }
+  },
+  {
+    "input": "{\"Choose\":true,\"Raw\":\"2024-02-29\",\"Note\":\"kept\"}",
+    "type_error": {
+      "function": "parse_date",
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Raw\":\"2023-02-29\",\"Note\":\"kept\"}",
+    "execution_error": {
+      "function": "parse_date",
+      "message": "requires a value matching a supported date/time picture"
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Raw\":\"2024/02/29\",\"Note\":\"kept\"}",
+    "execution_error": {
+      "function": "parse_date",
+      "message": "requires a value matching a supported date/time picture"
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Raw\":\"\",\"Note\":\"kept\"}",
+    "execution_error": {
+      "function": "parse_date",
+      "message": "requires a value matching a supported date/time picture"
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Note\":\"kept\"}",
+    "type_error": {
+      "function": "parse_date",
+      "found": "null"
+    }
+  },
+  {
+    "input": "{}",
+    "type_error": {
+      "function": "parse_date",
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Raw\":\"2024-02-29\",\"Note\":\"kept\"}",
+    "boolean_error": {
+      "node": 8,
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Raw\":null,\"Note\":\"kept\"}",
+    "reject": true
+  },
+  {
+    "input": "{\"Choose\":false,\"Raw\":20240229,\"Note\":\"kept\"}",
+    "reject": true
+  },
+  {
+    "input": "{\"Choose\":\"yes\",\"Raw\":\"2024-02-29\",\"Note\":\"kept\"}",
+    "reject": true
+  },
+  {
+    "input": "{\"Choose\":false,\"Raw\":\"2024-02-29\",\"Extra\":1}",
+    "reject": true
+  }
+]

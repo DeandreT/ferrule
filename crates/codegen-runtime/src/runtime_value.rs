@@ -167,6 +167,18 @@ impl<'a> ExecutionContext<'a> {
         resolve_runtime_parameter(Some(self), node, name, expected)
     }
 
+    /// Resolve a global filename parameter without a source or preview fallback.
+    /// Empty strings and path syntax remain the acquisition policy's decision.
+    pub fn resolve_primary_filename(self, node: u32, name: &str) -> Result<String, RuntimeError> {
+        match self.resolve_runtime_parameter(node, name, crate::ScalarType::String)? {
+            Value::String(text) => Ok(text),
+            value => Err(RuntimeError::PrimaryFilenameType {
+                node,
+                found: value.type_name(),
+            }),
+        }
+    }
+
     pub(crate) fn value(self, value: RuntimeValue) -> Option<Value> {
         match value {
             RuntimeValue::MappingFilePath => Some(Value::String(

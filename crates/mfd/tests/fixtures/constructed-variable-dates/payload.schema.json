@@ -1,0 +1,8 @@
+{
+  "title": "Payload",
+  "type": "object",
+  "properties": {
+    "Day": { "type": "string" }
+  },
+  "additionalProperties": false
+}
