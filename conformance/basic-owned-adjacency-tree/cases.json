@@ -1,0 +1,3476 @@
+{
+ "version": 1,
+ "cases": [
+  {
+   "id": "C01-disjoint-endpoints",
+   "model": "A01-endpoints",
+   "source": {
+    "Root": "p",
+    "Rows": {
+     "Row": [
+      {
+       "Key": "a",
+       "Link": {
+        "Parent": null
+       }
+      },
+      {
+       "Key": "b",
+       "Link": {
+        "Parent": "a"
+       }
+      },
+      {
+       "Key": "c",
+       "Link": {
+        "Parent": "b"
+       }
+      }
+     ]
+    },
+    "Batch": []
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Root": "n",
+      "Rows": {
+       "Row": [
+        {
+         "Key": "b",
+         "Link": {
+          "Parent": null
+         }
+        },
+        {
+         "Key": "a",
+         "Link": {
+          "Parent": "b"
+         }
+        },
+        {
+         "Key": "c",
+         "Link": {
+          "Parent": "a"
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ],
+    [
+     "Rows",
+     {
+      "Root": "q",
+      "Rows": {
+       "Row": [
+        {
+         "Key": "q",
+         "Link": {
+          "Parent": null
+         }
+        },
+        {
+         "Key": "r",
+         "Link": {
+          "Parent": "q"
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "name": "a",
+         "children": [
+          {
+           "name": "b",
+           "children": [
+            {
+             "name": "c",
+             "children": []
+            }
+           ]
+          }
+         ]
+        }
+       ],
+       [
+        "audit",
+        {
+         "name": "b",
+         "children": [
+          {
+           "name": "a",
+           "children": [
+            {
+             "name": "c",
+             "children": []
+            }
+           ]
+          }
+         ]
+        }
+       ],
+       [
+        "alias",
+        {
+         "name": "q",
+         "children": [
+          {
+           "name": "r",
+           "children": []
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "name": "a",
+         "children": [
+          {
+           "name": "b",
+           "children": [
+            {
+             "name": "c",
+             "children": []
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "name": "b",
+         "children": [
+          {
+           "name": "a",
+           "children": [
+            {
+             "name": "c",
+             "children": []
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Ok": [
+       [
+        "alias",
+        {
+         "name": "q",
+         "children": [
+          {
+           "name": "r",
+           "children": []
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "nope",
+     "expected": {
+      "Err": {
+       "kind": "UnknownTarget",
+       "name": "nope"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C02-order-unreachable-unicode",
+   "model": "A01-endpoints",
+   "source": {
+    "Root": "-",
+    "Rows": {
+     "Row": [
+      {
+       "Key": "z",
+       "Link": {
+        "Parent": "r"
+       }
+      },
+      {
+       "Key": "r"
+      },
+      {
+       "Key": "y",
+       "Link": {
+        "Parent": "r"
+       }
+      },
+      {
+       "Key": "u",
+       "Link": {
+        "Parent": "u"
+       }
+      },
+      {
+       "Key": "x",
+       "Link": {
+        "Parent": "z"
+       }
+      },
+      {
+       "Key": "w",
+       "Link": {
+        "Parent": "nope"
+       }
+      },
+      {
+       "Key": "v",
+       "Link": {
+        "Parent": "y"
+       }
+      }
+     ]
+    },
+    "Batch": []
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Root": "-",
+      "Rows": {
+       "Row": [
+        {
+         "Key": "é",
+         "Link": {
+          "Parent": "Z"
+         }
+        },
+        {
+         "Key": "Z",
+         "Link": {
+          "Parent": null
+         }
+        },
+        {
+         "Key": "a",
+         "Link": {
+          "Parent": "Z"
+         }
+        },
+        {
+         "Key": "ß",
+         "Link": {
+          "Parent": "a"
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ],
+    [
+     "Rows",
+     {
+      "Root": "q",
+      "Rows": {
+       "Row": [
+        {
+         "Key": "q",
+         "Link": {
+          "Parent": null
+         }
+        },
+        {
+         "Key": "r",
+         "Link": {
+          "Parent": "q"
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "name": "r",
+         "children": [
+          {
+           "name": "z",
+           "children": [
+            {
+             "name": "x",
+             "children": []
+            }
+           ]
+          },
+          {
+           "name": "y",
+           "children": [
+            {
+             "name": "v",
+             "children": []
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "name": "Z",
+         "children": [
+          {
+           "name": "é",
+           "children": []
+          },
+          {
+           "name": "a",
+           "children": [
+            {
+             "name": "ß",
+             "children": []
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C03-unsupplied-endpoint",
+   "model": "A01-endpoints",
+   "source": {
+    "Root": "p",
+    "Rows": {
+     "Row": [
+      {
+       "Key": "a",
+       "Link": {
+        "Parent": null
+       }
+      },
+      {
+       "Key": "b",
+       "Link": {
+        "Parent": "a"
+       }
+      },
+      {
+       "Key": "c",
+       "Link": {
+        "Parent": "b"
+       }
+      }
+     ]
+    },
+    "Batch": []
+   },
+   "inputs": [
+    [
+     "Rows",
+     {
+      "Root": "q",
+      "Rows": {
+       "Row": [
+        {
+         "Key": "q",
+         "Link": {
+          "Parent": null
+         }
+        },
+        {
+         "Key": "r",
+         "Link": {
+          "Parent": "q"
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "SourceUnavailable",
+       "owner": "audit"
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "name": "a",
+         "children": [
+          {
+           "name": "b",
+           "children": [
+            {
+             "name": "c",
+             "children": []
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "SourceUnavailable",
+       "owner": "audit"
+      }
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Ok": [
+       [
+        "alias",
+        {
+         "name": "q",
+         "children": [
+          {
+           "name": "r",
+           "children": []
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C04-duplicate-in-one-endpoint",
+   "model": "A01-endpoints",
+   "source": {
+    "Root": "-",
+    "Rows": {
+     "Row": [
+      {
+       "Key": "k",
+       "Link": {
+        "Parent": null
+       }
+      },
+      {
+       "Key": "d",
+       "Link": {
+        "Parent": "k"
+       }
+      }
+     ]
+    },
+    "Batch": []
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Root": "-",
+      "Rows": {
+       "Row": [
+        {
+         "Key": "k",
+         "Link": {
+          "Parent": null
+         }
+        },
+        {
+         "Key": "d",
+         "Link": {
+          "Parent": "k"
+         }
+        },
+        {
+         "Key": "d",
+         "Link": {
+          "Parent": "k"
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ],
+    [
+     "Rows",
+     {
+      "Root": "-",
+      "Rows": {
+       "Row": [
+        {
+         "Key": "k",
+         "Link": {
+          "Parent": null
+         }
+        },
+        {
+         "Key": "d",
+         "Link": {
+          "Parent": "k"
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "DuplicateAdjacencyKey",
+       "key": "d"
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "name": "k",
+         "children": [
+          {
+           "name": "d",
+           "children": []
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "DuplicateAdjacencyKey",
+       "key": "d"
+      }
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Ok": [
+       [
+        "alias",
+        {
+         "name": "k",
+         "children": [
+          {
+           "name": "d",
+           "children": []
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C05-empty-and-missing-rows",
+   "model": "A01-endpoints",
+   "source": {
+    "Root": "-",
+    "Batch": []
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Root": "-",
+      "Rows": {
+       "Row": []
+      },
+      "Batch": []
+     }
+    ],
+    [
+     "Rows",
+     {
+      "Root": "-",
+      "Rows": {},
+      "Batch": []
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "AdjacencyRootCount",
+       "count": 0
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "AdjacencyRootCount",
+       "count": 0
+      }
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "AdjacencyRootCount",
+       "count": 0
+      }
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Err": {
+       "kind": "AdjacencyRootCount",
+       "count": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C06-row-field-errors",
+   "model": "A01-endpoints",
+   "source": {
+    "Root": "-",
+    "Rows": {
+     "Row": [
+      {
+       "Key": "a",
+       "Link": {
+        "Parent": null
+       }
+      },
+      {
+       "Link": {
+        "Parent": "a"
+       }
+      }
+     ]
+    },
+    "Batch": []
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Root": "-",
+      "Rows": {
+       "Row": [
+        {
+         "Key": "a",
+         "Link": {
+          "Parent": null
+         }
+        },
+        {
+         "Key": 5,
+         "Link": {
+          "Parent": "a"
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ],
+    [
+     "Rows",
+     {
+      "Root": "-",
+      "Rows": {
+       "Row": [
+        {
+         "Key": "a",
+         "Link": {
+          "Parent": null
+         }
+        },
+        {
+         "Key": "b",
+         "Link": {
+          "Parent": true
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "InvalidAdjacencyField",
+       "role": "key",
+       "path": "Key",
+       "found": "missing value"
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "InvalidAdjacencyField",
+       "role": "key",
+       "path": "Key",
+       "found": "missing value"
+      }
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "InvalidAdjacencyField",
+       "role": "key",
+       "path": "Key",
+       "found": "int"
+      }
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Err": {
+       "kind": "InvalidAdjacencyField",
+       "role": "parent",
+       "path": "Link/Parent",
+       "found": "bool"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C07-root-count-and-depth",
+   "model": "A01-endpoints",
+   "source": {
+    "Root": "-",
+    "Rows": {
+     "Row": [
+      {
+       "Key": "a",
+       "Link": {
+        "Parent": null
+       }
+      },
+      {
+       "Key": "b",
+       "Link": {
+        "Parent": null
+       }
+      }
+     ]
+    },
+    "Batch": []
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Root": "-",
+      "Rows": {
+       "Row": [
+        {
+         "Key": "n0",
+         "Link": {
+          "Parent": null
+         }
+        },
+        {
+         "Key": "n1",
+         "Link": {
+          "Parent": "n0"
+         }
+        },
+        {
+         "Key": "n2",
+         "Link": {
+          "Parent": "n1"
+         }
+        },
+        {
+         "Key": "n3",
+         "Link": {
+          "Parent": "n2"
+         }
+        },
+        {
+         "Key": "n4",
+         "Link": {
+          "Parent": "n3"
+         }
+        },
+        {
+         "Key": "n5",
+         "Link": {
+          "Parent": "n4"
+         }
+        },
+        {
+         "Key": "n6",
+         "Link": {
+          "Parent": "n5"
+         }
+        },
+        {
+         "Key": "n7",
+         "Link": {
+          "Parent": "n6"
+         }
+        },
+        {
+         "Key": "n8",
+         "Link": {
+          "Parent": "n7"
+         }
+        },
+        {
+         "Key": "n9",
+         "Link": {
+          "Parent": "n8"
+         }
+        },
+        {
+         "Key": "n10",
+         "Link": {
+          "Parent": "n9"
+         }
+        },
+        {
+         "Key": "n11",
+         "Link": {
+          "Parent": "n10"
+         }
+        },
+        {
+         "Key": "n12",
+         "Link": {
+          "Parent": "n11"
+         }
+        },
+        {
+         "Key": "n13",
+         "Link": {
+          "Parent": "n12"
+         }
+        },
+        {
+         "Key": "n14",
+         "Link": {
+          "Parent": "n13"
+         }
+        },
+        {
+         "Key": "n15",
+         "Link": {
+          "Parent": "n14"
+         }
+        },
+        {
+         "Key": "n16",
+         "Link": {
+          "Parent": "n15"
+         }
+        },
+        {
+         "Key": "n17",
+         "Link": {
+          "Parent": "n16"
+         }
+        },
+        {
+         "Key": "n18",
+         "Link": {
+          "Parent": "n17"
+         }
+        },
+        {
+         "Key": "n19",
+         "Link": {
+          "Parent": "n18"
+         }
+        },
+        {
+         "Key": "n20",
+         "Link": {
+          "Parent": "n19"
+         }
+        },
+        {
+         "Key": "n21",
+         "Link": {
+          "Parent": "n20"
+         }
+        },
+        {
+         "Key": "n22",
+         "Link": {
+          "Parent": "n21"
+         }
+        },
+        {
+         "Key": "n23",
+         "Link": {
+          "Parent": "n22"
+         }
+        },
+        {
+         "Key": "n24",
+         "Link": {
+          "Parent": "n23"
+         }
+        },
+        {
+         "Key": "n25",
+         "Link": {
+          "Parent": "n24"
+         }
+        },
+        {
+         "Key": "n26",
+         "Link": {
+          "Parent": "n25"
+         }
+        },
+        {
+         "Key": "n27",
+         "Link": {
+          "Parent": "n26"
+         }
+        },
+        {
+         "Key": "n28",
+         "Link": {
+          "Parent": "n27"
+         }
+        },
+        {
+         "Key": "n29",
+         "Link": {
+          "Parent": "n28"
+         }
+        },
+        {
+         "Key": "n30",
+         "Link": {
+          "Parent": "n29"
+         }
+        },
+        {
+         "Key": "n31",
+         "Link": {
+          "Parent": "n30"
+         }
+        },
+        {
+         "Key": "n32",
+         "Link": {
+          "Parent": "n31"
+         }
+        },
+        {
+         "Key": "n33",
+         "Link": {
+          "Parent": "n32"
+         }
+        },
+        {
+         "Key": "n34",
+         "Link": {
+          "Parent": "n33"
+         }
+        },
+        {
+         "Key": "n35",
+         "Link": {
+          "Parent": "n34"
+         }
+        },
+        {
+         "Key": "n36",
+         "Link": {
+          "Parent": "n35"
+         }
+        },
+        {
+         "Key": "n37",
+         "Link": {
+          "Parent": "n36"
+         }
+        },
+        {
+         "Key": "n38",
+         "Link": {
+          "Parent": "n37"
+         }
+        },
+        {
+         "Key": "n39",
+         "Link": {
+          "Parent": "n38"
+         }
+        },
+        {
+         "Key": "n40",
+         "Link": {
+          "Parent": "n39"
+         }
+        },
+        {
+         "Key": "n41",
+         "Link": {
+          "Parent": "n40"
+         }
+        },
+        {
+         "Key": "n42",
+         "Link": {
+          "Parent": "n41"
+         }
+        },
+        {
+         "Key": "n43",
+         "Link": {
+          "Parent": "n42"
+         }
+        },
+        {
+         "Key": "n44",
+         "Link": {
+          "Parent": "n43"
+         }
+        },
+        {
+         "Key": "n45",
+         "Link": {
+          "Parent": "n44"
+         }
+        },
+        {
+         "Key": "n46",
+         "Link": {
+          "Parent": "n45"
+         }
+        },
+        {
+         "Key": "n47",
+         "Link": {
+          "Parent": "n46"
+         }
+        },
+        {
+         "Key": "n48",
+         "Link": {
+          "Parent": "n47"
+         }
+        },
+        {
+         "Key": "n49",
+         "Link": {
+          "Parent": "n48"
+         }
+        },
+        {
+         "Key": "n50",
+         "Link": {
+          "Parent": "n49"
+         }
+        },
+        {
+         "Key": "n51",
+         "Link": {
+          "Parent": "n50"
+         }
+        },
+        {
+         "Key": "n52",
+         "Link": {
+          "Parent": "n51"
+         }
+        },
+        {
+         "Key": "n53",
+         "Link": {
+          "Parent": "n52"
+         }
+        },
+        {
+         "Key": "n54",
+         "Link": {
+          "Parent": "n53"
+         }
+        },
+        {
+         "Key": "n55",
+         "Link": {
+          "Parent": "n54"
+         }
+        },
+        {
+         "Key": "n56",
+         "Link": {
+          "Parent": "n55"
+         }
+        },
+        {
+         "Key": "n57",
+         "Link": {
+          "Parent": "n56"
+         }
+        },
+        {
+         "Key": "n58",
+         "Link": {
+          "Parent": "n57"
+         }
+        },
+        {
+         "Key": "n59",
+         "Link": {
+          "Parent": "n58"
+         }
+        },
+        {
+         "Key": "n60",
+         "Link": {
+          "Parent": "n59"
+         }
+        },
+        {
+         "Key": "n61",
+         "Link": {
+          "Parent": "n60"
+         }
+        },
+        {
+         "Key": "n62",
+         "Link": {
+          "Parent": "n61"
+         }
+        },
+        {
+         "Key": "n63",
+         "Link": {
+          "Parent": "n62"
+         }
+        },
+        {
+         "Key": "n64",
+         "Link": {
+          "Parent": "n63"
+         }
+        },
+        {
+         "Key": "n65",
+         "Link": {
+          "Parent": "n64"
+         }
+        },
+        {
+         "Key": "n66",
+         "Link": {
+          "Parent": "n65"
+         }
+        },
+        {
+         "Key": "n67",
+         "Link": {
+          "Parent": "n66"
+         }
+        },
+        {
+         "Key": "n68",
+         "Link": {
+          "Parent": "n67"
+         }
+        },
+        {
+         "Key": "n69",
+         "Link": {
+          "Parent": "n68"
+         }
+        },
+        {
+         "Key": "n70",
+         "Link": {
+          "Parent": "n69"
+         }
+        },
+        {
+         "Key": "n71",
+         "Link": {
+          "Parent": "n70"
+         }
+        },
+        {
+         "Key": "n72",
+         "Link": {
+          "Parent": "n71"
+         }
+        },
+        {
+         "Key": "n73",
+         "Link": {
+          "Parent": "n72"
+         }
+        },
+        {
+         "Key": "n74",
+         "Link": {
+          "Parent": "n73"
+         }
+        },
+        {
+         "Key": "n75",
+         "Link": {
+          "Parent": "n74"
+         }
+        },
+        {
+         "Key": "n76",
+         "Link": {
+          "Parent": "n75"
+         }
+        },
+        {
+         "Key": "n77",
+         "Link": {
+          "Parent": "n76"
+         }
+        },
+        {
+         "Key": "n78",
+         "Link": {
+          "Parent": "n77"
+         }
+        },
+        {
+         "Key": "n79",
+         "Link": {
+          "Parent": "n78"
+         }
+        },
+        {
+         "Key": "n80",
+         "Link": {
+          "Parent": "n79"
+         }
+        },
+        {
+         "Key": "n81",
+         "Link": {
+          "Parent": "n80"
+         }
+        },
+        {
+         "Key": "n82",
+         "Link": {
+          "Parent": "n81"
+         }
+        },
+        {
+         "Key": "n83",
+         "Link": {
+          "Parent": "n82"
+         }
+        },
+        {
+         "Key": "n84",
+         "Link": {
+          "Parent": "n83"
+         }
+        },
+        {
+         "Key": "n85",
+         "Link": {
+          "Parent": "n84"
+         }
+        },
+        {
+         "Key": "n86",
+         "Link": {
+          "Parent": "n85"
+         }
+        },
+        {
+         "Key": "n87",
+         "Link": {
+          "Parent": "n86"
+         }
+        },
+        {
+         "Key": "n88",
+         "Link": {
+          "Parent": "n87"
+         }
+        },
+        {
+         "Key": "n89",
+         "Link": {
+          "Parent": "n88"
+         }
+        },
+        {
+         "Key": "n90",
+         "Link": {
+          "Parent": "n89"
+         }
+        },
+        {
+         "Key": "n91",
+         "Link": {
+          "Parent": "n90"
+         }
+        },
+        {
+         "Key": "n92",
+         "Link": {
+          "Parent": "n91"
+         }
+        },
+        {
+         "Key": "n93",
+         "Link": {
+          "Parent": "n92"
+         }
+        },
+        {
+         "Key": "n94",
+         "Link": {
+          "Parent": "n93"
+         }
+        },
+        {
+         "Key": "n95",
+         "Link": {
+          "Parent": "n94"
+         }
+        },
+        {
+         "Key": "n96",
+         "Link": {
+          "Parent": "n95"
+         }
+        },
+        {
+         "Key": "n97",
+         "Link": {
+          "Parent": "n96"
+         }
+        },
+        {
+         "Key": "n98",
+         "Link": {
+          "Parent": "n97"
+         }
+        },
+        {
+         "Key": "n99",
+         "Link": {
+          "Parent": "n98"
+         }
+        },
+        {
+         "Key": "n100",
+         "Link": {
+          "Parent": "n99"
+         }
+        },
+        {
+         "Key": "n101",
+         "Link": {
+          "Parent": "n100"
+         }
+        },
+        {
+         "Key": "n102",
+         "Link": {
+          "Parent": "n101"
+         }
+        },
+        {
+         "Key": "n103",
+         "Link": {
+          "Parent": "n102"
+         }
+        },
+        {
+         "Key": "n104",
+         "Link": {
+          "Parent": "n103"
+         }
+        },
+        {
+         "Key": "n105",
+         "Link": {
+          "Parent": "n104"
+         }
+        },
+        {
+         "Key": "n106",
+         "Link": {
+          "Parent": "n105"
+         }
+        },
+        {
+         "Key": "n107",
+         "Link": {
+          "Parent": "n106"
+         }
+        },
+        {
+         "Key": "n108",
+         "Link": {
+          "Parent": "n107"
+         }
+        },
+        {
+         "Key": "n109",
+         "Link": {
+          "Parent": "n108"
+         }
+        },
+        {
+         "Key": "n110",
+         "Link": {
+          "Parent": "n109"
+         }
+        },
+        {
+         "Key": "n111",
+         "Link": {
+          "Parent": "n110"
+         }
+        },
+        {
+         "Key": "n112",
+         "Link": {
+          "Parent": "n111"
+         }
+        },
+        {
+         "Key": "n113",
+         "Link": {
+          "Parent": "n112"
+         }
+        },
+        {
+         "Key": "n114",
+         "Link": {
+          "Parent": "n113"
+         }
+        },
+        {
+         "Key": "n115",
+         "Link": {
+          "Parent": "n114"
+         }
+        },
+        {
+         "Key": "n116",
+         "Link": {
+          "Parent": "n115"
+         }
+        },
+        {
+         "Key": "n117",
+         "Link": {
+          "Parent": "n116"
+         }
+        },
+        {
+         "Key": "n118",
+         "Link": {
+          "Parent": "n117"
+         }
+        },
+        {
+         "Key": "n119",
+         "Link": {
+          "Parent": "n118"
+         }
+        },
+        {
+         "Key": "n120",
+         "Link": {
+          "Parent": "n119"
+         }
+        },
+        {
+         "Key": "n121",
+         "Link": {
+          "Parent": "n120"
+         }
+        },
+        {
+         "Key": "n122",
+         "Link": {
+          "Parent": "n121"
+         }
+        },
+        {
+         "Key": "n123",
+         "Link": {
+          "Parent": "n122"
+         }
+        },
+        {
+         "Key": "n124",
+         "Link": {
+          "Parent": "n123"
+         }
+        },
+        {
+         "Key": "n125",
+         "Link": {
+          "Parent": "n124"
+         }
+        },
+        {
+         "Key": "n126",
+         "Link": {
+          "Parent": "n125"
+         }
+        },
+        {
+         "Key": "n127",
+         "Link": {
+          "Parent": "n126"
+         }
+        },
+        {
+         "Key": "n128",
+         "Link": {
+          "Parent": "n127"
+         }
+        },
+        {
+         "Key": "n129",
+         "Link": {
+          "Parent": "n128"
+         }
+        },
+        {
+         "Key": "n130",
+         "Link": {
+          "Parent": "n129"
+         }
+        },
+        {
+         "Key": "n131",
+         "Link": {
+          "Parent": "n130"
+         }
+        },
+        {
+         "Key": "n132",
+         "Link": {
+          "Parent": "n131"
+         }
+        },
+        {
+         "Key": "n133",
+         "Link": {
+          "Parent": "n132"
+         }
+        },
+        {
+         "Key": "n134",
+         "Link": {
+          "Parent": "n133"
+         }
+        },
+        {
+         "Key": "n135",
+         "Link": {
+          "Parent": "n134"
+         }
+        },
+        {
+         "Key": "n136",
+         "Link": {
+          "Parent": "n135"
+         }
+        },
+        {
+         "Key": "n137",
+         "Link": {
+          "Parent": "n136"
+         }
+        },
+        {
+         "Key": "n138",
+         "Link": {
+          "Parent": "n137"
+         }
+        },
+        {
+         "Key": "n139",
+         "Link": {
+          "Parent": "n138"
+         }
+        },
+        {
+         "Key": "n140",
+         "Link": {
+          "Parent": "n139"
+         }
+        },
+        {
+         "Key": "n141",
+         "Link": {
+          "Parent": "n140"
+         }
+        },
+        {
+         "Key": "n142",
+         "Link": {
+          "Parent": "n141"
+         }
+        },
+        {
+         "Key": "n143",
+         "Link": {
+          "Parent": "n142"
+         }
+        },
+        {
+         "Key": "n144",
+         "Link": {
+          "Parent": "n143"
+         }
+        },
+        {
+         "Key": "n145",
+         "Link": {
+          "Parent": "n144"
+         }
+        },
+        {
+         "Key": "n146",
+         "Link": {
+          "Parent": "n145"
+         }
+        },
+        {
+         "Key": "n147",
+         "Link": {
+          "Parent": "n146"
+         }
+        },
+        {
+         "Key": "n148",
+         "Link": {
+          "Parent": "n147"
+         }
+        },
+        {
+         "Key": "n149",
+         "Link": {
+          "Parent": "n148"
+         }
+        },
+        {
+         "Key": "n150",
+         "Link": {
+          "Parent": "n149"
+         }
+        },
+        {
+         "Key": "n151",
+         "Link": {
+          "Parent": "n150"
+         }
+        },
+        {
+         "Key": "n152",
+         "Link": {
+          "Parent": "n151"
+         }
+        },
+        {
+         "Key": "n153",
+         "Link": {
+          "Parent": "n152"
+         }
+        },
+        {
+         "Key": "n154",
+         "Link": {
+          "Parent": "n153"
+         }
+        },
+        {
+         "Key": "n155",
+         "Link": {
+          "Parent": "n154"
+         }
+        },
+        {
+         "Key": "n156",
+         "Link": {
+          "Parent": "n155"
+         }
+        },
+        {
+         "Key": "n157",
+         "Link": {
+          "Parent": "n156"
+         }
+        },
+        {
+         "Key": "n158",
+         "Link": {
+          "Parent": "n157"
+         }
+        },
+        {
+         "Key": "n159",
+         "Link": {
+          "Parent": "n158"
+         }
+        },
+        {
+         "Key": "n160",
+         "Link": {
+          "Parent": "n159"
+         }
+        },
+        {
+         "Key": "n161",
+         "Link": {
+          "Parent": "n160"
+         }
+        },
+        {
+         "Key": "n162",
+         "Link": {
+          "Parent": "n161"
+         }
+        },
+        {
+         "Key": "n163",
+         "Link": {
+          "Parent": "n162"
+         }
+        },
+        {
+         "Key": "n164",
+         "Link": {
+          "Parent": "n163"
+         }
+        },
+        {
+         "Key": "n165",
+         "Link": {
+          "Parent": "n164"
+         }
+        },
+        {
+         "Key": "n166",
+         "Link": {
+          "Parent": "n165"
+         }
+        },
+        {
+         "Key": "n167",
+         "Link": {
+          "Parent": "n166"
+         }
+        },
+        {
+         "Key": "n168",
+         "Link": {
+          "Parent": "n167"
+         }
+        },
+        {
+         "Key": "n169",
+         "Link": {
+          "Parent": "n168"
+         }
+        },
+        {
+         "Key": "n170",
+         "Link": {
+          "Parent": "n169"
+         }
+        },
+        {
+         "Key": "n171",
+         "Link": {
+          "Parent": "n170"
+         }
+        },
+        {
+         "Key": "n172",
+         "Link": {
+          "Parent": "n171"
+         }
+        },
+        {
+         "Key": "n173",
+         "Link": {
+          "Parent": "n172"
+         }
+        },
+        {
+         "Key": "n174",
+         "Link": {
+          "Parent": "n173"
+         }
+        },
+        {
+         "Key": "n175",
+         "Link": {
+          "Parent": "n174"
+         }
+        },
+        {
+         "Key": "n176",
+         "Link": {
+          "Parent": "n175"
+         }
+        },
+        {
+         "Key": "n177",
+         "Link": {
+          "Parent": "n176"
+         }
+        },
+        {
+         "Key": "n178",
+         "Link": {
+          "Parent": "n177"
+         }
+        },
+        {
+         "Key": "n179",
+         "Link": {
+          "Parent": "n178"
+         }
+        },
+        {
+         "Key": "n180",
+         "Link": {
+          "Parent": "n179"
+         }
+        },
+        {
+         "Key": "n181",
+         "Link": {
+          "Parent": "n180"
+         }
+        },
+        {
+         "Key": "n182",
+         "Link": {
+          "Parent": "n181"
+         }
+        },
+        {
+         "Key": "n183",
+         "Link": {
+          "Parent": "n182"
+         }
+        },
+        {
+         "Key": "n184",
+         "Link": {
+          "Parent": "n183"
+         }
+        },
+        {
+         "Key": "n185",
+         "Link": {
+          "Parent": "n184"
+         }
+        },
+        {
+         "Key": "n186",
+         "Link": {
+          "Parent": "n185"
+         }
+        },
+        {
+         "Key": "n187",
+         "Link": {
+          "Parent": "n186"
+         }
+        },
+        {
+         "Key": "n188",
+         "Link": {
+          "Parent": "n187"
+         }
+        },
+        {
+         "Key": "n189",
+         "Link": {
+          "Parent": "n188"
+         }
+        },
+        {
+         "Key": "n190",
+         "Link": {
+          "Parent": "n189"
+         }
+        },
+        {
+         "Key": "n191",
+         "Link": {
+          "Parent": "n190"
+         }
+        },
+        {
+         "Key": "n192",
+         "Link": {
+          "Parent": "n191"
+         }
+        },
+        {
+         "Key": "n193",
+         "Link": {
+          "Parent": "n192"
+         }
+        },
+        {
+         "Key": "n194",
+         "Link": {
+          "Parent": "n193"
+         }
+        },
+        {
+         "Key": "n195",
+         "Link": {
+          "Parent": "n194"
+         }
+        },
+        {
+         "Key": "n196",
+         "Link": {
+          "Parent": "n195"
+         }
+        },
+        {
+         "Key": "n197",
+         "Link": {
+          "Parent": "n196"
+         }
+        },
+        {
+         "Key": "n198",
+         "Link": {
+          "Parent": "n197"
+         }
+        },
+        {
+         "Key": "n199",
+         "Link": {
+          "Parent": "n198"
+         }
+        },
+        {
+         "Key": "n200",
+         "Link": {
+          "Parent": "n199"
+         }
+        },
+        {
+         "Key": "n201",
+         "Link": {
+          "Parent": "n200"
+         }
+        },
+        {
+         "Key": "n202",
+         "Link": {
+          "Parent": "n201"
+         }
+        },
+        {
+         "Key": "n203",
+         "Link": {
+          "Parent": "n202"
+         }
+        },
+        {
+         "Key": "n204",
+         "Link": {
+          "Parent": "n203"
+         }
+        },
+        {
+         "Key": "n205",
+         "Link": {
+          "Parent": "n204"
+         }
+        },
+        {
+         "Key": "n206",
+         "Link": {
+          "Parent": "n205"
+         }
+        },
+        {
+         "Key": "n207",
+         "Link": {
+          "Parent": "n206"
+         }
+        },
+        {
+         "Key": "n208",
+         "Link": {
+          "Parent": "n207"
+         }
+        },
+        {
+         "Key": "n209",
+         "Link": {
+          "Parent": "n208"
+         }
+        },
+        {
+         "Key": "n210",
+         "Link": {
+          "Parent": "n209"
+         }
+        },
+        {
+         "Key": "n211",
+         "Link": {
+          "Parent": "n210"
+         }
+        },
+        {
+         "Key": "n212",
+         "Link": {
+          "Parent": "n211"
+         }
+        },
+        {
+         "Key": "n213",
+         "Link": {
+          "Parent": "n212"
+         }
+        },
+        {
+         "Key": "n214",
+         "Link": {
+          "Parent": "n213"
+         }
+        },
+        {
+         "Key": "n215",
+         "Link": {
+          "Parent": "n214"
+         }
+        },
+        {
+         "Key": "n216",
+         "Link": {
+          "Parent": "n215"
+         }
+        },
+        {
+         "Key": "n217",
+         "Link": {
+          "Parent": "n216"
+         }
+        },
+        {
+         "Key": "n218",
+         "Link": {
+          "Parent": "n217"
+         }
+        },
+        {
+         "Key": "n219",
+         "Link": {
+          "Parent": "n218"
+         }
+        },
+        {
+         "Key": "n220",
+         "Link": {
+          "Parent": "n219"
+         }
+        },
+        {
+         "Key": "n221",
+         "Link": {
+          "Parent": "n220"
+         }
+        },
+        {
+         "Key": "n222",
+         "Link": {
+          "Parent": "n221"
+         }
+        },
+        {
+         "Key": "n223",
+         "Link": {
+          "Parent": "n222"
+         }
+        },
+        {
+         "Key": "n224",
+         "Link": {
+          "Parent": "n223"
+         }
+        },
+        {
+         "Key": "n225",
+         "Link": {
+          "Parent": "n224"
+         }
+        },
+        {
+         "Key": "n226",
+         "Link": {
+          "Parent": "n225"
+         }
+        },
+        {
+         "Key": "n227",
+         "Link": {
+          "Parent": "n226"
+         }
+        },
+        {
+         "Key": "n228",
+         "Link": {
+          "Parent": "n227"
+         }
+        },
+        {
+         "Key": "n229",
+         "Link": {
+          "Parent": "n228"
+         }
+        },
+        {
+         "Key": "n230",
+         "Link": {
+          "Parent": "n229"
+         }
+        },
+        {
+         "Key": "n231",
+         "Link": {
+          "Parent": "n230"
+         }
+        },
+        {
+         "Key": "n232",
+         "Link": {
+          "Parent": "n231"
+         }
+        },
+        {
+         "Key": "n233",
+         "Link": {
+          "Parent": "n232"
+         }
+        },
+        {
+         "Key": "n234",
+         "Link": {
+          "Parent": "n233"
+         }
+        },
+        {
+         "Key": "n235",
+         "Link": {
+          "Parent": "n234"
+         }
+        },
+        {
+         "Key": "n236",
+         "Link": {
+          "Parent": "n235"
+         }
+        },
+        {
+         "Key": "n237",
+         "Link": {
+          "Parent": "n236"
+         }
+        },
+        {
+         "Key": "n238",
+         "Link": {
+          "Parent": "n237"
+         }
+        },
+        {
+         "Key": "n239",
+         "Link": {
+          "Parent": "n238"
+         }
+        },
+        {
+         "Key": "n240",
+         "Link": {
+          "Parent": "n239"
+         }
+        },
+        {
+         "Key": "n241",
+         "Link": {
+          "Parent": "n240"
+         }
+        },
+        {
+         "Key": "n242",
+         "Link": {
+          "Parent": "n241"
+         }
+        },
+        {
+         "Key": "n243",
+         "Link": {
+          "Parent": "n242"
+         }
+        },
+        {
+         "Key": "n244",
+         "Link": {
+          "Parent": "n243"
+         }
+        },
+        {
+         "Key": "n245",
+         "Link": {
+          "Parent": "n244"
+         }
+        },
+        {
+         "Key": "n246",
+         "Link": {
+          "Parent": "n245"
+         }
+        },
+        {
+         "Key": "n247",
+         "Link": {
+          "Parent": "n246"
+         }
+        },
+        {
+         "Key": "n248",
+         "Link": {
+          "Parent": "n247"
+         }
+        },
+        {
+         "Key": "n249",
+         "Link": {
+          "Parent": "n248"
+         }
+        },
+        {
+         "Key": "n250",
+         "Link": {
+          "Parent": "n249"
+         }
+        },
+        {
+         "Key": "n251",
+         "Link": {
+          "Parent": "n250"
+         }
+        },
+        {
+         "Key": "n252",
+         "Link": {
+          "Parent": "n251"
+         }
+        },
+        {
+         "Key": "n253",
+         "Link": {
+          "Parent": "n252"
+         }
+        },
+        {
+         "Key": "n254",
+         "Link": {
+          "Parent": "n253"
+         }
+        },
+        {
+         "Key": "n255",
+         "Link": {
+          "Parent": "n254"
+         }
+        },
+        {
+         "Key": "n256",
+         "Link": {
+          "Parent": "n255"
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ],
+    [
+     "Rows",
+     {
+      "Root": "-",
+      "Rows": {
+       "Row": [
+        {
+         "Key": "m0",
+         "Link": {
+          "Parent": null
+         }
+        },
+        {
+         "Key": "m1",
+         "Link": {
+          "Parent": "m0"
+         }
+        },
+        {
+         "Key": "m2",
+         "Link": {
+          "Parent": "m1"
+         }
+        },
+        {
+         "Key": "m3",
+         "Link": {
+          "Parent": "m2"
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "AdjacencyRootCount",
+       "count": 2
+      }
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "AdjacencyTreeDepth",
+       "limit": 256
+      }
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Ok": [
+       [
+        "alias",
+        {
+         "name": "m0",
+         "children": [
+          {
+           "name": "m1",
+           "children": [
+            {
+             "name": "m2",
+             "children": [
+              {
+               "name": "m3",
+               "children": []
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C08-roots-from-other-endpoints",
+   "model": "A02-root",
+   "source": {
+    "Root": "x",
+    "Rows": {
+     "Row": [
+      {
+       "Key": "p",
+       "Link": {
+        "Parent": null
+       }
+      },
+      {
+       "Key": "c1",
+       "Link": {
+        "Parent": "x"
+       }
+      },
+      {
+       "Key": "c2",
+       "Link": {
+        "Parent": "y"
+       }
+      },
+      {
+       "Key": "c3",
+       "Link": {
+        "Parent": "c1"
+       }
+      }
+     ]
+    },
+    "Batch": []
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Root": "y",
+      "Rows": {
+       "Row": [
+        {
+         "Key": "r",
+         "Link": {
+          "Parent": null
+         }
+        },
+        {
+         "Key": "x1",
+         "Link": {
+          "Parent": "x"
+         }
+        },
+        {
+         "Key": "y1",
+         "Link": {
+          "Parent": "y"
+         }
+        },
+        {
+         "Key": "x2",
+         "Link": {
+          "Parent": "x1"
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "name": "x1",
+         "children": [
+          {
+           "name": "x2",
+           "children": []
+          }
+         ]
+        }
+       ],
+       [
+        "legacy-root",
+        {
+         "name": "c1",
+         "children": [
+          {
+           "name": "c3",
+           "children": []
+          }
+         ]
+        }
+       ],
+       [
+        "named-root",
+        {
+         "name": "c2",
+         "children": []
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "name": "x1",
+         "children": [
+          {
+           "name": "x2",
+           "children": []
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "legacy-root",
+     "expected": {
+      "Ok": [
+       [
+        "legacy-root",
+        {
+         "name": "c1",
+         "children": [
+          {
+           "name": "c3",
+           "children": []
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "named-root",
+     "expected": {
+      "Ok": [
+       [
+        "named-root",
+        {
+         "name": "c2",
+         "children": []
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C09-absent-and-typed-roots",
+   "model": "A02-root",
+   "source": {
+    "Rows": {
+     "Row": [
+      {
+       "Key": "p",
+       "Link": {
+        "Parent": null
+       }
+      },
+      {
+       "Key": "c",
+       "Link": {
+        "Parent": "p"
+       }
+      }
+     ]
+    },
+    "Batch": []
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Root": 7,
+      "Rows": {
+       "Row": [
+        {
+         "Key": "r",
+         "Link": {
+          "Parent": null
+         }
+        },
+        {
+         "Key": "s",
+         "Link": {
+          "Parent": "r"
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "name": "r",
+         "children": [
+          {
+           "name": "s",
+           "children": []
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "named-root",
+     "expected": {
+      "Err": {
+       "kind": "InvalidAdjacencyRoot",
+       "found": "int"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C10-null-root",
+   "model": "A02-root",
+   "source": {
+    "Root": null,
+    "Rows": {
+     "Row": [
+      {
+       "Key": "p",
+       "Link": {
+        "Parent": null
+       }
+      },
+      {
+       "Key": "c",
+       "Link": {
+        "Parent": "p"
+       }
+      }
+     ]
+    },
+    "Batch": []
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Root": null,
+      "Rows": {
+       "Row": [
+        {
+         "Key": "r",
+         "Link": {
+          "Parent": null
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "name": "r",
+         "children": []
+        }
+       ],
+       [
+        "legacy-root",
+        {
+         "name": "p",
+         "children": [
+          {
+           "name": "c",
+           "children": []
+          }
+         ]
+        }
+       ],
+       [
+        "named-root",
+        {
+         "name": "p",
+         "children": [
+          {
+           "name": "c",
+           "children": []
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C11-root-cycle",
+   "model": "A02-root",
+   "source": {
+    "Root": "l",
+    "Rows": {
+     "Row": [
+      {
+       "Key": "p",
+       "Link": {
+        "Parent": null
+       }
+      }
+     ]
+    },
+    "Batch": []
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Root": "-",
+      "Rows": {
+       "Row": [
+        {
+         "Key": "l",
+         "Link": {
+          "Parent": "l"
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "AdjacencyCycle",
+       "key": "l"
+      }
+     }
+    },
+    {
+     "selection": "legacy-root",
+     "expected": {
+      "Err": {
+       "kind": "AdjacencyRootCount",
+       "count": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C12-root-endpoint-unsupplied",
+   "model": "A02-root",
+   "source": {
+    "Root": "x",
+    "Rows": {
+     "Row": [
+      {
+       "Key": "p",
+       "Link": {
+        "Parent": null
+       }
+      },
+      {
+       "Key": "c1",
+       "Link": {
+        "Parent": "x"
+       }
+      }
+     ]
+    },
+    "Batch": []
+   },
+   "inputs": [],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "SourceUnavailable",
+       "owner": "audit"
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "SourceUnavailable",
+       "owner": "audit"
+      }
+     }
+    },
+    {
+     "selection": "legacy-root",
+     "expected": {
+      "Ok": [
+       [
+        "legacy-root",
+        {
+         "name": "c1",
+         "children": []
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "named-root",
+     "expected": {
+      "Err": {
+       "kind": "SourceUnavailable",
+       "owner": "audit"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C13-rows-before-root",
+   "model": "A02-root",
+   "source": {
+    "Root": null,
+    "Rows": {
+     "Row": [
+      {
+       "Key": "p",
+       "Link": {
+        "Parent": null
+       }
+      }
+     ]
+    },
+    "Batch": []
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Root": "y",
+      "Rows": {
+       "Row": [
+        {
+         "Key": "r",
+         "Link": {
+          "Parent": null
+         }
+        },
+        {
+         "Key": "r",
+         "Link": {
+          "Parent": "r"
+         }
+        }
+       ]
+      },
+      "Batch": []
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "DuplicateAdjacencyKey",
+       "key": "r"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C14-pinned-batches",
+   "model": "A03-nested",
+   "source": {
+    "Root": "-",
+    "Rows": {
+     "Row": []
+    },
+    "Batch": [
+     {
+      "Row": [
+       {
+        "Key": "a",
+        "Link": {
+         "Parent": null
+        }
+       },
+       {
+        "Key": "b",
+        "Link": {
+         "Parent": "s1"
+        }
+       }
+      ],
+      "Start": "s1"
+     },
+     {
+      "Row": [
+       {
+        "Key": "a",
+        "Link": {
+         "Parent": "s2"
+        }
+       },
+       {
+        "Key": "c",
+        "Link": {
+         "Parent": "a"
+        }
+       }
+      ],
+      "Start": "s2"
+     }
+    ]
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Root": "-",
+      "Rows": {
+       "Row": []
+      },
+      "Batch": [
+       {
+        "Row": [
+         {
+          "Key": "t",
+          "Link": {
+           "Parent": null
+          }
+         }
+        ]
+       },
+       {
+        "Row": [
+         {
+          "Key": "u",
+          "Link": {
+           "Parent": "t"
+          }
+         },
+         {
+          "Key": "v",
+          "Link": {
+           "Parent": "t"
+          }
+         }
+        ],
+        "Start": "t"
+       }
+      ]
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Batch": [
+          {
+           "Tree": {
+            "name": "b",
+            "children": []
+           },
+           "Audit": {
+            "name": "t",
+            "children": [
+             {
+              "name": "u",
+              "children": []
+             },
+             {
+              "name": "v",
+              "children": []
+             }
+            ]
+           }
+          },
+          {
+           "Tree": {
+            "name": "a",
+            "children": [
+             {
+              "name": "c",
+              "children": []
+             }
+            ]
+           },
+           "Audit": {
+            "name": "t",
+            "children": [
+             {
+              "name": "u",
+              "children": []
+             },
+             {
+              "name": "v",
+              "children": []
+             }
+            ]
+           }
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "DuplicateAdjacencyKey",
+       "key": "a"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C15-flattened-other-endpoint",
+   "model": "A03-nested",
+   "source": {
+    "Root": "-",
+    "Rows": {
+     "Row": []
+    },
+    "Batch": [
+     {
+      "Row": [
+       {
+        "Key": "p",
+        "Link": {
+         "Parent": null
+        }
+       },
+       {
+        "Key": "q",
+        "Link": {
+         "Parent": "p"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Root": "-",
+      "Rows": {
+       "Row": []
+      },
+      "Batch": [
+       {
+        "Row": [
+         {
+          "Key": "t",
+          "Link": {
+           "Parent": "top"
+          }
+         }
+        ],
+        "Start": "top"
+       },
+       {
+        "Row": [
+         {
+          "Key": "m",
+          "Link": {
+           "Parent": null
+          }
+         },
+         {
+          "Key": "n",
+          "Link": {
+           "Parent": "m"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Batch": [
+          {
+           "Tree": {
+            "name": "p",
+            "children": [
+             {
+              "name": "q",
+              "children": []
+             }
+            ]
+           },
+           "Audit": {
+            "name": "m",
+            "children": [
+             {
+              "name": "n",
+              "children": []
+             }
+            ]
+           }
+          }
+         ]
+        }
+       ],
+       [
+        "audit",
+        {
+         "Batch": [
+          {
+           "Tree": {
+            "name": "t",
+            "children": []
+           },
+           "Audit": {
+            "name": "p",
+            "children": [
+             {
+              "name": "q",
+              "children": []
+             }
+            ]
+           }
+          },
+          {
+           "Tree": {
+            "name": "m",
+            "children": [
+             {
+              "name": "n",
+              "children": []
+             }
+            ]
+           },
+           "Audit": {
+            "name": "p",
+            "children": [
+             {
+              "name": "q",
+              "children": []
+             }
+            ]
+           }
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C16-empty-batches",
+   "model": "A03-nested",
+   "source": {
+    "Root": "-",
+    "Rows": {
+     "Row": []
+    },
+    "Batch": []
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Root": "-",
+      "Rows": {
+       "Row": []
+      },
+      "Batch": [
+       {
+        "Row": [],
+        "Start": "s"
+       }
+      ]
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Batch": []
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "AdjacencyRootCount",
+       "count": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C17-endpoint-root-rows",
+   "model": "A04-root-collection",
+   "source": {
+    "Root": "-",
+    "Batch": []
+   },
+   "inputs": [
+    [
+     "rows",
+     [
+      {
+       "Key": "r",
+       "Link": {
+        "Parent": null
+       }
+      },
+      {
+       "Key": "s",
+       "Link": {
+        "Parent": "r"
+       }
+      },
+      {
+       "Key": "t",
+       "Link": {
+        "Parent": "r"
+       }
+      },
+      {
+       "Key": "u",
+       "Link": {
+        "Parent": "s"
+       }
+      }
+     ]
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "name": "r",
+         "children": [
+          {
+           "name": "s",
+           "children": [
+            {
+             "name": "u",
+             "children": []
+            }
+           ]
+          },
+          {
+           "name": "t",
+           "children": []
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "name": "r",
+         "children": [
+          {
+           "name": "s",
+           "children": [
+            {
+             "name": "u",
+             "children": []
+            }
+           ]
+          },
+          {
+           "name": "t",
+           "children": []
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C18-endpoint-root-unsupplied",
+   "model": "A04-root-collection",
+   "source": {
+    "Root": "-",
+    "Batch": []
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Root": "-",
+      "Batch": []
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "SourceUnavailable",
+       "owner": "rows"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

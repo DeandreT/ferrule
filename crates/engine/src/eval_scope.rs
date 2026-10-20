@@ -98,7 +98,7 @@ pub(crate) fn eval_scope(
         Some(mapping::SourceSelectorRef::Owned(_))
     ) || matches!(
         scope.construction,
-        ScopeConstruction::OwnedPathHierarchy { .. }
+        ScopeConstruction::OwnedPathHierarchy { .. } | ScopeConstruction::OwnedAdjacencyTree { .. }
     ) {
         return Err(EngineError::UnsupportedSourceIteration {
             scope: trace_scope.source_scope.clone(),
@@ -758,7 +758,7 @@ fn scope_needs_owned(program: EvalProgram<'_>, scope: &Scope) -> bool {
         Some(mapping::SourceSelectorRef::Owned(_))
     ) || matches!(
         scope.construction,
-        ScopeConstruction::OwnedPathHierarchy { .. }
+        ScopeConstruction::OwnedPathHierarchy { .. } | ScopeConstruction::OwnedAdjacencyTree { .. }
     ) {
         return true;
     }
@@ -2281,6 +2281,25 @@ impl ItemEvaluator<'_> {
         if let ScopeConstruction::AdjacencyTree { plan } = &scope.construction {
             return crate::adjacency_tree::construct(program, plan, context, output_positions)
                 .map(Some);
+        }
+
+        if let ScopeConstruction::OwnedAdjacencyTree { plan } = &scope.construction {
+            // Admission routes every owned adjacency tree through the paired context.
+            let state =
+                program
+                    .owned_context
+                    .ok_or_else(|| EngineError::UnsupportedSourceIteration {
+                        scope: trace_scope.source_scope.clone(),
+                    })?;
+            return crate::adjacency_tree::construct_owned(
+                program,
+                plan,
+                state,
+                context,
+                output_positions,
+                &trace_scope.source_scope,
+            )
+            .map(Some);
         }
 
         if matches!(&scope.construction, ScopeConstruction::CopyCurrentSource) {

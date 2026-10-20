@@ -311,6 +311,13 @@ fn validate_scope(
                 ));
             }
         }
+        // The ownership preflight refuses this first; native owner export is
+        // a separate capability.
+        ScopeConstruction::OwnedAdjacencyTree { .. } => {
+            return Err(unsupported(
+                "owned adjacency-tree row collections are not exportable",
+            ));
+        }
         ScopeConstruction::Constructed
         | ScopeConstruction::CopyCurrentSource
         | ScopeConstruction::XmlMixedContent { .. } => {}

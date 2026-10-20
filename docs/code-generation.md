@@ -415,6 +415,46 @@ owners and other specialized scopes) keep their typed refusals. The legacy
 to use the ordinary emitters. See [the ownership design](design/source-ownership.md#owned-path-hierarchy-input-collections)
 and [the corpus](../conformance/basic-owned-path-hierarchy/README.md).
 
+## Explicit owned adjacency tree
+
+`ScopeConstruction::OwnedAdjacencyTree` builds the bounded recursive group of
+the legacy adjacency-tree construction from one explicitly owned row
+collection. Use `codegen::lower_with_basic_owned_adjacency_tree`, then
+`codegen_rust::emit_with_basic_owned_adjacency_tree(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_adjacency_tree(&program)`. The matching
+`validate_program_with_basic_owned_adjacency_tree`,
+`validate_basic_owned_adjacency_tree_emission` and
+`legacy_named_input_admission_plan_with_basic_owned_adjacency_tree` APIs select
+the same profile. It composes the owned path-hierarchy profile (EndingWith
+controls, scalar-producer ItemAt, primary-row failures, owned failure-rule walks
+and owned path hierarchies); the execution entries and five-field Basic policy
+are unchanged.
+
+Only the collection carries an owner. Rows are read from the exact endpoint: an
+active same-owner frame pins its prefix, otherwise the endpoint root is used,
+including an endpoint whose root is the row collection. Other endpoints, legacy
+aliases and outward fallback never supply rows, so equal keys in another
+endpoint neither merge nor parent the selected rows. The key and parent paths
+are relative to each selected row, and the target key and children names only
+describe the output. The optional root expression is evaluated once in the
+receiving context, after the rows are read, and may read any static endpoint.
+A supplied endpoint whose collection is empty or absent selects no root row; an
+unsupplied endpoint, for the rows or the root, reports the typed
+unavailable-source error when reached.
+
+Source-order children, unreachable-row omission, and the duplicate-key, row
+field, root value, root count, cycle and depth errors are shared with the legacy
+builders. The scope cannot contain bindings, children, controls or iteration;
+the collection must be a repeating group in its owner's schema whose key and
+parent are non-repeating strings. Validation reports unknown, empty and
+unresolved owners as owned structure errors, and the root expression keeps the
+Basic scalar subset. The default validator and every earlier profile refuse the
+construction as a tree operator, and closed contexts (generated items, dynamic
+owners and other specialized scopes) keep their typed refusals. The legacy
+`AdjacencyTree` plan, its wire form and its errors are unchanged; it continues
+to use the ordinary emitters. See [the ownership design](design/source-ownership.md#owned-adjacency-tree-row-collections)
+and [the corpus](../conformance/basic-owned-adjacency-tree/README.md).
+
 ## C#
 
 ### Build and test environment
