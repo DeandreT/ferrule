@@ -98,9 +98,24 @@ node with no grouping key.
 
 ## Qualification boundaries
 
-Functional comparisons use independent complete trees and typed errors for the
-interpreter and compiled public Rust/C# consumers. Private resource, custody and
-callback-order controls exercise separate component obligations. Ordinary
-saved-project roundtrips and generated-artifact conservation remain regression
-requirements. Source review and compilation alone do not establish behavioral
-parity; native export, GUI/debugging and vendor acceptance have their own gates.
+The conformance corpus in `conformance/basic-owned-group-starting-with/` holds
+105 public profiles with 381 calls whose expected complete trees and typed errors
+are authored independently, plus refusal Projects, direct Programs and an
+ordinary saved project. `basic_owned_group_starting_with` in the CLI
+`code_generation` tests checks that every profile lowers, validates, keeps its
+expected named-input catalogue and emits both backends. It also checks the
+refusals, the earlier generation profiles' gates, and every interpreter call
+against its expected result.
+
+The ignored `basic_starting443_generated_rust_and_csharp_match_expected` test
+builds one Rust host linking every generated model and one C# host per model,
+runs all calls through the public generated APIs, and compares each result and
+the unchanged inputs with the same expectations:
+
+```sh
+cargo test -p cli --test code_generation --features codegen-tests \
+  basic_starting443_generated_rust_and_csharp_match_expected -- --ignored
+```
+
+It needs Cargo and the .NET 10 SDK. Private resource and callback-order controls
+in the runtime unit and C# smoke tests cover separate component obligations.

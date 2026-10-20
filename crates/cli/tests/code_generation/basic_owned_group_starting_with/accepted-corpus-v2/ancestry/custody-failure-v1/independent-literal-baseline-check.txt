@@ -1,6 +1,0 @@
-./BASELINE.md: OK
-./legacy-expected.json: OK
-./legacy-expected.tree.json: OK
-./legacy-input.json: OK
-./legacy-input.tree.json: OK
-./legacy-project.json: OK

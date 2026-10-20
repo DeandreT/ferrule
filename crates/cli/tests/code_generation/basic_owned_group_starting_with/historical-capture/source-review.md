@@ -1,9 +1,0 @@
-# Ordinary Starting baseline source review
-
-The parent independently inspected all six files in `../starting443-corpus-v1/literal-baseline/`, the current merged Project and Scope serializers, ordinary grouping in `crates/engine/src/eval_scope.rs`, and the established Starting tests. The separate literal-baseline manifest verifies unchanged. The larger packet's `old_profiles.rs` custody mismatch remains separate and unresolved; this review does not accept that packet.
-
-The saved Project uses only legacy SourceFields with `Rows` frames, ordinary `source: [Rows]`, `group_starting_with: 2`, nested member `source: []`, and Position(Rows). Its declared Bool/String/Int schemas match the complete input and expected typed trees. Project field order/default omissions agree with `model/project.rs` and `scope_serde.rs`. The same member framing is used by the qualified adjacent ordinary baseline.
-
-The five boundary values are false, false, true, true, false. Ordinary Starting evaluates the boundary before post retention, creates the initial false-prefix group, starts a new group containing each true candidate, and extends the last group for later false candidates. The independent literal groups are therefore [one,two], [three], [four,five], with first labels one/three/four and compact group ordinals 1/2/3. Ordered fields, scalar tags, repetitions and Unknown group XML origins are explicit in the lossless trees.
-
-This grants parent-owned historical ordinary Rust/C# generation from the retained exact-merge CLI into fresh absent output directories, with complete source/options/command/artifact receipts. It does not establish model parsing, roundtrip, generation success, execution or whole-corpus acceptance. Any discrepancy must be retained and independently explained before changing a fixture. Implementation grants still require the remaining frozen corpus and historical-artifact review prerequisites.

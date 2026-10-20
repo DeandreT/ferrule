@@ -1,12 +1,10 @@
-//! #443 prospective public-Project three-engine campaign. SOURCE ONLY / UNRUN.
-//! Production companions and independent candidate-delta acceptance are prerequisites.
-//! Preparation performs no mapping; execution is a distinct coordinator-owned lane.
+//! #443 owned `group_starting_with` parity: the interpreter, generated Rust and
+//! generated C# run the same conformance corpus against its expected results.
 use super::*;
 use serde_json::{Value as Json, json};
-use sha2::{Digest as _, Sha256};
-use std::{fs, io::Write as _};
-// These modules are byte-bound independent corpus inputs. Keep their mounted
-// bodies identical to the archived originals when formatting this harness.
+use std::fs;
+// These modules are the conformance corpus. Keep their bodies byte-identical to
+// the authored files when formatting this harness.
 #[rustfmt::skip]
 #[allow(clippy::possible_missing_else, clippy::too_many_arguments)]
 #[path = "../../../../conformance/basic-owned-group-starting-with/cases.rs"]
@@ -30,10 +28,8 @@ mod closed_matrix;
 #[rustfmt::skip]
 #[path = "../../../../conformance/basic-owned-group-starting-with/old_profiles.rs"]
 mod old_profiles;
-// Borrow the qualified #473 implementations. No second codec/native algorithm.
+// Reuse the #473 codec and native runner rather than a second implementation.
 use super::basic_owned_sequence_item_at::{codec, run_native_with_input_after as run_native};
-const ENVIRONMENT: &str = "FERRULE_BASIC_STARTING443_PREPARE_DIR";
-const SUCCESS: &str = "SUCCESSFUL-COMPILER-FREE-PREPARATION.json";
 const MODELS: usize = 105;
 const CASES: usize = 109;
 const CORE_CALLS: usize = 381;
@@ -41,8 +37,6 @@ const LEGACY_CALLS: usize = 2;
 const CLOSED_PROJECTS: usize = 65;
 const DIRECT_PROGRAMS: usize = 61;
 const OLD_SURFACES: usize = 50;
-const _: () = assert!(CORE_CALLS + LEGACY_CALLS == 383);
-const _: () = assert!(3 * (CORE_CALLS + LEGACY_CALLS) == 1149);
 struct Case {
     id: &'static str,
     profile: &'static str,
@@ -51,19 +45,8 @@ struct Case {
     calls: Vec<Json>,
     native: bool,
 }
-include!("basic_owned_group_starting_with/mechanics.rs");
-include!("basic_owned_group_starting_with/historical.rs");
-include!("basic_owned_group_starting_with/refusals.rs");
-include!("basic_owned_group_starting_with/preparation.rs");
-include!("basic_owned_group_starting_with/execution.rs");
-include!("basic_owned_group_starting_with/host_evidence.rs");
-include!("basic_owned_group_starting_with/routes.rs");
-include!("basic_owned_group_starting_with/prepared_inputs.rs");
-include!("basic_owned_group_starting_with/prepared_input_controls.rs");
-include!("basic_owned_group_starting_with/review_controls.rs");
 
-// This independent selector list is not computed from candidate Programs,
-// catalogue output, a target count assumption or cases::standalone().
+// This selector list is independent of the lowered Programs and catalogues.
 const STANDALONE_PROFILES: &[&str] = &[
     "S23-boundary",
     "S23-post",
@@ -92,14 +75,14 @@ const STANDALONE_PROFILES: &[&str] = &[
     "I07-null",
 ];
 fn corpus() -> TestResult<(Json, Vec<Project>, Vec<String>)> {
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::BTreeSet;
     let authored: BTreeMap<&str, usize> =
         include_str!("basic_owned_group_starting_with/MODEL-SELECTOR-INVENTORY.tsv")
             .lines()
             .skip(1)
             .map(|line| {
                 let fields: Vec<_> = line.split('\t').collect();
-                (fields[0], fields[1].parse().expect("frozen source count"))
+                (fields[0], fields[1].parse().expect("authored case count"))
             })
             .collect();
     let declared: BTreeSet<_> = projects::PROFILES.iter().copied().collect();
@@ -108,7 +91,7 @@ fn corpus() -> TestResult<(Json, Vec<Project>, Vec<String>)> {
         || projects::PROFILES.len() != MODELS
         || authored.keys().copied().collect::<BTreeSet<_>>() != declared
     {
-        return Err("105 exact unique profile keys differ from frozen inventory".into());
+        return Err("105 unique profile keys differ from the selector inventory".into());
     }
     let cases = cases::cases();
     let mut ids = BTreeSet::new();
@@ -141,7 +124,9 @@ fn corpus() -> TestResult<(Json, Vec<Project>, Vec<String>)> {
                     != vec![json!({"selection":" audit ","invalid_limits":true,
                 "expected":{"Err":{"kind":"UnknownTarget","name":" audit "}}})]
             {
-                return Err("E22 must retain absent inputs, exact unknown target and invalid five-field policy".into());
+                return Err(
+                    "E22 must keep absent inputs, an unknown target and invalid limits".into(),
+                );
             }
             vec![Some(" audit ")]
         } else if STANDALONE_PROFILES.contains(&profile) {
@@ -156,7 +141,7 @@ fn corpus() -> TestResult<(Json, Vec<Project>, Vec<String>)> {
                     .iter()
                     .any(|call| call.get("invalid_limits").is_some()))
         {
-            return Err(format!("exact selectors changed: {}", case.id).into());
+            return Err(format!("selectors changed: {}", case.id).into());
         }
         *arities.entry(case.calls.len()).or_default() += 1;
         *counts.entry(profile).or_default() += 1;
@@ -175,7 +160,7 @@ fn corpus() -> TestResult<(Json, Vec<Project>, Vec<String>)> {
                     vec!["audit", "unicode"]
                 };
                 if names != expected_names {
-                    return Err(format!("actual named targets differ: {profile}").into());
+                    return Err(format!("named targets differ: {profile}").into());
                 }
                 profiles.push(profile.into());
                 models.push(project);
@@ -203,52 +188,24 @@ fn corpus() -> TestResult<(Json, Vec<Project>, Vec<String>)> {
         || calls != CORE_CALLS
         || arities != BTreeMap::from([(1, 1), (2, 26), (4, 82)])
     {
-        return Err(
-            "literal 105 profiles/109 cases/381 calls or selector distribution changed".into(),
-        );
+        return Err("105 profiles/109 cases/381 calls or selector distribution changed".into());
     }
     Ok((
-        json!({"version":1,"cases":records,"models":profiles,"case_count":CASES,
-        "core_calls_per_engine":CORE_CALLS,"legacy_calls_per_engine":LEGACY_CALLS,
-        "calls_per_engine":383,"prospective_three_engine_calls":1149}),
+        json!({"version":1,"cases":records,"models":profiles}),
         models,
         profiles,
     ))
-}
-fn binding(directory: &Path) -> TestResult<Json> {
-    let files = artifact_files(directory)?
-        .into_iter()
-        .filter(|(path, _)| path != SUCCESS)
-        .collect();
-    let (controls, _, _) = corpus()?;
-    Ok(
-        json!({"version":1,"result":"success","cases":controls["case_count"],
-        "core_calls_per_engine":CORE_CALLS,"legacy_calls_per_engine":LEGACY_CALLS,
-        "calls_per_engine":383,"prospective_three_engine_calls":1149,
-        "models":MODELS,"closed_projects":CLOSED_PROJECTS,"direct_programs":DIRECT_PROGRAMS,
-        "old_surfaces":OLD_SURFACES,"sources":source_bindings()?,"evidence":hashes(files),
-        "commands":command_runtime_binding()?,"runtime":runtime_path()?}),
-    )
 }
 fn runtime_path() -> TestResult<PathBuf> {
     Ok(Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../codegen-runtime")
         .canonicalize()?)
 }
-fn verify_original_evidence(directory: &Path, rows: &Json) -> TestResult<()> {
-    let rows: Vec<legacy_artifact_policy::ManifestRow> = serde_json::from_value(rows.clone())?;
-    for (relative, length, sha) in rows {
-        codegen::ArtifactPath::new(relative.as_str())?;
-        let bytes = fs::read(directory.join(&relative))?;
-        if bytes.len() != length || digest(&bytes) != sha {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("prepared original changed: {relative}"),
-            )
-            .into());
-        }
+fn rust_options(package: &str, runtime: &Path) -> codegen_rust::Options {
+    codegen_rust::Options {
+        package_name: package.into(),
+        runtime_dependency: codegen_rust::RuntimeDependency::Path(runtime.display().to_string()),
     }
-    Ok(())
 }
 fn actual_catalogues(plan: &codegen::NamedInputAdmissionPlan<'_>) -> Json {
     fn catalogue(value: &codegen::NamedInputCatalogue<'_>) -> Json {
@@ -272,7 +229,7 @@ fn host_project(model: &str) -> String {
 }
 fn replace_once(source: String, needle: &str, replacement: &str) -> TestResult<String> {
     if source.matches(needle).count() != 1 {
-        return Err("reviewed #442 host seam drift".into());
+        return Err(format!("host template seam changed: {needle}").into());
     }
     Ok(source.replace(needle, replacement))
 }
@@ -309,55 +266,11 @@ fn csharp_host(calls: usize) -> TestResult<String> {
         "limits = new { roots = (ulong)limits.MaxRoots, frames = (ulong)limits.MaxActiveFrames, path = (ulong)limits.MaxPathSegments, bytes = (ulong)limits.MaxMetadataBytes, walk = (ulong)limits.MaxWalkContexts }",
     )
 }
-
-/// The maintained raw-first observer owns original result/error/panic capture.
-/// A success clone is only for later API calls; no original product is mutated.
-/// Observation failures become false; required evidence I/O propagates unchanged.
-fn recorded<T, E>(
-    evidence: &Evidence,
-    label: &str,
-    invoke: impl FnOnce() -> Result<T, E>,
-    capture: impl FnOnce(&T) -> Json,
-    observe: impl FnOnce(&Result<T, E>) -> bool,
-) -> TestResult<(Option<T>, bool)>
-where
-    T: std::fmt::Debug + Clone,
-    E: std::error::Error + 'static,
-{
-    let mut success = None;
-    let invocation = std::panic::catch_unwind(std::panic::AssertUnwindSafe(invoke));
-    if let Ok(Err(error)) = &invocation {
-        evidence.error(&format!("{label}-COMPLETE-ERROR-CHAIN.txt"), error)?;
-    }
-    let observed = codec::retain_outcome(
-        invocation,
-        |suffix, bytes| evidence.write_io(&format!("{label}-{suffix}"), bytes),
-        capture,
-        |product| {
-            success = product.as_ref().ok().cloned();
-            json!({"matched":observe(product)})
-        },
-    )?;
-    Ok((success, observed.is_some_and(|row| row["matched"] == true)))
+fn legacy_project() -> TestResult<Project> {
+    Ok(mapping::project_file::decode_str(include_str!(
+        "../../../../conformance/basic-owned-group-starting-with/legacy-project.json"
+    ))?)
 }
-fn artifact_capture(artifacts: &codegen::ArtifactSet) -> Json {
-    // Full bytes, not a digest-only or Debug-only substitute for unexpected success.
-    json!(artifacts.files().iter().map(|file| json!({"path":file.path.as_str(),
-        "bytes":file.contents,"row":legacy_artifact_policy::row(file.path.as_str(),&file.contents)})).collect::<Vec<_>>())
-}
-fn debug_capture<T: std::fmt::Debug>(value: &T) -> Json {
-    json!({"complete_debug":format!("{value:#?}")})
-}
-fn input_after(
-    evidence: &Evidence,
-    label: &str,
-    program: &codegen::Program,
-    before: &codegen::Program,
-) -> TestResult<bool> {
-    evidence.debug(&format!("{label}-COMPLETE-INPUT-AFTER.txt"), program)?;
-    Ok(program == before)
-}
-
 fn legacy_native_controls() -> TestResult<(Json, Project)> {
     let source: Json = serde_json::from_str(include_str!(
         "../../../../conformance/basic-owned-group-starting-with/legacy-input.tree.json"
@@ -365,33 +278,46 @@ fn legacy_native_controls() -> TestResult<(Json, Project)> {
     let expected: Json = serde_json::from_str(include_str!(
         "../../../../conformance/basic-owned-group-starting-with/legacy-expected.tree.json"
     ))?;
-    let project = mapping::project_file::decode_str(include_str!(
-        "../../../../conformance/basic-owned-group-starting-with/legacy-project.json"
-    ))?;
-    // Both All/Primary read the independent lossless literal, not ordinary output.
+    // Both All and Primary compare against the authored tree, not ordinary output.
     let expected = json!({"Ok":[[null,expected]]});
     Ok((
         json!({"version":1,"cases":[{"id":"L01-ordinary-starting","model":0,"native":true,
         "source":source,"inputs":[],"calls":[{"selection":"All","expected":expected},
         {"selection":"Primary","expected":expected}]}]}),
-        project,
+        legacy_project()?,
     ))
 }
-fn legacy_native(evidence: &Evidence) -> TestResult<Vec<Json>> {
-    let (controls, project) = legacy_native_controls()?;
-    if fs::read(
-        evidence
-            .0
-            .join("legacy-native-COMPLETE-AUTHORED-CONTROLS.json"),
-    )? != serde_json::to_vec_pretty(&controls)?
-    {
-        return Err("frozen ordinary controls differ".into());
-    }
-    run_native(&controls, &[project], &evidence.0.join("legacy-control"))
+fn closed_projects() -> Vec<(String, Project, Vec<codegen::Diagnostic>)> {
+    closed::projects()
+        .into_iter()
+        .chain(closed_specialized::projects())
+        .map(|(id, p, e)| (id.into(), p, e))
+        .chain(closed_matrix::projects())
+        .collect()
+}
+fn closed_programs(
+    base: &codegen::Program,
+    specialized: &codegen::Program,
+) -> Vec<(String, codegen::Program, codegen::ProgramValidationError)> {
+    closed::programs(base)
+        .into_iter()
+        .chain(closed_specialized::programs(specialized))
+        .map(|(id, p, e)| (id.into(), p, e))
+        .chain(closed_matrix::programs(base))
+        .collect()
+}
+fn model_calls(controls: &Json, model: usize) -> usize {
+    controls["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|case| case["model"] == model)
+        .map(|case| case["calls"].as_array().unwrap().len())
+        .sum()
 }
 
 #[test]
-fn basic_starting443_literal_inventory_and_host_seams() -> TestResult<()> {
+fn basic_starting443_corpus_codecs_and_host_templates() -> TestResult<()> {
     let (controls, models, _) = corpus()?;
     assert_eq!(models.len(), MODELS);
     for case in controls["cases"].as_array().unwrap() {
@@ -410,97 +336,514 @@ fn basic_starting443_literal_inventory_and_host_seams() -> TestResult<()> {
             }
         }
     }
+    assert_eq!(
+        (0..MODELS)
+            .map(|model| model_calls(&controls, model))
+            .sum::<usize>(),
+        CORE_CALLS
+    );
     assert!(rust_host("dispatch", CORE_CALLS)?.contains("call[\"invalid_limits\"]"));
     assert!(csharp_host(1)?.contains("roots = (ulong)limits.MaxRoots"));
-    let mut selectors = BTreeMap::from([
-        ("RUSTC", None),
-        ("RUSTC_WRAPPER", None),
-        ("RUSTC_WORKSPACE_WRAPPER", None),
-    ]);
-    reject_compiler_overrides(&selectors)?;
-    for name in ["RUSTC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER"] {
-        for value in ["", "rustc", "/external/compiler-or-wrapper"] {
-            selectors.insert(name, Some(value.into()));
-            assert!(reject_compiler_overrides(&selectors).is_err());
-        }
-        selectors.insert(name, None);
+    Ok(())
+}
+
+#[test]
+fn basic_starting443_public_profiles_lower_validate_and_emit() -> TestResult<()> {
+    let (_, models, profiles) = corpus()?;
+    let runtime = runtime_path()?;
+    for (index, project) in models.iter().enumerate() {
+        let profile = &profiles[index];
+        let context = |error: &dyn std::fmt::Debug| format!("{profile}: {error:?}");
+        let before = mapping::project_file::encode_pretty(project)?;
+        let issues = engine::validate(project);
+        assert!(issues.is_empty(), "{profile}: {issues:?}");
+        let program = codegen::lower_with_basic_owned_group_starting_with(project)
+            .map_err(|error| context(&error))?;
+        assert_eq!(
+            mapping::project_file::encode_pretty(project)?,
+            before,
+            "{profile}"
+        );
+        let original = program.clone();
+        let plan = codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(
+            &program,
+        )
+        .map_err(|error| context(&error))?;
+        assert_eq!(
+            actual_catalogues(&plan),
+            catalogues::expected(profile),
+            "{profile}"
+        );
+        codegen::validate_program_with_basic_owned_group_starting_with(&program)
+            .map_err(|error| context(&error))?;
+        codegen::validate_basic_owned_group_starting_with_emission(&program)
+            .map_err(|error| context(&error))?;
+        codegen_rust::emit_with_basic_owned_group_starting_with(
+            &program,
+            &rust_options(&format!("starting443-model{index}"), &runtime),
+        )
+        .map_err(|error| context(&error))?;
+        codegen_csharp::emit_with_basic_owned_group_starting_with(&program)
+            .map_err(|error| context(&error))?;
+        assert_eq!(program, original, "{profile}");
     }
     Ok(())
 }
 
 #[test]
-fn basic_starting443_raw_first_continuation_and_fatal_evidence_io() -> TestResult<()> {
-    let temp = TempDir::new("starting443-raw-first")?;
-    let evidence = Evidence(temp.0.clone());
-    let raw = Instance::MappedSequence(vec![Instance::Scalar(Value::Float(f64::from_bits(
-        0x7ff8000000000042,
-    )))]);
-    let (_, mismatch) = recorded(
-        &evidence,
-        "mismatch",
-        || Ok::<_, io::Error>(raw),
-        codec::raw_tree,
-        |_| false,
-    )?;
-    let (_, observer) = recorded(
-        &evidence,
-        "observer",
-        || Ok::<_, io::Error>(Instance::Scalar(Value::Int(1))),
-        codec::raw_tree,
-        |_| panic!("authored observation failure"),
-    )?;
-    let (_, invocation) = recorded::<Instance, io::Error>(
-        &evidence,
-        "invocation",
-        || panic!("authored invocation failure"),
-        codec::raw_tree,
-        |_| true,
-    )?;
-    let (_, later) = recorded(
-        &evidence,
-        "later",
-        || Ok::<_, io::Error>(Instance::Scalar(Value::Int(2))),
-        codec::raw_tree,
-        |actual| matches!(actual, Ok(Instance::Scalar(Value::Int(2)))),
-    )?;
+fn basic_starting443_closed_projects_programs_and_old_profiles_refuse() -> TestResult<()> {
+    let projects = closed_projects();
+    assert_eq!(projects.len(), CLOSED_PROJECTS);
     assert_eq!(
-        [mismatch, observer, invocation, later],
-        [false, false, false, true]
+        projects
+            .iter()
+            .map(|(id, _, _)| id)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        CLOSED_PROJECTS
     );
-    let retained = fs::read_to_string(temp.0.join("mismatch-COMPLETE-RAW-PRODUCT.json"))?;
-    assert!(retained.contains("MappedSequence") && retained.contains("7ff8000000000042"));
-    assert!(
-        temp.0
-            .join("observer-COMPLETE-OBSERVATION-FAILURE.txt")
-            .is_file()
-    );
-    assert!(
-        temp.0
-            .join("invocation-COMPLETE-INVOCATION-PANIC.txt")
-            .is_file()
-    );
-    let observed = std::cell::Cell::new(false);
-    let failure = recorded(
-        &evidence,
-        "later",
-        || Ok::<_, io::Error>(Instance::Scalar(Value::Int(3))),
-        codec::raw_tree,
-        |_| {
-            observed.set(true);
-            true
-        },
-    );
+    for (id, project, expected) in &projects {
+        let before = mapping::project_file::encode_pretty(project)?;
+        let actual = codegen::lower_with_basic_owned_group_starting_with(project);
+        assert!(
+            matches!(&actual, Err(error) if error.diagnostics() == expected.as_slice()),
+            "{id}: {actual:?}"
+        );
+        assert_eq!(
+            mapping::project_file::encode_pretty(project)?,
+            before,
+            "{id}"
+        );
+    }
+
+    let base = codegen::lower_with_basic_owned_group_starting_with(&projects::base())?;
+    let specialized =
+        codegen::lower_with_basic_owned_group_starting_with(&projects::refusal_base())?;
+    let programs = closed_programs(&base, &specialized);
+    assert_eq!(programs.len(), DIRECT_PROGRAMS);
     assert_eq!(
-        failure
-            .unwrap_err()
-            .downcast_ref::<io::Error>()
-            .unwrap()
-            .kind(),
-        io::ErrorKind::AlreadyExists
+        programs
+            .iter()
+            .map(|(id, _, _)| id)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        DIRECT_PROGRAMS
+    );
+    let options = rust_options("starting443-direct-refusal", &runtime_path()?);
+    for (id, program, expected) in &programs {
+        let before = program.clone();
+        assert!(
+            matches!(codegen::validate_program_with_basic_owned_group_starting_with(program),
+                Err(error) if error == *expected),
+            "{id} validator"
+        );
+        assert!(
+            matches!(codegen::validate_basic_owned_group_starting_with_emission(program),
+                Err(error) if error == *expected),
+            "{id} emission validator"
+        );
+        assert!(
+            matches!(codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(program),
+                Err(error) if error == *expected),
+            "{id} catalogue"
+        );
+        assert!(
+            matches!(codegen_rust::emit_with_basic_owned_group_starting_with(program, &options),
+                Err(codegen_rust::EmitError::InvalidProgram(error)) if error == *expected),
+            "{id} Rust"
+        );
+        assert!(
+            matches!(codegen_csharp::emit_with_basic_owned_group_starting_with(program),
+                Err(codegen_csharp::EmitError::ProgramValidation(error)) if error == *expected),
+            "{id} C#"
+        );
+        assert_eq!(program, &before, "{id}");
+    }
+
+    // Every earlier generation profile keeps refusing owned Starting.
+    let s01 = projects::project("S01");
+    let program = codegen::lower_with_basic_owned_group_starting_with(&s01)?;
+    let expected = closed::grouping_error();
+    let codegen::ProgramValidationError::OwnedSource { diagnostic } = &expected else {
+        unreachable!("authored Grouping refusal");
+    };
+    let diagnostic = codegen::Diagnostic::OwnedSource {
+        diagnostic: diagnostic.clone(),
+    };
+    let options = rust_options("starting443-old-gates", &runtime_path()?);
+    let products = old_profiles::products(&s01, &program, &options);
+    assert_eq!(
+        [
+            products.lowering.len(),
+            products.validators.len(),
+            products.catalogues.len(),
+            products.rust.len(),
+            products.csharp.len()
+        ],
+        [8, 16, 8, 9, 9]
+    );
+    assert_eq!(8 + 16 + 8 + 9 + 9, OLD_SURFACES);
+    assert!(products.lowering.iter().all(
+        |r| matches!(r, Err(error) if error.diagnostics() == std::slice::from_ref(&diagnostic))
+    ));
+    assert!(
+        products
+            .validators
+            .iter()
+            .all(|r| matches!(r, Err(error) if *error == expected))
     );
     assert!(
-        !observed.get(),
-        "required raw evidence failure must never become a comparison result"
+        products
+            .catalogues
+            .iter()
+            .all(|r| matches!(r, Err(error) if *error == expected))
     );
+    assert!(products.rust.iter().all(
+        |r| matches!(r, Err(codegen_rust::EmitError::InvalidProgram(error)) if *error == expected)
+    ));
+    assert!(products.csharp.iter().all(
+        |r| matches!(r, Err(codegen_csharp::EmitError::ProgramValidation(error)) if *error == expected)
+    ));
     Ok(())
+}
+
+#[test]
+fn basic_starting443_interpreter_matches_expected() -> TestResult<()> {
+    let (controls, models, _) = corpus()?;
+    let (legacy, project) = legacy_native_controls()?;
+    let temp = TempDir::new("starting443_native")?;
+    let native = run_native(&controls, &models, &temp.0.join("native"))?;
+    let ordinary = run_native(&legacy, &[project], &temp.0.join("legacy"))?;
+    assert_eq!(native.len(), CORE_CALLS);
+    assert_eq!(ordinary.len(), LEGACY_CALLS);
+    let differing: Vec<_> = native
+        .iter()
+        .chain(&ordinary)
+        .filter(|row| row["matched"] != true)
+        .collect();
+    assert!(differing.is_empty(), "{differing:#?}");
+    Ok(())
+}
+
+#[test]
+fn basic_starting443_legacy_saved_project_roundtrips_and_emits() -> TestResult<()> {
+    let original =
+        include_str!("../../../../conformance/basic-owned-group-starting-with/legacy-project.json");
+    let project = legacy_project()?;
+    let wire = mapping::project_file::encode_pretty(&project)?;
+    assert_eq!(wire, original);
+    assert!(!wire.contains("owned_source"));
+    let program = codegen::lower(&project)?;
+    let options = rust_options("ferrule-generated-mapping", &runtime_path()?);
+    codegen_rust::emit(&program, &options)?;
+    codegen_csharp::emit(&program)?;
+    codegen_rust::emit_with_basic_owned_group_starting_with(&program, &options)?;
+    codegen_csharp::emit_with_basic_owned_group_starting_with(&program)?;
+    assert_eq!(mapping::project_file::encode_pretty(&project)?, original);
+    Ok(())
+}
+
+fn write_file(path: &Path, bytes: &[u8]) -> TestResult<()> {
+    fs::create_dir_all(path.parent().ok_or("file parent")?)?;
+    fs::write(path, bytes)?;
+    Ok(())
+}
+fn write_artifacts(directory: &Path, artifacts: &codegen::ArtifactSet) -> TestResult<()> {
+    for file in artifacts.files() {
+        write_file(&directory.join(file.path.as_str()), &file.contents)?;
+    }
+    Ok(())
+}
+fn host_contract(
+    root: &Path,
+    label: &str,
+    engine: &str,
+    program: &Path,
+    assembly: Option<&Path>,
+    output: &Path,
+) -> TestResult<PathBuf> {
+    let path = root.join(format!("run-contracts/{label}.json"));
+    let mut contract = json!({"version":2,"engine":engine,"run_id":format!("starting443-{label}"),
+        "output_directory":output,"program":{"path":program}});
+    if let Some(assembly) = assembly {
+        contract["assembly"] = json!({"path":assembly});
+    }
+    write_file(&path, &serde_json::to_vec_pretty(&contract)?)?;
+    Ok(path)
+}
+/// The hosts compare every call themselves; also require their complete row count.
+fn host_result(output: &Path, calls: usize, run: &Output) -> Result<(), String> {
+    let rows: Vec<Json> = fs::read(output.join("ALL-COMPLETE-COMPARISONS.json"))
+        .map_err(|error| error.to_string())
+        .and_then(|bytes| serde_json::from_slice(&bytes).map_err(|error| error.to_string()))
+        .unwrap_or_default();
+    let matched = rows.iter().filter(|row| row["matched"] == true).count();
+    if run.status.success() && rows.len() == calls && matched == calls {
+        return Ok(());
+    }
+    Err(format!(
+        "{}: status {:?}, {matched}/{} matched of {calls}\n{}{}",
+        output.display(),
+        run.status,
+        rows.len(),
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    ))
+}
+
+#[test]
+#[ignore = "builds and runs one generated Rust host and 106 generated C# hosts; requires cargo and the .NET 10 SDK"]
+fn basic_starting443_generated_rust_and_csharp_match_expected() -> TestResult<()> {
+    let (controls, models, _) = corpus()?;
+    let (legacy_controls, legacy) = legacy_native_controls()?;
+    let runtime = runtime_path()?;
+    let temp = TempDir::new("starting443_hosts")?;
+    let root = temp.0.canonicalize()?;
+    write_file(
+        &root.join("controls.json"),
+        &serde_json::to_vec_pretty(&controls)?,
+    )?;
+    write_file(
+        &root.join("legacy-controls.json"),
+        &serde_json::to_vec_pretty(&legacy_controls)?,
+    )?;
+
+    let mut dependencies = String::new();
+    let mut dispatch = String::new();
+    for (index, project) in models.iter().enumerate() {
+        let program = codegen::lower_with_basic_owned_group_starting_with(project)?;
+        let options = rust_options(&format!("starting443-model{index}"), &runtime);
+        write_artifacts(
+            &root.join(format!("rust-model{index}")),
+            &codegen_rust::emit_with_basic_owned_group_starting_with(&program, &options)?,
+        )?;
+        write_artifacts(
+            &root.join(format!("csharp-model{index}")),
+            &codegen_csharp::emit_with_basic_owned_group_starting_with(&program)?,
+        )?;
+        let host = root.join(format!("csharp-host{index}"));
+        write_file(
+            &host.join("Host.csproj"),
+            host_project(&format!("model{index}")).as_bytes(),
+        )?;
+        write_file(
+            &host.join("Program.cs"),
+            csharp_host(model_calls(&controls, index))?.as_bytes(),
+        )?;
+        dependencies.push_str(&format!(
+            "model{index}={{package=\"starting443-model{index}\",path=\"../rust-model{index}\"}}\n"
+        ));
+        dispatch.push_str(&format!("{index}=>invoke!(model{index},selection,&source,&inputs,&execution,limits,&directory,&prefix,call,&before,&named,&identity,&raw_before),\n"));
+    }
+
+    // The ordinary saved project runs through the ordinary emitters.
+    let program = codegen::lower(&legacy)?;
+    write_artifacts(
+        &root.join("rust-legacy"),
+        &codegen_rust::emit(
+            &program,
+            &rust_options("ferrule-generated-mapping", &runtime),
+        )?,
+    )?;
+    write_artifacts(
+        &root.join("csharp-legacy"),
+        &codegen_csharp::emit(&program)?,
+    )?;
+    let conformance = |name: &str| -> TestResult<Vec<u8>> {
+        Ok(fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../conformance/basic-owned-group-starting-with")
+                .join(name),
+        )?)
+    };
+    for name in ["legacy-input.json", "legacy-expected.json"] {
+        let bytes = conformance(name)?;
+        write_file(&root.join(name), &bytes)?;
+        write_file(&root.join("rust-host/src").join(name), &bytes)?;
+    }
+    for name in ["legacy-input.tree.json", "legacy-expected.tree.json"] {
+        write_file(&root.join("rust-host/src").join(name), &conformance(name)?)?;
+    }
+    write_file(
+        &root.join("rust-host/src/legacy_control.rs"),
+        include_bytes!("basic_owned_group_starting_with/legacy_control.rs.txt"),
+    )?;
+    write_file(
+        &root.join("csharp-legacy-host/Host.csproj"),
+        host_project("legacy").as_bytes(),
+    )?;
+    write_file(
+        &root.join("csharp-legacy-host/Program.cs"),
+        format!(
+            "{}\n{}",
+            include_str!("basic_owned_group_starting_with/LegacyHost.cs.txt"),
+            include_str!("basic_owned_group_starting_with/HostProof.cs.txt")
+        )
+        .as_bytes(),
+    )?;
+    write_file(
+        &root.join("rust-host/src/main.rs"),
+        rust_host(&dispatch, CORE_CALLS)?.as_bytes(),
+    )?;
+    write_file(
+        &root.join("rust-host/src/codec.rs"),
+        include_bytes!("basic_owned_sequence_item_at/codec.rs"),
+    )?;
+    write_file(
+        &root.join("rust-host/src/proof.rs"),
+        include_bytes!("basic_owned_group_starting_with/HostProof.rs.txt"),
+    )?;
+    write_file(&root.join("rust-host/Cargo.toml"),format!("[package]\nname=\"starting443-public-host\"\nversion=\"0.1.0\"\nedition=\"2024\"\npublish=false\n[workspace]\n[dependencies]\ncodegen-runtime={{path={}}}\nserde_json=\"=1.0.150\"\nlegacy0={{package=\"ferrule-generated-mapping\",path=\"../rust-legacy\"}}\n{dependencies}",serde_json::to_string(&runtime.display().to_string())?).as_bytes())?;
+
+    let mut failures = Vec::new();
+
+    // One Rust host links every model and also runs the ordinary saved project.
+    let target = std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .unwrap_or_else(|| root.join("target"));
+    let build = Command::new(env!("CARGO"))
+        .args(["build", "--quiet", "--manifest-path"])
+        .arg(root.join("rust-host/Cargo.toml"))
+        .env("CARGO_TARGET_DIR", &target)
+        .env("CARGO_BUILD_BUILD_DIR", &target)
+        .env("RUSTFLAGS", "-D warnings")
+        .env_remove("CARGO_ENCODED_RUSTFLAGS")
+        .output()?;
+    if build.status.success() {
+        let executable = target
+            .join("debug/starting443-public-host")
+            .canonicalize()?;
+        let output = root.join("rust-actual");
+        let contract = host_contract(&root, "rust", "rust", &executable, None, &output)?;
+        let run = Command::new(&executable)
+            .arg(root.join("controls.json"))
+            .arg(&output)
+            .arg(&contract)
+            .output()?;
+        if let Err(error) = host_result(&output, CORE_CALLS + LEGACY_CALLS, &run) {
+            failures.push(format!("Rust host: {error}"));
+        }
+    } else {
+        failures.push(format!(
+            "Rust host build failed:\n{}",
+            String::from_utf8_lossy(&build.stderr)
+        ));
+    }
+
+    // Each C# model has its own Ferrule.Generated assembly, so each needs a host.
+    let dotnet = std::env::split_paths(&std::env::var_os("PATH").ok_or("PATH")?)
+        .map(|directory| directory.join("dotnet"))
+        .find(|candidate| candidate.is_file())
+        .ok_or("dotnet not found on PATH")?
+        .canonicalize()?;
+    let next = AtomicUsize::new(0);
+    let csharp_failures = Mutex::new(Vec::new());
+    let workers = std::thread::available_parallelism().map_or(2, |n| (n.get() / 2).clamp(1, 8));
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| {
+                loop {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    if index > MODELS {
+                        break;
+                    }
+                    if let Err(error) = run_csharp_host(&root, &dotnet, &controls, index) {
+                        csharp_failures.lock().unwrap().push(error);
+                    }
+                }
+            });
+        }
+    });
+    let mut csharp_failures = csharp_failures.into_inner().unwrap();
+    csharp_failures.sort();
+    failures.extend(csharp_failures);
+    if !failures.is_empty() {
+        return Err(failures.join("\n\n").into());
+    }
+    Ok(())
+}
+/// Build and run the C# host for one model, or the ordinary saved project when
+/// `index == MODELS`.
+fn run_csharp_host(
+    root: &Path,
+    dotnet: &Path,
+    controls: &Json,
+    index: usize,
+) -> Result<(), String> {
+    let legacy = index == MODELS;
+    let label = if legacy {
+        "legacy".to_owned()
+    } else {
+        format!("model{index}")
+    };
+    let host = if legacy {
+        "csharp-legacy-host".to_owned()
+    } else {
+        format!("csharp-host{index}")
+    };
+    let artifacts = root.join(format!("dotnet-artifacts-{label}"));
+    let failed = |stage: &str, output: &Output| {
+        format!(
+            "C# {label} {stage}: {:?}\n{}{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+    };
+    let build = Command::new(dotnet)
+        .args([
+            "build",
+            "--configuration",
+            "Release",
+            "--nologo",
+            "--verbosity",
+            "quiet",
+            "-nodeReuse:false",
+            "-p:UseSharedCompilation=false",
+            "--artifacts-path",
+        ])
+        .arg(&artifacts)
+        .arg(root.join(&host).join("Host.csproj"))
+        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
+        .env("DOTNET_NOLOGO", "1")
+        .output()
+        .map_err(|error| format!("C# {label} build: {error}"))?;
+    if !build.status.success() {
+        return Err(failed("build", &build));
+    }
+    let assembly = artifacts.join("bin/Host/release/Host.dll");
+    let output = root.join(format!("csharp-{label}-actual"));
+    let (arguments, calls) = if legacy {
+        (
+            vec![
+                root.join("legacy-input.json"),
+                root.join("legacy-expected.json"),
+            ],
+            LEGACY_CALLS,
+        )
+    } else {
+        (
+            vec![root.join("controls.json"), PathBuf::from(index.to_string())],
+            model_calls(controls, index),
+        )
+    };
+    let contract = host_contract(
+        root,
+        &format!("csharp-{label}"),
+        "csharp",
+        dotnet,
+        Some(&assembly),
+        &output,
+    )
+    .map_err(|error| format!("C# {label} contract: {error}"))?;
+    let run = Command::new(dotnet)
+        .arg(&assembly)
+        .args(&arguments)
+        .arg(&output)
+        .arg(&contract)
+        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
+        .output()
+        .map_err(|error| format!("C# {label} run: {error}"))?;
+    host_result(&output, calls, &run).map_err(|error| format!("C# {label}: {error}"))
 }

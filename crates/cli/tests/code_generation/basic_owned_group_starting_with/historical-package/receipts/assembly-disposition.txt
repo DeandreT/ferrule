@@ -1,1 +1,0 @@
-Initial assembly stopped before template comparison: template was under legacy-baseline while generated copies were under package. No compiler/emission/execution occurred. Unsealed assembly copies were moved into legacy-baseline; original captures were not changed. A following setup invocation stopped at the existing receipts directory before writing further files.

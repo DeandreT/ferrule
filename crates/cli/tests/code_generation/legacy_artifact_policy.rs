@@ -36,8 +36,6 @@ pub const ADDED_RUNTIME_FILES: [(&str, &str); 2] = [
 pub enum Policy {
     ExactHistorical,
     ReviewedAdjacentRuntime,
-    ReviewedStartingRuntime,
-    ReviewedStartingRuntimeWithMergedJson42686c55,
 }
 
 #[derive(Debug)]
@@ -55,14 +53,9 @@ impl Comparison {
             Policy::ReviewedAdjacentRuntime => {
                 self.paths_exact && self.stable_files_exact && self.runtime_sources_exact
             }
-            // An Adjacent result is never authority for either Starting policy.
-            Policy::ReviewedStartingRuntime
-            | Policy::ReviewedStartingRuntimeWithMergedJson42686c55 => false,
         }
     }
 }
-
-include!("legacy_artifact_policy_starting.rs");
 
 pub fn row(path: &str, bytes: &[u8]) -> ManifestRow {
     (

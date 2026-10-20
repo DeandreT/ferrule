@@ -1,2 +1,0 @@
-/home/deandre/.cache/ferrule-qualification/starting443-historical-generator-v1/target/debug/ferrule: OK
-/home/deandre/.cache/ferrule-qualification/starting443-historical-generator-v1/ferrule-historical: OK
