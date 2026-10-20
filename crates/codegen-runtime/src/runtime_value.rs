@@ -223,6 +223,8 @@ mod tests {
             .unwrap();
         parameters.insert("number", Value::Int(42)).unwrap();
         parameters.insert("null", Value::Null).unwrap();
+        parameters.insert("json-null", Value::json_null()).unwrap();
+        parameters.insert("xml-nil", Value::xml_nil()).unwrap();
         parameters.insert("bad", Value::Float(f64::NAN)).unwrap();
         let execution =
             ExecutionContext::new(Path::new("mapping.ferrule")).with_parameters(&parameters);
@@ -235,6 +237,8 @@ mod tests {
             ("filename", Value::String(" ./input-*.csv ".into())),
             ("number", Value::String("42".into())),
             ("null", Value::Null),
+            ("json-null", Value::json_null()),
+            ("xml-nil", Value::xml_nil()),
         ] {
             assert_eq!(
                 execution.resolve_runtime_parameter(17, name, crate::ScalarType::String),

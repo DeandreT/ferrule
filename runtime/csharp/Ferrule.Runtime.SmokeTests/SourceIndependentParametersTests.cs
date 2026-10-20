@@ -10,6 +10,8 @@ internal static partial class Program
             KeyValuePair.Create("filename", Text(" ./input-*.csv ")),
             KeyValuePair.Create("number", FerruleValue.FromInt64(42)),
             KeyValuePair.Create("null", FerruleValue.Null),
+            KeyValuePair.Create("json-null", FerruleValue.JsonNull),
+            KeyValuePair.Create("xml-nil", FerruleValue.XmlNil),
             KeyValuePair.Create("bad", FerruleValue.FromDouble(double.NaN)),
         });
         var execution = FerruleExecutionContext.WithParameters("mapping.ferrule", parameters);
@@ -19,6 +21,8 @@ internal static partial class Program
             ("filename", Text(" ./input-*.csv ")),
             ("number", Text("42")),
             ("null", FerruleValue.Null),
+            ("json-null", FerruleValue.JsonNull),
+            ("xml-nil", FerruleValue.XmlNil),
         })
         {
             Equal(expected, execution.ResolveRuntimeParameter(17, name, FerruleScalarType.String));
