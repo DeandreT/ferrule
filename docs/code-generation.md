@@ -357,6 +357,30 @@ shape. An end boundary consumes no grouping-key text credits. The
 [Ending contract](design/owned-group-ending-with.md) defines the full callback,
 authenticated-member, resource and qualification requirements.
 
+## Explicit owned failure-rule iteration
+
+Use `codegen::lower_with_basic_owned_failure_sources`, then
+`codegen_rust::emit_with_basic_owned_failure_sources(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_failure_sources(&program)`. Direct Program
+hosts use `validate_program_with_basic_owned_failure_sources` and
+`validate_basic_owned_failure_source_emission`; named-input discovery uses
+`legacy_named_input_admission_plan_with_basic_owned_failure_sources`.
+
+The profile composes the EndingWith target controls, scalar-producer ItemAt and
+primary-row failures with failure rules whose iteration is `owned_source`. Such
+a rule walks rows from exactly its declared Primary or named endpoint; rules,
+selection modes, first-failure and lazy-message semantics are unchanged, and
+another endpoint never supplies rows when the selected collection is absent. An
+unsupplied owner fails with the typed owned-source error. Predicates and
+messages keep a closed scalar subset that adds exact owned reads, positions and
+pins for every static endpoint. Owned walks keep their endpoint optional in the
+named-input catalogue.
+
+Generated libraries use the existing typed Basic execution entries and
+mandatory five-field policy. Earlier profiles and the ordinary emitters keep
+refusing owned walks. The [owned failure contract](design/owned-failure-sources.md)
+defines the wire form, row and absence rules, and qualification.
+
 ## C#
 
 ### Build and test environment
