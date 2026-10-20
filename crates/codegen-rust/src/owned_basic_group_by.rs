@@ -42,41 +42,52 @@ pub(super) fn mark_basic_scopes(
     }
 }
 
+/// The partition callback each paired controls trait requires.
+#[derive(Clone, Copy)]
+enum PartitionControl {
+    Key,
+    Boundary(&'static str),
+    BlockSize,
+}
+
 pub(super) fn render_basic_group_by_scope(
     name: &str,
     scope: &TargetScope,
     children: &[String],
 ) -> String {
     let iteration = scope.iteration.as_ref().expect("paired grouped iteration");
-    // A Boolean boundary control names its callback; keyed controls have none.
-    let (group_expression, operation, controls, boundary) = match iteration.grouping() {
+    let (group_expression, operation, controls, partition) = match iteration.grouping() {
         Some(GroupingPlan::By { key }) => (
             key,
             "map_group_by_source_cohort",
             "BasicGroupByControls",
-            None,
+            PartitionControl::Key,
         ),
         Some(GroupingPlan::AdjacentBy { key }) => (
             key,
             "map_group_adjacent_by_source_cohort",
             "BasicGroupByControls",
-            None,
+            PartitionControl::Key,
         ),
         Some(GroupingPlan::StartingWith { predicate }) => (
             predicate,
             "map_group_starting_with_source_cohort",
             "BasicGroupStartingWithControls",
-            Some("starts_group"),
+            PartitionControl::Boundary("starts_group"),
         ),
         Some(GroupingPlan::EndingWith { predicate }) => (
             predicate,
             "map_group_ending_with_source_cohort",
             "BasicGroupEndingWithControls",
-            Some("ends_group"),
+            PartitionControl::Boundary("ends_group"),
         ),
-        _ => unreachable!(
-            "the explicit paired profile admits By/AdjacentBy/StartingWith/EndingWith only"
+        Some(GroupingPlan::IntoBlocks { size }) => (
+            size,
+            "map_group_into_blocks_source_cohort",
+            "BasicGroupIntoBlocksControls",
+            PartitionControl::BlockSize,
         ),
+        None => unreachable!("the explicit paired profile renders grouped scopes only"),
     };
     let keys = iteration
         .sort()
@@ -161,10 +172,11 @@ pub(super) fn render_basic_group_by_scope(
         );
     }
     source.push_str("        }\n");
-    if let Some(boundary) = boundary {
-        source.push_str(&format!("        fn {boundary}(&mut self, boundary_context: &BasicScopeContext<'_>) -> Result<bool, RuntimeError> {{\n            let value = expression_{group_expression}(boundary_context)?;\n            require_bool({group_expression}, value)\n        }}\n"));
-    } else {
-        source.push_str(&format!("        fn group_key(&mut self, group_key_context: &BasicScopeContext<'_>) -> Result<Value, RuntimeError> {{\n            expression_{group_expression}(group_key_context)\n        }}\n"));
+    match partition {
+        PartitionControl::Boundary(boundary) => source.push_str(&format!("        fn {boundary}(&mut self, boundary_context: &BasicScopeContext<'_>) -> Result<bool, RuntimeError> {{\n            let value = expression_{group_expression}(boundary_context)?;\n            require_bool({group_expression}, value)\n        }}\n")),
+        PartitionControl::Key => source.push_str(&format!("        fn group_key(&mut self, group_key_context: &BasicScopeContext<'_>) -> Result<Value, RuntimeError> {{\n            expression_{group_expression}(group_key_context)\n        }}\n")),
+        // Evaluated once in the receiving parent, after the window bounds.
+        PartitionControl::BlockSize => source.push_str(&format!("        fn block_size(&mut self, parent_context: &BasicScopeContext<'_>) -> Result<std::num::NonZeroUsize, RuntimeError> {{\n            codegen_runtime::positive_block_size({group_expression}, expression_{group_expression}(parent_context)?)\n        }}\n")),
     }
     source.push_str("        fn retain_member(&mut self, member_context: &BasicScopeContext<'_>) -> Result<bool, RuntimeError> {\n");
     if let Some(post) = iteration.post_group_filter() {

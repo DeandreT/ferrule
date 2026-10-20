@@ -371,6 +371,27 @@ pub fn emit_with_basic_owned_group_ending_with(
     .map_err(EmitError::from)
 }
 
+/// Emit static Basic By/AdjacentBy/StartingWith/EndingWith/IntoBlocks grouping
+/// with scalar ItemAt over the four pure producers. Prior companions retain
+/// their narrower gates.
+pub fn emit_with_basic_owned_group_into_blocks(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_group_into_blocks(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_group_into_blocks_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_group_into_blocks_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit EndingWith-profile targets with explicitly owned failure-rule walks
 /// over one exact Primary or named endpoint. Older emitters keep refusing them.
 pub fn emit_with_basic_owned_failure_sources(
