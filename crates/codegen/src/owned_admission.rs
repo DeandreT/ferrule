@@ -158,6 +158,17 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_failure_sources(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plans the explicit owned path-hierarchy companion. Owned hierarchy
+/// collections, like other exact owned reads, never make an endpoint eagerly
+/// required; the composed EndingWith, ItemAt and owned failure-source
+/// environments are unchanged.
+pub fn legacy_named_input_admission_plan_with_basic_owned_path_hierarchy(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_path_hierarchy(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     admission_plan_with_primary_row_failures(program, false)
 }
@@ -519,9 +530,11 @@ impl<'a> Analysis<'a> {
                 self.path(collection);
                 self.optional(Namespace::Main, current, *root);
             }
+            // Exact endpoint reads never consume a legacy named alias.
             TargetConstruction::Group
             | TargetConstruction::CopyCurrentSource
-            | TargetConstruction::XmlMixedContent { .. } => {}
+            | TargetConstruction::XmlMixedContent { .. }
+            | TargetConstruction::OwnedPathHierarchy { .. } => {}
         }
         for (index, child) in scope.children.iter().enumerate() {
             let context = self.child(current, Step::Child(index));

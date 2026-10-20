@@ -238,7 +238,8 @@ fn validate_scope(
         ScopeConstruction::Constructed
         | ScopeConstruction::CopyCurrentSource
         | ScopeConstruction::XmlMixedContent { .. }
-        | ScopeConstruction::PathHierarchy { .. } => {}
+        | ScopeConstruction::PathHierarchy { .. }
+        | ScopeConstruction::OwnedPathHierarchy { .. } => {}
     }
     reject_dependencies(
         project,

@@ -159,6 +159,16 @@ fn validate_program_with_owned_profiles(
     )
 }
 
+/// Validates an owned path-hierarchy input collection, explicitly composing the
+/// EndingWith controls, scalar-producer ItemAt, primary-row failures and owned
+/// failure-source walks.
+/// Legacy hierarchies and every older companion keep their existing gates.
+pub fn validate_program_with_basic_owned_path_hierarchy(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_path_hierarchy_emission(program)
+}
+
 fn validate_program_with_owned_policies(
     program: &Program,
     profile: owned_sources::BasicOwnedProfile,
@@ -178,6 +188,22 @@ fn validate_program_with_owned_failures(
     profile: owned_sources::BasicOwnedProfile,
     failures: owned_sources::FailurePolicy,
     sequence_item_at: owned_sources::SequenceItemAtPolicy,
+) -> Result<(), ProgramValidationError> {
+    validate_program_with_owned_hierarchy(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        owned_sources::PathHierarchyPolicy::Closed,
+    )
+}
+
+fn validate_program_with_owned_hierarchy(
+    program: &Program,
+    profile: owned_sources::BasicOwnedProfile,
+    failures: owned_sources::FailurePolicy,
+    sequence_item_at: owned_sources::SequenceItemAtPolicy,
+    path_hierarchy: owned_sources::PathHierarchyPolicy,
 ) -> Result<(), ProgramValidationError> {
     xml::validate_boundary(program)?;
     validate_schema_metadata("source", &program.source)?;
@@ -229,11 +255,12 @@ fn validate_program_with_owned_failures(
     // that no target/failure root reaches in a directly constructed Program.
     sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)?;
     owned_sources::validate_structure(program)?;
-    owned_sources::validate_closed_contexts_with_failures(
+    owned_sources::validate_closed_contexts_with_hierarchy(
         program,
         profile,
         failures,
         sequence_item_at,
+        path_hierarchy,
     )
 }
 
@@ -1028,6 +1055,27 @@ fn validate_scope(
                 target_path,
             )?;
         }
+        TargetConstruction::OwnedPathHierarchy {
+            collection,
+            separator,
+            directories,
+            files,
+            name,
+        } => {
+            path_hierarchy::validate_owned(
+                scope,
+                collection,
+                path_hierarchy::Output {
+                    separator,
+                    directories,
+                    files,
+                    name,
+                },
+                schemas,
+                target_node,
+                target_path,
+            )?;
+        }
         TargetConstruction::AdjacencyTree {
             collection,
             key,
@@ -1424,6 +1472,7 @@ fn validate_scope(
     Ok(())
 }
 
+pub use owned_sources::validate_basic_owned_path_hierarchy_emission;
 pub use owned_sources::{
     is_basic_owned_primary_row_failure, validate_basic_owned_emission,
     validate_basic_owned_failure_source_emission, validate_basic_owned_filter_emission,

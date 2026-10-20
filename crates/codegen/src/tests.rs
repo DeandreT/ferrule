@@ -27,6 +27,7 @@ mod owned_admission;
 mod owned_failure_sources;
 mod owned_group_adjacent_by;
 mod owned_group_by;
+mod owned_path_hierarchy;
 mod owned_row_failures;
 mod owned_sequence_item_at;
 mod path_hierarchy;

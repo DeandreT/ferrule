@@ -896,7 +896,8 @@ fn collect_scope_aggregate_contexts(
         ScopeConstruction::Constructed
         | ScopeConstruction::CopyCurrentSource
         | ScopeConstruction::XmlMixedContent { .. }
-        | ScopeConstruction::PathHierarchy { .. } => {}
+        | ScopeConstruction::PathHierarchy { .. }
+        | ScopeConstruction::OwnedPathHierarchy { .. } => {}
     }
     if let Some(sequence) = scope.sequence() {
         roots.extend(sequence.inputs());

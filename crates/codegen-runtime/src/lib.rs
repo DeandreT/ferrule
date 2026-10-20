@@ -111,7 +111,9 @@ pub use json5::{
     Json5BoundaryError, Json5BoundaryResource, Json5SyntaxError, Json5SyntaxKind,
     Json5SyntaxResource, JsonFormatError, map_json5_bytes_with, map_json5_with,
 };
-pub use path_hierarchy::{MAX_PATH_HIERARCHY_DEPTH, MAX_PATH_HIERARCHY_ITEMS, path_hierarchy};
+pub use path_hierarchy::{
+    MAX_PATH_HIERARCHY_DEPTH, MAX_PATH_HIERARCHY_ITEMS, owned_path_hierarchy, path_hierarchy,
+};
 pub use recursive_filter::{RecursiveFilterPredicate, recursive_filter};
 pub use runtime_value::{
     ExecutionContext, MAX_RUNTIME_PARAMETER_NAME_BYTES, MAX_RUNTIME_PARAMETER_STRING_BYTES,
