@@ -67,6 +67,9 @@ fn expected_error(recipe: &Json) -> engine::EngineError {
             node: node.unwrap(),
             found,
         },
+        "InvalidBlockSize" => engine::EngineError::InvalidBlockSize {
+            node: node.unwrap(),
+        },
         "UnknownTarget" => engine::EngineError::UnknownTarget {
             name: recipe["name"].as_str().unwrap().into(),
         },
