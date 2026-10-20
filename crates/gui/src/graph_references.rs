@@ -342,6 +342,11 @@ fn references_to_inner(
         {
             found.add(format!("{label} adjacency-tree root"), true);
         }
+        if let ScopeConstruction::OwnedAdjacencyTree { plan } = &scope.construction
+            && plan.root() == Some(needle)
+        {
+            found.add(format!("{label} owned adjacency-tree root"), true);
+        }
         for binding in &scope.bindings {
             if binding.node == needle {
                 // Reference identity is separate from its display label.

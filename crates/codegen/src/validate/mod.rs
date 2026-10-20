@@ -131,6 +131,15 @@ pub fn validate_program_with_basic_owned_failure_sources(
     owned_sources::validate_basic_owned_failure_source_emission(program)
 }
 
+/// Validates an owned adjacency-tree row collection, explicitly composing the
+/// owned failure-source, EndingWith, scalar-producer ItemAt and primary-row
+/// failure policies. Legacy trees and every older companion keep their gates.
+pub fn validate_program_with_basic_owned_adjacency_tree(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_adjacency_tree_emission(program)
+}
+
 /// Validates static Basic scalar-producer SequenceItemAt, explicitly composing
 /// the qualified By, filter/sort/window and primary-row failure permissions.
 pub fn validate_program_with_basic_owned_sequence_item_at(
@@ -189,21 +198,23 @@ fn validate_program_with_owned_failures(
     failures: owned_sources::FailurePolicy,
     sequence_item_at: owned_sources::SequenceItemAtPolicy,
 ) -> Result<(), ProgramValidationError> {
-    validate_program_with_owned_hierarchy(
+    validate_program_with_owned_constructions(
         program,
         profile,
         failures,
         sequence_item_at,
         owned_sources::PathHierarchyPolicy::Closed,
+        owned_sources::AdjacencyTreePolicy::Closed,
     )
 }
 
-fn validate_program_with_owned_hierarchy(
+fn validate_program_with_owned_constructions(
     program: &Program,
     profile: owned_sources::BasicOwnedProfile,
     failures: owned_sources::FailurePolicy,
     sequence_item_at: owned_sources::SequenceItemAtPolicy,
     path_hierarchy: owned_sources::PathHierarchyPolicy,
+    adjacency_tree: owned_sources::AdjacencyTreePolicy,
 ) -> Result<(), ProgramValidationError> {
     xml::validate_boundary(program)?;
     validate_schema_metadata("source", &program.source)?;
@@ -255,12 +266,13 @@ fn validate_program_with_owned_hierarchy(
     // that no target/failure root reaches in a directly constructed Program.
     sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)?;
     owned_sources::validate_structure(program)?;
-    owned_sources::validate_closed_contexts_with_hierarchy(
+    owned_sources::validate_closed_contexts_with_constructions(
         program,
         profile,
         failures,
         sequence_item_at,
         path_hierarchy,
+        adjacency_tree,
     )
 }
 
@@ -1120,6 +1132,51 @@ fn validate_scope(
                 )?;
             }
         }
+        TargetConstruction::OwnedAdjacencyTree {
+            collection,
+            key,
+            parent,
+            target_key,
+            target_children,
+            root,
+        } => {
+            adjacency_tree::validate_owned(
+                scope,
+                collection,
+                adjacency_tree::Output {
+                    key,
+                    parent,
+                    target_key,
+                    target_children,
+                },
+                schemas,
+                target_node,
+                target_path,
+            )?;
+            // The root keeps the receiving context, exactly like the legacy plan.
+            if let Some(root) = root {
+                if !expressions.contains_key(root) {
+                    return Err(ProgramValidationError::MissingAdjacencyTreeRoot {
+                        target_path: target_path.clone(),
+                        expression: *root,
+                    });
+                }
+                validate_expression_context(
+                    *root,
+                    expressions,
+                    ScopeSchemas {
+                        current_source: scope_source,
+                        active_source,
+                        ..schemas
+                    },
+                    sequence_items,
+                    &item_context,
+                    &scope_joins,
+                    item_root_context,
+                    &sequence_owner,
+                )?;
+            }
+        }
         TargetConstruction::CopyCurrentSource => {
             let Some(scope_source) = scope_source
                 .filter(|source| matches!(source.node().kind, SchemaKind::Group { .. }))
@@ -1472,6 +1529,7 @@ fn validate_scope(
     Ok(())
 }
 
+pub use owned_sources::validate_basic_owned_adjacency_tree_emission;
 pub use owned_sources::validate_basic_owned_path_hierarchy_emission;
 pub use owned_sources::{
     is_basic_owned_primary_row_failure, validate_basic_owned_emission,

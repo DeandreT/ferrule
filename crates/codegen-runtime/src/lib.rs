@@ -34,7 +34,10 @@ mod xml_mixed_content;
 
 use std::fmt;
 
-pub use adjacency_tree::{AdjacencyTreeFields, AdjacencyTreeRoot, adjacency_tree};
+pub use adjacency_tree::{
+    AdjacencyTreeFields, AdjacencyTreeRoot, OwnedAdjacencyTreeRoot, adjacency_tree,
+    owned_adjacency_tree,
+};
 pub use aggregate::{AggregateFunction, aggregate};
 pub use context::{
     BasicGroupByControls, BasicGroupByMetadata, BasicGroupEndingWithControls,

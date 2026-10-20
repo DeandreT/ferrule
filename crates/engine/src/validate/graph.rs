@@ -1101,6 +1101,11 @@ fn collect_scope_graph_roots(scope: &Scope, roots: &mut BTreeSet<NodeId>) {
     {
         roots.insert(root);
     }
+    if let ScopeConstruction::OwnedAdjacencyTree { plan } = &scope.construction
+        && let Some(root) = plan.root()
+    {
+        roots.insert(root);
+    }
     if let Some(segments) = scope.concatenated() {
         for segment in segments.iter() {
             collect_scope_graph_roots(segment, roots);

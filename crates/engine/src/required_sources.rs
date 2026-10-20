@@ -135,6 +135,10 @@ impl<'a> Analysis<'a> {
                 self.inspect_path(plan.collection());
                 self.pending.extend(plan.root());
             }
+            ScopeConstruction::OwnedAdjacencyTree { plan } => {
+                self.inspect_owner(&plan.collection().owner);
+                self.pending.extend(plan.root());
+            }
             ScopeConstruction::Constructed
             | ScopeConstruction::CopyCurrentSource
             | ScopeConstruction::XmlMixedContent { .. } => {}

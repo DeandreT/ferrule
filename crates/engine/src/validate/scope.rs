@@ -3,7 +3,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use ir::{SchemaKind, SchemaNode, XML_TYPE_FIELD};
 use mapping::{IterationOutput, JoinId, Node, Project, Scope, ScopeConstruction, ScopeIteration};
 
-use super::graph::validate_adjacency_string_field;
 use super::join::{
     is_root_context, validate_plan as validate_join_plan, validate_root_singletons,
     validate_roots as validate_join_roots, validate_scope_nodes as validate_scope_join_nodes,
@@ -444,99 +443,14 @@ pub(super) fn validate_scope(
         );
     }
 
-    if let ScopeConstruction::AdjacencyTree { plan } = &scope.construction {
-        let collection = source_schema_at(project, schemas.parent_source, plan.collection());
-        if collection
-            .is_none_or(|node| !node.repeating || !matches!(node.kind, SchemaKind::Group { .. }))
-        {
-            issues.push(ValidationIssue::new(
-                &location,
-                format!(
-                    "adjacency-tree collection `{}` must be a repeating group",
-                    display_path(plan.collection())
-                ),
-            ));
-        }
-        if let Some(collection) = collection {
-            validate_adjacency_string_field(&location, collection, plan.key(), "key", issues);
-            validate_adjacency_string_field(&location, collection, plan.parent(), "parent", issues);
-        }
-        if target.is_none_or(|node| !matches!(node.kind, SchemaKind::Group { .. })) {
-            issues.push(ValidationIssue::new(
-                &location,
-                "adjacency-tree construction requires a group target schema",
-            ));
-        }
-        if let Some(target) = target {
-            if target.child(plan.target_key()).is_none_or(|key| {
-                key.repeating
-                    || !matches!(
-                        key.kind,
-                        SchemaKind::Scalar {
-                            ty: ir::ScalarType::String
-                        }
-                    )
-            }) {
-                issues.push(ValidationIssue::new(
-                    &location,
-                    format!(
-                        "adjacency-tree target key `{}` must be a non-repeating string",
-                        plan.target_key()
-                    ),
-                ));
-            }
-            if target.child(plan.target_children()).is_none_or(|children| {
-                !children.repeating
-                    || !matches!(children.kind, SchemaKind::Group { .. })
-                    || children.recursive_ref.as_deref() != Some(target.name.as_str())
-            }) {
-                issues.push(ValidationIssue::new(
-                    &location,
-                    format!(
-                        "adjacency-tree child field `{}` must recursively reference `{}`",
-                        plan.target_children(),
-                        target.name
-                    ),
-                ));
-            }
-        }
-        if let Some(root) = plan.root()
-            && !project.graph.nodes.contains_key(&root)
-        {
-            issues.push(ValidationIssue::new(
-                &location,
-                format!("adjacency-tree root references missing node {root}"),
-            ));
-        }
-        if !(scope.bindings.is_empty()
-            && scope.children.is_empty()
-            && scope.dynamic_bindings.is_empty()
-            && scope.dynamic_children.is_empty()
-            && !scope.merge_dynamic_fields)
-        {
-            issues.push(ValidationIssue::new(
-                &location,
-                "adjacency-tree construction cannot contain bindings, child scopes, or dynamic target content",
-            ));
-        }
-        if scope.filter.is_some()
-            || scope.post_group_filter.is_some()
-            || scope.has_grouping()
-            || scope.has_sort()
-            || !scope.windows.is_empty()
-        {
-            issues.push(ValidationIssue::new(
-                &location,
-                "adjacency-tree construction cannot use scope controls",
-            ));
-        }
-        if !matches!(&scope.iteration, ScopeIteration::None) {
-            issues.push(ValidationIssue::new(
-                &location,
-                "adjacency-tree construction cannot use scope iteration",
-            ));
-        }
-    }
+    super::adjacency_tree::validate(
+        project,
+        scope,
+        schemas.parent_source,
+        target,
+        &location,
+        issues,
+    );
 
     match scope.source_selector() {
         Some(mapping::SourceSelectorRef::Owned(source)) => {
