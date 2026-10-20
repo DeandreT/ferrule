@@ -79,6 +79,10 @@ pub(crate) fn emit(
     }
     files.push(file("GeneratedMapping.CsvJson.cs", render(&profile))?);
     files.push(file("Runtime/FerruleCsvInput.cs", INPUT_SOURCE)?);
+    files.push(file(
+        "Runtime/FerruleCsvSource.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs"),
+    )?);
     ArtifactSet::new(files)
         .map_err(EmitError::from)
         .map_err(CsvJsonEmitError::from)

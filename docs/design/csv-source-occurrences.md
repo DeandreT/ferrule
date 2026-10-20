@@ -25,3 +25,8 @@ traversal. It does not enable importer admission, generated mapping orchestratio
 target-document ownership or filesystem publication. Consumers must retain row
 occurrences through their own mapping and grouping rather than flattening them
 into bare values and losing the physical origin.
+
+The Rust runtime re-exports these types. C# CSV input adapters include the source
+occurrence runtime alongside their CSV parser; ordinary non-CSV libraries do not
+gain a parser dependency. Library availability is not automatic orchestration of
+a multi-document mapping.

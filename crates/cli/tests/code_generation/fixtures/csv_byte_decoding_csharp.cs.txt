@@ -5,6 +5,15 @@ for (var i = 0; i < int.Parse(args[0]); i++)
 {
     var input = File.ReadAllBytes($"input{i}");
     var expected = File.ReadAllBytes($"expected{i}");
+    var fields = new[] { new FerruleCsvReadField("Value", FerruleScalarType.String) };
+    var first = FerruleCsvSourceDocument.ParseBytes("same.csv", null, input, fields,
+        FerruleCsvByteDecodingPolicy.BomAwareNonFlushingReplacement);
+    var second = FerruleCsvSourceDocument.ParseBytes("same.csv", null, input, fields,
+        FerruleCsvByteDecodingPolicy.BomAwareNonFlushingReplacement);
+    var row = first.Rows().Single();
+    if (first.SameDocument(second) || !row.SameOccurrence(first.Rows().Single()) ||
+        row.SameOccurrence(second.Rows().Single()) || row.Position != 1 ||
+        row.Document.SourcePath != "same.csv") throw new Exception("physical CSV occurrence mismatch");
     if (!GeneratedMapping.ExecuteCsvDocumentBytesWithDecodingPolicy(input, FerruleCsvByteDecodingPolicy.BomAwareNonFlushingReplacement).SequenceEqual(expected)) throw new Exception("document mismatch");
     if (!GeneratedMapping.ExecuteCsvDocumentBytesWithDecodingPolicy(input, FerruleCsvByteDecodingPolicy.BomAwareNonFlushingReplacement, context).SequenceEqual(expected)) throw new Exception("context document mismatch");
     if (File.Exists($"strict-refuses{i}"))

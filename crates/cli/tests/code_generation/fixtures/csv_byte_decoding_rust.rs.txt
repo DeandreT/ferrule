@@ -1,4 +1,4 @@
-use codegen_runtime::{CsvByteDecodingPolicy, CsvDocumentError, CsvReadError, ExecutionContext};
+use codegen_runtime::{CsvByteDecodingPolicy, CsvDocumentError, CsvReadError, CsvReadOptions, CsvSourceDocument, ExecutionContext, ScalarType, SchemaNode};
 use csv_decoding_fixture::{execute_csv_document_bytes, execute_csv_document_bytes_with_decoding_policy, execute_csv_document_bytes_with_decoding_policy_with_context};
 fn main() {
     let context = ExecutionContext::new(std::path::Path::new("authored.mapping"));
@@ -6,6 +6,18 @@ fn main() {
     for i in 0..count {
         let input = std::fs::read(format!("input{i}")).unwrap();
         let expected = std::fs::read(format!("expected{i}")).unwrap();
+        let schema = SchemaNode::group("Row", vec![SchemaNode::scalar("Value", ScalarType::String)]);
+        let parse = || CsvSourceDocument::parse_bytes("same.csv", None, &input, &schema,
+            &CsvReadOptions::default(), CsvByteDecodingPolicy::BomAwareNonFlushingReplacement).unwrap();
+        let first = parse();
+        let second = parse();
+        let row = first.rows().next().unwrap();
+        assert_eq!(first.rows().len(), 1);
+        assert!(!first.same_document(&second));
+        assert!(row.same_occurrence(&first.rows().next().unwrap()));
+        assert!(!row.same_occurrence(&second.rows().next().unwrap()));
+        assert_eq!(row.position(), 1);
+        assert_eq!(row.document().source_path(), "same.csv");
         assert_eq!(execute_csv_document_bytes_with_decoding_policy(&input, CsvByteDecodingPolicy::BomAwareNonFlushingReplacement).unwrap(), expected);
         assert_eq!(execute_csv_document_bytes_with_decoding_policy_with_context(&input, CsvByteDecodingPolicy::BomAwareNonFlushingReplacement, &context).unwrap(), expected);
         if std::path::Path::new(&format!("strict-refuses{i}")).exists() {
