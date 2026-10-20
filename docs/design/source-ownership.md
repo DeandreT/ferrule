@@ -75,6 +75,21 @@ the same path; an unsupplied owner is a typed failure. Rule order, selection and
 lazy messages keep their legacy meaning. See the
 [failure contract](owned-failure-sources.md).
 
+## Owned path-hierarchy input collections
+
+`OwnedPathHierarchyPlan` pairs an `OwnedSourceRef` input collection with the
+legacy separator and generated directory/file/name fields. It is a separate
+`owned_path_hierarchy` construction beside the unchanged legacy plan, so older
+readers reject it. Its strict reader rejects unknown fields, malformed owners
+and legacy path arrays, and keeps the output-structure rules.
+
+The collection is an owned read in the receiving context and creates no source
+frame. A same-owner active frame pins its prefix; otherwise the immutable
+endpoint root is read, including an endpoint whose root is the collection. The
+operator evaluates no expression and admits only Basic contexts. Interpreter,
+generated Rust and generated C# share the legacy builder's ordering, bounds and
+error categories. Native export and GUI authoring remain closed.
+
 ## Existing coordinated issues
 
 Reuse these existing scopes; the capability column concerns **explicit ownership**.
