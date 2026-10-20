@@ -2,6 +2,7 @@
 
 mod canvas;
 mod history;
+mod output;
 mod sample;
 
 use eframe::egui;
@@ -14,6 +15,7 @@ use web_demo::runtime::{self, DataFormat, DataSide};
 
 use canvas::{CanvasNode, CanvasView, DemoViewer, build_snarl, flat_bindings, valid_viewport};
 use history::ProjectHistory;
+use output::{MappedOutput, OutputFreshness};
 use sample::{SAMPLE_XML, demo_project};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -31,7 +33,7 @@ pub(super) struct DemoApp {
     source_text: String,
     source_format: DataFormat,
     target_format: DataFormat,
-    output: String,
+    output: Option<MappedOutput>,
     project_json: String,
     status: String,
     diagnostic: Option<String>,
@@ -73,7 +75,7 @@ impl DemoApp {
             source_text: SAMPLE_XML.to_string(),
             source_format: DataFormat::Xml,
             target_format: DataFormat::Xml,
-            output: String::new(),
+            output: None,
             project_json,
             status: "Ready".to_string(),
             diagnostic,
@@ -103,11 +105,14 @@ impl DemoApp {
             self.target_format,
         ) {
             Ok(output) => {
-                self.output = output;
+                self.output = Some(MappedOutput::new(output, self.target_format));
                 self.status = "Mapping completed".to_string();
                 self.diagnostic = None;
             }
             Err(error) => {
+                if let Some(output) = &mut self.output {
+                    output.mark_superseded_by_failure();
+                }
                 self.status = "Run failed".to_string();
                 self.diagnostic = Some(error.to_string());
             }
@@ -266,9 +271,33 @@ impl DemoApp {
         }
     }
 
+    /// Freshness of the retained result, or `None` before any run succeeds.
+    fn output_freshness(&self) -> Option<OutputFreshness> {
+        self.output
+            .as_ref()
+            .map(|output| output.freshness(self.run_pending))
+    }
+
+    fn output_heading(&self) -> String {
+        match &self.output {
+            Some(output) => output.heading(self.run_pending),
+            None => "Output (no result)".to_string(),
+        }
+    }
+
+    /// The filename and exact text a download of the retained result writes.
+    fn output_download(&self) -> Option<(String, &str)> {
+        self.output
+            .as_ref()
+            .map(|output| (output.download_filename(), output.text()))
+    }
+
     fn download_output(&mut self) {
-        let filename = format!("mapped-output.{}", format_extension(self.target_format));
-        match download_utf8_text(&filename, &self.output) {
+        let Some((filename, text)) = self.output_download() else {
+            self.status = "Output download unavailable".to_string();
+            return;
+        };
+        match download_utf8_text(&filename, text) {
             Ok(()) => self.status = "Output download started".to_string(),
             Err(error) => {
                 self.status = "Output download failed".to_string();
@@ -378,7 +407,16 @@ impl DemoApp {
                 if format_picker(ui, "target_format", &mut self.target_format) {
                     self.run_pending = true;
                 }
-                if ui.button("Download output").clicked() {
+                let download_label = match self.output_freshness() {
+                    Some(OutputFreshness::InputsChanged | OutputFreshness::RunFailed) => {
+                        "Download stale output"
+                    }
+                    Some(OutputFreshness::Current) | None => "Download output",
+                };
+                if ui
+                    .add_enabled(self.output.is_some(), egui::Button::new(download_label))
+                    .clicked()
+                {
                     self.download_output();
                 }
                 ui.separator();
@@ -408,9 +446,9 @@ impl DemoApp {
     }
 
     fn show_output(&mut self, ui: &mut egui::Ui) {
-        ui.strong(format!("Output ({})", self.target_format));
+        ui.strong(self.output_heading());
         egui::ScrollArea::vertical().show(ui, |ui| {
-            let mut text = self.output.as_str();
+            let mut text = self.output.as_ref().map_or("", MappedOutput::text);
             ui.add(
                 egui::TextEdit::multiline(&mut text)
                     .code_editor()
@@ -551,6 +589,8 @@ impl DemoApp {
         self.finish_project_edits();
         if self.run_pending && self.live_run {
             self.run();
+            // This frame painted the pre-run output; show the new result.
+            ui.ctx().request_repaint();
         }
     }
 }
@@ -576,15 +616,6 @@ fn format_picker(ui: &mut egui::Ui, id: &str, format: &mut DataFormat) -> bool {
             }
         });
     *format != before
-}
-
-fn format_extension(format: DataFormat) -> &'static str {
-    match format {
-        DataFormat::Xml => "xml",
-        DataFormat::Json => "json",
-        DataFormat::Csv => "csv",
-        DataFormat::Xbrl => "xbrl",
-    }
 }
 
 fn boundary_format(project: &Project, side: DataSide, current: DataFormat) -> DataFormat {
