@@ -242,6 +242,7 @@ cargo +nightly run -p cli -- run-pipeline --pipeline flow.json \
 - [Supported formats](docs/formats.md)
 - [`.mfd` interoperability](docs/mfd-interop.md)
 - [Rust and C# code generation](docs/code-generation.md)
+- [Portable Unicode casing](docs/unicode-casing.md)
 - [Runnable generated Rust and C# hosts](examples/codegen/)
 - [Memory use and boundary limits](docs/memory-and-limits.md)
 - [Development and verification checklist](docs/development.md)

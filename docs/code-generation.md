@@ -1993,7 +1993,8 @@ The current portable model includes:
   runtime tag preservation, exact-only numeric adaptation, and matching
   ambiguity or invalid-output failures in Rust and C#
 - lazy conditionals and a closed set of 75 boolean, arithmetic, comparison,
-  scalar text, Unicode whitespace/substring/padding, finite numeric detection,
+  scalar text, pinned [Unicode casing](unicode-casing.md), Unicode
+  whitespace/substring/padding, finite numeric detection,
   integer-first conversion, numeric picture formatting, SQL LIKE, bounded regex
   matching/replacement, ISBN, rounding, date extraction, composition, picture parsing, exact
   duration arithmetic, and EDIFACT date-time conversion,

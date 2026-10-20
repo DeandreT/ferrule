@@ -12,6 +12,7 @@ use ir::Value;
 use thiserror::Error;
 
 mod builtins;
+mod casing;
 mod catalog;
 mod datetime;
 mod datetime_add;
