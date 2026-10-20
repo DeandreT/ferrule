@@ -108,6 +108,12 @@ fn document_artifact_cannot_be_loaded_as_a_legacy_project() {
     let mut unknown = value;
     unknown["ignored_acquisition"] = serde_json::json!(true);
     assert!(serde_json::from_value::<DocumentProject>(unknown).is_err());
+    let mut unknown_version = serde_json::to_value(&document).unwrap();
+    unknown_version["format"] = serde_json::json!("ferrule_document_project_v2");
+    assert!(serde_json::from_value::<DocumentProject>(unknown_version).is_err());
+    let mut unknown_plan = serde_json::to_value(&document).unwrap();
+    unknown_plan["primary_source"]["preview_override"] = serde_json::json!("other.csv");
+    assert!(serde_json::from_value::<DocumentProject>(unknown_plan).is_err());
 }
 
 #[test]
