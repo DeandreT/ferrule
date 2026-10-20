@@ -29,6 +29,9 @@ file-host pipeline run drops each host input and unselected stage target after
 its last reading stage, so a linear chain holds about one input and one output
 at a time; see [pipeline intermediate release](performance/pipeline-intermediate-release.md). A small serialized file can still create many owned strings and tree
 nodes. One very wide row has a different allocation pattern from many short rows.
+Grouping owns each group's member collection but borrows intermediate ancestors
+crossed by a multi-hop source path; see the
+[multi-hop grouping allocation note](performance/multihop-grouping-ancestors.md).
 
 Ordinary CSV filesystem reading uses a buffered CSV reader but retains every
 parsed row. CSV output validates the complete rows before encoding and releases
