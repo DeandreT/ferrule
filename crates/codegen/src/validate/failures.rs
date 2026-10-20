@@ -78,6 +78,10 @@ pub(super) fn validate(
                 recursive_sequence::validate(sources, sequence, &owner)?;
                 (Some(sequence.item()), None)
             }
+            // Owner and collection structure are checked by the owned validator.
+            FailureIteration::OwnedSource(source) => {
+                (None, sources.owned_schema_at(source.source()))
+            }
         };
         let active_items = active_item.as_slice();
         if let Some(predicate) = rule.selection.predicate() {

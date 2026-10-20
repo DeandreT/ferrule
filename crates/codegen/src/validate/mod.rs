@@ -122,6 +122,15 @@ pub fn validate_program_with_basic_owned_group_ending_with(
     owned_sources::validate_basic_owned_group_ending_with_emission(program)
 }
 
+/// Validates explicit owned failure-rule iteration over one exact Primary or
+/// named endpoint, composed with the EndingWith target controls, scalar ItemAt
+/// and primary-row failure policies. Older validators keep refusing it.
+pub fn validate_program_with_basic_owned_failure_sources(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_failure_source_emission(program)
+}
+
 /// Validates static Basic scalar-producer SequenceItemAt, explicitly composing
 /// the qualified By, filter/sort/window and primary-row failure permissions.
 pub fn validate_program_with_basic_owned_sequence_item_at(
@@ -154,6 +163,20 @@ fn validate_program_with_owned_policies(
     program: &Program,
     profile: owned_sources::BasicOwnedProfile,
     primary_row_failures: bool,
+    sequence_item_at: owned_sources::SequenceItemAtPolicy,
+) -> Result<(), ProgramValidationError> {
+    validate_program_with_owned_failures(
+        program,
+        profile,
+        owned_sources::FailurePolicy::from_primary_rows(primary_row_failures),
+        sequence_item_at,
+    )
+}
+
+fn validate_program_with_owned_failures(
+    program: &Program,
+    profile: owned_sources::BasicOwnedProfile,
+    failures: owned_sources::FailurePolicy,
     sequence_item_at: owned_sources::SequenceItemAtPolicy,
 ) -> Result<(), ProgramValidationError> {
     xml::validate_boundary(program)?;
@@ -206,10 +229,10 @@ fn validate_program_with_owned_policies(
     // that no target/failure root reaches in a directly constructed Program.
     sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)?;
     owned_sources::validate_structure(program)?;
-    owned_sources::validate_closed_contexts_with_policies(
+    owned_sources::validate_closed_contexts_with_failures(
         program,
         profile,
-        primary_row_failures,
+        failures,
         sequence_item_at,
     )
 }
@@ -1403,8 +1426,9 @@ fn validate_scope(
 
 pub use owned_sources::{
     is_basic_owned_primary_row_failure, validate_basic_owned_emission,
-    validate_basic_owned_filter_emission, validate_basic_owned_group_adjacent_by_emission,
-    validate_basic_owned_group_by_emission, validate_basic_owned_group_ending_with_emission,
+    validate_basic_owned_failure_source_emission, validate_basic_owned_filter_emission,
+    validate_basic_owned_group_adjacent_by_emission, validate_basic_owned_group_by_emission,
+    validate_basic_owned_group_ending_with_emission,
     validate_basic_owned_group_starting_with_emission, validate_basic_owned_row_failure_emission,
     validate_basic_owned_sequence_item_at_emission, validate_basic_owned_sort_emission,
     validate_basic_owned_window_emission,

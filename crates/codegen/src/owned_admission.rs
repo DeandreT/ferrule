@@ -148,6 +148,16 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_sequence_item_at(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plans the explicit owned failure-source profile. An owned failure walk does
+/// not make its endpoint eager; legacy rule paths and expression aliases keep
+/// their existing requirements, and declaration ordinals stay unchanged.
+pub fn legacy_named_input_admission_plan_with_basic_owned_failure_sources(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_failure_sources(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     admission_plan_with_primary_row_failures(program, false)
 }
@@ -536,6 +546,10 @@ impl<'a> Analysis<'a> {
                 }
                 FailureIteration::Generated(sequence) => {
                     self.sequence(Namespace::Main, parent, sequence)
+                }
+                // The selected endpoint is demand-driven, like every owned read.
+                FailureIteration::OwnedSource(source) => {
+                    self.child(parent, Step::OwnedSource(source.source().clone()))
                 }
             };
             self.optional(Namespace::Main, current, rule.selection.predicate());

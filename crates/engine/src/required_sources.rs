@@ -151,6 +151,7 @@ impl<'a> Analysis<'a> {
             match &rule.iteration {
                 FailureIteration::Source { collection } => self.inspect_path(collection),
                 FailureIteration::Sequence { sequence } => self.inspect_sequence(sequence),
+                FailureIteration::OwnedSource { source } => self.inspect_owner(&source.owner),
             }
             self.pending.extend(rule.selection.predicate());
             self.pending.extend(rule.message);

@@ -42,6 +42,9 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
                     "generated-sequence failures cannot share a target filter branch yet",
                 ));
             }
+            FailureIteration::OwnedSource { .. } => {
+                return Err(MfdError::UnsupportedFailureSourceIteration { rule: index + 1 });
+            }
         };
         if project
             .extra_sources

@@ -1524,6 +1524,7 @@ mod owned_basic;
 mod owned_basic_group_adjacent_by;
 mod owned_basic_group_by;
 mod owned_basic_group_starting_with;
+mod owned_failure_sources;
 #[path = "owned_json_api_tests.rs"]
 mod owned_json_api;
 mod owned_sequence_item_at;
