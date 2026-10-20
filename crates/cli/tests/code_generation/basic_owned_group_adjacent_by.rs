@@ -685,6 +685,9 @@ fn historical_runtime(path: &str) -> TestResult<&'static [u8]> {
         "Runtime/FerruleBasicGroupBy.cs" => include_bytes!(
             "../../../../conformance/basic-owned-group-adjacent-by/legacy-baseline/historical-runtime/FerruleBasicGroupBy.cs"
         ),
+        "Runtime/FerruleFunctions.cs" => include_bytes!(
+            "../../../../conformance/basic-owned-group-adjacent-by/legacy-baseline/historical-runtime/FerruleFunctions.cs"
+        ),
         "Runtime/FerruleInstance.cs" => include_bytes!(
             "../../../../conformance/basic-owned-group-adjacent-by/legacy-baseline/historical-runtime/FerruleInstance.cs"
         ),
@@ -710,7 +713,7 @@ fn basic_adjacent442_historical_manifest_template_and_archival_bodies_are_pinned
         historical_cargo_manifest(path)?.as_slice(),
         HISTORICAL_CARGO
     );
-    for (path, _) in legacy_artifact_policy::ADJACENT_RUNTIME_FILES {
+    for (path, _) in legacy_artifact_policy::REPLACED_RUNTIME_FILES {
         let old = historical_runtime(path)?;
         let expected = cs.iter().find(|row| row.0 == path).unwrap();
         assert_eq!(&legacy_artifact_policy::row(path, old), expected);
@@ -847,7 +850,10 @@ fn reviewed_json_runtime_additions_keep_the_frozen_legacy_artifacts() -> TestRes
         "{comparison:?}"
     );
     assert!(!comparison.accepts(legacy_artifact_policy::Policy::ExactHistorical));
-    assert_eq!(actual.len(), historical.len() + 2);
+    assert_eq!(
+        actual.len(),
+        historical.len() + legacy_artifact_policy::ADDED_RUNTIME_FILES.len()
+    );
     for (path, _) in legacy_artifact_policy::ADDED_RUNTIME_FILES {
         let record: Json = serde_json::from_slice(&fs::read(temp.0.join(format!(
             "legacy-reviewed-candidate/{path}.sizes-hashes.json"

@@ -77,7 +77,7 @@ The CLI module is `basic_owned_group_adjacent_by.rs`, registered in
 `code_generation.rs`. Nonignored harness tests check exact inventory/codec
 recipes, raw-capture continuation/original-file fences, complete typed closed
 Project/direct-Program diagnostics, and the immutable historical manifest,
-complete Cargo template and three archival runtime bodies.
+complete Cargo template and four archival runtime bodies.
 
 1. Freeze the authored source proposal externally, then build the current test
    binary only with the coordinator's compiler-lane grant.
@@ -120,16 +120,17 @@ artifact paths, lengths and SHA256 values, bound to the actual a70 generator,
 its build-time source archive, exact L01 fixture and ordinary generation options.
 The tracked baseline retains the reviewed L01-only source-equivalence bridge
 to base 7769 without relabeling the a70 executable. Its complete Cargo files
-and three archival runtime bodies suffice for the portable comparison; running
+and four archival runtime bodies suffice for the portable comparison; running
 the corpus requires neither an external custody directory nor an old build.
 
 The ordinary `lower`/`emit` comparison uses the historical profile/options.
 Rust files remain exact; the complete historical Cargo template has exactly
 one explicit runtime-path operand. C# retains all 78 historical paths, historical
-bytes for 75 stable files, and independently frozen source bytes only for
-FerruleBasicGroupBy.cs, ScopeContext.cs and FerruleInstance.cs. The only additional
-files are Json/FerruleJsonSourceDocument.cs and Json/FerruleJsonSourceOccurrence.cs,
-also matched to independently frozen source bytes. Preparation
+bytes for 74 stable files, and independently frozen source bytes only for
+FerruleBasicGroupBy.cs, FerruleFunctions.cs, ScopeContext.cs and FerruleInstance.cs.
+The only additional files are FerruleUnicodeCasing.cs, FerruleUnicodeCasing.Tables.cs,
+Json/FerruleJsonSourceDocument.cs and Json/FerruleJsonSourceOccurrence.cs, also
+matched to independently frozen source bytes. Preparation
 retains each old/new size/hash, complete-file unified source diff and candidate
 snapshot **before any emission**. The parent-owned `legacy_artifact_policy`
 helper enforces that boundary. New-profile ordinary emission success is a
