@@ -680,6 +680,8 @@ pub struct FailureRule {
 pub enum FailureIteration {
     Source(SourceIteration),
     Generated(GeneratedSequence),
+    /// Rows of exactly one explicitly owned endpoint, with no legacy fallback.
+    OwnedSource(OwnedSourceIteration),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

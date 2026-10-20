@@ -43,6 +43,13 @@ pub(super) fn validate_source_ownership(project: &Project) -> Result<(), MfdErro
     if let Some(scope) = mapping::first_project_owned_source_scope(project) {
         return Err(MfdError::UnsupportedSourceIteration { scope });
     }
+    if let Some(index) = project
+        .failure_rules
+        .iter()
+        .position(|rule| rule.iteration.owned_source().is_some())
+    {
+        return Err(MfdError::UnsupportedFailureSourceIteration { rule: index + 1 });
+    }
     for (&node, expression) in &project.graph.nodes {
         if let Some(kind) = expression.owned_source_kind() {
             return Err(MfdError::UnsupportedSourceOwnership {

@@ -216,7 +216,9 @@ pub(super) fn validate_project(
                 }
                 ItemContext::Private(sequence.item())
             }
-            FailureIteration::Source { .. } => ItemContext::Empty,
+            FailureIteration::Source { .. } | FailureIteration::OwnedSource { .. } => {
+                ItemContext::Empty
+            }
         };
         for expression in rule.selection.predicate().into_iter().chain(rule.message) {
             validate_root(&project.graph, items, expression, context, origin, issues);

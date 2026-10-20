@@ -83,7 +83,8 @@ pub(super) fn validate_primary_root_primitives(
             .chain(rule.selection.predicate())
             .chain(match &rule.iteration {
                 mapping::FailureIteration::Sequence { sequence } => sequence.inputs(),
-                mapping::FailureIteration::Source { .. } => Vec::new(),
+                mapping::FailureIteration::Source { .. }
+                | mapping::FailureIteration::OwnedSource { .. } => Vec::new(),
             });
         reject_dependencies(
             project,

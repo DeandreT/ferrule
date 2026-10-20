@@ -38,6 +38,13 @@ fn render_rule(index: usize, rule: &FailureRule) -> Result<String, EmitError> {
                 "    let generated_items = GeneratedItems::new(sequence_values);\n    let candidates = context.generated_items(&generated_items);\n",
             );
         }
+        // Validation closes owned walks before the ordinary renderer.
+        FailureIteration::OwnedSource(_) => {
+            return Err(super::owned_basic::failure_refusal(
+                index,
+                codegen::OwnedSourceCapabilityReason::FailureRule,
+            ));
+        }
     }
     if rule.selection.predicate().is_none() && rule.message.is_none() {
         output.push_str("    for _ in candidates {\n");
@@ -75,17 +82,28 @@ fn render_selection(selection: FailureSelection, output: &mut String) {
 // The ordinary renderer above stays byte-exact. This private test-only bridge
 // retains complete paired legacy cohorts until every reached rule returns.
 pub(super) fn render_basic(program: &Program) -> Result<String, EmitError> {
-    render_basic_profile(program, false)
+    render_basic_profile(program, false, false)
 }
 
 pub(super) fn render_basic_with_row_failures(program: &Program) -> Result<String, EmitError> {
-    render_basic_profile(program, true)
+    render_basic_profile(program, true, false)
 }
 
-fn render_basic_profile(program: &Program, primary_rows: bool) -> Result<String, EmitError> {
+/// Primary-row rules plus explicitly owned walks; validation precedes rendering.
+pub(super) fn render_basic_with_failure_sources(program: &Program) -> Result<String, EmitError> {
+    render_basic_profile(program, true, true)
+}
+
+fn render_basic_profile(
+    program: &Program,
+    primary_rows: bool,
+    owned_sources: bool,
+) -> Result<String, EmitError> {
     let mut output = String::new();
     for (index, rule) in program.failure_rules.iter().enumerate() {
-        if primary_rows && codegen::is_basic_owned_primary_row_failure(program, rule) {
+        if let (true, FailureIteration::OwnedSource(source)) = (owned_sources, &rule.iteration) {
+            output.push_str(&render_owned_source_rule(index, rule, source.source()));
+        } else if primary_rows && codegen::is_basic_owned_primary_row_failure(program, rule) {
             output.push_str(&render_primary_row_rule(index, rule));
         } else {
             output.push_str(&render_basic_rule(index, rule)?);
@@ -180,6 +198,52 @@ fn render_primary_row_rule(index: usize, rule: &FailureRule) -> String {
     }
     output.push_str(&format!(
         "        Err(codegen_runtime::mapping_failure({}, message))\n    }})\n}}\n\n",
+        index + 1
+    ));
+    output
+}
+
+/// Walk only the selected endpoint. Rows keep raw structural positions; the
+/// complete cohort is admitted before the first predicate, and the first
+/// selected row's message is the only message evaluated.
+fn render_owned_source_rule(
+    index: usize,
+    rule: &FailureRule,
+    source: &mapping::OwnedSourceRef,
+) -> String {
+    let owner = match &source.owner {
+        mapping::SourceOwner::Primary => "SourceOwnerRef::Primary".to_owned(),
+        mapping::SourceOwner::Named { name } => {
+            format!("SourceOwnerRef::Named({})", super::rust_string(name))
+        }
+    };
+    let path = render_string_path(&source.path);
+    let mut output = format!(
+        "fn evaluate_basic_failure_rule_{index}(context: &BasicScopeContext<'_>) -> Result<(), RuntimeError> {{\n    let cohort = context.walk_owned_source_cohort({owner}, &[{path}])?;\n    for candidate in cohort.iter() {{\n        let item_context = candidate.context();\n"
+    );
+    if rule.selection.predicate().is_none() && rule.message.is_none() {
+        output.push_str("        let _ = item_context;\n");
+    }
+    match rule.selection {
+        FailureSelection::All => output.push_str("        let selected = true;\n"),
+        FailureSelection::WhenTrue(predicate) | FailureSelection::WhenFalse(predicate) => {
+            let invert = if matches!(rule.selection, FailureSelection::WhenFalse(_)) {
+                "!"
+            } else {
+                ""
+            };
+            output.push_str(&format!("        let predicate = expression_{predicate}(item_context)?;\n        let selected = {invert}require_bool({predicate}, predicate)?;\n"));
+        }
+    }
+    output.push_str("        if !selected {\n            continue;\n        }\n");
+    match rule.message {
+        Some(message) => output.push_str(&format!(
+            "        let message = Some(expression_{message}(item_context)?);\n"
+        )),
+        None => output.push_str("        let message = None;\n"),
+    }
+    output.push_str(&format!(
+        "        return Err(codegen_runtime::mapping_failure({}, message));\n    }}\n    Ok(())\n}}\n\n",
         index + 1
     ));
     output

@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use ir::{ScalarType, SchemaNode};
 use serde::{Deserialize, Serialize};
 
-use crate::{FormatOptions, Graph, NodeId, Scope, SequenceExpr};
+use crate::{FormatOptions, Graph, NodeId, OwnedSourceRef, Scope, SequenceExpr};
 
 /// Stable identity of one user-defined function within a project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -72,13 +72,54 @@ pub struct FailureRule {
 
 /// The item sequence inspected by a [`FailureRule`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", from = "FailureIterationWire")]
 pub enum FailureIteration {
     /// Walk a framed runtime source path. An empty collection iterates flat
     /// rows when the current source boundary is itself repeated.
     Source { collection: Vec<String> },
     /// Materialize a generated scalar sequence in the rule's parent context.
     Sequence { sequence: SequenceExpr },
+    /// Walk rows of exactly one explicitly owned endpoint. The path is
+    /// endpoint-relative: no other endpoint, alias or same-path collection
+    /// supplies rows when the selected owner's collection is absent.
+    OwnedSource { source: OwnedSourceRef },
+}
+
+impl FailureIteration {
+    /// The explicit owner and endpoint-relative path, for owned iteration only.
+    pub fn owned_source(&self) -> Option<&OwnedSourceRef> {
+        match self {
+            Self::OwnedSource { source } => Some(source),
+            Self::Source { .. } | Self::Sequence { .. } => None,
+        }
+    }
+}
+
+/// Readers keep legacy variants tolerant and the owned form strict.
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum FailureIterationWire {
+    Source { collection: Vec<String> },
+    Sequence { sequence: SequenceExpr },
+    OwnedSource(OwnedFailureSourceWire),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OwnedFailureSourceWire {
+    source: OwnedSourceRef,
+}
+
+impl From<FailureIterationWire> for FailureIteration {
+    fn from(wire: FailureIterationWire) -> Self {
+        match wire {
+            FailureIterationWire::Source { collection } => Self::Source { collection },
+            FailureIterationWire::Sequence { sequence } => Self::Sequence { sequence },
+            FailureIterationWire::OwnedSource(OwnedFailureSourceWire { source }) => {
+                Self::OwnedSource { source }
+            }
+        }
+    }
 }
 
 /// Selects which iterated items trigger a [`FailureRule`].

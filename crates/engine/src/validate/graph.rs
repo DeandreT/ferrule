@@ -343,7 +343,9 @@ fn validate_failure_rules(
             &project.graph,
             rule_roots(rule).into_iter().chain(match &rule.iteration {
                 FailureIteration::Sequence { sequence } => sequence.inputs(),
-                FailureIteration::Source { .. } => Vec::new(),
+                FailureIteration::Source { .. } | FailureIteration::OwnedSource { .. } => {
+                    Vec::new()
+                }
             }),
             &[],
             false,
@@ -387,6 +389,9 @@ fn validate_failure_rules(
                     }
                 }
                 validate_failure_sequence_context(project, index, rule, sequence_items, issues);
+            }
+            FailureIteration::OwnedSource { source } => {
+                super::schema::validate_owned_collection(project, source, &location, issues);
             }
         }
         own_issues(
@@ -566,11 +571,21 @@ fn validate_failure_dynamic_sources(
                 dynamic_sources.insert(source.to_string());
             }
         }
+        FailureIteration::OwnedSource { source } => {
+            if let mapping::SourceOwner::Named { name } = &source.owner
+                && project
+                    .extra_sources
+                    .iter()
+                    .any(|source| source.name == *name && source.dynamic_path.is_some())
+            {
+                dynamic_sources.insert(name.clone());
+            }
+        }
     }
 
     let roots = rule_roots(rule).into_iter().chain(match &rule.iteration {
         FailureIteration::Sequence { sequence } => sequence.inputs(),
-        FailureIteration::Source { .. } => Vec::new(),
+        FailureIteration::Source { .. } | FailureIteration::OwnedSource { .. } => Vec::new(),
     });
     for node in all_dependencies(&project.graph, roots) {
         let Some(expression) = project.graph.nodes.get(&node) else {

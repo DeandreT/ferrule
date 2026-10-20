@@ -13,6 +13,9 @@ use crate::{
 use ir::{SchemaKind, SchemaNode};
 use mapping::{NodeId, SourceScopeLocation, SourceScopeStep, SourceScopeTarget};
 
+mod failure_sources;
+pub(super) use failure_sources::FailurePolicy;
+pub use failure_sources::validate_basic_owned_failure_source_emission;
 mod primary_row_failures;
 pub use primary_row_failures::{
     is_basic_owned_primary_row_failure, validate_basic_owned_row_failure_emission,
@@ -181,6 +184,10 @@ fn has_owned(program: &Program) -> bool {
             .extra_targets
             .iter()
             .any(|target| scope_has_owned(&target.root))
+        || program
+            .failure_rules
+            .iter()
+            .any(|rule| matches!(rule.iteration, FailureIteration::OwnedSource(_)))
 }
 fn visit_scopes<'a>(
     scope: &'a TargetScope,
@@ -282,6 +289,15 @@ pub(super) fn validate_structure(program: &Program) -> Result<(), ProgramValidat
             structure(
                 program,
                 Location::Iteration { scope: route },
+                iteration_request(source.source()),
+            )?;
+        }
+    }
+    for (index, rule) in program.failure_rules.iter().enumerate() {
+        if let FailureIteration::OwnedSource(source) = &rule.iteration {
+            structure(
+                program,
+                Location::FailureIteration { index },
                 iteration_request(source.source()),
             )?;
         }
@@ -961,6 +977,20 @@ pub(super) fn validate_closed_contexts_with_policies(
     primary_row_failures: bool,
     sequence_item_at: SequenceItemAtPolicy,
 ) -> Result<(), ProgramValidationError> {
+    validate_closed_contexts_with_failures(
+        program,
+        profile,
+        FailurePolicy::from_primary_rows(primary_row_failures),
+        sequence_item_at,
+    )
+}
+
+pub(super) fn validate_closed_contexts_with_failures(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+) -> Result<(), ProgramValidationError> {
     if !has_owned(program) {
         return Ok(());
     }
@@ -997,12 +1027,11 @@ pub(super) fn validate_closed_contexts_with_policies(
         if let FailureIteration::Generated(sequence) = &rule.iteration {
             roots.extend(sequence.roots());
         }
+        failure_sources::admit_iteration(program, index, rule, failures)?;
         for node in roots {
             admission.expression(Visit {
                 namespace: Namespace::Main,
-                closed: (!(primary_row_failures
-                    && is_basic_owned_primary_row_failure(program, rule)))
-                .then_some(Closed {
+                closed: (!failures.admits_owned_rule(program, rule)).then_some(Closed {
                     reason: Capability::FailureRule,
                     origin: Origin::Failure { index },
                 }),
@@ -1255,12 +1284,21 @@ fn validate_basic_owned_with_policies(
     primary_row_failures: bool,
     sequence_item_at: SequenceItemAtPolicy,
 ) -> Result<(), ProgramValidationError> {
-    super::validate_program_with_owned_policies(
+    validate_basic_owned_with_failures(
         program,
         profile,
-        primary_row_failures,
+        FailurePolicy::from_primary_rows(primary_row_failures),
         sequence_item_at,
-    )?;
+    )
+}
+
+fn validate_basic_owned_with_failures(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+) -> Result<(), ProgramValidationError> {
+    super::validate_program_with_owned_failures(program, profile, failures, sequence_item_at)?;
     basic_scope(
         program,
         &program.root,
@@ -1296,7 +1334,7 @@ fn validate_basic_owned_with_policies(
             },
         ));
     }
-    basic_failures_with_profile(program, primary_row_failures)?;
+    basic_failures_with_profile(program, failures)?;
     let retained = basic_target_expressions(program, profile, sequence_item_at);
     for node in &program.expressions {
         if let Expression::SourceField { path, frame } = &node.expression
@@ -1634,10 +1672,10 @@ fn basic_failure_refusal(index: usize, reason: Capability) -> ProgramValidationE
 
 fn basic_failures_with_profile(
     program: &Program,
-    primary_row_failures: bool,
+    failures: FailurePolicy,
 ) -> Result<(), ProgramValidationError> {
     for (index, rule) in program.failure_rules.iter().enumerate() {
-        if primary_row_failures && is_basic_owned_primary_row_failure(program, rule) {
+        if failures.admits_owned_rule(program, rule) {
             continue;
         }
         let FailureIteration::Source(source) = &rule.iteration else {

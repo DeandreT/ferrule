@@ -12,6 +12,7 @@ use mapping::{SourceOwner, SourceScopeLocation, SourceScopeStep, SourceScopeTarg
 
 #[path = "owned_basic_windows.rs"]
 mod windows;
+pub(crate) use windows::render_public_basic_owned_failure_source;
 pub(crate) use windows::render_public_basic_owned_group_adjacent_by_source;
 pub(crate) use windows::render_public_basic_owned_group_ending_with_source;
 pub(crate) use windows::render_public_basic_owned_group_starting_with_source;
@@ -252,7 +253,7 @@ fn check_inventory(program: &Program, filter_only: bool) -> Result<(), EmitError
     // domains use the complete per-rule refusal. ValueMap stays admitted.
     for (index, rule) in program.failure_rules.iter().enumerate() {
         match &rule.iteration {
-            codegen::FailureIteration::Generated(_) => {
+            codegen::FailureIteration::Generated(_) | codegen::FailureIteration::OwnedSource(_) => {
                 return Err(failure_refusal(index, Capability::FailureRule));
             }
             codegen::FailureIteration::Source(source) => {
@@ -948,7 +949,7 @@ fn check_sort_inventory(program: &Program) -> Result<(), EmitError> {
     // domains use the complete per-rule refusal. ValueMap stays admitted.
     for (index, rule) in program.failure_rules.iter().enumerate() {
         match &rule.iteration {
-            codegen::FailureIteration::Generated(_) => {
+            codegen::FailureIteration::Generated(_) | codegen::FailureIteration::OwnedSource(_) => {
                 return Err(failure_refusal(index, Capability::FailureRule));
             }
             codegen::FailureIteration::Source(source) => {

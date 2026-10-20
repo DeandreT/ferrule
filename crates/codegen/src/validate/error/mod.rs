@@ -37,6 +37,10 @@ pub enum OwnedSourceDiagnosticLocation {
     Iteration {
         scope: mapping::SourceScopeLocation,
     },
+    /// The zero-based ordered failure rule whose owned walk is refused.
+    FailureIteration {
+        index: usize,
+    },
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OwnedSourceDiagnosticRequest {

@@ -1090,5 +1090,8 @@ mod owned_group_starting_with_tests;
 mod owned_sequence_item_at_tests;
 
 #[cfg(test)]
+#[path = "tests/owned_failure_iteration.rs"]
+mod owned_failure_iteration_tests;
+#[cfg(test)]
 #[path = "tests/owned_source_context.rs"]
 mod owned_source_context_tests;

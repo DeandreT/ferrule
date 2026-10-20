@@ -347,6 +347,26 @@ pub fn emit_with_basic_owned_group_ending_with(
     .map_err(EmitError::from)
 }
 
+/// Emit EndingWith-profile targets with explicitly owned failure-rule walks
+/// over one exact Primary or named endpoint. Older emitters keep refusing them.
+pub fn emit_with_basic_owned_failure_sources(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_failure_sources(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_failure_source_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_failure_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.
 /// Flat row/schema and literal dialect eligibility are checked before artifacts
 /// exist. The ordinary mapper, JSON/XML adapters, and manifest remain intact.
@@ -698,7 +718,8 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
                 .iter()
                 .filter_map(|rule| match &rule.iteration {
                     codegen::FailureIteration::Generated(sequence) => Some(sequence.item()),
-                    codegen::FailureIteration::Source(_) => None,
+                    codegen::FailureIteration::Source(_)
+                    | codegen::FailureIteration::OwnedSource(_) => None,
                 }),
         )
         .collect();
