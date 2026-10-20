@@ -438,6 +438,64 @@ pub(super) fn source_path_matches(
             .any(|source| any_schema_path(&source.schema, path, predicate))
 }
 
+/// Like [`source_path_matches`], but only matches whose intermediate path
+/// segments are non-repeating. A path crossing repetition selects one terminal
+/// per repeated item rather than one value.
+pub(super) fn source_path_matches_direct(
+    project: &Project,
+    path: &[String],
+    predicate: impl Fn(&SchemaNode) -> bool + Copy,
+) -> bool {
+    if let Some((name, rest)) = path.split_first()
+        && let Some(extra) = project
+            .extra_sources
+            .iter()
+            .find(|source| source.name == *name)
+        && follow_schema_direct_from(&extra.schema, &extra.schema, rest).is_some_and(predicate)
+    {
+        return true;
+    }
+    any_schema_path_direct_from(&project.source, &project.source, path, predicate)
+        || project.extra_sources.iter().any(|source| {
+            any_schema_path_direct_from(&source.schema, &source.schema, path, predicate)
+        })
+}
+
+fn any_schema_path_direct_from(
+    root: &SchemaNode,
+    schema: &SchemaNode,
+    path: &[String],
+    predicate: impl Fn(&SchemaNode) -> bool + Copy,
+) -> bool {
+    if follow_schema_direct_from(root, schema, path).is_some_and(predicate) {
+        return true;
+    }
+    match &schema.kind {
+        SchemaKind::Group { children, .. } => children
+            .iter()
+            .any(|child| any_schema_path_direct_from(root, child, path, predicate)),
+        SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => false,
+    }
+}
+
+fn follow_schema_direct_from<'a>(
+    root: &'a SchemaNode,
+    schema: &'a SchemaNode,
+    path: &[String],
+) -> Option<&'a SchemaNode> {
+    let mut current = schema;
+    for (index, segment) in path.iter().enumerate() {
+        if let Some(anchor) = &current.recursive_ref {
+            current = find_concrete_schema_group(root, anchor)?;
+        }
+        current = current.child(segment)?;
+        if current.repeating && index + 1 != path.len() {
+            return None;
+        }
+    }
+    Some(current)
+}
+
 pub(super) fn source_path_matches_resolved(
     project: &Project,
     path: &[String],

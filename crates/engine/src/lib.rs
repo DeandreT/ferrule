@@ -1045,6 +1045,9 @@ mod sequence_item_at_tests;
 #[path = "tests/sequence_windows.rs"]
 mod sequence_windows_tests;
 #[cfg(test)]
+#[path = "tests/singleton_join.rs"]
+mod singleton_join_tests;
+#[cfg(test)]
 #[path = "tests/target_selection.rs"]
 mod target_selection_tests;
 #[cfg(test)]

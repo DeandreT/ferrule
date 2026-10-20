@@ -23,7 +23,7 @@ fn plan(left_path: &[&str], right_collection: &[&str], right_path: &[&str]) -> J
     .unwrap()
 }
 
-fn join_program() -> Program {
+pub(super) fn join_program() -> Program {
     let mut program = program();
     program.source = SchemaNode::group(
         "Source",
@@ -156,7 +156,7 @@ fn join_program() -> Program {
     program
 }
 
-fn set_join(program: &mut Program, join_plan: JoinPlan) {
+pub(super) fn set_join(program: &mut Program, join_plan: JoinPlan) {
     program.root.children[0].iteration = Some(IterationPlan::join(InnerJoin::new(
         JoinId::new(7),
         join_plan,

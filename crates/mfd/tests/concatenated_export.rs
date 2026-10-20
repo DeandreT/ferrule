@@ -889,3 +889,26 @@ fn conditioned_source_type_filters_roundtrip_on_repeating_parents() -> Result<()
     assert_eq!(expected, engine::run(&imported, &source)?);
     Ok(())
 }
+
+#[test]
+fn concatenation_container_rejects_secondary_only_sort_before_writing() -> Result<(), Box<dyn Error>>
+{
+    let dir = TempDir::new()?;
+    let design = dir.0.join("mapping.mfd");
+    std::fs::write(&design, "keep")?;
+    let mut project = xml_project();
+    project.root.children[0].sort_then_by = vec![mapping::SortKey {
+        node: 0,
+        descending: true,
+    }];
+
+    let error = mfd::export(&project, &design).expect_err("wrapper sort keys must fail");
+    assert!(
+        error
+            .to_string()
+            .contains("the concatenation container must contain only its ordered segments"),
+        "{error}"
+    );
+    assert_eq!(std::fs::read_to_string(design)?, "keep");
+    Ok(())
+}
