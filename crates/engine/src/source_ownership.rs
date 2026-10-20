@@ -24,10 +24,11 @@ fn has_owned_nodes(project: &Project) -> bool {
         )
         .any(|node| node.owned_source_kind().is_some())
         || mapping::first_project_owned_source_scope(project).is_some()
-        || project
-            .failure_rules
-            .iter()
-            .any(|rule| rule.iteration.owned_source().is_some())
+        || project.failure_rules.iter().any(|rule| {
+            rule.iteration.owned_source().is_some()
+                || matches!(&rule.iteration, FailureIteration::Sequence { sequence }
+                    if sequence.owned_source().is_some())
+        })
 }
 
 pub(crate) fn check_project(
@@ -98,6 +99,15 @@ fn admit_roots<'a>(
     for rule in &project.failure_rules {
         match &rule.iteration {
             FailureIteration::Source { collection } => admission.path(collection),
+            // Owned producers are qualified only as parent-context ItemAt.
+            FailureIteration::Sequence { sequence } if sequence.owned_source().is_some() => {
+                return Err(EngineError::UnsupportedOwnedContext {
+                    node: None,
+                    function: None,
+                    scope: None,
+                    context: OwnedCapabilityContext::FailureRule,
+                });
+            }
             FailureIteration::Sequence { sequence } => {
                 admission.sequence(sequence, None, OwnedCapabilityContext::FailureRule, false)
             }
@@ -262,6 +272,15 @@ impl<'a> Admission<'a> {
                 None => {}
             }
             if let Some(sequence) = scope.sequence() {
+                // A generated item never becomes an endpoint-bearing frame.
+                if sequence.owned_source().is_some() {
+                    return Err(EngineError::UnsupportedOwnedContext {
+                        node: None,
+                        function: None,
+                        scope: Some(location),
+                        context: OwnedCapabilityContext::GeneratedItem,
+                    });
+                }
                 self.sequence(sequence, None, context, false);
             }
             if let Some((_, join)) = scope.join() {
@@ -680,6 +699,27 @@ impl<'a> Admission<'a> {
                         Some(id),
                         None,
                     )?,
+                    Node::SequenceExists { sequence, .. }
+                    | Node::SequenceItemAt { sequence, .. }
+                    | Node::SequenceAggregate { sequence, .. } => {
+                        // Only a Basic parent-context ItemAt consumes an owned
+                        // producer; reducers with private item phases stay closed.
+                        let qualified = matches!(node, Node::SequenceItemAt { .. })
+                            && basic_item_at_parents(
+                                project,
+                                graph.expect("node belongs to a graph"),
+                                node,
+                            );
+                        let Some(source) = sequence.owned_source().filter(|_| qualified) else {
+                            return Err(EngineError::UnsupportedOwnedContext {
+                                node: Some(id),
+                                function,
+                                scope: None,
+                                context: OwnedCapabilityContext::GeneratedItem,
+                            });
+                        };
+                        self.static_owner(&source.owner, &source.path, None, Some(id), None)?;
+                    }
                     _ => unreachable!("owned kind identifies owned payload"),
                 }
                 self.summary.used_owned = true;
@@ -981,6 +1021,8 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
     }
 }
 
+/// Parent-context ItemAt producers. The owned recursive walk is qualified
+/// here; the legacy recursive walk keeps its specialized tree classification.
 fn basic_item_at_producer(sequence: &SequenceExpr) -> bool {
     matches!(
         sequence,
@@ -988,6 +1030,7 @@ fn basic_item_at_producer(sequence: &SequenceExpr) -> bool {
             | SequenceExpr::Tokenize { .. }
             | SequenceExpr::TokenizeByLength { .. }
             | SequenceExpr::TokenizeRegex { .. }
+            | SequenceExpr::OwnedRecursiveCollect(_)
     )
 }
 

@@ -192,6 +192,16 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_adjacency_tree(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plans the explicit owned recursive-collect profile. An owned root collection
+/// is demand-driven like every owned read; legacy recursive collections and
+/// expression aliases keep their eager requirements and declaration ordinals.
+pub fn legacy_named_input_admission_plan_with_basic_owned_recursive_collect(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_recursive_collect(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     admission_plan_with_primary_row_failures(program, false)
 }

@@ -38,7 +38,9 @@ pub use error::{
     OwnedSourceNamespace, OwnedSourceSchemaShape, OwnedSourceStructureReason,
     ProgramValidationError,
 };
-pub use owned_sources::{owned_expression_emission_error, validate_owned_emission};
+pub use owned_sources::{
+    owned_expression_emission_error, owned_sequence_emission_error, validate_owned_emission,
+};
 use sources::{SchemaCursor, SourceCatalog};
 use targets::TargetOwner;
 
@@ -148,6 +150,15 @@ pub fn validate_program_with_basic_owned_group_into_blocks(
     program: &Program,
 ) -> Result<(), ProgramValidationError> {
     owned_sources::validate_basic_owned_group_into_blocks_emission(program)
+}
+
+/// Validates SequenceItemAt over an explicitly owned recursive collection walk,
+/// composed with the owned adjacency-tree profile. Only the root collection is
+/// owned; older validators and other consumers keep refusing the producer.
+pub fn validate_program_with_basic_owned_recursive_collect(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_recursive_collect_emission(program)
 }
 
 /// Validates static Basic scalar-producer SequenceItemAt, explicitly composing
@@ -1547,7 +1558,8 @@ pub use owned_sources::{
     validate_basic_owned_group_adjacent_by_emission, validate_basic_owned_group_by_emission,
     validate_basic_owned_group_ending_with_emission,
     validate_basic_owned_group_into_blocks_emission,
-    validate_basic_owned_group_starting_with_emission, validate_basic_owned_row_failure_emission,
+    validate_basic_owned_group_starting_with_emission,
+    validate_basic_owned_recursive_collect_emission, validate_basic_owned_row_failure_emission,
     validate_basic_owned_sequence_item_at_emission, validate_basic_owned_sort_emission,
     validate_basic_owned_window_emission,
 };

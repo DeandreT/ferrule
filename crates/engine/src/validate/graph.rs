@@ -100,6 +100,13 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
             Node::OwnedSourceField(_) | Node::OwnedPosition(_) => {
                 super::schema::validate_owned_source_node(project, node, &location, issues)
             }
+            Node::SequenceExists { sequence, .. }
+            | Node::SequenceItemAt { sequence, .. }
+            | Node::SequenceAggregate { sequence, .. }
+                if sequence.owned_source().is_some() =>
+            {
+                validate_owned_sequence(project, sequence, &location, issues)
+            }
             Node::SourceRootXmlTypeEquals { .. } | Node::SourceRootField { .. } => {}
             Node::SourceField { .. } if sequence_items.contains(&id) => {}
             Node::SourceField { path, frame } => {
@@ -388,6 +395,7 @@ fn validate_failure_rules(
                         ));
                     }
                 }
+                validate_owned_sequence(project, sequence, &location, issues);
                 validate_failure_sequence_context(project, index, rule, sequence_items, issues);
             }
             FailureIteration::OwnedSource { source } => {
@@ -714,11 +722,32 @@ fn sequence_dynamic_source<'a>(
         mapping::SequenceExpr::RecursiveCollect { collection, .. } => {
             dynamic_source_for_path(project, collection)
         }
+        mapping::SequenceExpr::OwnedRecursiveCollect(collect) => match &collect.collection.owner {
+            mapping::SourceOwner::Named { name } => project
+                .extra_sources
+                .iter()
+                .find(|source| source.name == *name && source.dynamic_path.is_some())
+                .map(|source| source.name.as_str()),
+            mapping::SourceOwner::Primary => None,
+        },
         mapping::SequenceExpr::Tokenize { .. }
         | mapping::SequenceExpr::TokenizeByLength { .. }
         | mapping::SequenceExpr::TokenizeRegex { .. }
         | mapping::SequenceExpr::Generate { .. }
         | mapping::SequenceExpr::FilterMapV1(_) => None,
+    }
+}
+
+/// An owned producer's root collection must name a repeating path in its
+/// declared owner, or the endpoint root; its relative paths stay unchecked.
+pub(super) fn validate_owned_sequence(
+    project: &Project,
+    sequence: &mapping::SequenceExpr,
+    location: &str,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    if let Some(source) = sequence.owned_source() {
+        super::schema::validate_owned_collection(project, source, location, issues);
     }
 }
 

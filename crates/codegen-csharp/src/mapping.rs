@@ -17,6 +17,7 @@ mod owned_group_by;
 mod owned_json_api;
 #[cfg(test)]
 mod owned_json_api_tests;
+mod owned_recursive_collect;
 mod selected_json_api;
 mod xml_api;
 
@@ -1498,6 +1499,12 @@ fn render_generated_values(
                 ",\n            sequence_prefix_{identifier},\n            sequence_separator_{identifier});\n"
             ));
         }
+        // Only a paired Basic ItemAt renders an owned producer.
+        GeneratedSequence::OwnedRecursiveCollect {
+            collection, item, ..
+        } => {
+            return Err(codegen::owned_sequence_emission_error(*item, collection).into());
+        }
         GeneratedSequence::Range {
             from: Some(from),
             to,
@@ -2232,11 +2239,16 @@ fn render_expression(
         }
         Expression::SequenceItemAt { sequence, index } => {
             // Pure producer arguments and the index use this same receiving
-            // context overload. The explicit Basic ItemAt inventory admits only
-            // the four scalar producers; no generated item context is attached.
+            // context overload. The explicit Basic ItemAt inventory admits the
+            // four scalar producers and, under its own profile, the owned
+            // recursive walk; no generated item context is attached.
             output.push_str("\n    {\n");
             let identifier = format!("node_{node}");
-            render_generated_values(&identifier, sequence, output)?;
+            if matches!(mode, ExpressionContext::Legacy) || sequence.owned_source().is_none() {
+                render_generated_values(&identifier, sequence, output)?;
+            } else {
+                owned_recursive_collect::render_values(node, &identifier, sequence, output);
+            }
             output.push_str(&format!(
                 "        var sequence_index_{identifier} = Node_{index}(context);\n        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.ItemAt, sequence_values_{identifier}, sequence_index_{identifier});\n    }}\n"
             ));

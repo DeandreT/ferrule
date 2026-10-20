@@ -1530,4 +1530,5 @@ mod owned_failure_sources;
 #[path = "owned_json_api_tests.rs"]
 mod owned_json_api;
 mod owned_path_hierarchy;
+mod owned_recursive_collect;
 mod owned_sequence_item_at;

@@ -92,8 +92,8 @@ pub use format_json::source_document::{
 pub use functions::FunctionError;
 pub use generated_sequence::{
     MAX_GENERATED_SEQUENCE_ITEMS, MAX_RECURSIVE_SEQUENCE_DEPTH, RecursiveCollectPaths,
-    generate_sequence, recursive_collect, recursive_sequence_parameter, tokenize,
-    tokenize_by_length, tokenize_regex,
+    generate_sequence, owned_recursive_collect, recursive_collect, recursive_sequence_parameter,
+    tokenize, tokenize_by_length, tokenize_regex,
 };
 pub use ir::SchemaNode;
 pub use ir::{

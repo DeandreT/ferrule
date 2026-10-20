@@ -247,6 +247,18 @@ pub fn emit_with_basic_owned_adjacency_tree(program: &Program) -> Result<Artifac
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits the owned adjacency-tree profile plus SequenceItemAt over explicitly
+/// owned recursive collection walks. Older emitters keep refusing them.
+pub fn emit_with_basic_owned_recursive_collect(
+    program: &Program,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_recursive_collect(program)?;
+    codegen::validate_basic_owned_recursive_collect_emission(program)?;
+    let generated_mapping =
+        owned_basic::render_public_basic_owned_recursive_collect_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,
@@ -352,6 +364,8 @@ mod tests {
     mod owned_failure_sources;
     #[path = "owned_path_hierarchy.rs"]
     mod owned_path_hierarchy;
+    #[path = "owned_recursive_collect.rs"]
+    mod owned_recursive_collect;
     use ::mapping::FunctionId;
     use codegen::{
         AggregateFunction, Binding, Expression, ExpressionNode, FailureIteration, FailureRule,

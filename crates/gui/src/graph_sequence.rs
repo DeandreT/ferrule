@@ -1,20 +1,19 @@
 use mapping::{Node, NodeId, SequenceExpr};
 
-pub(super) const READ_ONLY_INPUTS_MESSAGE: &str = "Filter/map inputs cannot be edited yet.";
+pub(super) const READ_ONLY_INPUTS_MESSAGE: &str =
+    "Filter/map and owned recursive-collect inputs cannot be edited yet.";
 
+/// Filter/map compositions and owned producers are preserved read-only.
 pub(super) fn inputs_are_read_only(node: &Node) -> bool {
     matches!(
         node,
-        Node::SequenceExists {
-            sequence: SequenceExpr::FilterMapV1(_),
-            ..
-        } | Node::SequenceItemAt {
-            sequence: SequenceExpr::FilterMapV1(_),
-            ..
-        } | Node::SequenceAggregate {
-            sequence: SequenceExpr::FilterMapV1(_),
-            ..
-        }
+        Node::SequenceExists { sequence, .. }
+            | Node::SequenceItemAt { sequence, .. }
+            | Node::SequenceAggregate { sequence, .. }
+            if matches!(
+                sequence,
+                SequenceExpr::FilterMapV1(_) | SequenceExpr::OwnedRecursiveCollect(_)
+            )
     )
 }
 
@@ -76,6 +75,8 @@ pub(super) fn set_input(sequence: &mut SequenceExpr, index: usize, node: NodeId)
             1 => *separator = node,
             _ => {}
         },
+        // Saved owned producers stay read-only; authoring is not available.
+        SequenceExpr::OwnedRecursiveCollect(_) => {}
     }
 }
 
@@ -87,6 +88,7 @@ pub(super) fn label(sequence: &SequenceExpr) -> &'static str {
         SequenceExpr::TokenizeRegex { .. } => "tokenize-regexp",
         SequenceExpr::Generate { .. } => "generate-sequence",
         SequenceExpr::RecursiveCollect { .. } => "recursive-collect",
+        SequenceExpr::OwnedRecursiveCollect(_) => "owned-recursive-collect",
     }
 }
 
@@ -124,9 +126,51 @@ pub(super) fn pin_label(sequence: &SequenceExpr, index: usize) -> &'static str {
             ["from", "to"].get(index).copied().unwrap_or("input")
         }
         SequenceExpr::Generate { from: None, .. } => "to",
-        SequenceExpr::RecursiveCollect { .. } => ["prefix", "separator"]
-            .get(index)
-            .copied()
-            .unwrap_or("input"),
+        SequenceExpr::RecursiveCollect { .. } | SequenceExpr::OwnedRecursiveCollect(_) => {
+            ["prefix", "separator"]
+                .get(index)
+                .copied()
+                .unwrap_or("input")
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn saved_owned_walk_inputs_are_preserved_read_only() {
+        let walk = SequenceExpr::OwnedRecursiveCollect(mapping::OwnedRecursiveCollect {
+            collection: mapping::OwnedSourceRef {
+                owner: mapping::SourceOwner::Primary,
+                path: vec!["Dir".into()],
+            },
+            children: vec!["Dir".into()],
+            descent_value: vec!["Note".into()],
+            values: vec!["file".into()],
+            value: vec!["Note".into()],
+            prefix: 1,
+            separator: 2,
+            item: 3,
+        });
+        let node = Node::SequenceItemAt {
+            sequence: walk.clone(),
+            index: 4,
+        };
+        assert!(inputs_are_read_only(&node));
+        assert_eq!(label(&walk), "owned-recursive-collect");
+        assert_eq!(pin_label(&walk, 1), "separator");
+        let mut edited = walk.clone();
+        set_input(&mut edited, 0, 9);
+        assert_eq!(edited, walk);
+        assert!(!inputs_are_read_only(&Node::SequenceItemAt {
+            sequence: SequenceExpr::Generate {
+                from: None,
+                to: 1,
+                item: 3,
+            },
+            index: 4,
+        }));
     }
 }

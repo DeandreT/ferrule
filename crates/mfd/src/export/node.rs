@@ -169,6 +169,14 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                     components,
                 );
             }
+            // Preflight refuses every owned producer before anything is written.
+            SequenceExpr::OwnedRecursiveCollect(collect) => {
+                return Err(MfdError::UnsupportedSourceOwnership {
+                    node: collect.item,
+                    function: None,
+                    kind: sequence.kind_name(),
+                });
+            }
             SequenceExpr::RecursiveCollect {
                 collection,
                 children,

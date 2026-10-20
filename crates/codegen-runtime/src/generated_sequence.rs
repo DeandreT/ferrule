@@ -31,6 +31,31 @@ pub fn recursive_collect(
     context.recursive_collect(paths, prefix, separator)
 }
 
+/// Collects from one exact owner's root collection in the receiving Basic
+/// context. A same-owner frame pins its prefix, otherwise the endpoint root is
+/// used; other owners and legacy frames never supply roots. Child, descent and
+/// value paths, ordering and limits match [`recursive_collect`].
+pub fn owned_recursive_collect(
+    context: &crate::BasicScopeContext<'_>,
+    owner: crate::SourceOwnerRef<'_>,
+    paths: RecursiveCollectPaths<'_>,
+    prefix: &str,
+    separator: &str,
+) -> Result<Vec<Value>, RuntimeError> {
+    let roots = context.walk_owned_source(owner, paths.collection)?;
+    let mut output = Vec::new();
+    for root in &roots {
+        crate::context::collect_recursive_root(
+            root.terminal_instance(),
+            paths,
+            prefix,
+            separator,
+            &mut output,
+        )?;
+    }
+    Ok(output)
+}
+
 pub(crate) fn recursive_scalar_text(value: &Value) -> Result<String, RuntimeError> {
     match value {
         Value::Bool(value) => Ok(value.to_string()),
@@ -842,3 +867,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "owned_recursive_collect_tests.rs"]
+mod owned_recursive_collect_tests;

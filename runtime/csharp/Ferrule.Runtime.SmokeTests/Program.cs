@@ -260,6 +260,7 @@ internal static partial class Program
             ("lazy generated sequence contexts", LazyGeneratedSequenceContexts),
             ("typed generated sequence errors", TypedGeneratedSequenceErrors),
             ("recursive generated sequence", RecursiveGeneratedSequence),
+            ("recursive generated sequence exact owned roots", RecursiveCollectOwnedEndpoints),
             ("owned runtime exact namespaces", OwnedRuntimeNamed),
             ("owned runtime strict fields and walking", OwnedRuntimeFieldAndWalk),
             ("owned runtime positions and immutable copies", OwnedRuntimePositionsAndCopies),

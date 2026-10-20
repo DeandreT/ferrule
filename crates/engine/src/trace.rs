@@ -183,6 +183,7 @@ fn sequence_kind(sequence: &SequenceExpr) -> &'static str {
         SequenceExpr::Generate { .. } => "integer-range",
         SequenceExpr::FilterMapV1(_) => "filter-map-v1",
         SequenceExpr::RecursiveCollect { .. } => "recursive-collect",
+        SequenceExpr::OwnedRecursiveCollect(_) => "owned-recursive-collect",
     }
 }
 

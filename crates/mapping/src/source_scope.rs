@@ -37,8 +37,8 @@ impl SourceScopeLocation {
 
 /// Finds the first owned selector in stable structural order, without schema
 /// resolution, expression traversal, acquisition, or execution. An owned
-/// path-hierarchy input collection or adjacency-tree row collection is a
-/// scope-owned selector too.
+/// path-hierarchy input collection, adjacency-tree row collection or generated
+/// sequence with an owned root collection is a scope-owned selector too.
 pub fn first_owned_source_scope(
     root: &Scope,
     location: SourceScopeLocation,
@@ -51,6 +51,9 @@ pub fn first_owned_source_scope(
                 ScopeConstruction::OwnedPathHierarchy { .. }
                     | ScopeConstruction::OwnedAdjacencyTree { .. }
             )
+            || scope
+                .sequence()
+                .is_some_and(|sequence| sequence.owned_source().is_some())
         {
             return Some(location);
         }
