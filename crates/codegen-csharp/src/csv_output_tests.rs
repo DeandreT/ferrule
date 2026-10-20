@@ -180,6 +180,7 @@ fn csv_literals_escape_field_names_and_capture_static_policy() {
         quote_disabled: false,
         has_headers: false,
         utf8_bom: true,
+        raw_delimited_crlf: false,
     };
     let emitted = emit_with_csv_output(&candidate, &policy).unwrap();
     let source = text(&emitted, "GeneratedMapping.Csv.cs");

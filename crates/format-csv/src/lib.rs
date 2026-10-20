@@ -46,6 +46,10 @@ pub struct CsvWriteOptions {
     pub quote_disabled: bool,
     pub has_headers: bool,
     pub utf8_bom: bool,
+    /// Explicit raw text output: preserve field bytes without escaping and end
+    /// each record with CRLF. Requires disabled quoting. This is not reversible
+    /// CSV encoding when a field contains a delimiter or record boundary.
+    pub raw_delimited_crlf: bool,
     pub repair_dependency: Option<CsvTextRepairDependency>,
 }
 
@@ -57,6 +61,7 @@ impl Default for CsvWriteOptions {
             quote_disabled: false,
             has_headers: true,
             utf8_bom: false,
+            raw_delimited_crlf: false,
             repair_dependency: None,
         }
     }
@@ -70,6 +75,7 @@ impl From<&FormatOptions> for CsvWriteOptions {
             quote_disabled: options.csv_quote_disabled,
             has_headers: options.has_header_row.unwrap_or(true),
             utf8_bom: options.csv_utf8_bom,
+            raw_delimited_crlf: false,
             repair_dependency: options.csv_text_repair_dependency,
         }
     }
@@ -123,6 +129,8 @@ pub enum CsvFormatError {
     DelimiterQuoteConflict,
     #[error("CSV quote character cannot be set while quoting is disabled")]
     ConflictingQuoteSettings,
+    #[error("raw-delimited CRLF output requires disabled quoting")]
+    RawDelimitedRequiresDisabledQuotes,
     #[error(
         "row {row}: column `{field}` contains a separator or record boundary and cannot be written without quoting"
     )]
@@ -459,7 +467,12 @@ pub fn to_string_with_options(
         quote,
     } = bounded::validate_csv(schema, rows, options)?;
     let mut bytes = Vec::new();
-    let mut writer = encoding::RecordEncoder::new(delimiter, quote, options.quote_disabled);
+    let mut writer = encoding::RecordEncoder::new(
+        delimiter,
+        quote,
+        options.quote_disabled,
+        options.raw_delimited_crlf,
+    );
     if options.has_headers {
         writer.write_record(&mut bytes, fields.iter().map(|(name, _)| *name))?;
     }

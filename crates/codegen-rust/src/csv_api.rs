@@ -46,6 +46,10 @@ pub(super) fn render(program: &Program, policy: &CsvOutputPolicy) -> Result<Stri
     ));
     source.push_str(&format!("        has_headers: {},\n", policy.has_headers));
     source.push_str(&format!("        utf8_bom: {},\n", policy.utf8_bom));
+    source.push_str(&format!(
+        "        raw_delimited_crlf: {},\n",
+        policy.raw_delimited_crlf
+    ));
     source.push_str("        repair_dependency: None,\n    }\n}\n\n");
     source.push_str(ADAPTERS);
     if program
@@ -314,6 +318,7 @@ mod tests {
             quote_disabled: false,
             has_headers: false,
             utf8_bom: true,
+            raw_delimited_crlf: false,
         };
         let artifacts = emit_with_csv_output(&program, &options(), &policy).unwrap();
         let source = std::str::from_utf8(

@@ -24,13 +24,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(CsvDocumentError::Input(CsvReadError::Format(CsvFormatError::Parse { row: 1, .. })))));
     assert!(matches!(execute_csv_document_bytes(&vec![b' '; 8 * 1024 * 1024 + 1]),
         Err(CsvDocumentError::Input(CsvReadError::Limit { kind: CsvReadLimit::InputBytes, .. }))));
-    if mode == "rows" {
+    if mode == "rows" || mode == "raw" {
         let input = "Key,Text,Count,Fail\na,x,1,false\nb,y,2,true\n";
         assert!(matches!(execute_csv_document(input), Err(CsvDocumentError::Output(CsvBoundaryError::Execution(RuntimeError::MissingRuntimeParameter { .. })))));
         let mut parameters = RuntimeParameters::new();
         parameters.insert("Required", Value::String("supplied".into()))?;
         let context = context.with_parameters(&parameters);
-        assert_eq!(execute_csv_document_with_context(input, &context)?, "\u{feff}Key|Text|Count|Status\na|x|2|ok\nb|y|3|supplied\n");
+        let expected = if mode == "raw" { "a|x|2|ok|\r\nb|y|3|supplied\r\n" } else { "\u{feff}Key|Text|Count|Status\na|x|2|ok\nb|y|3|supplied\n" };
+        assert_eq!(execute_csv_document_with_context(input, &context)?, expected);
     }
     println!("complete CSV documents passed");
     Ok(())

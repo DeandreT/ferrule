@@ -134,8 +134,18 @@ fn complete_csv_documents_compile_and_execute_in_both_backends() -> TestResult<(
     let cases: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../conformance/csv-documents/cases.json"
     ))?;
-    for mode in ["rows", "grouped", "unquoted"] {
-        let project = document_project(mode == "grouped", mode == "unquoted");
+    for mode in ["rows", "grouped", "unquoted", "raw"] {
+        let mut project = document_project(mode == "grouped", matches!(mode, "unquoted" | "raw"));
+        if mode == "raw" {
+            project.target_options.csv_utf8_bom = false;
+            project.target_options.has_header_row = Some(false);
+            project.graph.nodes.insert(
+                4,
+                Node::Const {
+                    value: Value::String("ok|".into()),
+                },
+            );
+        }
         let project_path = directory.0.join(format!("{mode}.json"));
         std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
         for language in ["rust", "csharp"] {
@@ -152,6 +162,9 @@ fn complete_csv_documents_compile_and_execute_in_both_backends() -> TestResult<(
                 .arg(&project_path)
                 .arg("--out")
                 .arg(&output);
+            if mode == "raw" {
+                command.arg("--raw-delimited-crlf");
+            }
             if language == "rust" {
                 command
                     .arg("--rust-runtime-path")
@@ -293,6 +306,38 @@ fn csv_document_artifacts_preserve_existing_files_and_exact_runtime_sources() ->
             .contents,
         runtime
     );
+    assert_eq!(
+        emitted
+            .files()
+            .iter()
+            .find(|f| f.path.as_str() == "Runtime/FerruleCsv.cs")
+            .unwrap()
+            .contents,
+        std::fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../runtime/csharp/Ferrule.Runtime/FerruleCsv.cs")
+        )?
+    );
+    let mut raw_policy = policy.clone();
+    raw_policy.target.quote_disabled = true;
+    raw_policy.target.raw_delimited_crlf = true;
+    let raw = codegen_csharp::emit_with_csv_document_adapters(&program, &raw_policy)?;
+    assert_eq!(
+        raw.files()
+            .iter()
+            .map(|f| f.path.as_str())
+            .collect::<Vec<_>>(),
+        emitted
+            .files()
+            .iter()
+            .map(|f| f.path.as_str())
+            .collect::<Vec<_>>()
+    );
+    for (before, after) in emitted.files().iter().zip(raw.files()) {
+        if before.path.as_str() != "GeneratedMapping.Csv.cs" {
+            assert_eq!(before, after);
+        }
+    }
 
     let options = codegen_rust::Options {
         package_name: "csv_document_inventory".into(),
@@ -383,5 +428,58 @@ fn csv_document_admission_rejects_omitted_endpoints_and_options_before_publicati
             assert!(!output.exists());
         }
     }
+    Ok(())
+}
+
+#[test]
+fn raw_delimited_policy_requires_disabled_quotes_before_publication() -> TestResult<()> {
+    let directory = TempDir::new("raw_delimited_refusals")?;
+    let project = document_project(false, false);
+    let path = directory.0.join("quoted.json");
+    std::fs::write(&path, serde_json::to_vec(&project)?)?;
+    for (name, backend) in [
+        (
+            "rust",
+            GenerateTarget::Rust {
+                runtime_path: Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime"),
+            },
+        ),
+        ("csharp", GenerateTarget::CSharp),
+    ] {
+        let output = directory.0.join(name);
+        let error = cli::generate_project_with_raw_delimited_document_adapters(
+            &path,
+            &output,
+            backend.clone(),
+        )
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("requires disabled quoting"),
+            "{error}"
+        );
+        assert!(!output.exists());
+        std::fs::create_dir(&output)?;
+        std::fs::write(output.join("keep.txt"), b"existing output")?;
+        assert!(
+            cli::generate_project_with_raw_delimited_document_adapters(&path, &output, backend)
+                .is_err()
+        );
+        assert_eq!(std::fs::read(output.join("keep.txt"))?, b"existing output");
+    }
+    let result = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .args([
+            "generate",
+            "--raw-delimited-crlf",
+            "--language",
+            "csharp",
+            "--project",
+        ])
+        .arg(&path)
+        .arg("--out")
+        .arg(directory.0.join("missing-csv-flag"))
+        .output()?;
+    assert!(!result.status.success());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("--csv-document-adapters"));
+    assert!(!directory.0.join("missing-csv-flag").exists());
     Ok(())
 }
