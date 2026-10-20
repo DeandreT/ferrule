@@ -181,6 +181,21 @@ public sealed class FerruleExecutionContext
     public FerruleValue ResolveRuntimeParameter(uint node, string name, FerruleScalarType expected) =>
         ResolveParameter(this, node, name, expected);
 
+    /// <summary>Resolves filename text without a source or preview fallback; performs no I/O.</summary>
+    public string ResolvePrimaryFilename(uint node, string name)
+    {
+        var value = ResolveRuntimeParameter(node, name, FerruleScalarType.String);
+        if (value.Kind != FerruleValueKind.String)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.PrimaryFilenameType,
+                $"primary filename node {node} must produce a string, got {value.Kind}",
+                node: node,
+                foundKind: value.Kind);
+        }
+        return value.StringValue;
+    }
+
     internal static FerruleValue ResolveParameter(
         FerruleExecutionContext? context,
         uint node,

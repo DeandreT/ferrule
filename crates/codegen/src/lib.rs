@@ -11,6 +11,7 @@ mod csv_json_boundary;
 mod csv_output;
 mod csv_x12_boundary;
 mod diagnostic;
+mod document_program;
 mod embedded_schema;
 mod join;
 mod json5_boundary;
@@ -39,6 +40,9 @@ pub use csv_x12_boundary::{
     prepare_csv_x12_project_boundary,
 };
 pub use diagnostic::{Diagnostic, LowerError, ScopeFeature, UnsupportedNodeKind};
+pub use document_program::{
+    DocumentLowerError, DocumentProgram, PrimaryFilenamePlan, lower_document,
+};
 pub use embedded_schema::{
     EmbeddedSchemaError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_EMBEDDED_XML_SCHEMA_BYTES,
     serialize_embedded_schema,
