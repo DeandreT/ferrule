@@ -1,0 +1,45 @@
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static void Require(bool condition) { if (!condition) throw new Exception("filename assertion failed"); }
+static FerruleExecutionContext Context(FerruleValue value) => FerruleExecutionContext.WithParameters(
+    "authored.mapping", new FerruleRuntimeParameters(new[] { KeyValuePair.Create("Input", value) }));
+static FerruleRuntimeException Error(FerruleRuntimeError expected, Action action)
+{
+    try { action(); }
+    catch (FerruleRuntimeException e) { Require(e.Error == expected); return e; }
+    throw new Exception("expected filename refusal");
+}
+var absent = new FerruleExecutionContext("authored.mapping");
+if (args[0] == "literal")
+{
+    Require(GeneratedMapping.EvaluatePrimaryFilename(absent) == " ./input-雪-\"*.csv ");
+}
+else
+{
+    var missing = Error(FerruleRuntimeError.MissingRuntimeParameter, () => GeneratedMapping.EvaluatePrimaryFilename(absent));
+    Require(missing.Node == 17 && missing.RuntimeParameter == "Input");
+    foreach (var (value, expected) in new[] {
+        (FerruleValue.FromString(" ./chosen-雪-*.csv "), " ./chosen-雪-*.csv "),
+        (FerruleValue.FromString(""), ""),
+        (FerruleValue.FromInt64(42), "42"),
+        (FerruleValue.FromBoolean(false), "false"),
+        (FerruleValue.FromDouble(2.5), "2.5"),
+    }) Require(GeneratedMapping.EvaluatePrimaryFilename(Context(value)) == expected);
+    foreach (var value in new[] { FerruleValue.Null, FerruleValue.JsonNull, FerruleValue.XmlNil })
+    {
+        var error = Error(FerruleRuntimeError.PrimaryFilenameType, () => GeneratedMapping.EvaluatePrimaryFilename(Context(value)));
+        Require(error.Node == 17 && error.FoundKind == value.Kind);
+    }
+    var bad = Error(FerruleRuntimeError.RuntimeParameterType, () => GeneratedMapping.EvaluatePrimaryFilename(Context(FerruleValue.FromDouble(double.NaN))));
+    Require(bad.Node == 17 && bad.RuntimeParameter == "Input" && bad.ExpectedScalarType == FerruleScalarType.String && bad.FoundKind == FerruleValueKind.Double);
+}
+var parameters = new FerruleRuntimeParameters(new[] {
+    KeyValuePair.Create("Input", FerruleValue.FromString("selected.csv")),
+    KeyValuePair.Create("Output", FerruleValue.FromString("mapped")),
+});
+var context = FerruleExecutionContext.WithParameters("authored.mapping", parameters);
+using var output = JsonDocument.Parse(GeneratedMapping.ExecuteJson("{}", context));
+Require(output.RootElement.EnumerateObject().Count() == 1 && output.RootElement.GetProperty("Value").GetString() == "mapped");
+Console.WriteLine("primary filename cases passed");

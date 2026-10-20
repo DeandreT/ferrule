@@ -1,0 +1,47 @@
+use std::path::Path;
+use codegen_runtime::{ExecutionContext, RuntimeError, RuntimeParameters, Value, field, group, scalar};
+use primary_filename_fixture::{evaluate_primary_filename, execute_with_context};
+
+fn main() {
+    let literal = std::env::args().nth(1).as_deref() == Some("literal");
+    let absent = ExecutionContext::new(Path::new("authored.mapping"));
+    if literal {
+        assert_eq!(evaluate_primary_filename(&absent).unwrap(), " ./input-雪-\"*.csv ");
+    } else {
+        assert_eq!(evaluate_primary_filename(&absent), Err(RuntimeError::MissingRuntimeParameter {
+            node: 17, name: "Input".into(),
+        }));
+        for (value, expected) in [
+            (Value::String(" ./chosen-雪-*.csv ".into()), " ./chosen-雪-*.csv "),
+            (Value::String(String::new()), ""),
+            (Value::Int(42), "42"),
+            (Value::Bool(false), "false"),
+            (Value::Float(2.5), "2.5"),
+        ] {
+            let mut parameters = RuntimeParameters::new();
+            parameters.insert("Input", value).unwrap();
+            let context = absent.with_parameters(&parameters);
+            assert_eq!(evaluate_primary_filename(&context).unwrap(), expected);
+        }
+        for value in [Value::Null, Value::json_null(), Value::xml_nil()] {
+            let found = value.type_name();
+            let mut parameters = RuntimeParameters::new();
+            parameters.insert("Input", value).unwrap();
+            assert_eq!(evaluate_primary_filename(&absent.with_parameters(&parameters)),
+                Err(RuntimeError::PrimaryFilenameType { node: 17, found }));
+        }
+        let mut bad = RuntimeParameters::new();
+        bad.insert("Input", Value::Float(f64::NAN)).unwrap();
+        assert_eq!(evaluate_primary_filename(&absent.with_parameters(&bad)),
+            Err(RuntimeError::RuntimeParameterType { node: 17, name: "Input".into(),
+                expected: codegen_runtime::ScalarType::String, found: "float" }));
+    }
+    // Pure mapping is still a separate operation, with a caller-supplied instance.
+    let mut parameters = RuntimeParameters::new();
+    parameters.insert("Input", Value::String("selected.csv".into())).unwrap();
+    parameters.insert("Output", Value::String("mapped".into())).unwrap();
+    let context = absent.with_parameters(&parameters);
+    assert_eq!(execute_with_context(&group([]), &context).unwrap(),
+        group([field("Value", scalar(Value::String("mapped".into())))]));
+    println!("primary filename cases passed");
+}
