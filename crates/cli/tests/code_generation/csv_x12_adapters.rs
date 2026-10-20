@@ -183,6 +183,7 @@ fn csv_x12_adapters_compiled_complete_oracles() -> TestResult<()> {
         expected.extend(X12_PATHS.into_iter().map(str::to_owned));
         expected.insert("GeneratedMapping.CsvX12.cs".into());
         expected.insert("Runtime/FerruleCsvInput.cs".into());
+        expected.insert("Runtime/FerruleCsvSource.cs".into());
         let actual = emitted
             .iter()
             .map(|(path, _)| path.clone())
