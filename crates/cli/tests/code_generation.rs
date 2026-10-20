@@ -14,6 +14,8 @@ use mapping::{Binding, FunctionId, Graph, Node, Project, Scope, ScopeIteration, 
 mod adjacency_tree;
 #[path = "code_generation/aggregates.rs"]
 mod aggregates;
+#[path = "code_generation/basic_owned_adjacency_tree.rs"]
+mod basic_owned_adjacency_tree;
 #[path = "code_generation/basic_owned_failure_sources.rs"]
 mod basic_owned_failure_sources;
 #[path = "code_generation/basic_owned_group_adjacent_by.rs"]
