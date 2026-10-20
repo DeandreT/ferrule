@@ -34,6 +34,8 @@ mod basic_owned_json_adapters;
 mod basic_owned_nested_phases;
 #[path = "code_generation/basic_owned_path_hierarchy.rs"]
 mod basic_owned_path_hierarchy;
+#[path = "code_generation/basic_owned_recursive_collect.rs"]
+mod basic_owned_recursive_collect;
 #[path = "code_generation/basic_owned_row_failures.rs"]
 mod basic_owned_row_failures;
 #[path = "code_generation/basic_owned_sequence_item_at.rs"]
