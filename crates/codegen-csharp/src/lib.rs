@@ -259,6 +259,18 @@ pub fn emit_with_basic_owned_recursive_collect(
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits SequenceExists over the four pure producers beside ItemAt and the
+/// By/AdjacentBy/StartingWith/EndingWith controls. Producer arguments use the receiving
+/// context; each reached predicate item gets a copied paired view with one
+/// lexical item frame. Owned failure predicates and older companions stay closed.
+pub fn emit_with_basic_owned_sequence_exists(program: &Program) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_sequence_exists(program)?;
+    codegen::validate_basic_owned_sequence_exists_emission(program)?;
+    let generated_mapping =
+        owned_basic::render_public_basic_owned_sequence_exists_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,
@@ -366,6 +378,8 @@ mod tests {
     mod owned_path_hierarchy;
     #[path = "owned_recursive_collect.rs"]
     mod owned_recursive_collect;
+    #[path = "owned_sequence_exists.rs"]
+    mod owned_sequence_exists;
     use ::mapping::FunctionId;
     use codegen::{
         AggregateFunction, Binding, Expression, ExpressionNode, FailureIteration, FailureRule,

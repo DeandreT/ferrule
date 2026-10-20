@@ -38,6 +38,8 @@ mod basic_owned_path_hierarchy;
 mod basic_owned_recursive_collect;
 #[path = "code_generation/basic_owned_row_failures.rs"]
 mod basic_owned_row_failures;
+#[path = "code_generation/basic_owned_sequence_exists.rs"]
+mod basic_owned_sequence_exists;
 #[path = "code_generation/basic_owned_sequence_item_at.rs"]
 mod basic_owned_sequence_item_at;
 #[path = "code_generation/collection_find.rs"]
@@ -826,6 +828,7 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "GeneratedTargetBuilder.cs",
         "Runtime/FerruleAdjacencyTree.cs",
         "Runtime/FerruleAggregates.cs",
+        "Runtime/FerruleBasicGeneratedItems.cs",
         "Runtime/FerruleBasicGroupBy.cs",
         "Runtime/FerruleDelimitedText.cs",
         "Runtime/FerruleDynamicDocuments.cs",

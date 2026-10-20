@@ -108,12 +108,24 @@ pub(crate) fn render_public_basic_owned_recursive_collect_source(
     )
 }
 
+pub(crate) fn render_public_basic_owned_sequence_exists_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::GroupEndingWith,
+        SequenceItemAtPolicy::BasicScalarProducersWithExists,
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
     Closed,
     BasicScalarProducers,
     /// The four scalar producers plus the owned recursive collection walk.
     BasicScalarAndOwnedRecursiveProducers,
+    /// Also renders SequenceExists over the same pure producers.
+    BasicScalarProducersWithExists,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -206,6 +218,9 @@ fn render_public_basic_owned_source_policy(
     // The common profile closes every scope, retained expression and failure
     // domain to precisely the static Group/Scalar scalar-expression subset.
     match (profile, item_at) {
+        (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducersWithExists) => {
+            codegen::validate_basic_owned_sequence_exists_emission(program)?;
+        }
         (Profile::PathHierarchy, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_path_hierarchy_emission(program)?;
         }
@@ -290,6 +305,14 @@ fn render_public_basic_owned_source_policy(
             _ => None,
         })
         .collect::<BTreeSet<_>>();
+    let basic_skipped = unread_exists_items(program, &basic_retained)
+        .into_iter()
+        .chain(item_at_items.iter().copied())
+        .collect::<BTreeSet<_>>();
+    let legacy_skipped = unread_exists_items(program, &legacy_retained)
+        .into_iter()
+        .chain(item_at_items.iter().copied())
+        .collect::<BTreeSet<_>>();
     let mut basic_call_targets = BTreeSet::from(["scope_root".to_owned()]);
     basic_call_targets.extend(
         program
@@ -313,16 +336,25 @@ fn render_public_basic_owned_source_policy(
     );
     if item_at != SequenceItemAtPolicy::Closed {
         // Demand includes both paired functions and ordinary legacy islands.
-        // Add only the pure helpers actually called, without generated contexts.
+        // Add only the pure helpers actually called; only Exists owns items.
         let mut imports = BTreeSet::new();
         for node in &program.expressions {
-            if (basic_retained.contains(&node.id) || legacy_retained.contains(&node.id))
-                && let Expression::SequenceItemAt { sequence, .. } = &node.expression
-            {
-                imports.extend(["aggregate", "AggregateFunction"]);
-                if let Some(helper) = scalar_sequence::runtime_helper(sequence) {
-                    imports.insert(helper);
+            if !(basic_retained.contains(&node.id) || legacy_retained.contains(&node.id)) {
+                continue;
+            }
+            let sequence = match &node.expression {
+                Expression::SequenceItemAt { sequence, .. } => {
+                    imports.extend(["aggregate", "AggregateFunction"]);
+                    sequence
                 }
+                Expression::SequenceExists { sequence, .. } => {
+                    imports.insert("GeneratedItems");
+                    sequence
+                }
+                _ => continue,
+            };
+            if let Some(helper) = scalar_sequence::runtime_helper(sequence) {
+                imports.insert(helper);
             }
         }
         if !imports.is_empty() {
@@ -367,7 +399,7 @@ fn render_public_basic_owned_source_policy(
         );
     source.push_str(&entries);
     for node in &program.expressions {
-        if basic_retained.contains(&node.id) && !item_at_items.contains(&node.id) {
+        if basic_retained.contains(&node.id) && !basic_skipped.contains(&node.id) {
             source.push_str(&render_expression_in_context_with_scalar_item_at(
                 node.id,
                 &node.expression,
@@ -406,7 +438,7 @@ fn render_public_basic_owned_source_policy(
             source.push_str("use codegen_runtime::GroupedItems;\n");
         }
         for node in &program.expressions {
-            if legacy_retained.contains(&node.id) && !item_at_items.contains(&node.id) {
+            if legacy_retained.contains(&node.id) && !legacy_skipped.contains(&node.id) {
                 source.push_str(&render_expression_in_context_with_scalar_item_at(
                     node.id,
                     &node.expression,
@@ -462,6 +494,9 @@ fn render_public_basic_owned_source_policy(
         }
     }
     let plan = match (profile, item_at) {
+        (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducersWithExists) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_exists(program)?
+        }
         (Profile::PathHierarchy, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy(program)?
         }
@@ -540,6 +575,31 @@ pub fn execute_selected_with_basic_owned_sources<'name, 'src>(
 "#,
     );
     Ok(source)
+}
+
+/// Exists item declarations that no rendered expression reads. Its owning
+/// consumer retains the declaration but never calls it.
+fn unread_exists_items(program: &Program, retained: &BTreeSet<NodeId>) -> BTreeSet<NodeId> {
+    let mut items = BTreeSet::new();
+    let mut read = BTreeSet::new();
+    for node in &program.expressions {
+        if !retained.contains(&node.id) {
+            continue;
+        }
+        match &node.expression {
+            Expression::SequenceExists {
+                sequence,
+                predicate,
+            } => {
+                // The declaration itself is not a read; the predicate may be one.
+                items.insert(sequence.item());
+                read.extend(sequence.inputs().chain([*predicate]));
+            }
+            expression => read.extend(expression_inputs(expression)),
+        }
+    }
+    items.retain(|item| !read.contains(item));
+    items
 }
 
 fn local_owned(program: &Program, scope: &TargetScope) -> bool {

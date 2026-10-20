@@ -21,6 +21,7 @@ pub(crate) use windows::render_public_basic_owned_group_starting_with_source;
 pub(crate) use windows::render_public_basic_owned_path_hierarchy_source;
 pub(crate) use windows::render_public_basic_owned_recursive_collect_source;
 pub(crate) use windows::render_public_basic_owned_row_failure_source;
+pub(crate) use windows::render_public_basic_owned_sequence_exists_source;
 pub(crate) use windows::render_public_basic_owned_sequence_item_at_source;
 pub(crate) use windows::render_public_basic_owned_window_source;
 #[path = "owned_basic_group_by.rs"]

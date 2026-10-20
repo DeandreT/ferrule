@@ -23,6 +23,8 @@ enum SequenceItemAtPolicy {
     BasicScalarProducers,
     /// The four scalar producers plus the owned recursive collection walk.
     BasicScalarAndOwnedRecursiveProducers,
+    /// Also admits SequenceExists over the same pure producers.
+    BasicScalarProducersWithExists,
 }
 
 #[derive(Clone, Copy)]
@@ -119,6 +121,14 @@ impl TargetExtension {
         adjacency_tree: false,
     };
 
+    const SEQUENCE_EXISTS: Self = Self {
+        controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
+        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducersWithExists,
+        failure_sources: false,
+        path_hierarchy: false,
+        adjacency_tree: false,
+    };
+
     const GROUP_STARTING_WITH: Self = Self {
         controls: TargetControls::ByAndAdjacentAndStarting,
         sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
@@ -208,6 +218,10 @@ impl TargetExtension {
         self.sequence_item_at != SequenceItemAtPolicy::Closed
     }
 
+    fn permits_sequence_exists(self) -> bool {
+        self.sequence_item_at == SequenceItemAtPolicy::BasicScalarProducersWithExists
+    }
+
     fn permits_owned_recursive_collect(self) -> bool {
         self.sequence_item_at == SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers
     }
@@ -251,7 +265,9 @@ fn render_basic_owned_mapping_profile(
 ) -> Result<String, EmitError> {
     let allow_scoped_groups = extension.controls.has_scoped_groups();
     // Select the control/consumer pair before the older ItemAt-only companion.
-    if extension.permits_owned_recursive_collect() {
+    if extension.permits_sequence_exists() {
+        codegen::validate_program_with_basic_owned_sequence_exists(program)?;
+    } else if extension.permits_owned_recursive_collect() {
         codegen::validate_program_with_basic_owned_recursive_collect(program)?;
     } else if extension.adjacency_tree {
         codegen::validate_program_with_basic_owned_adjacency_tree(program)?;
@@ -734,7 +750,9 @@ fn validate_private_inventory(
             false,
         )?;
     }
-    if extension.permits_owned_recursive_collect() {
+    if extension.permits_sequence_exists() {
+        codegen::validate_basic_owned_sequence_exists_emission(program)?;
+    } else if extension.permits_owned_recursive_collect() {
         codegen::validate_basic_owned_recursive_collect_emission(program)?;
     } else if extension.adjacency_tree {
         codegen::validate_basic_owned_adjacency_tree_emission(program)?;
@@ -795,6 +813,11 @@ fn validate_private_inventory(
         let reason = match &node.expression {
             Expression::SequenceItemAt { sequence, .. }
                 if extension.permits_sequence_item_at() && extension.item_at_sequence(sequence) =>
+            {
+                continue;
+            }
+            Expression::SequenceExists { sequence, .. }
+                if extension.permits_sequence_exists() && extension.item_at_sequence(sequence) =>
             {
                 continue;
             }
@@ -1131,7 +1154,9 @@ fn render_checked_basic_owned_mapping_profile(
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = if extension.permits_owned_recursive_collect() {
+    let plan = if extension.permits_sequence_exists() {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_exists(program)?
+    } else if extension.permits_owned_recursive_collect() {
         codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_collect(program)?
     } else if extension.adjacency_tree {
         codegen::legacy_named_input_admission_plan_with_basic_owned_adjacency_tree(program)?
@@ -1636,6 +1661,22 @@ pub(crate) fn render_public_basic_owned_recursive_collect_mapping(
         true,
         true,
         TargetExtension::RECURSIVE_COLLECT,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_sequence_exists_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::SEQUENCE_EXISTS,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)

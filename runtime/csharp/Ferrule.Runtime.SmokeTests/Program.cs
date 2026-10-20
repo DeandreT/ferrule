@@ -101,6 +101,8 @@ internal static partial class Program
             ("owned IntoBlocks literal blocks for every owner", BasicOwnedBlocksLiteralRunsForEveryOwner),
             ("owned IntoBlocks phases, retention and windows", BasicOwnedBlocksPhasesRetentionAndWindows),
             ("owned IntoBlocks empty cohort and callback errors", BasicOwnedBlocksEmptyCohortAndCallbackErrors),
+            ("owned generated items keep exact owned reads", BasicGeneratedItemsKeepExactOwnedReads),
+            ("owned generated items are lazy and missing owners fail when read", BasicGeneratedItemsAreLazyAndMissingOwnersFailWhenRead),
             ("named source contexts", NamedSourceContexts),
             ("mapping failures", MappingFailures),
             ("runtime execution context", RuntimeExecutionContext),

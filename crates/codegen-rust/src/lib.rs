@@ -453,6 +453,27 @@ pub fn emit_with_basic_owned_recursive_collect(
     .map_err(EmitError::from)
 }
 
+/// Emit SequenceExists over the four pure producers beside ItemAt and the
+/// qualified By/AdjacentBy/StartingWith/EndingWith profile. Each reached predicate item
+/// copies the receiving paired view; existing emitters keep their gates.
+pub fn emit_with_basic_owned_sequence_exists(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_sequence_exists(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_sequence_exists_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_sequence_exists_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.
 /// Flat row/schema and literal dialect eligibility are checked before artifacts
 /// exist. The ordinary mapper, JSON/XML adapters, and manifest remain intact.
@@ -2102,7 +2123,44 @@ fn render_expression_in_context_with_scalar_item_at(
             Expression::SequenceExists {
                 sequence,
                 predicate,
+            } if scalar_item_at => {
+                // Producer arguments use the receiving context. Each reached
+                // item copies that view with one appended lexical item frame;
+                // Basic copies are admitted against the caller's policy.
+                let mut body = String::from("{\n");
+                if !scalar_sequence::render_values(sequence, "        ", &mut body, &|node| {
+                    call_expression(node, "context")
+                }) {
+                    return Err(codegen::owned_expression_emission_error(
+                        codegen::OwnedSourceNamespace::Main,
+                        id,
+                        expression,
+                    )
+                    .into());
+                }
+                let reached = if basic {
+                    "            let item_context = item_context?;\n"
+                } else {
+                    ""
+                };
+                let predicate_call = call_expression(*predicate, "&item_context");
+                body.push_str(&format!(
+                "        let generated_items = GeneratedItems::new(sequence_values);\n        for item_context in context.generated_item_contexts(&generated_items) {{\n{reached}            let predicate = {predicate_call}?;\n            if require_bool({predicate}, predicate)? {{\n                return Ok(Value::Bool(true));\n            }}\n        }}\n        Ok(Value::Bool(false))\n    }}"
+            ));
+                body
+            }
+            Expression::SequenceExists {
+                sequence,
+                predicate,
             } => {
+                if basic {
+                    return Err(codegen::owned_expression_emission_error(
+                        codegen::OwnedSourceNamespace::Main,
+                        id,
+                        expression,
+                    )
+                    .into());
+                }
                 let mut body = String::from("{\n");
                 render_generated_values(sequence, "        ", &mut body)?;
                 body.push_str(&format!(
