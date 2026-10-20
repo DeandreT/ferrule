@@ -66,6 +66,7 @@ pub enum RuntimeError {
     CsvFormatRequired {
         side: DataSide,
     },
+    XmlSchemaHintsFormatRequired,
     CsvRepairDependency {
         side: DataSide,
         dependency: mapping::CsvTextRepairDependency,
@@ -112,6 +113,8 @@ impl fmt::Display for RuntimeError {
                     "the project {side} has CSV settings; select the CSV format"
                 )
             }
+            Self::XmlSchemaHintsFormatRequired => formatter
+                .write_str("the project target requests XML schema hints; select the XML format"),
             Self::CsvTargetNotRepeated => {
                 formatter.write_str("mapping did not produce a repeating row set for a CSV target")
             }
@@ -226,12 +229,25 @@ pub fn serialize_target(
         format,
         DataSide::Target,
     )?;
+    validate_xml_schema_hint_format(project, format)?;
+    project
+        .target_options
+        .validate_xml_schema_hint_options(true)
+        .map_err(|message| RuntimeError::InvalidProject(vec![message]))?;
     match format {
-        DataFormat::Xml => format_xml::to_string(&project.target, target).map_err(|error| {
-            RuntimeError::Serialize {
-                format,
-                message: error.to_string(),
-            }
+        // Hints are emitted as root attributes only; their locations are
+        // never resolved, so browser output needs no network access.
+        DataFormat::Xml => format_xml::to_string_with_options(
+            &project.target,
+            target,
+            &format_xml::XmlWriteOptions {
+                schema_hints: project.target_options.xml_schema_hints.clone(),
+                ..Default::default()
+            },
+        )
+        .map_err(|error| RuntimeError::Serialize {
+            format,
+            message: error.to_string(),
         }),
         DataFormat::Json => {
             let serialized = if project.target_options.json_lines {
@@ -297,6 +313,7 @@ pub fn run(
         target_format,
         DataSide::Target,
     )?;
+    validate_xml_schema_hint_format(project, target_format)?;
     let issues: Vec<String> = engine::validate(project)
         .into_iter()
         .map(|issue| issue.to_string())
@@ -323,6 +340,16 @@ fn reject_xbrl_extra_sources(project: &Project) -> Result<(), RuntimeError> {
     Ok(())
 }
 
+fn validate_xml_schema_hint_format(
+    project: &Project,
+    format: DataFormat,
+) -> Result<(), RuntimeError> {
+    if project.target_options.xml_schema_hints.is_some() && format != DataFormat::Xml {
+        return Err(RuntimeError::XmlSchemaHintsFormatRequired);
+    }
+    Ok(())
+}
+
 fn validate_xbrl_format(
     has_boundary: bool,
     format: DataFormat,
@@ -334,6 +361,9 @@ fn validate_xbrl_format(
         _ => Ok(()),
     }
 }
+
+#[cfg(test)]
+mod xml_schema_hint_tests;
 
 #[cfg(test)]
 mod tests {

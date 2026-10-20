@@ -140,7 +140,7 @@ fn fixture() -> (DemoApp, egui::Context) {
     let mut app = DemoApp::new();
     app.install_project(project("one"));
     app.source_text = SOURCE.into();
-    app.output = "held output".into();
+    app.output = Some(MappedOutput::new("held output".into(), DataFormat::Json));
     app.live_run = false;
     app.run_pending = false;
     app.history.clear();
@@ -154,7 +154,11 @@ fn whole(project: &Project) -> String {
     project_document::to_json(project).expect("complete finite fixture")
 }
 
-fn frame(app: &mut DemoApp, context: &egui::Context, events: Vec<egui::Event>) -> egui::FullOutput {
+pub(super) fn frame(
+    app: &mut DemoApp,
+    context: &egui::Context,
+    events: Vec<egui::Event>,
+) -> egui::FullOutput {
     input_frame(
         app,
         context,
@@ -195,7 +199,7 @@ fn input_frame(
     output
 }
 
-fn settle(app: &mut DemoApp, context: &egui::Context) -> egui::FullOutput {
+pub(super) fn settle(app: &mut DemoApp, context: &egui::Context) -> egui::FullOutput {
     let mut output = frame(app, context, Vec::new());
     for _ in 0..3 {
         output = frame(app, context, Vec::new());
@@ -203,7 +207,7 @@ fn settle(app: &mut DemoApp, context: &egui::Context) -> egui::FullOutput {
     output
 }
 
-fn painted(output: &egui::FullOutput) -> Vec<(String, egui::Rect, egui::Rect)> {
+pub(super) fn painted(output: &egui::FullOutput) -> Vec<(String, egui::Rect, egui::Rect)> {
     fn visit(
         shape: &egui::epaint::Shape,
         clip: egui::Rect,
@@ -344,7 +348,8 @@ fn browser_history_real_constant_edits_coalesce_and_buttons_restore_complete_pro
     output(&app, "two!");
     assert_eq!(app.source_text, SOURCE);
     assert_eq!(
-        app.output, "held output",
+        app.output_download(),
+        Some(("mapped-output.json".to_owned(), "held output")),
         "live-off does not rewrite output"
     );
     assert!(app.run_pending);
@@ -526,10 +531,16 @@ fn browser_history_keyboard_keeps_text_undo_drafts_and_buffers_separate_from_mod
     frame(&mut app, &context, vec![command(egui::Key::Y, false)]);
     assert_eq!(whole(&app.project), whole(&project("two")));
     assert_eq!(app.source_text, SOURCE);
-    assert_eq!(app.output, "held output");
+    assert_eq!(
+        app.output.as_ref().map(MappedOutput::text),
+        Some("held output")
+    );
     app.live_run = true;
     frame(&mut app, &context, Vec::new());
-    assert_eq!(app.output, "{\n  \"Value\": \"two\"\n}\n");
+    assert_eq!(
+        app.output.as_ref().map(MappedOutput::text),
+        Some("{\n  \"Value\": \"two\"\n}\n")
+    );
     assert!(!app.run_pending);
     click_label(&mut app, &context, "Undo");
     replace_constant(&mut app, &context, "one", "six");
