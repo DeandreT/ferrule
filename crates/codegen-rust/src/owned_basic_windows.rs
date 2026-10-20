@@ -76,6 +76,17 @@ pub(crate) fn render_public_basic_owned_path_hierarchy_source(
     )
 }
 
+/// Owned path-hierarchy composition plus owned adjacency-tree construction.
+pub(crate) fn render_public_basic_owned_adjacency_tree_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::AdjacencyTree,
+        SequenceItemAtPolicy::BasicScalarProducers,
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
     Closed,
@@ -94,6 +105,8 @@ pub(super) enum Profile {
     FailureSources,
     /// FailureSources controls plus owned path-hierarchy construction.
     PathHierarchy,
+    /// PathHierarchy plus owned adjacency-tree construction.
+    AdjacencyTree,
 }
 
 impl Profile {
@@ -106,6 +119,14 @@ impl Profile {
                 | Self::GroupEndingWith
                 | Self::FailureSources
                 | Self::PathHierarchy
+                | Self::AdjacencyTree
+        )
+    }
+
+    fn has_failure_sources(self) -> bool {
+        matches!(
+            self,
+            Self::FailureSources | Self::PathHierarchy | Self::AdjacencyTree
         )
     }
 
@@ -119,6 +140,7 @@ impl Profile {
                     | Self::GroupEndingWith
                     | Self::FailureSources
                     | Self::PathHierarchy
+                    | Self::AdjacencyTree
             ),
             Some(GroupingPlan::StartingWith { .. }) => matches!(
                 self,
@@ -126,10 +148,14 @@ impl Profile {
                     | Self::GroupEndingWith
                     | Self::FailureSources
                     | Self::PathHierarchy
+                    | Self::AdjacencyTree
             ),
             Some(GroupingPlan::EndingWith { .. }) => matches!(
                 self,
-                Self::GroupEndingWith | Self::FailureSources | Self::PathHierarchy
+                Self::GroupEndingWith
+                    | Self::FailureSources
+                    | Self::PathHierarchy
+                    | Self::AdjacencyTree
             ),
             _ => false,
         }
@@ -159,6 +185,9 @@ fn render_public_basic_owned_source_policy(
         }
         (Profile::FailureSources, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_failure_source_emission(program)?;
+        }
+        (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::validate_basic_owned_adjacency_tree_emission(program)?;
         }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_group_starting_with_emission(program)?;
@@ -321,15 +350,13 @@ fn render_public_basic_owned_source_policy(
         }
     }
     if !program.failure_rules.is_empty() {
-        source.push_str(
-            &if matches!(profile, Profile::FailureSources | Profile::PathHierarchy) {
-                failure::render_basic_with_failure_sources(program)?
-            } else if primary_row_failures {
-                failure::render_basic_with_row_failures(program)?
-            } else {
-                failure::render_basic(program)?
-            },
-        );
+        source.push_str(&if profile.has_failure_sources() {
+            failure::render_basic_with_failure_sources(program)?
+        } else if primary_row_failures {
+            failure::render_basic_with_row_failures(program)?
+        } else {
+            failure::render_basic(program)?
+        });
     }
     if !legacy_scopes.is_empty() {
         source.push_str("#[allow(unused_imports)]\nuse codegen_runtime::{ScopeContext, sort_candidates, SortDirection, SequenceWindow, item_count, apply_sequence_windows};\n");
@@ -409,6 +436,9 @@ fn render_public_basic_owned_source_policy(
         (Profile::FailureSources, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_failure_sources(program)?
         }
+        (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_adjacency_tree(program)?
+        }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(
                 program,
@@ -475,6 +505,7 @@ fn local_owned(program: &Program, scope: &TargetScope) -> bool {
     if matches!(
         scope.construction,
         TargetConstruction::OwnedPathHierarchy { .. }
+            | TargetConstruction::OwnedAdjacencyTree { .. }
     ) || scope
         .iteration
         .as_ref()

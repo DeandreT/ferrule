@@ -1521,6 +1521,7 @@ impl Drop for TempDir {
     }
 }
 
+mod owned_adjacency_tree;
 mod owned_basic;
 mod owned_basic_group_adjacent_by;
 mod owned_basic_group_by;

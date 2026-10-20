@@ -64,6 +64,8 @@ internal static partial class Program
             ("lookup contexts", LookupContexts),
             ("path hierarchy legacy collection", PathHierarchyLegacyBuild),
             ("path hierarchy exact owned endpoints", PathHierarchyOwnedEndpoints),
+            ("adjacency tree legacy collection", AdjacencyTreeLegacyBuild),
+            ("adjacency tree exact owned endpoints", AdjacencyTreeOwnedEndpoints),
             ("dynamic source contexts", DynamicSourceContexts),
             ("dynamic target construction", DynamicTargetConstruction),
             ("collection-find contexts", CollectionFindContexts),

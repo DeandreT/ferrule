@@ -391,6 +391,27 @@ pub fn emit_with_basic_owned_failure_sources(
     .map_err(EmitError::from)
 }
 
+/// Emit an owned adjacency-tree row collection with the owned failure-source,
+/// EndingWith, scalar ItemAt and primary-row failure composition. Legacy trees
+/// keep the ordinary emitter; every older companion keeps refusing owned trees.
+pub fn emit_with_basic_owned_adjacency_tree(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_adjacency_tree(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_adjacency_tree_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_adjacency_tree_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.
 /// Flat row/schema and literal dialect eligibility are checked before artifacts
 /// exist. The ordinary mapper, JSON/XML adapters, and manifest remain intact.
@@ -826,7 +847,8 @@ fn expression_usage(
             } => {
                 pending.insert(*expression);
             }
-            TargetConstruction::AdjacencyTree { root, .. } => pending.extend(*root),
+            TargetConstruction::AdjacencyTree { root, .. }
+            | TargetConstruction::OwnedAdjacencyTree { root, .. } => pending.extend(*root),
             TargetConstruction::Group
             | TargetConstruction::CopyCurrentSource
             | TargetConstruction::XmlMixedContent { .. }
@@ -2886,6 +2908,41 @@ fn render_scope_item(
             .unwrap_or_else(|| "None".to_string());
         output.push_str(&format!(
             "{indent}let output = adjacency_tree(\n{indent}    {context},\n{indent}    AdjacencyTreeFields {{\n{indent}        collection: &[{collection}],\n{indent}        key: &[{key}],\n{indent}        parent: &[{parent}],\n{indent}        target_key: {},\n{indent}        target_children: {},\n{indent}    }},\n{indent}    {root},\n{indent})?;\n",
+            rust_string(target_key),
+            rust_string(target_children),
+        ));
+        return output;
+    }
+    if let TargetConstruction::OwnedAdjacencyTree {
+        collection,
+        key,
+        parent,
+        target_key,
+        target_children,
+        root,
+    } = &scope.construction
+    {
+        // Only paired Basic scopes render this construction: the owner is the
+        // exact stored endpoint and the root reads the receiving context.
+        let owner = match &collection.owner {
+            mapping::SourceOwner::Primary => "codegen_runtime::SourceOwnerRef::Primary".to_string(),
+            mapping::SourceOwner::Named { name } => {
+                format!(
+                    "codegen_runtime::SourceOwnerRef::Named({})",
+                    rust_string(name)
+                )
+            }
+        };
+        let root = root
+            .map(|root| {
+                format!("Some(expression_{root} as codegen_runtime::OwnedAdjacencyTreeRoot)")
+            })
+            .unwrap_or_else(|| "None".to_string());
+        output.push_str(&format!(
+            "{indent}let output = codegen_runtime::owned_adjacency_tree(\n{indent}    {context},\n{indent}    {owner},\n{indent}    codegen_runtime::AdjacencyTreeFields {{\n{indent}        collection: &[{}],\n{indent}        key: &[{}],\n{indent}        parent: &[{}],\n{indent}        target_key: {},\n{indent}        target_children: {},\n{indent}    }},\n{indent}    {root},\n{indent})?;\n",
+            render_string_path(&collection.path),
+            render_string_path(key),
+            render_string_path(parent),
             rust_string(target_key),
             rust_string(target_children),
         ));

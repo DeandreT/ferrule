@@ -202,7 +202,8 @@ fn scope_roots(scope: &TargetScope, roots: &mut Vec<NodeId>) {
             }
         }
         TargetConstruction::RecursiveFilter { predicate, .. } => roots.push(*predicate),
-        TargetConstruction::AdjacencyTree { root, .. } => roots.extend(root),
+        TargetConstruction::AdjacencyTree { root, .. }
+        | TargetConstruction::OwnedAdjacencyTree { root, .. } => roots.extend(root),
         TargetConstruction::Group
         | TargetConstruction::CopyCurrentSource
         | TargetConstruction::XmlMixedContent { .. }

@@ -235,6 +235,7 @@ fn validate_scope(
         ScopeConstruction::Scalar { value } => controls.push(*value),
         ScopeConstruction::RecursiveFilter { plan } => controls.push(plan.predicate()),
         ScopeConstruction::AdjacencyTree { plan } => controls.extend(plan.root()),
+        ScopeConstruction::OwnedAdjacencyTree { plan } => controls.extend(plan.root()),
         ScopeConstruction::Constructed
         | ScopeConstruction::CopyCurrentSource
         | ScopeConstruction::XmlMixedContent { .. }

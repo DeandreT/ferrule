@@ -73,6 +73,14 @@ pub(super) fn validate(
                 target_key: _,
                 target_children: _,
                 root: _,
+            }
+            | TargetConstruction::OwnedAdjacencyTree {
+                collection: _,
+                key: _,
+                parent: _,
+                target_key: _,
+                target_children: _,
+                root: _,
             } => return Err(refusal("construction")),
         }
         let SchemaKind::Group {

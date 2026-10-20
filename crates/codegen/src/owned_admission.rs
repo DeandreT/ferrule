@@ -169,6 +169,17 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_path_hierarchy(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plans the explicit owned adjacency-tree companion. Owned row collections,
+/// like other exact owned reads, never make an endpoint eagerly required; the
+/// composed path-hierarchy, failure-source, EndingWith and ItemAt environments
+/// are unchanged.
+pub fn legacy_named_input_admission_plan_with_basic_owned_adjacency_tree(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_adjacency_tree(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     admission_plan_with_primary_row_failures(program, false)
 }
@@ -528,6 +539,11 @@ impl<'a> Analysis<'a> {
                 collection, root, ..
             } => {
                 self.path(collection);
+                self.optional(Namespace::Main, current, *root);
+            }
+            // Exact endpoint rows never consume a legacy named alias; the root
+            // keeps the receiving context and its own expression demands.
+            TargetConstruction::OwnedAdjacencyTree { root, .. } => {
                 self.optional(Namespace::Main, current, *root);
             }
             // Exact endpoint reads never consume a legacy named alias.

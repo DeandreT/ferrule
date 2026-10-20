@@ -222,6 +222,7 @@ impl<'a> Admission<'a> {
                 || matches!(
                     scope.construction,
                     ScopeConstruction::OwnedPathHierarchy { .. }
+                        | ScopeConstruction::OwnedAdjacencyTree { .. }
                 );
             let mut ancestry = inherited_owned || own;
             let dynamic_scope = matches!(scope.source_selector(), Some(SourceSelectorRef::Legacy(path))
@@ -335,6 +336,14 @@ impl<'a> Admission<'a> {
                         ancestry,
                         plan.root(),
                     );
+                }
+                // Rows are an exact owned read in the receiving context; the
+                // root expression keeps that Basic parent context.
+                ScopeConstruction::OwnedAdjacencyTree { plan } => {
+                    let source = plan.collection();
+                    self.static_owner(&source.owner, &source.path, None, None, Some(&location))?;
+                    self.summary.used_owned = true;
+                    self.push(None, context, ancestry, plan.root());
                 }
                 _ => {}
             }
@@ -913,6 +922,7 @@ fn scope_demands_owned(project: &Project, scope: &Scope) -> bool {
             || matches!(
                 child.construction,
                 ScopeConstruction::OwnedPathHierarchy { .. }
+                    | ScopeConstruction::OwnedAdjacencyTree { .. }
             )
             || scope_demands_owned(project, child)
     })
@@ -954,11 +964,13 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
         return OwnedCapabilityContext::Concatenate;
     }
     match scope.construction {
-        // The owned hierarchy reads its collection through the receiving
-        // exact-owner context and evaluates no item, key or root expression.
+        // Owned hierarchies and trees read their collection through the
+        // receiving exact-owner context; a tree evaluates only its root there.
+        // Neither creates an item frame.
         ScopeConstruction::Constructed
         | ScopeConstruction::Scalar { .. }
-        | ScopeConstruction::OwnedPathHierarchy { .. } => OwnedCapabilityContext::Basic,
+        | ScopeConstruction::OwnedPathHierarchy { .. }
+        | ScopeConstruction::OwnedAdjacencyTree { .. } => OwnedCapabilityContext::Basic,
         ScopeConstruction::XmlMixedContent { .. } => OwnedCapabilityContext::XmlOperator,
         ScopeConstruction::RecursiveFilter { .. }
         | ScopeConstruction::PathHierarchy { .. }

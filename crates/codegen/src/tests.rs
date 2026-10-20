@@ -23,6 +23,7 @@ mod failures;
 mod filter_map_model;
 mod grouping;
 mod joins;
+mod owned_adjacency_tree;
 mod owned_admission;
 mod owned_failure_sources;
 mod owned_group_adjacent_by;

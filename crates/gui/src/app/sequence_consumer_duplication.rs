@@ -809,6 +809,7 @@ fn scope_inputs(scope: &Scope) -> Vec<NodeId> {
         ScopeConstruction::Scalar { value } => inputs.push(*value),
         ScopeConstruction::RecursiveFilter { plan } => inputs.push(plan.predicate()),
         ScopeConstruction::AdjacencyTree { plan } => inputs.extend(plan.root()),
+        ScopeConstruction::OwnedAdjacencyTree { plan } => inputs.extend(plan.root()),
         _ => {}
     }
     inputs

@@ -2599,6 +2599,35 @@ fn render_basic_scopes_profile<'a>(
                 output.push_str(&literal::string(value));
             }
             output.push_str(");\n    }\n");
+        } else if let TargetConstruction::OwnedAdjacencyTree {
+            collection,
+            key,
+            parent,
+            target_key,
+            target_children,
+            root,
+        } = scope.construction
+        {
+            // The exact stored owner selects the rows; key/parent are row-relative
+            // and the root reads this receiving context.
+            output.push_str(
+                "        return global::Ferrule.Runtime.FerruleAdjacencyTree.BuildOwned(\n            context,\n            ",
+            );
+            crate::owned_basic::render_owner(&collection.owner, output);
+            for path in [&collection.path, key, parent] {
+                output.push_str(",\n            ");
+                render_path(path, output);
+            }
+            for value in [target_key, target_children] {
+                output.push_str(",\n            ");
+                output.push_str(&literal::string(value));
+            }
+            output.push_str(",\n            ");
+            match root {
+                Some(root) => output.push_str(&format!("Node_{root}")),
+                None => output.push_str("null"),
+            }
+            output.push_str(");\n    }\n");
         } else if let TargetConstruction::Scalar {
             expression,
             target_domain,

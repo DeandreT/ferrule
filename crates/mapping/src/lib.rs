@@ -4,6 +4,7 @@
 //! saved/loaded.
 
 mod adjacency;
+mod adjacency_owned;
 mod csv_repair;
 mod document_project;
 pub mod document_project_file;
@@ -41,6 +42,7 @@ mod xbrl;
 mod xlsx_output;
 
 pub use adjacency::AdjacencyTreePlan;
+pub use adjacency_owned::OwnedAdjacencyTreePlan;
 pub use csv_repair::{CsvRuntimeDependency, CsvTextRepairCause, CsvTextRepairDependency};
 pub use document_project::{
     DocumentProject, DocumentProjectFormat, GlobalFilename, PrimaryFilenameError, PrimarySourcePlan,

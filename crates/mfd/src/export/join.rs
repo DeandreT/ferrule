@@ -893,6 +893,7 @@ fn collect_scope_aggregate_contexts(
         ScopeConstruction::Scalar { value } => roots.push(*value),
         ScopeConstruction::RecursiveFilter { plan } => roots.push(plan.predicate()),
         ScopeConstruction::AdjacencyTree { plan } => roots.extend(plan.root()),
+        ScopeConstruction::OwnedAdjacencyTree { plan } => roots.extend(plan.root()),
         ScopeConstruction::Constructed
         | ScopeConstruction::CopyCurrentSource
         | ScopeConstruction::XmlMixedContent { .. }
