@@ -1,0 +1,94 @@
+// Starting-only evidence adapter. Raw tree/error codecs are supplied unchanged
+// by the maintained host; this class implements envelopes and phase ordering only.
+internal static class StartingEvidence
+{
+    private static JsonNode J(object? value) => JsonSerializer.SerializeToNode(value)!;
+    internal static JsonNode Begin(string path, string directory, string[] args)
+    {
+        var raw = File.ReadAllText(path); var contract = JsonNode.Parse(raw)!;
+        if (contract["version"]!.GetValue<int>() != 2 || contract["engine"]!.GetValue<string>() != "csharp" ||
+            contract["output_directory"]!.GetValue<string>() != Path.GetFullPath(directory) ||
+            contract["program"]!["path"]!.GetValue<string>() != Path.GetFullPath(Environment.ProcessPath!) ||
+            contract["assembly"]!["path"]!.GetValue<string>() != typeof(StartingEvidence).Assembly.Location)
+            throw new InvalidOperationException("Bound direct C# host/contract mismatch.");
+        Write(directory, "RUN-CONTRACT.json", raw);
+        Write(directory, "HOST-IDENTITY.json", J(new {
+            program = Environment.ProcessPath, assembly = typeof(StartingEvidence).Assembly.Location,
+            cwd = Directory.GetCurrentDirectory(), argv = args, run_id = contract["run_id"]!.GetValue<string>(),
+            environment = Environment.GetEnvironmentVariables().Cast<System.Collections.DictionaryEntry>()
+                .ToDictionary(entry => (string)entry.Key, entry => (string?)entry.Value)
+        }).ToJsonString());
+        return contract;
+    }
+    internal static JsonNode Identity(JsonNode contract, int ordinal, JsonNode item, JsonNode call, string slot) => J(new {
+        version = 2, run_id = contract["run_id"]!.GetValue<string>(), engine = "csharp", slot, ordinal,
+        @case = item["id"]!.GetValue<string>(), model = item["model"]!.GetValue<int>(),
+        selection = call["selection"]!.GetValue<string>(),
+        api = (item["id"]!.GetValue<string>() == "L01-ordinary-starting", call["selection"]!.GetValue<string>() == "All") switch {
+            (false,true) => "ExecuteWithBasicOwnedSources", (false,false) => "ExecuteSelectedWithBasicOwnedSources",
+            (true,true) => "ExecuteJsonOutputs", (true,false) => "ExecuteJsonSelectedTarget"
+        }, call = call.DeepClone(),
+        source = item["source"]!.DeepClone(), inputs = item["inputs"]!.DeepClone()
+    });
+    internal static void Write(string directory, string name, string text)
+    {
+        using var file = new FileStream(Path.Combine(directory, name), FileMode.CreateNew, FileAccess.Write);
+        using var writer = new StreamWriter(file); writer.Write(text); writer.Flush();
+    }
+    internal static void CallWrite(string directory, string prefix, JsonNode identity, string suffix, string text)
+    {
+        var body = suffix.EndsWith(".json", StringComparison.Ordinal)
+            ? J(new { invocation = identity.DeepClone(), record = JsonNode.Parse(text) }).ToJsonString()
+            : "INVOCATION=" + identity.ToJsonString() + "\n" + text;
+        Write(directory, prefix + "-" + suffix, body);
+    }
+    internal static bool Retain(string directory, string prefix, JsonNode identity,
+        object actual, Func<JsonNode> rawOutcome, JsonNode beforeRaw, Func<JsonNode> inputAfter,
+        Func<Exception, JsonNode> errorRecord, Func<JsonNode> observe)
+    {
+        // Snapshot ACTUAL post-call variables before invoking ANY output encoder.
+        // Snapshot failure is independent of return/error retention and observation.
+        JsonNode? after = null; Exception? afterFailure = null;
+        try { after = inputAfter(); } catch (Exception error) { afterFailure = error; }
+        JsonNode? raw = null; Exception? rawFailure = null;
+        try { raw = rawOutcome(); } catch (Exception error) { rawFailure = error; }
+        var ioFailures = new List<Exception>();
+        void ReachedWrite(string suffix, string text)
+        {
+            try { CallWrite(directory, prefix, identity, suffix, text); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { ioFailures.Add(error); }
+        }
+        if (raw is not null)
+        {
+            ReachedWrite("COMPLETE-RAW-PRODUCT.json", raw.ToJsonString());
+            ReachedWrite("COMPLETE-RAW-PRODUCT.txt", raw.ToJsonString());
+        }
+        else ReachedWrite("COMPLETE-RAW-CAPTURE-FAILURE.txt", rawFailure!.ToString());
+        ReachedWrite("COMPLETE-EXCEPTION.txt", actual is Exception caught ? caught.ToString() : "public typed product retained before observation\n");
+        if (afterFailure is null)
+            ReachedWrite("COMPLETE-INPUT-AFTER.json", J(new { state = after, unchanged = JsonNode.DeepEquals(beforeRaw, after) }).ToJsonString());
+        else
+        {
+            ReachedWrite("COMPLETE-INPUT-AFTER-FAILURE.txt", afterFailure.ToString());
+            ReachedWrite("COMPLETE-INPUT-AFTER-FAILURE.json", errorRecord(afterFailure).ToJsonString());
+        }
+        // Both reached phases were attempted. Required evidence I/O is fatal,
+        // outside the projection catch, never converted to a mapping mismatch.
+        if (ioFailures.Count != 0) throw new AggregateException("Required Starting evidence I/O failed.", ioFailures);
+        if (rawFailure is not null) return false;
+        JsonNode observation;
+        try { observation = observe(); }
+        catch (Exception error)
+        {
+            CallWrite(directory, prefix, identity, "COMPLETE-OBSERVATION-FAILURE.txt", error.ToString());
+            CallWrite(directory, prefix, identity, "COMPLETE-OBSERVATION-FAILURE.json", errorRecord(error).ToJsonString());
+            return false;
+        }
+        observation["input_after_complete"] = J(afterFailure is null);
+        observation["input_after_unchanged"] = J(afterFailure is null && JsonNode.DeepEquals(beforeRaw, after));
+        var matched = observation["matched"]!.GetValue<bool>() && afterFailure is null && JsonNode.DeepEquals(beforeRaw, after);
+        observation["matched"] = J(matched);
+        CallWrite(directory, prefix, identity, "COMPLETE-OBSERVATION.json", observation.ToJsonString());
+        return matched;
+    }
+}

@@ -91,7 +91,7 @@ continue independently.
 Rust exposes `map_group_adjacent_by_source_cohort`; C# exposes
 `MapGroupAdjacentBySourceCohort`. Both accept the existing By metadata/control
 record shapes. The existing By operations retain global first-seen bucket
-partitioning. The shared private keyed-group occurrence represents an
+partitioning. The shared private group-member occurrence represents an
 authenticated member container, not a grant for arbitrary grouping modes.
 
 An n-candidate cohort produces at most n runs. Adjacent partitioning shares the

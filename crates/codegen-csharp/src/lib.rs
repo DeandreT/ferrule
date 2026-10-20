@@ -177,6 +177,18 @@ pub fn emit_with_basic_owned_group_adjacent_by(
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits static Basic By/AdjacentBy/StartingWith grouping with the qualified
+/// scalar ItemAt producers. Prior companions keep their narrower admission.
+pub fn emit_with_basic_owned_group_starting_with(
+    program: &Program,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_group_starting_with(program)?;
+    codegen::validate_basic_owned_group_starting_with_emission(program)?;
+    let generated_mapping =
+        owned_basic::render_public_basic_owned_group_starting_with_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,

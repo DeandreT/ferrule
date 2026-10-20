@@ -580,6 +580,20 @@ fn neighboring_grouping_modes_and_specialized_consumers_stay_closed() {
             );
             continue;
         }
+        if mode == 1 {
+            assert_eq!(
+                run(&p),
+                Ok(expected(
+                    "P",
+                    &[
+                        ("a1", &["a1"]),
+                        ("b1", &["b1"]),
+                        ("a2", &["a2", "c1", "b2"])
+                    ]
+                ))
+            );
+            continue;
+        }
         assert!(matches!(
             run(&p),
             Err(EngineError::UnsupportedOwnedContext {
@@ -1258,7 +1272,7 @@ fn trusted_empty_group_is_null_and_never_an_identity_or_another_owner_rescue() {
             collection: path(&["Rows"]),
             item: &empty,
             position_slot: 0,
-            kind: OccurrenceKind::KeyedGroup,
+            kind: OccurrenceKind::GroupMembers,
         }],
         origins: vec![],
         owned_ancestry: true,

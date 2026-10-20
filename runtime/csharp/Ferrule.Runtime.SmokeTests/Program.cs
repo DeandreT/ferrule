@@ -8,6 +8,17 @@ internal static partial class Program
     {
         var tests = new (string Name, Action Run)[]
         {
+#if FERRULE_COMPONENT_ORACLES
+            ("owned Starting R01-R02 authenticated empty", BasicOwnedStartingR01R02),
+            ("owned Starting R03 malformed witnesses", BasicOwnedStartingR03),
+            ("owned Starting R04-R06 R08 literal phase logs", BasicOwnedStartingR04R05R06R08),
+            ("owned Starting R07 immutable publications and retained storage", BasicOwnedStartingR07),
+            ("owned Starting R12 independent metadata oracle", BasicOwnedStartingR12),
+            ("owned Starting R13-R14 Boolean and callback frontiers", BasicOwnedStartingR13R14),
+            ("owned Starting R15 checked limits", BasicOwnedStartingR15),
+            ("owned Starting private markers and one-shot capability", BasicOwnedStartingPrivateMarkersAndOneShot),
+            ("owned Starting R16 original By-Adjacent conservation", BasicOwnedStartingR16OldProfiles),
+#endif
             ("JSON source complete literal corpus", JsonSourceCorpus),
             ("JSON source exact selection and bounded admission", JsonSourceSelectionAndLimits),
             ("JSON source complete occurrence document", JsonSourceOccurrenceDocument),

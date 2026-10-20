@@ -37,6 +37,15 @@ pub(super) fn run_native(
     native::run(controls, projects, &Evidence(directory.to_owned()))
 }
 
+// Explicit opt-in: old By/Adjacent/ItemAt callers keep run_native unchanged.
+pub(super) fn run_native_with_input_after(
+    controls: &Json,
+    projects: &[Project],
+    directory: &Path,
+) -> TestResult<Vec<Json>> {
+    native::run_with_input_after(controls, projects, &Evidence(directory.to_owned()))
+}
+
 impl Evidence {
     fn new() -> TestResult<Self> {
         let path = PathBuf::from(

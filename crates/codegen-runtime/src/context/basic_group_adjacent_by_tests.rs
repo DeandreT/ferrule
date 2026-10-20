@@ -1,5 +1,9 @@
 //! Literal adjacent-run oracles. Shared helpers only construct fields, controls
 //! and authenticated walks; no expected result calls a partitioning operation.
+// Preserve the byte-bound independent component oracle source.
+#[rustfmt::skip]
+#[path = "basic_group_starting_with_tests.rs"]
+mod basic_group_starting_with;
 use super::*;
 use std::cell::Cell;
 
@@ -1089,7 +1093,7 @@ fn adjacent_repeated_root_pins_are_immutable_but_newer_exact_owner_members_shado
                     let m = member.context();
                     let frames = &m.owned.frames;
                     assert_eq!(frames.len(), 2);
-                    assert!(frames[0].kind == OwnedOccurrenceKind::KeyedGroup);
+                    assert!(frames[0].kind == OwnedOccurrenceKind::GroupMembers);
                     assert!(frames[1].kind == OwnedOccurrenceKind::Item);
                     assert!(frames[0].collection.is_empty() && frames[1].collection.is_empty());
                     let label = m.owned_field(owner, &["Label"], Some(&[]))?;

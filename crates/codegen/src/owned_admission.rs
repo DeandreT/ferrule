@@ -116,6 +116,17 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_group_adjacent_by(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plan explicit Basic By/AdjacentBy/StartingWith admission. Bounds retain their
+/// receiving parent; boundary and retention use the candidate; target/member
+/// dependencies keep distinct environments. Owned reads remain demand-driven,
+/// legacy aliases eager, and original declaration ordinals unchanged.
+pub fn legacy_named_input_admission_plan_with_basic_owned_group_starting_with(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_group_starting_with(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 /// Plans the explicit Basic SequenceItemAt profile. Producer scalar inputs and
 /// index keep the receiving source environment; owned reads remain lazy and
 /// potential legacy aliases remain eager in every complete target catalogue.
@@ -437,9 +448,9 @@ impl<'a> Analysis<'a> {
         } else {
             item
         };
-        // Keyed retention evaluates once per surviving candidate, not once on the
+        // Admitted group retention evaluates once per surviving candidate, not on the
         // synthetic grouped wrapper. Keep the legacy analyzer's environments
-        // unchanged unless an explicit keyed-group companion was selected.
+        // unchanged unless an explicit grouping companion was selected.
         self.optional(
             Namespace::Main,
             if self.candidate_group_retention {
@@ -757,6 +768,28 @@ pub(crate) fn primary_visits_for_test_with_basic_owned_group_adjacent_by(
     program: &Program,
 ) -> Result<Vec<(Option<FunctionId>, usize, NodeId)>, ProgramValidationError> {
     crate::validate_program_with_basic_owned_group_adjacent_by(program)?;
+    let analysis = analyze(program, &program.root, Root::Primary, true, true);
+    Ok(analysis
+        .visited
+        .iter()
+        .map(|(namespace, context, node)| {
+            (
+                match namespace {
+                    Namespace::Main => None,
+                    Namespace::Function(index) => Some(analysis.functions[*index].id),
+                },
+                *context,
+                *node,
+            )
+        })
+        .collect())
+}
+
+#[cfg(test)]
+pub(crate) fn primary_visits_for_test_with_basic_owned_group_starting_with(
+    program: &Program,
+) -> Result<Vec<(Option<FunctionId>, usize, NodeId)>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_group_starting_with(program)?;
     let analysis = analyze(program, &program.root, Root::Primary, true, true);
     Ok(analysis
         .visited

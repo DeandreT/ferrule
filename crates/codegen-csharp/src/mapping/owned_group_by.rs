@@ -1,17 +1,23 @@
-//! Stateless controls for the authenticated, bounded paired By operation.
+//! Stateless controls for authenticated, bounded paired grouping operations.
 //! Context overloads are chosen before user literals render; no generated source
 //! or identifier replacement is used to compose legacy and paired scopes.
 
 use codegen::{GroupingPlan, IterationOutput, IterationPlan, SequenceWindow, SortFilterOrder};
 
 pub(super) fn render_operation(index: usize, iteration: &IterationPlan, output: &mut String) {
-    let operation = match iteration.grouping() {
-        Some(GroupingPlan::By { .. }) => "MapGroupBySourceCohort",
-        Some(GroupingPlan::AdjacentBy { .. }) => "MapGroupAdjacentBySourceCohort",
-        _ => unreachable!("only admitted paired keyed groups have controls"),
+    let (operation, controls) = match iteration.grouping() {
+        Some(GroupingPlan::By { .. }) => ("MapGroupBySourceCohort", "GroupByControls"),
+        Some(GroupingPlan::AdjacentBy { .. }) => {
+            ("MapGroupAdjacentBySourceCohort", "GroupByControls")
+        }
+        Some(GroupingPlan::StartingWith { .. }) => (
+            "MapGroupStartingWithSourceCohort",
+            "GroupStartingWithControls",
+        ),
+        _ => unreachable!("only admitted paired By/AdjacentBy/StartingWith groups have controls"),
     };
     output.push_str(&format!(
-        ");\n        var items_{index} = context.{operation}(\n            cohort_{index}, GroupByControls_{index}.Instance, candidate => ScopeItem_{index}(candidate));\n        global::System.GC.KeepAlive(cohort_{index});\n"
+        ");\n        var items_{index} = context.{operation}(\n            cohort_{index}, {controls}_{index}.Instance, candidate => ScopeItem_{index}(candidate));\n        global::System.GC.KeepAlive(cohort_{index});\n"
     ));
     if iteration.output() == IterationOutput::First {
         output.push_str(&format!(
@@ -25,12 +31,23 @@ pub(super) fn render_operation(index: usize, iteration: &IterationPlan, output: 
 }
 
 pub(super) fn render_controls(index: usize, iteration: &IterationPlan, output: &mut String) {
-    let key = match iteration.grouping() {
-        Some(GroupingPlan::By { key } | GroupingPlan::AdjacentBy { key }) => key,
-        _ => unreachable!("only admitted paired By/AdjacentBy scopes have keyed controls"),
+    let (expression, controls, interface, starting) = match iteration.grouping() {
+        Some(GroupingPlan::By { key } | GroupingPlan::AdjacentBy { key }) => (
+            key,
+            "GroupByControls",
+            "IFerruleBasicGroupByControls",
+            false,
+        ),
+        Some(GroupingPlan::StartingWith { predicate }) => (
+            predicate,
+            "GroupStartingWithControls",
+            "IFerruleBasicGroupStartingWithControls",
+            true,
+        ),
+        _ => unreachable!("only admitted paired By/AdjacentBy/StartingWith scopes have controls"),
     };
     output.push_str(&format!(
-        "\n    private sealed class GroupByControls_{index} : global::Ferrule.Runtime.IFerruleBasicGroupByControls\n    {{\n        internal static readonly GroupByControls_{index} Instance = new();\n        private GroupByControls_{index}() {{ }}\n        private static readonly bool[] Descending = new bool[] {{ "
+        "\n    private sealed class {controls}_{index} : global::Ferrule.Runtime.{interface}\n    {{\n        internal static readonly {controls}_{index} Instance = new();\n        private {controls}_{index}() {{ }}\n        private static readonly bool[] Descending = new bool[] {{ "
     ));
     if let Some(sort) = iteration.sort() {
         for (position, key) in sort.keys().enumerate() {
@@ -79,9 +96,16 @@ pub(super) fn render_controls(index: usize, iteration: &IterationPlan, output: &
         }
         output.push_str("                _ => throw new global::System.InvalidOperationException(\"Invalid generated group window bound.\"),\n            };\n");
     }
-    output.push_str(&format!(
-        "        public global::Ferrule.Runtime.FerruleValue GroupKey(global::Ferrule.Runtime.FerruleBasicScopeContext candidate)\n            => Node_{key}(candidate);\n        public bool RetainMember(global::Ferrule.Runtime.FerruleBasicScopeContext candidate)\n            => "
-    ));
+    if starting {
+        output.push_str("        public bool StartsGroup(global::Ferrule.Runtime.FerruleBasicScopeContext candidate)\n            => ");
+        render_predicate(Some(expression), output);
+        output.push_str(";\n");
+    } else {
+        output.push_str(&format!(
+            "        public global::Ferrule.Runtime.FerruleValue GroupKey(global::Ferrule.Runtime.FerruleBasicScopeContext candidate)\n            => Node_{expression}(candidate);\n"
+        ));
+    }
+    output.push_str("        public bool RetainMember(global::Ferrule.Runtime.FerruleBasicScopeContext candidate)\n            => ");
     render_predicate(iteration.post_group_filter(), output);
     output.push_str(";\n    }\n");
 }

@@ -2470,6 +2470,18 @@ pub(super) fn render_basic_scopes_with_group_adjacent_by<'a>(
     )
 }
 
+pub(super) fn render_basic_scopes_with_group_starting_with<'a>(
+    program: &'a Program,
+    output: &mut String,
+) -> Result<BasicScopeIndices<'a>, EmitError> {
+    render_basic_scopes_profile(
+        program,
+        output,
+        true,
+        crate::owned_basic::TargetControls::ByAndAdjacentAndStarting,
+    )
+}
+
 fn render_basic_scopes_profile<'a>(
     program: &'a Program,
     output: &mut String,
@@ -2607,7 +2619,7 @@ fn collect_basic_window_routes(
         .iteration
         .as_ref()
         .is_some_and(|iteration| matches!(iteration.input(), IterationSource::OwnedSource(_)));
-    // A legacy Source can enter the paired route solely through its key or
+    // A legacy Source can enter the paired route solely through its key/boundary or
     // member-retention predicate. Its authenticated grouped output still owns
     // member ancestry; descendants may not project it back to an ordinary island.
     let paired_group = owned
