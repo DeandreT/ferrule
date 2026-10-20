@@ -1720,7 +1720,7 @@ internal sealed class OwnedBuffer<T>
 public sealed partial class FerruleOwnedScopeContext
 {
     // Authenticated synthetic member containers minted only by paired By,
-    // AdjacentBy and StartingWith. Nested ordinary occurrences remain Items.
+    // AdjacentBy, StartingWith and EndingWith. Nested ordinary occurrences remain Items.
     internal readonly record struct Occurrence(int Owner, IReadOnlyList<string> Path, FerruleInstance Item, nuint Index,
         bool GroupMembers = false);
     internal readonly record struct Observation(int Owner, IReadOnlyList<string> Path, FerruleInstance Item, nuint Index,

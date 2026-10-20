@@ -14,7 +14,12 @@ pub(super) fn render_operation(index: usize, iteration: &IterationPlan, output: 
             "MapGroupStartingWithSourceCohort",
             "GroupStartingWithControls",
         ),
-        _ => unreachable!("only admitted paired By/AdjacentBy/StartingWith groups have controls"),
+        Some(GroupingPlan::EndingWith { .. }) => {
+            ("MapGroupEndingWithSourceCohort", "GroupEndingWithControls")
+        }
+        _ => unreachable!(
+            "only admitted paired By/AdjacentBy/StartingWith/EndingWith groups have controls"
+        ),
     };
     output.push_str(&format!(
         ");\n        var items_{index} = context.{operation}(\n            cohort_{index}, {controls}_{index}.Instance, candidate => ScopeItem_{index}(candidate));\n        global::System.GC.KeepAlive(cohort_{index});\n"
@@ -31,20 +36,26 @@ pub(super) fn render_operation(index: usize, iteration: &IterationPlan, output: 
 }
 
 pub(super) fn render_controls(index: usize, iteration: &IterationPlan, output: &mut String) {
-    let (expression, controls, interface, starting) = match iteration.grouping() {
-        Some(GroupingPlan::By { key } | GroupingPlan::AdjacentBy { key }) => (
-            key,
-            "GroupByControls",
-            "IFerruleBasicGroupByControls",
-            false,
-        ),
+    // A Boolean boundary control names its callback; keyed controls have none.
+    let (expression, controls, interface, boundary) = match iteration.grouping() {
+        Some(GroupingPlan::By { key } | GroupingPlan::AdjacentBy { key }) => {
+            (key, "GroupByControls", "IFerruleBasicGroupByControls", None)
+        }
         Some(GroupingPlan::StartingWith { predicate }) => (
             predicate,
             "GroupStartingWithControls",
             "IFerruleBasicGroupStartingWithControls",
-            true,
+            Some("StartsGroup"),
         ),
-        _ => unreachable!("only admitted paired By/AdjacentBy/StartingWith scopes have controls"),
+        Some(GroupingPlan::EndingWith { predicate }) => (
+            predicate,
+            "GroupEndingWithControls",
+            "IFerruleBasicGroupEndingWithControls",
+            Some("EndsGroup"),
+        ),
+        _ => unreachable!(
+            "only admitted paired By/AdjacentBy/StartingWith/EndingWith scopes have controls"
+        ),
     };
     output.push_str(&format!(
         "\n    private sealed class {controls}_{index} : global::Ferrule.Runtime.{interface}\n    {{\n        internal static readonly {controls}_{index} Instance = new();\n        private {controls}_{index}() {{ }}\n        private static readonly bool[] Descending = new bool[] {{ "
@@ -96,8 +107,8 @@ pub(super) fn render_controls(index: usize, iteration: &IterationPlan, output: &
         }
         output.push_str("                _ => throw new global::System.InvalidOperationException(\"Invalid generated group window bound.\"),\n            };\n");
     }
-    if starting {
-        output.push_str("        public bool StartsGroup(global::Ferrule.Runtime.FerruleBasicScopeContext candidate)\n            => ");
+    if let Some(boundary) = boundary {
+        output.push_str(&format!("        public bool {boundary}(global::Ferrule.Runtime.FerruleBasicScopeContext candidate)\n            => "));
         render_predicate(Some(expression), output);
         output.push_str(";\n");
     } else {

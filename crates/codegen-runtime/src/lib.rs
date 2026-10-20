@@ -37,10 +37,10 @@ use std::fmt;
 pub use adjacency_tree::{AdjacencyTreeFields, AdjacencyTreeRoot, adjacency_tree};
 pub use aggregate::{AggregateFunction, aggregate};
 pub use context::{
-    BasicGroupByControls, BasicGroupByMetadata, BasicGroupStartingWithControls,
-    BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode, BasicScopeContext,
-    BasicSourceBridgeError, BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort,
-    PhaseSelection, RetainedSourceCohort,
+    BasicGroupByControls, BasicGroupByMetadata, BasicGroupEndingWithControls,
+    BasicGroupStartingWithControls, BasicNamedSourceDeclaration, BasicNamedSourceInput,
+    BasicNamedSourceMode, BasicScopeContext, BasicSourceBridgeError, BasicSourceCandidate,
+    BasicSourceRoots, CompletePhaseCohort, PhaseSelection, RetainedSourceCohort,
 };
 pub use context::{
     BasicJsonDocumentRef, BasicJsonInputAdmission, BasicJsonParsedInputs,

@@ -2,6 +2,10 @@
 //! This child module shares the existing Adjacent scaffold and literal helpers.
 use super::*;
 
+// #444 Ending admission reuses this module's static scaffold.
+#[path = "owned_group_ending_with.rs"]
+mod ending_with;
+
 fn starting(owner: SourceOwner) -> mapping::Project {
     let mut p = project(owner);
     p.root.children[0].group_adjacent_by = None;

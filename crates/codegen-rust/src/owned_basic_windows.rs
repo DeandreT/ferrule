@@ -45,6 +45,16 @@ pub(crate) fn render_public_basic_owned_group_starting_with_source(
     )
 }
 
+pub(crate) fn render_public_basic_owned_group_ending_with_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::GroupEndingWith,
+        SequenceItemAtPolicy::BasicScalarProducers,
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
     Closed,
@@ -58,23 +68,28 @@ pub(super) enum Profile {
     GroupBy,
     GroupAdjacentBy,
     GroupStartingWith,
+    GroupEndingWith,
 }
 
 impl Profile {
     fn has_scoped_groups(self) -> bool {
         matches!(
             self,
-            Self::GroupBy | Self::GroupAdjacentBy | Self::GroupStartingWith
+            Self::GroupBy | Self::GroupAdjacentBy | Self::GroupStartingWith | Self::GroupEndingWith
         )
     }
 
     pub(super) fn permits_grouping(self, grouping: Option<GroupingPlan>) -> bool {
         match grouping {
             Some(GroupingPlan::By { .. }) => self.has_scoped_groups(),
-            Some(GroupingPlan::AdjacentBy { .. }) => {
-                matches!(self, Self::GroupAdjacentBy | Self::GroupStartingWith)
+            Some(GroupingPlan::AdjacentBy { .. }) => matches!(
+                self,
+                Self::GroupAdjacentBy | Self::GroupStartingWith | Self::GroupEndingWith
+            ),
+            Some(GroupingPlan::StartingWith { .. }) => {
+                matches!(self, Self::GroupStartingWith | Self::GroupEndingWith)
             }
-            Some(GroupingPlan::StartingWith { .. }) => self == Self::GroupStartingWith,
+            Some(GroupingPlan::EndingWith { .. }) => self == Self::GroupEndingWith,
             _ => false,
         }
     }
@@ -95,6 +110,9 @@ fn render_public_basic_owned_source_policy(
     // The common profile closes every scope, retained expression and failure
     // domain to precisely the static Group/Scalar scalar-expression subset.
     match (profile, item_at) {
+        (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::validate_basic_owned_group_ending_with_emission(program)?;
+        }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_group_starting_with_emission(program)?;
         }
@@ -331,6 +349,9 @@ fn render_public_basic_owned_source_policy(
         }
     }
     let plan = match (profile, item_at) {
+        (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_group_ending_with(program)?
+        }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(
                 program,
