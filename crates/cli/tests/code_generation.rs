@@ -156,6 +156,8 @@ mod structured_xml_public;
 mod structured_xml_snapshot;
 #[path = "code_generation/udf_multi_case_documents.rs"]
 mod udf_multi_case_documents;
+#[path = "code_generation/unicode_casing.rs"]
+mod unicode_casing;
 #[path = "code_generation/user_function_argument_order.rs"]
 mod user_function_argument_order;
 #[path = "code_generation/value_maps.rs"]
@@ -845,6 +847,8 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "Runtime/FerruleScalarRegex.cs",
         "Runtime/FerruleSequences.cs",
         "Runtime/FerruleTargetSelection.cs",
+        "Runtime/FerruleUnicodeCasing.Tables.cs",
+        "Runtime/FerruleUnicodeCasing.cs",
         "Runtime/FerruleUserFunctions.cs",
         "Runtime/FerruleValue.cs",
         "Runtime/FerruleValueMaps.cs",
