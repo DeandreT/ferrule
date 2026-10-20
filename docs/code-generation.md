@@ -704,11 +704,55 @@ endpoint optional in the named-input catalogue.
 Failure-rule expressions, function bodies and closed contexts keep refusing
 the owned read, as do every other profile (including the lookup/find,
 recursive-filter, recursive-collect and SequenceExists companions) and the
-ordinary emitters.
+ordinary emitters; only the owned XML serialization profile composes it.
 Legacy `dynamic_source_field` reads keep their wire and ordinary emission and
 stay closed in Basic owned profiles. The
 [owned dynamic-field contract](design/owned-dynamic-field.md) defines the wire
 form, order and qualification.
+
+## Explicit owned XML serialization
+
+`Node::OwnedXmlSerialize` serializes one schema-known structured element read
+from exactly one Primary or named endpoint. Use
+`codegen::lower_with_basic_owned_xml_serialize`, then
+`codegen_rust::emit_with_basic_owned_xml_serialize(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_xml_serialize(&program)`. The matching
+`validate_program_with_basic_owned_xml_serialize`,
+`validate_basic_owned_xml_serialize_emission` and
+`legacy_named_input_admission_plan_with_basic_owned_xml_serialize` APIs select
+the same profile. It composes the owned dynamic source-field profile (and
+through it owned Lookup and CollectionFind, owned IntoBlocks grouping and the
+recursive-filter, recursive-collect, adjacency-tree, path-hierarchy,
+failure-source and EndingWith profiles); the execution entries and five-field
+Basic policy are unchanged. The SequenceExists and SequenceAggregate companions
+are a separate branch and keep refusing the owned serializer.
+
+The element path is endpoint-local and an optional frame prefixes it, with the
+owned field's selection rules: an explicit frame selects the latest exact
+same-owner occurrence, an explicit empty frame reads the declared nonrepeating
+endpoint root, and an unframed read uses the latest same-owner occurrence that
+prefixes the path or else the endpoint root. A group-member occurrence supplies
+its first member. The selected owner is authoritative: a missing element is a
+typed owned-source failure attributed to the node and is never repaired from
+another endpoint, a legacy alias or an outer frame. The read never reduces an
+uniterated repetition to its first item; it reports the typed repetition error.
+Inactive frames and unsupplied named endpoints report their typed errors when
+the node is evaluated.
+
+The serializer schema, declaration, indent and default-namespace options keep
+the legacy meaning and the legacy writer, so XML bytes, writer type failures,
+size limits and the read-then-write error order are shared. Validation checks
+the schema name and kind against the exact owner's schema and keeps the legacy
+document checks (non-repeating schema, non-empty namespace, closed schema
+features). Unknown, empty and unresolved owners, frames that do not prefix the
+path and frames that are not collections are owned structure errors. The
+default validator and every earlier profile refuse the expression as an XML
+operator; failure rules, generated items, isolated functions, dynamic owners and
+other specialized contexts keep their typed refusals. The legacy
+`XmlSerialize` node, its wire form, defaults, fallback and errors are unchanged
+and continue to use the ordinary emitters. See
+[the ownership design](design/source-ownership.md#owned-xml-element-serialization)
+and [the corpus](../conformance/basic-owned-xml-serialize/README.md).
 
 ## C#
 
