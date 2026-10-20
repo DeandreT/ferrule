@@ -6,8 +6,6 @@ use std::error::Error;
 use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::symlink as directory_symlink;
-#[cfg(windows)]
-use std::os::windows::fs::symlink_dir as directory_symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -19,6 +17,32 @@ use mapping::{
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
+
+#[cfg(windows)]
+fn directory_symlink(original: &Path, link: PathBuf) -> std::io::Result<()> {
+    // A directory junction exercises the same canonical path alias without
+    // requiring Developer Mode or SeCreateSymbolicLinkPrivilege on Windows.
+    let command = PathBuf::from(std::env::var_os("SystemRoot").ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "SystemRoot is not set")
+    })?)
+    .join("System32/cmd.exe");
+    let result = Command::new(command)
+        .args(["/D", "/C", "mklink", "/J"])
+        .arg(&link)
+        .arg(original)
+        .output()?;
+    if !result.status.success() {
+        return Err(std::io::Error::other(format!(
+            "creating test directory junction: {}",
+            String::from_utf8_lossy(&result.stderr)
+        )));
+    }
+    assert_eq!(
+        std::fs::canonicalize(&link)?,
+        std::fs::canonicalize(original)?
+    );
+    Ok(())
+}
 
 struct TempDir(PathBuf);
 
