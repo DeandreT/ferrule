@@ -33,9 +33,12 @@ mod dynamic_field;
 pub(super) use dynamic_field::DynamicFieldPolicy;
 pub use dynamic_field::validate_basic_owned_dynamic_field_emission;
 mod primary_row_failures;
+mod xml_serialize;
 pub use primary_row_failures::{
     is_basic_owned_primary_row_failure, validate_basic_owned_row_failure_emission,
 };
+pub(super) use xml_serialize::XmlSerializePolicy;
+pub use xml_serialize::validate_basic_owned_xml_serialize_emission;
 
 fn request(expression: &Expression) -> Option<Request> {
     match expression {
@@ -64,6 +67,11 @@ fn request(expression: &Expression) -> Option<Request> {
         | Expression::OwnedCollectionFind(mapping::OwnedCollectionFind { collection, .. }) => {
             Some(iteration_request(collection))
         }
+        Expression::OwnedXmlSerialize(serializer) => Some(Request::XmlElement {
+            owner: (&serializer.source.owner).into(),
+            path: serializer.source.path.clone(),
+            frame: serializer.frame.clone(),
+        }),
         _ => None,
     }
 }
@@ -182,6 +190,18 @@ fn check_request(program: &Program, query: &Request) -> Result<(), Structure> {
             object,
             frame,
         } => dynamic_field::check(program, owner, object, frame.as_deref()),
+        // The element's schema identity is checked with the serializer schema;
+        // here the owner, frame and path must exist in the exact endpoint.
+        Request::XmlElement { owner, path, frame } => {
+            let root = endpoint(program, owner)?;
+            if let Some(frame) = frame {
+                if !path.starts_with(frame) {
+                    return Err(Structure::IncompatibleFramePath);
+                }
+                collection(root, frame)?;
+            }
+            resolved(root, follow(root, path)?).map(|_| ())
+        }
     }
 }
 fn structure(
@@ -433,7 +453,8 @@ fn dynamic_owner(program: &Program, query: &Request) -> Option<Closed> {
         | Request::Position { owner, .. }
         | Request::RowDocumentPath { owner, .. }
         | Request::Iteration { owner, .. }
-        | Request::DynamicField { owner, .. } => owner,
+        | Request::DynamicField { owner, .. }
+        | Request::XmlElement { owner, .. } => owner,
     };
     let Owner::Named { name } = owner else {
         return None;
@@ -687,6 +708,7 @@ struct Admission<'a> {
     path_hierarchy: PathHierarchyPolicy,
     adjacency_tree: AdjacencyTreePolicy,
     dynamic_field: DynamicFieldPolicy,
+    xml_serialize: XmlSerializePolicy,
     visited: Vec<Visit<'a>>,
 }
 impl<'a> Admission<'a> {
@@ -730,6 +752,15 @@ impl<'a> Admission<'a> {
                     .closed
                     .clone()
                     .or_else(|| dynamic_owner(self.program, &query))
+                    .or_else(|| {
+                        self.xml_serialize.closes(expression).then_some(Closed {
+                            reason: Capability::XmlOperator,
+                            origin: Origin::Expression {
+                                namespace: visit.namespace,
+                                node: visit.node,
+                            },
+                        })
+                    })
             {
                 return Err(failure(location, Some(query), closed));
             }
@@ -1257,6 +1288,30 @@ pub(super) fn validate_closed_contexts_with_dynamic_fields(
     adjacency_tree: AdjacencyTreePolicy,
     dynamic_field: DynamicFieldPolicy,
 ) -> Result<(), ProgramValidationError> {
+    validate_closed_contexts_with_xml(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        dynamic_field,
+        XmlSerializePolicy::Closed,
+    )
+}
+
+// Each argument is one independent, explicitly selected companion permission.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn validate_closed_contexts_with_xml(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+    path_hierarchy: PathHierarchyPolicy,
+    adjacency_tree: AdjacencyTreePolicy,
+    dynamic_field: DynamicFieldPolicy,
+    xml_serialize: XmlSerializePolicy,
+) -> Result<(), ProgramValidationError> {
     if !has_owned(program) {
         return Ok(());
     }
@@ -1267,6 +1322,7 @@ pub(super) fn validate_closed_contexts_with_dynamic_fields(
         path_hierarchy,
         adjacency_tree,
         dynamic_field,
+        xml_serialize,
         visited: Vec::new(),
     };
     admission.scope(
@@ -1707,7 +1763,33 @@ fn validate_basic_owned_with_dynamic_fields(
     search: SearchPolicy,
     dynamic_field: DynamicFieldPolicy,
 ) -> Result<(), ProgramValidationError> {
-    super::validate_program_with_owned_dynamic_fields(
+    validate_basic_owned_with_xml(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        search,
+        dynamic_field,
+        XmlSerializePolicy::Closed,
+    )
+}
+
+// Each argument is one independent, explicitly selected companion permission.
+#[allow(clippy::too_many_arguments)]
+fn validate_basic_owned_with_xml(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+    path_hierarchy: PathHierarchyPolicy,
+    adjacency_tree: AdjacencyTreePolicy,
+    search: SearchPolicy,
+    dynamic_field: DynamicFieldPolicy,
+    xml_serialize: XmlSerializePolicy,
+) -> Result<(), ProgramValidationError> {
+    super::validate_program_with_owned_xml(
         program,
         profile,
         failures,
@@ -1715,6 +1797,7 @@ fn validate_basic_owned_with_dynamic_fields(
         path_hierarchy,
         adjacency_tree,
         dynamic_field,
+        xml_serialize,
     )?;
     let policy = BasicScopePolicy {
         profile,
@@ -1788,6 +1871,10 @@ fn validate_basic_owned_with_dynamic_fields(
             Expression::OwnedDynamicSourceField(_) if dynamic_field.permits(&node.expression) => {
                 continue;
             }
+            Expression::OwnedXmlSerialize(_) if !xml_serialize.closes(&node.expression) => {
+                continue;
+            }
+            Expression::OwnedXmlSerialize(_) => Capability::XmlOperator,
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)

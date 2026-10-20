@@ -77,6 +77,7 @@ internal static partial class Program
             ("path hierarchy exact owned endpoints", PathHierarchyOwnedEndpoints),
             ("adjacency tree legacy collection", AdjacencyTreeLegacyBuild),
             ("adjacency tree exact owned endpoints", AdjacencyTreeOwnedEndpoints),
+            ("owned XML element exact endpoints", OwnedXmlExactEndpoints),
             ("dynamic source contexts", DynamicSourceContexts),
             ("dynamic target construction", DynamicTargetConstruction),
             ("collection-find contexts", CollectionFindContexts),
