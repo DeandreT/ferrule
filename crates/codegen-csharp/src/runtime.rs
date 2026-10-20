@@ -25,7 +25,7 @@ pub(crate) const DYNAMIC_INPUT_DOCUMENT_OUTPUTS_SOURCE: (&str, &str) = (
     ),
 );
 
-pub(crate) const SOURCES: [(&str, &str); 77] = [
+pub(crate) const SOURCES: [(&str, &str); 79] = [
     (
         "Runtime/Json/FerruleJsonSourceOccurrence.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJsonSourceOccurrence.cs"),
@@ -229,6 +229,14 @@ pub(crate) const SOURCES: [(&str, &str); 77] = [
     (
         "Runtime/FerruleFunctions.Strings.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleFunctions.Strings.cs"),
+    ),
+    (
+        "Runtime/FerruleUnicodeCasing.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleUnicodeCasing.cs"),
+    ),
+    (
+        "Runtime/FerruleUnicodeCasing.Tables.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleUnicodeCasing.Tables.cs"),
     ),
     (
         "Runtime/FerruleScalarRegex.Properties.cs",

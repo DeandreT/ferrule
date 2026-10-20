@@ -554,6 +554,8 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "Runtime/FerruleScalarRegex.cs",
         "Runtime/FerruleSequences.cs",
         "Runtime/FerruleTargetSelection.cs",
+        "Runtime/FerruleUnicodeCasing.Tables.cs",
+        "Runtime/FerruleUnicodeCasing.cs",
         "Runtime/FerruleUserFunctions.cs",
         "Runtime/FerruleValue.cs",
         "Runtime/FerruleValueMaps.cs",

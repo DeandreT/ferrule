@@ -6,10 +6,14 @@ use std::{fs, io, path::Path};
 pub type ManifestRow = (String, usize, String);
 pub type SourceSnapshot = Vec<(String, Vec<u8>)>;
 
-pub const ADJACENT_RUNTIME_FILES: [(&str, &str); 3] = [
+pub const REPLACED_RUNTIME_FILES: [(&str, &str); 4] = [
     (
         "Runtime/FerruleBasicGroupBy.cs",
         "runtime/csharp/Ferrule.Runtime/FerruleBasicGroupBy.cs",
+    ),
+    (
+        "Runtime/FerruleFunctions.cs",
+        "runtime/csharp/Ferrule.Runtime/FerruleFunctions.cs",
     ),
     (
         "Runtime/FerruleInstance.cs",
@@ -21,7 +25,15 @@ pub const ADJACENT_RUNTIME_FILES: [(&str, &str); 3] = [
     ),
 ];
 
-pub const ADDED_RUNTIME_FILES: [(&str, &str); 2] = [
+pub const ADDED_RUNTIME_FILES: [(&str, &str); 4] = [
+    (
+        "Runtime/FerruleUnicodeCasing.Tables.cs",
+        "runtime/csharp/Ferrule.Runtime/FerruleUnicodeCasing.Tables.cs",
+    ),
+    (
+        "Runtime/FerruleUnicodeCasing.cs",
+        "runtime/csharp/Ferrule.Runtime/FerruleUnicodeCasing.cs",
+    ),
     (
         "Runtime/Json/FerruleJsonSourceDocument.cs",
         "runtime/csharp/Ferrule.Runtime/Json/FerruleJsonSourceDocument.cs",
@@ -66,7 +78,7 @@ pub fn row(path: &str, bytes: &[u8]) -> ManifestRow {
 }
 
 pub fn snapshot(root: &Path) -> io::Result<SourceSnapshot> {
-    ADJACENT_RUNTIME_FILES
+    REPLACED_RUNTIME_FILES
         .iter()
         .chain(ADDED_RUNTIME_FILES.iter())
         .map(|(artifact, source)| Ok(((*artifact).into(), fs::read(root.join(source))?)))
@@ -77,8 +89,8 @@ pub fn snapshot_unchanged(root: &Path, original: &SourceSnapshot) -> io::Result<
     Ok(snapshot(root)? == *original)
 }
 
-/// Inventories must be complete, ordered and unique. The three reviewed replacement
-/// bodies and two added source files must match independently captured source bytes;
+/// Inventories must be complete, ordered and unique. The reviewed replacement
+/// bodies and added source files must match independently captured source bytes;
 /// every other row remains historical. ExactHistorical never admits additions.
 pub fn compare(
     historical: &[ManifestRow],
@@ -98,21 +110,21 @@ pub fn compare(
             .iter()
             .copied()
             .eq(actual.iter().map(|entry| entry.0.as_str()));
-    let sources_valid = sources.len() == ADJACENT_RUNTIME_FILES.len() + ADDED_RUNTIME_FILES.len()
+    let sources_valid = sources.len() == REPLACED_RUNTIME_FILES.len() + ADDED_RUNTIME_FILES.len()
         && sources
             .iter()
             .zip(
-                ADJACENT_RUNTIME_FILES
+                REPLACED_RUNTIME_FILES
                     .into_iter()
                     .chain(ADDED_RUNTIME_FILES),
             )
             .all(|((path, _), (artifact, _))| path == artifact)
-        && ADJACENT_RUNTIME_FILES
+        && REPLACED_RUNTIME_FILES
             .iter()
             .all(|(path, _)| historical.iter().any(|entry| entry.0 == *path));
     let stable_files_exact = paths_exact
         && historical.iter().all(|old| {
-            ADJACENT_RUNTIME_FILES
+            REPLACED_RUNTIME_FILES
                 .iter()
                 .any(|(path, _)| old.0 == *path)
                 || actual.iter().any(|new| old == new)
@@ -136,12 +148,12 @@ pub fn compare(
 #[test]
 fn reviewed_runtime_updates_do_not_forgive_other_artifact_changes() {
     let mut historical = vec![row("GeneratedMapping.cs", b"stable mapping")];
-    let sources: SourceSnapshot = ADJACENT_RUNTIME_FILES
+    let sources: SourceSnapshot = REPLACED_RUNTIME_FILES
         .iter()
         .chain(ADDED_RUNTIME_FILES.iter())
         .map(|(path, _)| ((*path).into(), format!("reviewed {path}").into_bytes()))
         .collect();
-    for (path, _) in ADJACENT_RUNTIME_FILES {
+    for (path, _) in REPLACED_RUNTIME_FILES {
         historical.push(row(path, b"historical runtime"));
     }
     let mut actual = vec![historical[0].clone()];
