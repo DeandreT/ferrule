@@ -3134,14 +3134,7 @@ fn pipeline_runner_keeps_dirty_project_open_and_reports_written_output() -> anyh
         app.show_pipeline_run_setup(ui.ctx());
     });
     app.start_pipeline_run();
-    for _ in 0..100 {
-        app.poll_pipeline_run(&egui::Context::default());
-        if app.pending_pipeline_run.is_none() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-    assert!(app.pending_pipeline_run.is_none(), "pipeline run completes");
+    wait_for_pipeline_completion(&mut app);
     let result: serde_json::Value =
         serde_json::from_slice(&std::fs::read(directory.join("result.json"))?)?;
     assert_eq!(result["Value"].as_str(), Some("from host"));
