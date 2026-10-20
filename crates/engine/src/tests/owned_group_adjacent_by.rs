@@ -1167,10 +1167,10 @@ fn key_only_and_post_only_legacy_scopes_authenticate_primary_and_keep_descendant
         controls(&mut p).children.push(Scope {
             target_field: "Members".into(),
             iteration: ScopeIteration::Source(vec![]),
-            group_ending_with: Some(21),
+            group_into_blocks: Some(21),
             ..Scope::default()
         });
-        p.graph.nodes.insert(21, constant(Value::Bool(true)));
+        p.graph.nodes.insert(21, constant(Value::Int(2)));
         assert_eq!(
             run(&p),
             Err(EngineError::UnsupportedOwnedContext {
@@ -2071,6 +2071,20 @@ fn only_two_keyed_families_are_admitted_and_specialized_consumers_remain_closed(
                         ("b1", &["b1", "a2"]),
                         ("a3", &["a3", "c1"]),
                         ("a4", &["a4"])
+                    ]
+                ))
+            );
+            continue;
+        }
+        if mode == 1 {
+            assert_eq!(
+                run(&p),
+                Ok(expected(
+                    "P",
+                    &[
+                        ("a1", &["a1", "b1"]),
+                        ("a2", &["a2", "a3"]),
+                        ("c1", &["c1", "a4"])
                     ]
                 ))
             );
