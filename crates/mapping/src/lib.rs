@@ -20,6 +20,7 @@ mod idoc_native_text;
 mod iteration;
 mod model;
 mod path_hierarchy;
+mod path_hierarchy_owned;
 mod pdf;
 pub mod pdf_layout_file;
 mod pdf_repair;
@@ -95,6 +96,7 @@ pub use model::{
     XlsxTableRegion, XlsxWorksheetSetLayout, XmlMixedContentElement, XmlMixedContentReplacement,
 };
 pub use path_hierarchy::PathHierarchyPlan;
+pub use path_hierarchy_owned::OwnedPathHierarchyPlan;
 pub use pdf::{
     PdfAnchorAssignment, PdfAnchorAxis, PdfCapture, PdfCaptureAlgorithm, PdfCommand, PdfCoordinate,
     PdfEdgeFind, PdfEdgeRows, PdfGroup, PdfLayout, PdfLayoutError, PdfMerge, PdfMergeComposition,
