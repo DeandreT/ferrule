@@ -1,10 +1,11 @@
 use std::collections::BTreeSet;
 
+use ir::SchemaNode;
 use mapping::{Graph, JoinId, JoinPlan, JoinSourceCardinality, Node, NodeId, Project, Scope};
 
 use super::ValidationIssue;
 use super::graph::{node_inputs, validate_collection_value};
-use super::schema::{display_path, source_path_matches};
+use super::schema::{display_path, source_path_matches, source_path_matches_direct};
 
 pub(super) fn validate_plan(
     project: &Project,
@@ -15,15 +16,27 @@ pub(super) fn validate_plan(
 ) {
     for source in plan.sources() {
         let collection = source.collection();
+        let singleton = |node: &SchemaNode| !node.repeating && node.is_scalar();
         let valid = match source.cardinality() {
             JoinSourceCardinality::Repeating => {
                 collection.is_empty()
                     || source_path_matches(project, collection, |node| node.repeating)
             }
-            JoinSourceCardinality::Singleton => source_path_matches(project, collection, |node| {
-                !node.repeating && node.is_scalar()
-            }),
+            JoinSourceCardinality::Singleton => source_path_matches(project, collection, singleton),
         };
+        if valid
+            && source.cardinality() == JoinSourceCardinality::Singleton
+            && !source_path_matches_direct(project, collection, singleton)
+        {
+            issues.push(ValidationIssue::new(
+                location,
+                format!(
+                    "join {} singleton collection `{}` crosses a repeating source level; join the repeating collection with a key path instead",
+                    join.get(),
+                    display_path(collection)
+                ),
+            ));
+        }
         if !valid {
             let expected = match source.cardinality() {
                 JoinSourceCardinality::Repeating => "missing or not repeating",
