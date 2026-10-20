@@ -22,7 +22,12 @@ than repeatedly rounding an already rounded value. A result outside the range
 at scale zero is an overflow. Parsing precedes arithmetic: two operands that
 each round to zero do not become nonzero through delayed parsing.
 
-This type does not change `Value`, `ScalarType`, existing Int/Float arithmetic,
+The standalone C# counterpart, `FerruleDecimal96`, applies the same plain-text
+grammar and canonical representation using .NET decimal arithmetic. Its separate
+`FerruleDecimalException` exposes the same refusal categories. Neither type has
+implicit conversions to or from the existing runtime value model.
+
+These types do not change `Value`, `ScalarType`, existing Int/Float arithmetic,
 serialization, import admission, generated libraries or format readers/writers.
 Those boundaries require an explicit decimal profile before they can use it.
 Exponent conversion, multiplication, division and external runtime equivalence
