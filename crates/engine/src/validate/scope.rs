@@ -5,8 +5,8 @@ use mapping::{IterationOutput, JoinId, Node, Project, Scope, ScopeConstruction, 
 
 use super::graph::validate_adjacency_string_field;
 use super::join::{
-    validate_plan as validate_join_plan, validate_roots as validate_join_roots,
-    validate_scope_nodes as validate_scope_join_nodes,
+    is_root_context, validate_plan as validate_join_plan, validate_root_singletons,
+    validate_roots as validate_join_roots, validate_scope_nodes as validate_scope_join_nodes,
 };
 use super::schema::{current_source_schema, display_path, source_path_matches, source_schema_at};
 use super::{
@@ -667,10 +667,12 @@ pub(super) fn validate_scope(
     if let Some(sequence) = scope.sequence() {
         parent_roots.extend(sequence.inputs());
     }
+    let parent_root_context = is_root_context(project, schemas.parent_source);
     validate_join_roots(
         &project.graph,
         parent_roots,
         active_joins,
+        parent_root_context,
         &location,
         project,
         issues,
@@ -678,6 +680,9 @@ pub(super) fn validate_scope(
     let mut active_joins = active_joins.to_vec();
     if let Some((join, plan)) = scope.join() {
         validate_join_plan(project, join, plan, &location, issues);
+        if parent_root_context {
+            validate_root_singletons(project, join, plan, &location, issues);
+        }
         if let Some(first) = join_owners.insert(join, location.clone()) {
             issues.push(ValidationIssue::new(
                 &location,
@@ -704,6 +709,7 @@ pub(super) fn validate_scope(
         &project.graph,
         scope,
         &active_joins,
+        is_root_context(project, current_source),
         &location,
         project,
         issues,

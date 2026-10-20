@@ -309,6 +309,12 @@ pub enum ProgramValidationError {
         collection: Vec<String>,
         cardinality: crate::JoinSourceCardinality,
     },
+    /// A root-context singleton path does not resolve directly from the
+    /// primary document root or an explicitly named source.
+    UnresolvedRootJoinSingleton {
+        join: crate::JoinId,
+        collection: Vec<String>,
+    },
     InvalidJoinKey {
         join: crate::JoinId,
         side: JoinKeySide,

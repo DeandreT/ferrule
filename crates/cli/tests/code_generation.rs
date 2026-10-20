@@ -182,6 +182,8 @@ mod xml_mixed_document_outputs;
 mod xml_multiple_named_document_outputs;
 #[path = "code_generation/xml_output_sets.rs"]
 mod xml_output_sets;
+#[path = "code_generation/xml_owned_absence.rs"]
+mod xml_owned_absence;
 #[path = "code_generation/xml_text.rs"]
 mod xml_text;
 
@@ -1468,6 +1470,12 @@ mod constructed_parser_runtime_inputs;
 
 #[path = "code_generation/constructed_variable_clocks.rs"]
 mod constructed_variable_clocks;
+
+#[path = "code_generation/constructed_variable_counts.rs"]
+mod constructed_variable_counts;
+
+#[path = "code_generation/constructed_variable_dates.rs"]
+mod constructed_variable_dates;
 
 #[path = "code_generation/json_parser_object_presence.rs"]
 mod json_parser_object_presence;

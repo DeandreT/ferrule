@@ -1,0 +1,130 @@
+[
+  {
+    "input": "{\"Choose\":false,\"Note\":\"kept\"}",
+    "parameters": {
+      "payload": "{\"Day\":\"2001-02-03\"}"
+    },
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Date": "2001-02-03",
+          "Picked": "kept"
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Choose\":true,\"Alt\":\"1/1/2000\",\"Note\":\"kept\"}",
+    "parameters": {
+      "payload": "{\"Day\":\"2024-2-29\"}"
+    },
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Date": "2024-02-29",
+          "Picked": "2000-01-01"
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Raw\":\"ignored\",\"Alt\":\"bad\"}",
+    "parameters": {
+      "payload": "{\"Day\":\"2001-02-03\"}"
+    },
+    "expected": {
+      "Records": [
+        {
+          "Text": "created",
+          "Date": "2001-02-03"
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Note\":\"kept\"}",
+    "missing_parameter": {
+      "node": 3,
+      "name": "payload"
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Note\":\"kept\"}",
+    "parameters": {
+      "payload": "{}"
+    },
+    "type_error": {
+      "function": "parse_date",
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Note\":\"kept\"}",
+    "parameters": {
+      "payload": "{\"Day\":\"2001-02-30\"}"
+    },
+    "execution_error": {
+      "function": "parse_date",
+      "message": "requires a value matching a supported date/time picture"
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Note\":\"kept\"}",
+    "parameters": {
+      "payload": "{\"Day\":5}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Note\":\"kept\"}",
+    "parameters": {
+      "payload": "{\"Day\":null}"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Note\":\"kept\"}",
+    "parameters": {
+      "payload": "not json"
+    },
+    "execution_error": {
+      "function": "json_parse_field",
+      "message": "input does not match the JSON schema"
+    }
+  },
+  {
+    "input": "{\"Choose\":true,\"Alt\":\"31/04/2000\"}",
+    "parameters": {
+      "payload": "{\"Day\":\"2001-02-03\"}"
+    },
+    "execution_error": {
+      "function": "parse_date",
+      "message": "requires a value matching a supported date/time picture"
+    }
+  },
+  {
+    "input": "{\"Note\":\"kept\"}",
+    "parameters": {
+      "payload": "{\"Day\":\"2001-02-03\"}"
+    },
+    "boolean_error": {
+      "node": 11,
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Raw\":7}",
+    "parameters": {
+      "payload": "{\"Day\":\"2001-02-03\"}"
+    },
+    "reject": true
+  }
+]

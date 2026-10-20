@@ -1,0 +1,33 @@
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+using var cases = JsonDocument.Parse(File.ReadAllText("cases.json"));
+foreach (var test in cases.RootElement.EnumerateArray())
+{
+    var input = test.GetProperty("input").GetString()!;
+    Verify(() => GeneratedMapping.ExecuteXml(input), test);
+    Verify(() => Encoding.UTF8.GetString(GeneratedMapping.ExecuteXmlBytes(Encoding.UTF8.GetBytes(input))), test);
+}
+
+static void Verify(Func<string> run, JsonElement test)
+{
+    if (test.TryGetProperty("missing_source", out var missing))
+    {
+        var path = string.Join('/', missing.GetProperty("path").EnumerateArray().Select(item => item.GetString()));
+        try { _ = run(); }
+        catch (FerruleXmlBoundaryException error) when (
+            error.InnerException is FerruleRuntimeException runtime &&
+            runtime.Error == FerruleRuntimeError.MissingSourceField &&
+            runtime.Message == $"Structured source '{path}' does not exist in the active scope context.")
+        { return; }
+        throw new Exception($"Expected missing structured source was accepted: {test}");
+    }
+    var actual = run();
+    var expected = test.GetProperty("expected_xml").GetString()!;
+    if (!string.Equals(actual, expected, StringComparison.Ordinal))
+    {
+        throw new Exception($"Exact XML output differs: {test}; actual: {actual}");
+    }
+}

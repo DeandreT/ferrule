@@ -346,6 +346,7 @@ fn validate_failure_rules(
                 FailureIteration::Source { .. } => Vec::new(),
             }),
             &[],
+            false,
             &location,
             project,
             issues,
