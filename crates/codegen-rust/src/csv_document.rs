@@ -75,6 +75,17 @@ pub fn emit_with_csv_document_adapters(
             source.push_str(&format!("\n/// Parse the complete input, map, then write one complete CSV document.\npub fn execute_csv_document{suffix}{context}(source: {input}{arg}) -> Result<{output}, codegen_runtime::CsvDocumentError> {{\n    let input = parse_csv{suffix}(source)?;\n    execute_csv{suffix}{context}(&input{pass}).map_err(Into::into)\n}}\n"));
         }
     }
+    source.push_str("\npub fn parse_csv_bytes_with_decoding_policy(source: &[u8], policy: codegen_runtime::CsvByteDecodingPolicy) -> Result<Instance, codegen_runtime::CsvReadError> {\n    codegen_runtime::parse_csv_rows_bytes_with_decoding_policy(source, &csv_input_schema(), &csv_input_options(), policy).map(Instance::Repeated)\n}\n");
+    for contextual in [false, true] {
+        let suffix = if contextual { "_with_context" } else { "" };
+        let argument = if contextual {
+            ", execution: &ExecutionContext<'_>"
+        } else {
+            ""
+        };
+        let pass = if contextual { ", execution" } else { "" };
+        source.push_str(&format!("\npub fn execute_csv_document_bytes_with_decoding_policy{suffix}(source: &[u8], policy: codegen_runtime::CsvByteDecodingPolicy{argument}) -> Result<Vec<u8>, codegen_runtime::CsvDocumentError> {{\n    let input = parse_csv_bytes_with_decoding_policy(source, policy)?;\n    execute_csv_bytes{suffix}(&input{pass}).map_err(Into::into)\n}}\n"));
+    }
     files
         .iter_mut()
         .find(|f| f.path.as_str() == "src/lib.rs")

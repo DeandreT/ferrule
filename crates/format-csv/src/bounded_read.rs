@@ -13,6 +13,7 @@ pub const MAX_CSV_INPUT_NODES: usize = 1_000_000;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CsvReadLimit {
     InputBytes,
+    DecodedBytes,
     CellBytes,
     Records,
     Columns,
@@ -72,6 +73,36 @@ pub fn from_bytes_with_options_bounded(
         None,
     )?;
     from_str_with_options_bounded(std::str::from_utf8(bytes)?, schema, options)
+}
+
+/// An explicit byte-decoding companion. The non-flushing profile checks the
+/// physical byte limit, decodes, checks the decoded UTF-8 byte limit, then uses
+/// the unchanged bounded text parser. No rows are returned on any failure.
+pub fn from_bytes_with_decoding_policy_bounded(
+    bytes: &[u8],
+    schema: &SchemaNode,
+    options: &CsvReadOptions,
+    policy: crate::CsvByteDecodingPolicy,
+) -> Result<Vec<Instance>, CsvReadError> {
+    if policy == crate::CsvByteDecodingPolicy::StrictUtf8 {
+        return from_bytes_with_options_bounded(bytes, schema, options);
+    }
+    limit(
+        CsvReadLimit::InputBytes,
+        MAX_CSV_INPUT_BYTES,
+        bytes.len(),
+        None,
+        None,
+    )?;
+    let text = crate::byte_decoding::decode_non_flushing(bytes);
+    limit(
+        CsvReadLimit::DecodedBytes,
+        MAX_CSV_INPUT_BYTES,
+        text.len(),
+        None,
+        None,
+    )?;
+    from_str_with_options_bounded(&text, schema, options)
 }
 
 /// Text form of the bounded CSV document reader. Uses the native positional,

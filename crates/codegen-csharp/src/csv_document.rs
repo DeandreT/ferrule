@@ -125,6 +125,20 @@ fn render(program: &Program, policy: &CsvDocumentBoundaryPolicy) -> String {
             s.push_str(&format!("        var input = ParseCsv{suffix}(source);\n        return ExecuteCsv{suffix}(input{pass});\n    }}\n"));
         }
     }
+    s.push_str("\n    public static global::Ferrule.Runtime.FerruleInstance ParseCsvBytesWithDecodingPolicy(byte[] source, global::Ferrule.Runtime.FerruleCsvByteDecodingPolicy policy) =>\n        global::Ferrule.Runtime.FerruleCsvInput.ParseBytesWithDecodingPolicy(source, CsvInputFields, policy, CsvInputOptions);\n");
+    for contextual in [false, true] {
+        let argument = if contextual {
+            ", global::Ferrule.Runtime.FerruleExecutionContext execution"
+        } else {
+            ""
+        };
+        let pass = if contextual { ", execution" } else { "" };
+        s.push_str(&format!("\n    public static byte[] ExecuteCsvDocumentBytesWithDecodingPolicy(byte[] source, global::Ferrule.Runtime.FerruleCsvByteDecodingPolicy policy{argument})\n    {{\n"));
+        if contextual {
+            s.push_str("        global::System.ArgumentNullException.ThrowIfNull(execution);\n");
+        }
+        s.push_str(&format!("        var input = ParseCsvBytesWithDecodingPolicy(source, policy);\n        return ExecuteCsvBytes(input{pass});\n    }}\n"));
+    }
     s.push_str("}\n");
     s
 }

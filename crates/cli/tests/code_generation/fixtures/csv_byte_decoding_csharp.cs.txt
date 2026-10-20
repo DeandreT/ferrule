@@ -1,0 +1,17 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+var context = new FerruleExecutionContext("authored.mapping");
+for (var i = 0; i < int.Parse(args[0]); i++)
+{
+    var input = File.ReadAllBytes($"input{i}");
+    var expected = File.ReadAllBytes($"expected{i}");
+    if (!GeneratedMapping.ExecuteCsvDocumentBytesWithDecodingPolicy(input, FerruleCsvByteDecodingPolicy.BomAwareNonFlushingReplacement).SequenceEqual(expected)) throw new Exception("document mismatch");
+    if (!GeneratedMapping.ExecuteCsvDocumentBytesWithDecodingPolicy(input, FerruleCsvByteDecodingPolicy.BomAwareNonFlushingReplacement, context).SequenceEqual(expected)) throw new Exception("context document mismatch");
+    if (File.Exists($"strict-refuses{i}"))
+    {
+        try { GeneratedMapping.ExecuteCsvDocumentBytes(input); throw new Exception("strict input accepted"); }
+        catch (FerruleCsvInputException error) when (error.Error == FerruleCsvInputError.Encoding) { }
+    }
+    else if (!GeneratedMapping.ExecuteCsvDocumentBytes(input).SequenceEqual(expected)) throw new Exception("strict document mismatch");
+}
+Console.WriteLine("CSV byte decoding cases passed");

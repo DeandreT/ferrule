@@ -585,6 +585,28 @@ mapping-runtime and CSV-writer exceptions.
 These APIs take document contents. Filename enumeration, acquisition,
 multi-document partitioning and publication require separate host contracts.
 
+### Explicit CSV byte decoding
+
+Existing byte methods remain strict UTF-8. To select a different byte contract,
+Rust adds `parse_csv_bytes_with_decoding_policy` and
+`execute_csv_document_bytes_with_decoding_policy` (plus `_with_context`);
+C# adds `ParseCsvBytesWithDecodingPolicy` and
+`ExecuteCsvDocumentBytesWithDecodingPolicy` (with an optional context overload).
+Pass `CsvByteDecodingPolicy::BomAwareNonFlushingReplacement` in Rust or
+`FerruleCsvByteDecodingPolicy.BomAwareNonFlushingReplacement` in C# explicitly.
+
+This policy recognizes UTF-8, UTF-16LE/BE and UTF-32LE/BE BOMs, testing the UTF-32LE
+marker before UTF-16LE. Unmarked input uses UTF-8. Malformed interior sequences
+produce U+FFFD; incomplete terminal byte/code-unit state is not flushed and is
+omitted. No other encoding is inferred. `StrictUtf8` delegates to the unchanged
+strict entry point, including its existing error order.
+
+The non-flushing policy first bounds physical input at 8 MiB, then bounds the
+decoded UTF-8 text at 8 MiB before schema/dialect validation and parsing. A
+decoded-size failure is distinct from a physical-size failure. Parsing and output
+retain their existing limits and typed errors. The policy is a runtime argument,
+not a saved mapping field, and is never selected from filenames or quoting rules.
+
 ### Explicit raw-delimited CRLF output
 
 Add `--raw-delimited-crlf` to `--csv-document-adapters` to write target fields
