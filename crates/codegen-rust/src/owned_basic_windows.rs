@@ -55,6 +55,16 @@ pub(crate) fn render_public_basic_owned_group_ending_with_source(
     )
 }
 
+pub(crate) fn render_public_basic_owned_failure_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::FailureSources,
+        SequenceItemAtPolicy::BasicScalarProducers,
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
     Closed,
@@ -69,13 +79,19 @@ pub(super) enum Profile {
     GroupAdjacentBy,
     GroupStartingWith,
     GroupEndingWith,
+    /// EndingWith targets plus explicitly owned failure-rule iteration.
+    FailureSources,
 }
 
 impl Profile {
     fn has_scoped_groups(self) -> bool {
         matches!(
             self,
-            Self::GroupBy | Self::GroupAdjacentBy | Self::GroupStartingWith | Self::GroupEndingWith
+            Self::GroupBy
+                | Self::GroupAdjacentBy
+                | Self::GroupStartingWith
+                | Self::GroupEndingWith
+                | Self::FailureSources
         )
     }
 
@@ -84,12 +100,18 @@ impl Profile {
             Some(GroupingPlan::By { .. }) => self.has_scoped_groups(),
             Some(GroupingPlan::AdjacentBy { .. }) => matches!(
                 self,
-                Self::GroupAdjacentBy | Self::GroupStartingWith | Self::GroupEndingWith
+                Self::GroupAdjacentBy
+                    | Self::GroupStartingWith
+                    | Self::GroupEndingWith
+                    | Self::FailureSources
             ),
-            Some(GroupingPlan::StartingWith { .. }) => {
-                matches!(self, Self::GroupStartingWith | Self::GroupEndingWith)
+            Some(GroupingPlan::StartingWith { .. }) => matches!(
+                self,
+                Self::GroupStartingWith | Self::GroupEndingWith | Self::FailureSources
+            ),
+            Some(GroupingPlan::EndingWith { .. }) => {
+                matches!(self, Self::GroupEndingWith | Self::FailureSources)
             }
-            Some(GroupingPlan::EndingWith { .. }) => self == Self::GroupEndingWith,
             _ => false,
         }
     }
@@ -112,6 +134,9 @@ fn render_public_basic_owned_source_policy(
     match (profile, item_at) {
         (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_group_ending_with_emission(program)?;
+        }
+        (Profile::FailureSources, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::validate_basic_owned_failure_source_emission(program)?;
         }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_group_starting_with_emission(program)?;
@@ -274,7 +299,9 @@ fn render_public_basic_owned_source_policy(
         }
     }
     if !program.failure_rules.is_empty() {
-        source.push_str(&if primary_row_failures {
+        source.push_str(&if profile == Profile::FailureSources {
+            failure::render_basic_with_failure_sources(program)?
+        } else if primary_row_failures {
             failure::render_basic_with_row_failures(program)?
         } else {
             failure::render_basic(program)?
@@ -351,6 +378,9 @@ fn render_public_basic_owned_source_policy(
     let plan = match (profile, item_at) {
         (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_ending_with(program)?
+        }
+        (Profile::FailureSources, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_failure_sources(program)?
         }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(

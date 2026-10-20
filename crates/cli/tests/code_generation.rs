@@ -14,6 +14,8 @@ use mapping::{Binding, FunctionId, Graph, Node, Project, Scope, ScopeIteration, 
 mod adjacency_tree;
 #[path = "code_generation/aggregates.rs"]
 mod aggregates;
+#[path = "code_generation/basic_owned_failure_sources.rs"]
+mod basic_owned_failure_sources;
 #[path = "code_generation/basic_owned_group_adjacent_by.rs"]
 mod basic_owned_group_adjacent_by;
 #[path = "code_generation/basic_owned_group_by.rs"]
@@ -108,6 +110,8 @@ mod optional_parser_input;
 mod optional_runtime_defaults;
 #[path = "code_generation/path_hierarchy.rs"]
 mod path_hierarchy;
+#[path = "code_generation/primary_filenames.rs"]
+mod primary_filenames;
 #[path = "code_generation/recursive_sequences.rs"]
 mod recursive_sequences;
 #[path = "code_generation/reference_corpus.rs"]
@@ -182,6 +186,8 @@ mod xml_mixed_document_outputs;
 mod xml_multiple_named_document_outputs;
 #[path = "code_generation/xml_output_sets.rs"]
 mod xml_output_sets;
+#[path = "code_generation/xml_owned_absence.rs"]
+mod xml_owned_absence;
 #[path = "code_generation/xml_text.rs"]
 mod xml_text;
 
@@ -1468,6 +1474,12 @@ mod constructed_parser_runtime_inputs;
 
 #[path = "code_generation/constructed_variable_clocks.rs"]
 mod constructed_variable_clocks;
+
+#[path = "code_generation/constructed_variable_counts.rs"]
+mod constructed_variable_counts;
+
+#[path = "code_generation/constructed_variable_dates.rs"]
+mod constructed_variable_dates;
 
 #[path = "code_generation/json_parser_object_presence.rs"]
 mod json_parser_object_presence;

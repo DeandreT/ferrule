@@ -24,6 +24,10 @@ fn has_owned_nodes(project: &Project) -> bool {
         )
         .any(|node| node.owned_source_kind().is_some())
         || mapping::first_project_owned_source_scope(project).is_some()
+        || project
+            .failure_rules
+            .iter()
+            .any(|rule| rule.iteration.owned_source().is_some())
 }
 
 pub(crate) fn check_project(
@@ -96,6 +100,10 @@ fn admit_roots<'a>(
             FailureIteration::Source { collection } => admission.path(collection),
             FailureIteration::Sequence { sequence } => {
                 admission.sequence(sequence, None, OwnedCapabilityContext::FailureRule, false)
+            }
+            FailureIteration::OwnedSource { source } => {
+                admission.owned_failure_rows(&source.owner, &source.path, rule)?;
+                continue;
             }
         }
         let root_owned = matches!(&rule.iteration,
@@ -407,6 +415,75 @@ impl<'a> Admission<'a> {
                     context: OwnedCapabilityContext::DynamicOwner,
                 });
             }
+        }
+        Ok(())
+    }
+    /// Admit an explicitly owned failure walk and its closed row scalar subset.
+    /// Owned reads may name any declared static endpoint; nothing here grants
+    /// generated items, functions, lookups or another specialized context.
+    fn owned_failure_rows(
+        &mut self,
+        owner: &SourceOwner,
+        path: &[String],
+        rule: &mapping::FailureRule,
+    ) -> Result<(), EngineError> {
+        self.static_owner(owner, path, None, None, None)?;
+        self.summary.used_owned = true;
+        let project = self.project;
+        let mut pending: Vec<_> = rule
+            .selection
+            .predicate()
+            .into_iter()
+            .chain(rule.message)
+            .collect();
+        let mut visited = BTreeSet::new();
+        while let Some(id) = pending.pop() {
+            if !visited.insert(id) {
+                continue;
+            }
+            let Some(node) = project.graph.nodes.get(&id) else {
+                continue;
+            };
+            if !owned_row_failure_node_is_static(project, node) {
+                return Err(EngineError::UnsupportedOwnedContext {
+                    node: Some(id),
+                    function: None,
+                    scope: None,
+                    context: OwnedCapabilityContext::FailureRule,
+                });
+            }
+            match node {
+                Node::OwnedSourceField(field) => {
+                    self.static_owner(
+                        &field.source.owner,
+                        &field.source.path,
+                        field.frame.as_deref(),
+                        Some(id),
+                        None,
+                    )?;
+                    if let Some(frame) = &field.frame
+                        && !field.source.path.starts_with(frame)
+                    {
+                        return Err(access_error(
+                            Some(id),
+                            None,
+                            OwnedSourceError::UnsupportedFramePathCombination {
+                                path: field.source.path.clone(),
+                                frame: frame.clone(),
+                            },
+                        ));
+                    }
+                }
+                Node::OwnedPosition(position) => self.static_owner(
+                    &position.owner,
+                    position.collection.as_deref().unwrap_or_default(),
+                    None,
+                    Some(id),
+                    None,
+                )?,
+                _ => {}
+            }
+            pending.extend(node.dependencies());
         }
         Ok(())
     }
@@ -737,6 +814,38 @@ fn primary_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
             SourceOwner::Named { .. } => field.frame.as_ref().is_none_or(Vec::is_empty),
         },
         Node::SourceField { path, .. } => !path.first().is_some_and(|name| {
+            project
+                .extra_sources
+                .iter()
+                .any(|source| source.name == *name && source.dynamic_path.is_some())
+        }),
+        _ => true,
+    }
+}
+
+/// Owned failure rows add exact row positions and frame pins for every owner to
+/// the static scalar subset. Specialized contexts, including ItemAt, stay closed.
+fn owned_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
+    if matches!(node, Node::SequenceItemAt { .. })
+        || node_context(node) != OwnedCapabilityContext::Basic
+    {
+        return false;
+    }
+    match node {
+        Node::OwnedPosition(_) | Node::OwnedSourceField(_) => true,
+        Node::UserFunctionCall { .. } => false,
+        Node::SourceField { path, frame } => ![Some(path.as_slice()), frame.as_deref()]
+            .into_iter()
+            .flatten()
+            .any(|path| {
+                path.first().is_some_and(|name| {
+                    project
+                        .extra_sources
+                        .iter()
+                        .any(|source| source.name == *name && source.dynamic_path.is_some())
+                })
+            }),
+        Node::Position { collection } => !collection.first().is_some_and(|name| {
             project
                 .extra_sources
                 .iter()

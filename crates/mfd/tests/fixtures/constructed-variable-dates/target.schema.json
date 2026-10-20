@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "properties": {
+    "Records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Text": {
+            "type": "string"
+          },
+          "Date": {
+            "type": "string"
+          },
+          "Picked": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false,
+  "title": "Report"
+}

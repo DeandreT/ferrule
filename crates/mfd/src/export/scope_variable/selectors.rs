@@ -426,6 +426,8 @@ pub(in crate::export) fn selector_context_warnings(
                 );
                 frames.push(Vec::new());
             }
+            // Export preflight refuses owned failure walks before this audit.
+            mapping::FailureIteration::OwnedSource { .. } => frames.push(Vec::new()),
         }
         audit.check(
             rule.selection.predicate().into_iter().chain(rule.message),

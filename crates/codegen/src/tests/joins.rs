@@ -7,6 +7,10 @@ use mapping::{
 use super::*;
 
 fn join_project() -> Project {
+    join_project_with_singleton(vec!["Config".into(), "Code".into()])
+}
+
+fn join_project_with_singleton(singleton: Vec<String>) -> Project {
     let plan = MappingJoinPlan::new(
         MappingJoinSource::new(vec!["A".into()]),
         MappingJoinSource::new(vec!["Catalog".into(), "B".into()]),
@@ -23,7 +27,7 @@ fn join_project() -> Project {
     )
     .and_then(|plan| {
         plan.then(
-            MappingJoinSource::singleton(vec!["Config".into(), "Code".into()]),
+            MappingJoinSource::singleton(singleton.clone()),
             MappingJoinConditions::new(MappingJoinKey::new(
                 vec!["Catalog".into(), "B".into()],
                 vec!["code".into()],
@@ -84,7 +88,7 @@ fn join_project() -> Project {
                 3,
                 Node::JoinField {
                     join: MappingJoinId::new(7),
-                    collection: vec!["Config".into(), "Code".into()],
+                    collection: singleton,
                     path: Vec::new(),
                 },
             ),
@@ -462,6 +466,35 @@ fn lowers_bounded_correlated_join_scopes_with_controls_and_static_children() {
     assert_eq!(iteration.windows().len(), 1);
     assert_eq!(scope.bindings.len(), 4);
     assert_eq!(scope.children[0].bindings[0].expression, 22);
+}
+
+#[test]
+fn interpreter_and_lowering_refuse_root_singletons_missing_from_the_root_context() {
+    assert!(engine::validate(&join_project()).is_empty());
+    lower(&join_project()).expect("named root singleton lowers");
+    // `label` exists only beneath repeated `A`; unprefixed `Code` exists only
+    // inside the named Config document. Neither resolves from the root context.
+    for singleton in ["label", "Code"] {
+        let project = join_project_with_singleton(vec![singleton.into()]);
+        let expected = format!(
+            "join 7 singleton collection `{singleton}` does not resolve from the root source context; use a path from the source root or a named source"
+        );
+        let messages = engine::validate(&project)
+            .into_iter()
+            .map(|issue| issue.message)
+            .collect::<Vec<_>>();
+        assert_eq!(messages, vec![expected.clone()]);
+        let diagnostics = lower(&project)
+            .expect_err("unresolved root singleton is refused")
+            .into_diagnostics();
+        assert!(
+            diagnostics.iter().any(|diagnostic| matches!(
+                diagnostic,
+                Diagnostic::Validation { message, .. } if *message == expected
+            )),
+            "{diagnostics:?}"
+        );
+    }
 }
 
 #[test]

@@ -297,6 +297,10 @@ pub enum RuntimeError {
         expected: ScalarType,
         found: &'static str,
     },
+    PrimaryFilenameType {
+        node: u32,
+        found: &'static str,
+    },
     UnknownTarget {
         name: String,
     },
@@ -561,6 +565,10 @@ impl fmt::Display for RuntimeError {
                 formatter,
                 "node {node}: runtime parameter `{name}` expected {expected:?}, got {found}"
             ),
+            Self::PrimaryFilenameType { node, found } => write!(
+                formatter,
+                "primary filename node {node} must produce a string, got {found}"
+            ),
             Self::UnknownTarget { name } => {
                 write!(formatter, "project has no named target `{name}`")
             }
@@ -721,6 +729,7 @@ impl std::error::Error for RuntimeError {
             | Self::MissingRuntimeValue { .. }
             | Self::MissingRuntimeParameter { .. }
             | Self::RuntimeParameterType { .. }
+            | Self::PrimaryFilenameType { .. }
             | Self::UnknownTarget { .. }
             | Self::MissingNamedSource { .. }
             | Self::DuplicateNamedSource { .. }
@@ -1191,6 +1200,43 @@ mod tests {
                 .and_then(|instance| resolve_scalar(instance, &["Name"])),
             Ok(string("inner-second"))
         );
+    }
+
+    #[test]
+    fn owned_structured_source_absence_is_authoritative() {
+        let details = |code: &str| group([field("Code", scalar(string(code)))]);
+        let source = group([
+            field("Details", details("root")),
+            field("Header", details("header")),
+            field(
+                "Rows",
+                repeated([
+                    group([field("Details", details("first"))]),
+                    group(Vec::<(String, Instance)>::new()),
+                ]),
+            ),
+        ]);
+        let rows = ScopeContext::new(&source).walk_source(&["Rows"]);
+        let code = |context: &ScopeContext<'_>, frame: Option<&[&str]>, path: &[&str]| {
+            context
+                .resolve_xml_instance(frame, path)
+                .and_then(|instance| resolve_scalar(instance, &["Code"]))
+        };
+
+        assert_eq!(
+            code(&rows[0], None, &["Rows", "Details"]),
+            Ok(string("first"))
+        );
+        let missing = Err(SourcePathError::MissingField {
+            path: vec!["Rows".to_string(), "Details".to_string()],
+            segment: 1,
+            field: "Details".to_string(),
+        });
+        assert_eq!(code(&rows[1], None, &["Rows", "Details"]), missing);
+        assert_eq!(code(&rows[1], Some(&["Rows"]), &["Details"]), missing);
+        // Paths without an active owner keep innermost-to-outermost fallback.
+        assert_eq!(code(&rows[1], None, &["Header"]), Ok(string("header")));
+        assert_eq!(code(&rows[1], None, &["Details"]), Ok(string("root")));
     }
 
     #[test]

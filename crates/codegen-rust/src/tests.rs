@@ -53,6 +53,7 @@ mod scalar_functions;
 mod scalar_union;
 mod xml_inputs;
 mod xml_mixed_content;
+mod xml_mixed_owned_absence;
 mod xml_serialize;
 
 fn program() -> Program {
@@ -1524,6 +1525,7 @@ mod owned_basic;
 mod owned_basic_group_adjacent_by;
 mod owned_basic_group_by;
 mod owned_basic_group_starting_with;
+mod owned_failure_sources;
 #[path = "owned_json_api_tests.rs"]
 mod owned_json_api;
 mod owned_sequence_item_at;

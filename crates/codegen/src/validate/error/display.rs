@@ -267,6 +267,12 @@ impl fmt::Display for ProgramValidationError {
                 join.get(),
                 display_path(collection)
             ),
+            Self::UnresolvedRootJoinSingleton { join, collection } => write!(
+                formatter,
+                "compiled mapping join {} singleton source {} does not resolve from the root source context",
+                join.get(),
+                display_path(collection)
+            ),
             Self::InvalidJoinKey {
                 join,
                 side,

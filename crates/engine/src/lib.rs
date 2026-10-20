@@ -1061,6 +1061,9 @@ mod trace_tests;
 #[cfg(test)]
 #[path = "tests/user_function.rs"]
 mod user_function_tests;
+#[cfg(test)]
+#[path = "tests/xml_owned_absence.rs"]
+mod xml_owned_absence_tests;
 
 #[cfg(test)]
 #[path = "tests/owned_collection.rs"]
@@ -1086,6 +1089,9 @@ mod owned_group_starting_with_tests;
 #[path = "tests/owned_sequence_item_at.rs"]
 mod owned_sequence_item_at_tests;
 
+#[cfg(test)]
+#[path = "tests/owned_failure_iteration.rs"]
+mod owned_failure_iteration_tests;
 #[cfg(test)]
 #[path = "tests/owned_source_context.rs"]
 mod owned_source_context_tests;

@@ -1,0 +1,27 @@
+[
+  {
+    "input": "{\"Choose\":false,\"Raw\":\"2024-02-29\",\"Note\":\"kept\"}",
+    "execution_error": {
+      "function": "parse_date",
+      "message": "requires a value matching a supported date/time picture"
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Raw\":\"\",\"Note\":\"kept\"}",
+    "execution_error": {
+      "function": "parse_date",
+      "message": "requires a value matching a supported date/time picture"
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Note\":\"kept\"}",
+    "type_error": {
+      "function": "parse_date",
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Raw\":null}",
+    "reject": true
+  }
+]

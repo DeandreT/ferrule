@@ -36,9 +36,13 @@ public sealed partial class ScopeContext
         for (var index = _collections.Count - 1; index >= 0; index--)
         {
             var collection = _collections[index];
-            if (collection.Path.Count != 0 &&
-                StartsWith(path, collection.Path) &&
-                TryResolveXmlInstance(
+            if (collection.Path.Count == 0 || !StartsWith(path, collection.Path))
+            {
+                continue;
+            }
+            // The active item owns this absolute path. Its absent optional
+            // group must not borrow another item's group from an outer frame.
+            if (TryResolveXmlInstance(
                     collection.Item,
                     path,
                     collection.Path.Count,
@@ -46,6 +50,7 @@ public sealed partial class ScopeContext
             {
                 return active;
             }
+            throw MissingXmlInstance(path);
         }
         for (var index = _frames.Count - 1; index >= 0; index--)
         {

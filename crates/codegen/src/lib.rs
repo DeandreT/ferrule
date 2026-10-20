@@ -11,6 +11,7 @@ mod csv_json_boundary;
 mod csv_output;
 mod csv_x12_boundary;
 mod diagnostic;
+mod document_program;
 mod embedded_schema;
 mod join;
 mod json5_boundary;
@@ -39,6 +40,9 @@ pub use csv_x12_boundary::{
     prepare_csv_x12_project_boundary,
 };
 pub use diagnostic::{Diagnostic, LowerError, ScopeFeature, UnsupportedNodeKind};
+pub use document_program::{
+    DocumentLowerError, DocumentProgram, PrimaryFilenamePlan, lower_document,
+};
 pub use embedded_schema::{
     EmbeddedSchemaError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_EMBEDDED_XML_SCHEMA_BYTES,
     serialize_embedded_schema,
@@ -52,11 +56,11 @@ pub use json5_boundary::{
     validate_json5_boundary, validate_json5_format_options,
 };
 pub use lower::{
-    lower, lower_with_basic_owned_filters, lower_with_basic_owned_group_adjacent_by,
-    lower_with_basic_owned_group_by, lower_with_basic_owned_group_ending_with,
-    lower_with_basic_owned_group_starting_with, lower_with_basic_owned_row_failures,
-    lower_with_basic_owned_sequence_item_at, lower_with_basic_owned_sort,
-    lower_with_basic_owned_windows,
+    lower, lower_with_basic_owned_failure_sources, lower_with_basic_owned_filters,
+    lower_with_basic_owned_group_adjacent_by, lower_with_basic_owned_group_by,
+    lower_with_basic_owned_group_ending_with, lower_with_basic_owned_group_starting_with,
+    lower_with_basic_owned_row_failures, lower_with_basic_owned_sequence_item_at,
+    lower_with_basic_owned_sort, lower_with_basic_owned_windows,
 };
 pub use model::{
     AggregateFunction, AggregateValue, Binding, DelimitedTextField, DelimitedTextFieldError,
@@ -74,6 +78,7 @@ pub use model::{
 pub use owned_admission::{
     NamedInputAdmission, NamedInputAdmissionPlan, NamedInputAvailability, NamedInputCatalogue,
     NamedTargetInputCatalogue, legacy_named_input_admission_plan,
+    legacy_named_input_admission_plan_with_basic_owned_failure_sources,
     legacy_named_input_admission_plan_with_basic_owned_filters,
     legacy_named_input_admission_plan_with_basic_owned_group_adjacent_by,
     legacy_named_input_admission_plan_with_basic_owned_group_by,
@@ -96,8 +101,8 @@ pub use validate::{
     OwnedSourceDiagnosticRequest, OwnedSourceNamespace, OwnedSourceSchemaShape,
     OwnedSourceStructureReason, ProgramValidationError, RecursiveSequencePathRole,
     SequenceExpressionRole, SequenceOwner, owned_expression_emission_error,
-    validate_owned_emission, validate_program, validate_program_with_basic_owned_filters,
-    validate_program_with_basic_owned_group_adjacent_by,
+    validate_owned_emission, validate_program, validate_program_with_basic_owned_failure_sources,
+    validate_program_with_basic_owned_filters, validate_program_with_basic_owned_group_adjacent_by,
     validate_program_with_basic_owned_group_by,
     validate_program_with_basic_owned_group_ending_with,
     validate_program_with_basic_owned_group_starting_with,
@@ -114,8 +119,9 @@ pub use x12_boundary::{
 
 pub use validate::{
     is_basic_owned_primary_row_failure, validate_basic_owned_emission,
-    validate_basic_owned_filter_emission, validate_basic_owned_group_adjacent_by_emission,
-    validate_basic_owned_group_by_emission, validate_basic_owned_group_ending_with_emission,
+    validate_basic_owned_failure_source_emission, validate_basic_owned_filter_emission,
+    validate_basic_owned_group_adjacent_by_emission, validate_basic_owned_group_by_emission,
+    validate_basic_owned_group_ending_with_emission,
     validate_basic_owned_group_starting_with_emission, validate_basic_owned_row_failure_emission,
     validate_basic_owned_sequence_item_at_emission, validate_basic_owned_sort_emission,
     validate_basic_owned_window_emission,
