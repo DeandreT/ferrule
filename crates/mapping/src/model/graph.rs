@@ -4,8 +4,8 @@ use ir::{ScalarType, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    FilterMapV1, FunctionId, FunctionParameterId, JoinId, JoinPlan, OwnedSourceRef, Scope,
-    SourceOwner,
+    FilterMapV1, FunctionId, FunctionParameterId, JoinId, JoinPlan, OwnedRecursiveCollect,
+    OwnedSourceRef, Scope, SourceOwner,
 };
 
 pub type NodeId = u32;
@@ -439,11 +439,19 @@ pub enum Node {
 }
 
 impl Node {
-    /// Stable wire kind for the two ownership forms which remain capability-closed.
+    /// Stable wire kind for the ownership forms which remain capability-closed.
+    /// A generated-sequence consumer reports its explicitly owned producer.
     pub fn owned_source_kind(&self) -> Option<&'static str> {
         match self {
             Self::OwnedSourceField(_) => Some("owned_source_field"),
             Self::OwnedPosition(_) => Some("owned_position"),
+            Self::SequenceExists { sequence, .. }
+            | Self::SequenceItemAt { sequence, .. }
+            | Self::SequenceAggregate { sequence, .. }
+                if sequence.owned_source().is_some() =>
+            {
+                Some(sequence.kind_name())
+            }
             _ => None,
         }
     }
@@ -627,6 +635,9 @@ pub enum SequenceExpr {
         separator: NodeId,
         item: NodeId,
     },
+    /// The same walk from one explicitly owned root collection. Older readers
+    /// refuse this kind rather than reinterpreting it as the legacy form.
+    OwnedRecursiveCollect(OwnedRecursiveCollect),
 }
 
 impl SequenceExpr {
@@ -655,6 +666,7 @@ impl SequenceExpr {
             Self::RecursiveCollect {
                 prefix, separator, ..
             } => vec![*prefix, *separator],
+            Self::OwnedRecursiveCollect(collect) => vec![collect.prefix, collect.separator],
         }
     }
 
@@ -665,7 +677,16 @@ impl SequenceExpr {
             | Self::TokenizeRegex { item, .. }
             | Self::Generate { item, .. }
             | Self::RecursiveCollect { item, .. } => *item,
+            Self::OwnedRecursiveCollect(collect) => collect.item,
             Self::FilterMapV1(composition) => composition.item,
+        }
+    }
+
+    /// The explicitly owned root collection, for owned producers only.
+    pub fn owned_source(&self) -> Option<&OwnedSourceRef> {
+        match self {
+            Self::OwnedRecursiveCollect(collect) => Some(&collect.collection),
+            _ => None,
         }
     }
 
@@ -684,6 +705,7 @@ impl SequenceExpr {
             Self::TokenizeRegex { .. } => "tokenize_regex",
             Self::Generate { .. } => "generate",
             Self::RecursiveCollect { .. } => "recursive_collect",
+            Self::OwnedRecursiveCollect(_) => "owned_recursive_collect",
             Self::FilterMapV1(_) => "filter_map_v1",
         }
     }

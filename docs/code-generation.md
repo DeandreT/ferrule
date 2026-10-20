@@ -478,6 +478,37 @@ owners and other specialized scopes) keep their typed refusals. The legacy
 to use the ordinary emitters. See [the ownership design](design/source-ownership.md#owned-adjacency-tree-row-collections)
 and [the corpus](../conformance/basic-owned-adjacency-tree/README.md).
 
+## Explicit owned recursive collection
+
+Use `codegen::lower_with_basic_owned_recursive_collect`, then
+`codegen_rust::emit_with_basic_owned_recursive_collect(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_recursive_collect(&program)`. Direct
+Program hosts use `validate_program_with_basic_owned_recursive_collect` and
+`validate_basic_owned_recursive_collect_emission`; named-input discovery uses
+`legacy_named_input_admission_plan_with_basic_owned_recursive_collect`.
+
+The profile composes the owned adjacency-tree profile (EndingWith controls,
+scalar-producer ItemAt, primary-row failures, owned failure-rule walks, owned
+path hierarchies and owned adjacency trees) with SequenceItemAt over an
+`owned_recursive_collect` producer. The producer's root collection belongs to
+exactly one Primary or named endpoint; child, descent and value paths stay
+relative to each selected group. Prefix, separator and index keep the receiving
+parent context and may read exact owned fields. A same-owner active frame pins
+the root collection's prefix, otherwise the walk starts at the endpoint root;
+another endpoint never supplies roots, and an unsupplied owner fails with the
+typed owned-source error at the consuming ItemAt node. Owned roots keep their
+endpoint optional in the named-input catalogue.
+
+Only ItemAt consumes the owned producer, including in an owned adjacency tree's
+parent-context root expression. Generated scope iteration,
+generated-sequence failure rules, SequenceExists, SequenceAggregate, closed
+parent contexts and function bodies keep refusing it, as do every earlier
+profile (including the adjacency-tree and fixed-block companions) and the
+ordinary emitters. The legacy `recursive_collect` form keeps its
+wire, admission and emission. The
+[owned recursive collection contract](design/owned-recursive-collect.md)
+defines the wire form, phases, limits and qualification.
+
 ## C#
 
 ### Build and test environment

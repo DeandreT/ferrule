@@ -11,20 +11,43 @@ pub(super) fn validate(
     sequence: &GeneratedSequence,
     owner: &SequenceOwner,
 ) -> Result<(), ProgramValidationError> {
-    let GeneratedSequence::RecursiveCollect {
-        collection,
-        children,
-        descent_value,
-        values,
-        value,
-        ..
-    } = sequence
-    else {
-        return Ok(());
+    let (roots, collection, children, descent_value, values, value) = match sequence {
+        GeneratedSequence::RecursiveCollect {
+            collection,
+            children,
+            descent_value,
+            values,
+            value,
+            ..
+        } => (
+            sources.path_targets(collection),
+            collection,
+            children,
+            descent_value,
+            values,
+            value,
+        ),
+        // Only the root collection resolves through its exact owner; the
+        // remaining paths stay relative to each selected group.
+        GeneratedSequence::OwnedRecursiveCollect {
+            collection,
+            children,
+            descent_value,
+            values,
+            value,
+            ..
+        } => (
+            sources.owned_schema_at(collection).into_iter().collect(),
+            &collection.path,
+            children,
+            descent_value,
+            values,
+            value,
+        ),
+        _ => return Ok(()),
     };
 
-    let mut groups = sources
-        .path_targets(collection)
+    let mut groups = roots
         .into_iter()
         .filter_map(|node| node.resolved())
         .filter(|node| matches!(node.node().kind, SchemaKind::Group { .. }))

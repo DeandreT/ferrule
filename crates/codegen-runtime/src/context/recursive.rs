@@ -40,20 +40,31 @@ impl ScopeContext<'_> {
         collect_instances(base, collection, &mut roots);
         let mut output = Vec::new();
         for root in roots {
-            collect_recursive_group(
-                root,
-                paths.children,
-                paths.descent_value,
-                paths.values,
-                paths.value,
-                prefix,
-                separator,
-                0,
-                &mut output,
-            )?;
+            collect_from_root(root, paths, prefix, separator, &mut output)?;
         }
         Ok(output)
     }
+}
+
+/// Walks one selected root group, shared by legacy and owned root selection.
+pub(crate) fn collect_from_root(
+    root: &Instance,
+    paths: RecursiveCollectPaths<'_>,
+    prefix: &str,
+    separator: &str,
+    output: &mut Vec<Value>,
+) -> Result<(), RuntimeError> {
+    collect_recursive_group(
+        root,
+        paths.children,
+        paths.descent_value,
+        paths.values,
+        paths.value,
+        prefix,
+        separator,
+        0,
+        output,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

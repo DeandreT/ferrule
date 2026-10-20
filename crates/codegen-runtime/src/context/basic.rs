@@ -1372,6 +1372,11 @@ impl<'ctx> BasicSourceCandidate<'ctx> {
     pub fn context(&self) -> &BasicScopeContext<'ctx> {
         &self.context
     }
+    /// The walk's published terminal item, including a fresh named Group root
+    /// whose legacy view keeps the parent frames.
+    pub(crate) fn terminal_instance(&self) -> &'ctx Instance {
+        self.terminal.item
+    }
     pub fn into_context(self) -> BasicScopeContext<'ctx> {
         self.context
     }

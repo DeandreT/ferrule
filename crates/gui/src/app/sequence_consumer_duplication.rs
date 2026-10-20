@@ -204,6 +204,7 @@ impl Planner<'_> {
             SequenceExpr::TokenizeByLength { .. } => Some("TokenizeByLength"),
             SequenceExpr::TokenizeRegex { .. } => Some("TokenizeRegex"),
             SequenceExpr::RecursiveCollect { .. } => Some("RecursiveCollect"),
+            SequenceExpr::OwnedRecursiveCollect(_) => Some("OwnedRecursiveCollect"),
         };
         if let Some(kind) = kind {
             return Err(DuplicationError::UnsupportedSequence { kind });
