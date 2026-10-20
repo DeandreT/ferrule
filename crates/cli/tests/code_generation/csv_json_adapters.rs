@@ -363,6 +363,7 @@ fn compiled_family(
     expected.extend([
         "GeneratedMapping.CsvJson.cs".to_owned(),
         "Runtime/FerruleCsvInput.cs".to_owned(),
+        "Runtime/FerruleCsvSource.cs".to_owned(),
     ]);
     let actual = emitted
         .iter()

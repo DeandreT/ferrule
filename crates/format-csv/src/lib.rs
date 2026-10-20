@@ -21,6 +21,7 @@ mod byte_decoding;
 mod encoding;
 mod fixed_width;
 mod read;
+mod source_document;
 
 pub use bounded::{CsvBoundedError, to_bytes_with_options_bounded, to_string_with_options_bounded};
 pub use bounded_read::{
@@ -30,6 +31,10 @@ pub use bounded_read::{
     from_str_with_options_bounded,
 };
 pub use byte_decoding::CsvByteDecodingPolicy;
+pub use source_document::{
+    CsvDocumentRows, CsvRowOccurrence, CsvSourceDocument, CsvSourceError, CsvSourceLoadError,
+    CsvSourceRows, MAX_CSV_SOURCE_DOCUMENTS, MAX_CSV_SOURCE_PATH_BYTES,
+};
 
 pub use read::{
     CsvReadOptions, from_str, from_str_with_dialect, from_str_with_options, from_str_with_quote,
