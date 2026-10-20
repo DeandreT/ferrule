@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 using Ferrule.Generated;
 using Ferrule.Runtime;
 
-const string MappingPath = "dates.ferrule.json";
+const string MappingPath = "constructed.ferrule.json";
 using var cases = JsonDocument.Parse(File.ReadAllText("cases.json"));
 foreach (var test in cases.RootElement.EnumerateArray())
 {
@@ -23,7 +23,7 @@ foreach (var test in cases.RootElement.EnumerateArray())
         Verify(() => Encoding.UTF8.GetString(GeneratedMapping.ExecuteJsonBytes(Encoding.UTF8.GetBytes(input))), test);
     }
 }
-Console.WriteLine($"verified {cases.RootElement.GetArrayLength()} constructed date cases");
+Console.WriteLine($"verified {cases.RootElement.GetArrayLength()} constructed scalar cases");
 
 static void Verify(Func<string> run, JsonElement test)
 {

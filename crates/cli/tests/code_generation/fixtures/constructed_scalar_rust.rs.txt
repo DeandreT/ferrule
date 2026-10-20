@@ -10,7 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for (name, value) in case.get("parameters").and_then(serde_json::Value::as_object).into_iter().flatten() {
             parameters.insert(name, Value::String(value.as_str().unwrap().to_string()))?;
         }
-        let context = ExecutionContext::new(Path::new("dates.ferrule.json")).with_parameters(&parameters);
+        let context = ExecutionContext::new(Path::new("constructed.ferrule.json")).with_parameters(&parameters);
         verify(execute_json_with_context(input, &context), case);
         verify(execute_json_bytes_with_context(input.as_bytes(), &context).map(|bytes| String::from_utf8(bytes).unwrap()), case);
         if case.get("parameters").is_none() {
@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             verify(execute_json_bytes(input.as_bytes()).map(|bytes| String::from_utf8(bytes).unwrap()), case);
         }
     }
-    println!("verified {} constructed date cases", cases.len());
+    println!("verified {} constructed scalar cases", cases.len());
     Ok(())
 }
 

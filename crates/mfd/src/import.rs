@@ -21,6 +21,7 @@ use crate::{
 mod aggregate;
 mod alternatives;
 mod compatibility;
+mod constructed_count;
 mod constructed_parse_date;
 mod constructed_parser_scalar;
 mod constructed_runtime_clock;

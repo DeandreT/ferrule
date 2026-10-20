@@ -88,8 +88,8 @@ fn constructed_variable_dates_match_generated_rust_and_csharp_hosts() -> TestRes
             &expected,
             &cases,
             label,
-            include_str!("fixtures/constructed_dates_rust.rs.txt"),
-            include_str!("fixtures/constructed_dates_csharp.cs.txt"),
+            include_str!("fixtures/constructed_scalar_rust.rs.txt"),
+            include_str!("fixtures/constructed_scalar_csharp.cs.txt"),
         )?;
     }
     Ok(())

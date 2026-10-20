@@ -1,0 +1,92 @@
+[
+  {
+    "input": "{}",
+    "expected": {
+      "Batches": []
+    }
+  },
+  {
+    "input": "{\"Groups\":[]}",
+    "expected": {
+      "Batches": []
+    }
+  },
+  {
+    "input": "{\"Groups\":[{\"Name\":\"a\",\"Rows\":[null,{\"Label\":\"x\",\"Total\":1}]},{\"Name\":\"b\"},{\"Name\":\"c\",\"Rows\":[]}]}",
+    "expected": {
+      "Batches": [
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 2
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 0
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 0
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Groups\":[{\"Rows\":[{\"Label\":\"x\",\"Total\":1},{\"Label\":null,\"Total\":1},{},null]},{\"Name\":\"d\",\"Rows\":[{\"Total\":9}]}]}",
+    "expected": {
+      "Batches": [
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 4
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Count": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Groups\":[{},{},{},{}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Groups\":[{\"Rows\":[{\"Label\":\"x\",\"Total\":1},{\"Label\":\"x\",\"Total\":1},{\"Label\":\"x\",\"Total\":1},{\"Label\":\"x\",\"Total\":1},{\"Label\":\"x\",\"Total\":1}]}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Groups\":[{\"Rows\":null}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Groups\":[null]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Groups\":[{\"Rows\":[{\"Label\":true}]}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[]}",
+    "reject": true
+  }
+]
