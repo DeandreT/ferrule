@@ -219,25 +219,42 @@ fn reject_protected_path(
     display_path: &Path,
     protected: &[PathBuf],
 ) -> anyhow::Result<()> {
-    if protected.iter().any(|path| path == output) {
-        bail!(
+    match protected_conflict(output, protected) {
+        Some((_, PathConflict::Same)) => bail!(
             "output destination {} is reserved by the host",
             display_path.display()
-        );
-    }
-    if protected
-        .iter()
-        .any(|path| path.starts_with(output) || output.starts_with(path))
-    {
-        bail!(
+        ),
+        Some((_, PathConflict::Overlap)) => bail!(
             "output destination {} overlaps a path reserved by the host",
             display_path.display()
-        );
+        ),
+        None => Ok(()),
     }
-    Ok(())
 }
 
-fn normalized_absolute(path: &Path) -> anyhow::Result<PathBuf> {
+/// How a normalized path relates to one normalized host-reserved path.
+pub(super) enum PathConflict {
+    Same,
+    /// One path is a directory ancestor of the other.
+    Overlap,
+}
+
+/// Finds the first reserved path that `path` names or overlaps, preferring an
+/// exact match. Both sides must come from [`normalized_absolute`].
+pub(super) fn protected_conflict(
+    path: &Path,
+    protected: &[PathBuf],
+) -> Option<(usize, PathConflict)> {
+    if let Some(index) = protected.iter().position(|reserved| reserved == path) {
+        return Some((index, PathConflict::Same));
+    }
+    protected
+        .iter()
+        .position(|reserved| reserved.starts_with(path) || path.starts_with(reserved))
+        .map(|index| (index, PathConflict::Overlap))
+}
+
+pub(super) fn normalized_absolute(path: &Path) -> anyhow::Result<PathBuf> {
     let absolute = std::path::absolute(path)
         .with_context(|| format!("resolving output path {}", path.display()))?;
     // Resolve existing components before removing `..`: after a symlink,

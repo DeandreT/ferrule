@@ -606,6 +606,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                         target,
                         runtime_parameters: Some(&parameters),
                         trace_sink: trace.as_ref().map(|trace| trace as &dyn cli::TraceSink),
+                        protected_output_paths: &protected_output_paths,
                     },
                     &mut stdin,
                 )?;
