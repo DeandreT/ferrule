@@ -25,11 +25,16 @@ fn directory_symlink(original: &Path, link: PathBuf) -> std::io::Result<()> {
     let command = PathBuf::from(std::env::var_os("SystemRoot").ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::NotFound, "SystemRoot is not set")
     })?)
-    .join("System32/cmd.exe");
+    .join("System32/WindowsPowerShell/v1.0/powershell.exe");
     let result = Command::new(command)
-        .args(["/D", "/C", "mklink", "/J"])
-        .arg(&link)
-        .arg(original)
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path $env:FERRULE_TEST_LINK -Target $env:FERRULE_TEST_TARGET | Out-Null",
+        ])
+        .env("FERRULE_TEST_LINK", &link)
+        .env("FERRULE_TEST_TARGET", original)
         .output()?;
     if !result.status.success() {
         return Err(std::io::Error::other(format!(
