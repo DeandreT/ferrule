@@ -155,7 +155,7 @@ fn verify_archival_manifest(
     Ok(())
 }
 fn verify_frozen_corpus_and_borrowed_helpers() -> TestResult<()> {
-    const ACCEPTED: &str = "7efb2541231587ef1afed0f3511654c7a068964a4705507c20ee8178a2ca31d6";
+    const ACCEPTED: &str = "ae113977facbba799d577f552dd4e1a4f844e8da7b9f63c1d3bd81a5f8c32979";
     let manifest = include_str!("accepted-corpus-v2/PACKET.sha256");
     if digest(manifest.as_bytes()) != ACCEPTED {
         return Err("accepted corpus v2 manifest identity changed".into());

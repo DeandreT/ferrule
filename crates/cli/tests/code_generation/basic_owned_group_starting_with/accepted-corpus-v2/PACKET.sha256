@@ -112,7 +112,7 @@ a238e32f7d0818707bcd09cea6c4f52ac327e386ecd64c10c7daec9aa31f0e98  ./source/confo
 367e90de45d19ee962cf10dab9d9827ca8d0a159aaea8aee68b4977247433715  ./source/conformance/basic-owned-group-starting-with/legacy-input.tree.json
 df23d0c0fbc2d945ea5bf9d111acbe98ac6fb7acd02c9a078fca18c5d969916b  ./source/conformance/basic-owned-group-starting-with/legacy-project.json
 bfb6cc637778716270b4003eedb1c320c6abaeb7cf8c19f22136bebaa7ee89fd  ./source/conformance/basic-owned-group-starting-with/old_profiles.rs
-6aadda29939f5e63de16d92e2957f44364806330ae425c8fe84141ae4de883dc  ./source/conformance/basic-owned-group-starting-with/projects.rs
+3e034ba10196e08418374e48c3a77b26dd4b7701007fc2181b19ce49c212c88c  ./source/conformance/basic-owned-group-starting-with/projects.rs
 67bbd26c374fc80a8ded6604d04e48ec3050e5f7574435b422565ac434106dec  ./source/crates/cli/tests/code_generation/basic_owned_group_starting_with.rs
 baa981fc510bba89206664a0485a9f20c91cfb89bacf1f07d6d7858c3137e2f3  ./verification/ADDITIONAL-INSPECTED-SOURCE-BINDINGS-CHECK.txt
 70ea995998e0867755163687ed2e91ece2fb2d770e83daff197583a28ed9b729  ./verification/ANCESTRY-COPY-EQUALITY.tsv
@@ -151,3 +151,4 @@ cc53170ff4bdbfbb39b9203a5e76c0cde16d0c2daceb77c86d3dc8c8c9b60fcd  ./verification
 b57b215906c6c4bdabd9e7d54aa94861be0cb3c0ed89603f833fc3282d50183e  ./verification/V2-LITERAL-BASELINE-CHECK.txt
 f3d0241977407a4091a3e4ba88b0c4eddb89832326e0dc77bfdf5f88c5136b53  ./verification/V2-NEW-SOURCE-INPUT-CHECK.txt
 b9b8d0c755879f2a4b2b6f364a505cf6b2bf228c35774cf066d9bb9cb585d93e  ./verification/VERIFICATION-SUMMARY.txt
+412650b25fb378e5a8efc8010c4aaa3aa0aab6a12c613f7399178765e5d68c55  ./AMENDMENT-E20-ROOT.md
