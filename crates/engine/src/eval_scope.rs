@@ -96,6 +96,9 @@ pub(crate) fn eval_scope(
     if matches!(
         scope.source_selector(),
         Some(mapping::SourceSelectorRef::Owned(_))
+    ) || matches!(
+        scope.construction,
+        ScopeConstruction::OwnedPathHierarchy { .. }
     ) {
         return Err(EngineError::UnsupportedSourceIteration {
             scope: trace_scope.source_scope.clone(),
@@ -753,6 +756,9 @@ fn scope_needs_owned(program: EvalProgram<'_>, scope: &Scope) -> bool {
     if matches!(
         scope.source_selector(),
         Some(mapping::SourceSelectorRef::Owned(_))
+    ) || matches!(
+        scope.construction,
+        ScopeConstruction::OwnedPathHierarchy { .. }
     ) {
         return true;
     }
@@ -2253,6 +2259,23 @@ impl ItemEvaluator<'_> {
 
         if let ScopeConstruction::PathHierarchy { plan } = &scope.construction {
             return crate::path_hierarchy::build(plan, context).map(Some);
+        }
+
+        if let ScopeConstruction::OwnedPathHierarchy { plan } = &scope.construction {
+            // Admission routes every owned hierarchy through the paired context.
+            let state =
+                program
+                    .owned_context
+                    .ok_or_else(|| EngineError::UnsupportedSourceIteration {
+                        scope: trace_scope.source_scope.clone(),
+                    })?;
+            return crate::path_hierarchy::build_owned(
+                plan,
+                state,
+                output_positions.len(),
+                &trace_scope.source_scope,
+            )
+            .map(Some);
         }
 
         if let ScopeConstruction::AdjacencyTree { plan } = &scope.construction {

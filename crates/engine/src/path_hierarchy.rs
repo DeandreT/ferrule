@@ -1,11 +1,18 @@
 use ir::{Instance, Value};
-use mapping::PathHierarchyPlan;
+use mapping::{OwnedPathHierarchyPlan, PathHierarchyPlan};
 
 use crate::EngineError;
 use crate::source_iteration::walk;
 
 pub(super) const MAX_PATH_HIERARCHY_DEPTH: usize = 256;
 pub(super) const MAX_PATH_HIERARCHY_ITEMS: usize = 1_000_000;
+
+/// Generated target field names; they never select source data.
+struct OutputFields<'a> {
+    directories: &'a str,
+    files: &'a str,
+    name: &'a str,
+}
 
 #[derive(Debug)]
 struct Directory {
@@ -60,14 +67,14 @@ impl Directory {
         child.insert(remainder, separator, depth + 1, materialized)
     }
 
-    fn into_instance(self, plan: &PathHierarchyPlan) -> Instance {
+    fn into_instance(self, fields: &OutputFields<'_>) -> Instance {
         let files = self
             .files
             .into_iter()
             .map(|name| {
                 Instance::Group(
                     (vec![(
-                        plan.name().to_string(),
+                        fields.name.to_string(),
                         Instance::Scalar(Value::String(name)),
                     )])
                     .into(),
@@ -77,17 +84,17 @@ impl Directory {
         let directories = self
             .directories
             .into_iter()
-            .map(|directory| directory.into_instance(plan))
+            .map(|directory| directory.into_instance(fields))
             .collect();
         Instance::Group(
             (vec![
-                (plan.files().to_string(), Instance::Repeated(files)),
+                (fields.files.to_string(), Instance::Repeated(files)),
                 (
-                    plan.directories().to_string(),
+                    fields.directories.to_string(),
                     Instance::Repeated(directories),
                 ),
                 (
-                    plan.name().to_string(),
+                    fields.name.to_string(),
                     Instance::Scalar(Value::String(self.name)),
                 ),
             ])
@@ -110,49 +117,41 @@ fn reserve_item(materialized: &mut usize) -> Result<(), EngineError> {
     Ok(())
 }
 
-pub(super) fn build(
-    plan: &PathHierarchyPlan,
-    context: &[&Instance],
-) -> Result<Instance, EngineError> {
-    let base = context
-        .iter()
-        .rev()
-        .find(|frame| {
-            plan.collection()
-                .first()
-                .is_none_or(|first| frame.field(first).is_some())
-        })
-        .copied()
-        .or_else(|| context.last().copied());
-    let values = base
-        .into_iter()
-        .flat_map(|base| walk(base, plan.collection(), &[], &[], &[]))
-        .filter_map(|extension| extension.instances.last().copied())
-        .map(|instance| match instance.as_scalar() {
-            Some(Value::String(value)) => Ok(value.as_str()),
-            Some(Value::Null | Value::JsonNull(_) | Value::XmlNil(_)) => Ok(""),
-            Some(value) => Err(EngineError::PathHierarchyValueType {
-                found: value.type_name(),
-            }),
-            None => Err(EngineError::PathHierarchyValueType {
-                found: match instance {
-                    Instance::Group(_) => "group",
-                    Instance::Repeated(_) => "repeated collection",
-                    Instance::MappedSequence(_) => "mapped sequence",
-                    Instance::Scalar(_) => "scalar",
-                    Instance::DocumentSet(_) => "document set",
-                },
-            }),
-        });
+/// One collection item's path text; absent and null items are empty paths.
+fn path_value(instance: &Instance) -> Result<&str, EngineError> {
+    match instance.as_scalar() {
+        Some(Value::String(value)) => Ok(value.as_str()),
+        Some(Value::Null | Value::JsonNull(_) | Value::XmlNil(_)) => Ok(""),
+        Some(value) => Err(EngineError::PathHierarchyValueType {
+            found: value.type_name(),
+        }),
+        None => Err(EngineError::PathHierarchyValueType {
+            found: match instance {
+                Instance::Group(_) => "group",
+                Instance::Repeated(_) => "repeated collection",
+                Instance::MappedSequence(_) => "mapped sequence",
+                Instance::Scalar(_) => "scalar",
+                Instance::DocumentSet(_) => "document set",
+            },
+        }),
+    }
+}
 
+/// Builds the single rooted tree from ordered collection items. Item order,
+/// limits and error precedence are shared by legacy and owned collections.
+fn build_from<'a>(
+    items: impl IntoIterator<Item = &'a Instance>,
+    separator: &str,
+    fields: &OutputFields<'_>,
+) -> Result<Instance, EngineError> {
     let mut roots = Vec::<Directory>::new();
     let mut materialized = 0usize;
-    for value in values {
-        let value = value?;
+    for item in items {
+        let value = path_value(item)?;
         if value.is_empty() {
             continue;
         }
-        let Some((root, remainder)) = value.split_once(plan.separator()) else {
+        let Some((root, remainder)) = value.split_once(separator) else {
             // The public UDF port exposes directory results; direct files at
             // the synthetic top level are intentionally not connected.
             continue;
@@ -170,7 +169,7 @@ pub(super) fn build(
                 directory
             }
         };
-        directory.insert(remainder, plan.separator(), 1, &mut materialized)?;
+        directory.insert(remainder, separator, 1, &mut materialized)?;
     }
     if roots.len() != 1 {
         return Err(EngineError::PathHierarchyRootCount { count: roots.len() });
@@ -178,5 +177,93 @@ pub(super) fn build(
     let Some(root) = roots.pop() else {
         return Err(EngineError::PathHierarchyRootCount { count: 0 });
     };
-    Ok(root.into_instance(plan))
+    Ok(root.into_instance(fields))
+}
+
+pub(super) fn build(
+    plan: &PathHierarchyPlan,
+    context: &[&Instance],
+) -> Result<Instance, EngineError> {
+    let base = context
+        .iter()
+        .rev()
+        .find(|frame| {
+            plan.collection()
+                .first()
+                .is_none_or(|first| frame.field(first).is_some())
+        })
+        .copied()
+        .or_else(|| context.last().copied());
+    let items = base
+        .into_iter()
+        .flat_map(|base| walk(base, plan.collection(), &[], &[], &[]))
+        .filter_map(|extension| extension.instances.last().copied());
+    build_from(
+        items,
+        plan.separator(),
+        &OutputFields {
+            directories: plan.directories(),
+            files: plan.files(),
+            name: plan.name(),
+        },
+    )
+}
+
+/// Builds from the exact owner's collection in the receiving owned context.
+/// An active same-owner frame pins its prefix; otherwise the endpoint root is
+/// used. Other owners and legacy frames never supply the collection.
+pub(super) fn build_owned(
+    plan: &OwnedPathHierarchyPlan,
+    state: &crate::owned_context::OwnedContext<'_>,
+    position_offset: usize,
+    scope: &mapping::SourceScopeLocation,
+) -> Result<Instance, EngineError> {
+    use crate::source_iteration::{ObservedWalkRequest, select_observed};
+    let access = |source| match source {
+        crate::OwnedSourceError::UnsupportedSourceDomain { found } => {
+            EngineError::UnsupportedOwnedContext {
+                node: None,
+                function: None,
+                scope: Some(scope.clone()),
+                context: if found == "a document set" {
+                    crate::OwnedCapabilityContext::Document
+                } else {
+                    crate::OwnedCapabilityContext::GeneratedItem
+                },
+            }
+        }
+        source => EngineError::OwnedSourceAccess {
+            node: None,
+            scope: Some(Box::new(scope.clone())),
+            source,
+        },
+    };
+    let (owner, base, prefix, tail, budget) = state.select(plan.collection()).map_err(access)?;
+    let selected = select_observed(
+        ObservedWalkRequest {
+            base,
+            path: tail,
+            raw_prefix: prefix,
+            canonical_prefix: prefix,
+            owner: Some(owner),
+            context: state,
+            position_offset,
+            strict_collection: true,
+        },
+        &budget,
+        false,
+    )
+    .map_err(access)?;
+    build_from(
+        selected
+            .extensions
+            .iter()
+            .filter_map(|extension| extension.extension.instances.last().copied()),
+        plan.separator(),
+        &OutputFields {
+            directories: plan.directories(),
+            files: plan.files(),
+            name: plan.name(),
+        },
+    )
 }
