@@ -16,6 +16,7 @@ pub(crate) use windows::render_public_basic_owned_adjacency_tree_source;
 pub(crate) use windows::render_public_basic_owned_failure_source;
 pub(crate) use windows::render_public_basic_owned_group_adjacent_by_source;
 pub(crate) use windows::render_public_basic_owned_group_ending_with_source;
+pub(crate) use windows::render_public_basic_owned_group_into_blocks_source;
 pub(crate) use windows::render_public_basic_owned_group_starting_with_source;
 pub(crate) use windows::render_public_basic_owned_path_hierarchy_source;
 pub(crate) use windows::render_public_basic_owned_row_failure_source;

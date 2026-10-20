@@ -5,6 +5,9 @@ use super::*;
 // #444 Ending admission reuses this module's static scaffold.
 #[path = "owned_group_ending_with.rs"]
 mod ending_with;
+// #445 IntoBlocks admission reuses the same static scaffold.
+#[path = "owned_group_into_blocks.rs"]
+mod into_blocks;
 
 fn starting(owner: SourceOwner) -> mapping::Project {
     let mut p = project(owner);

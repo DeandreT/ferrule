@@ -17,9 +17,10 @@ pub(super) fn render_operation(index: usize, iteration: &IterationPlan, output: 
         Some(GroupingPlan::EndingWith { .. }) => {
             ("MapGroupEndingWithSourceCohort", "GroupEndingWithControls")
         }
-        _ => unreachable!(
-            "only admitted paired By/AdjacentBy/StartingWith/EndingWith groups have controls"
-        ),
+        Some(GroupingPlan::IntoBlocks { .. }) => {
+            ("MapGroupIntoBlocksSourceCohort", "GroupIntoBlocksControls")
+        }
+        None => unreachable!("only admitted paired groups have controls"),
     };
     output.push_str(&format!(
         ");\n        var items_{index} = context.{operation}(\n            cohort_{index}, {controls}_{index}.Instance, candidate => ScopeItem_{index}(candidate));\n        global::System.GC.KeepAlive(cohort_{index});\n"
@@ -35,27 +36,41 @@ pub(super) fn render_operation(index: usize, iteration: &IterationPlan, output: 
     }
 }
 
+/// The partition callback each paired controls interface requires.
+#[derive(Clone, Copy)]
+enum PartitionControl {
+    Key,
+    Boundary(&'static str),
+    BlockSize,
+}
+
 pub(super) fn render_controls(index: usize, iteration: &IterationPlan, output: &mut String) {
-    // A Boolean boundary control names its callback; keyed controls have none.
-    let (expression, controls, interface, boundary) = match iteration.grouping() {
-        Some(GroupingPlan::By { key } | GroupingPlan::AdjacentBy { key }) => {
-            (key, "GroupByControls", "IFerruleBasicGroupByControls", None)
-        }
+    let (expression, controls, interface, partition) = match iteration.grouping() {
+        Some(GroupingPlan::By { key } | GroupingPlan::AdjacentBy { key }) => (
+            key,
+            "GroupByControls",
+            "IFerruleBasicGroupByControls",
+            PartitionControl::Key,
+        ),
         Some(GroupingPlan::StartingWith { predicate }) => (
             predicate,
             "GroupStartingWithControls",
             "IFerruleBasicGroupStartingWithControls",
-            Some("StartsGroup"),
+            PartitionControl::Boundary("StartsGroup"),
         ),
         Some(GroupingPlan::EndingWith { predicate }) => (
             predicate,
             "GroupEndingWithControls",
             "IFerruleBasicGroupEndingWithControls",
-            Some("EndsGroup"),
+            PartitionControl::Boundary("EndsGroup"),
         ),
-        _ => unreachable!(
-            "only admitted paired By/AdjacentBy/StartingWith/EndingWith scopes have controls"
+        Some(GroupingPlan::IntoBlocks { size }) => (
+            size,
+            "GroupIntoBlocksControls",
+            "IFerruleBasicGroupIntoBlocksControls",
+            PartitionControl::BlockSize,
         ),
+        None => unreachable!("only admitted paired scopes have controls"),
     };
     output.push_str(&format!(
         "\n    private sealed class {controls}_{index} : global::Ferrule.Runtime.{interface}\n    {{\n        internal static readonly {controls}_{index} Instance = new();\n        private {controls}_{index}() {{ }}\n        private static readonly bool[] Descending = new bool[] {{ "
@@ -107,14 +122,19 @@ pub(super) fn render_controls(index: usize, iteration: &IterationPlan, output: &
         }
         output.push_str("                _ => throw new global::System.InvalidOperationException(\"Invalid generated group window bound.\"),\n            };\n");
     }
-    if let Some(boundary) = boundary {
-        output.push_str(&format!("        public bool {boundary}(global::Ferrule.Runtime.FerruleBasicScopeContext candidate)\n            => "));
-        render_predicate(Some(expression), output);
-        output.push_str(";\n");
-    } else {
-        output.push_str(&format!(
+    match partition {
+        PartitionControl::Boundary(boundary) => {
+            output.push_str(&format!("        public bool {boundary}(global::Ferrule.Runtime.FerruleBasicScopeContext candidate)\n            => "));
+            render_predicate(Some(expression), output);
+            output.push_str(";\n");
+        }
+        PartitionControl::Key => output.push_str(&format!(
             "        public global::Ferrule.Runtime.FerruleValue GroupKey(global::Ferrule.Runtime.FerruleBasicScopeContext candidate)\n            => Node_{expression}(candidate);\n"
-        ));
+        )),
+        // Evaluated once in the receiving parent, after the window bounds.
+        PartitionControl::BlockSize => output.push_str(&format!(
+            "        public ulong BlockSize(global::Ferrule.Runtime.FerruleBasicScopeContext parent)\n            => global::Ferrule.Runtime.FerruleSequences.PositiveBlockSize({expression}U, Node_{expression}(parent));\n"
+        )),
     }
     output.push_str("        public bool RetainMember(global::Ferrule.Runtime.FerruleBasicScopeContext candidate)\n            => ");
     render_predicate(iteration.post_group_filter(), output);

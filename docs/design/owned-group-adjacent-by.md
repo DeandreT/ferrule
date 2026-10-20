@@ -23,8 +23,9 @@ ineligible in owned failure predicates and messages. Generated libraries retain
 their typed Basic execution entries and mandatory five-field policy.
 
 Default, By, ItemAt and earlier generation profiles retain their own admission
-rules; they do not acquire owned AdjacentBy through this companion. Starting,
-ending and fixed-block owned grouping, specialized contexts and grouped observer
+rules; they do not acquire owned AdjacentBy through this companion. The
+[Starting](owned-group-starting-with.md), [Ending](owned-group-ending-with.md)
+and [IntoBlocks](owned-group-into-blocks.md) profiles, specialized contexts and grouped observer
 snapshots retain separate capability gates. Entirely ordinary legacy subtrees
 remain on their ordinary routes.
 

@@ -203,6 +203,19 @@ pub fn emit_with_basic_owned_group_ending_with(
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits static Basic By/AdjacentBy/StartingWith/EndingWith/IntoBlocks grouping
+/// with the qualified scalar ItemAt producers. Prior companions keep their
+/// narrower admission.
+pub fn emit_with_basic_owned_group_into_blocks(
+    program: &Program,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_group_into_blocks(program)?;
+    codegen::validate_basic_owned_group_into_blocks_emission(program)?;
+    let generated_mapping =
+        owned_basic::render_public_basic_owned_group_into_blocks_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 /// Emit EndingWith-profile targets with explicitly owned failure-rule walks
 /// over one exact Primary or named endpoint. Older emitters keep refusing them.
 pub fn emit_with_basic_owned_failure_sources(program: &Program) -> Result<ArtifactSet, EmitError> {

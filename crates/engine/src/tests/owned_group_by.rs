@@ -560,7 +560,15 @@ fn neighboring_grouping_modes_and_specialized_consumers_stay_closed() {
             0 => p.root.group_adjacent_by = Some(1),
             1 => p.root.group_starting_with = Some(5),
             2 => p.root.group_ending_with = Some(5),
-            _ => p.root.group_into_blocks = Some(8),
+            _ => {
+                p.graph.nodes.insert(
+                    8,
+                    Node::Const {
+                        value: Value::Int(2),
+                    },
+                );
+                p.root.group_into_blocks = Some(8);
+            }
         }
         if mode == 0 {
             // #442 adds this one neighboring family; the original fixture is
@@ -609,13 +617,18 @@ fn neighboring_grouping_modes_and_specialized_consumers_stay_closed() {
             );
             continue;
         }
-        assert!(matches!(
+        // #445: fixed blocks of two leave a trailing partial block.
+        assert_eq!(
             run(&p),
-            Err(EngineError::UnsupportedOwnedContext {
-                context: OwnedCapabilityContext::Grouping,
-                ..
-            })
-        ));
+            Ok(expected(
+                "P",
+                &[
+                    ("a1", &["a1", "b1"]),
+                    ("a2", &["a2", "c1"]),
+                    ("b2", &["b2"])
+                ]
+            ))
+        );
     }
     let mut p = project(SourceOwner::Primary);
     p.root.group_by = None;
