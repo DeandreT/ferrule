@@ -24,7 +24,7 @@ mod failure_rows;
 
 #[path = "basic_group_by.rs"]
 mod group_by;
-pub use group_by::{BasicGroupByControls, BasicGroupByMetadata};
+pub use group_by::{BasicGroupByControls, BasicGroupByMetadata, BasicGroupStartingWithControls};
 
 /// Fixed bridge failures; no user text is copied into these diagnostics.
 #[derive(Debug, PartialEq, Eq)]
@@ -498,8 +498,8 @@ struct Origin {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum OriginKind {
     Ordinary,
-    KeyedGroupWrapper,
-    KeyedGroupMembers,
+    GroupWrapper,
+    GroupMembers,
 }
 
 #[derive(Clone, Copy)]
@@ -834,7 +834,7 @@ impl<'ctx> BasicScopeContext<'ctx> {
                     .ok_or(BasicSourceBridgeError::RegistryMismatch)?;
                 (
                     origin.path.len(),
-                    usize::from(origin.kind == OriginKind::KeyedGroupWrapper && !path.is_empty()),
+                    usize::from(origin.kind == OriginKind::GroupWrapper && !path.is_empty()),
                 )
             }
             Some(LegacySelected::NamedBinding(_)) => (0, 1),
@@ -1812,6 +1812,39 @@ fn length_limit(
     Ok(())
 }
 
+// A rejected graft probe, not a constructor: run the real legacy observer bound
+// to the unchanged authenticated parent, and discard every possible output.
+// Ordinary grouped frames have no corresponding entry in that parent's origins.
+#[cfg(test)]
+fn ordinary_grouped_walk_rejection_for_test<'ctx>(
+    parent: &BasicScopeContext<'ctx>,
+    ordinary: &ScopeContext<'ctx>,
+    path: &[&str],
+) -> Result<(), RuntimeError> {
+    let (mut budget, bounds) =
+        parent.budget_with_legacy_path(SourceOwnerRef::Primary, path, None, false, true)?;
+    budget.slots(1)?; // The same observed-walk witness reservation, no holder.
+    let cohort = Arc::new(WalkCohort {
+        parent: Arc::clone(&parent.identity),
+        registry: Arc::clone(&parent.owned.registry),
+        original_count: OnceLock::new(),
+    });
+    let mut observer = BasicLegacyObserver {
+        parent,
+        budget,
+        bounds,
+        cohort,
+        key: OwnedOwnerKey::Primary,
+        base: &[],
+        prefix_len: 0,
+        produced: 0,
+        raw_head: None,
+        wrapped: !path.is_empty(),
+    };
+    drop(walk_source_observed(ordinary, path, &mut observer)?);
+    Ok(())
+}
+
 struct BasicLegacyObserver<'p, 'ctx> {
     parent: &'p BasicScopeContext<'ctx>,
     budget: PairedBudget,
@@ -1880,7 +1913,7 @@ impl<'ctx> LegacyWalkObserver<'ctx> for BasicLegacyObserver<'_, 'ctx> {
                 }
                 self.key = origin.owner;
                 self.base = &origin.path;
-                if origin.kind == OriginKind::KeyedGroupWrapper {
+                if origin.kind == OriginKind::GroupWrapper {
                     self.prefix_len = 1;
                     self.raw_head = match self.parent.legacy.frames[index].instance {
                         Instance::Group(fields) => fields.first().map(|field| field.0.as_str()),

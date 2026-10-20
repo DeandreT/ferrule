@@ -317,6 +317,25 @@ Direct Program validation and named-input discovery use the corresponding
 keep their gates. The [adjacent grouping contract](design/owned-group-adjacent-by.md)
 defines exact-owner root pins, phase ordering, storage bounds and closed contexts.
 
+## Explicit owned starting-boundary grouping
+
+Use `codegen::lower_with_basic_owned_group_starting_with`, then
+`codegen_rust::emit_with_basic_owned_group_starting_with(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_group_starting_with(&program)`. The matching
+validation and named-input companions select the same explicit profile. Existing
+execution entry names, five-field policy and earlier profile gates remain intact.
+
+The first selected candidate creates a group even with a false boundary. Each
+later true boundary starts a new group at that candidate. Boundary evaluation
+precedes member retention; both use candidate positions. Windows evaluate their
+bounds in the parent before boundaries and select retained groups afterward.
+Only selected groups evaluate bindings and children.
+
+The runtimes use Boolean start controls with the unchanged grouping metadata
+shape. A start boundary consumes no grouping-key text credits. The
+[Starting contract](design/owned-group-starting-with.md) defines the full callback,
+authenticated-member, resource and qualification requirements.
+
 ## C#
 
 ### Build and test environment

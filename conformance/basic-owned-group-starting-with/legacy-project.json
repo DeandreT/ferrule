@@ -1,0 +1,166 @@
+{
+  "source": {
+    "name": "Input",
+    "repeating": false,
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Rows",
+          "repeating": true,
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "Start",
+                "repeating": false,
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "bool"
+                }
+              },
+              {
+                "name": "Label",
+                "repeating": false,
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Output",
+    "repeating": false,
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "Groups",
+          "repeating": true,
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "First",
+                "repeating": false,
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "Position",
+                "repeating": false,
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "Members",
+                "repeating": true,
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    {
+                      "name": "Label",
+                      "repeating": false,
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "string"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "source_options": {
+    "lenient_segments": false,
+    "delimiter": null,
+    "has_header_row": null
+  },
+  "target_options": {
+    "lenient_segments": false,
+    "delimiter": null,
+    "has_header_row": null
+  },
+  "extra_sources": [],
+  "graph": {
+    "nodes": {
+      "1": {
+        "kind": "source_field",
+        "path": [
+          "Label"
+        ],
+        "frame": [
+          "Rows"
+        ]
+      },
+      "2": {
+        "kind": "source_field",
+        "path": [
+          "Start"
+        ],
+        "frame": [
+          "Rows"
+        ]
+      },
+      "3": {
+        "kind": "position",
+        "collection": [
+          "Rows"
+        ]
+      }
+    }
+  },
+  "root": {
+    "target_field": "",
+    "source": null,
+    "filter": null,
+    "bindings": [],
+    "children": [
+      {
+        "target_field": "Groups",
+        "source": [
+          "Rows"
+        ],
+        "filter": null,
+        "group_starting_with": 2,
+        "bindings": [
+          {
+            "target_field": "First",
+            "node": 1
+          },
+          {
+            "target_field": "Position",
+            "node": 3
+          }
+        ],
+        "children": [
+          {
+            "target_field": "Members",
+            "source": [],
+            "filter": null,
+            "bindings": [
+              {
+                "target_field": "Label",
+                "node": 1
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}

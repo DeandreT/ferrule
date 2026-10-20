@@ -37,9 +37,10 @@ pub fn function_error(recipe: &Json) -> codegen_runtime::FunctionError {
 /// before the deliberately closed recipe observer runs. Debug alone is lossy.
 /// Observation panics fail this call, not the remaining cohort. Evidence I/O is
 /// outside that catch and keeps its concrete error type.
+#[allow(dead_code)] // Standalone Starting hosts use the opt-in entry instead.
 pub fn retain_outcome<T, E>(
     invocation: std::thread::Result<Result<T, E>>,
-    mut write: impl FnMut(&str, &[u8]) -> std::io::Result<()>,
+    write: impl FnMut(&str, &[u8]) -> std::io::Result<()>,
     capture: impl FnOnce(&T) -> Json,
     observe: impl FnOnce(&Result<T, E>) -> Json,
 ) -> Result<Option<Json>, Box<dyn std::error::Error>>
@@ -47,13 +48,75 @@ where
     T: std::fmt::Debug,
     E: std::error::Error + 'static,
 {
+    retain_outcome_inner(invocation, write, capture, None::<fn() -> Json>, observe)
+}
+
+/// Opt-in post-call retention. The hook reads the actual caller variables after
+/// invocation, independently of output projection/observation, including panic.
+/// Existing callers keep their exact output format through retain_outcome.
+#[allow(dead_code)] // Older standalone hosts deliberately stay non-opt-in.
+pub fn retain_outcome_with_input_after<T, E>(
+    invocation: std::thread::Result<Result<T, E>>,
+    write: impl FnMut(&str, &[u8]) -> std::io::Result<()>,
+    capture: impl FnOnce(&T) -> Json,
+    input_after: impl FnOnce() -> Json,
+    observe: impl FnOnce(&Result<T, E>) -> Json,
+) -> Result<Option<Json>, Box<dyn std::error::Error>>
+where
+    T: std::fmt::Debug,
+    E: std::error::Error + 'static,
+{
+    retain_outcome_inner(invocation, write, capture, Some(input_after), observe)
+}
+
+fn retain_input_after(
+    captured: Option<std::thread::Result<Json>>,
+    write: &mut impl FnMut(&str, &[u8]) -> std::io::Result<()>,
+) -> std::io::Result<Option<(bool, bool)>> {
+    match captured {
+        None => Ok(None),
+        Some(Ok(state)) => {
+            let unchanged = state["unchanged"] == true;
+            let bytes = serde_json::to_vec_pretty(&state).map_err(std::io::Error::other)?;
+            write("COMPLETE-INPUT-AFTER.json", &bytes)?;
+            Ok(Some((true, unchanged)))
+        }
+        Some(Err(payload)) => {
+            write(
+                "COMPLETE-INPUT-AFTER-FAILURE.txt",
+                panic_record(&payload).as_bytes(),
+            )?;
+            Ok(Some((false, false)))
+        }
+    }
+}
+
+fn retain_outcome_inner<T, E>(
+    invocation: std::thread::Result<Result<T, E>>,
+    mut write: impl FnMut(&str, &[u8]) -> std::io::Result<()>,
+    capture: impl FnOnce(&T) -> Json,
+    input_after: Option<impl FnOnce() -> Json>,
+    observe: impl FnOnce(&Result<T, E>) -> Json,
+) -> Result<Option<Json>, Box<dyn std::error::Error>>
+where
+    T: std::fmt::Debug,
+    E: std::error::Error + 'static,
+{
+    let opt_in = input_after.is_some();
+    // Snapshot actual post-call state BEFORE any product encoder or observer.
+    // Hold the result while the original raw return/error/panic is retained.
+    let after =
+        input_after.map(|hook| std::panic::catch_unwind(std::panic::AssertUnwindSafe(hook)));
     let product = match invocation {
         Ok(product) => product,
         Err(payload) => {
-            write(
+            let raw = write(
                 "COMPLETE-INVOCATION-PANIC.txt",
                 panic_record(&payload).as_bytes(),
-            )?;
+            );
+            let state = retain_input_after(after, &mut write);
+            raw?;
+            state?;
             return Ok(None);
         }
     };
@@ -67,18 +130,45 @@ where
         }
         raw.push_str("CAUSE_CHAIN_TERMINATED=None\n");
     }
-    write("COMPLETE-RAW-PRODUCT.txt", raw.as_bytes())?;
-    let lossless = match &product {
+    let raw_text = write("COMPLETE-RAW-PRODUCT.txt", raw.as_bytes());
+    // Attempt both reached records; a hook/capture failure cannot erase the raw
+    // return, and a raw write failure cannot suppress the reached post-call hook.
+    let after_record = retain_input_after(after, &mut write);
+    raw_text?;
+    let encode = || match &product {
         Ok(value) => json!({"Ok":capture(value)}),
         Err(error) => json!({"Err":{"debug":format!("{error:#?}"),"display":error.to_string()}}),
     };
-    write(
+    let lossless = if opt_in {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(encode)) {
+            Ok(value) => value,
+            Err(payload) => {
+                let failure = write(
+                    "COMPLETE-RAW-CAPTURE-FAILURE.txt",
+                    panic_record(&payload).as_bytes(),
+                );
+                after_record?;
+                failure?;
+                return Ok(None);
+            }
+        }
+    } else {
+        encode()
+    };
+    let raw_json = write(
         "COMPLETE-RAW-PRODUCT.json",
         &serde_json::to_vec_pretty(&lossless)?,
-    )?;
+    );
+    let retained_after = after_record?;
+    raw_json?;
     let observation = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| observe(&product)));
     match observation {
-        Ok(record) => {
+        Ok(mut record) => {
+            if let Some((complete, unchanged)) = retained_after {
+                record["input_after_complete"] = json!(complete);
+                record["input_after_unchanged"] = json!(unchanged);
+                record["matched"] = json!(record["matched"] == true && complete && unchanged);
+            }
             write(
                 "COMPLETE-OBSERVATION.json",
                 &serde_json::to_vec_pretty(&record)?,

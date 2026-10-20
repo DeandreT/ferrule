@@ -2,7 +2,7 @@ using System.Collections.ObjectModel;
 
 namespace Ferrule.Runtime;
 
-/// <summary>Static keyed-group controls shared by owned By and AdjacentBy.</summary>
+/// <summary>Static controls shared by owned By, AdjacentBy and StartingWith.</summary>
 public readonly record struct FerruleBasicGroupByMetadata(
     IReadOnlyList<bool> Descending, bool FilterBeforeSort, int ExplicitWindowCount,
     bool ImplicitFirst, bool HasFilter, bool HasPostFilter);
@@ -18,6 +18,17 @@ public interface IFerruleBasicGroupByControls
     bool RetainMember(FerruleBasicScopeContext context);
 }
 
+/// <summary>Candidate-phase Boolean boundary controls for owned StartingWith.</summary>
+public interface IFerruleBasicGroupStartingWithControls
+{
+    FerruleBasicGroupByMetadata Metadata();
+    bool Filter(FerruleBasicScopeContext context);
+    FerruleValue SortKey(int key, FerruleBasicScopeContext context);
+    FerruleSequenceWindow Window(int bound, FerruleBasicScopeContext parent);
+    bool StartsGroup(FerruleBasicScopeContext context);
+    bool RetainMember(FerruleBasicScopeContext context);
+}
+
 public sealed partial class FerruleBasicScopeContext
 {
     /// <summary>Executes authenticated global, first-seen By grouping under a cumulative metadata reservation.</summary>
@@ -26,7 +37,7 @@ public sealed partial class FerruleBasicScopeContext
     public IReadOnlyList<FerruleInstance> MapGroupBySourceCohort(
         FerruleRetainedSourceCohort original, IFerruleBasicGroupByControls controls,
         Func<FerruleBasicScopeContext, FerruleInstance> target) =>
-        FerruleBasicGroupByOperation.Run(this, original, controls, target, BasicKeyedGroupPartition.By);
+        FerruleBasicGroupByOperation.Run(this, original, controls, target, BasicGroupPartition.By);
 
     /// <summary>Executes authenticated contiguous, exact-key AdjacentBy runs under a cumulative metadata reservation.</summary>
     /// <remarks>Only the last constructed run can acquire a member. Post predicates run
@@ -34,7 +45,16 @@ public sealed partial class FerruleBasicScopeContext
     public IReadOnlyList<FerruleInstance> MapGroupAdjacentBySourceCohort(
         FerruleRetainedSourceCohort original, IFerruleBasicGroupByControls controls,
         Func<FerruleBasicScopeContext, FerruleInstance> target) =>
-        FerruleBasicGroupByOperation.Run(this, original, controls, target, BasicKeyedGroupPartition.AdjacentBy);
+        FerruleBasicGroupByOperation.Run(this, original, controls, target, BasicGroupPartition.AdjacentBy);
+
+    /// <summary>Executes authenticated StartingWith grouping under a cumulative metadata reservation.</summary>
+    /// <remarks>Each boundary runs before its member's post predicate, including the
+    /// first candidate. A true member starts and belongs to a new run; an initial
+    /// false prefix is retained as a real run. Boolean boundaries consume no key text.</remarks>
+    public IReadOnlyList<FerruleInstance> MapGroupStartingWithSourceCohort(
+        FerruleRetainedSourceCohort original, IFerruleBasicGroupStartingWithControls controls,
+        Func<FerruleBasicScopeContext, FerruleInstance> target) =>
+        FerruleBasicGroupByOperation.Run(this, original, controls, target);
 }
 
 // Minted inline by the actual walk. Paths borrow immutable candidate storage;
@@ -145,7 +165,7 @@ internal sealed class BasicGroupPrefixTemplate
         for (var i = 0; i < terminal.OwnedCut; i++)
         {
             var f = source.OwnedView.FrameAt(i);
-            _owned[i] = new(f.Owner, BasicGroupAccounting.CopyPath(f.Path), f.Item, f.Index, f.KeyedGroup);
+            _owned[i] = new(f.Owner, BasicGroupAccounting.CopyPath(f.Path), f.Item, f.Index, f.GroupMembers);
         }
         for (var i = 0; i < terminal.LegacyCut; i++) _legacy[i] = source.LegacyView.Frames[i];
         for (var i = 0; i < terminal.OriginCut; i++)
@@ -194,15 +214,15 @@ internal sealed class BasicGroupPrefixTemplate
         var w = _terminal.Wrapper is null ? 0 : 1;
         if (w != 0)
         {
-            _legacy[_terminal.LegacyCut] = FerruleGroup.FromBasicKeyedGroupWrapper(_terminal.Wrapper!, members, this);
-            _origins[_terminal.OriginCut] = new(_terminal.Owner, _wrapperPath!, Kind: BasicOriginKind.KeyedGroupWrapper,
+            _legacy[_terminal.LegacyCut] = FerruleGroup.FromBasicGroupWrapper(_terminal.Wrapper!, members, this);
+            _origins[_terminal.OriginCut] = new(_terminal.Owner, _wrapperPath!, Kind: BasicOriginKind.GroupWrapper,
                 WrapperField: _terminal.Wrapper, GroupCollection: _terminal.CollectionCut);
         }
         _legacy[^1] = members;
-        _origins[^1] = new(_terminal.Owner, _membersPath, (nuint)ordinal, Kind: BasicOriginKind.KeyedGroupMembers,
+        _origins[^1] = new(_terminal.Owner, _membersPath, (nuint)ordinal, Kind: BasicOriginKind.GroupMembers,
             GroupCollection: _terminal.CollectionCut);
-        _owned[^1] = new(_terminal.Owner, _ownedPath, members, (nuint)ordinal, KeyedGroup: true);
-        _collections[^1] = new(_rawPath, members, ordinal, Grouped: true, BasicKeyedGroup: true);
+        _owned[^1] = new(_terminal.Owner, _ownedPath, members, (nuint)ordinal, GroupMembers: true);
+        _collections[^1] = new(_rawPath, members, ordinal, Grouped: true, BasicGroupMembers: true);
         var owned = FerruleOwnedScopeContext.FromAdmittedGroup(_source.Roots.OwnedRoots, _owned);
         var legacy = _source.LegacyView.FromAdmittedGroup(_legacy, _collections);
         return FerruleBasicScopeContext.Create(_source.Roots, legacy, owned, _origins, 2);
@@ -263,7 +283,7 @@ internal sealed class BasicGroupPrefixTemplate
         for (var i = 0; i < owned.Length; i++)
         {
             var f = source.OwnedView.FrameAt(i);
-            owned[i] = new(f.Owner, BasicGroupAccounting.CopyPath(f.Path), f.Item, f.Index, f.KeyedGroup);
+            owned[i] = new(f.Owner, BasicGroupAccounting.CopyPath(f.Path), f.Item, f.Index, f.GroupMembers);
         }
         var frames = new FerruleInstance[source.LegacyView.Frames.Count];
         for (var i = 0; i < frames.Length; i++) frames[i] = source.LegacyView.Frames[i];
@@ -279,8 +299,8 @@ internal sealed class BasicGroupPrefixTemplate
 }
 
 // This private partition choice grants no new public policy or container kind.
-// Both operations alone mint the authenticated keyed-group marker.
-internal enum BasicKeyedGroupPartition { By, AdjacentBy }
+// Only these three paired operations mint authenticated member containers.
+internal enum BasicGroupPartition { By, AdjacentBy, StartingWith }
 
 internal sealed class FerruleBasicGroupByOperation
 {
@@ -323,23 +343,70 @@ internal sealed class FerruleBasicGroupByOperation
 
     internal static IReadOnlyList<FerruleInstance> Run(FerruleBasicScopeContext parent,
         FerruleRetainedSourceCohort original, IFerruleBasicGroupByControls controls,
-        Func<FerruleBasicScopeContext, FerruleInstance> target, BasicKeyedGroupPartition partition)
+        Func<FerruleBasicScopeContext, FerruleInstance> target, BasicGroupPartition partition)
     {
         ArgumentNullException.ThrowIfNull(original); ArgumentNullException.ThrowIfNull(controls); ArgumentNullException.ThrowIfNull(target);
+        if (partition is not (BasicGroupPartition.By or BasicGroupPartition.AdjacentBy))
+            throw new ArgumentOutOfRangeException(nameof(partition));
+        var operation = PrepareOperation(parent, original, controls, null);
+        return operation.Execute(parent, controls, null, target, partition);
+    }
+    internal static IReadOnlyList<FerruleInstance> Run(FerruleBasicScopeContext parent,
+        FerruleRetainedSourceCohort original, IFerruleBasicGroupStartingWithControls controls,
+        Func<FerruleBasicScopeContext, FerruleInstance> target)
+    {
+        ArgumentNullException.ThrowIfNull(original); ArgumentNullException.ThrowIfNull(controls); ArgumentNullException.ThrowIfNull(target);
+        var operation = PrepareOperation(parent, original, null, controls);
+        return operation.Execute(parent, null, controls, target, BasicGroupPartition.StartingWith);
+    }
+    // Borrow exactly one existing controls interface. No adapter, boxing, retained
+    // callbacks or new operation fields are needed to share authentication/storage.
+    private static FerruleBasicGroupByOperation PrepareOperation(FerruleBasicScopeContext parent,
+        FerruleRetainedSourceCohort original, IFerruleBasicGroupByControls? keyed,
+        IFerruleBasicGroupStartingWithControls? starting)
+    {
         BasicSourceBudget budget;
         try { budget = Seed(parent, original); }
         catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
         catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
         // Caller metadata/accessors and semantic callbacks remain outside lifting.
-        var metadata = controls.Metadata(); ArgumentNullException.ThrowIfNull(metadata.Descending);
+        var metadata = keyed is not null ? keyed.Metadata() : starting!.Metadata();
+        ArgumentNullException.ThrowIfNull(metadata.Descending);
         var keyCount = metadata.Descending.Count;
         FerruleBasicGroupByOperation operation;
         try { operation = Prepare(original, budget, metadata, keyCount); }
         catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
         catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
         for (var i = 0; i < keyCount; i++) operation._descending[i] = metadata.Descending[i];
-        return operation.Execute(parent, controls, target, partition);
+        return operation;
     }
+#if FERRULE_COMPONENT_ORACLES
+    internal static (
+        IReadOnlyList<FerruleInstance> Output,
+        (int, int, int, int, int, int, int, int, int, int, int, int) Capacities,
+        bool KeysInitiallyNull, bool KeysFinallyNull)
+    RunStartingWithSnapshotForTests(FerruleBasicScopeContext parent,
+        FerruleRetainedSourceCohort original, IFerruleBasicGroupStartingWithControls controls,
+        Func<FerruleBasicScopeContext, FerruleInstance> target)
+    {
+        ArgumentNullException.ThrowIfNull(original); ArgumentNullException.ThrowIfNull(controls); ArgumentNullException.ThrowIfNull(target);
+        // This is the public Starting route's real preparation and execution on
+        // ONE object. The tuple observes actual backing, not recomputed accounting.
+        var operation = PrepareOperation(parent, original, null, controls);
+        var initiallyNull = operation.GroupKeysNullForTests();
+        var output = operation.Execute(parent, null, controls, target, BasicGroupPartition.StartingWith);
+        return (output, (operation._descending.Length, operation._sortKeys.Length, operation._windows.Length,
+            operation._order.Length, operation._scratch.Length, operation._next.Length, operation._buckets.Length,
+            operation._groupKeys.Length, operation._outputs.Length, operation._terminals.Length,
+            operation._templates.Length, operation._selection.Length), initiallyNull, operation.GroupKeysNullForTests());
+    }
+    private bool GroupKeysNullForTests()
+    {
+        for (var i = 0; i < _groupKeys.Length; i++)
+            if (_groupKeys[i] != FerruleValue.Null) return false;
+        return true;
+    }
+#endif
     internal static BasicSourceBudget Seed(FerruleBasicScopeContext parent, FerruleRetainedSourceCohort original)
     {
         var n = original.Count; var limits = parent.Roots.Limits;
@@ -491,14 +558,15 @@ internal sealed class FerruleBasicGroupByOperation
         catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
     }
     private IReadOnlyList<FerruleInstance> Execute(FerruleBasicScopeContext parent,
-        IFerruleBasicGroupByControls controls, Func<FerruleBasicScopeContext, FerruleInstance> target,
-        BasicKeyedGroupPartition partition)
+        IFerruleBasicGroupByControls? keyed, IFerruleBasicGroupStartingWithControls? starting,
+        Func<FerruleBasicScopeContext, FerruleInstance> target, BasicGroupPartition partition)
     {
         var sorted = _descending.Length != 0;
         var prefilter = sorted && _metadata.FilterBeforeSort;
         var count = 0;
         for (var i = 0; i < _original.Count; i++)
-            if (!prefilter || !_metadata.HasFilter || controls.Filter(_original[i].Context)) _order[count++] = i;
+            if (!prefilter || !_metadata.HasFilter || (keyed is not null ? keyed.Filter(_original[i].Context) :
+                starting!.Filter(_original[i].Context))) _order[count++] = i;
         if (sorted)
         {
             for (var row = 0; row < count; row++)
@@ -506,7 +574,8 @@ internal sealed class FerruleBasicGroupByOperation
                 var id = _order[row];
                 for (var key = 0; key < _descending.Length; key++)
                 {
-                    var value = controls.SortKey(key, _original[id].Context); AdmitKey(value);
+                    var value = keyed is not null ? keyed.SortKey(key, _original[id].Context) : starting!.SortKey(key, _original[id].Context);
+                    AdmitKey(value);
                     _sortKeys[checked(id * _descending.Length + key)] = value;
                 }
             }
@@ -522,17 +591,31 @@ internal sealed class FerruleBasicGroupByOperation
                 }
             }
         }
-        for (var i = 0; i < _metadata.ExplicitWindowCount; i++) _windows[i] = controls.Window(i, parent);
+        for (var i = 0; i < _metadata.ExplicitWindowCount; i++)
+            _windows[i] = keyed is not null ? keyed.Window(i, parent) : starting!.Window(i, parent);
         if (_metadata.ImplicitFirst) _windows[^1] = FerruleSequenceWindow.First(1);
         var buckets = 0;
         for (var row = 0; row < count; row++)
         {
             var id = _order[row]; var c = sorted ? _selection[id] : _original[id].Context;
-            if (!prefilter && _metadata.HasFilter && !controls.Filter(c)) continue;
-            var key = controls.GroupKey(c); AdmitKey(key);
-            var retain = !_metadata.HasPostFilter || controls.RetainMember(c);
+            if (!prefilter && _metadata.HasFilter && !(keyed is not null ? keyed.Filter(c) : starting!.Filter(c))) continue;
+            var key = FerruleValue.Null;
+            var starts = false;
+            if (partition == BasicGroupPartition.StartingWith)
+                starts = starting!.StartsGroup(c); // including the first candidate; before post
+            else
+            {
+                key = keyed!.GroupKey(c); AdmitKey(key);
+            }
+            var retain = !_metadata.HasPostFilter || (keyed is not null ? keyed.RetainMember(c) : starting!.RetainMember(c));
             var bucket = buckets;
-            if (partition == BasicKeyedGroupPartition.AdjacentBy)
+            if (partition == BasicGroupPartition.StartingWith)
+            {
+                // False keeps the last constructed run (or creates the initial
+                // false prefix); true starts a new run containing this member.
+                if (!starts && buckets != 0) bucket = buckets - 1;
+            }
+            else if (partition == BasicGroupPartition.AdjacentBy)
             {
                 // Compare the last CREATED run, including an all-false run. Retention
                 // is compacted only after partitioning, so dropped separators survive
@@ -546,7 +629,10 @@ internal sealed class FerruleBasicGroupByOperation
             }
             if (bucket == buckets)
             {
-                _groupKeys[bucket] = key; _buckets[bucket] = new() { Head = id, Tail = id, Count = 1, Retained = retain };
+                // Starting retains the same prepaid n-key backing, Null-filled
+                // and unused: no boundary vector, key comparison or key text.
+                if (partition != BasicGroupPartition.StartingWith) _groupKeys[bucket] = key;
+                _buckets[bucket] = new() { Head = id, Tail = id, Count = 1, Retained = retain };
                 buckets++;
             }
             else
@@ -570,7 +656,7 @@ internal sealed class FerruleBasicGroupByOperation
             var members = new FerruleInstance[b.Count]; var id = b.Head;
             for (var j = 0; j < members.Length; j++) { members[j] = _terminals[id].Item; id = _next[id]; }
             if (id != -1) throw FerruleRuntimeException.FromBasicSourceBridge(BasicPhaseAdmission.Invalid((nuint)b.Head));
-            var payload = FerruleRepeated.FromBasicKeyedGroupMembers(members, template);
+            var payload = FerruleRepeated.FromBasicGroupMembers(members, template);
             var context = template.Finish(payload, i + 1);
             _outputs[i] = target(context) ?? throw new InvalidOperationException("Group target returned null.");
         }

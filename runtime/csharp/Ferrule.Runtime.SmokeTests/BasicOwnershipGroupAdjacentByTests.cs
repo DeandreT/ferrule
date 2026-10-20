@@ -97,7 +97,7 @@ internal static partial class Program
             {
                 var c = held[i]; Equal<nuint>((nuint)i + 1, c.OwnedPosition(owner, rows));
                 AdjEqualTree(output[i], ByOutput(c, owner, legacyMembers));
-                Equal(true, c.OwnedView.FrameAt(c.OwnedView.FrameCount - 1).KeyedGroup);
+                Equal(true, c.OwnedView.FrameAt(c.OwnedView.FrameCount - 1).GroupMembers);
                 c.LegacyView.RequireBasicContext();
                 var payload = (FerruleRepeated)c.LegacyView.Frames[^1];
                 Equal(true, ((ICollection<FerruleInstance>)payload.Items).IsReadOnly);
@@ -393,8 +393,8 @@ internal static partial class Program
                     for (var i = 0; i < members.Count; i++)
                     {
                         var member = members[i].Context;
-                        Equal(true, member.OwnedView.FrameAt(0).KeyedGroup);
-                        Equal(false, member.OwnedView.FrameAt(member.OwnedView.FrameCount - 1).KeyedGroup);
+                        Equal(true, member.OwnedView.FrameAt(0).GroupMembers);
+                        Equal(false, member.OwnedView.FrameAt(member.OwnedView.FrameCount - 1).GroupMembers);
                         Equal(Text(membersExpected[index][i]), member.ResolveOwnedField(owner, labelPath, empty));
                         foreach (var declaredNonrepeating in new[] { false, true })
                             Equal(Text(membersExpected[index][i]), member.CloneView().ResolveOwnedFieldWithRootPin(owner, labelPath, empty, declaredNonrepeating));

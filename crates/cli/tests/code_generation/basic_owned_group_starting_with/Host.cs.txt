@@ -1,0 +1,317 @@
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+internal static class Driver
+{
+    private static JsonNode? Json(object? value) => JsonSerializer.SerializeToNode(value);
+    private static string? Count(nuint? value) => value?.ToString(CultureInfo.InvariantCulture);
+    private static FerruleInstance Decode(JsonNode recipe)
+    {
+        var tag = recipe[0]!.GetValue<string>();
+        if (tag == "Group")
+        {
+            if (recipe[2]!["kind"]!.GetValue<string>() != "Unknown" || recipe[2]!["identity"] is not null || recipe[2]!["literal"] is not null)
+                throw new InvalidOperationException("Authored input Groups have exact Unknown origin; never discard an annotation.");
+            return new FerruleGroup(recipe[1]!.AsArray().Select(field => new FerruleField(field![0]!.GetValue<string>(), Decode(field[1]!))));
+        }
+        if (tag == "Repeated") return new FerruleRepeated(recipe[1]!.AsArray().Select(item => Decode(item!)));
+        return new FerruleScalar(tag switch {
+            "Null" => FerruleValue.Null, "JsonNull" => FerruleValue.JsonNull, "XmlNil" => FerruleValue.XmlNil,
+            "String" => FerruleValue.FromString(recipe[1]!.GetValue<string>()), "Bool" => FerruleValue.FromBoolean(recipe[1]!.GetValue<bool>()),
+            "Int" => FerruleValue.FromInt64(recipe[1]!.GetValue<long>()),
+            "Float" => FerruleValue.FromDouble(BitConverter.Int64BitsToDouble(unchecked((long)ulong.Parse(recipe[1]!.GetValue<string>(), NumberStyles.HexNumber, CultureInfo.InvariantCulture)))),
+            _ => throw new InvalidOperationException("Closed authored scalar tag."),
+        });
+    }
+    private static JsonNode Encode(FerruleInstance instance)
+    {
+        if (instance is FerruleGroup group) return new JsonArray(Json("Group"), Json(group.Fields.Select(field => new JsonArray(Json(field.Name), Encode(field.Value))).ToArray()),
+            Json(new { kind = group.XmlTypeOrigin.Kind.ToString(), identity = group.XmlTypeOrigin.Identity, literal = group.XmlTypeOrigin.Literal }));
+        if (instance is FerruleRepeated repeated) return new JsonArray(Json("Repeated"), Json(repeated.Items.Select(Encode).ToArray()));
+        if (instance is not FerruleScalar scalar) throw new InvalidOperationException("Closed authored tree kind.");
+        var value = scalar.Value;
+        return value.Kind switch {
+            FerruleValueKind.Null => new JsonArray(Json("Null")), FerruleValueKind.JsonNull => new JsonArray(Json("JsonNull")), FerruleValueKind.XmlNil => new JsonArray(Json("XmlNil")),
+            FerruleValueKind.String => new JsonArray(Json("String"), Json(value.StringValue)), FerruleValueKind.Bool => new JsonArray(Json("Bool"), Json(value.BooleanValue)),
+            FerruleValueKind.Int64 => new JsonArray(Json("Int"), Json(value.Int64Value)),
+            FerruleValueKind.Double => new JsonArray(Json("Float"), Json(unchecked((ulong)BitConverter.DoubleToInt64Bits(value.DoubleValue)).ToString("x16", CultureInfo.InvariantCulture))),
+            _ => throw new InvalidOperationException("Closed typed output tag."),
+        };
+    }
+    // Raw product retention is deliberately broader than the closed corpus
+    // codec. Never use Encode/Outputs or generic Instance.ToString here.
+    private static JsonNode RawInstance(FerruleInstance? instance)
+    {
+        if (instance is null) return Json(new { kind = "NullReference" })!;
+        if (instance is FerruleScalar scalar)
+        {
+            var value = scalar.Value;
+            JsonNode? payload = value.Kind switch {
+                FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil => null,
+                FerruleValueKind.String => Json(value.StringValue), FerruleValueKind.Bool => Json(value.BooleanValue),
+                FerruleValueKind.Int64 => Json(value.Int64Value),
+                FerruleValueKind.Double => Json(new { bits = unchecked((ulong)BitConverter.DoubleToInt64Bits(value.DoubleValue)).ToString("x16", CultureInfo.InvariantCulture) }),
+                _ => throw new InvalidOperationException("Unrecognized current FerruleValue tag in raw capture."),
+            };
+            return Json(new { kind = "Scalar", tag = value.Kind.ToString(), value = payload })!;
+        }
+        return instance switch {
+            FerruleGroup group => Json(new { kind = "Group", origin = new {
+                kind = group.XmlTypeOrigin.Kind.ToString(), identity = group.XmlTypeOrigin.Identity, literal = group.XmlTypeOrigin.Literal },
+                fields = group.Fields.Select(field => new { name = field.Name, value = RawInstance(field.Value) }).ToArray() })!,
+            FerruleRepeated repeated => Json(new { kind = "Repeated", items = repeated.Items.Select(RawInstance).ToArray() })!,
+            FerruleMappedSequence mapped => Json(new { kind = "MappedSequence", items = mapped.Items.Select(RawInstance).ToArray() })!,
+            FerruleDocumentSet documents => Json(new { kind = "DocumentSet", documents = documents.Documents.Select(document => new {
+                path = document.Path, resolved_source_path = document.ResolvedSourcePath, value = RawInstance(document.Value) }).ToArray() })!,
+            _ => throw new InvalidOperationException("Unrecognized current FerruleInstance type in raw capture: " + instance.GetType().FullName),
+        };
+    }
+    private static JsonNode RawOutcome(object? output) => output switch {
+        null => Json(new { variant = "NullReference" })!,
+        Exception error => Json(new { variant = "Exception", raw_exception = error.ToString(), error = Error(error) })!,
+        ExecutionOutputs all => Json(new { variant = "All", primary = RawInstance(all.Primary),
+            extras = all.Extras.Select(named => new { name = named.Name, instance = RawInstance(named.Instance) }).ToArray() })!,
+        SelectedTargetOutput.Primary primary => Json(new { variant = "Primary", instance = RawInstance(primary.Instance) })!,
+        SelectedTargetOutput.Named named => Json(new { variant = "Named", name = named.Output.Name, instance = RawInstance(named.Output.Instance) })!,
+        _ => throw new InvalidOperationException("Unrecognized current public typed outcome in raw capture: " + output!.GetType().FullName),
+    };
+    private static JsonNode Error(Exception error) => Json(new {
+        type = error.GetType().FullName, message = error.Message, hresult = error.HResult,
+        data = error.Data.Cast<System.Collections.DictionaryEntry>().Select(entry => new { key = entry.Key?.ToString(), value = entry.Value?.ToString() }).ToArray(),
+        inner = error.InnerException is null ? null : Error(error.InnerException),
+        runtime = error is FerruleRuntimeException runtime ? Json(new {
+            category = runtime.Error.ToString(), node = runtime.Node, function = runtime.Function, expected_arity = runtime.ExpectedArity, actual_arity = runtime.ActualArity,
+            found_kind = runtime.FoundKind?.ToString(), aggregate = runtime.AggregateOperation?.ToString(), detail = runtime.Detail,
+            requested_items = runtime.RequestedItems?.ToString(CultureInfo.InvariantCulture), maximum_items = runtime.MaximumItems?.ToString(CultureInfo.InvariantCulture), maximum_depth = runtime.MaximumDepth,
+            runtime_value = runtime.RuntimeValue?.ToString(), rule = runtime.FailureRule, mapping_failure_message = runtime.MappingFailureMessage, mapping_exception_message = runtime.MappingExceptionMessage,
+            join = runtime.Join, user_function = runtime.UserFunction, function_parameter = runtime.FunctionParameter, expected_scalar_type = runtime.ExpectedScalarType?.ToString(),
+            runtime_parameter = runtime.RuntimeParameter, source_field = runtime.SourceField, found_instance = runtime.FoundInstance, primary_root = runtime.PrimaryRoot,
+            owned_identity = runtime.OwnedSourceFailure is null ? (bool?)null : ReferenceEquals(runtime.OwnedSourceFailure, runtime.InnerException),
+            bridge_identity = runtime.BasicSourceBridgeFailure is null ? (bool?)null : ReferenceEquals(runtime.BasicSourceBridgeFailure, runtime.InnerException),
+        }) : null,
+        owned = error is FerruleOwnedSourceException owned ? Json(new {
+            category = owned.Error.ToString(), owner = owned.Owner is null ? null : new { primary = owned.Owner.IsPrimary, name = owned.Owner.Name }, requested_name = owned.RequestedName,
+            declarations = owned.DeclarationIndices, path = owned.Path, frame = owned.Frame, collection = owned.Collection, segment = Count(owned.Segment), found = owned.FoundInstance?.ToString(),
+            index = Count(owned.RequestedIndex), limit = owned.LimitKind?.ToString(), used = Count(owned.Used), requested = Count(owned.Requested), maximum = Count(owned.Maximum),
+        }) : null,
+        traversal = error is FerruleOwnedSourceTraversalException traversal ? Json(new {
+            category = traversal.Error.ToString(), path = traversal.Path, segment = Count(traversal.Segment), found = traversal.Found.ToString(),
+        }) : null,
+        bridge = error is FerruleBasicSourceBridgeException bridge ? Json(new {
+            category = bridge.Error.ToString(), component = bridge.Component?.ToString(), used = Count(bridge.Used), requested = Count(bridge.Requested), maximum = Count(bridge.Maximum),
+            input_ordinal = Count(bridge.InputOrdinal), candidate_ordinal = Count(bridge.CandidateOrdinal), declaration_index = Count(bridge.DeclarationIndex), declared_count = Count(bridge.DeclaredCount), found = bridge.Found?.ToString(),
+        }) : null,
+    })!;
+    private static JsonNode ExpectedError(JsonNode recipe)
+    {
+        var kind = recipe["kind"]!.GetValue<string>(); var node = recipe["node"]?.GetValue<uint>();
+        var message = recipe["message"]?.GetValue<string>();
+        if (kind == "FunctionType") return Error(new FerruleRuntimeException(FerruleRuntimeError.FunctionType,"frozen",function:recipe["function"]!.GetValue<string>(),foundKind:FerruleValueKind.XmlNil));
+        if (kind == "FunctionInvalidArgument") return Error(new FerruleRuntimeException(FerruleRuntimeError.FunctionInvalidArgument,"frozen",function:recipe["function"]!.GetValue<string>(),detail:recipe["detail"]!.GetValue<string>()));
+        if (kind == "GeneratedSequenceTooLarge") return Error(new FerruleRuntimeException(FerruleRuntimeError.GeneratedSequenceTooLarge,"frozen",requestedItems:UInt128.Parse(recipe["requested"]!.GetValue<string>(),CultureInfo.InvariantCulture),maximumItems:UInt128.Parse(recipe["maximum"]!.GetValue<string>(),CultureInfo.InvariantCulture)));
+        if (kind == "InvalidTokenizeRegexFlags") return Error(new FerruleRuntimeException(FerruleRuntimeError.InvalidTokenizeRegexFlags,"frozen",detail:recipe["flags"]!.GetValue<string>()));
+        if (kind == "ZeroWidthTokenizeRegex") return Error(new FerruleRuntimeException(FerruleRuntimeError.ZeroWidthTokenizeRegex,"frozen"));
+        if (kind == "MappingException") return Error(new FerruleRuntimeException(FerruleRuntimeError.MappingException, "frozen", node: node, mappingExceptionMessage: message));
+        if (kind == "MappingFailure") return Error(new FerruleRuntimeException(FerruleRuntimeError.MappingFailure, "frozen", failureRule: recipe["rule"]!.GetValue<int>(), mappingFailureMessage: message));
+        if (kind == "UnknownTarget") return Error(new FerruleRuntimeException(FerruleRuntimeError.UnknownTarget, "frozen", detail: recipe["name"]!.GetValue<string>()));
+        if (kind is "NotABool" or "NotAnItemCount") return Error(new FerruleRuntimeException(kind == "NotABool" ? FerruleRuntimeError.NotABool : FerruleRuntimeError.NotAnItemCount,
+            "frozen", node: node, foundKind: recipe["found"]!.GetValue<string>() switch {
+                "bool" => FerruleValueKind.Bool, "string" => FerruleValueKind.String,
+                "null" => FerruleValueKind.Null, "json null" => FerruleValueKind.JsonNull,
+                "int" => FerruleValueKind.Int64, "float" => FerruleValueKind.Double,
+                "xml nil" => FerruleValueKind.XmlNil,
+                _ => FerruleValueKind.String }));
+        if (kind != "OwnedSource") throw new InvalidOperationException("Closed authored error recipe.");
+        var owner = recipe["owner"]!.GetValue<string>(); var name = owner == "Primary" ? null : owner;
+        var cause = recipe["cause"]!.GetValue<string>(); var traversal = cause is "CannotTraverse" or "ExpectedScalar";
+        var path = cause is "SourceUnavailable" or "InactiveSourceFrame" ? null : recipe["path"]!.DeepClone();
+        var segment = recipe["segment"]?.GetValue<int>().ToString(CultureInfo.InvariantCulture); var found = recipe["found"]?.GetValue<string>();
+        // Translate only the authored portable kind; retain actual enum names.
+        if (found == "scalar") found = FerruleOwnedSourceInstanceKind.Scalar.ToString();
+        var inner = Error(new Exception("frozen")); inner["type"] = "Ferrule.Runtime.FerruleOwnedSourceException";
+        inner["owned"] = Json(new { category = traversal ? "Traversal" : cause, owner = new { primary = name is null, name }, requested_name = name,
+            declarations = (object?)null, path, frame = (object?)null, collection = recipe["collection"]?.DeepClone(), segment, found,
+            index = (string?)null, limit = (string?)null, used = (string?)null, requested = (string?)null, maximum = (string?)null });
+        if (traversal)
+        {
+            var terminal = Error(new Exception("frozen")); terminal["type"] = "Ferrule.Runtime.FerruleOwnedSourceTraversalException";
+            terminal["traversal"] = Json(new { category = cause, path, segment, found }); inner["inner"] = terminal;
+        }
+        var outer = Error(new FerruleRuntimeException(FerruleRuntimeError.OwnedSource, "frozen", node: node)); outer["inner"] = inner;
+        outer["runtime"]!["owned_identity"] = true; return outer;
+    }
+    // Human wording is retained, not a cross-language typed-error contract.
+    private static JsonNode Comparable(JsonNode original)
+    {
+        var copy = original.DeepClone(); void Strip(JsonNode? node) {
+            if (node is JsonObject fields) { fields.Remove("message"); foreach (var field in fields) Strip(field.Value); }
+            else if (node is JsonArray items) foreach (var item in items) Strip(item);
+        } Strip(copy); return copy;
+    }
+    private static JsonNode Outputs(object output)
+    {
+        var result = new JsonArray(); void Add(string? name, FerruleInstance instance) => result.Add(new JsonArray(Json(name), Encode(instance)));
+        switch (output) {
+            case ExecutionOutputs all: Add(null, all.Primary); foreach (var named in all.Extras) Add(named.Name, named.Instance); break;
+            case SelectedTargetOutput.Primary primary: Add(null, primary.Instance); break;
+            case SelectedTargetOutput.Named named: Add(named.Output.Name, named.Output.Instance); break;
+            default: throw new InvalidOperationException("Unexpected public typed outcome.");
+        } return result;
+    }
+    private static void Write(string directory, string name, string text)
+    {
+        using var file = new FileStream(Path.Combine(directory, name), FileMode.CreateNew, FileAccess.Write); using var writer = new StreamWriter(file); writer.Write(text); writer.Flush();
+    }
+    private static bool ObserveRetained(string directory, string prefix, object actual, Func<JsonNode> observe)
+    {
+        Write(directory, prefix + "-COMPLETE-RAW-PRODUCT.json", RawOutcome(actual).ToJsonString());
+        Write(directory, prefix + "-COMPLETE-EXCEPTION.txt", actual is Exception failure ? failure.ToString() : "public typed product retained before observation\n");
+        JsonNode observation; bool matched;
+        try { observation = observe(); matched = observation["matched"]!.GetValue<bool>(); }
+        catch (Exception observationError)
+        {
+            // These writes are not caught again: required evidence I/O remains
+            // a typed host failure, never a successful or suppressed check.
+            Write(directory, prefix + "-COMPLETE-OBSERVATION-FAILURE.txt", observationError.ToString());
+            Write(directory, prefix + "-COMPLETE-OBSERVATION-FAILURE.json", Error(observationError).ToJsonString());
+            return false;
+        }
+        Write(directory, prefix + "-COMPLETE-OBSERVATION.json", observation.ToJsonString());
+        return matched;
+    }
+    private static bool HarnessControls(string directory)
+    {
+        var group = new FerruleGroup([new FerruleField("bits", new FerruleScalar(FerruleValue.FromDouble(
+            BitConverter.Int64BitsToDouble(unchecked((long)0x7ff8000000000041UL))))),
+            new FerruleField("text", new FerruleScalar(FerruleValue.FromString("raw payload")))])
+            .WithXmlTypeOrigin(FerruleXmlTypeOrigin.Explicit("capture.origin"));
+        var mapped = new FerruleMappedSequence([group]);
+        var documents = new FerruleDocumentSet([new FerruleDocument("retained.xml", mapped, "original.xml")]);
+        var checks = new List<bool>();
+        foreach (var (label, value) in new (string, FerruleInstance)[] {
+            ("mapped", mapped), ("documents", documents),
+            ("continued", new FerruleScalar(FerruleValue.FromString("continued"))) })
+        {
+            var actual = new ExecutionOutputs(value, Array.Empty<NamedOutput>());
+            checks.Add(ObserveRetained(directory, "HARNESS-" + label, actual, () => {
+                var output = Outputs(actual);
+                var expected = new JsonArray(new JsonArray(null, new JsonArray(Json("String"), Json("continued"))));
+                return Json(new { actual = output, matched = JsonNode.DeepEquals(output, expected) })!;
+            }));
+        }
+        // Read retained files outside any observation catch: failed I/O is fatal.
+        var documentText = File.ReadAllText(Path.Combine(directory, "HARNESS-documents-COMPLETE-RAW-PRODUCT.json"));
+        var mappedText = File.ReadAllText(Path.Combine(directory, "HARNESS-mapped-COMPLETE-RAW-PRODUCT.json"));
+        bool retained;
+        try
+        {
+            var document = JsonNode.Parse(documentText)!["primary"]!["documents"]![0]!;
+            var mappedRaw = JsonNode.Parse(mappedText)!["primary"]!;
+            var rawGroup = document["value"]!["items"]![0]!;
+            retained = document["path"]!.GetValue<string>() == "retained.xml" && document["resolved_source_path"]!.GetValue<string>() == "original.xml" &&
+                document["value"]!["kind"]!.GetValue<string>() == "MappedSequence" && mappedRaw["kind"]!.GetValue<string>() == "MappedSequence" &&
+                rawGroup["origin"]!["kind"]!.GetValue<string>() == "Explicit" && rawGroup["origin"]!["identity"]!.GetValue<string>() == "capture.origin" &&
+                rawGroup["fields"]![0]!["value"]!["value"]!["bits"]!.GetValue<string>() == "7ff8000000000041" &&
+                rawGroup["fields"]![1]!["value"]!["value"]!.GetValue<string>() == "raw payload";
+        }
+        catch (Exception observationError)
+        {
+            Write(directory, "HARNESS-RAW-RETENTION-OBSERVATION-FAILURE.txt", observationError.ToString()); retained = false;
+        }
+        var matched = checks.SequenceEqual(new[] { false, false, true }) && retained;
+        Write(directory, "HARNESS-COMPLETE-COMPARISONS.json", Json(new { checks, retained, matched })!.ToJsonString());
+        return matched;
+    }
+    private static bool StartingRetentionControls(string directory)
+    {
+        if(!Path.IsPathFullyQualified(directory)||Path.Exists(directory)) throw new InvalidOperationException("Fresh control root required.");
+        Directory.CreateDirectory(directory);var checks=new List<bool>();
+        foreach(var label in new[]{"mapped","documents","invocation","observer","after-failure","continued"})
+        {
+            var beforeLabel="before-"+label;
+            FerruleInstance liveSource=new FerruleScalar(FerruleValue.FromString(beforeLabel));
+            var namedInputs=new[]{new NamedInput("extra",new FerruleScalar(FerruleValue.FromString(beforeLabel)))};
+            JsonNode Snapshot()=>Json(new {source=RawInstance(liveSource),inputs=namedInputs.Select(input=>new JsonArray(Json(input.Name),RawInstance(input.Instance))).ToArray()})!;
+            var beforeRaw=Snapshot();
+            object actual;
+            try {
+                if(label!="continued") {
+                    liveSource=new FerruleScalar(FerruleValue.FromString("after-"+label));
+                    namedInputs[0]=new NamedInput("extra",new FerruleScalar(FerruleValue.FromString("after-"+label)));
+                }
+                if(label=="invocation") throw new InvalidOperationException("original invocation sentinel");
+                var scalar=new FerruleScalar(FerruleValue.FromString("continued"));
+                var mapped=new FerruleMappedSequence([scalar]);
+                FerruleInstance tree=label=="mapped"?mapped:label=="documents"?new FerruleDocumentSet([new FerruleDocument("retained.xml",mapped,"original.xml")]):scalar;
+                actual=new ExecutionOutputs(tree,Array.Empty<NamedOutput>());
+            } catch(Exception failure) {actual=failure;}
+            var identity=Json(new {control=label})!;
+            var matched=StartingEvidence.Retain(directory,label,identity,actual,()=>RawOutcome(actual),beforeRaw,
+                ()=>label=="after-failure"?throw new InvalidOperationException("snapshot sentinel"):Snapshot(),Error,()=>{
+                    if(label=="observer") throw new InvalidOperationException("observer sentinel");
+                    var output=Outputs(actual);
+                    var expected=new JsonArray(new JsonArray(null,new JsonArray(Json("String"),Json("continued"))));
+                    return Json(new {matched=JsonNode.DeepEquals(output,expected)})!;
+                });
+            checks.Add(matched);
+            if(label=="after-failure") {
+                if(!File.Exists(Path.Combine(directory,label+"-COMPLETE-INPUT-AFTER-FAILURE.txt"))||!File.Exists(Path.Combine(directory,label+"-COMPLETE-RAW-PRODUCT.json"))) return false;
+            } else {
+                var after=JsonNode.Parse(File.ReadAllText(Path.Combine(directory,label+"-COMPLETE-INPUT-AFTER.json")))!["record"]!["state"]!;
+                var expectedLabel=label=="continued"?beforeLabel:"after-"+label;
+                if(after["source"]!["value"]!.GetValue<string>()!=expectedLabel||after["inputs"]![0]![1]!["value"]!.GetValue<string>()!=expectedLabel) return false;
+            }
+            if(label=="invocation"&&!File.ReadAllText(Path.Combine(directory,label+"-COMPLETE-EXCEPTION.txt")).Contains("original invocation sentinel",StringComparison.Ordinal)) return false;
+            if(label is "mapped" or "documents" or "observer") {
+                if(!File.Exists(Path.Combine(directory,label+"-COMPLETE-RAW-PRODUCT.json"))||!File.Exists(Path.Combine(directory,label+"-COMPLETE-OBSERVATION-FAILURE.txt"))) return false;
+            }
+        }
+        return checks.SequenceEqual(new[]{false,false,false,false,false,true});
+    }
+    private static int Main(string[] args)
+    {
+        if (args.Length == 2 && args[0] == "--starting-retention-controls") return StartingRetentionControls(args[1]) ? 0 : 1;
+        if (args.Length != 4) throw new InvalidOperationException("Controls, model ordinal, fresh absolute evidence directory and run contract required.");
+        var model = int.Parse(args[1], CultureInfo.InvariantCulture); var directory = args[2];
+        if (!Path.IsPathFullyQualified(directory) || Path.Exists(directory)) throw new InvalidOperationException("Fresh absolute evidence directory required.");
+        Directory.CreateDirectory(directory); var raw = File.ReadAllText(args[0]); Write(directory, "COMPLETE-FROZEN-CONTROLS.json", raw);
+        var contract = StartingEvidence.Begin(args[3], directory, args);
+        var controls = JsonNode.Parse(raw)!; var checks = new List<JsonNode>(); var ordinal = 0;
+        var limits = new FerruleOwnedSourceLimits(16, 32, 64, 16_777_216, 512);
+        var context = new FerruleExecutionContext("itemat473.mapping", "itemat473.mapping", null);
+        foreach (var entry in controls["cases"]!.AsArray())
+        {
+            var item = entry!; var caseOrdinal = ordinal++; if (item["model"]!.GetValue<int>() != model) continue;
+            var source = Decode(item["source"]!); var inputs = item["inputs"]!.AsArray().Select(input => new NamedInput(input![0]!.GetValue<string>(), Decode(input[1]!))).ToArray();
+            JsonNode Snapshot() => Json(new { source = Encode(source), inputs = inputs.Select(input => new JsonArray(Json(input.Name), Encode(input.Instance))).ToArray() })!;
+            JsonNode RawInputs() => Json(new { source = RawInstance(source), inputs = inputs.Select(input => new JsonArray(Json(input.Name), RawInstance(input.Instance))).ToArray() })!;
+            var before = Snapshot();
+            foreach (var callNode in item["calls"]!.AsArray())
+            {
+                var call = callNode!; var selection = call["selection"]!.GetValue<string>(); var prefix = $"{caseOrdinal:00}-{selection}";
+                var identity = StartingEvidence.Identity(contract, caseOrdinal, item, call, prefix);
+                var beforeRaw = RawInputs();
+                Write(directory, prefix + "-COMPLETE-INVOCATION.json", identity.ToJsonString());
+                StartingEvidence.CallWrite(directory, prefix, identity, "COMPLETE-INPUT.json", Json(new { before, before_raw = beforeRaw, source_recipe = item["source"]!.DeepClone(), inputs_recipe = item["inputs"]!.DeepClone(), item, call, limits = new { roots = 16, frames = 32, path = 64, bytes = 16777216, walk = 512 },
+                    context = new { context.MappingFilePath, context.MainMappingFilePath, context.CurrentDateTime, parameters = Array.Empty<object>(), loader = (object?)null, cancellation = (object?)null } })!.ToJsonString());
+                object actual;
+                try { actual = selection == "All" ? GeneratedMapping.ExecuteWithBasicOwnedSources(source, inputs, limits, context)
+                    : GeneratedMapping.ExecuteSelectedWithBasicOwnedSources(source, selection == "Primary" ? FerruleTargetSelection.Primary() : FerruleTargetSelection.Named(selection), inputs, limits, context); }
+                catch (Exception caught) { actual = caught; }
+                var matched = StartingEvidence.Retain(directory, prefix, identity, actual, () => RawOutcome(actual), beforeRaw, RawInputs, Error, () => {
+                    var original = actual is Exception observedError ? new JsonObject { ["Err"] = Error(observedError) } : new JsonObject { ["Ok"] = Outputs(actual) };
+                    var after = Snapshot();
+                    var expected = call["expected"]!["Err"] is JsonNode recipe ? new JsonObject { ["Err"] = ExpectedError(recipe) } : call["expected"]!.DeepClone();
+                    return Json(new { actual = original, raw_product = RawOutcome(actual), after_inputs = after, expected,
+                        matched = JsonNode.DeepEquals(Comparable(original), Comparable(expected)) && JsonNode.DeepEquals(before, after) })!;
+                });
+                checks.Add(Json(new { invocation = identity.DeepClone(), matched })!);
+            }
+        }
+        Write(directory, "ALL-COMPLETE-COMPARISONS.json", Json(checks)!.ToJsonString());
+        return checks.Count == @MODEL_CALLS@ && checks.All(check => check["matched"]!.GetValue<bool>()) ? 0 : 1;
+    }
+}

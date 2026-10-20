@@ -1167,19 +1167,23 @@ fn key_only_and_post_only_legacy_scopes_authenticate_primary_and_keep_descendant
         controls(&mut p).children.push(Scope {
             target_field: "Members".into(),
             iteration: ScopeIteration::Source(vec![]),
-            group_starting_with: Some(21),
+            group_ending_with: Some(21),
             ..Scope::default()
         });
         p.graph.nodes.insert(21, constant(Value::Bool(true)));
-        assert!(matches!(
+        assert_eq!(
             run(&p),
             Err(EngineError::UnsupportedOwnedContext {
                 node: None,
-                scope: Some(_),
+                function: None,
+                scope: Some(
+                    mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Primary)
+                        .descendant(mapping::SourceScopeStep::Child(0))
+                        .descendant(mapping::SourceScopeStep::Child(0))
+                ),
                 context: Domain::Grouping,
-                ..
             })
-        ));
+        );
     }
 }
 
@@ -2056,6 +2060,21 @@ fn only_two_keyed_families_are_admitted_and_specialized_consumers_remain_closed(
                 controls(&mut p).group_by = Some(1);
                 controls(&mut p).group_adjacent_by = Some(1);
             }
+        }
+        if mode == 0 {
+            assert_eq!(
+                run(&p),
+                Ok(expected(
+                    "P",
+                    &[
+                        ("a1", &["a1"]),
+                        ("b1", &["b1", "a2"]),
+                        ("a3", &["a3", "c1"]),
+                        ("a4", &["a4"])
+                    ]
+                ))
+            );
+            continue;
         }
         assert!(matches!(
             run(&p),

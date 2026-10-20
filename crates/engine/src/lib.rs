@@ -1074,6 +1074,10 @@ mod owned_group_by_tests;
 mod owned_group_adjacent_by_tests;
 
 #[cfg(test)]
+#[path = "tests/owned_group_starting_with.rs"]
+mod owned_group_starting_with_tests;
+
+#[cfg(test)]
 #[path = "tests/owned_sequence_item_at.rs"]
 mod owned_sequence_item_at_tests;
 

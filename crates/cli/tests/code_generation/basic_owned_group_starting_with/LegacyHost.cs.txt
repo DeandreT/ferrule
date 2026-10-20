@@ -1,0 +1,52 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+internal static class Driver
+{
+    private static JsonNode J(object? value) => JsonSerializer.SerializeToNode(value)!;
+    private static int Main(string[] args)
+    {
+        if (args.Length != 4 || !Path.IsPathFullyQualified(args[2]) || Path.Exists(args[2]))
+            throw new InvalidOperationException("Input, expected, fresh evidence and bound run contract required.");
+        Directory.CreateDirectory(args[2]); var source = File.ReadAllText(args[0]); var expected = File.ReadAllText(args[1]);
+        var contract = StartingEvidence.Begin(args[3], args[2], args);
+        var controls = File.ReadAllText(Path.Combine(Path.GetDirectoryName(args[3])!, "../legacy-controls.json"));
+        // Retain the separately frozen literal ordinary recipe, not a new output.
+        var ordinary = JsonNode.Parse(controls)!["cases"]![0]!;
+        StartingEvidence.Write(args[2], "COMPLETE-FROZEN-CONTROLS.json", controls);
+        var checks = new List<JsonNode>();
+        foreach (var selection in new[] { "All", "Primary" })
+        {
+            var call = ordinary["calls"]!.AsArray().Single(node => node!["selection"]!.GetValue<string>() == selection)!;
+            var prefix = "LEGACY-" + selection;
+            var identity = StartingEvidence.Identity(contract, 109, ordinary, call, prefix);
+            StartingEvidence.Write(args[2], prefix + "-COMPLETE-INVOCATION.json", identity.ToJsonString());
+            JsonNode Snapshot() => J(new { source_text = source, inputs = Array.Empty<object>() });
+            var beforeRaw = Snapshot();
+            StartingEvidence.CallWrite(args[2], prefix, identity, "COMPLETE-INPUT.json", J(new {
+                before_raw = beforeRaw, source_recipe = ordinary["source"]!.DeepClone(), inputs_recipe = ordinary["inputs"]!.DeepClone()
+            }).ToJsonString());
+            object actual;
+            try { actual = selection == "All" ? GeneratedMapping.ExecuteJsonOutputs(source)
+                : GeneratedMapping.ExecuteJsonSelectedTarget(source, FerruleTargetSelection.Primary()); }
+            catch (Exception error) { actual = error; }
+            JsonNode Error(Exception error) => J(new { type = error.GetType().FullName, raw_exception = error.ToString() });
+            JsonNode Raw() => actual switch {
+                Exception error => J(new { variant = "Exception", original = Error(error) }),
+                JsonExecutionOutputs all => J(new { variant = "All", primary = all.Primary,
+                    extras = all.Extras.Select(value => new { name = value.Name, document = value.Document }).ToArray() }),
+                SelectedJsonTargetOutput.Primary primary => J(new { variant = "Primary", document = primary.Document }),
+                SelectedJsonTargetOutput.Named named => J(new { variant = "Named", name = named.Output.Name, document = named.Output.Document }),
+                _ => throw new InvalidOperationException("Unexpected ordinary public JSON result.")
+            };
+            var matched = StartingEvidence.Retain(args[2], prefix, identity, actual, Raw, beforeRaw, Snapshot, Error,
+                () => J(new { matched = selection == "All"
+                    ? actual is JsonExecutionOutputs all && all.Primary == expected && all.Extras.Count == 0
+                    : actual is SelectedJsonTargetOutput.Primary primary && primary.Document == expected }));
+            checks.Add(J(new { invocation = identity.DeepClone(), matched }));
+        }
+        StartingEvidence.Write(args[2], "ALL-COMPLETE-COMPARISONS.json", J(checks).ToJsonString());
+        return checks.All(check => check["matched"]!.GetValue<bool>()) ? 0 : 1;
+    }
+}
