@@ -106,6 +106,8 @@ mod optional_parser_input;
 mod optional_runtime_defaults;
 #[path = "code_generation/path_hierarchy.rs"]
 mod path_hierarchy;
+#[path = "code_generation/primary_filenames.rs"]
+mod primary_filenames;
 #[path = "code_generation/recursive_sequences.rs"]
 mod recursive_sequences;
 #[path = "code_generation/reference_corpus.rs"]

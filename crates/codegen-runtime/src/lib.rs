@@ -294,6 +294,10 @@ pub enum RuntimeError {
         expected: ScalarType,
         found: &'static str,
     },
+    PrimaryFilenameType {
+        node: u32,
+        found: &'static str,
+    },
     UnknownTarget {
         name: String,
     },
@@ -557,6 +561,10 @@ impl fmt::Display for RuntimeError {
             } => write!(
                 formatter,
                 "node {node}: runtime parameter `{name}` expected {expected:?}, got {found}"
+            ),
+            Self::PrimaryFilenameType { node, found } => write!(
+                formatter,
+                "primary filename node {node} must produce a string, got {found}"
             ),
             Self::UnknownTarget { name } => {
                 write!(formatter, "project has no named target `{name}`")

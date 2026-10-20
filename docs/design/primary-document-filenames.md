@@ -63,3 +63,22 @@ Success validates only this filename expression, not the embedded mapping body.
 Document loading, source ownership and output-document execution require their
 own validated profiles. Filename evaluation does not interpret empty strings,
 wildcards, URI schemes or filesystem syntax, and does not enable I/O.
+
+## Generated filename companions
+
+`codegen::lower_document` produces a `DocumentProgram` that retains a separate
+`PrimaryFilenamePlan` alongside the ordinary lowered mapping. It applies the
+same closed filename classifier and ordinary mapping validation; it does not
+silently lower an unsupported filename as if acquisition were absent.
+
+The Rust and C# `emit_with_primary_filename` entry points add
+`evaluate_primary_filename` / `EvaluatePrimaryFilename` to the ordinary typed
+instance library. Each takes only the execution context, not a source instance.
+The method preserves literal text and resolves parameter values without using
+previews. Explicit nulls produce a typed `PrimaryFilenameType` error rather than
+an empty path or a missing-parameter fallback.
+
+These companions expose filename evaluation, not document execution. Ordinary
+instance mapping remains a separate, explicitly pre-acquired-input operation.
+Neither the companions nor the ordinary instance entry points perform source
+acquisition or claim filesystem, wildcard, parser or publication support.

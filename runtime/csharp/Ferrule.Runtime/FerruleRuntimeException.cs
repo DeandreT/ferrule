@@ -70,6 +70,7 @@ public enum FerruleRuntimeError
     UnknownTarget,
     OwnedSource,
     BasicSourceBridge,
+    PrimaryFilenameType,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>

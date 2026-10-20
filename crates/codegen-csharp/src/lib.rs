@@ -15,6 +15,7 @@ mod json5_output;
 mod literal;
 mod mapping;
 mod owned_basic;
+mod primary_filename;
 mod runtime;
 mod static_documents;
 mod x12_output;
@@ -43,6 +44,7 @@ pub use csv_json::CsvJsonEmitError;
 pub use csv_x12::CsvX12EmitError;
 pub use error::EmitError;
 pub use json5_output::Json5EmitError;
+pub use primary_filename::emit_with_primary_filename;
 pub use static_documents::StaticDocumentEmitError;
 pub use x12_output::X12EmitError;
 
