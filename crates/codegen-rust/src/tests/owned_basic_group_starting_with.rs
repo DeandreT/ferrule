@@ -5,6 +5,10 @@ use super::owned_basic_group_by::{configure_groups, generated_source};
 use super::*;
 use mapping::{Node, OwnedSourceField, OwnedSourceRef, SourceOwner};
 
+// #444 Ending reuses this module's Starting fixture and refusal.
+#[path = "owned_basic_group_ending_with.rs"]
+mod ending_with;
+
 fn path(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).into()).collect()
 }

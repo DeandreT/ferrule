@@ -594,6 +594,21 @@ fn neighboring_grouping_modes_and_specialized_consumers_stay_closed() {
             );
             continue;
         }
+        if mode == 2 {
+            // #444: each true boundary closes its group; the false suffix trails.
+            assert_eq!(
+                run(&p),
+                Ok(expected(
+                    "P",
+                    &[
+                        ("a1", &["a1", "b1"]),
+                        ("a2", &["a2"]),
+                        ("c1", &["c1", "b2"])
+                    ]
+                ))
+            );
+            continue;
+        }
         assert!(matches!(
             run(&p),
             Err(EngineError::UnsupportedOwnedContext {

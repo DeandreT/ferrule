@@ -370,6 +370,7 @@ pub(super) enum BasicOwnedProfile {
     ByAndWindowsAndSortAndFilter,
     ByAndAdjacentByAndWindowsAndSortAndFilter,
     ByAndAdjacentByAndStartingWithAndWindowsAndSortAndFilter,
+    ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter,
 }
 
 /// Consumer permission is orthogonal to source controls and failure eligibility.
@@ -400,6 +401,7 @@ impl BasicOwnedProfile {
             Self::ByAndWindowsAndSortAndFilter
                 | Self::ByAndAdjacentByAndWindowsAndSortAndFilter
                 | Self::ByAndAdjacentByAndStartingWithAndWindowsAndSortAndFilter
+                | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter
         )
     }
 
@@ -512,13 +514,17 @@ impl BasicOwnedProfile {
                         self,
                         Self::ByAndAdjacentByAndWindowsAndSortAndFilter
                             | Self::ByAndAdjacentByAndStartingWithAndWindowsAndSortAndFilter
+                            | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter
                     ),
-                    Some(crate::GroupingPlan::StartingWith { .. }) => {
-                        self == Self::ByAndAdjacentByAndStartingWithAndWindowsAndSortAndFilter
+                    Some(crate::GroupingPlan::StartingWith { .. }) => matches!(
+                        self,
+                        Self::ByAndAdjacentByAndStartingWithAndWindowsAndSortAndFilter
+                            | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter
+                    ),
+                    Some(crate::GroupingPlan::EndingWith { .. }) => {
+                        self == Self::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter
                     }
-                    Some(crate::GroupingPlan::EndingWith { .. })
-                    | Some(crate::GroupingPlan::IntoBlocks { .. })
-                    | None => false,
+                    Some(crate::GroupingPlan::IntoBlocks { .. }) | None => false,
                 }) && matches!(
                     iteration.input(),
                     IterationSource::Source(_) | IterationSource::OwnedSource(_)
@@ -819,8 +825,9 @@ impl<'a> Admission<'a> {
                 })?;
             }
             // A wholly ordinary island must not gain owned ancestry just by
-            // using an admitted mode. A demanded paired By/AdjacentBy/StartingWith
-            // operation establishes a member container; no other mode may mint one.
+            // using an admitted mode. A demanded paired By/AdjacentBy/StartingWith/
+            // EndingWith operation establishes a member container; no other mode
+            // may mint one.
             if owns(&ancestry) || basic_scope_needs_owned(self.program, scope) {
                 ancestry.push(Ancestor::GroupMembers {
                     scope: route.clone(),
@@ -1188,6 +1195,20 @@ pub fn validate_basic_owned_group_starting_with_emission(
     validate_basic_owned_with_policies(
         program,
         BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndWindowsAndSortAndFilter,
+        true,
+        SequenceItemAtPolicy::BasicScalarProducers,
+    )
+}
+
+/// Explicitly admits static Basic By, AdjacentBy, StartingWith and EndingWith
+/// with candidate retention. IntoBlocks and inherited specialized contexts
+/// remain closed; ItemAt and failure permissions are independent, unchanged policies.
+pub fn validate_basic_owned_group_ending_with_emission(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_with_policies(
+        program,
+        BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter,
         true,
         SequenceItemAtPolicy::BasicScalarProducers,
     )

@@ -1,0 +1,37 @@
+{
+  "Groups": [
+    {
+      "First": "one",
+      "Position": 1,
+      "Members": [
+        {
+          "Label": "one"
+        },
+        {
+          "Label": "two"
+        },
+        {
+          "Label": "three"
+        }
+      ]
+    },
+    {
+      "First": "four",
+      "Position": 2,
+      "Members": [
+        {
+          "Label": "four"
+        }
+      ]
+    },
+    {
+      "First": "five",
+      "Position": 3,
+      "Members": [
+        {
+          "Label": "five"
+        }
+      ]
+    }
+  ]
+}
