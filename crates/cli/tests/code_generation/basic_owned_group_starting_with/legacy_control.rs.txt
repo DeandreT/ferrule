@@ -1,0 +1,38 @@
+//! Starting-only adapter. The maintained ordinary helper is not modified.
+use serde_json::{Value as Json,json};
+use std::path::Path;
+pub fn run(directory:&Path,contract:&Json)->Result<Vec<Json>,Box<dyn std::error::Error>> {
+    let source=include_str!("legacy-input.json");let expected=include_str!("legacy-expected.json");
+    let source_tree:Json=serde_json::from_str(include_str!("legacy-input.tree.json"))?;
+    let expected_tree:Json=serde_json::from_str(include_str!("legacy-expected.tree.json"))?;
+    let case=json!({"id":"L01-ordinary-starting","model":0,"source":source_tree,"inputs":[]});
+    let mut checks=Vec::new();
+    for selection in ["All","Primary"] {
+        let call=json!({"selection":selection,"expected":{"Ok":[[null,expected_tree]]}});
+        let prefix=format!("LEGACY-{selection}");
+        let identity=super::proof::identity(contract,109,&case,&call,&prefix);
+        super::write(directory,&format!("{prefix}-COMPLETE-INVOCATION.json"),&serde_json::to_vec_pretty(&identity)?)?;
+        let before=json!({"source_text":source,"inputs":[]});
+        super::proof::write_call(directory,&prefix,&identity,"COMPLETE-INPUT.json",&serde_json::to_vec_pretty(&json!({"before_raw":before,"source_recipe":case["source"],"inputs_recipe":case["inputs"]}))?)?;
+        super::proof::write_call(directory,&prefix,&identity,"COMPLETE-INPUT.txt",format!("SOURCE={source}\nEXPECTED={expected}\n").as_bytes())?;
+        let after=||{let state=json!({"source_text":source,"inputs":[]});json!({"unchanged":state==before,"state":state})};
+        let observed=if selection=="All" {
+            super::codec::retain_outcome_with_input_after(
+                std::panic::catch_unwind(||legacy0::execute_json_outputs(source)),
+                |suffix,bytes|super::proof::write_call(directory,&prefix,&identity,suffix,bytes),
+                |output|json!({"variant":"All","primary":output.primary,"extras":output.extras.iter()
+                    .map(|item|json!({"name":item.name,"document":item.document})).collect::<Vec<_>>()}),after,
+                |actual|json!({"matched":matches!(actual,Ok(output) if output.primary==expected&&output.extras.is_empty())}))
+        } else {
+            super::codec::retain_outcome_with_input_after(
+                std::panic::catch_unwind(||legacy0::execute_json_selected_target(source,codegen_runtime::TargetSelection::Primary)),
+                |suffix,bytes|super::proof::write_call(directory,&prefix,&identity,suffix,bytes),
+                |output|match output {
+                    legacy0::SelectedJsonTargetOutput::Primary(document)=>json!({"variant":"Primary","document":document}),
+                    legacy0::SelectedJsonTargetOutput::Named(output)=>json!({"variant":"Named","name":output.name,"document":output.document}),
+                },after,|actual|json!({"matched":matches!(actual,Ok(legacy0::SelectedJsonTargetOutput::Primary(document)) if document==expected)}))
+        }?;
+        checks.push(json!({"invocation":identity,"matched":observed.is_some_and(|row|row["matched"]==true)}));
+    }
+    Ok(checks)
+}

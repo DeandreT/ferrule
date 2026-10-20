@@ -1,0 +1,40 @@
+use serde_json::{Value as Json,json};
+use std::{fs,path::Path,io::Write as _};
+
+pub fn begin(directory:&Path, contract_path:&Path)->Result<Json,Box<dyn std::error::Error>> {
+    let bytes=fs::read(contract_path)?;
+    let contract:Json=serde_json::from_slice(&bytes)?;
+    if contract["version"]!=2 || contract["engine"]!="rust" ||
+        contract["output_directory"]!=json!(directory.canonicalize()?) ||
+        contract["program"]["path"]!=json!(std::env::current_exe()?.canonicalize()?) {
+        return Err("bound direct Rust host/contract mismatch".into());
+    }
+    super::write(directory,"RUN-CONTRACT.json",&bytes)?;
+    super::write(directory,"HOST-IDENTITY.json",&serde_json::to_vec_pretty(&json!({
+        "program":std::env::current_exe()?.canonicalize()?,"cwd":std::env::current_dir()?.canonicalize()?,
+        "argv":std::env::args_os().skip(1).collect::<Vec<_>>(),
+        "environment":std::env::vars().collect::<std::collections::BTreeMap<_,_>>(),
+        "run_id":contract["run_id"]
+    }))?)?;
+    Ok(contract)
+}
+pub fn identity(contract:&Json, ordinal:usize, case:&Json, call:&Json, slot:&str)->Json {
+    let api=match (case["id"]=="L01-ordinary-starting",call["selection"]=="All") {
+        (false,true)=>"execute_with_basic_owned_sources",(false,false)=>"execute_selected_with_basic_owned_sources",
+        (true,true)=>"execute_json_outputs",(true,false)=>"execute_json_selected_target",
+    };
+    json!({"version":2,"run_id":contract["run_id"],"engine":contract["engine"],"slot":slot,
+         "ordinal":ordinal,"case":case["id"],"model":case["model"],"selection":call["selection"],
+         "api":api,"call":call,"source":case["source"],"inputs":case["inputs"]})
+}
+pub fn write_call(directory:&Path,prefix:&str,identity:&Json,suffix:&str,bytes:&[u8])->std::io::Result<()> {
+    let bytes=if suffix.ends_with(".json") {
+        let value:Json=serde_json::from_slice(bytes).map_err(std::io::Error::other)?;
+        serde_json::to_vec_pretty(&json!({"invocation":identity,"record":value})).map_err(std::io::Error::other)?
+    } else {
+        let mut stamped=format!("INVOCATION={}\n",serde_json::to_string(identity).map_err(std::io::Error::other)?).into_bytes();
+        stamped.extend_from_slice(bytes); stamped
+    };
+    let mut file=fs::OpenOptions::new().create_new(true).write(true).open(directory.join(format!("{prefix}-{suffix}")))?;
+    file.write_all(&bytes)?; file.flush()
+}

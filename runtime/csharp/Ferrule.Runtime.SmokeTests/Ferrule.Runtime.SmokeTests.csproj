@@ -8,6 +8,16 @@
     <Deterministic>true</Deterministic>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(FerruleComponentOracles)' == 'true'">
+    <DefineConstants>$(DefineConstants);FERRULE_COMPONENT_ORACLES</DefineConstants>
+    <IsPackable>false</IsPackable>
+    <IsPublishable>false</IsPublishable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="BasicOwnershipGroupStartingWithTests.cs" />
+    <Compile Include="BasicOwnershipGroupStartingWithTests.cs" Condition="'$(FerruleComponentOracles)' == 'true'" />
+  </ItemGroup>
 
   <ItemGroup>
     <Content Include="../../../conformance/json-source/cases.json" Link="json-source-cases.json" CopyToOutputDirectory="PreserveNewest" />

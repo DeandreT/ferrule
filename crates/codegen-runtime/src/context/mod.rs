@@ -25,9 +25,9 @@ mod named_tests;
 mod source_field_tests;
 
 pub use basic::{
-    BasicGroupByControls, BasicGroupByMetadata, BasicScopeContext, BasicSourceBridgeError,
-    BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort, PhaseSelection,
-    RetainedSourceCohort,
+    BasicGroupByControls, BasicGroupByMetadata, BasicGroupStartingWithControls, BasicScopeContext,
+    BasicSourceBridgeError, BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort,
+    PhaseSelection, RetainedSourceCohort,
 };
 pub use basic_json_inputs::{
     BasicJsonDocumentRef, BasicJsonInputAdmission, BasicJsonParsedInputs,
@@ -731,8 +731,8 @@ struct OwnedSourceFrame<'a> {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum OwnedOccurrenceKind {
     Item,
-    // Authenticated member containers minted only by paired By / AdjacentBy.
-    KeyedGroup,
+    // Authenticated member containers minted only by paired By / AdjacentBy / StartingWith.
+    GroupMembers,
 }
 
 /// An owner-aware view separate from every legacy ScopeContext operation.

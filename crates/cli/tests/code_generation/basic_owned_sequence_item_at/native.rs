@@ -35,6 +35,10 @@ fn expected_error(recipe: &Json) -> engine::EngineError {
     let found = match recipe["found"].as_str() {
         Some("bool") => "bool",
         Some("string") => "string",
+        Some("json null") => "json null",
+        Some("int") => "int",
+        Some("float") => "float",
+        Some("xml nil") => "xml nil",
         _ => "null",
     };
     match recipe["kind"].as_str().unwrap() {
@@ -113,6 +117,21 @@ pub(super) fn run(
     projects: &[Project],
     evidence: &Evidence,
 ) -> TestResult<Vec<Json>> {
+    run_inner(controls, projects, evidence, false)
+}
+pub(super) fn run_with_input_after(
+    controls: &Json,
+    projects: &[Project],
+    evidence: &Evidence,
+) -> TestResult<Vec<Json>> {
+    run_inner(controls, projects, evidence, true)
+}
+fn run_inner(
+    controls: &Json,
+    projects: &[Project],
+    evidence: &Evidence,
+    independent_after: bool,
+) -> TestResult<Vec<Json>> {
     let execution = engine::ExecutionContext::new(Path::new("itemat473.mapping"));
     let mut checks = Vec::new();
     for (ordinal, case) in controls["cases"].as_array().unwrap().iter().enumerate() {
@@ -138,6 +157,15 @@ pub(super) fn run(
                 &format!("{prefix}-COMPLETE-INPUT.txt"),
                 &(case, call, &source, &inputs),
             )?;
+            let raw_inputs = || {
+                json!({"source":codec::raw_tree(&source),"inputs":inputs.iter()
+                .map(|(name,input)|json!([name,codec::raw_tree(input)])).collect::<Vec<_>>()})
+            };
+            let raw_before = if independent_after {
+                Some(raw_inputs())
+            } else {
+                None
+            };
             let actual = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if selection == "All" {
                     engine::run_outputs_with_sources_and_context(
@@ -163,23 +191,24 @@ pub(super) fn run(
                     .map(Product::Selected)
                 }
             }));
-            let observed = codec::retain_outcome(
-                actual,
-                |suffix, bytes| evidence.write_io(&format!("{prefix}-{suffix}"), bytes),
-                |product| match product {
-                    Product::All(output) => {
-                        json!({"variant":"All","primary":codec::raw_tree(&output.primary),
+            let writer = |suffix: &str, bytes: &[u8]| {
+                evidence.write_io(&format!("{prefix}-{suffix}"), bytes)
+            };
+            let capture = |product: &Product| match product {
+                Product::All(output) => {
+                    json!({"variant":"All","primary":codec::raw_tree(&output.primary),
                         "extras":output.extras.iter().map(|output|json!({"name":output.name,"instance":codec::raw_tree(&output.instance)})).collect::<Vec<_>>()})
-                    }
-                    Product::Selected(engine::SelectedTargetOutput::Primary(instance)) => {
-                        json!({"variant":"Primary","instance":codec::raw_tree(instance)})
-                    }
-                    Product::Selected(engine::SelectedTargetOutput::Named(output)) => {
-                        json!({"variant":"Named","name":output.name,"instance":codec::raw_tree(&output.instance)})
-                    }
-                },
-                |product| {
-                    let trees = match product {
+                }
+                Product::Selected(engine::SelectedTargetOutput::Primary(instance)) => {
+                    json!({"variant":"Primary","instance":codec::raw_tree(instance)})
+                }
+                Product::Selected(engine::SelectedTargetOutput::Named(output)) => {
+                    json!({"variant":"Named","name":output.name,"instance":codec::raw_tree(&output.instance)})
+                }
+            };
+            let observe = |product: &Result<Product, engine::EngineError>| {
+                let trees =
+                    match product {
                         Ok(Product::All(output)) => {
                             let mut trees = vec![json!([null, codec::encode(&output.primary)])];
                             trees.extend(output.extras.iter().map(|output| {
@@ -195,24 +224,37 @@ pub(super) fn run(
                         }
                         Err(_) => None,
                     };
-                    let after = (
-                        codec::encode(&source),
-                        inputs
-                            .iter()
-                            .map(|(name, input)| json!([name, codec::encode(input)]))
-                            .collect::<Vec<_>>(),
-                    );
-                    let matched = match product {
-                        Ok(_) => call["expected"].get("Ok").is_some_and(|expected| {
-                            trees.as_ref().is_some_and(|actual| actual == expected)
-                        }),
-                        Err(error) => call["expected"]
-                            .get("Err")
-                            .is_some_and(|recipe| *error == expected_error(recipe)),
-                    } && before == after;
-                    json!({"actual_trees":trees,"after_inputs":after,"matched":matched})
-                },
-            )?;
+                let after = (
+                    codec::encode(&source),
+                    inputs
+                        .iter()
+                        .map(|(name, input)| json!([name, codec::encode(input)]))
+                        .collect::<Vec<_>>(),
+                );
+                let matched = match product {
+                    Ok(_) => call["expected"].get("Ok").is_some_and(|expected| {
+                        trees.as_ref().is_some_and(|actual| actual == expected)
+                    }),
+                    Err(error) => call["expected"]
+                        .get("Err")
+                        .is_some_and(|recipe| *error == expected_error(recipe)),
+                } && before == after;
+                json!({"actual_trees":trees,"after_inputs":after,"matched":matched})
+            };
+            let observed = if independent_after {
+                codec::retain_outcome_with_input_after(
+                    actual,
+                    writer,
+                    capture,
+                    || {
+                        let state = raw_inputs();
+                        json!({"unchanged":raw_before.as_ref() == Some(&state),"state":state})
+                    },
+                    observe,
+                )
+            } else {
+                codec::retain_outcome(actual, writer, capture, observe)
+            }?;
             let matched = observed.is_some_and(|record| record["matched"] == true);
             checks.push(json!({"case":case["id"],"selection":selection,"matched":matched}));
         }
