@@ -1,7 +1,7 @@
 use ir::Value;
 
 use super::{
-    FunctionError,
+    FunctionError, casing,
     catalog::{BuiltinDefinition, BuiltinId},
     datetime, datetime_add, decimal, filepath, flextext, format_number, json,
     scalar::text as scalar_text,
@@ -23,8 +23,8 @@ pub(super) fn call_builtin(
 ) -> Result<Value, FunctionError> {
     match builtin.id {
         BuiltinId::Concat => Ok(concat(args)),
-        BuiltinId::Upper => unary_string(args, "upper", str::to_uppercase),
-        BuiltinId::Lower => unary_string(args, "lower", str::to_lowercase),
+        BuiltinId::Upper => unary_string(args, "upper", casing::to_upper),
+        BuiltinId::Lower => unary_string(args, "lower", casing::to_lower),
         BuiltinId::NormalizeSpace => unary_string(args, "normalize_space", normalize_space),
         BuiltinId::IsEmpty => unary_string_predicate(args, "is_empty", str::is_empty),
         BuiltinId::Trim => unary_string(args, "trim", |s| s.trim().to_string()),

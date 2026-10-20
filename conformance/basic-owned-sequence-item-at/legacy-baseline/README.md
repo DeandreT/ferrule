@@ -35,15 +35,17 @@ separate static control, not a replacement historical artifact baseline.
 The historical manifest is immutable and checked by its own fixed digest.
 Complete historical equality is always reported separately. The explicit
 `ReviewedAdjacentRuntime` test policy also permits source-bound updates to exactly
-three C# artifacts: `Runtime/FerruleBasicGroupBy.cs`, `Runtime/FerruleInstance.cs`
-and `Runtime/ScopeContext.cs`. These carry the adjacent-grouping runtime operation
-and private keyed-group markers. Both Rust artifacts and the other 75 C# files
+four C# artifacts: `Runtime/FerruleBasicGroupBy.cs`, `Runtime/FerruleInstance.cs`
+and `Runtime/ScopeContext.cs` carry the adjacent-grouping runtime operation and
+private keyed-group markers; `Runtime/FerruleFunctions.cs` dispatches `upper`/`lower`
+to the pinned portable Unicode casing. Both Rust artifacts and the other 74 C# files
 remain subject to exact historical comparison. All historical paths are retained;
-exactly `Runtime/Json/FerruleJsonSourceDocument.cs` and
+exactly `Runtime/FerruleUnicodeCasing.cs`, `Runtime/FerruleUnicodeCasing.Tables.cs`,
+`Runtime/Json/FerruleJsonSourceDocument.cs` and
 `Runtime/Json/FerruleJsonSourceOccurrence.cs` are admitted as source-bound additions.
-The frozen historical manifest continues to exclude both new files.
+The frozen historical manifest continues to exclude these new files.
 
-Before emission, the harness snapshots and retains all five selected repository source
+Before emission, the harness snapshots and retains all eight selected repository source
 bodies. Their emitted contents must match those source snapshots, and the sources
 must remain unchanged. No emitted actual supplies its own expected bytes. The
 preparation source fence and original-evidence checks also cover the comparison

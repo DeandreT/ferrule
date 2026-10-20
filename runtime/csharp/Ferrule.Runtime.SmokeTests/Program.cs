@@ -227,6 +227,7 @@ internal static partial class Program
             ("portable scalar function batch A", ScalarFunctionBatchA),
             ("portable scalar function batch B", ScalarFunctionBatchB),
             ("portable scalar function batch C", ScalarFunctionBatchC),
+            ("portable Unicode casing", PortableUnicodeCasing),
             ("typed function errors", TypedFunctionErrors),
             ("scope source iteration", ScopeSourceIteration),
             ("aggregate source contexts", AggregateSourceContexts),
