@@ -1,0 +1,70 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+const string MappingPath = "dates.ferrule.json";
+using var cases = JsonDocument.Parse(File.ReadAllText("cases.json"));
+foreach (var test in cases.RootElement.EnumerateArray())
+{
+    var input = test.GetProperty("input").GetString()!;
+    var supplied = test.TryGetProperty("parameters", out var authored);
+    var parameters = new FerruleRuntimeParameters(supplied
+        ? authored.EnumerateObject().Select(parameter =>
+            KeyValuePair.Create(parameter.Name, FerruleValue.FromString(parameter.Value.GetString()!)))
+        : []);
+    var context = new FerruleExecutionContext(MappingPath, MappingPath, null, parameters);
+    Verify(() => GeneratedMapping.ExecuteJson(input, context), test);
+    Verify(() => Encoding.UTF8.GetString(GeneratedMapping.ExecuteJsonBytes(Encoding.UTF8.GetBytes(input), context)), test);
+    if (!supplied)
+    {
+        Verify(() => GeneratedMapping.ExecuteJson(input), test);
+        Verify(() => Encoding.UTF8.GetString(GeneratedMapping.ExecuteJsonBytes(Encoding.UTF8.GetBytes(input))), test);
+    }
+}
+Console.WriteLine($"verified {cases.RootElement.GetArrayLength()} constructed date cases");
+
+static void Verify(Func<string> run, JsonElement test)
+{
+    Func<FerruleRuntimeException, bool>? expected = null;
+    if (test.TryGetProperty("reject", out _))
+    {
+        expected = error => error.Error == FerruleRuntimeError.JsonBoundary;
+    }
+    else if (test.TryGetProperty("execution_error", out var invalid))
+    {
+        expected = error => error.Error == FerruleRuntimeError.FunctionInvalidArgument &&
+            error.Function == invalid.GetProperty("function").GetString() &&
+            error.Detail == invalid.GetProperty("message").GetString();
+    }
+    else if (test.TryGetProperty("type_error", out var type))
+    {
+        expected = error => error.Error == FerruleRuntimeError.FunctionType &&
+            error.Function == type.GetProperty("function").GetString() &&
+            error.FoundKind?.ToString().ToLowerInvariant() == type.GetProperty("found").GetString();
+    }
+    else if (test.TryGetProperty("boolean_error", out var boolean))
+    {
+        expected = error => error.Error == FerruleRuntimeError.NotABool &&
+            error.Node == boolean.GetProperty("node").GetUInt32() &&
+            error.FoundKind?.ToString().ToLowerInvariant() == boolean.GetProperty("found").GetString();
+    }
+    else if (test.TryGetProperty("missing_parameter", out var missing))
+    {
+        expected = error => error.Error == FerruleRuntimeError.MissingRuntimeParameter &&
+            error.Node == missing.GetProperty("node").GetUInt32() &&
+            error.RuntimeParameter == missing.GetProperty("name").GetString();
+    }
+    if (expected is not null)
+    {
+        try { _ = run(); }
+        catch (FerruleRuntimeException error) when (expected(error)) { return; }
+        throw new Exception($"Expected failure differs: {test}");
+    }
+    var actual = run();
+    if (!JsonNode.DeepEquals(JsonNode.Parse(actual), JsonNode.Parse(test.GetProperty("expected").GetRawText())))
+    {
+        throw new Exception($"JSON output differs: {test}; actual: {actual}");
+    }
+}

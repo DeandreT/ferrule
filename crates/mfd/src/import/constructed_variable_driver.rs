@@ -316,7 +316,7 @@ pub(super) fn projection(
 
 const MAX_SCALAR_ALIAS_HOPS: usize = 64;
 
-fn direct_scalar_literal(feed: u32, builder: &GraphBuilder<'_>) -> bool {
+pub(super) fn direct_scalar_literal(feed: u32, builder: &GraphBuilder<'_>) -> bool {
     literal_constant_value(feed, builder).is_some()
         && uniquely_declared_output(feed, builder)
         && builder
@@ -516,6 +516,11 @@ impl ScalarAssignmentProof {
         }
         if function.raw_clock_signature_valid {
             return super::constructed_runtime_clock::assignment(feed, builder);
+        }
+        if function.raw_parse_date_pins_valid {
+            return super::constructed_parse_date::assignment(feed, function, builder, |value| {
+                parent_scalar(value, target_path, builder, scopes)
+            });
         }
         if depth == MAX_CONDITIONAL_DEPTH
             || !function.bounded_scalar_pins_valid

@@ -1,0 +1,104 @@
+[
+  {
+    "input": "{}",
+    "expected": {
+      "Batches": []
+    }
+  },
+  {
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Batches": []
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":true,\"Raw\":\"2024-02-29\",\"Alt\":\"31/12/1999\",\"Note\":\"a\"},{\"Choose\":false,\"Raw\":\"2001-01-02\",\"Alt\":\"bad\",\"Note\":\"b\"},{\"Choose\":true,\"Raw\":\"1970-1-1\",\"Alt\":\"5/6/2007\"},{\"Choose\":false,\"Raw\":\"2099-12-31\"}]}",
+    "expected": {
+      "Batches": [
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Date": "2024-02-29",
+              "Picked": "1999-12-31"
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Date": "2001-01-02",
+              "Picked": "b"
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Date": "1970-01-01",
+              "Picked": "2007-06-05"
+            }
+          ]
+        },
+        {
+          "Records": [
+            {
+              "Text": "created",
+              "Date": "2099-12-31"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":false,\"Raw\":\"2024-02-29\"},{\"Choose\":false,\"Raw\":\"2023-02-29\"}]}",
+    "execution_error": {
+      "function": "parse_date",
+      "message": "requires a value matching a supported date/time picture"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":false,\"Raw\":\"2024-02-29\"},{\"Choose\":true,\"Raw\":\"2024-02-29\",\"Alt\":\"32/01/2000\"}]}",
+    "execution_error": {
+      "function": "parse_date",
+      "message": "requires a value matching a supported date/time picture"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":false,\"Raw\":\"2024-02-29\"},{\"Choose\":false}]}",
+    "type_error": {
+      "function": "parse_date",
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":false,\"Raw\":\"2024-02-29\"},{\"Raw\":\"2024-02-29\"}]}",
+    "boolean_error": {
+      "node": 8,
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Rows\":[null]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":null}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":false,\"Raw\":null}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":false,\"Raw\":1}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Raw\":\"2024-02-29\"},{\"Raw\":\"2024-02-29\"},{\"Raw\":\"2024-02-29\"},{\"Raw\":\"2024-02-29\"},{\"Raw\":\"2024-02-29\"}]}",
+    "reject": true
+  }
+]
