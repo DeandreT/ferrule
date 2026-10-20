@@ -99,3 +99,66 @@ jobs:
           if [ "$RUNNER_ENVIRONMENT" = self-hosted ] && [ -n "${SCCACHE_DIR:-}" ]; then
             /opt/ferrule-runner-tools/sccache --show-stats
           fi
+
+  # Compiles the browser demo that site.yml publishes, without packaging or deploying it.
+  wasm:
+    name: web-demo (wasm32)
+    runs-on: ${{ fromJSON(vars.OVH_RUNNER_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '["self-hosted", "Linux", "X64", "ferrule-ovh"]' || '["ubuntu-latest"]') }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: OVH build resources
+        if: runner.environment == 'self-hosted'
+        run: bash scripts/ci/prepare-ovh-build.sh
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+        with:
+          shared-key: web-demo-wasm32-bounded-builds
+      - name: build web demo for wasm32
+        env:
+          RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
+        run: |
+          set -euo pipefail
+          cargo build -p web-demo --target wasm32-unknown-unknown --release --locked
+          module="${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/target}/wasm32-unknown-unknown/release/web-demo.wasm"
+          if [[ ! -s $module ]]; then
+            echo "Expected browser module was not produced: $module" >&2
+            exit 1
+          fi
+          ls -l "$module"
+      - name: Trim successful workspace build
+        if: success() && runner.environment == 'self-hosted'
+        run: cargo clean --workspace --target wasm32-unknown-unknown --release
+      # This optional canary contains metadata only. It never marks job evidence archived.
+      - name: Metadata evidence canary
+        id: evidence_canary
+        if: always() && runner.environment == 'self-hosted' && vars.OVH_EVIDENCE_CANARY_ENABLED == 'true' && vars.OVH_EVIDENCE_CANARY_RETENTION_DAYS != '' && env.FERRULE_CI_EVIDENCE_CANARY != ''
+        continue-on-error: true
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: evidence-canary-${{ env.FERRULE_CI_EVIDENCE_ID }}
+          path: ${{ env.FERRULE_CI_EVIDENCE_CANARY }}
+          archive: true
+          compression-level: 0
+          overwrite: false
+          if-no-files-found: error
+          retention-days: ${{ vars.OVH_EVIDENCE_CANARY_RETENTION_DAYS }}
+      - name: Retain unarchived job observation
+        if: always() && runner.environment == 'self-hosted' && env.FERRULE_CI_EVIDENCE_ROOT != ''
+        env:
+          FERRULE_CI_OBSERVED_JOB_STATE: ${{ job.status }}
+          FERRULE_CI_CANARY_OUTCOME: ${{ steps.evidence_canary.outcome }}
+        run: python3 -I scripts/ci/job-evidence.py observe
+      - name: runner resources
+        if: always()
+        run: |
+          df -h
+          free -h
+          if [ "$RUNNER_ENVIRONMENT" = self-hosted ] && [ -n "${SCCACHE_DIR:-}" ]; then
+            /opt/ferrule-runner-tools/sccache --show-stats
+          fi
