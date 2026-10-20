@@ -1,0 +1,43 @@
+use std::error::Error;
+
+use codegen_runtime::{RuntimeError, SourcePathError, XmlBoundaryError};
+use ferrule_generated_mapping::{execute_xml, execute_xml_bytes};
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let cases: Vec<serde_json::Value> = serde_json::from_str(include_str!("../cases.json"))?;
+    for case in cases {
+        let input = case["input"].as_str().unwrap();
+        verify(execute_xml(input), &case);
+        verify(
+            execute_xml_bytes(input.as_bytes()).map(|bytes| String::from_utf8(bytes).unwrap()),
+            &case,
+        );
+    }
+    Ok(())
+}
+
+fn verify(result: Result<String, XmlBoundaryError>, case: &serde_json::Value) {
+    let Some(expected) = case.get("missing_source") else {
+        assert_eq!(result.unwrap(), case["expected_xml"].as_str().unwrap(), "{case}");
+        return;
+    };
+    let error = result.expect_err("absent owned XML source must fail");
+    let mut source = error.source();
+    while let Some(current) = source {
+        if let Some(RuntimeError::SourcePath(SourcePathError::MissingField {
+            path,
+            segment,
+            field,
+        })) = current.downcast_ref::<RuntimeError>()
+        {
+            let expected_path: Vec<String> =
+                serde_json::from_value(expected["path"].clone()).unwrap();
+            assert_eq!(*path, expected_path, "{case}");
+            assert_eq!(*segment as u64, expected["segment"].as_u64().unwrap(), "{case}");
+            assert_eq!(field, expected["field"].as_str().unwrap(), "{case}");
+            return;
+        }
+        source = current.source();
+    }
+    panic!("{case}: missing structured source error differs: {error:?}");
+}

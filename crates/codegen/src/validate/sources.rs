@@ -119,6 +119,17 @@ impl<'a> SourceCatalog<'a> {
             .or_else(|| self.primary().follow(path))
     }
 
+    /// Resolves a root-context path without crossing repetition. The primary
+    /// root owns paths whose first field it declares, matching runtime frame
+    /// selection; other paths need an explicit named-source prefix.
+    pub(super) fn root_direct_target(self, path: &[String]) -> Option<SchemaCursor<'a>> {
+        if self.primary().owns_first(path) {
+            return follow_direct(self.primary, self.primary, path)
+                .map(|node| SchemaCursor::new(self.primary, node));
+        }
+        self.explicit_target(path, true)
+    }
+
     /// Resolves a scope iteration like the engine: current frame, explicit
     /// named source, primary fallback, then named sources in declaration order.
     pub(super) fn schema_at(

@@ -110,9 +110,9 @@ pub(crate) fn instance_in_active_collection<'a>(
         let Some(owner) = context_for_position(context, positions, position_index) else {
             continue;
         };
-        if let Some(value) = instance(&[owner], &path[position.collection.len()..]) {
-            return Some(value);
-        }
+        // The active item owns this absolute path. Its absent optional group
+        // must not borrow another item's group through the root context.
+        return instance(&[owner], &path[position.collection.len()..]);
     }
     instance(context, path)
 }
