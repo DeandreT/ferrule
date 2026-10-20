@@ -937,7 +937,7 @@ fn visit_collection_find<'a>(
     }
 }
 
-fn coerce_value_map_input(value: &Value, ty: ScalarType) -> Option<Value> {
+pub(super) fn coerce_value_map_input(value: &Value, ty: ScalarType) -> Option<Value> {
     match (ty, value) {
         (_, Value::Null) => Some(Value::Null),
         (_, Value::JsonNull(_)) => Some(Value::Null),

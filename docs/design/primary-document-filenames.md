@@ -52,6 +52,14 @@ expression is unsupported by the classifier. Ordinary project pruning keeps
 its existing roots and behavior.
 
 This model has no interpreter or generated-host acquisition entry point.
-Filename evaluation, document loading, source ownership and output-document
-execution require their own validated profiles; retaining a plan does not
-enable those operations.
+`engine::evaluate_primary_filename` evaluates the classified literal or global
+parameter without a source instance. It preserves the exact string, reuses
+ordinary parameter coercion, and reports explicit null results separately from
+missing parameters. Neither saved previews nor parameter previews supply a
+filename, including in a preview execution context. Unrelated mapping nodes are
+not evaluated.
+Success validates only this filename expression, not the embedded mapping body.
+
+Document loading, source ownership and output-document execution require their
+own validated profiles. Filename evaluation does not interpret empty strings,
+wildcards, URI schemes or filesystem syntax, and does not enable I/O.
