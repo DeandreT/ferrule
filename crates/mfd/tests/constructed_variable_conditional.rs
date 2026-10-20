@@ -419,7 +419,8 @@ fn scalar_conditionals_refuse_ambiguous_metadata_and_unproved_branches() {
         "conflicting-branch",
         "physical-shadow",
         "structural-branch",
-        "clock-branch",
+        "foreign-clock-branch",
+        "malformed-clock-branch",
         "no-presence",
     ] {
         let design = match label {
@@ -439,7 +440,8 @@ fn scalar_conditionals_refuse_ambiguous_metadata_and_unproved_branches() {
             "conflicting-branch" => original.replace(else_edge, &format!("{else_edge}<vertex vertexkey=\"101\"><edges><edge vertexkey=\"122\"/></edges></vertex>")),
             "physical-shadow" => original.replace("</children>", "<component name=\"constant\" library=\"core\" kind=\"2\"><targets><datapoint key=\"12\"/></targets><data><constant value=\"5\" datatype=\"integer\"/></data></component></children>"),
             "structural-branch" => original.replace("<entry name=\"object\"><entry name=\"Count\"", "<entry name=\"object\" outkey=\"14\"><entry name=\"Count\"").replace("<vertex vertexkey=\"12\"><edges><edge vertexkey=\"121\"/></edges></vertex>", "<vertex vertexkey=\"14\"><edges><edge vertexkey=\"121\"/></edges></vertex>"),
-            "clock-branch" => original.replace("<component name=\"constant\" library=\"core\" kind=\"2\"><targets><datapoint pos=\"0\" key=\"105\"/></targets><data><constant value=\"0\" datatype=\"integer\"/></data></component>", "<component name=\"now\" library=\"lang\" kind=\"5\"><targets><datapoint key=\"105\"/></targets></component>"),
+            "foreign-clock-branch" => clock_branch(&original).replace("library=\"lang\"", "library=\"foreign\""),
+            "malformed-clock-branch" => clock_branch(&original).replace("<targets><datapoint key=\"105\"/>", "<sources><datapoint/></sources><targets><datapoint key=\"105\"/>"),
             "no-presence" => original.replace("<vertex vertexkey=\"101\"><edges><edge vertexkey=\"22\"/></edges></vertex>", ""),
             _ => unreachable!(),
         };
@@ -455,6 +457,67 @@ fn scalar_conditionals_refuse_ambiguous_metadata_and_unproved_branches() {
         &import_control(&design, "uniterated-parent"),
         "uniterated-parent",
     );
+}
+
+fn clock_branch(original: &str) -> String {
+    let constant = "<component name=\"constant\" library=\"core\" kind=\"2\"><targets><datapoint pos=\"0\" key=\"105\"/></targets><data><constant value=\"0\" datatype=\"integer\"/></data></component>";
+    assert_eq!(original.matches(constant).count(), 1);
+    original.replace(
+        constant,
+        "<component name=\"now\" library=\"lang\" kind=\"5\"><targets><datapoint key=\"105\"/></targets></component>",
+    )
+}
+
+#[test]
+fn scalar_conditionals_admit_lazy_runtime_clock_branches() {
+    let original = std::fs::read_to_string(fixture("root-json.mfd")).unwrap();
+    let imported = import_control(&clock_branch(&original), "clock-branch");
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let mut oracle = expected(false);
+    oracle.graph.nodes.insert(
+        4,
+        Node::RuntimeValue {
+            value: mapping::RuntimeValue::CurrentDateTime,
+        },
+    );
+    assert_eq!(
+        serde_json::to_value(&imported.project).unwrap(),
+        serde_json::to_value(&oracle).unwrap()
+    );
+    assert!(engine::validate(&imported.project).is_empty());
+    let count = |source: &str, clock: Option<&str>| {
+        let source = format_json::from_str(source, &imported.project.source).unwrap();
+        let mut context = engine::ExecutionContext::new(std::path::Path::new("clock.ferrule.json"));
+        if let Some(clock) = clock {
+            context = context.with_current_datetime(clock);
+        }
+        engine::run_with_context(&imported.project, &source, &context).map(|output| {
+            let Some(ir::Instance::Repeated(records)) = output.field("Records") else {
+                panic!("one record");
+            };
+            records[0]
+                .field("Count")
+                .and_then(ir::Instance::as_scalar)
+                .cloned()
+        })
+    };
+    // The unselected clock branch never asks the host for a clock.
+    assert_eq!(
+        count(r#"{"Choose":true,"Count":7}"#, None),
+        Ok(Some(Value::Int(7)))
+    );
+    assert_eq!(
+        count(r#"{"Choose":false,"Count":7}"#, None),
+        Err(engine::EngineError::MissingRuntimeValue(
+            mapping::RuntimeValue::CurrentDateTime
+        ))
+    );
+    for clock in ["2026-03-04T05:06:07-08:00", "2031-11-12T23:58:59Z"] {
+        assert_eq!(
+            count(r#"{"Choose":false,"Count":7}"#, Some(clock)),
+            Ok(Some(Value::String(clock.into())))
+        );
+    }
 }
 
 fn conditional_tree(original: &str, count: usize, chain: bool) -> String {

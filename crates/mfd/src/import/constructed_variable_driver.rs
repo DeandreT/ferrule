@@ -514,6 +514,9 @@ impl ScalarAssignmentProof {
         if literal_constant_value(feed, builder).is_some() {
             return function.bounded_scalar_pins_valid;
         }
+        if function.raw_clock_signature_valid {
+            return super::constructed_runtime_clock::assignment(feed, builder);
+        }
         if depth == MAX_CONDITIONAL_DEPTH
             || !function.bounded_scalar_pins_valid
             || function.library != "core"

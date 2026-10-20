@@ -22,6 +22,7 @@ mod aggregate;
 mod alternatives;
 mod compatibility;
 mod constructed_parser_scalar;
+mod constructed_runtime_clock;
 mod constructed_variable_driver;
 mod db_query;
 mod db_where;
