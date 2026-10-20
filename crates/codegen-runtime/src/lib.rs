@@ -1191,6 +1191,43 @@ mod tests {
     }
 
     #[test]
+    fn owned_structured_source_absence_is_authoritative() {
+        let details = |code: &str| group([field("Code", scalar(string(code)))]);
+        let source = group([
+            field("Details", details("root")),
+            field("Header", details("header")),
+            field(
+                "Rows",
+                repeated([
+                    group([field("Details", details("first"))]),
+                    group(Vec::<(String, Instance)>::new()),
+                ]),
+            ),
+        ]);
+        let rows = ScopeContext::new(&source).walk_source(&["Rows"]);
+        let code = |context: &ScopeContext<'_>, frame: Option<&[&str]>, path: &[&str]| {
+            context
+                .resolve_xml_instance(frame, path)
+                .and_then(|instance| resolve_scalar(instance, &["Code"]))
+        };
+
+        assert_eq!(
+            code(&rows[0], None, &["Rows", "Details"]),
+            Ok(string("first"))
+        );
+        let missing = Err(SourcePathError::MissingField {
+            path: vec!["Rows".to_string(), "Details".to_string()],
+            segment: 1,
+            field: "Details".to_string(),
+        });
+        assert_eq!(code(&rows[1], None, &["Rows", "Details"]), missing);
+        assert_eq!(code(&rows[1], Some(&["Rows"]), &["Details"]), missing);
+        // Paths without an active owner keep innermost-to-outermost fallback.
+        assert_eq!(code(&rows[1], None, &["Header"]), Ok(string("header")));
+        assert_eq!(code(&rows[1], None, &["Details"]), Ok(string("root")));
+    }
+
+    #[test]
     fn innermost_fallback_and_empty_repetition_shadowing_match_the_engine() {
         let source = group([
             field(

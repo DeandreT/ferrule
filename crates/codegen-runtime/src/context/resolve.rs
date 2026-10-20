@@ -146,6 +146,10 @@ impl std::error::Error for SourcePathError {}
 impl ScopeContext<'_> {
     /// Resolves a complete structured source using active collection identity
     /// before ordinary innermost-to-outermost fallback.
+    ///
+    /// The deepest active collection owning the path's prefix is
+    /// authoritative: its absent optional group is an error rather than a
+    /// fallback to another item's group through an outer frame.
     pub fn resolve_instance(&self, path: &[&str]) -> Result<&Instance, SourcePathError> {
         let owned_path = owned_path(path);
         let mut first_error = None;
@@ -158,15 +162,12 @@ impl ScopeContext<'_> {
             if prefix.is_empty() || !has_prefix(path, prefix) {
                 continue;
             }
-            match resolve_instance_in(
+            return resolve_instance_in(
                 frame.instance,
                 &path[prefix.len()..],
                 &owned_path,
                 prefix.len(),
-            ) {
-                Ok(instance) => return Ok(instance),
-                Err(error) => first_error.get_or_insert(error),
-            };
+            );
         }
 
         for frame in self.frames.iter().rev() {

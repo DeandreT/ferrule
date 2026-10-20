@@ -383,3 +383,134 @@ fn active_parent_singleton_joins_correlate_each_order() {
         );
     }
 }
+
+fn messages(project: &Project) -> Vec<String> {
+    validate(project)
+        .into_iter()
+        .map(|issue| issue.message)
+        .collect()
+}
+
+#[test]
+fn validation_refuses_root_singletons_missing_from_the_root_context() {
+    // `CustomerNr` exists only beneath repeated `Orders`, so a root-context
+    // join would silently find no singleton and produce no tuples.
+    let relative = path(&["CustomerNr"]);
+    let expected = "join 7 singleton collection `CustomerNr` does not resolve from the root source context; use a path from the source root or a named source";
+    for singleton_first in [true, false] {
+        for with_items in [false, true] {
+            assert_eq!(
+                messages(&root_project(&relative, singleton_first, with_items)),
+                vec![expected.to_string()],
+                "singleton first: {singleton_first}, items: {with_items}"
+            );
+        }
+    }
+
+    let aggregate = |singleton: &[String]| {
+        let mut project = root_project(&path(&["Header", "CustomerNr"]), true, false);
+        project.graph.nodes.insert(
+            4,
+            Node::JoinAggregate {
+                function: mapping::AggregateOp::Count,
+                join: JoinId::new(8),
+                plan: plan(singleton, true, false),
+                expression: None,
+                arg: None,
+            },
+        );
+        project.root.bindings.push(Binding {
+            target_field: "Count".into(),
+            node: 4,
+        });
+        let ir::SchemaKind::Group { children, .. } = &mut project.target.kind else {
+            panic!("singleton join target is a group");
+        };
+        children.push(SchemaNode::scalar("Count", ScalarType::Int));
+        project
+    };
+    assert_eq!(
+        messages(&aggregate(&relative)),
+        vec![
+            "join 8 singleton collection `CustomerNr` does not resolve from the root source context; use a path from the source root or a named source"
+                .to_string()
+        ]
+    );
+    let rooted = aggregate(&path(&["Header", "CustomerNr"]));
+    assert!(validate(&rooted).is_empty(), "{:?}", validate(&rooted));
+    assert_eq!(
+        run(&rooted, &source(&[("O1", "C1")]))
+            .unwrap()
+            .field("Count")
+            .and_then(Instance::as_scalar),
+        Some(&Value::Int(1))
+    );
+}
+
+#[test]
+fn named_and_active_parent_singletons_remain_valid() {
+    let mut named = root_project(&path(&["Settings", "CustomerNr"]), true, false);
+    named.extra_sources.push(mapping::NamedSource {
+        name: "Settings".into(),
+        path: "settings.json".into(),
+        schema: SchemaNode::group(
+            "Settings",
+            vec![SchemaNode::scalar("CustomerNr", ScalarType::String)],
+        ),
+        options: Default::default(),
+        dynamic_path: None,
+    });
+    assert!(validate(&named).is_empty(), "{:?}", validate(&named));
+
+    // Inside an `Orders` scope the relative singleton reads the active order.
+    let mut correlated = root_project(&path(&["Header", "CustomerNr"]), true, false);
+    correlated.graph.nodes.insert(
+        4,
+        Node::JoinAggregate {
+            function: mapping::AggregateOp::Count,
+            join: JoinId::new(8),
+            plan: plan(&path(&["CustomerNr"]), true, false),
+            expression: None,
+            arg: None,
+        },
+    );
+    correlated.target = SchemaNode::group(
+        "Target",
+        vec![
+            row_target("Row"),
+            SchemaNode::group(
+                "Order",
+                vec![SchemaNode::scalar("Matches", ScalarType::Int)],
+            )
+            .repeating(),
+        ],
+    );
+    correlated.root.children.push(Scope {
+        target_field: "Order".into(),
+        iteration: ScopeIteration::Source(path(&["Orders"])),
+        bindings: vec![Binding {
+            target_field: "Matches".into(),
+            node: 4,
+        }],
+        ..Scope::default()
+    });
+    assert!(
+        validate(&correlated).is_empty(),
+        "{:?}",
+        validate(&correlated)
+    );
+    let output = run(&correlated, &source(&[("O1", "C2"), ("O2", "C3")])).unwrap();
+    let matches = output
+        .field("Order")
+        .and_then(Instance::as_repeated)
+        .unwrap()
+        .iter()
+        .map(|order| {
+            order
+                .field("Matches")
+                .and_then(Instance::as_scalar)
+                .cloned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(matches, vec![Some(Value::Int(1)), Some(Value::Int(0))]);
+}
