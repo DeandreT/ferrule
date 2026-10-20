@@ -82,15 +82,18 @@ pub(super) fn validate_plan(
     join: &InnerJoin,
 ) -> Result<(), ProgramValidationError> {
     for source in join.plan().sources() {
-        let candidates = sources.path_targets(source.collection());
         let valid = match source.cardinality() {
             JoinSourceCardinality::Repeating => {
                 source.collection().is_empty()
-                    || candidates
+                    || sources
+                        .path_targets(source.collection())
                         .iter()
                         .any(|candidate| candidate.node().repeating)
             }
-            JoinSourceCardinality::Singleton => candidates
+            // A singleton crossing repetition would select one value per
+            // repeated item, so only direct paths are singleton sources.
+            JoinSourceCardinality::Singleton => sources
+                .direct_path_targets(source.collection())
                 .iter()
                 .any(|candidate| !candidate.node().repeating && candidate.node().is_scalar()),
         };

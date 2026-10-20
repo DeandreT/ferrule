@@ -18,6 +18,7 @@ mod joins;
 mod path_hierarchy;
 mod primary_root;
 mod recursive_filter;
+mod singleton_joins;
 mod sources;
 mod user_functions;
 mod xml_mixed_content;
