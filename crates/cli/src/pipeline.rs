@@ -5,13 +5,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
-use ir::{Instance, SchemaNode};
+use ir::SchemaNode;
 use mapping::{FormatOptions, Pipeline, PipelineInput};
 
+use crate::read_set::ReadSet;
 use crate::{
     FilesystemPdfReader, OutputDestination, ProjectDynamicSourceLoader, TargetOutput,
-    absolute_mapping_path, http_url, read_instance, read_instance_with_pdf_reader,
-    write_target_outputs,
+    absolute_mapping_path, read_instance, read_instance_with_pdf_reader, write_target_outputs,
 };
 
 /// One explicitly supplied host document. Paths follow the process working
@@ -404,7 +404,7 @@ fn run_pipeline_value_with_pdf_reader(
         },
     )?;
 
-    let mut protected = vec![pipeline_path.to_path_buf()];
+    let mut read_set = ReadSet::new(pipeline_path);
     let mut hosts = BTreeMap::new();
     for (name, boundary) in &host_boundaries {
         let path = paths[name];
@@ -415,18 +415,7 @@ fn run_pipeline_value_with_pdf_reader(
             None => read_instance(path, boundary.schema, boundary.options),
         }
         .with_context(|| format!("loading pipeline host input `{name}`"))?;
-        if http_url(path).is_none() {
-            protected.push(path.to_path_buf());
-            if boundary.options.local_xml_file_set
-                && let Instance::DocumentSet(documents) = &instance
-            {
-                let base = path
-                    .parent()
-                    .filter(|parent| !parent.as_os_str().is_empty())
-                    .unwrap_or_else(|| Path::new("."));
-                protected.extend(documents.iter().map(|member| base.join(member.path())));
-            }
-        }
+        read_set.push_source(path, &instance);
         hosts.insert((*name).to_owned(), instance);
     }
 
@@ -439,7 +428,7 @@ fn run_pipeline_value_with_pdf_reader(
         Some(path) => absolute_mapping_path(&pipeline_dir.join(path))?.into_owned(),
         None => runtime_path.to_path_buf(),
     };
-    protected.push(main_mapping_path.clone());
+    read_set.push(&main_mapping_path);
     let stage_mapping_paths = pipeline
         .stages
         .iter()
@@ -451,7 +440,9 @@ fn run_pipeline_value_with_pdf_reader(
             Ok((stage.id.as_str(), path))
         })
         .collect::<anyhow::Result<BTreeMap<_, _>>>()?;
-    protected.extend(stage_mapping_paths.values().cloned());
+    for path in stage_mapping_paths.values() {
+        read_set.push(path);
+    }
     let current_datetime = jiff::Zoned::now()
         .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
         .to_string();
@@ -511,23 +502,7 @@ fn run_pipeline_value_with_pdf_reader(
         execution
     })?;
     for loader in dynamic_loaders.values() {
-        for ((_, path), instance) in loader.cache.borrow().iter() {
-            let path = PathBuf::from(path);
-            if http_url(&path).is_none() {
-                protected.push(if path.is_absolute() {
-                    path
-                } else {
-                    pipeline_dir.join(path)
-                });
-                if let Instance::DocumentSet(documents) = instance.as_ref() {
-                    protected.extend(
-                        documents
-                            .iter()
-                            .map(|member| PathBuf::from(member.source_path())),
-                    );
-                }
-            }
-        }
+        read_set.push_dynamic_loads(loader);
     }
 
     let writes = selected
@@ -558,7 +533,7 @@ fn run_pipeline_value_with_pdf_reader(
             }
         })
         .collect::<Vec<_>>();
-    let protected_refs = protected.iter().map(PathBuf::as_path).collect::<Vec<_>>();
+    let protected_refs = read_set.paths();
     if options.before_publish.is_some_and(|gate| !gate()) {
         return Err(engine::EngineError::DebugCancelled.into());
     }
