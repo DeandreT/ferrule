@@ -72,7 +72,9 @@ pub use filter_map::{
     MAX_FILTER_MAP_WORK, filter_map_sequence,
 };
 pub use format_csv::{
-    CsvFormatError, CsvReadError, CsvReadLimit, CsvReadOptions, CsvWriteOptions,
+    CsvByteDecodingPolicy, CsvFormatError, CsvReadError, CsvReadLimit, CsvReadOptions,
+    CsvWriteOptions,
+    from_bytes_with_decoding_policy_bounded as parse_csv_rows_bytes_with_decoding_policy,
     from_bytes_with_options_bounded as parse_csv_rows_bytes,
     from_str_with_options_bounded as parse_csv_rows,
 };

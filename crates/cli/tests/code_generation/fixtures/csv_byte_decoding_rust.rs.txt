@@ -1,0 +1,18 @@
+use codegen_runtime::{CsvByteDecodingPolicy, CsvDocumentError, CsvReadError, ExecutionContext};
+use csv_decoding_fixture::{execute_csv_document_bytes, execute_csv_document_bytes_with_decoding_policy, execute_csv_document_bytes_with_decoding_policy_with_context};
+fn main() {
+    let context = ExecutionContext::new(std::path::Path::new("authored.mapping"));
+    let count: usize = std::env::args().nth(1).unwrap().parse().unwrap();
+    for i in 0..count {
+        let input = std::fs::read(format!("input{i}")).unwrap();
+        let expected = std::fs::read(format!("expected{i}")).unwrap();
+        assert_eq!(execute_csv_document_bytes_with_decoding_policy(&input, CsvByteDecodingPolicy::BomAwareNonFlushingReplacement).unwrap(), expected);
+        assert_eq!(execute_csv_document_bytes_with_decoding_policy_with_context(&input, CsvByteDecodingPolicy::BomAwareNonFlushingReplacement, &context).unwrap(), expected);
+        if std::path::Path::new(&format!("strict-refuses{i}")).exists() {
+            assert!(matches!(execute_csv_document_bytes(&input), Err(CsvDocumentError::Input(CsvReadError::Encoding(_)))));
+        } else {
+            assert_eq!(execute_csv_document_bytes(&input).unwrap(), expected);
+        }
+    }
+    println!("CSV byte decoding cases passed");
+}
