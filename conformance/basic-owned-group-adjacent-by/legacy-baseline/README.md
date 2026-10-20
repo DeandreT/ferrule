@@ -4,7 +4,7 @@
 files emitted by the existing CLI built from commit
 `a70e111282638db2f63bc6cf208c934bf1663a2f`. Each row fixes the relative artifact
 path, byte length and SHA256. The harness pins the complete manifest's own hash.
-No current emission provides an expected row or archival body.
+No current emission provides an expected row.
 
 ## Provenance and comparison profile
 
@@ -41,38 +41,18 @@ The operand admits printable ASCII paths, where the historical TOML quoting
 and JSON quoting agree. Other paths fail closed. The Rust library's historical
 row remains exact, independent of the runtime path.
 
-## Reviewed C# runtime boundary
+## Embedded C# runtime
 
-All 78 historical artifact paths are retained, and the 74 stable files remain
-subject to exact historical comparison. Only these four artifacts can use reviewed
-candidate source bytes instead:
+Every artifact outside `Runtime/` (the project, `GeneratedMapping.cs` and
+`GeneratedTargetBuilder.cs`) must keep its historical path, length and SHA256,
+and no such path may be added or removed. Each emitted `Runtime/<path>` must
+instead equal the current bytes of `runtime/csharp/Ferrule.Runtime/<path>`,
+captured from the source tree before emission and unchanged afterwards. An
+emitted runtime path without a source file, or an unordered or duplicate
+inventory, fails. Emitted output never supplies its own expected bytes.
 
-- `Runtime/FerruleBasicGroupBy.cs`
-- `Runtime/FerruleFunctions.cs`, which dispatches `upper`/`lower` to the pinned
-  portable Unicode casing
-- `Runtime/FerruleInstance.cs`
-- `Runtime/ScopeContext.cs`
-
-`historical-runtime/` retains their byte-exact a70 emitted bodies so preparation
-can produce complete old/new source diffs without retaining all historical
-packages. Each archival body must match its pinned historical row. It is test
-data, not an active runtime source.
-
-The current package also includes exactly four source-bound additions:
-`Runtime/FerruleUnicodeCasing.cs`, `Runtime/FerruleUnicodeCasing.Tables.cs`,
-`Runtime/Json/FerruleJsonSourceDocument.cs` and
-`Runtime/Json/FerruleJsonSourceOccurrence.cs`. They remain absent from the frozen
-historical inventory. Preparation records their complete source and addition diffs
-with a null historical row; it does not manufacture historical files for them.
-
-Before any emission, preparation snapshots the corresponding candidate repository
-sources, retains old/new sizes and hashes plus full source diffs, and binds the
-candidate snapshots. The parent-owned `legacy_artifact_policy` requires exact
-historical paths plus those four additions, stable rows and exact candidate-source rows; those sources
-must remain unchanged. Historical equality is reported separately from the
-reviewed replacement/addition policy. No `Runtime/**` exemption exists, and an additional
-changed file requires a separately reviewed policy change.
-
-The source fence includes this entire baseline package and the comparison helper.
-Baseline/source packaging checks do not replace independent mapping-result
-oracles, runtime component checks, old-profile refusals or ordinary execution.
+Historical equality is reported separately from this current-runtime policy;
+accepting the current runtime does not turn a historical byte mismatch into
+equality. Baseline/source packaging checks do not replace independent
+mapping-result oracles, runtime component checks, old-profile refusals or
+ordinary execution.

@@ -30,30 +30,15 @@ The other artifact rows never vary with the runtime path. The older Basic By
 inventory still refuses the ordinary ItemAt expression; that typed refusal is a
 separate static control, not a replacement historical artifact baseline.
 
-## Reviewed embedded-runtime updates
+## Embedded C# runtime
 
 The historical manifest is immutable and checked by its own fixed digest.
-Complete historical equality is always reported separately. The explicit
-`ReviewedAdjacentRuntime` test policy also permits source-bound updates to exactly
-four C# artifacts: `Runtime/FerruleBasicGroupBy.cs`, `Runtime/FerruleInstance.cs`
-and `Runtime/ScopeContext.cs` carry the adjacent-grouping runtime operation and
-private keyed-group markers; `Runtime/FerruleFunctions.cs` dispatches `upper`/`lower`
-to the pinned portable Unicode casing. Both Rust artifacts and the other 74 C# files
-remain subject to exact historical comparison. All historical paths are retained;
-exactly `Runtime/FerruleUnicodeCasing.cs`, `Runtime/FerruleUnicodeCasing.Tables.cs`,
-`Runtime/Json/FerruleJsonSourceDocument.cs` and
-`Runtime/Json/FerruleJsonSourceOccurrence.cs` are admitted as source-bound additions.
-The frozen historical manifest continues to exclude these new files.
-
-Before emission, the harness snapshots and retains all eight selected repository source
-bodies. Their emitted contents must match those source snapshots, and the sources
-must remain unchanged. No emitted actual supplies its own expected bytes. The
-preparation source fence and original-evidence checks also cover the comparison
-policy and retained snapshots. Stable-file conservation, runtime-source packaging
-and historical whole-package equality have distinct report fields; permitting a
-reviewed runtime delta does not turn a historical byte mismatch into equality.
-
-The policy requires independent review of the complete runtime source delta and
-affected execution checks. It changes neither mapping-result expectations nor
-old-profile refusal requirements. Any additional runtime file needs a separate
-reviewed policy change; `Runtime/**` is never a blanket exemption.
+Complete historical equality is always reported separately. The
+`CurrentRuntimeSources` test policy keeps both Rust artifacts and every C#
+artifact outside `Runtime/` exactly equal to its historical row, with no added
+or removed paths. Each emitted `Runtime/<path>` must equal the current bytes of
+`runtime/csharp/Ferrule.Runtime/<path>`, captured from the source tree before
+emission and unchanged afterwards. An emitted runtime path without a source
+file, or an unordered or duplicate inventory, fails; no emitted actual supplies
+its own expected bytes. The policy changes neither mapping-result expectations
+nor old-profile refusal requirements.
