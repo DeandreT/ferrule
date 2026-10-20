@@ -1,0 +1,78 @@
+//! Mapping document persistence: staged publication and save points.
+
+use std::path::Path;
+
+use super::{CanvasLayout, FerruleApp};
+use crate::diagnostics::Diagnostic;
+use crate::document::DocumentLocation;
+use crate::layout_store::{project_fingerprint, write_layout};
+
+pub(super) struct DocumentSaveOutcome {
+    pub(super) validation_issues: Vec<engine::ValidationIssue>,
+    pub(super) layout_warning: Option<String>,
+}
+
+impl FerruleApp {
+    /// Publishes the project, then its layout sidecar. Editor state adopts the
+    /// rebased project and new save point only after the project file is
+    /// completely replaced; a sidecar failure is reported as a warning because
+    /// the published project reopens with a default layout.
+    pub(super) fn save_document_to(&mut self, path: &Path) -> anyhow::Result<DocumentSaveOutcome> {
+        anyhow::ensure!(
+            !self.stage_document_actions_blocked(),
+            "Finish the stage canvas before saving a mapping"
+        );
+        let mut project = self.project.clone();
+        cli::rebase_project_paths(&mut project, self.document.suggested_path(), path)?;
+        let json = mapping::project_file::encode_pretty(&project)?;
+        let layout =
+            CanvasLayout::capture(&project, &self.main_canvas.snarl, &self.mapping_workspace);
+        crate::document_file::replace(path, json.as_bytes())?;
+        self.project = project;
+        self.document = DocumentLocation::saved(path);
+        self.mark_clean();
+        let layout_warning = write_layout(path, &layout)
+            .err()
+            .map(|error| format!("canvas layout was not saved: {error}"));
+        Ok(DocumentSaveOutcome {
+            validation_issues: cli::validate(&self.project),
+            layout_warning,
+        })
+    }
+
+    pub(super) fn saved_status(path: &Path, outcome: &DocumentSaveOutcome) -> String {
+        if !outcome.validation_issues.is_empty() {
+            format!(
+                "saved {} with {} validation issue(s)",
+                path.display(),
+                outcome.validation_issues.len()
+            )
+        } else if outcome.layout_warning.is_some() {
+            format!("saved {} without canvas layout", path.display())
+        } else {
+            format!("saved {}", path.display())
+        }
+    }
+
+    pub(super) fn apply_save_outcome(&mut self, path: &Path, outcome: DocumentSaveOutcome) {
+        self.status = Self::saved_status(path, &outcome);
+        let fingerprint = project_fingerprint(&self.project);
+        let mut diagnostics = outcome
+            .validation_issues
+            .into_iter()
+            .map(|issue| {
+                Diagnostic::validation_with_fingerprint(&self.project, issue, &fingerprint)
+            })
+            .collect::<Vec<_>>();
+        diagnostics.extend(outcome.layout_warning.map(Diagnostic::warning));
+        if diagnostics.is_empty() {
+            self.diagnostics.clear();
+        } else {
+            self.diagnostics.replace("Save", diagnostics);
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "document_save_tests.rs"]
+mod tests;
