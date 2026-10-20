@@ -146,3 +146,7 @@ mod filter_map_tests;
 #[cfg(test)]
 #[path = "tests/owned_collection.rs"]
 mod owned_collection_tests;
+
+#[cfg(test)]
+#[path = "tests/owned_failure_iteration.rs"]
+mod owned_failure_iteration_tests;

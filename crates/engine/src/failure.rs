@@ -24,6 +24,10 @@ pub(super) fn evaluate(
         }
         let sequence_items;
         let extensions = match &rule.iteration {
+            FailureIteration::OwnedSource { source } => {
+                evaluate_owned_rows(program, rule, index + 1, context, source)?;
+                continue;
+            }
             FailureIteration::Source { collection } => {
                 if collection.is_empty()
                     && crate::source_ownership::failure_rule_uses_owned(program.graph, rule)
@@ -129,8 +133,8 @@ fn evaluate_primary_rows<'a>(
     context: &[&'a Instance],
     collection: &[String],
 ) -> Result<(), EngineError> {
-    use crate::owned_context::{OwnedContext, OwnerKey};
-    use crate::source_iteration::{ObservedExtension, walk_observed};
+    use crate::owned_context::OwnerKey;
+    use crate::source_iteration::walk_observed;
     let state = program.owned_context.ok_or_else(unsupported_primary_row)?;
     let base = source_base(context, collection).ok_or_else(unsupported_primary_row)?;
     // The legacy base's actual identity establishes provenance; a leading name cannot.
@@ -154,6 +158,72 @@ fn evaluate_primary_rows<'a>(
         &work,
     )
     .map_err(primary_row_access_error)?;
+    visit_observed_rows(
+        program,
+        rule,
+        rule_index,
+        context,
+        rows,
+        &work,
+        primary_row_access_error,
+    )
+}
+
+fn owned_row_access_error(source: crate::OwnedSourceError) -> EngineError {
+    EngineError::OwnedSourceAccess {
+        node: None,
+        scope: None,
+        source,
+    }
+}
+
+/// Rows come only from the selected endpoint's own frame or root. An absent
+/// collection is empty; another endpoint with the same path never supplies rows.
+fn evaluate_owned_rows<'a>(
+    program: EvalProgram<'a>,
+    rule: &FailureRule,
+    rule_index: usize,
+    context: &[&'a Instance],
+    source: &mapping::OwnedSourceRef,
+) -> Result<(), EngineError> {
+    use crate::source_iteration::walk_observed;
+    let state = program.owned_context.ok_or_else(unsupported_primary_row)?;
+    let (owner, base, prefix, tail, work) = state.select(source).map_err(owned_row_access_error)?;
+    let rows = walk_observed(
+        base,
+        tail,
+        prefix,
+        prefix,
+        Some(owner),
+        state,
+        0,
+        true,
+        &work,
+    )
+    .map_err(owned_row_access_error)?;
+    visit_observed_rows(
+        program,
+        rule,
+        rule_index,
+        context,
+        rows,
+        &work,
+        owned_row_access_error,
+    )
+}
+
+fn visit_observed_rows<'a>(
+    program: EvalProgram<'a>,
+    rule: &FailureRule,
+    rule_index: usize,
+    context: &[&'a Instance],
+    rows: Vec<crate::source_iteration::ObservedExtension<'a>>,
+    work: &crate::owned_context::WorkBudget,
+    access: fn(crate::OwnedSourceError) -> EngineError,
+) -> Result<(), EngineError> {
+    use crate::owned_context::OwnedContext;
+    use crate::source_iteration::ObservedExtension;
+    let state = program.owned_context.ok_or_else(unsupported_primary_row)?;
     for ObservedExtension {
         extension,
         frames,
@@ -169,12 +239,12 @@ fn evaluate_primary_rows<'a>(
         let count = context
             .len()
             .checked_add(extension.instances.len())
-            .ok_or_else(|| primary_row_access_error(work.slot_overflow()))?;
-        work.reserve(count).map_err(primary_row_access_error)?;
+            .ok_or_else(|| access(work.slot_overflow()))?;
+        work.reserve(count).map_err(access)?;
         let bytes = count
             .checked_mul(std::mem::size_of::<&Instance>())
-            .ok_or_else(|| primary_row_access_error(work.overflow()))?;
-        work.charge(bytes).map_err(primary_row_access_error)?;
+            .ok_or_else(|| access(work.overflow()))?;
+        work.charge(bytes).map_err(access)?;
         let mut item_context = Vec::with_capacity(count);
         item_context.extend(context.iter().copied());
         item_context.extend(extension.instances.iter().copied());

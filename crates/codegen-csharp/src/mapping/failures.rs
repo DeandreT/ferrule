@@ -44,6 +44,13 @@ fn render_rule(index: usize, rule: &FailureRule, output: &mut String) -> Result<
                 "        var candidates_failure_{index} = context.IterateGenerated(sequence_values_{identifier});\n"
             ));
         }
+        // Validation closes owned walks before the ordinary renderer.
+        FailureIteration::OwnedSource(_) => {
+            return Err(crate::owned_basic::failure_refusal(
+                index,
+                codegen::OwnedSourceCapabilityReason::FailureRule,
+            ));
+        }
     }
     output.push_str(&format!(
         "        foreach (var item_context_failure_{index} in candidates_failure_{index})\n        {{\n"

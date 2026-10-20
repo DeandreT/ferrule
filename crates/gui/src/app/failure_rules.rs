@@ -102,6 +102,7 @@ impl FerruleApp {
                                 }
                                 FailureIteration::Source { collection } => collection.join("/"),
                                 FailureIteration::Sequence { .. } => "generated sequence".to_string(),
+                                FailureIteration::OwnedSource { source } => owned_rows_label(source),
                             };
                             let response = ui.selectable_label(
                                 self.selected_failure_rule == Some(index),
@@ -126,7 +127,12 @@ impl FerruleApp {
                         let rule = &self.project.failure_rules[index];
                         let removable = matches!(&rule.iteration, FailureIteration::Source { .. })
                             || editable_generated_rule(&self.project, rule);
-                        if ui.add_enabled(editing_enabled && removable, egui::Button::new("Remove rule")).on_disabled_hover_text("This imported generated rule is retained. Its sequence kind or item ownership needs repair before editing.").clicked() {
+                        let retained = if matches!(&rule.iteration, FailureIteration::OwnedSource { .. }) {
+                            "This saved owned-source rule is retained read-only."
+                        } else {
+                            "This imported generated rule is retained. Its sequence kind or item ownership needs repair before editing."
+                        };
+                        if ui.add_enabled(editing_enabled && removable, egui::Button::new("Remove rule")).on_disabled_hover_text(retained).clicked() {
                             action = Some(RuleAction::Remove(index));
                         }
                     });
@@ -269,17 +275,16 @@ impl FerruleApp {
                 });
                 ui.weak("Arguments read the main source. Selection and message expressions read each generated item. The message is evaluated only for the first matching item. Use Validate to check their type and context.");
             }
+            FailureIteration::OwnedSource { source } => {
+                ui.weak(format!(
+                    "Saved owned-source rule over {}: its owner, path and expressions are retained read-only. You can change its order.",
+                    owned_rows_label(source)
+                ));
+                show_retained_rule_expressions(ui, *selection, *message);
+            }
             FailureIteration::Sequence { .. } => {
                 ui.weak("Imported generated rule: its sequence, expressions and item ownership are retained. You can change its order. Other sequence kinds and invalid or shared items are read-only here.");
-                ui.weak(selection_label(*selection));
-                if let Some(predicate) = selection.predicate() {
-                    ui.monospace(format!("Selection expression: node {predicate}"));
-                }
-                if let Some(message) = *message {
-                    ui.monospace(format!("Message expression: node {message}"));
-                } else {
-                    ui.weak("Use the default failure message.");
-                }
+                show_retained_rule_expressions(ui, *selection, *message);
             }
         }
         if *rule != before {
@@ -435,6 +440,7 @@ impl FerruleApp {
                 };
                 let item = match &rule.iteration {
                     FailureIteration::Source { .. } => None,
+                    FailureIteration::OwnedSource { .. } => return,
                     FailureIteration::Sequence { sequence } => {
                         if !editable_generated_rule(&self.project, rule) {
                             return;
@@ -576,3 +582,27 @@ mod tests;
 #[cfg(test)]
 #[path = "generated_failure_rules_tests.rs"]
 mod generated_tests;
+
+fn owned_rows_label(source: &mapping::OwnedSourceRef) -> String {
+    let owner = match &source.owner {
+        mapping::SourceOwner::Primary => "primary".to_string(),
+        mapping::SourceOwner::Named { name } => format!("{name:?}"),
+    };
+    format!("owned {owner} rows {}", source.path.join("/"))
+}
+
+fn show_retained_rule_expressions(
+    ui: &mut egui::Ui,
+    selection: mapping::FailureSelection,
+    message: Option<mapping::NodeId>,
+) {
+    ui.weak(selection_label(selection));
+    if let Some(predicate) = selection.predicate() {
+        ui.monospace(format!("Selection expression: node {predicate}"));
+    }
+    if let Some(message) = message {
+        ui.monospace(format!("Message expression: node {message}"));
+    } else {
+        ui.weak("Use the default failure message.");
+    }
+}

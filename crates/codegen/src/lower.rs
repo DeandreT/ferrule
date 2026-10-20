@@ -85,6 +85,16 @@ pub fn lower_with_basic_owned_group_ending_with(project: &Project) -> Result<Pro
     )
 }
 
+/// Lowers explicit owned failure-rule iteration with the EndingWith target
+/// controls, scalar-producer ItemAt and primary-row failures. Every older
+/// companion keeps refusing owned failure walks; lowering itself is unchanged.
+pub fn lower_with_basic_owned_failure_sources(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_failure_sources,
+    )
+}
+
 /// Lowers the explicit Basic scalar-producer SequenceItemAt profile, composing
 /// qualified By controls and primary-row failures without changing their gates.
 pub fn lower_with_basic_owned_sequence_item_at(project: &Project) -> Result<Program, LowerError> {
@@ -519,6 +529,9 @@ fn lower_failure_rule(
             roots.extend(sequence.inputs());
             roots.extend(sequence.owned_items());
             FailureIteration::Generated(lower_generated_sequence(sequence)?)
+        }
+        mapping::FailureIteration::OwnedSource { source } => {
+            FailureIteration::OwnedSource(crate::OwnedSourceIteration::new(source.clone()))
         }
     };
     let selection = match rule.selection {
