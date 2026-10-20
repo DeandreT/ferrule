@@ -16,6 +16,13 @@ public sealed record FerruleCsvReadOptions
     public bool PreserveEmptyStrings { get; init; }
 }
 
+/// <summary>Explicit host byte policy, separate from CSV dialect and file paths.</summary>
+public enum FerruleCsvByteDecodingPolicy
+{
+    StrictUtf8,
+    BomAwareNonFlushingReplacement,
+}
+
 /// <summary>Typed failures for the bounded flat CSV input boundary.</summary>
 public enum FerruleCsvInputError
 {
@@ -32,6 +39,7 @@ public enum FerruleCsvInputError
     TooManyRecords,
     TooManyColumns,
     NodeLimit,
+    DecodedInputTooLarge,
 }
 
 /// <summary>A CSV input failure with zero-based data-row, logical-record and column locations.</summary>
@@ -138,6 +146,46 @@ public static class FerruleCsvInput
                 "CSV input bytes must be valid UTF-8.");
         }
         return new Reader(text, ordered, options, delimiter, quote).Read();
+    }
+
+    /// <summary>
+    /// Explicit BOM-aware replacement companion. Incomplete terminal decoder
+    /// state is not flushed. Physical and decoded UTF-8 limits precede parsing.
+    /// </summary>
+    public static FerruleInstance ParseBytesWithDecodingPolicy(
+        byte[] source,
+        IReadOnlyList<FerruleCsvReadField> fields,
+        FerruleCsvByteDecodingPolicy policy,
+        FerruleCsvReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(fields);
+        if (policy == FerruleCsvByteDecodingPolicy.StrictUtf8)
+            return ParseBytes(source, fields, options);
+        if (policy != FerruleCsvByteDecodingPolicy.BomAwareNonFlushingReplacement)
+            throw new ArgumentOutOfRangeException(nameof(policy));
+        RequireInputSize(source.LongLength);
+        (Encoding Encoding, int Skip) decoding = source switch
+        {
+            [0xff, 0xfe, 0, 0, ..] => (new UTF32Encoding(false, false, false), 4),
+            [0, 0, 0xfe, 0xff, ..] => (new UTF32Encoding(true, false, false), 4),
+            [0xff, 0xfe, ..] => (new UnicodeEncoding(false, false, false), 2),
+            [0xfe, 0xff, ..] => (new UnicodeEncoding(true, false, false), 2),
+            [0xef, 0xbb, 0xbf, ..] => (new UTF8Encoding(false, false), 3),
+            _ => (new UTF8Encoding(false, false), 0),
+        };
+        var (encoding, skip) = decoding;
+        var count = source.Length - skip;
+        var characters = new char[encoding.GetMaxCharCount(count)];
+        var written = encoding.GetDecoder().GetChars(source, skip, count, characters, 0, flush: false);
+        var text = new string(characters, 0, written);
+        var decodedBytes = CountUnicodeBytes(text);
+        if (decodedBytes > MaximumInputBytes)
+            throw new FerruleCsvInputException(
+                FerruleCsvInputError.DecodedInputTooLarge,
+                $"Decoded CSV text exceeds {MaximumInputBytes} UTF-8 bytes.",
+                maximum: MaximumInputBytes, observed: decodedBytes);
+        return Parse(text, fields, options);
     }
 
     private static FerruleCsvReadField[] ValidateFields(IReadOnlyList<FerruleCsvReadField> fields)
