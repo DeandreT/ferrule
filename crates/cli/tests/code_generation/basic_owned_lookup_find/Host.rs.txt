@@ -1,0 +1,88 @@
+use codegen_runtime::{BasicNamedSourceInput, ExecutionContext, Instance, OwnedSourceError,
+    OwnedSourceLimits, RuntimeError, TargetSelection};
+use serde_json::{Value as Json, json};
+use std::path::Path;
+#[allow(dead_code)]
+mod codec;
+
+fn expected_error(recipe: &Json) -> RuntimeError {
+    match recipe["kind"].as_str().unwrap() {
+        "MappingFailure" => RuntimeError::MappingFailure {
+            rule: recipe["rule"].as_u64().unwrap() as usize,
+            message: recipe["message"].as_str().map(str::to_owned),
+        },
+        "NotABool" => RuntimeError::NotABool {
+            node: recipe["node"].as_u64().unwrap() as u32,
+            found: match recipe["found"].as_str().unwrap() {
+                "string" => "string",
+                _ => panic!("authored found kind"),
+            },
+        },
+        "OwnedSource" => RuntimeError::OwnedSourceAtNode {
+            node: recipe["node"].as_u64().unwrap() as u32,
+            source: OwnedSourceError::SourceUnavailable {
+                name: recipe["owner"].as_str().unwrap().into(),
+            },
+        },
+        _ => panic!("authored error recipe"),
+    }
+}
+
+macro_rules! invoke {
+    ($module:ident, $selection:expr, $source:expr, $inputs:expr, $execution:expr, $limits:expr) => {{
+        if $selection == "All" {
+            $module::execute_with_basic_owned_sources($source, $inputs, Some($execution), $limits)
+                .map(|output| {
+                    let mut trees = vec![json!([null, codec::encode(&output.primary)])];
+                    trees.extend(output.extras.iter().map(|named| json!([named.name, codec::encode(&named.instance)])));
+                    trees
+                })
+        } else {
+            let target = if $selection == "Primary" { TargetSelection::Primary } else { TargetSelection::Named($selection) };
+            $module::execute_selected_with_basic_owned_sources($source, $inputs, Some($execution), $limits, target)
+                .map(|output| match output {
+                    $module::SelectedTargetOutput::Primary(instance) => vec![json!([null, codec::encode(&instance)])],
+                    $module::SelectedTargetOutput::Named(named) => vec![json!([named.name, codec::encode(&named.instance)])],
+                })
+        }
+    }};
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = std::env::args_os().skip(1).collect::<Vec<_>>();
+    assert_eq!(args.len(), 2, "controls and results paths");
+    let controls: Json = serde_json::from_slice(&std::fs::read(&args[0])?)?;
+    let limits = OwnedSourceLimits { max_roots: 16, max_active_frames: 32, max_path_segments: 64,
+        max_metadata_bytes: 16_777_216, max_walk_contexts: 512 };
+    let execution = ExecutionContext::new(Path::new("search446.mapping"));
+    let mut rows = Vec::new();
+    for case in controls["cases"].as_array().unwrap() {
+        let source = codec::decode(&case["source"]);
+        let named = case["inputs"].as_array().unwrap().iter()
+            .map(|input| (input[0].as_str().unwrap().to_owned(), codec::decode(&input[1])))
+            .collect::<Vec<(String, Instance)>>();
+        let inputs = named.iter().map(|(name, instance)| BasicNamedSourceInput { name, instance }).collect::<Vec<_>>();
+        let before = (codec::encode(&source), named.iter().map(|(_, tree)| codec::encode(tree)).collect::<Vec<_>>());
+        for call in case["calls"].as_array().unwrap() {
+            let selection = call["selection"].as_str().unwrap();
+            let actual: Result<Vec<Json>, RuntimeError> = match case["model"].as_u64().unwrap() {
+@DISPATCH@
+                _ => panic!("authored model"),
+            };
+            let after = (codec::encode(&source), named.iter().map(|(_, tree)| codec::encode(tree)).collect::<Vec<_>>());
+            let matched = match (&actual, call["expected"].get("Ok")) {
+                (Ok(trees), Some(expected)) => json!(trees) == *expected,
+                (Err(error), None) => *error == expected_error(&call["expected"]["Err"]),
+                _ => false,
+            } && before == after;
+            rows.push(json!({"case": case["id"], "selection": selection, "matched": matched,
+                "actual": format!("{actual:?}")}));
+        }
+    }
+    std::fs::write(&args[1], serde_json::to_vec_pretty(&rows)?)?;
+    assert_eq!(rows.len(), @CALLS@);
+    if rows.iter().any(|row| row["matched"] != true) {
+        std::process::exit(1);
+    }
+    Ok(())
+}
