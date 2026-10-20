@@ -272,6 +272,13 @@ mod tests {
         let absent = ExecutionContext::new(Path::new("mapping.ferrule"));
         assert_eq!(
             absent.resolve_runtime_parameter(23, "filename", crate::ScalarType::String),
+            Err(RuntimeError::MissingRuntimeParameter {
+                node: 23,
+                name: "filename".into(),
+            })
+        );
+        assert_eq!(
+            absent.resolve_runtime_parameter(23, "filename", crate::ScalarType::String),
             ScopeContext::new(&source).runtime_parameter(23, "filename", crate::ScalarType::String)
         );
     }
