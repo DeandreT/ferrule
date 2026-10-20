@@ -409,6 +409,7 @@ pub(super) enum BasicOwnedProfile {
     ByAndAdjacentByAndWindowsAndSortAndFilter,
     ByAndAdjacentByAndStartingWithAndWindowsAndSortAndFilter,
     ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter,
+    ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter,
 }
 
 /// Construction permission for an owned path-hierarchy input collection. It is
@@ -448,6 +449,7 @@ impl BasicOwnedProfile {
                 | Self::ByAndAdjacentByAndWindowsAndSortAndFilter
                 | Self::ByAndAdjacentByAndStartingWithAndWindowsAndSortAndFilter
                 | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter
+                | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter
         )
     }
 
@@ -561,16 +563,23 @@ impl BasicOwnedProfile {
                         Self::ByAndAdjacentByAndWindowsAndSortAndFilter
                             | Self::ByAndAdjacentByAndStartingWithAndWindowsAndSortAndFilter
                             | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter
+                            | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter
                     ),
                     Some(crate::GroupingPlan::StartingWith { .. }) => matches!(
                         self,
                         Self::ByAndAdjacentByAndStartingWithAndWindowsAndSortAndFilter
                             | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter
+                            | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter
                     ),
-                    Some(crate::GroupingPlan::EndingWith { .. }) => {
-                        self == Self::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter
+                    Some(crate::GroupingPlan::EndingWith { .. }) => matches!(
+                        self,
+                        Self::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter
+                            | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter
+                    ),
+                    Some(crate::GroupingPlan::IntoBlocks { .. }) => {
+                        self == Self::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter
                     }
-                    Some(crate::GroupingPlan::IntoBlocks { .. }) | None => false,
+                    None => false,
                 }) && matches!(
                     iteration.input(),
                     IterationSource::Source(_) | IterationSource::OwnedSource(_)
@@ -717,10 +726,10 @@ impl<'a> Admission<'a> {
     ) -> Result<(), ProgramValidationError> {
         // Bounds use the incoming parent, before this scope introduces an item.
         // Keep the complete Visit key when a bound is also a key or target root.
-        let window_parent = self
-            .profile
-            .permits_windows(scope)
-            .then(|| (ancestry.clone(), inherited.clone()));
+        // An admitted fixed-block size is such a parent expression as well.
+        let window_parent = (self.profile.permits_windows(scope)
+            || self.profile.permits_group(scope))
+        .then(|| (ancestry.clone(), inherited.clone()));
         let mut closed = inherited;
         if let Some(iteration) = &scope.iteration {
             let reason = if (iteration.grouping().is_some()
@@ -856,15 +865,20 @@ impl<'a> Admission<'a> {
                 .iteration
                 .as_ref()
                 .expect("admitted grouping iteration");
-            // Bounds run once in the receiving parent; filter, sort, key or
-            // boundary, and retention are candidate expressions. Only target
-            // expressions and descendants inherit the grouped/member view.
+            // Bounds and a block size run once in the receiving parent; filter,
+            // sort, key or boundary, and retention are candidate expressions.
+            // Only target expressions and descendants inherit the grouped view.
             if let Some((parent_ancestry, parent_closed)) = &window_parent {
                 for node in iteration
                     .windows()
                     .iter()
                     .copied()
                     .flat_map(crate::SequenceWindow::nodes)
+                    .chain(
+                        iteration
+                            .grouping()
+                            .and_then(|grouping| grouping.parent_expression()),
+                    )
                 {
                     self.expression(Visit {
                         namespace: Namespace::Main,
@@ -901,8 +915,8 @@ impl<'a> Admission<'a> {
             }
             // A wholly ordinary island must not gain owned ancestry just by
             // using an admitted mode. A demanded paired By/AdjacentBy/StartingWith/
-            // EndingWith operation establishes a member container; no other mode
-            // may mint one.
+            // EndingWith/IntoBlocks operation establishes a member container; no
+            // other mode may mint one.
             if owns(&ancestry) || basic_scope_needs_owned(self.program, scope) {
                 ancestry.push(Ancestor::GroupMembers {
                     scope: route.clone(),
@@ -1336,6 +1350,21 @@ pub fn validate_basic_owned_group_ending_with_emission(
     validate_basic_owned_with_policies(
         program,
         BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter,
+        true,
+        SequenceItemAtPolicy::BasicScalarProducers,
+    )
+}
+
+/// Explicitly admits static Basic By, AdjacentBy, StartingWith, EndingWith and
+/// IntoBlocks with candidate retention. The block size is a parent expression;
+/// inherited specialized contexts remain closed, and ItemAt and failure
+/// permissions are independent, unchanged policies.
+pub fn validate_basic_owned_group_into_blocks_emission(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_with_policies(
+        program,
+        BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter,
         true,
         SequenceItemAtPolicy::BasicScalarProducers,
     )

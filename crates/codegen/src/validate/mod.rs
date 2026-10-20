@@ -140,6 +140,16 @@ pub fn validate_program_with_basic_owned_adjacency_tree(
     owned_sources::validate_basic_owned_adjacency_tree_emission(program)
 }
 
+/// Validates static Basic By, AdjacentBy, StartingWith, EndingWith and
+/// IntoBlocks, with qualified source controls, independent scalar-producer
+/// ItemAt and primary-row failure policies. All existing structural precedence
+/// and older companion gates are preserved.
+pub fn validate_program_with_basic_owned_group_into_blocks(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_group_into_blocks_emission(program)
+}
+
 /// Validates static Basic scalar-producer SequenceItemAt, explicitly composing
 /// the qualified By, filter/sort/window and primary-row failure permissions.
 pub fn validate_program_with_basic_owned_sequence_item_at(
@@ -1536,6 +1546,7 @@ pub use owned_sources::{
     validate_basic_owned_failure_source_emission, validate_basic_owned_filter_emission,
     validate_basic_owned_group_adjacent_by_emission, validate_basic_owned_group_by_emission,
     validate_basic_owned_group_ending_with_emission,
+    validate_basic_owned_group_into_blocks_emission,
     validate_basic_owned_group_starting_with_emission, validate_basic_owned_row_failure_emission,
     validate_basic_owned_sequence_item_at_emission, validate_basic_owned_sort_emission,
     validate_basic_owned_window_emission,

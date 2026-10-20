@@ -105,6 +105,17 @@ pub fn lower_with_basic_owned_adjacency_tree(project: &Project) -> Result<Progra
     )
 }
 
+/// Lowers static Basic By, AdjacentBy, StartingWith, EndingWith and IntoBlocks
+/// with the existing source controls, independent scalar-producer ItemAt and
+/// primary-row failure policies. No older companion opts into IntoBlocks; graph
+/// and wire lowering are unchanged.
+pub fn lower_with_basic_owned_group_into_blocks(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_group_into_blocks,
+    )
+}
+
 /// Lowers the explicit Basic scalar-producer SequenceItemAt profile, composing
 /// qualified By controls and primary-row failures without changing their gates.
 pub fn lower_with_basic_owned_sequence_item_at(project: &Project) -> Result<Program, LowerError> {
