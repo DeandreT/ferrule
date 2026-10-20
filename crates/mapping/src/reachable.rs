@@ -7,7 +7,14 @@ impl Project {
     /// can evaluate. Importers can use this after lowering a richer graph
     /// format whose disconnected components have no ferrule representation.
     pub fn prune_unreachable_nodes(&mut self) {
-        let mut pending = Vec::new();
+        self.prune_unreachable_nodes_with_roots([]);
+    }
+
+    pub(crate) fn prune_unreachable_nodes_with_roots(
+        &mut self,
+        additional_roots: impl IntoIterator<Item = NodeId>,
+    ) {
+        let mut pending = additional_roots.into_iter().collect::<Vec<_>>();
         collect_scope_roots(&self.root, &mut pending);
         for target in &self.extra_targets {
             collect_scope_roots(&target.root, &mut pending);
