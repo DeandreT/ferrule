@@ -127,6 +127,17 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_group_starting_with(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plan explicit Basic By/AdjacentBy/StartingWith/EndingWith admission. Bounds
+/// retain their receiving parent; boundaries and retention use the candidate;
+/// target/member dependencies keep distinct environments. Owned reads remain
+/// demand-driven, legacy aliases eager, and original declaration ordinals unchanged.
+pub fn legacy_named_input_admission_plan_with_basic_owned_group_ending_with(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_group_ending_with(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 /// Plans the explicit Basic SequenceItemAt profile. Producer scalar inputs and
 /// index keep the receiving source environment; owned reads remain lazy and
 /// potential legacy aliases remain eager in every complete target catalogue.
