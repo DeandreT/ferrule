@@ -4,6 +4,8 @@
 #[rustfmt::skip]
 #[path = "basic_group_starting_with_tests.rs"]
 mod basic_group_starting_with;
+#[path = "basic_group_ending_with_tests.rs"]
+mod basic_group_ending_with;
 use super::*;
 use std::cell::Cell;
 
