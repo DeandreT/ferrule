@@ -236,3 +236,255 @@ fn sidecar_failure_is_reported_on_the_saved_document() -> anyhow::Result<()> {
     assert!(!app.is_dirty());
     Ok(())
 }
+
+fn relocatable_app() -> FerruleApp {
+    let mut app = mapped_app();
+    app.project.source_path = Some("../data/source.xml".into());
+    app.project.target_path = Some("../results/target.xml".into());
+    app.project.extra_sources.push(mapping::NamedSource {
+        name: "Catalog".into(),
+        path: "../data/catalog.xml".into(),
+        schema: SchemaNode::group(
+            "Catalog",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        ),
+        options: Default::default(),
+        dynamic_path: None,
+    });
+    app.project.extra_targets.push(mapping::NamedTarget {
+        name: "Audit".into(),
+        path: Some("../results/audit.xml".into()),
+        schema: SchemaNode::group(
+            "Audit",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        ),
+        options: Default::default(),
+        root: Scope::default(),
+    });
+    app.main_canvas = CanvasDocumentState::main(&app.project);
+    app
+}
+
+fn boundary_paths(project: &mapping::Project) -> [Option<String>; 4] {
+    [
+        project.source_path.clone(),
+        project.target_path.clone(),
+        project
+            .extra_sources
+            .first()
+            .map(|source| source.path.clone()),
+        project
+            .extra_targets
+            .first()
+            .and_then(|target| target.path.clone()),
+    ]
+}
+
+fn paths(values: [&str; 4]) -> [Option<String>; 4] {
+    values.map(|value| Some(value.to_string()))
+}
+
+/// A saved project in `maps/` whose history holds an edit of every boundary.
+fn edited_project(temp: &TestDir) -> anyhow::Result<FerruleApp> {
+    let original = temp.0.join("maps/project.json");
+    std::fs::create_dir_all(temp.0.join("maps"))?;
+    let mut app = relocatable_app();
+    app.document = DocumentLocation::saved(original.clone());
+    app.rebase_history();
+    app.save_document_to(&original)?;
+    let start = std::time::Instant::now();
+    app.project.source_path = Some("../data/other.xml".into());
+    app.project.extra_targets[0].path = Some("../results/other-audit.xml".into());
+    app.observe_editor_history(start, false);
+    app.project.target_path = Some("../results/other.xml".into());
+    app.observe_editor_history(start, false);
+    assert_eq!(app.history.undo_len(), 2);
+    Ok(app)
+}
+
+/// Applies one Undo or Redo and checks the restored boundary identities.
+fn step(app: &mut FerruleApp, undo: bool, expected: [&str; 4], dirty: bool) {
+    if undo {
+        app.undo_project();
+    } else {
+        app.redo_project();
+    }
+    assert_eq!(boundary_paths(&app.project), paths(expected));
+    assert_eq!(app.is_dirty(), dirty);
+}
+
+const MOVED_INITIAL: [&str; 4] = [
+    "../../data/source.xml",
+    "../../results/target.xml",
+    "../../data/catalog.xml",
+    "../../results/audit.xml",
+];
+const MOVED_FIRST_EDIT: [&str; 4] = [
+    "../../data/other.xml",
+    "../../results/target.xml",
+    "../../data/catalog.xml",
+    "../../results/other-audit.xml",
+];
+
+/// Saves into `exports/deep/`, two levels below the original `maps/` basis.
+fn save_moved(app: &mut FerruleApp, temp: &TestDir, saved: [&str; 4]) -> anyhow::Result<()> {
+    let moved = temp.0.join("exports/deep/project.json");
+    std::fs::create_dir_all(temp.0.join("exports/deep"))?;
+    app.save_document_to(&moved)?;
+    assert_eq!(app.document, DocumentLocation::saved(moved.clone()));
+    let stored = mapping::project_file::decode_bytes(&std::fs::read(&moved)?)?;
+    assert_eq!(boundary_paths(&stored), paths(saved));
+    assert_eq!(boundary_paths(&app.project), paths(saved));
+    assert!(!app.is_dirty());
+    Ok(())
+}
+
+#[test]
+fn cross_directory_save_as_rebases_undo_and_redo_snapshots() -> anyhow::Result<()> {
+    let temp = TestDir::new()?;
+    let mut app = edited_project(&temp)?;
+    app.undo_project();
+    assert!(app.history.can_redo());
+    save_moved(&mut app, &temp, MOVED_FIRST_EDIT)?;
+
+    app.observe_editor_history(std::time::Instant::now(), false);
+    assert_eq!(
+        app.history.undo_len(),
+        1,
+        "saving is not recorded as an edit"
+    );
+    let second_edit = [
+        "../../data/other.xml",
+        "../../results/other.xml",
+        "../../data/catalog.xml",
+        "../../results/other-audit.xml",
+    ];
+    for _ in 0..2 {
+        step(&mut app, true, MOVED_INITIAL, true);
+        step(&mut app, false, MOVED_FIRST_EDIT, false);
+        step(&mut app, false, second_edit, true);
+        step(&mut app, true, MOVED_FIRST_EDIT, false);
+    }
+    assert_eq!(
+        app.document,
+        DocumentLocation::saved(temp.0.join("exports/deep/project.json"))
+    );
+    Ok(())
+}
+
+#[test]
+fn cross_directory_save_as_rebases_a_pending_coalesced_edit() -> anyhow::Result<()> {
+    let temp = TestDir::new()?;
+    let mut app = edited_project(&temp)?;
+    app.undo_project();
+    let start = std::time::Instant::now();
+    app.project.extra_sources[0].path = "../data/pending.xml".into();
+    app.observe_editor_history(start, true);
+    assert!(app.pending_history.is_some());
+    let pending = [
+        "../../data/other.xml",
+        "../../results/target.xml",
+        "../../data/pending.xml",
+        "../../results/other-audit.xml",
+    ];
+    save_moved(&mut app, &temp, pending)?;
+
+    assert!(app.pending_history.is_some());
+    app.observe_editor_history(start + crate::app::HISTORY_COALESCE_DELAY, true);
+    assert_eq!(app.history.undo_len(), 2);
+    for _ in 0..2 {
+        step(&mut app, true, MOVED_FIRST_EDIT, true);
+        step(&mut app, true, MOVED_INITIAL, true);
+        step(&mut app, false, MOVED_FIRST_EDIT, true);
+        step(&mut app, false, pending, false);
+    }
+    Ok(())
+}
+
+#[test]
+fn first_save_rebases_history_from_the_untitled_basis() -> anyhow::Result<()> {
+    let temp = TestDir::new()?;
+    let mut app = relocatable_app();
+    app.document = DocumentLocation::untitled(temp.0.join("imports/mapping.json"));
+    app.rebase_history();
+    app.project.source_path = Some("../data/edited.xml".into());
+    app.observe_editor_history(std::time::Instant::now(), false);
+
+    let saved = temp.0.join("maps/nested/project.json");
+    std::fs::create_dir_all(temp.0.join("maps/nested"))?;
+    app.save_document_to(&saved)?;
+
+    let mut edited = MOVED_INITIAL;
+    edited[0] = "../../data/edited.xml";
+    assert_eq!(boundary_paths(&app.project), paths(edited));
+    step(&mut app, true, MOVED_INITIAL, true);
+    step(&mut app, false, edited, false);
+    Ok(())
+}
+
+#[test]
+fn same_directory_save_as_keeps_history_with_unchanged_meaning() -> anyhow::Result<()> {
+    let temp = TestDir::new()?;
+    let mut app = edited_project(&temp)?;
+    // Spelling normalized by the save is not recorded as a separate edit.
+    app.project.extra_sources[0].path = r".\..\data\spelled.xml".into();
+    app.observe_editor_history(std::time::Instant::now(), false);
+    assert_eq!(app.history.undo_len(), 3);
+
+    let renamed = temp.0.join("maps/renamed.json");
+    app.save_document_to(&renamed)?;
+    assert_eq!(app.history.undo_len(), 3);
+    app.observe_editor_history(std::time::Instant::now(), false);
+    assert_eq!(app.history.undo_len(), 3);
+    assert_eq!(app.project.extra_sources[0].path, "../data/spelled.xml");
+    assert!(!app.is_dirty());
+
+    for _ in 0..2 {
+        app.undo_project();
+        app.undo_project();
+        app.undo_project();
+        assert_eq!(
+            boundary_paths(&app.project),
+            paths([
+                "../data/source.xml",
+                "../results/target.xml",
+                "../data/catalog.xml",
+                "../results/audit.xml",
+            ])
+        );
+        assert!(app.is_dirty());
+        app.redo_project();
+        app.redo_project();
+        app.redo_project();
+        assert_eq!(
+            boundary_paths(&app.project),
+            paths([
+                "../data/other.xml",
+                "../results/other.xml",
+                "../data/spelled.xml",
+                "../results/other-audit.xml",
+            ])
+        );
+        assert!(!app.is_dirty());
+    }
+    assert_eq!(app.document, DocumentLocation::saved(renamed));
+    Ok(())
+}
+
+#[test]
+fn ordinary_save_keeps_pending_and_recorded_history() -> anyhow::Result<()> {
+    let temp = TestDir::new()?;
+    let mut app = edited_project(&temp)?;
+    let start = std::time::Instant::now();
+    app.project.extra_sources[0].path = "../data/typed.xml".into();
+    app.observe_editor_history(start, true);
+
+    app.save_with_continuation(None, &egui::Context::default());
+    assert!(!app.is_dirty());
+    app.observe_editor_history(start + crate::app::HISTORY_COALESCE_DELAY, true);
+    assert_eq!(app.history.undo_len(), 3);
+    app.undo_project();
+    assert_eq!(app.project.extra_sources[0].path, "../data/catalog.xml");
+    assert!(app.is_dirty());
+    Ok(())
+}

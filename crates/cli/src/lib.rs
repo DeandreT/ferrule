@@ -85,6 +85,7 @@ pub use pipeline_preview::{
 };
 pub use project_paths::{
     mapping_identity_relative_to as pipeline_mapping_identity, rebase as rebase_project_paths,
+    relocates as project_paths_relocate,
 };
 pub use rest_json::{
     MAX_REST_JSON_BODY_BYTES, MAX_REST_JSON_HEADER_BYTES, MAX_REST_JSON_HEADERS,
