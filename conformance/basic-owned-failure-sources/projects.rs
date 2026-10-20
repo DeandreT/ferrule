@@ -30,6 +30,7 @@ pub const PROFILES: &[&str] = &[
     "F14-legacy-alias-beside-owned",
     "F15-primary-row-rule-beside-owned",
     "F16-cross-owner-root-pins",
+    "F17-ending-groups-beside-walk",
 ];
 
 pub fn path(parts: &[&str]) -> Vec<String> {
@@ -311,6 +312,34 @@ pub fn project(profile: &str) -> Project {
         "F16-cross-owner-root-pins" => {
             call(&mut p, 50, "concat", &[12, 40, 23, 40, 24, 40, 14]);
             vec![rule(rows(LOOKUP, &["Rows"]), when_true(11), Some(50))]
+        }
+        "F17-ending-groups-beside-walk" => {
+            // The audit target groups Lookup rows, closing a group at a true flag.
+            p.extra_targets[0].schema = SchemaNode::group(
+                "Audit",
+                vec![SchemaNode::group("Groups", vec![string("First")]).repeating()],
+            );
+            p.extra_targets[0].root = Scope {
+                children: vec![Scope {
+                    target_field: "Groups".into(),
+                    iteration: mapping::ScopeIteration::OwnedSource {
+                        source: OwnedSourceRef {
+                            owner: owner(LOOKUP),
+                            path: path(&["Rows"]),
+                        },
+                        output_path: None,
+                    },
+                    group_ending_with: Some(11),
+                    bindings: vec![Binding {
+                        target_field: "First".into(),
+                        node: 12,
+                    }],
+                    ..Scope::default()
+                }],
+                ..Scope::default()
+            };
+            call(&mut p, 50, "equal", &[13, 41]);
+            vec![rule(rows(LOOKUP, &["Rows"]), when_true(50), Some(12))]
         }
         _ => panic!("authored profile {profile}"),
     };

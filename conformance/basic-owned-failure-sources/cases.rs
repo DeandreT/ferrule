@@ -79,6 +79,8 @@ fn with_lookup(lookup: Instance) -> Vec<(String, Instance)> {
 
 pub enum Outcome {
     Outputs,
+    /// Successful outputs whose audit target is the given complete tree.
+    OutputsWithAudit(Instance),
     Failure(usize, Option<&'static str>),
     Error(Json),
 }
@@ -92,9 +94,9 @@ fn not_bool(node: u32, found: &str) -> Outcome {
     Outcome::Error(json!({"kind":"NotABool","node":node,"found":found}))
 }
 
-fn outputs(selection: &str) -> Json {
+fn outputs(selection: &str, audit: &Instance) -> Json {
     let primary = json!([null, codec::encode(&group(vec![("Value", text("P.note"))]))]);
-    let audit = json!([AUDIT, codec::encode(&group(vec![("Value", text("N.note"))]))]);
+    let audit = json!([AUDIT, codec::encode(audit)]);
     match selection {
         "All" => json!({"Ok":[primary, audit]}),
         "Primary" => json!({"Ok":[primary]}),
@@ -106,7 +108,10 @@ fn calls(outcome: &Outcome) -> Vec<Json> {
         .into_iter()
         .map(|selection| {
             let expected = match outcome {
-                Outcome::Outputs => outputs(selection),
+                Outcome::Outputs => {
+                    outputs(selection, &group(vec![("Value", text("N.note"))]))
+                }
+                Outcome::OutputsWithAudit(audit) => outputs(selection, audit),
                 Outcome::Failure(rule, message) => {
                     json!({"Err":{"kind":"MappingFailure","rule":rule,"message":message}})
                 }
@@ -218,6 +223,16 @@ pub fn cases() -> Vec<Case> {
             failed(2, "P2"),
         ),
         case(
+            "F10-null-rows",
+            "F10-absent-owner",
+            primary(),
+            with_lookup(group(vec![
+                ("Note", text("N.note")),
+                ("Rows", Instance::Scalar(Value::Null)),
+            ])),
+            failed(2, "P2"),
+        ),
+        case(
             "F10-unsupplied",
             "F10-absent-owner",
             primary(),
@@ -290,5 +305,19 @@ pub fn cases() -> Vec<Case> {
             inputs(),
             failed(1, "N1:P.note:N.note:1"),
         ),
+        // Failures precede grouped targets; N1 ends the first group.
+        case(
+            "F17-groups",
+            "F17-ending-groups-beside-walk",
+            primary(),
+            with_lookup(no_x()),
+            Outcome::OutputsWithAudit(group(vec![(
+                "Groups",
+                Instance::Repeated(vec![
+                    group(vec![("First", text("N1"))]),
+                ]),
+            )])),
+        ),
+        case("F17-failure", "F17-ending-groups-beside-walk", primary(), inputs(), failed(1, "N2")),
     ]
 }

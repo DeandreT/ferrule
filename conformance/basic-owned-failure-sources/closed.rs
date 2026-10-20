@@ -240,6 +240,7 @@ pub fn old_lower(project: &Project) -> Vec<Result<codegen::Program, codegen::Low
         codegen::lower_with_basic_owned_sequence_item_at(project),
         codegen::lower_with_basic_owned_group_adjacent_by(project),
         codegen::lower_with_basic_owned_group_starting_with(project),
+        codegen::lower_with_basic_owned_group_ending_with(project),
     ]
 }
 pub fn old_validators(p: &codegen::Program) -> Vec<Result<(), ProgramValidationError>> {
@@ -263,6 +264,8 @@ pub fn old_validators(p: &codegen::Program) -> Vec<Result<(), ProgramValidationE
         codegen::validate_basic_owned_group_adjacent_by_emission(p),
         codegen::validate_program_with_basic_owned_group_starting_with(p),
         codegen::validate_basic_owned_group_starting_with_emission(p),
+        codegen::validate_program_with_basic_owned_group_ending_with(p),
+        codegen::validate_basic_owned_group_ending_with_emission(p),
     ]
 }
 pub fn old_catalogues(p: &codegen::Program) -> Vec<Result<(), ProgramValidationError>> {
@@ -276,6 +279,7 @@ pub fn old_catalogues(p: &codegen::Program) -> Vec<Result<(), ProgramValidationE
         codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_item_at(p).map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_group_adjacent_by(p).map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(p).map(drop),
+        codegen::legacy_named_input_admission_plan_with_basic_owned_group_ending_with(p).map(drop),
     ]
     .into()
 }
@@ -294,6 +298,7 @@ pub fn old_rust(
         codegen_rust::emit_with_basic_owned_sequence_item_at(p, options),
         codegen_rust::emit_with_basic_owned_group_adjacent_by(p, options),
         codegen_rust::emit_with_basic_owned_group_starting_with(p, options),
+        codegen_rust::emit_with_basic_owned_group_ending_with(p, options),
     ]
 }
 pub fn old_csharp(p: &codegen::Program) -> Vec<Result<codegen::ArtifactSet, codegen_csharp::EmitError>> {
@@ -308,5 +313,6 @@ pub fn old_csharp(p: &codegen::Program) -> Vec<Result<codegen::ArtifactSet, code
         codegen_csharp::emit_with_basic_owned_sequence_item_at(p),
         codegen_csharp::emit_with_basic_owned_group_adjacent_by(p),
         codegen_csharp::emit_with_basic_owned_group_starting_with(p),
+        codegen_csharp::emit_with_basic_owned_group_ending_with(p),
     ]
 }

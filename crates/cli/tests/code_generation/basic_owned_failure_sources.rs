@@ -16,8 +16,8 @@ mod cases;
 mod closed;
 use super::basic_owned_sequence_item_at::codec;
 
-const MODELS: usize = 16;
-const CASES: usize = 33;
+const MODELS: usize = 17;
+const CASES: usize = 36;
 const CALLS: usize = 3 * CASES;
 
 pub(super) struct Case {
@@ -52,7 +52,7 @@ fn corpus() -> TestResult<(Json, Vec<Project>)> {
             "calls":case.calls}));
     }
     if models.len() != MODELS || used.len() != MODELS || cases.len() != CASES {
-        return Err("16 profiles with 33 cases changed".into());
+        return Err("17 profiles with 36 cases changed".into());
     }
     Ok((json!({"version":1,"cases":records}), models))
 }
@@ -104,8 +104,7 @@ fn owned_failures471_profiles_lower_validate_and_emit() -> TestResult<()> {
         let original = program.clone();
         codegen::validate_program_with_basic_owned_failure_sources(&program)
             .map_err(|e| context(&e))?;
-        codegen::validate_basic_owned_failure_source_emission(&program)
-            .map_err(|e| context(&e))?;
+        codegen::validate_basic_owned_failure_source_emission(&program).map_err(|e| context(&e))?;
         let plan =
             codegen::legacy_named_input_admission_plan_with_basic_owned_failure_sources(&program)
                 .map_err(|e| context(&e))?;
@@ -145,17 +144,37 @@ fn owned_failures471_profiles_lower_validate_and_emit() -> TestResult<()> {
             .iter()
             .filter(|rule| rule.iteration.owned_source().is_some())
             .count();
+        // Count owned walks only inside rendered failure-rule functions.
+        let in_rules = |source: String, start: &str, end: &str, walk: &str| {
+            source
+                .split(start)
+                .skip(1)
+                .map(|rest| {
+                    rest.split(end)
+                        .next()
+                        .unwrap_or_default()
+                        .matches(walk)
+                        .count()
+                })
+                .sum::<usize>()
+        };
         assert_eq!(
-            text(&rust, "lib.rs")
-                .matches("walk_owned_source_cohort(SourceOwnerRef::")
-                .count(),
+            in_rules(
+                text(&rust, "lib.rs"),
+                "fn evaluate_basic_failure_rule_",
+                "\nfn ",
+                "walk_owned_source_cohort(SourceOwnerRef::"
+            ),
             walks,
             "{profile}"
         );
         assert_eq!(
-            text(&csharp, "GeneratedMapping.cs")
-                .matches("context.WalkOwnedSourceCohort(")
-                .count(),
+            in_rules(
+                text(&csharp, "GeneratedMapping.cs"),
+                "private static void BasicFailureRule_",
+                "\n    private static ",
+                "context.WalkOwnedSourceCohort("
+            ),
             walks,
             "{profile}"
         );
@@ -220,9 +239,12 @@ fn owned_failures471_interpreter_matches_expected() -> TestResult<()> {
                 )
                 .map(|outputs| {
                     std::iter::once(json!([null, codec::encode(&outputs.primary)]))
-                        .chain(outputs.extras.iter().map(|named| {
-                            json!([named.name, codec::encode(&named.instance)])
-                        }))
+                        .chain(
+                            outputs
+                                .extras
+                                .iter()
+                                .map(|named| json!([named.name, codec::encode(&named.instance)])),
+                        )
                         .collect::<Vec<_>>()
                 })
             } else {
@@ -353,8 +375,18 @@ fn owned_failures471_legacy_source_rules_keep_wire_and_generation() -> TestResul
         projects::when_true(31),
         Some(32),
     )];
-    project.graph.nodes.insert(21, Node::Const { value: Value::String("P.note".into()) });
-    project.graph.nodes.insert(22, Node::Const { value: Value::String("N.note".into()) });
+    project.graph.nodes.insert(
+        21,
+        Node::Const {
+            value: Value::String("P.note".into()),
+        },
+    );
+    project.graph.nodes.insert(
+        22,
+        Node::Const {
+            value: Value::String("N.note".into()),
+        },
+    );
     for id in [1, 2, 3, 4, 11, 12, 13, 14, 23, 24] {
         project.graph.nodes.remove(&id);
     }
@@ -425,7 +457,7 @@ fn host_result(results: &Path, calls: usize, run: &Output) -> Result<(), String>
 }
 
 #[test]
-#[ignore = "builds and runs one generated Rust host and 16 generated C# hosts; requires cargo and the .NET 10 SDK"]
+#[ignore = "builds and runs one generated Rust host and 17 generated C# hosts; requires cargo and the .NET 10 SDK"]
 fn owned_failures471_generated_rust_and_csharp_match_expected() -> TestResult<()> {
     let (controls, models) = corpus()?;
     let runtime = runtime_path()?;
