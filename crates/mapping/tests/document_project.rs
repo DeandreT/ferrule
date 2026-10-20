@@ -231,3 +231,59 @@ fn pruning_keeps_filename_dependencies_even_when_the_profile_refuses_them() {
         vec![2]
     );
 }
+
+#[test]
+fn file_codec_preserves_complete_project_and_float_bits() {
+    for value in [1.0, -0.0, f64::MIN_POSITIVE, f64::from_bits(1), f64::MAX] {
+        let mut mapping = project(Node::Const {
+            value: Value::String("input.csv".into()),
+        });
+        mapping.graph.nodes.insert(
+            3,
+            Node::Const {
+                value: Value::Float(value),
+            },
+        );
+        let before = mapping::project_file::encode_pretty(&mapping).unwrap();
+        let document = DocumentProject::new(mapping, PrimarySourcePlan { filename: 1 });
+        let text = mapping::document_project_file::encode_pretty(&document).unwrap();
+        let restored = mapping::document_project_file::decode_bytes(text.as_bytes()).unwrap();
+        assert_eq!(
+            mapping::project_file::encode_pretty(restored.project()).unwrap(),
+            before
+        );
+        assert_eq!(restored.primary_source(), document.primary_source());
+        let Some(Node::Const {
+            value: Value::Float(actual),
+        }) = restored.project().graph.nodes.get(&3)
+        else {
+            panic!("float type was not retained");
+        };
+        assert_eq!(actual.to_bits(), value.to_bits());
+        assert!(mapping::project_file::decode_str(&text).is_err());
+    }
+}
+
+#[test]
+fn file_codec_refuses_nonfinite_values_and_wrong_artifact_kinds() {
+    let mut mapping = project(Node::Const {
+        value: Value::String("input.csv".into()),
+    });
+    let ordinary_file = mapping::project_file::encode_pretty(&mapping).unwrap();
+    assert!(mapping::document_project_file::decode_str(&ordinary_file).is_err());
+    mapping.graph.nodes.insert(
+        3,
+        Node::Const {
+            value: Value::Float(f64::NAN),
+        },
+    );
+    let document = DocumentProject::new(mapping, PrimarySourcePlan { filename: 1 });
+    assert!(matches!(
+        mapping::document_project_file::encode_pretty(&document),
+        Err(mapping::FileCodecError::NonFiniteValue { .. })
+    ));
+    assert!(matches!(
+        mapping::document_project_file::decode_bytes(&[0xff]),
+        Err(mapping::FileCodecError::InvalidUtf8(_))
+    ));
+}

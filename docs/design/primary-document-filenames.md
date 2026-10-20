@@ -15,6 +15,13 @@ Unknown wrapper and primary-plan fields are rejected. A serialized wrapper
 cannot be read as an ordinary project, because the project fields are nested.
 The embedded project is exposed by shared reference, not by mutable reference.
 
+For file persistence, use `mapping::document_project_file::{encode_pretty,
+decode_str, decode_bytes}`. This reuses the bounded mapping-file codec with the
+distinct `document_project` kind. When required, its version-2 outer envelope
+retains every finite float's type and exact bits throughout the embedded project.
+Ordinary model serde is not the lossless file contract. Non-finite model floats,
+invalid UTF-8 and mismatched versioned artifact kinds are refused.
+
 ## Source-independent classification
 
 `DocumentProject::global_filename` classifies the initial filename forms:

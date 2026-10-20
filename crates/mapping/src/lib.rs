@@ -6,6 +6,7 @@
 mod adjacency;
 mod csv_repair;
 mod document_project;
+pub mod document_project_file;
 mod edi;
 mod external_source;
 mod file_codec;
