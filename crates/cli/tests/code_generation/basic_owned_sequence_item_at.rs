@@ -861,12 +861,9 @@ fn prepare_legacy(evidence: &Evidence, runtime: &Path) -> TestResult<bool> {
     };
     evidence.debug("legacy-COMPLETE-RUST-OPTIONS.txt", &options)?;
     let (expected, expected_cargo) = legacy_expected_artifacts(evidence, original, &options)?;
-    // #442 deliberately changes three bundled runtime bodies. Freeze their
-    // source expectations before emission; retain the original historical rows.
+    // Embedded runtime files follow their current sources; freeze those source
+    // expectations before emission and retain the original historical rows.
     let runtime_snapshot = legacy_artifact_policy::snapshot(&root()?)?;
-    for (path, bytes) in &runtime_snapshot {
-        evidence.write(&format!("legacy-reviewed-adjacent-sources/{path}"), bytes)?;
-    }
     let rust = codegen_rust::emit(&program, &options);
     let csharp = codegen_csharp::emit(&program);
     let rust_new = codegen_rust::emit_with_basic_owned_sequence_item_at(&program, &options);
@@ -907,12 +904,12 @@ fn prepare_legacy(evidence: &Evidence, runtime: &Path) -> TestResult<bool> {
         legacy_artifact_policy::snapshot_unchanged(&root()?, &runtime_snapshot)?;
     let csharp_compatible = runtime_sources_unchanged
         && runtime_comparison.as_ref().is_some_and(|comparison| {
-            comparison.accepts(legacy_artifact_policy::Policy::ReviewedAdjacentRuntime)
+            comparison.accepts(legacy_artifact_policy::Policy::CurrentRuntimeSources)
         });
     evidence.write(
-        "legacy-REVIEWED-ADJACENT-RUNTIME-COMPARISON.json",
+        "legacy-CURRENT-RUNTIME-SOURCES-COMPARISON.json",
         &serde_json::to_vec_pretty(&json!({
-            "policy":"ReviewedAdjacentRuntime",
+            "policy":"CurrentRuntimeSources",
             "historical_exact":runtime_comparison.as_ref().is_some_and(|value| value.accepts(legacy_artifact_policy::Policy::ExactHistorical)),
             "paths_exact":runtime_comparison.as_ref().is_some_and(|value| value.paths_exact),
             "stable_files_exact":runtime_comparison.as_ref().is_some_and(|value| value.stable_files_exact),
