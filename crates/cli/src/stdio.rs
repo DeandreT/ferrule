@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 
+use crate::read_set::ReadSet;
 use crate::{
     MAX_PAYLOAD_DOCUMENT_BYTES, NamedPayloadInput, PayloadDocument, PayloadRunOptions,
     PayloadRunOutcome, TargetSelection, TraceSink, load_project, resolve_run_path,
@@ -23,6 +24,10 @@ pub struct StandardIoRunOptions<'a> {
     pub target: Option<TargetSelection<'a>>,
     pub runtime_parameters: Option<&'a engine::RuntimeParameters>,
     pub trace_sink: Option<&'a dyn TraceSink>,
+    /// Host-owned artifact paths, such as a trace, that the host replaces
+    /// after the run. The run refuses when one names the design or a consumed
+    /// local input.
+    pub protected_output_paths: &'a [&'a Path],
 }
 
 impl<'a> StandardIoRunOptions<'a> {
@@ -52,6 +57,11 @@ impl<'a> StandardIoRunOptions<'a> {
 
     pub fn with_trace_sink(mut self, trace_sink: &'a dyn TraceSink) -> Self {
         self.trace_sink = Some(trace_sink);
+        self
+    }
+
+    pub fn with_protected_output_paths(mut self, paths: &'a [&'a Path]) -> Self {
+        self.protected_output_paths = paths;
         self
     }
 }
@@ -110,6 +120,14 @@ pub fn run_project_with_standard_streams(
     let primary = PayloadDocument::new(&input_path, &primary_bytes)?;
 
     let extra_storage = load_static_extra_sources(project_path, &project, options.target)?;
+    let mut read_set = ReadSet::new(project_path);
+    if !input_from_stdin {
+        read_set.push(&input_path);
+    }
+    for source in &extra_storage {
+        read_set.push(&source.path);
+    }
+    read_set.reject_protected(options.protected_output_paths)?;
     let extra_documents = extra_storage
         .iter()
         .map(|source| PayloadDocument::new(&source.path, &source.bytes))

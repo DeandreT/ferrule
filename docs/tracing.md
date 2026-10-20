@@ -22,8 +22,13 @@ publication succeed. If validation, input loading, or execution fails, the
 staging file is removed and an existing trace remains unchanged.
 
 A trace path cannot be a directory, symlink, special file, or one of the
-mapping's published output paths. Missing parent directories are created before
-execution. Trace records can contain source values and paths; treat trace files
+mapping's published output paths. It also cannot name the design or a local
+file the run consumed: the primary input, a named static input, a member of a
+local XML file set, or a dynamically loaded document. These checks compare
+normalized absolute paths with symlinked ancestors resolved, and refuse before
+any output, trace, or stdout bytes are published. A hard link is a separate
+directory entry, so replacing it leaves the linked file's contents intact.
+Missing parent directories are created before execution. Trace records can contain source values and paths; treat trace files
 as potentially sensitive data.
 
 Standard-output runs finalize the trace after successful mapping serialization

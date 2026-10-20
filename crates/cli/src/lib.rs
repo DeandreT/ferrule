@@ -40,6 +40,7 @@ mod pdf_worker_signal;
 mod pipeline;
 mod pipeline_preview;
 mod project_paths;
+mod read_set;
 pub use bundle::{BundleCatalog, BundleCatalogKind, BundleOptions, BundleOutcome, bundle_project};
 pub use filesystem_pdf_reader::FilesystemPdfReader;
 pub use pdf_worker_policy::FilesystemRunPolicy;
@@ -165,7 +166,9 @@ pub struct RunOptions<'a> {
     /// Called after evaluation succeeds and before any output staging begins.
     /// Returning false cancels the run without publishing target files.
     pub before_publish: Option<&'a dyn Fn() -> bool>,
-    /// Host-owned artifact paths that mapping outputs must not replace.
+    /// Host-owned artifact paths that mapping outputs must not replace. The
+    /// run also refuses to publish when one names the design or a consumed
+    /// local input, because the host replaces these paths afterwards.
     pub protected_output_paths: &'a [&'a Path],
 }
 
@@ -428,6 +431,8 @@ fn run_project_value_with_pdf_reader(
         &project.source_options,
         reader,
     )?;
+    let mut read_set = read_set::ReadSet::new(project_path);
+    read_set.push_source(&input_path, &source_instance);
 
     let project_dir = project_path.parent().unwrap_or_else(|| Path::new("."));
     let mut extras = Vec::with_capacity(project.extra_sources.len());
@@ -443,12 +448,12 @@ fn run_project_value_with_pdf_reader(
         } else {
             project_dir.join(path)
         };
-        extras.push((
-            extra.name.clone(),
-            read_instance_with_pdf_reader(&path, &extra.schema, &extra.options, reader)
-                .with_context(|| format!("loading extra source `{}`", extra.name))?,
-        ));
+        let instance = read_instance_with_pdf_reader(&path, &extra.schema, &extra.options, reader)
+            .with_context(|| format!("loading extra source `{}`", extra.name))?;
+        read_set.push_source(&path, &instance);
+        extras.push((extra.name.clone(), instance));
     }
+    read_set.reject_protected(options.protected_output_paths)?;
 
     let runtime_project_path = absolute_mapping_path(project_path)?;
     let current_datetime = jiff::Zoned::now()
@@ -477,7 +482,7 @@ fn run_project_value_with_pdf_reader(
             &execution,
             selection,
         )?;
-        allow_output_publication(options)?;
+        allow_output_publication(options, &mut read_set, &dynamic_loader)?;
         // Target values own their data; inputs are no longer needed during serialization.
         drop(dynamic_loader);
         drop(source_instance);
@@ -494,7 +499,7 @@ fn run_project_value_with_pdf_reader(
             extras,
             &execution,
         )?;
-        allow_output_publication(options)?;
+        allow_output_publication(options, &mut read_set, &dynamic_loader)?;
         // Target values own their data; inputs are no longer needed during serialization.
         drop(dynamic_loader);
         drop(source_instance);
@@ -516,7 +521,13 @@ fn run_project_value_with_pdf_reader(
     })
 }
 
-fn allow_output_publication(options: &RunOptions<'_>) -> anyhow::Result<()> {
+fn allow_output_publication(
+    options: &RunOptions<'_>,
+    read_set: &mut read_set::ReadSet,
+    dynamic_loader: &ProjectDynamicSourceLoader<'_>,
+) -> anyhow::Result<()> {
+    read_set.push_dynamic_loads(dynamic_loader);
+    read_set.reject_protected(options.protected_output_paths)?;
     if options.before_publish.is_some_and(|gate| !gate()) {
         return Err(engine::EngineError::DebugCancelled.into());
     }
