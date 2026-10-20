@@ -7,10 +7,16 @@ const ENCODE_BUFFER_BYTES: usize = 2 * FIELD_CHUNK_BYTES + 2;
 pub(super) struct RecordEncoder {
     writer: csv_core::Writer,
     buffer: [u8; ENCODE_BUFFER_BYTES],
+    raw_delimiter: Option<u8>,
 }
 
 impl RecordEncoder {
-    pub(super) fn new(delimiter: u8, quote: Option<u8>, quote_disabled: bool) -> Self {
+    pub(super) fn new(
+        delimiter: u8,
+        quote: Option<u8>,
+        quote_disabled: bool,
+        raw_delimited_crlf: bool,
+    ) -> Self {
         let writer = csv_core::WriterBuilder::new()
             .delimiter(delimiter)
             .quote(quote.unwrap_or(b'"'))
@@ -24,6 +30,7 @@ impl RecordEncoder {
         Self {
             writer,
             buffer: [0; ENCODE_BUFFER_BYTES],
+            raw_delimiter: raw_delimited_crlf.then_some(delimiter),
         }
     }
 
@@ -32,6 +39,15 @@ impl RecordEncoder {
         sink: &mut W,
         fields: impl IntoIterator<Item = &'a str>,
     ) -> io::Result<()> {
+        if let Some(delimiter) = self.raw_delimiter {
+            for (index, field) in fields.into_iter().enumerate() {
+                if index != 0 {
+                    sink.write_all(&[delimiter])?;
+                }
+                sink.write_all(field.as_bytes())?;
+            }
+            return sink.write_all(b"\r\n");
+        }
         for (index, field) in fields.into_iter().enumerate() {
             if index != 0 {
                 let (_, written) = self.writer.delimiter(&mut self.buffer);

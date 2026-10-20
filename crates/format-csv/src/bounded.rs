@@ -131,8 +131,12 @@ pub(super) fn validate_csv<'a>(
     let fields = row_fields(schema)?;
     let (delimiter, quote) =
         dialect_bytes(options.delimiter, options.quote, options.quote_disabled)?;
+    if options.raw_delimited_crlf && !options.quote_disabled {
+        return Err(CsvFormatError::RawDelimitedRequiresDisabledQuotes);
+    }
+    let strict_unquoted = options.quote_disabled && !options.raw_delimited_crlf;
     let mut unquoted_error = None;
-    if options.quote_disabled && options.has_headers {
+    if strict_unquoted && options.has_headers {
         for (name, _) in &fields {
             if requires_quoting(name, delimiter) {
                 unquoted_error = Some(CsvFormatError::UnquotedHeaderBoundary {
@@ -146,7 +150,7 @@ pub(super) fn validate_csv<'a>(
         // Use the native row shape, field order, and lexical rules, then
         // release this record before validating the next row.
         let record = format_row(row, instance, &fields)?;
-        if options.quote_disabled && unquoted_error.is_none() {
+        if strict_unquoted && unquoted_error.is_none() {
             if record.len() == 1 && record[0].is_empty() {
                 unquoted_error = Some(CsvFormatError::UnquotedSingleEmptyRow { row });
             } else {
@@ -192,7 +196,12 @@ pub fn to_bytes_with_options_bounded(
     if options.utf8_bom {
         sink.write_all(b"\xef\xbb\xbf").map_err(bounded_io_error)?;
     }
-    let mut writer = RecordEncoder::new(delimiter, quote, options.quote_disabled);
+    let mut writer = RecordEncoder::new(
+        delimiter,
+        quote,
+        options.quote_disabled,
+        options.raw_delimited_crlf,
+    );
     if options.has_headers {
         writer
             .write_record(&mut sink, fields.iter().map(|(name, _)| *name))

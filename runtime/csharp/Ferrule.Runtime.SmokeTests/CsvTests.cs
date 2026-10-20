@@ -5,6 +5,41 @@ namespace Ferrule.Runtime.SmokeTests;
 
 internal static partial class Program
 {
+    private static void CsvRawDelimitedCrLf()
+    {
+        FerruleCsvField[] fields = [new("Value", FerruleScalarType.String)];
+        var options = new FerruleCsvWriteOptions
+        {
+            Delimiter = '|', QuoteDisabled = true, HasHeaders = false, RawDelimitedCrLf = true,
+        };
+        var row = CsvRows(Group(Field("Value", Scalar(Text("é|\"猫\"\r\nnext|")))));
+        CsvBytes("é|\"猫\"\r\nnext|\r\n", row, fields, options);
+        CsvMatchingFailure(FerruleCsvError.UnquotedFieldBoundary, row, fields,
+            options with { RawDelimitedCrLf = false });
+        CsvBytes("", CsvRows(), fields, options);
+        CsvBytes("\r\n", CsvRows(Group(Field("Value", Scalar(Text(""))))), fields, options);
+        CsvBytes("\r\n", CsvRows(Group()), [], options);
+        CsvBytes("\uFEFFa|b\r\n\r\n", CsvRows(), [new("a|b\r\n", FerruleScalarType.String)],
+            options with { HasHeaders = true, Utf8Bom = true });
+        CsvMatchingFailure(FerruleCsvError.RawDelimitedRequiresDisabledQuotes, CsvRows(), fields,
+            options with { QuoteDisabled = false });
+        CsvMatchingFailure(FerruleCsvError.ConflictingQuoteSettings, CsvRows(), fields,
+            options with { Quote = '"' });
+        var later = CsvError(FerruleCsvError.ValueType, () => FerruleCsv.SerializeBytes(
+            CsvRows(Group(Field("Value", Scalar(Text("first|\n")))),
+                Group(Field("Value", Scalar(FerruleValue.FromDouble(double.NaN))))), fields, options));
+        Equal<int?>(1, later.Row);
+        var maximum = FerruleCsv.MaximumOutputBytes;
+        var exact = FerruleCsv.SerializeBytes(
+            CsvRows(Group(Field("Value", Scalar(Text(new string('x', maximum - 2)))))), fields, options);
+        Equal(maximum, exact.Length);
+        Equal(true, exact.AsSpan(0, maximum - 2).IndexOfAnyExcept((byte)'x') < 0);
+        Equal((byte)'\r', exact[^2]);
+        Equal((byte)'\n', exact[^1]);
+        Equal<int?>(maximum, CsvError(FerruleCsvError.OutputTooLarge, () => FerruleCsv.SerializeBytes(
+            CsvRows(Group(Field("Value", Scalar(Text(new string('x', maximum - 1)))))), fields, options)).Maximum);
+    }
+
     private static void CsvScalarLexicals()
     {
         foreach (var (type, value, expected) in new (FerruleScalarType, FerruleValue, string)[]
