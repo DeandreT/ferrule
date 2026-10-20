@@ -5,6 +5,7 @@
 
 mod adjacency;
 mod csv_repair;
+mod document_project;
 mod edi;
 mod external_source;
 mod file_codec;
@@ -39,6 +40,9 @@ mod xlsx_output;
 
 pub use adjacency::AdjacencyTreePlan;
 pub use csv_repair::{CsvRuntimeDependency, CsvTextRepairCause, CsvTextRepairDependency};
+pub use document_project::{
+    DocumentProject, DocumentProjectFormat, GlobalFilename, PrimaryFilenameError, PrimarySourcePlan,
+};
 pub use edi::{
     EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind,
     EdiValueConstraint, EdifactAutocomplete, X12Autocomplete, X12Separators,
