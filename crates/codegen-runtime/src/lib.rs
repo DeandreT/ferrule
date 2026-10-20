@@ -41,9 +41,10 @@ pub use adjacency_tree::{
 pub use aggregate::{AggregateFunction, aggregate};
 pub use context::{
     BasicGroupByControls, BasicGroupByMetadata, BasicGroupEndingWithControls,
-    BasicGroupStartingWithControls, BasicNamedSourceDeclaration, BasicNamedSourceInput,
-    BasicNamedSourceMode, BasicScopeContext, BasicSourceBridgeError, BasicSourceCandidate,
-    BasicSourceRoots, CompletePhaseCohort, PhaseSelection, RetainedSourceCohort,
+    BasicGroupIntoBlocksControls, BasicGroupStartingWithControls, BasicNamedSourceDeclaration,
+    BasicNamedSourceInput, BasicNamedSourceMode, BasicScopeContext, BasicSourceBridgeError,
+    BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort, PhaseSelection,
+    RetainedSourceCohort,
 };
 pub use context::{
     BasicJsonDocumentRef, BasicJsonInputAdmission, BasicJsonParsedInputs,
@@ -100,7 +101,8 @@ pub use ir::{
     XmlTypeOriginError,
 };
 pub use iteration::{
-    SequenceWindow, SortDirection, apply_sequence_windows, item_count, sort_candidates,
+    SequenceWindow, SortDirection, apply_sequence_windows, item_count, positive_block_size,
+    sort_candidates,
 };
 pub use json::{
     JsonBoundaryError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_JSON_DOCUMENT_BYTES, parse_json,

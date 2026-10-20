@@ -26,7 +26,7 @@ mod failure_rows;
 mod group_by;
 pub use group_by::{
     BasicGroupByControls, BasicGroupByMetadata, BasicGroupEndingWithControls,
-    BasicGroupStartingWithControls,
+    BasicGroupIntoBlocksControls, BasicGroupStartingWithControls,
 };
 
 /// Fixed bridge failures; no user text is copied into these diagnostics.
