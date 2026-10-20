@@ -7,7 +7,8 @@ use mapping::{FormatOptions, TabularBoundaryKind};
 use crate::{IterationOutput, Program, ProgramValidationError, TargetScope};
 
 /// Literal policy for an explicitly selected generated flat CSV output.
-/// Records use LF. The generated runtimes bound each UTF-8 document to 64 MiB.
+/// CSV records use LF; an explicit raw-delimited policy uses CRLF. The generated
+/// runtimes bound each UTF-8 document to 64 MiB.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CsvOutputPolicy {
     pub delimiter: Option<char>,
@@ -15,6 +16,9 @@ pub struct CsvOutputPolicy {
     pub quote_disabled: bool,
     pub has_headers: bool,
     pub utf8_bom: bool,
+    /// Write unescaped field text and CRLF records. Requires disabled quoting;
+    /// never inferred from a project's CSV settings.
+    pub raw_delimited_crlf: bool,
 }
 
 impl Default for CsvOutputPolicy {
@@ -25,6 +29,7 @@ impl Default for CsvOutputPolicy {
             quote_disabled: false,
             has_headers: true,
             utf8_bom: false,
+            raw_delimited_crlf: false,
         }
     }
 }
@@ -59,6 +64,7 @@ impl CsvOutputPolicy {
             quote_disabled: options.csv_quote_disabled,
             has_headers: options.has_header_row.unwrap_or(true),
             utf8_bom: options.csv_utf8_bom,
+            raw_delimited_crlf: false,
         };
         policy.validate_dialect()?;
         Ok(policy)
@@ -82,6 +88,9 @@ impl CsvOutputPolicy {
         if delimiter == quote {
             return Err(CsvOutputError::DelimiterQuoteConflict);
         }
+        if self.raw_delimited_crlf {
+            return Err(CsvOutputError::RawDelimitedRequiresDisabledQuotes);
+        }
         Ok(())
     }
 }
@@ -95,6 +104,7 @@ pub enum CsvOutputError {
     BadDelimiter(char),
     BadQuote(char),
     ConflictingQuoteSettings,
+    RawDelimitedRequiresDisabledQuotes,
     DelimiterQuoteConflict,
     XmlBoundary,
     /// Retained compatibility refusal; static named inputs are now admitted.
@@ -126,6 +136,9 @@ impl fmt::Display for CsvOutputError {
             Self::BadQuote(c) => write!(f, "invalid generated CSV quote {c:?}"),
             Self::ConflictingQuoteSettings => {
                 f.write_str("generated CSV quote cannot be set while quoting is disabled")
+            }
+            Self::RawDelimitedRequiresDisabledQuotes => {
+                f.write_str("raw-delimited CRLF output requires disabled quoting")
             }
             Self::DelimiterQuoteConflict => {
                 f.write_str("generated CSV delimiter and quote must differ")
@@ -305,7 +318,8 @@ mod tests {
                 quote: Some('\''),
                 quote_disabled: false,
                 has_headers: false,
-                utf8_bom: true
+                utf8_bom: true,
+                raw_delimited_crlf: false,
             }
         );
         validate_csv_output(&program(), &policy).unwrap();

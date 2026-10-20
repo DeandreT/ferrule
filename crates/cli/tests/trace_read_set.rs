@@ -4,6 +4,8 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::symlink as directory_symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -15,6 +17,37 @@ use mapping::{
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
+
+#[cfg(windows)]
+fn directory_symlink(original: &Path, link: PathBuf) -> std::io::Result<()> {
+    // A directory junction exercises the same canonical path alias without
+    // requiring Developer Mode or SeCreateSymbolicLinkPrivilege on Windows.
+    let command = PathBuf::from(std::env::var_os("SystemRoot").ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "SystemRoot is not set")
+    })?)
+    .join("System32/WindowsPowerShell/v1.0/powershell.exe");
+    let result = Command::new(command)
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path $env:FERRULE_TEST_LINK -Target $env:FERRULE_TEST_TARGET | Out-Null",
+        ])
+        .env("FERRULE_TEST_LINK", &link)
+        .env("FERRULE_TEST_TARGET", original)
+        .output()?;
+    if !result.status.success() {
+        return Err(std::io::Error::other(format!(
+            "creating test directory junction: {}",
+            String::from_utf8_lossy(&result.stderr)
+        )));
+    }
+    assert_eq!(
+        std::fs::canonicalize(&link)?,
+        std::fs::canonicalize(original)?
+    );
+    Ok(())
+}
 
 struct TempDir(PathBuf);
 
@@ -257,7 +290,7 @@ fn trace_cannot_replace_the_design_through_path_aliases() -> TestResult {
     )?;
     let dir = &fixture.dir.0;
     std::fs::create_dir(dir.join("sub"))?;
-    std::os::unix::fs::symlink(dir, dir.join("link"))?;
+    directory_symlink(dir, dir.join("link"))?;
     let absolute = dir.join("project.json");
     for alias in [
         "project.json",
@@ -445,7 +478,7 @@ fn trace_cannot_replace_a_file_set_member() -> TestResult {
         ],
     )?;
     let dir = &fixture.dir.0;
-    std::os::unix::fs::symlink(dir, dir.join("link"))?;
+    directory_symlink(dir, dir.join("link"))?;
     for alias in ["records-b.xml", "link/records-a.xml"] {
         let output = ferrule(
             dir,

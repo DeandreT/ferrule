@@ -43,13 +43,17 @@ impl ReadSet {
         if http_url(path).is_some() {
             return;
         }
-        self.paths.push(path.to_path_buf());
         if let Instance::DocumentSet(documents) = instance {
+            // The requested path is a discovery pattern, not a consumed file.
+            // Record the concrete members instead; a glob is not even a valid
+            // filesystem path on Windows.
             self.paths.extend(
                 documents
                     .iter()
                     .map(|member| PathBuf::from(member.source_path())),
             );
+        } else {
+            self.paths.push(path.to_path_buf());
         }
     }
 
@@ -99,5 +103,36 @@ impl ReadSet {
         }
         self.checked = self.paths.len();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ir::{DocumentMember, Value};
+
+    #[test]
+    fn document_sets_record_concrete_members_not_the_discovery_pattern() {
+        let mut reads = ReadSet::new(Path::new("design.mapping"));
+        let documents = Instance::DocumentSet(vec![
+            DocumentMember::new("records-a.xml", Instance::Scalar(Value::Null)).unwrap(),
+            DocumentMember::new("records-b.xml", Instance::Scalar(Value::Null)).unwrap(),
+        ]);
+        reads.push_source(Path::new("records-*.xml"), &documents);
+        reads.push_source(Path::new("empty-*.xml"), &Instance::DocumentSet(vec![]));
+        assert_eq!(
+            reads.paths(),
+            ["design.mapping", "records-a.xml", "records-b.xml"].map(Path::new)
+        );
+    }
+
+    #[test]
+    fn ordinary_sources_keep_their_requested_path() {
+        let mut reads = ReadSet::new(Path::new("design.mapping"));
+        reads.push_source(Path::new("input.json"), &Instance::Scalar(Value::Null));
+        assert_eq!(
+            reads.paths(),
+            ["design.mapping", "input.json"].map(Path::new)
+        );
     }
 }

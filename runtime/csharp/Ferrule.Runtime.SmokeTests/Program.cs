@@ -51,6 +51,7 @@ internal static partial class Program
             ("CSV empty records and dialect", CsvEmptyRecordsAndDialect),
             ("CSV shapes and failure order", CsvShapeAndFailureOrder),
             ("CSV actual UTF-8 byte limit", CsvActualUtf8Limit),
+            ("Raw-delimited CRLF text", CsvRawDelimitedCrLf),
             ("X12 literal Unicode, syntax and envelope", X12LiteralUnicodeAndSyntax),
             ("X12 fixed literals and control ownership", X12FixedLiteralsAndControlOwnership),
             ("X12 envelope identity ownership", X12EnvelopeIdentityOwnership),
