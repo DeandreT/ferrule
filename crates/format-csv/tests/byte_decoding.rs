@@ -174,3 +174,29 @@ fn physical_and_decoded_byte_limits_are_distinct() {
         })
     ));
 }
+
+#[test]
+fn decoded_limit_admits_exact_size_and_refuses_one_more_byte() {
+    let mut bytes = b"Value\n".to_vec();
+    let mut remaining = MAX_CSV_INPUT_BYTES - bytes.len();
+    let mut lengths = Vec::new();
+    while remaining >= 256 {
+        bytes.extend_from_slice(&[0xff; 85]);
+        bytes.push(b'\n');
+        lengths.push(85);
+        remaining -= 256;
+    }
+    assert_eq!(remaining, 250);
+    bytes.extend_from_slice(&[0xff; 83]);
+    bytes.push(b'\n');
+    lengths.push(83);
+    let rows = read(&bytes).unwrap();
+    assert_eq!(rows.len(), lengths.len());
+    for (row, length) in rows.iter().zip(lengths) {
+        assert_eq!(row, &self::row(&"\u{fffd}".repeat(length))[0]);
+    }
+    bytes.push(b'x');
+    assert!(matches!(read(&bytes), Err(CsvReadError::Limit {
+        kind: CsvReadLimit::DecodedBytes, maximum: MAX_CSV_INPUT_BYTES, observed, ..
+    }) if observed == MAX_CSV_INPUT_BYTES + 1));
+}

@@ -69,5 +69,34 @@ internal static partial class Program
             FerruleCsvByteDecodingPolicy.StrictUtf8));
         Throws<ArgumentOutOfRangeException>(() => FerruleCsvInput.ParseBytesWithDecodingPolicy([], fields,
             (FerruleCsvByteDecodingPolicy)999));
+
+        var exact = new List<byte>(Encoding.UTF8.GetBytes("Value\n"));
+        var remaining = FerruleCsvInput.MaximumInputBytes - exact.Count;
+        var lengths = new List<int>();
+        while (remaining >= 256)
+        {
+            exact.AddRange(Enumerable.Repeat((byte)0xff, 85));
+            exact.Add(0x0a);
+            lengths.Add(85);
+            remaining -= 256;
+        }
+        Equal(250, remaining);
+        exact.AddRange(Enumerable.Repeat((byte)0xff, 83));
+        exact.Add(0x0a);
+        lengths.Add(83);
+        var exactRows = (FerruleRepeated)FerruleCsvInput.ParseBytesWithDecodingPolicy(exact.ToArray(), fields,
+            FerruleCsvByteDecodingPolicy.BomAwareNonFlushingReplacement);
+        Equal(lengths.Count, exactRows.Items.Count);
+        for (var i = 0; i < lengths.Count; i++)
+        {
+            var row = (FerruleGroup)exactRows.Items[i];
+            Equal(1, row.Fields.Count);
+            Equal("Value", row.Fields[0].Name);
+            Equal(new string('\ufffd', lengths[i]), ((FerruleScalar)row.Fields[0].Value).Value.StringValue);
+        }
+        exact.Add((byte)'x');
+        error = Refusal(FerruleCsvInputError.DecodedInputTooLarge, () => FerruleCsvInput.ParseBytesWithDecodingPolicy(
+            exact.ToArray(), fields, FerruleCsvByteDecodingPolicy.BomAwareNonFlushingReplacement));
+        Equal((long?)FerruleCsvInput.MaximumInputBytes + 1, error.Observed);
     }
 }
