@@ -36,6 +36,13 @@ parsing or publication policy. Missing nodes, non-string values, invalid
 parameter names and unsupported expressions have distinct typed errors.
 Unsupported expressions remain in the artifact rather than being replaced.
 
+`codegen_runtime::ExecutionContext::resolve_runtime_parameter` and C#
+`FerruleExecutionContext.ResolveRuntimeParameter` resolve host scalars before
+source acquisition. They share the existing scope-context coercion rules and
+typed missing/type errors. Explicit null stays null, and source fields cannot
+supply missing host parameters. Resolving a scalar does not itself validate a
+filename, select a document or perform I/O.
+
 ## Graph retention
 
 `DocumentProject::prune_unreachable_nodes` retains the primary filename node

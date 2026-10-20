@@ -93,6 +93,7 @@ internal static partial class Program
             ("mapping failures", MappingFailures),
             ("runtime execution context", RuntimeExecutionContext),
             ("runtime parameters", RuntimeParameters),
+            ("source-independent runtime parameters", SourceIndependentRuntimeParameters),
             ("source document path", SourceDocumentPath),
             ("JSON5 boundary literal corpus", Json5BoundaryCorpus),
             ("JSON5 boundary encoding and stage priority", Json5BoundaryEncodingAndPriority),

@@ -262,21 +262,7 @@ impl<'a> ScopeContext<'a> {
         name: &str,
         expected: crate::ScalarType,
     ) -> Result<Value, RuntimeError> {
-        let value = self
-            .execution
-            .and_then(|execution| execution.parameter(name))
-            .ok_or_else(|| RuntimeError::MissingRuntimeParameter {
-                node,
-                name: name.to_string(),
-            })?;
-        crate::value_map::coerce_input(value, expected).ok_or_else(|| {
-            RuntimeError::RuntimeParameterType {
-                node,
-                name: name.to_string(),
-                expected,
-                found: value.type_name(),
-            }
-        })
+        crate::runtime_value::resolve_runtime_parameter(self.execution, node, name, expected)
     }
 
     /// Uses a lazy default only when the host omitted this parameter. A

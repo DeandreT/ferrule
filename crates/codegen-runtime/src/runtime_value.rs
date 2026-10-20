@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 
-use crate::Value;
+use crate::{RuntimeError, Value};
 
 pub const MAX_RUNTIME_PARAMETERS: usize = 1_024;
 pub const MAX_RUNTIME_PARAMETER_NAME_BYTES: usize = 256;
@@ -156,6 +156,17 @@ impl<'a> ExecutionContext<'a> {
         self
     }
 
+    /// Resolve a named host scalar before any source instance is acquired.
+    /// Uses the same coercion and typed failures as a bound scope context.
+    pub fn resolve_runtime_parameter(
+        self,
+        node: u32,
+        name: &str,
+        expected: crate::ScalarType,
+    ) -> Result<Value, RuntimeError> {
+        resolve_runtime_parameter(Some(self), node, name, expected)
+    }
+
     pub(crate) fn value(self, value: RuntimeValue) -> Option<Value> {
         match value {
             RuntimeValue::MappingFilePath => Some(Value::String(
@@ -175,12 +186,95 @@ impl<'a> ExecutionContext<'a> {
     }
 }
 
+pub(crate) fn resolve_runtime_parameter(
+    execution: Option<ExecutionContext<'_>>,
+    node: u32,
+    name: &str,
+    expected: crate::ScalarType,
+) -> Result<Value, RuntimeError> {
+    let value = execution
+        .and_then(|execution| execution.parameter(name))
+        .ok_or_else(|| RuntimeError::MissingRuntimeParameter {
+            node,
+            name: name.to_string(),
+        })?;
+    crate::value_map::coerce_input(value, expected).ok_or_else(|| {
+        RuntimeError::RuntimeParameterType {
+            node,
+            name: name.to_string(),
+            expected,
+            found: value.type_name(),
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         GeneratedItems, Instance, RuntimeError, ScopeContext, field, group, repeated, scalar,
     };
+
+    #[test]
+    fn source_independent_parameters_preserve_scope_values_and_errors() {
+        let mut parameters = RuntimeParameters::new();
+        parameters
+            .insert("filename", Value::String(" ./input-*.csv ".into()))
+            .unwrap();
+        parameters.insert("number", Value::Int(42)).unwrap();
+        parameters.insert("null", Value::Null).unwrap();
+        parameters.insert("bad", Value::Float(f64::NAN)).unwrap();
+        let execution =
+            ExecutionContext::new(Path::new("mapping.ferrule")).with_parameters(&parameters);
+        let source = group([field(
+            "filename",
+            scalar(Value::String("not-the-parameter.csv".into())),
+        )]);
+        let scope = ScopeContext::with_execution_context(&source, &execution);
+        for (name, expected) in [
+            ("filename", Value::String(" ./input-*.csv ".into())),
+            ("number", Value::String("42".into())),
+            ("null", Value::Null),
+        ] {
+            assert_eq!(
+                execution.resolve_runtime_parameter(17, name, crate::ScalarType::String),
+                Ok(expected.clone())
+            );
+            assert_eq!(
+                scope.runtime_parameter(17, name, crate::ScalarType::String),
+                Ok(expected)
+            );
+        }
+        for name in ["missing", "bad"] {
+            let direct = execution.resolve_runtime_parameter(19, name, crate::ScalarType::String);
+            assert_eq!(
+                direct,
+                scope.runtime_parameter(19, name, crate::ScalarType::String)
+            );
+            assert!(direct.is_err());
+        }
+        assert_eq!(
+            execution.resolve_runtime_parameter(19, "missing", crate::ScalarType::String),
+            Err(RuntimeError::MissingRuntimeParameter {
+                node: 19,
+                name: "missing".into()
+            })
+        );
+        assert_eq!(
+            execution.resolve_runtime_parameter(19, "bad", crate::ScalarType::String),
+            Err(RuntimeError::RuntimeParameterType {
+                node: 19,
+                name: "bad".into(),
+                expected: crate::ScalarType::String,
+                found: "float"
+            })
+        );
+        let absent = ExecutionContext::new(Path::new("mapping.ferrule"));
+        assert_eq!(
+            absent.resolve_runtime_parameter(23, "filename", crate::ScalarType::String),
+            ScopeContext::new(&source).runtime_parameter(23, "filename", crate::ScalarType::String)
+        );
+    }
 
     fn assert_host_values(context: &ScopeContext<'_>) {
         assert_eq!(
