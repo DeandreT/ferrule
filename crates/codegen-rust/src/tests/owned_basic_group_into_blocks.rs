@@ -42,6 +42,9 @@ fn blocks_have_only_the_new_companion_and_original_structural_precedence() {
         emit_with_basic_owned_group_adjacent_by,
         emit_with_basic_owned_group_starting_with,
         emit_with_basic_owned_group_ending_with,
+        emit_with_basic_owned_failure_sources,
+        emit_with_basic_owned_path_hierarchy,
+        emit_with_basic_owned_adjacency_tree,
     ] {
         let Err(EmitError::InvalidProgram(error)) = old(&program, &blocks_options()) else {
             panic!("older profile admitted owned IntoBlocks");

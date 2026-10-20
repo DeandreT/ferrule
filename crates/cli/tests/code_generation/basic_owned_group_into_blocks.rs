@@ -327,7 +327,7 @@ fn basic_blocks445_refusals_and_every_earlier_profile_gate() -> TestResult<()> {
             products.rust.len(),
             products.csharp.len()
         ],
-        [10, 20, 10, 11, 11]
+        [13, 26, 13, 14, 14]
     );
     assert!(products.lowering.iter().all(
         |r| matches!(r, Err(error) if error.diagnostics() == std::slice::from_ref(&diagnostic))

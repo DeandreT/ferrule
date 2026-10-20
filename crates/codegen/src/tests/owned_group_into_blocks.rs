@@ -90,6 +90,12 @@ fn blocks_controls_preserve_ir_and_every_old_companion_refuses() {
                 validate_basic_owned_group_starting_with_emission,
                 validate_program_with_basic_owned_group_ending_with,
                 validate_basic_owned_group_ending_with_emission,
+                validate_program_with_basic_owned_failure_sources,
+                validate_basic_owned_failure_source_emission,
+                validate_program_with_basic_owned_path_hierarchy,
+                validate_basic_owned_path_hierarchy_emission,
+                validate_program_with_basic_owned_adjacency_tree,
+                validate_basic_owned_adjacency_tree_emission,
             ] {
                 assert_eq!(validate(&program), Err(expected.clone()));
             }
@@ -104,6 +110,9 @@ fn blocks_controls_preserve_ir_and_every_old_companion_refuses() {
                 lower_with_basic_owned_group_adjacent_by,
                 lower_with_basic_owned_group_starting_with,
                 lower_with_basic_owned_group_ending_with,
+                lower_with_basic_owned_failure_sources,
+                lower_with_basic_owned_path_hierarchy,
+                lower_with_basic_owned_adjacency_tree,
             ] {
                 assert_eq!(
                     old_lower(&p).unwrap_err().diagnostics(),
@@ -121,6 +130,9 @@ fn blocks_controls_preserve_ir_and_every_old_companion_refuses() {
                 legacy_named_input_admission_plan_with_basic_owned_group_adjacent_by,
                 legacy_named_input_admission_plan_with_basic_owned_group_starting_with,
                 legacy_named_input_admission_plan_with_basic_owned_group_ending_with,
+                legacy_named_input_admission_plan_with_basic_owned_failure_sources,
+                legacy_named_input_admission_plan_with_basic_owned_path_hierarchy,
+                legacy_named_input_admission_plan_with_basic_owned_adjacency_tree,
             ] {
                 assert_eq!(old_plan(&program).unwrap_err(), expected);
             }

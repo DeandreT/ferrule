@@ -61,9 +61,9 @@ pub use lower::{
     lower, lower_with_basic_owned_failure_sources, lower_with_basic_owned_filters,
     lower_with_basic_owned_group_adjacent_by, lower_with_basic_owned_group_by,
     lower_with_basic_owned_group_ending_with, lower_with_basic_owned_group_into_blocks,
-    lower_with_basic_owned_group_starting_with,
-    lower_with_basic_owned_row_failures, lower_with_basic_owned_sequence_item_at,
-    lower_with_basic_owned_sort, lower_with_basic_owned_windows,
+    lower_with_basic_owned_group_starting_with, lower_with_basic_owned_row_failures,
+    lower_with_basic_owned_sequence_item_at, lower_with_basic_owned_sort,
+    lower_with_basic_owned_windows,
 };
 pub use model::{
     AggregateFunction, AggregateValue, Binding, DelimitedTextField, DelimitedTextFieldError,

@@ -122,6 +122,9 @@ pub fn old_products<'a>(
             codegen::lower_with_basic_owned_group_adjacent_by(project),
             codegen::lower_with_basic_owned_group_starting_with(project),
             codegen::lower_with_basic_owned_group_ending_with(project),
+            codegen::lower_with_basic_owned_failure_sources(project),
+            codegen::lower_with_basic_owned_path_hierarchy(project),
+            codegen::lower_with_basic_owned_adjacency_tree(project),
         ],
         validators: vec![
             codegen::validate_program(p),
@@ -144,6 +147,12 @@ pub fn old_products<'a>(
             codegen::validate_basic_owned_group_starting_with_emission(p),
             codegen::validate_program_with_basic_owned_group_ending_with(p),
             codegen::validate_basic_owned_group_ending_with_emission(p),
+            codegen::validate_program_with_basic_owned_failure_sources(p),
+            codegen::validate_basic_owned_failure_source_emission(p),
+            codegen::validate_program_with_basic_owned_path_hierarchy(p),
+            codegen::validate_basic_owned_path_hierarchy_emission(p),
+            codegen::validate_program_with_basic_owned_adjacency_tree(p),
+            codegen::validate_basic_owned_adjacency_tree_emission(p),
         ],
         catalogues: vec![
             codegen::legacy_named_input_admission_plan(p),
@@ -156,6 +165,9 @@ pub fn old_products<'a>(
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_adjacent_by(p),
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(p),
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_ending_with(p),
+            codegen::legacy_named_input_admission_plan_with_basic_owned_failure_sources(p),
+            codegen::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy(p),
+            codegen::legacy_named_input_admission_plan_with_basic_owned_adjacency_tree(p),
         ],
         rust: vec![
             codegen_rust::emit(p, options),
@@ -169,6 +181,9 @@ pub fn old_products<'a>(
             codegen_rust::emit_with_basic_owned_group_adjacent_by(p, options),
             codegen_rust::emit_with_basic_owned_group_starting_with(p, options),
             codegen_rust::emit_with_basic_owned_group_ending_with(p, options),
+            codegen_rust::emit_with_basic_owned_failure_sources(p, options),
+            codegen_rust::emit_with_basic_owned_path_hierarchy(p, options),
+            codegen_rust::emit_with_basic_owned_adjacency_tree(p, options),
         ],
         csharp: vec![
             codegen_csharp::emit(p),
@@ -182,6 +197,9 @@ pub fn old_products<'a>(
             codegen_csharp::emit_with_basic_owned_group_adjacent_by(p),
             codegen_csharp::emit_with_basic_owned_group_starting_with(p),
             codegen_csharp::emit_with_basic_owned_group_ending_with(p),
+            codegen_csharp::emit_with_basic_owned_failure_sources(p),
+            codegen_csharp::emit_with_basic_owned_path_hierarchy(p),
+            codegen_csharp::emit_with_basic_owned_adjacency_tree(p),
         ],
     }
 }

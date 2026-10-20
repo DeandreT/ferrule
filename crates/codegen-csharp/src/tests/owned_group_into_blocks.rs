@@ -27,6 +27,9 @@ fn public_basic_group_into_blocks_445_keeps_old_profiles_and_structural_errors()
         crate::emit_with_basic_owned_group_adjacent_by,
         crate::emit_with_basic_owned_group_starting_with,
         crate::emit_with_basic_owned_group_ending_with,
+        crate::emit_with_basic_owned_failure_sources,
+        crate::emit_with_basic_owned_path_hierarchy,
+        crate::emit_with_basic_owned_adjacency_tree,
     ] {
         assert_eq!(
             old(&program),
