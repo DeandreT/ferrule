@@ -15,3 +15,10 @@ overloads and repeated calls, and check late parse failures, reached missing
 parameters, invalid UTF-8, bounds, and output that cannot be written without
 quoting. These fixtures establish a single-document CSV boundary; filenames,
 multiple-document loading and publication belong to their own host contracts.
+
+The explicit raw-delimited mode keeps the same input parser, increments Count,
+and writes Status `ok|`. It emits no header or BOM, preserves field text (including
+delimiters, quotes and embedded CRLF) verbatim, inserts one pipe between the four
+modeled fields and ends each record with CRLF. The final pipe is part of Status;
+it is not an additional modeled column. Header-only input yields zero bytes.
+Ordinary unquoted CSV still refuses field text that requires escaping.

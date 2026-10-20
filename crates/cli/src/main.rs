@@ -230,6 +230,9 @@ enum Command {
         /// Include complete single-document CSV input/output methods in Rust or C#.
         #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters"])]
         csv_document_adapters: bool,
+        /// Write unescaped target fields and CRLF records; target quoting must be disabled.
+        #[arg(long, requires = "csv_document_adapters")]
+        raw_delimited_crlf: bool,
     },
     /// Import an XSD file's root element as a SchemaNode, printed as JSON --
     /// a starting point for hand-authoring a project file's schema.
@@ -778,6 +781,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             csv_x12_target_envelope_profile,
             csv_json_adapters,
             csv_document_adapters,
+            raw_delimited_crlf,
         } => {
             if csv_json_adapters && matches!(language, CodegenLanguage::Rust) {
                 bail!("--csv-json-adapters requires --language csharp");
@@ -802,7 +806,13 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                 }
             };
             let outcome = if csv_document_adapters {
-                cli::generate_project_with_csv_document_adapters(&project, &out, target)?
+                if raw_delimited_crlf {
+                    cli::generate_project_with_raw_delimited_document_adapters(
+                        &project, &out, target,
+                    )?
+                } else {
+                    cli::generate_project_with_csv_document_adapters(&project, &out, target)?
+                }
             } else if csv_json_adapters {
                 cli::generate_project_with_csv_json_adapters(&project, &out, target)?
             } else if csv_x12_adapters {

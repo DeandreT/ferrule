@@ -545,6 +545,28 @@ mapping-runtime and CSV-writer exceptions.
 These APIs take document contents. Filename enumeration, acquisition,
 multi-document partitioning and publication require separate host contracts.
 
+### Explicit raw-delimited CRLF output
+
+Add `--raw-delimited-crlf` to `--csv-document-adapters` to write target fields
+without escaping and terminate every record with CRLF. The target must already
+disable quoting (`csv_quote_disabled: true`) and must not specify a quote
+character. The library entry point is
+`generate_project_with_raw_delimited_document_adapters`; direct emitter callers
+set `CsvDocumentBoundaryPolicy.target.raw_delimited_crlf` along with
+`quote_disabled`.
+
+The writer inserts one delimiter between modeled fields and preserves each
+formatted field's text, including embedded delimiters, quotes and line breaks.
+A trailing delimiter inside the final field remains field content. A single
+empty field or a zero-field row produces CRLF. Header and UTF-8 BOM settings
+remain explicit; zero rows with both disabled produce zero bytes. This text
+format need not round-trip as CSV. Ordinary CSV settings never select it.
+
+Input parsing and scalar formatting retain their existing policies. Complete
+row validation precedes output encoding, and the 64 MiB limit counts all UTF-8
+bytes, including separators, CRLF, headers and any BOM. Generated text and byte
+methods return the same complete document or the existing typed stage failure.
+
 ## Flat CSV Input to X12
 
 Select `--csv-x12-adapters` with `--language csharp` to generate flat CSV text

@@ -56,6 +56,21 @@ pub fn generate_project_with_csv_document_adapters(
     generate_project_impl(project_path, output_directory, target, Adapter::CsvDocument)
 }
 
+/// Generate CSV input with explicitly selected unescaped CRLF text output.
+/// The stored target must already disable quoting; source policy stays independent.
+pub fn generate_project_with_raw_delimited_document_adapters(
+    project_path: &Path,
+    output_directory: &Path,
+    target: GenerateTarget,
+) -> anyhow::Result<GenerateOutcome> {
+    generate_project_impl(
+        project_path,
+        output_directory,
+        target,
+        Adapter::RawDelimitedDocument,
+    )
+}
+
 /// Generate the ordinary mapping APIs plus explicitly selected singular JSON5
 /// text and byte companions. File suffixes and stored identities do not select it.
 pub fn generate_project_with_json5_adapters(
@@ -180,6 +195,7 @@ enum Adapter {
     Ordinary,
     Csv,
     CsvDocument,
+    RawDelimitedDocument,
     Json5,
     X12(
         Option<codegen::X12EnvelopeProfile>,
@@ -200,7 +216,10 @@ fn generate_project_impl(
     adapter: Adapter,
 ) -> anyhow::Result<GenerateOutcome> {
     let project = load_project(project_path)?;
-    let csv_document_policy = if adapter == Adapter::CsvDocument {
+    let csv_document_policy = if matches!(
+        adapter,
+        Adapter::CsvDocument | Adapter::RawDelimitedDocument
+    ) {
         for (label, path, options) in [
             (
                 "source",
@@ -223,7 +242,9 @@ fn generate_project_impl(
                 bail!("generated CSV document {label} requires an explicit CSV format identity");
             }
         }
-        Some(codegen::CsvDocumentBoundaryPolicy::from_project(&project)?)
+        let mut policy = codegen::CsvDocumentBoundaryPolicy::from_project(&project)?;
+        policy.target.raw_delimited_crlf = adapter == Adapter::RawDelimitedDocument;
+        Some(policy)
     } else {
         None
     };

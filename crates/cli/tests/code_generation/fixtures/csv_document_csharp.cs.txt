@@ -32,13 +32,14 @@ else
 InputError(() => GeneratedMapping.ExecuteCsvDocumentBytes([0xff]), FerruleCsvInputError.Encoding);
 InputError(() => GeneratedMapping.ExecuteCsvDocument("Key,Text,Count,Fail\na,x,1,true\nb,y,bad,false\n"), FerruleCsvInputError.Parse, 1);
 InputError(() => GeneratedMapping.ExecuteCsvDocumentBytes(new byte[8 * 1024 * 1024 + 1]), FerruleCsvInputError.InputTooLarge);
-if (mode == "rows")
+if (mode is "rows" or "raw")
 {
     const string input = "Key,Text,Count,Fail\na,x,1,false\nb,y,2,true\n";
     try { GeneratedMapping.ExecuteCsvDocument(input); throw new Exception("missing parameter accepted"); }
     catch (FerruleRuntimeException e) { Require(e.Error == FerruleRuntimeError.MissingRuntimeParameter); }
     var parameters = new FerruleRuntimeParameters(new Dictionary<string, FerruleValue> { ["Required"] = FerruleValue.FromString("supplied") });
     context = FerruleExecutionContext.WithParameters("authored.mapping", parameters);
-    Require(GeneratedMapping.ExecuteCsvDocument(input, context) == "\uFEFFKey|Text|Count|Status\na|x|2|ok\nb|y|3|supplied\n");
+    var expected = mode == "raw" ? "a|x|2|ok|\r\nb|y|3|supplied\r\n" : "\uFEFFKey|Text|Count|Status\na|x|2|ok\nb|y|3|supplied\n";
+    Require(GeneratedMapping.ExecuteCsvDocument(input, context) == expected);
 }
 Console.WriteLine("complete CSV documents passed");

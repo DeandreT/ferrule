@@ -7,7 +7,7 @@ namespace Ferrule.Runtime;
 /// <summary>One ordered scalar column in a statically selected flat CSV boundary.</summary>
 public sealed record FerruleCsvField(string Name, FerruleScalarType Type);
 
-/// <summary>Static CSV output policy. Records use LF and quotes are doubled.</summary>
+/// <summary>Static CSV output policy, with an explicit unescaped CRLF text mode.</summary>
 public sealed record FerruleCsvWriteOptions
 {
     public char? Delimiter { get; init; }
@@ -15,6 +15,8 @@ public sealed record FerruleCsvWriteOptions
     public bool QuoteDisabled { get; init; }
     public bool HasHeaders { get; init; } = true;
     public bool Utf8Bom { get; init; }
+    /// <summary>Preserve field text verbatim and append CRLF; requires disabled quoting.</summary>
+    public bool RawDelimitedCrLf { get; init; }
 }
 
 /// <summary>Typed failures for the bounded flat CSV output boundary.</summary>
@@ -35,6 +37,7 @@ public enum FerruleCsvError
     UnquotedHeaderBoundary,
     UnquotedSingleEmptyRow,
     OutputTooLarge,
+    RawDelimitedRequiresDisabledQuotes,
 }
 
 /// <summary>A CSV failure with zero-based row and exact field identity when applicable.</summary>
@@ -123,7 +126,8 @@ public static class FerruleCsv
         // Keep only the earliest no-quote refusal while validating every row,
         // then format one row at a time again during encoding.
         FerruleCsvException? unquotedFailure = null;
-        if (options.QuoteDisabled)
+        var strictUnquoted = options.QuoteDisabled && !options.RawDelimitedCrLf;
+        if (strictUnquoted)
         {
             foreach (var field in orderedFields)
             {
@@ -140,7 +144,7 @@ public static class FerruleCsv
         for (var row = 0; row < rows.Items.Count; row++)
         {
             var record = FormatRow(row, rows.Items[row], orderedFields);
-            if (options.QuoteDisabled && unquotedFailure is null)
+            if (strictUnquoted && unquotedFailure is null)
             {
                 if (record.Length == 1 && record[0].Length == 0)
                 {
@@ -178,12 +182,12 @@ public static class FerruleCsv
             if (options.HasHeaders)
             {
                 WriteRecord(sink, orderedFields.Select(field => field.Name).ToArray(),
-                    delimiter, quote, options.QuoteDisabled);
+                    delimiter, quote, options.QuoteDisabled, options.RawDelimitedCrLf);
             }
             for (var row = 0; row < rows.Items.Count; row++)
             {
                 var record = FormatRow(row, rows.Items[row], orderedFields);
-                WriteRecord(sink, record, delimiter, quote, options.QuoteDisabled);
+                WriteRecord(sink, record, delimiter, quote, options.QuoteDisabled, options.RawDelimitedCrLf);
             }
             return sink;
         }
@@ -248,6 +252,12 @@ public static class FerruleCsv
             throw new FerruleCsvException(
                 FerruleCsvError.DelimiterQuoteConflict,
                 "CSV delimiter and quote must be different characters.");
+        }
+        if (options.RawDelimitedCrLf)
+        {
+            throw new FerruleCsvException(
+                FerruleCsvError.RawDelimitedRequiresDisabledQuotes,
+                "Raw-delimited CRLF output requires disabled quoting.");
         }
         return ((byte)delimiter, (byte)quote);
     }
@@ -442,8 +452,20 @@ public static class FerruleCsv
         IReadOnlyList<string> record,
         byte delimiter,
         byte quote,
-        bool quoteDisabled)
+        bool quoteDisabled,
+        bool rawDelimitedCrLf)
     {
+        if (rawDelimitedCrLf)
+        {
+            for (var column = 0; column < record.Count; column++)
+            {
+                if (column > 0) sink.WriteByte(delimiter);
+                sink.WriteText(record[column]);
+            }
+            sink.WriteByte((byte)'\r');
+            sink.WriteByte((byte)'\n');
+            return;
+        }
         // The native writer emits an explicit empty record even with zero
         // columns or one empty header, including when quoting is disabled.
         if (record.Count == 0 || record.Count == 1 && record[0].Length == 0)
