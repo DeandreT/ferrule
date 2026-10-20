@@ -48,26 +48,35 @@ pub(super) fn render_basic_group_by_scope(
     children: &[String],
 ) -> String {
     let iteration = scope.iteration.as_ref().expect("paired grouped iteration");
-    let (group_expression, operation, controls, starting) = match iteration.grouping() {
+    // A Boolean boundary control names its callback; keyed controls have none.
+    let (group_expression, operation, controls, boundary) = match iteration.grouping() {
         Some(GroupingPlan::By { key }) => (
             key,
             "map_group_by_source_cohort",
             "BasicGroupByControls",
-            false,
+            None,
         ),
         Some(GroupingPlan::AdjacentBy { key }) => (
             key,
             "map_group_adjacent_by_source_cohort",
             "BasicGroupByControls",
-            false,
+            None,
         ),
         Some(GroupingPlan::StartingWith { predicate }) => (
             predicate,
             "map_group_starting_with_source_cohort",
             "BasicGroupStartingWithControls",
-            true,
+            Some("starts_group"),
         ),
-        _ => unreachable!("the explicit paired profile admits By/AdjacentBy/StartingWith only"),
+        Some(GroupingPlan::EndingWith { predicate }) => (
+            predicate,
+            "map_group_ending_with_source_cohort",
+            "BasicGroupEndingWithControls",
+            Some("ends_group"),
+        ),
+        _ => unreachable!(
+            "the explicit paired profile admits By/AdjacentBy/StartingWith/EndingWith only"
+        ),
     };
     let keys = iteration
         .sort()
@@ -152,8 +161,8 @@ pub(super) fn render_basic_group_by_scope(
         );
     }
     source.push_str("        }\n");
-    if starting {
-        source.push_str(&format!("        fn starts_group(&mut self, boundary_context: &BasicScopeContext<'_>) -> Result<bool, RuntimeError> {{\n            let value = expression_{group_expression}(boundary_context)?;\n            require_bool({group_expression}, value)\n        }}\n"));
+    if let Some(boundary) = boundary {
+        source.push_str(&format!("        fn {boundary}(&mut self, boundary_context: &BasicScopeContext<'_>) -> Result<bool, RuntimeError> {{\n            let value = expression_{group_expression}(boundary_context)?;\n            require_bool({group_expression}, value)\n        }}\n"));
     } else {
         source.push_str(&format!("        fn group_key(&mut self, group_key_context: &BasicScopeContext<'_>) -> Result<Value, RuntimeError> {{\n            expression_{group_expression}(group_key_context)\n        }}\n"));
     }
