@@ -222,6 +222,15 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_recursive_filter(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plans the explicit owned search profile. Owned walks stay demand-driven;
+/// legacy paths and aliases keep their requirements and ordinals.
+pub fn legacy_named_input_admission_plan_with_basic_owned_lookup_find(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_lookup_find(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     admission_plan_with_primary_row_failures(program, false)
 }
@@ -642,6 +651,13 @@ impl<'a> Analysis<'a> {
             };
             match expression {
                 Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => {}
+                // The owned walk is demand-driven; the needle stays in the parent.
+                Expression::OwnedLookup(lookup) => self.queue(namespace, context, lookup.matches),
+                Expression::OwnedCollectionFind(find) => {
+                    let item = self.child(context, Step::OwnedSource(find.collection.clone()));
+                    self.queue(namespace, item, find.predicate);
+                    self.queue(namespace, item, find.value);
+                }
                 Expression::SourceField { path, frame }
                 | Expression::DynamicSourceField {
                     object: path,

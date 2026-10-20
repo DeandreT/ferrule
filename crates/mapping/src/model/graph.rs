@@ -176,6 +176,28 @@ pub struct OwnedPosition {
     pub collection: Option<Vec<String>>,
 }
 
+/// Searches one explicitly owned collection for the first item whose
+/// item-relative `key` equals `matches`. The needle is evaluated once in the
+/// parent context; key and value read only the selected owner's item.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OwnedLookup {
+    pub collection: OwnedSourceRef,
+    pub key: Vec<String>,
+    pub matches: NodeId,
+    pub value: Vec<String>,
+}
+
+/// Scans one explicitly owned collection in source order. `predicate` and
+/// `value` evaluate in each selected owner item's context.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OwnedCollectionFind {
+    pub collection: OwnedSourceRef,
+    pub predicate: NodeId,
+    pub value: NodeId,
+}
+
 /// A single node in the mapping graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -184,6 +206,10 @@ pub enum Node {
     OwnedSourceField(OwnedSourceField),
     /// Preserves explicit frame selection without opening position capability.
     OwnedPosition(OwnedPosition),
+    /// First-match lookup over exactly one owned endpoint collection.
+    OwnedLookup(OwnedLookup),
+    /// First-match predicate search over exactly one owned endpoint collection.
+    OwnedCollectionFind(OwnedCollectionFind),
     /// Reads a scalar field at `path`, resolved against the innermost
     /// currently-iterating source item, falling back to enclosing items
     /// (nearest enclosing wins) if not found there. That fallback is what
@@ -439,8 +465,9 @@ pub enum Node {
 }
 
 impl Node {
-    /// Stable wire kind for the ownership forms which remain capability-closed.
-    /// A generated-sequence consumer reports its explicitly owned producer.
+    /// Stable wire kind for the explicitly owned node forms, each of which
+    /// stays capability-closed outside its admitted contexts. A generated-
+    /// sequence consumer reports its explicitly owned producer.
     pub fn owned_source_kind(&self) -> Option<&'static str> {
         match self {
             Self::OwnedSourceField(_) => Some("owned_source_field"),
@@ -452,6 +479,8 @@ impl Node {
             {
                 Some(sequence.kind_name())
             }
+            Self::OwnedLookup(_) => Some("owned_lookup"),
+            Self::OwnedCollectionFind(_) => Some("owned_collection_find"),
             _ => None,
         }
     }
@@ -485,6 +514,8 @@ impl Node {
             } => vec![*condition, *then, *else_],
             Self::ValueMap { input, .. } => vec![*input],
             Self::Lookup { matches, .. } => vec![*matches],
+            Self::OwnedLookup(lookup) => vec![lookup.matches],
+            Self::OwnedCollectionFind(find) => vec![find.predicate, find.value],
             Self::DynamicSourceField { key, .. } => vec![*key],
             Self::XmlMixedContent { replacements, .. } => replacements
                 .iter()

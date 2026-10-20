@@ -267,3 +267,47 @@ fn owned_recursive_filters_refuse_before_writing_in_every_profile() {
     }
     assert!(!path.exists());
 }
+
+#[test]
+fn owned_lookup_and_find_refuse_before_writing_anything() {
+    let collection = mapping::OwnedSourceRef {
+        owner: SourceOwner::Named {
+            name: "Rates".into(),
+        },
+        path: vec!["Rate".into()],
+    };
+    for (node, kind) in [
+        (
+            Node::OwnedLookup(mapping::OwnedLookup {
+                collection: collection.clone(),
+                key: vec!["Code".into()],
+                matches: 1,
+                value: vec!["Value".into()],
+            }),
+            "owned_lookup",
+        ),
+        (
+            Node::OwnedCollectionFind(mapping::OwnedCollectionFind {
+                collection: collection.clone(),
+                predicate: 1,
+                value: 1,
+            }),
+            "owned_collection_find",
+        ),
+    ] {
+        let mut project = project();
+        project.graph.nodes.insert(9, node);
+        let path = Path::new("nonexistent-owned-export-parent/output.mfd");
+        for error in [
+            preflight_export(&project, path).unwrap_err(),
+            export(&project, path).unwrap_err(),
+            export_with_profile(&project, path, ExportProfile::NativeMfd).unwrap_err(),
+        ] {
+            assert!(
+                matches!(error, MfdError::UnsupportedSourceOwnership { node: 9, function: None, kind: found } if found == kind),
+                "{error:?}"
+            );
+        }
+        assert!(!path.exists());
+    }
+}

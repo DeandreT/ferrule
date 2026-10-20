@@ -28,6 +28,7 @@ mod owned_admission;
 mod owned_failure_sources;
 mod owned_group_adjacent_by;
 mod owned_group_by;
+mod owned_lookup_find;
 mod owned_path_hierarchy;
 mod owned_recursive_collect;
 mod owned_recursive_filter;

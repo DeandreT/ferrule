@@ -100,7 +100,10 @@ fn validate_definition(
                 }
             }
             // Defer only the new representations to typed ownership checks.
-            Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => {}
+            Expression::OwnedSourceField(_)
+            | Expression::OwnedPosition(_)
+            | Expression::OwnedLookup(_)
+            | Expression::OwnedCollectionFind(_) => {}
             Expression::Const { .. }
             | Expression::RuntimeValue { .. }
             | Expression::RuntimeParameter { .. }

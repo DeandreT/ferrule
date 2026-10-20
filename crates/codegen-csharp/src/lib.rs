@@ -281,6 +281,15 @@ pub fn emit_with_basic_owned_recursive_filter(program: &Program) -> Result<Artif
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emit owned-recursive-filter-profile targets with explicitly owned Lookup and
+/// CollectionFind over one exact endpoint. Older emitters keep refusing them.
+pub fn emit_with_basic_owned_lookup_find(program: &Program) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_lookup_find(program)?;
+    codegen::validate_basic_owned_lookup_find_emission(program)?;
+    let generated_mapping = owned_basic::render_public_basic_owned_lookup_find_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,
@@ -384,6 +393,8 @@ mod tests {
     mod owned_basic;
     #[path = "owned_failure_sources.rs"]
     mod owned_failure_sources;
+    #[path = "owned_lookup_find.rs"]
+    mod owned_lookup_find;
     #[path = "owned_path_hierarchy.rs"]
     mod owned_path_hierarchy;
     #[path = "owned_recursive_collect.rs"]

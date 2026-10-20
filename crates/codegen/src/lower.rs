@@ -136,6 +136,16 @@ pub fn lower_with_basic_owned_recursive_filter(project: &Project) -> Result<Prog
     )
 }
 
+/// Lowers explicitly owned Lookup and CollectionFind with the owned
+/// recursive-filter chain and owned IntoBlocks grouping. Every older companion
+/// keeps refusing owned search.
+pub fn lower_with_basic_owned_lookup_find(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_lookup_find,
+    )
+}
+
 /// Lowers the explicit Basic scalar-producer SequenceItemAt profile, composing
 /// qualified By controls and primary-row failures without changing their gates.
 pub fn lower_with_basic_owned_sequence_item_at(project: &Project) -> Result<Program, LowerError> {
@@ -1240,6 +1250,8 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
     let expression = match node {
         Node::OwnedSourceField(field) => Expression::OwnedSourceField(field.clone()),
         Node::OwnedPosition(position) => Expression::OwnedPosition(position.clone()),
+        Node::OwnedLookup(lookup) => Expression::OwnedLookup(lookup.clone()),
+        Node::OwnedCollectionFind(find) => Expression::OwnedCollectionFind(find.clone()),
         Node::SourceField { path, frame } => Expression::SourceField {
             frame: frame.clone(),
             path: path.clone(),

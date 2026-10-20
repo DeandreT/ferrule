@@ -103,7 +103,10 @@ pub(in crate::export) fn selector_context_warnings(
             let mut owned_anchor = anchor.to_vec();
             let mut private_xml = false;
             match node {
-                Node::OwnedSourceField(_) | Node::OwnedPosition(_) => {
+                Node::OwnedSourceField(_)
+                | Node::OwnedPosition(_)
+                | Node::OwnedLookup(_)
+                | Node::OwnedCollectionFind(_) => {
                     self.warnings
                         .insert(format!("owned source node {id} has no export capability"));
                 }

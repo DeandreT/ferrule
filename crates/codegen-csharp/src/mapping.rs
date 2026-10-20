@@ -1837,7 +1837,18 @@ fn render_expression(
         "    private static global::Ferrule.Runtime.FerruleValue {method}(\n        {context_type} context)",
     ));
     match expression {
-        Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => {
+        Expression::OwnedLookup(_) | Expression::OwnedCollectionFind(_)
+            if matches!(
+                mode,
+                ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes
+            ) =>
+        {
+            return crate::owned_basic::render_owned_search(node, expression, output);
+        }
+        Expression::OwnedSourceField(_)
+        | Expression::OwnedPosition(_)
+        | Expression::OwnedLookup(_)
+        | Expression::OwnedCollectionFind(_) => {
             if matches!(
                 mode,
                 ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes

@@ -34,6 +34,8 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
         Expression::Raise { message } => message.iter().copied().collect(),
         Expression::ValueMap { input, .. } => vec![*input],
         Expression::Lookup { matches, .. } => vec![*matches],
+        Expression::OwnedLookup(lookup) => vec![lookup.matches],
+        Expression::OwnedCollectionFind(find) => vec![find.predicate, find.value],
         Expression::CollectionFind {
             predicate, value, ..
         } => vec![*predicate, *value],

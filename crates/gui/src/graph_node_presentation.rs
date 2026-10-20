@@ -102,6 +102,18 @@ pub(super) fn owned_source_title(node: &Node) -> Option<String> {
             owner(&position.owner),
             frame(position.collection.as_deref()),
         )),
+        Node::OwnedLookup(lookup) => Some(format!(
+            "Owned lookup: {}\nCollection: {:?}\nKey: {:?}\nValue: {:?}\nRead-only; owned lookup authoring is unavailable",
+            owner(&lookup.collection.owner),
+            lookup.collection.path,
+            lookup.key,
+            lookup.value,
+        )),
+        Node::OwnedCollectionFind(find) => Some(format!(
+            "Owned find: {}\nCollection: {:?}\nRead-only; owned find authoring is unavailable",
+            owner(&find.collection.owner),
+            find.collection.path,
+        )),
         _ => None,
     }
 }

@@ -297,7 +297,10 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
             continue;
         }
         match node {
-            Node::OwnedSourceField(_) | Node::OwnedPosition(_) => {
+            Node::OwnedSourceField(_)
+            | Node::OwnedPosition(_)
+            | Node::OwnedLookup(_)
+            | Node::OwnedCollectionFind(_) => {
                 return Err(MfdError::UnsupportedSourceOwnership {
                     node: id,
                     function: None,

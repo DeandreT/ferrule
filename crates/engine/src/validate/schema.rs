@@ -685,6 +685,55 @@ pub(super) fn owned_source_root<'a>(
     Some(root)
 }
 
+/// An owned lookup key or value names one scalar inside each selected item.
+/// It never crosses a repetition below the item, so the owned read cannot
+/// meet an uniterated collection at run time.
+pub(super) fn validate_owned_item_scalar(
+    project: &Project,
+    collection: &mapping::OwnedSourceRef,
+    path: &[String],
+    label: &str,
+    location: &str,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let Some(root) = owned_source_root(project, &collection.owner, location, &mut Vec::new())
+    else {
+        return;
+    };
+    let Some(mut current) = follow_schema(root, &collection.path) else {
+        return;
+    };
+    let mut valid = true;
+    for segment in path {
+        if let Some(anchor) = &current.recursive_ref {
+            match find_concrete_schema_group(root, anchor) {
+                Some(group) => current = group,
+                None => {
+                    valid = false;
+                    break;
+                }
+            }
+        }
+        match current.child(segment) {
+            Some(child) if !child.repeating => current = child,
+            _ => {
+                valid = false;
+                break;
+            }
+        }
+    }
+    if !valid || !current.is_scalar() {
+        issues.push(ValidationIssue::new(
+            location,
+            format!(
+                "owned lookup {label} `{}` is not a nonrepeating scalar under owned collection `{}`",
+                path.join("/"),
+                collection.path.join("/")
+            ),
+        ));
+    }
+}
+
 pub(super) fn validate_owned_collection(
     project: &Project,
     source: &mapping::OwnedSourceRef,
