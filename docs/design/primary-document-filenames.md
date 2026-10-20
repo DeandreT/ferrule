@@ -82,3 +82,20 @@ These companions expose filename evaluation, not document execution. Ordinary
 instance mapping remains a separate, explicitly pre-acquired-input operation.
 Neither the companions nor the ordinary instance entry points perform source
 acquisition or claim filesystem, wildcard, parser or publication support.
+
+## Importing connected CSV filename metadata
+
+`mfd::import_csv_document` and `import_csv_document_with_options` return an
+`ImportedDocument` containing a `DocumentProject`, the ordinary import warnings
+and the mapping path. They retain the connected primary CSV `FileInstance`
+input expression before pruning its graph dependencies. The selected source's
+data ports identify the owning declaration; a component label or declaration
+order alone is insufficient. Ambiguous feeds, missing connections and unsupported
+wrapper controls are refused.
+
+This is a repair-oriented metadata import, not an executable profile. All
+ordinary warnings, including unsupported input/output filename behavior, remain.
+A retained source-dependent expression still fails the filename classifier and
+document lowering. The APIs neither read saved preview instances nor replace
+the connected expression with a saved path. Ordinary import, pipeline import
+and `ImportProfile::Executable` keep their existing behavior.
