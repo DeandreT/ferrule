@@ -336,6 +336,27 @@ shape. A start boundary consumes no grouping-key text credits. The
 [Starting contract](design/owned-group-starting-with.md) defines the full callback,
 authenticated-member, resource and qualification requirements.
 
+## Explicit owned ending-boundary grouping
+
+Use `codegen::lower_with_basic_owned_group_ending_with`, then
+`codegen_rust::emit_with_basic_owned_group_ending_with(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_group_ending_with(&program)`. The matching
+validation and named-input companions select the same explicit profile, which
+also admits By, AdjacentBy and StartingWith. Existing execution entry names,
+five-field policy and earlier profile gates, including Starting's, remain intact.
+
+A true boundary closes the current group at that candidate; candidates after
+the last true boundary form a trailing group, and an empty cohort forms none.
+Every selected candidate's boundary is evaluated, including the last. Boundary
+evaluation precedes member retention; both use candidate positions. Windows
+evaluate their bounds in the parent before boundaries and select retained groups
+afterward. Only selected groups evaluate bindings and children.
+
+The runtimes use Boolean end controls with the unchanged grouping metadata
+shape. An end boundary consumes no grouping-key text credits. The
+[Ending contract](design/owned-group-ending-with.md) defines the full callback,
+authenticated-member, resource and qualification requirements.
+
 ## C#
 
 ### Build and test environment
