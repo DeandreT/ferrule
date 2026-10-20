@@ -579,6 +579,36 @@ emitters. The
 [owned recursive filter contract](design/owned-recursive-filter.md) defines the
 wire form, frames, limits and qualification.
 
+## Explicit owned Lookup and CollectionFind
+
+Use `codegen::lower_with_basic_owned_lookup_find`, then
+`codegen_rust::emit_with_basic_owned_lookup_find(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_lookup_find(&program)`. Direct Program
+hosts use `validate_program_with_basic_owned_lookup_find` and
+`validate_basic_owned_lookup_find_emission`; named-input discovery uses
+`legacy_named_input_admission_plan_with_basic_owned_lookup_find`.
+
+The profile composes the owned recursive-filter profile (and through it the
+owned recursive-collect, adjacency-tree, path-hierarchy, failure-source and
+EndingWith profiles) and owned IntoBlocks grouping with `owned_lookup` and
+`owned_collection_find` expressions. Each walks one
+collection of exactly its
+declared Primary or named endpoint, anchored by the latest active frame of that
+owner; another endpoint never supplies items. A lookup needle executes once in
+the parent before the walk, keys and values are owned reads of the selected
+item, Null-like keys never match, and a miss is `Null`. A find predicate and
+value run in each item's context in source order; Null-like predicates skip an
+item and other non-Booleans fail at the predicate. Owned searches keep their
+endpoint optional in the named-input catalogue.
+
+Earlier profiles, including the path-hierarchy, adjacency-tree, IntoBlocks,
+recursive-collect, SequenceExists and recursive-filter companions, refuse
+owned search
+with `AggregateLookup`, and owned
+aggregates, joins and legacy Lookup or CollectionFind stay closed. The
+[owned search contract](design/owned-lookup-find.md) defines the wire form,
+selection rules and qualification.
+
 ## C#
 
 ### Build and test environment
