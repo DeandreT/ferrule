@@ -7,7 +7,9 @@ pub(in crate::import) struct RawParseDateOwnership {
     pub(in crate::import) source: u32,
     pub(in crate::import) picture: u32,
     pub(in crate::import) picture_value: String,
-    pub(in crate::import) primary_outputs: BTreeSet<u32>,
+    /// Every output of the value owner, present only when that owner is an
+    /// ordinary JSON source whose outputs are all uniquely owned.
+    pub(in crate::import) primary_outputs: Option<BTreeSet<u32>>,
 }
 
 pub(super) fn pins_valid(
@@ -101,6 +103,25 @@ fn input_key(node: roxmltree::Node<'_, '_>) -> Option<u32> {
     })
 }
 
+/// One saved edge into `input` in either the legacy `connections` or the
+/// `graph` vertex vocabulary. A recognized edge without a parsable source
+/// still counts, so it cannot be hidden from the census.
+fn edge_into(node: roxmltree::Node<'_, '_>, input: u32) -> Option<Option<u32>> {
+    if !node.has_tag_name("edge") {
+        return None;
+    }
+    if parse_u32(node.attribute("to")) == Some(input) {
+        return Some(parse_u32(node.attribute("from")));
+    }
+    (parse_u32(node.attribute("vertexkey")) == Some(input)).then(|| {
+        node.parent()
+            .filter(|edges| edges.has_tag_name("edges"))
+            .and_then(|edges| edges.parent())
+            .filter(|vertex| vertex.has_tag_name("vertex"))
+            .and_then(|vertex| parse_u32(vertex.attribute("vertexkey")))
+    })
+}
+
 pub(super) fn ownership(component: &roxmltree::Node<'_, '_>) -> Option<RawParseDateOwnership> {
     let structure = component
         .ancestors()
@@ -126,14 +147,12 @@ pub(super) fn ownership(component: &roxmltree::Node<'_, '_>) -> Option<RawParseD
         }
         let edges = nodes
             .iter()
-            .filter(|node| {
-                node.has_tag_name("edge") && parse_u32(node.attribute("to")) == Some(input)
-            })
+            .filter_map(|node| edge_into(*node, input))
             .collect::<Vec<_>>();
         let [edge] = edges.as_slice() else {
             return None;
         };
-        parse_u32(edge.attribute("from"))
+        *edge
     };
     let source = connected(inputs[0])?;
     let picture = connected(inputs[1])?;
@@ -153,23 +172,18 @@ pub(super) fn ownership(component: &roxmltree::Node<'_, '_>) -> Option<RawParseD
     };
     let source_owner = owner(source)?;
     let picture_owner = owner(picture)?;
-    if owner(output)? != *component
-        || !ordinary_json_owner(source_owner)
-        || !literal_string_owner(picture_owner)
-    {
+    if owner(output)? != *component || !literal_string_owner(picture_owner) {
         return None;
     }
-    let primary_outputs = source_owner
-        .descendants()
-        .filter(|node| node.has_tag_name("entry"))
-        .filter_map(|entry| parse_u32(entry.attribute("outkey")))
-        .collect::<BTreeSet<_>>();
-    if primary_outputs
-        .iter()
-        .any(|key| owner(*key) != Some(source_owner))
-    {
-        return None;
-    }
+    let primary_outputs = ordinary_json_owner(source_owner)
+        .then(|| {
+            source_owner
+                .descendants()
+                .filter(|node| node.has_tag_name("entry"))
+                .filter_map(|entry| parse_u32(entry.attribute("outkey")))
+                .collect::<BTreeSet<_>>()
+        })
+        .filter(|outputs| outputs.iter().all(|key| owner(*key) == Some(source_owner)));
     let picture_value = picture_owner
         .descendants()
         .find(|node| node.has_tag_name("constant"))?
@@ -299,7 +313,7 @@ mod tests {
             assert_eq!(raw.inputs, [111, 112]);
             assert_eq!((raw.output, raw.source, raw.picture), (102, 11, 101));
             assert_eq!(raw.picture_value, "[Y]-[M]-[D]");
-            assert_eq!(raw.primary_outputs, BTreeSet::from([10, 11, 12]));
+            assert_eq!(raw.primary_outputs, Some(BTreeSet::from([10, 11, 12])));
         });
         let fragment = r#"<component name="parse-date" library="core" kind="5"><sources><datapoint pos="0" key="1"/><datapoint pos="1" key="2"/></sources><targets><datapoint key="3"/></targets></component>"#;
         for text in [
@@ -347,7 +361,9 @@ mod tests {
                 let text = FIXTURE.replace("</children>", &format!("{shadow}</children>"));
                 with_component(&text, |component| {
                     assert!(
-                        component.parse_date_ownership.is_none(),
+                        component
+                            .parse_date_ownership
+                            .is_none_or(|raw| raw.primary_outputs.is_none()),
                         "key {key}: {shadow}"
                     )
                 });
@@ -370,6 +386,66 @@ mod tests {
             FIXTURE.replace("<json schema=", "<json jsonlines=\"1\" schema="),
             FIXTURE.replace("</data></component>", "<unknown/></data></component>"),
         ] {
+            with_component(&text, |component| {
+                assert!(
+                    component
+                        .parse_date_ownership
+                        .is_none_or(|raw| raw.primary_outputs.is_none()),
+                    "{text}"
+                )
+            });
+        }
+    }
+
+    fn vertices(edges: &[(u32, u32)]) -> String {
+        let vertices = edges
+            .iter()
+            .map(|(from, to)| {
+                format!(
+                    r#"<vertex vertexkey="{from}"><edges><edge vertexkey="{to}"/></edges></vertex>"#
+                )
+            })
+            .collect::<String>();
+        format!("<graph><vertices>{vertices}</vertices></graph>")
+    }
+
+    #[test]
+    fn parse_date_ownership_reads_graph_vertices_and_counts_both_vocabularies() {
+        let legacy = FIXTURE
+            .split_once("<connections>")
+            .and_then(|(_, rest)| rest.split_once("</connections>"))
+            .unwrap()
+            .0;
+        let edges = [
+            (10, 40),
+            (11, 111),
+            (101, 112),
+            (12, 121),
+            (101, 122),
+            (102, 51),
+            (103, 61),
+        ];
+        let modern = FIXTURE.replace(
+            &format!("<connections>{legacy}</connections>"),
+            &vertices(&edges),
+        );
+        with_component(&modern, |component| {
+            let raw = component.parse_date_ownership.unwrap();
+            assert_eq!((raw.output, raw.source, raw.picture), (102, 11, 101));
+            assert_eq!(raw.primary_outputs, Some(BTreeSet::from([10, 11, 12])));
+        });
+        // A second record into an operand is ambiguous even when it repeats
+        // the same source or uses the other saved vocabulary.
+        for text in [
+            modern.replace(
+                "</vertices>",
+                r#"<vertex vertexkey="11"><edges><edge vertexkey="111"/></edges></vertex></vertices>"#,
+            ),
+            modern.replace("</structure>", "<connections><edge from=\"11\" to=\"111\"/></connections></structure>"),
+            modern.replace("<edge vertexkey=\"111\"/>", "<edge vertexkey=\"111\"/><edge vertexkey=\"112\"/>"),
+            modern.replace("<vertex vertexkey=\"11\">", "<vertex vertexkey=\"bad\">"),
+        ] {
+            assert_ne!(text, modern);
             with_component(&text, |component| {
                 assert!(component.parse_date_ownership.is_none(), "{text}")
             });

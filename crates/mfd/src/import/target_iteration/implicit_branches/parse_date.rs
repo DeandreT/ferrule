@@ -71,7 +71,9 @@ pub(super) fn prove(
         return None;
     }
     let primary = builder.sources.first()?;
-    if !ordinary_primary(primary, builder) || primary.output_keys != raw.primary_outputs {
+    if !ordinary_primary(primary, builder)
+        || raw.primary_outputs.as_ref() != Some(&primary.output_keys)
+    {
         return None;
     }
     let absolute = physical_scalar(input, anchor, builder)?;

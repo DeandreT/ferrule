@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "Choose": {
+      "type": "boolean"
+    },
+    "Raw": {
+      "type": "string"
+    },
+    "Alt": {
+      "type": "string"
+    },
+    "Note": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "title": "Source"
+}

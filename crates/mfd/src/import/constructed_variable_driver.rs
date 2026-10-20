@@ -41,7 +41,7 @@ pub(super) fn uniquely_declared_output(output: u32, builder: &GraphBuilder<'_>) 
                 .any(|component| component.declares_output(output)))
 }
 
-fn declared_producer_count(output: u32, builder: &GraphBuilder<'_>) -> usize {
+pub(super) fn declared_producer_count(output: u32, builder: &GraphBuilder<'_>) -> usize {
     builder
         .fn_components
         .iter()
@@ -316,7 +316,7 @@ pub(super) fn projection(
 
 const MAX_SCALAR_ALIAS_HOPS: usize = 64;
 
-fn direct_scalar_literal(feed: u32, builder: &GraphBuilder<'_>) -> bool {
+pub(super) fn direct_scalar_literal(feed: u32, builder: &GraphBuilder<'_>) -> bool {
     literal_constant_value(feed, builder).is_some()
         && uniquely_declared_output(feed, builder)
         && builder
@@ -517,6 +517,20 @@ impl ScalarAssignmentProof {
         if function.raw_clock_signature_valid {
             return super::constructed_runtime_clock::assignment(feed, builder);
         }
+        if function.raw_count_signature_valid {
+            return super::constructed_count::assignment(
+                feed,
+                function,
+                target_path,
+                builder,
+                scopes,
+            );
+        }
+        if function.raw_parse_date_pins_valid {
+            return super::constructed_parse_date::assignment(feed, function, builder, |value| {
+                parent_scalar(value, target_path, builder, scopes)
+            });
+        }
         if depth == MAX_CONDITIONAL_DEPTH
             || !function.bounded_scalar_pins_valid
             || function.library != "core"
@@ -697,7 +711,7 @@ fn direct_parent_scalar(
     true
 }
 
-fn active_parent_frame(
+pub(super) fn active_parent_frame(
     source_path: &[String],
     target_path: &[String],
     builder: &GraphBuilder<'_>,
@@ -720,7 +734,7 @@ fn active_parent_frame(
         })
 }
 
-fn plain_parent_chain(target_path: &[String], scopes: &ScopeBuilder) -> bool {
+pub(super) fn plain_parent_chain(target_path: &[String], scopes: &ScopeBuilder) -> bool {
     for length in 0..target_path.len() {
         let Some(scope) = scopes.scope(&target_path[..length]) else {
             continue;

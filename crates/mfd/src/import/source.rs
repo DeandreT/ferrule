@@ -13,6 +13,9 @@ use super::graph::GraphBuilder;
 use super::iteration::{IterationFeed, split_at_innermost_repeating};
 use super::schema::{ComponentFormat, SchemaComponent, schema_node_at, schema_node_at_resolved};
 
+/// Producers `sequence_source_path` visits, including the physical source.
+pub(super) const MAX_SEQUENCE_HOPS: usize = 12;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct SourcePath {
     pub(super) source: usize,
@@ -460,7 +463,7 @@ impl GraphBuilder<'_> {
     /// sequence connection ultimately reads, for aggregates and scopes.
     pub(super) fn sequence_source_path(&self, mut feed: u32) -> Option<SourcePath> {
         let mut suffix = Vec::new();
-        for _ in 0..12 {
+        for _ in 0..MAX_SEQUENCE_HOPS {
             if let Some(mut source_path) = self.source_abs_path(feed) {
                 source_path.path.extend(suffix);
                 return Some(source_path);
@@ -646,6 +649,7 @@ mod tests {
             raw_parse_date_pins_valid: false,
             parse_date_ownership: None,
             raw_clock_signature_valid: false,
+            raw_count_signature_valid: false,
             group_by_ownership: None,
             input_type: None,
             input_parameter_name: None,
@@ -826,6 +830,7 @@ mod tests {
             raw_parse_date_pins_valid: false,
             parse_date_ownership: None,
             raw_clock_signature_valid: false,
+            raw_count_signature_valid: false,
             group_by_ownership: None,
             input_type: None,
             input_parameter_name: None,
@@ -931,6 +936,7 @@ mod tests {
                 raw_parse_date_pins_valid: false,
                 parse_date_ownership: None,
                 raw_clock_signature_valid: false,
+                raw_count_signature_valid: false,
                 group_by_ownership: None,
                 input_type: None,
                 input_parameter_name: None,

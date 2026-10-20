@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "properties": {
+    "Batches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "Text": {
+                  "type": "string"
+                },
+                "Count": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 4
+    }
+  },
+  "additionalProperties": false,
+  "title": "Report"
+}

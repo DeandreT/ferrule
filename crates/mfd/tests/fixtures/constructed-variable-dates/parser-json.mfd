@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping><component name="map"><structure><children>
+<component name="source" library="json" kind="31"><data><root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object"><entry name="Choose" type="json-property"><entry name="boolean" outkey="13"/></entry><entry name="Raw" type="json-property"><entry name="string" outkey="15"/></entry><entry name="Alt" type="json-property"><entry name="string" outkey="16"/></entry><entry name="Note" type="json-property"><entry name="string" outkey="14"/></entry></entry></entry></entry></entry></root><json schema="source.schema.json" inputinstance="source.json"/></data></component>
+<component name="buffer" library="json" kind="31"><data><root><entry name="document"><entry name="object" inpkey="20" outkey="21"><entry name="Text" type="json-property"><entry name="string" inpkey="22" outkey="23"/></entry><entry name="Date" type="json-property"><entry name="string" inpkey="24" outkey="25"/></entry><entry name="Picked" type="json-property"><entry name="string" inpkey="26" outkey="27"/></entry></entry></entry></root><parameter usageKind="variable"><root><entry name="root"/><entry name="object"/><entry name="Stored" type="json-property"/><entry name="object"/></root></parameter><json schema="variable.schema.json"/></data></component>
+<component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="101"/></targets><data><constant value="created" datatype="string"/></data></component>
+<component name="report" library="json" kind="31"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object"><entry name="Records" type="json-property"><entry name="array" inpkey="30"><entry name="item" type="json-item"><entry name="object"><entry name="Text" type="json-property"><entry name="string" inpkey="31"/></entry><entry name="Date" type="json-property"><entry name="string" inpkey="32"/></entry><entry name="Picked" type="json-property"><entry name="string" inpkey="33"/></entry></entry></entry></entry></entry></entry></entry></entry></entry></root><json schema="target.schema.json" outputinstance="report.json"/></data></component>
+<component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="102"/></targets><data><constant value="[Y]-[M]-[D]" datatype="string"/></data></component>
+<component name="parse-date" library="core" kind="5"><sources><datapoint pos="0" key="111"/><datapoint pos="1" key="112"/></sources><targets><datapoint pos="0" key="110"/></targets></component>
+<component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="103"/></targets><data><constant value="[D]/[M]/[Y]" datatype="string"/></data></component>
+<component name="parse-date" library="core" kind="5"><sources><datapoint pos="0" key="121"/><datapoint pos="1" key="122"/></sources><targets><datapoint pos="0" key="120"/></targets></component>
+<component name="if-else" library="core" kind="4"><sources><datapoint pos="0" key="130"/><datapoint pos="1" key="131"/><datapoint pos="2" key="132"/></sources><targets><datapoint pos="0" key="135"/></targets></component>
+<component name="payload" library="core" kind="6"><sources><datapoint pos="0" key="400"/></sources><targets><datapoint pos="0" key="401"/></targets><data><input datatype="string" usepreviewvalue="1" previewvalue="{&quot;Day&quot;:&quot;1999-12-31&quot;}"/><parameter usageKind="input" name="payload"/></data></component>
+<component name="parsed" library="json" kind="31"><data><root><entry name="FileInstance" inpkey="410"><entry name="document"><entry name="root"><entry name="object"><entry name="Day" type="json-property"><entry name="string" outkey="411"/></entry></entry></entry></entry></entry></root><parameter usageKind="stringparse"/><json schema="payload.schema.json"/></data></component>
+</children><graph><vertices>
+<vertex vertexkey="101"><edges><edge vertexkey="22"/></edges></vertex>
+<vertex vertexkey="401"><edges><edge vertexkey="410"/></edges></vertex>
+<vertex vertexkey="411"><edges><edge vertexkey="111"/></edges></vertex>
+<vertex vertexkey="102"><edges><edge vertexkey="112"/></edges></vertex>
+<vertex vertexkey="110"><edges><edge vertexkey="24"/></edges></vertex>
+<vertex vertexkey="13"><edges><edge vertexkey="130"/></edges></vertex>
+<vertex vertexkey="16"><edges><edge vertexkey="121"/></edges></vertex>
+<vertex vertexkey="103"><edges><edge vertexkey="122"/></edges></vertex>
+<vertex vertexkey="120"><edges><edge vertexkey="131"/></edges></vertex>
+<vertex vertexkey="14"><edges><edge vertexkey="132"/></edges></vertex>
+<vertex vertexkey="135"><edges><edge vertexkey="26"/></edges></vertex>
+<vertex vertexkey="21"><edges><edge vertexkey="30"/></edges></vertex>
+</vertices></graph><connections><edge from="21" to="30"><data type="2"/></edge></connections></structure></component></mapping>
