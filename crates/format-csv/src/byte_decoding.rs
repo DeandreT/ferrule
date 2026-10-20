@@ -49,7 +49,9 @@ fn utf8(mut bytes: &[u8]) -> String {
 
 fn utf16(bytes: &[u8], big_endian: bool) -> String {
     let mut words = bytes
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|bytes| {
             let word = [bytes[0], bytes[1]];
             if big_endian {
@@ -83,7 +85,9 @@ fn utf16(bytes: &[u8], big_endian: bool) -> String {
 
 fn utf32(bytes: &[u8], big_endian: bool) -> String {
     bytes
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|bytes| {
             let word = [bytes[0], bytes[1], bytes[2], bytes[3]];
             let scalar = if big_endian {
