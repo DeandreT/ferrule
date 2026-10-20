@@ -4,6 +4,10 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::symlink as directory_symlink;
+#[cfg(windows)]
+use std::os::windows::fs::symlink_dir as directory_symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -257,7 +261,7 @@ fn trace_cannot_replace_the_design_through_path_aliases() -> TestResult {
     )?;
     let dir = &fixture.dir.0;
     std::fs::create_dir(dir.join("sub"))?;
-    std::os::unix::fs::symlink(dir, dir.join("link"))?;
+    directory_symlink(dir, dir.join("link"))?;
     let absolute = dir.join("project.json");
     for alias in [
         "project.json",
@@ -445,7 +449,7 @@ fn trace_cannot_replace_a_file_set_member() -> TestResult {
         ],
     )?;
     let dir = &fixture.dir.0;
-    std::os::unix::fs::symlink(dir, dir.join("link"))?;
+    directory_symlink(dir, dir.join("link"))?;
     for alias in ["records-b.xml", "link/records-a.xml"] {
         let output = ferrule(
             dir,
