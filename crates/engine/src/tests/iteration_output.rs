@@ -328,8 +328,19 @@ fn mapped_sequence_preserves_zero_one_or_many_ordered_items() {
     }
 }
 
-#[test]
-fn concatenated_mapped_sequence_preserves_segment_and_item_order() {
+fn concatenated_segment(collection: &str, node: mapping::NodeId) -> Scope {
+    Scope {
+        iteration: mapping::ScopeIteration::Source(vec![collection.into()]),
+        iteration_output: IterationOutput::MappedSequence,
+        bindings: vec![Binding {
+            target_field: "Name".into(),
+            node,
+        }],
+        ..Scope::default()
+    }
+}
+
+fn concatenated_project(first: Scope, second: Scope) -> Project {
     let source = SchemaNode::group(
         "Source",
         vec![
@@ -352,16 +363,7 @@ fn concatenated_mapped_sequence_preserves_segment_and_item_order() {
             vec![SchemaNode::scalar("Name", ScalarType::String)],
         )],
     );
-    let segment = |collection: &str, node| Scope {
-        iteration: mapping::ScopeIteration::Source(vec![collection.into()]),
-        iteration_output: IterationOutput::MappedSequence,
-        bindings: vec![Binding {
-            target_field: "Name".into(),
-            node,
-        }],
-        ..Scope::default()
-    };
-    let project = Project {
+    Project {
         source,
         target,
         source_path: None,
@@ -394,16 +396,18 @@ fn concatenated_mapped_sequence_preserves_segment_and_item_order() {
             children: vec![Scope {
                 target_field: "Address".into(),
                 iteration: mapping::ScopeIteration::Concatenate(mapping::ScopeSequence::new(
-                    segment("Domestic", 0),
-                    vec![segment("International", 1)],
+                    first,
+                    vec![second],
                 )),
                 iteration_output: IterationOutput::MappedSequence,
                 ..Scope::default()
             }],
             ..Scope::default()
         },
-    };
-    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+    }
+}
+
+fn concatenated_names(project: &Project) -> Vec<Value> {
     let named = |name: &str| {
         Instance::Group(
             (vec![("Name".into(), Instance::Scalar(Value::String(name.into())))]).into(),
@@ -417,29 +421,86 @@ fn concatenated_mapped_sequence_preserves_segment_and_item_order() {
             ),
             (
                 "International".into(),
-                Instance::Repeated(vec![named("East")]),
+                Instance::Repeated(vec![named("East"), named("West")]),
             ),
         ])
         .into(),
     );
 
-    let output = run(&project, &input).unwrap();
-    let addresses = output
+    let output = run(project, &input).unwrap();
+    output
         .field("Address")
         .and_then(Instance::as_mapped_sequence)
-        .unwrap();
-    let names = addresses
+        .unwrap()
         .iter()
         .filter_map(|address| address.field("Name").and_then(Instance::as_scalar))
-        .collect::<Vec<_>>();
-    assert_eq!(
-        names,
-        vec![
-            &Value::String("North".into()),
-            &Value::String("South".into()),
-            &Value::String("East".into()),
-        ]
+        .cloned()
+        .collect()
+}
+
+fn strings(values: &[&str]) -> Vec<Value> {
+    values
+        .iter()
+        .map(|value| Value::String((*value).into()))
+        .collect()
+}
+
+#[test]
+fn concatenated_mapped_sequence_preserves_segment_and_item_order() {
+    let project = concatenated_project(
+        concatenated_segment("Domestic", 0),
+        concatenated_segment("International", 1),
     );
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+    assert_eq!(
+        concatenated_names(&project),
+        strings(&["North", "South", "East", "West"])
+    );
+}
+
+#[test]
+fn concatenated_segments_sort_locally_without_reordering_segments() {
+    let descending = |mut segment: Scope, primary, secondary: Option<mapping::NodeId>| {
+        segment.sort_by = Some(primary);
+        segment.sort_descending = true;
+        segment.sort_then_by = secondary
+            .map(|node| mapping::SortKey {
+                node,
+                descending: true,
+            })
+            .into_iter()
+            .collect();
+        segment
+    };
+    let project = concatenated_project(
+        descending(concatenated_segment("Domestic", 0), 0, None),
+        descending(concatenated_segment("International", 1), 1, Some(1)),
+    );
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+    assert_eq!(
+        concatenated_names(&project),
+        strings(&["South", "North", "West", "East"])
+    );
+}
+
+#[test]
+fn concatenated_wrapper_refuses_secondary_only_sort_controls() {
+    for node in [0, 99] {
+        let mut project = concatenated_project(
+            concatenated_segment("Domestic", 0),
+            concatenated_segment("International", 1),
+        );
+        project.root.children[0].sort_then_by = vec![mapping::SortKey {
+            node,
+            descending: true,
+        }];
+        let issues = validate(&project);
+        assert!(
+            issues.iter().any(|issue| issue.message
+                == "concatenated scope wrapper cannot contain construction, controls, bindings, or child content"),
+            "node {node}: {issues:?}"
+        );
+    }
 }
 
 #[test]

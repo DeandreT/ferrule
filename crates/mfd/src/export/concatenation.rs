@@ -230,7 +230,7 @@ fn validate_container(
         || scope.group_adjacent_by.is_some()
         || scope.group_ending_with.is_some()
         || scope.group_into_blocks.is_some()
-        || scope.sort_by.is_some()
+        || scope.has_sort()
         || !scope.windows.is_empty()
         || !scope.bindings.is_empty()
         || !scope.children.is_empty()
@@ -281,7 +281,7 @@ fn validate_segment(
             || scope.group_adjacent_by.is_some()
             || scope.group_ending_with.is_some()
             || scope.group_into_blocks.is_some()
-            || scope.sort_by.is_some()
+            || scope.has_sort()
             || !scope.windows.is_empty()
             || !scope.children.is_empty())
     {

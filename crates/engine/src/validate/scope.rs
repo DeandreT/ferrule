@@ -92,7 +92,7 @@ pub(super) fn validate_scope(
             || scope.filter.is_some()
             || scope.post_group_filter.is_some()
             || scope.has_grouping()
-            || scope.sort_by.is_some()
+            || scope.has_sort()
             || !scope.windows.is_empty()
             || scope.iteration_output == IterationOutput::First
             || !scope.bindings.is_empty()
@@ -363,7 +363,7 @@ pub(super) fn validate_scope(
         if scope.filter.is_some()
             || scope.post_group_filter.is_some()
             || scope.has_grouping()
-            || scope.sort_by.is_some()
+            || scope.has_sort()
             || !scope.windows.is_empty()
         {
             issues.push(ValidationIssue::new(
@@ -463,7 +463,7 @@ pub(super) fn validate_scope(
         if scope.filter.is_some()
             || scope.post_group_filter.is_some()
             || scope.has_grouping()
-            || scope.sort_by.is_some()
+            || scope.has_sort()
             || !scope.windows.is_empty()
         {
             issues.push(ValidationIssue::new(
@@ -557,7 +557,7 @@ pub(super) fn validate_scope(
         if scope.filter.is_some()
             || scope.post_group_filter.is_some()
             || scope.has_grouping()
-            || scope.sort_by.is_some()
+            || scope.has_sort()
             || !scope.windows.is_empty()
         {
             issues.push(ValidationIssue::new(
