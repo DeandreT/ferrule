@@ -2494,6 +2494,18 @@ pub(super) fn render_basic_scopes_with_group_ending_with<'a>(
     )
 }
 
+pub(super) fn render_basic_scopes_with_group_into_blocks<'a>(
+    program: &'a Program,
+    output: &mut String,
+) -> Result<BasicScopeIndices<'a>, EmitError> {
+    render_basic_scopes_profile(
+        program,
+        output,
+        true,
+        crate::owned_basic::TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
+    )
+}
+
 fn render_basic_scopes_profile<'a>(
     program: &'a Program,
     output: &mut String,
