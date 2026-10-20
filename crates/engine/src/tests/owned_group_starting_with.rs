@@ -15,6 +15,9 @@ use crate::{EngineError, OwnedCapabilityContext as Domain, OwnedSourceError as A
 // #444 Ending controls reuse this module's literal fixture helpers.
 #[path = "owned_group_ending_with.rs"]
 mod ending_with;
+// #445 IntoBlocks controls reuse the same literal fixture helpers.
+#[path = "owned_group_into_blocks.rs"]
+mod into_blocks;
 
 fn path(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).into()).collect()
@@ -997,9 +1000,10 @@ fn starting_only_or_post_only_owned_demand_in_legacy_scope_is_isolated_and_authe
             vec!["Rows"]
         );
         // This child has no owned expression. Only inherited grouped ancestry
-        // makes the still-closed fixed-block operation a scope-associated refusal.
-        p.graph.nodes.insert(20, constant(Value::Int(2)));
-        controls(&mut p).children[0].group_into_blocks = Some(20);
+        // makes a still-closed retention predicate without grouping a
+        // scope-associated refusal.
+        p.graph.nodes.insert(20, constant(Value::Bool(true)));
+        controls(&mut p).children[0].post_group_filter = Some(20);
         assert!(matches!(
             run(&p),
             Err(EngineError::UnsupportedOwnedContext {
@@ -1536,6 +1540,22 @@ fn blocks_conflicts_and_specialized_consumers_remain_closed_under_starting_ances
                     &[
                         ("p0", &["p0", "p1", "p2"]),
                         ("p3", &["p3"]),
+                        ("p4", &["p4", "p5"]),
+                        ("p6", &["p6"]),
+                    ]
+                ))
+            );
+            continue;
+        }
+        if mode == 1 {
+            // #445 admits fixed blocks: the last block is partial.
+            assert_eq!(
+                run(&p),
+                Ok(expected(
+                    "P.root",
+                    &[
+                        ("p0", &["p0", "p1"]),
+                        ("p2", &["p2", "p3"]),
                         ("p4", &["p4", "p5"]),
                         ("p6", &["p6"]),
                     ]

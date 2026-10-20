@@ -1125,7 +1125,8 @@ fn eval_basic_owned_scope<'a>(
         || scope.group_by.is_some()
         || scope.group_adjacent_by.is_some()
         || scope.group_starting_with.is_some()
-        || scope.group_ending_with.is_some();
+        || scope.group_ending_with.is_some()
+        || scope.group_into_blocks.is_some();
     let filter_before_sort = scope.filter.is_some()
         && scope.has_sort()
         && scope.sort_filter_order == SortFilterOrder::FilterThenSort;
@@ -1302,6 +1303,16 @@ fn eval_basic_owned_scope<'a>(
                 .map(BasicGroupPartition::StartingWith)
         })
         .or_else(|| scope.group_ending_with.map(BasicGroupPartition::EndingWith));
+    // Like legacy fixed blocks, the size is evaluated once in the receiving
+    // parent after window bounds and before any candidate control, even for an
+    // empty cohort.
+    let grouping = match (grouping, scope.group_into_blocks) {
+        (None, Some(node)) => Some(BasicGroupPartition::IntoBlocks {
+            node,
+            size: eval_block_size(program, node, context, positions)?,
+        }),
+        (grouping, _) => grouping,
+    };
     if let Some(partition) = grouping {
         let produced = eval_basic_owned_groups(
             program,
@@ -1495,8 +1506,8 @@ fn eval_basic_owned_scope<'a>(
 /// A bucket retains candidate associations, not a second occurrence identity.
 /// The first association supplies both representative and intermediate prefix.
 struct BasicGroupBucket {
-    // Preserve the existing Value cell. Starting and Ending leave it Null and
-    // never treat their Boolean predicate as a key or charge grouping-key text.
+    // Preserve the existing Value cell. Starting, Ending and IntoBlocks leave it
+    // Null and never treat a predicate or size as a key or charge key text.
     key: Value,
     first: usize,
     members: Vec<usize>,
@@ -1511,6 +1522,8 @@ enum BasicGroupPartition {
     AdjacentBy(NodeId),
     StartingWith(NodeId),
     EndingWith(NodeId),
+    // The positive size was already evaluated in the receiving parent.
+    IntoBlocks { node: NodeId, size: usize },
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1603,9 +1616,9 @@ fn eval_basic_owned_groups<'a>(
                 &item_positions,
                 &mut HashSet::new(),
             )?,
-            BasicGroupPartition::StartingWith(_) | BasicGroupPartition::EndingWith(_) => {
-                Value::Null
-            }
+            BasicGroupPartition::StartingWith(_)
+            | BasicGroupPartition::EndingWith(_)
+            | BasicGroupPartition::IntoBlocks { .. } => Value::Null,
         };
         // Evaluate every boundary, including the first and last, and require
         // its exact Bool before post. A leading false Starting prefix and a
@@ -1627,7 +1640,9 @@ fn eval_basic_owned_groups<'a>(
                 &item_context,
                 &item_positions,
             )?,
-            BasicGroupPartition::By(_) | BasicGroupPartition::AdjacentBy(_) => false,
+            BasicGroupPartition::By(_)
+            | BasicGroupPartition::AdjacentBy(_)
+            | BasicGroupPartition::IntoBlocks { .. } => false,
         };
         let retained = passes_scope_filter(
             candidate_program,
@@ -1663,6 +1678,11 @@ fn eval_basic_owned_groups<'a>(
                 } else {
                     groups.last_mut()
                 }
+            }
+            // Selected candidates fill each block in order; the last block may
+            // be partial. Retention never moves members between blocks.
+            BasicGroupPartition::IntoBlocks { size, .. } => {
+                groups.last_mut().filter(|group| group.members.len() < size)
             }
         };
         ending_group_closed = boundary;
@@ -1704,6 +1724,9 @@ fn eval_basic_owned_groups<'a>(
                     BasicGroupPartition::AdjacentBy(node) => TraceGrouping::AdjacentBy { node },
                     BasicGroupPartition::StartingWith(node) => TraceGrouping::StartingWith { node },
                     BasicGroupPartition::EndingWith(node) => TraceGrouping::EndingWith { node },
+                    BasicGroupPartition::IntoBlocks { node, size } => {
+                        TraceGrouping::IntoBlocks { node, size }
+                    }
                 },
                 group_index: index + 1,
                 member_count: group.members.len(),
@@ -1711,9 +1734,9 @@ fn eval_basic_owned_groups<'a>(
                     BasicGroupPartition::By(_) | BasicGroupPartition::AdjacentBy(_) => {
                         Some(TraceValue::new(&group.key))
                     }
-                    BasicGroupPartition::StartingWith(_) | BasicGroupPartition::EndingWith(_) => {
-                        None
-                    }
+                    BasicGroupPartition::StartingWith(_)
+                    | BasicGroupPartition::EndingWith(_)
+                    | BasicGroupPartition::IntoBlocks { .. } => None,
                 },
                 retained: group.retained,
                 positions: trace_positions(&item_positions),
