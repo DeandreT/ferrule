@@ -27,7 +27,7 @@ use crate::document::DocumentLocation;
 use crate::extra_sources::{ExtraSourceDraft, remove_extra_source};
 use crate::extra_targets::ExtraTargetDraft;
 use crate::graph_viewer::GraphViewer;
-use crate::layout_store::{project_fingerprint, read_layout, write_layout};
+use crate::layout_store::{project_fingerprint, read_layout};
 use crate::new_mapping::{NewMappingSetup, SchemaSide, blank_project};
 use crate::path_picker::SourcePathCatalog;
 use crate::schema_tree::{SchemaExplorerState, schema_field_count, show_schema_tree};
@@ -51,6 +51,7 @@ pub(crate) use canvas_build::{
 mod csv_dialect_ui;
 #[path = "diagnostic_navigation.rs"]
 mod diagnostic_navigation;
+mod document_save;
 #[path = "extra_sources.rs"]
 mod extra_source_ui;
 #[path = "extra_targets.rs"]
@@ -593,11 +594,6 @@ enum SaveContinuation {
     Run,
     DebugRun,
     GenerateLibrary,
-}
-
-struct DocumentSaveOutcome {
-    validation_issues: Vec<engine::ValidationIssue>,
-    layout_warning: Option<String>,
 }
 
 impl Default for FerruleApp {
@@ -1227,62 +1223,6 @@ impl FerruleApp {
                 self.status = format!("failed to load {}", path.display());
                 self.diagnostics.error("Open failed", error.to_string());
             }
-        }
-    }
-
-    fn save_document_to(&mut self, path: &std::path::Path) -> anyhow::Result<DocumentSaveOutcome> {
-        anyhow::ensure!(
-            !self.stage_document_actions_blocked(),
-            "Finish the stage canvas before saving a mapping"
-        );
-        let mut project = self.project.clone();
-        let previous_path = self.document.suggested_path();
-        cli::rebase_project_paths(&mut project, previous_path, path)?;
-        let json = mapping::project_file::encode_pretty(&project)?;
-        let layout =
-            CanvasLayout::capture(&project, &self.main_canvas.snarl, &self.mapping_workspace);
-        std::fs::write(path, json)?;
-        self.project = project;
-        self.document = DocumentLocation::saved(path);
-        self.mark_clean();
-        let layout_warning = write_layout(path, &layout)
-            .err()
-            .map(|error| format!("canvas layout was not saved: {error}"));
-        Ok(DocumentSaveOutcome {
-            validation_issues: cli::validate(&self.project),
-            layout_warning,
-        })
-    }
-
-    fn saved_status(path: &std::path::Path, outcome: &DocumentSaveOutcome) -> String {
-        if !outcome.validation_issues.is_empty() {
-            format!(
-                "saved {} with {} validation issue(s)",
-                path.display(),
-                outcome.validation_issues.len()
-            )
-        } else if outcome.layout_warning.is_some() {
-            format!("saved {} without canvas layout", path.display())
-        } else {
-            format!("saved {}", path.display())
-        }
-    }
-
-    fn apply_save_outcome(&mut self, path: &Path, outcome: DocumentSaveOutcome) {
-        self.status = Self::saved_status(path, &outcome);
-        let fingerprint = project_fingerprint(&self.project);
-        let mut diagnostics = outcome
-            .validation_issues
-            .into_iter()
-            .map(|issue| {
-                Diagnostic::validation_with_fingerprint(&self.project, issue, &fingerprint)
-            })
-            .collect::<Vec<_>>();
-        diagnostics.extend(outcome.layout_warning.map(Diagnostic::warning));
-        if diagnostics.is_empty() {
-            self.diagnostics.clear();
-        } else {
-            self.diagnostics.replace("Save", diagnostics);
         }
     }
 

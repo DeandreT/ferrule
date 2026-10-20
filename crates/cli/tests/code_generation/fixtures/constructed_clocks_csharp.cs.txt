@@ -1,0 +1,92 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+const string MappingPath = "clocks.ferrule.json";
+using var cases = JsonDocument.Parse(File.ReadAllText("cases.json"));
+foreach (var test in cases.RootElement.EnumerateArray())
+{
+    var input = test.GetProperty("input").GetString()!;
+    if (test.TryGetProperty("reject", out _))
+    {
+        foreach (var run in Runs(input, null))
+        {
+            ExpectRuntime(run, test, error => error.Error == FerruleRuntimeError.JsonBoundary);
+        }
+        continue;
+    }
+    if (test.TryGetProperty("boolean_error", out var expectedBoolean))
+    {
+        var clocked = new FerruleExecutionContext(MappingPath, MappingPath, "2026-01-01T00:00:00Z");
+        foreach (var run in new Func<string>[] {
+            () => GeneratedMapping.ExecuteJson(input),
+            () => GeneratedMapping.ExecuteJson(input, clocked) })
+        {
+            ExpectRuntime(run, test, error =>
+                error.Error == FerruleRuntimeError.NotABool &&
+                error.Node == expectedBoolean.GetProperty("node").GetUInt32() &&
+                error.FoundKind?.ToString().ToLowerInvariant() == expectedBoolean.GetProperty("found").GetString());
+        }
+        continue;
+    }
+    // One generated library reads each supplied clock from its context.
+    foreach (var output in test.GetProperty("outputs").EnumerateArray())
+    {
+        var context = new FerruleExecutionContext(
+            MappingPath, MappingPath, output.GetProperty("clock").GetString()!);
+        foreach (var run in Runs(input, context))
+        {
+            ExpectJson(run(), output.GetProperty("expected"), test);
+        }
+    }
+    var withoutClock = test.GetProperty("without_clock");
+    var unclocked = new FerruleExecutionContext(MappingPath);
+    var runs = Runs(input, null).Append(() => GeneratedMapping.ExecuteJson(input, unclocked));
+    foreach (var run in runs)
+    {
+        if (withoutClock.TryGetProperty("missing_clock", out _))
+        {
+            ExpectRuntime(run, test, error =>
+                error.Error == FerruleRuntimeError.MissingRuntimeValue &&
+                error.RuntimeValue == FerruleRuntimeValue.CurrentDateTime);
+        }
+        else
+        {
+            ExpectJson(run(), withoutClock.GetProperty("expected"), test);
+        }
+    }
+}
+Console.WriteLine($"verified {cases.RootElement.GetArrayLength()} constructed clock cases");
+
+static Func<string>[] Runs(string input, FerruleExecutionContext? context) => context is null
+    ? [
+        () => GeneratedMapping.ExecuteJson(input),
+        () => Encoding.UTF8.GetString(GeneratedMapping.ExecuteJsonBytes(Encoding.UTF8.GetBytes(input))),
+    ]
+    : [
+        () => GeneratedMapping.ExecuteJson(input, context),
+        () => Encoding.UTF8.GetString(GeneratedMapping.ExecuteJsonBytes(Encoding.UTF8.GetBytes(input), context)),
+    ];
+
+static void ExpectRuntime(Func<string> run, JsonElement test, Func<FerruleRuntimeException, bool> expected)
+{
+    try
+    {
+        _ = run();
+    }
+    catch (FerruleRuntimeException error) when (expected(error))
+    {
+        return;
+    }
+    throw new Exception($"Expected runtime failure differs: {test}");
+}
+
+static void ExpectJson(string actual, JsonElement expected, JsonElement test)
+{
+    if (!JsonNode.DeepEquals(JsonNode.Parse(actual), JsonNode.Parse(expected.GetRawText())))
+    {
+        throw new Exception($"JSON output differs: {test}; actual: {actual}");
+    }
+}

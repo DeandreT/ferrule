@@ -12,7 +12,7 @@ Keep structural validity separate from executable capability. Preserve strict ne
 
 ## Group-member occurrence identity
 
-An owned By, AdjacentBy or StartingWith group carries a private grouped occurrence at its exact owner and
+An owned By, AdjacentBy, StartingWith or EndingWith group carries a private grouped occurrence at its exact owner and
 absolute collection path. It exposes the first surviving ordered member for
 scalar reads, a compact group ordinal for positions, and its complete ordered
 members for nested collection iteration. A nested member creates an ordinary
@@ -45,6 +45,12 @@ group at a true Boolean boundary. Boundary evaluation precedes member retention;
 dropping a group does not recompute boundaries. The
 [Starting contract](owned-group-starting-with.md) uses the same member identity
 and root-pin rules with Boolean controls and no grouping-key text charge.
+
+Ending grouping closes the current group at each true Boolean boundary; the
+candidates after the last true boundary form a trailing group. Boundary
+evaluation precedes member retention, and dropping a group never reopens or
+merges its neighbors. The [Ending contract](owned-group-ending-with.md) uses the
+same member identity, root-pin rules and Boolean-control resource model.
 
 ## Parent-context scalar sequence selection
 

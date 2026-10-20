@@ -1,0 +1,24 @@
+{
+  "Rows": [
+    {
+      "End": false,
+      "Label": "one"
+    },
+    {
+      "End": false,
+      "Label": "two"
+    },
+    {
+      "End": true,
+      "Label": "three"
+    },
+    {
+      "End": true,
+      "Label": "four"
+    },
+    {
+      "End": false,
+      "Label": "five"
+    }
+  ]
+}

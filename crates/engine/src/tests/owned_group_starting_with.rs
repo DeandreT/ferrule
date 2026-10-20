@@ -12,6 +12,10 @@ use mapping::{
 
 use crate::{EngineError, OwnedCapabilityContext as Domain, OwnedSourceError as Access};
 
+// #444 Ending controls reuse this module's literal fixture helpers.
+#[path = "owned_group_ending_with.rs"]
+mod ending_with;
+
 fn path(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).into()).collect()
 }
@@ -993,9 +997,9 @@ fn starting_only_or_post_only_owned_demand_in_legacy_scope_is_isolated_and_authe
             vec!["Rows"]
         );
         // This child has no owned expression. Only inherited grouped ancestry
-        // makes the still-closed Ending operation a scope-associated refusal.
-        p.graph.nodes.insert(20, constant(Value::Bool(true)));
-        controls(&mut p).children[0].group_ending_with = Some(20);
+        // makes the still-closed fixed-block operation a scope-associated refusal.
+        p.graph.nodes.insert(20, constant(Value::Int(2)));
+        controls(&mut p).children[0].group_into_blocks = Some(20);
         assert!(matches!(
             run(&p),
             Err(EngineError::UnsupportedOwnedContext {
@@ -1504,7 +1508,7 @@ fn repeated_scalar_bool_roots_keep_consecutive_true_starts_and_complete_member_p
 }
 
 #[test]
-fn ending_blocks_conflicts_and_specialized_consumers_remain_closed_under_starting_ancestry() {
+fn blocks_conflicts_and_specialized_consumers_remain_closed_under_starting_ancestry() {
     for mode in 0..5 {
         let mut p = project(SourceOwner::Primary);
         match mode {
@@ -1522,6 +1526,22 @@ fn ending_blocks_conflicts_and_specialized_consumers_remain_closed_under_startin
                 controls(&mut p).group_starting_with = None;
                 controls(&mut p).post_group_filter = Some(5);
             }
+        }
+        if mode == 0 {
+            // #444 admits Ending: true boundaries close groups; p6 trails.
+            assert_eq!(
+                run(&p),
+                Ok(expected(
+                    "P.root",
+                    &[
+                        ("p0", &["p0", "p1", "p2"]),
+                        ("p3", &["p3"]),
+                        ("p4", &["p4", "p5"]),
+                        ("p6", &["p6"]),
+                    ]
+                ))
+            );
+            continue;
         }
         assert!(matches!(
             run(&p),

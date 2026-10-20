@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping><component name="map"><structure><children>
+<component name="source" library="json" kind="31"><data><root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object"><entry name="Choose" type="json-property"><entry name="boolean" outkey="13"/></entry><entry name="Note" type="json-property"><entry name="string" outkey="14"/></entry></entry></entry></entry></entry></root><json schema="source.schema.json" inputinstance="source.json"/></data></component>
+<component name="buffer" library="json" kind="31"><data><root><entry name="document"><entry name="object" inpkey="20" outkey="21"><entry name="Text" type="json-property"><entry name="string" inpkey="22" outkey="23"/></entry><entry name="Stamp" type="json-property"><entry name="string" inpkey="24" outkey="25"/></entry><entry name="Picked" type="json-property"><entry name="string" inpkey="26" outkey="27"/></entry></entry></entry></root><parameter usageKind="variable"><root><entry name="root"/><entry name="object"/><entry name="Stored" type="json-property"/><entry name="object"/></root></parameter><json schema="variable.schema.json"/></data></component>
+<component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="101"/></targets><data><constant value="created" datatype="string"/></data></component>
+<component name="report" library="json" kind="31"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object"><entry name="Records" type="json-property"><entry name="array" inpkey="30"><entry name="item" type="json-item"><entry name="object"><entry name="Text" type="json-property"><entry name="string" inpkey="31"/></entry><entry name="Stamp" type="json-property"><entry name="string" inpkey="32"/></entry><entry name="Picked" type="json-property"><entry name="string" inpkey="33"/></entry></entry></entry></entry></entry></entry></entry></entry></entry></root><json schema="target.schema.json" outputinstance="report.json"/></data></component>
+<component name="now" library="lang" kind="5"><targets><datapoint pos="0" key="150"/></targets></component>
+<component name="current-dateTime" library="xpath2" kind="5"><targets><datapoint pos="0" key="160"/></targets></component>
+</children><graph><vertices>
+<vertex vertexkey="101"><edges><edge vertexkey="22"/></edges></vertex>
+<vertex vertexkey="150"><edges><edge vertexkey="24"/></edges></vertex>
+<vertex vertexkey="160"><edges><edge vertexkey="26"/></edges></vertex>
+<vertex vertexkey="21"><edges><edge vertexkey="30"/></edges></vertex>
+</vertices></graph><connections><edge from="21" to="30"><data type="2"/></edge></connections></structure></component></mapping>

@@ -835,6 +835,15 @@ fn c04_c11_owned_special_scope_and_runtime_documents_remain_closed() {
     );
     p.root.group_starting_with = None;
     p.root.group_ending_with = Some(1);
+    assert_eq!(
+        crate::run(&p, &input),
+        Err(EngineError::NotABool {
+            node: 1,
+            found: "string"
+        })
+    );
+    p.root.group_ending_with = None;
+    p.root.group_into_blocks = Some(1);
     assert!(matches!(
         crate::run(&p, &input),
         Err(EngineError::UnsupportedOwnedContext {
@@ -843,7 +852,7 @@ fn c04_c11_owned_special_scope_and_runtime_documents_remain_closed() {
             ..
         })
     ));
-    p.root.group_ending_with = None;
+    p.root.group_into_blocks = None;
     p.root.set_output_path(Some(1));
     assert!(matches!(
         crate::run(&p, &input),

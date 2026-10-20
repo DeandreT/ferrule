@@ -24,7 +24,10 @@ mod failure_rows;
 
 #[path = "basic_group_by.rs"]
 mod group_by;
-pub use group_by::{BasicGroupByControls, BasicGroupByMetadata, BasicGroupStartingWithControls};
+pub use group_by::{
+    BasicGroupByControls, BasicGroupByMetadata, BasicGroupEndingWithControls,
+    BasicGroupStartingWithControls,
+};
 
 /// Fixed bridge failures; no user text is copied into these diagnostics.
 #[derive(Debug, PartialEq, Eq)]

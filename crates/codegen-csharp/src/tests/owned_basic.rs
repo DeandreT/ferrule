@@ -7908,4 +7908,5 @@ include!("owned_row_failures.rs");
 include!("owned_group_by.rs");
 include!("owned_group_adjacent_by.rs");
 include!("owned_group_starting_with.rs");
+include!("owned_group_ending_with.rs");
 include!("owned_sequence_item_at.rs");

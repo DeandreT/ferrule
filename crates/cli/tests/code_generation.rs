@@ -18,6 +18,8 @@ mod aggregates;
 mod basic_owned_group_adjacent_by;
 #[path = "code_generation/basic_owned_group_by.rs"]
 mod basic_owned_group_by;
+#[path = "code_generation/basic_owned_group_ending_with.rs"]
+mod basic_owned_group_ending_with;
 #[path = "code_generation/basic_owned_group_starting_with.rs"]
 mod basic_owned_group_starting_with;
 #[path = "code_generation/basic_owned_json_adapters.rs"]
@@ -1457,6 +1459,9 @@ mod constructed_variable_conditionals;
 
 #[path = "code_generation/constructed_parser_runtime_inputs.rs"]
 mod constructed_parser_runtime_inputs;
+
+#[path = "code_generation/constructed_variable_clocks.rs"]
+mod constructed_variable_clocks;
 
 #[path = "code_generation/json_parser_object_presence.rs"]
 mod json_parser_object_presence;

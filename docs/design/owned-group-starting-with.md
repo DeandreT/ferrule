@@ -18,8 +18,9 @@ the existing filter, sort, window and member-retention controls. Scalar producer
 consumption and primary-row failure eligibility remain independent permissions.
 The parent-context [ItemAt contract](owned-sequence-item-at.md) still applies;
 ItemAt remains unavailable in owned failure predicates and messages. Earlier
-generation profiles keep their own capability sets. Ending, fixed-block and
-specialized owned grouping have separate gates.
+generation profiles keep their own capability sets. The
+[Ending profile](owned-group-ending-with.md), fixed-block and specialized owned
+grouping have separate gates.
 
 Generated libraries retain the existing typed Basic execution entries,
 mandatory five-field policy and selected-target validation precedence.
@@ -56,8 +57,8 @@ children; global failures retain their earlier precedence.
 
 ## Owner identity and members
 
-By, AdjacentBy and StartingWith use the same private authenticated GroupMembers
-occurrence. It identifies one exact owner and endpoint-local collection. Scalar
+By, AdjacentBy, StartingWith and EndingWith use the same private authenticated
+GroupMembers occurrence. It identifies one exact owner and endpoint-local collection. Scalar
 reads use the first surviving ordered member; position reads use the group
 ordinal. Nested iteration of that collection enumerates only the current group's
 members with their own one-based positions. Other owners remain independently
@@ -71,7 +72,7 @@ a newer ordinary repeated-root member retains active-item pin behavior. An
 unrelated owner's member cannot shadow it. See the shared
 [source-ownership rules](source-ownership.md#group-member-occurrence-identity).
 
-The marker is minted only by the three authenticated paired grouping operations.
+The marker is minted only by the four authenticated paired grouping operations.
 Ordinary containers, inherited grouping and wrapper-name collisions do not grant
 group-member identity. Clones, ranked frames, legacy bridges and immutable C#
 publications preserve the same distinction.

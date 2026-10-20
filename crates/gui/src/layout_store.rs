@@ -36,6 +36,5 @@ pub fn read_layout(project_path: &Path) -> anyhow::Result<Option<CanvasLayout>> 
 
 pub fn write_layout(project_path: &Path, layout: &CanvasLayout) -> anyhow::Result<()> {
     let json = serde_json::to_string_pretty(layout)?;
-    std::fs::write(layout_path(project_path), json)?;
-    Ok(())
+    crate::document_file::replace(&layout_path(project_path), json.as_bytes())
 }

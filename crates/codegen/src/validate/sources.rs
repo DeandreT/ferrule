@@ -148,13 +148,23 @@ impl<'a> SourceCatalog<'a> {
     }
 
     pub(super) fn path_targets(self, path: &[String]) -> Vec<SchemaCursor<'a>> {
+        self.collect_targets(path, false)
+    }
+
+    /// Like [`Self::path_targets`], excluding matches that pass through a
+    /// repeating node before the terminal segment.
+    pub(super) fn direct_path_targets(self, path: &[String]) -> Vec<SchemaCursor<'a>> {
+        self.collect_targets(path, true)
+    }
+
+    fn collect_targets(self, path: &[String], direct: bool) -> Vec<SchemaCursor<'a>> {
         let mut targets = Vec::new();
-        if let Some(target) = self.explicit_target(path, false) {
+        if let Some(target) = self.explicit_target(path, direct) {
             targets.push(target);
         }
-        collect_path_targets(self.primary, self.primary, path, false, &mut targets);
+        collect_path_targets(self.primary, self.primary, path, direct, &mut targets);
         for source in self.extras {
-            collect_path_targets(&source.source, &source.source, path, false, &mut targets);
+            collect_path_targets(&source.source, &source.source, path, direct, &mut targets);
         }
         targets
     }

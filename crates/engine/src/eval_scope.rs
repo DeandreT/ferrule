@@ -1118,7 +1118,8 @@ fn eval_basic_owned_scope<'a>(
         || own
         || scope.group_by.is_some()
         || scope.group_adjacent_by.is_some()
-        || scope.group_starting_with.is_some();
+        || scope.group_starting_with.is_some()
+        || scope.group_ending_with.is_some();
     let filter_before_sort = scope.filter.is_some()
         && scope.has_sort()
         && scope.sort_filter_order == SortFilterOrder::FilterThenSort;
@@ -1293,7 +1294,8 @@ fn eval_basic_owned_scope<'a>(
             scope
                 .group_starting_with
                 .map(BasicGroupPartition::StartingWith)
-        });
+        })
+        .or_else(|| scope.group_ending_with.map(BasicGroupPartition::EndingWith));
     if let Some(partition) = grouping {
         let produced = eval_basic_owned_groups(
             program,
@@ -1487,8 +1489,8 @@ fn eval_basic_owned_scope<'a>(
 /// A bucket retains candidate associations, not a second occurrence identity.
 /// The first association supplies both representative and intermediate prefix.
 struct BasicGroupBucket {
-    // Preserve the existing Value cell. Starting leaves it Null and never
-    // treats its Boolean predicate as a key or charges grouping-key text.
+    // Preserve the existing Value cell. Starting and Ending leave it Null and
+    // never treat their Boolean predicate as a key or charge grouping-key text.
     key: Value,
     first: usize,
     members: Vec<usize>,
@@ -1502,6 +1504,7 @@ enum BasicGroupPartition {
     By(NodeId),
     AdjacentBy(NodeId),
     StartingWith(NodeId),
+    EndingWith(NodeId),
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1539,6 +1542,9 @@ fn eval_basic_owned_groups<'a>(
     // payload ownership, not a claim of a process-memory/allocation-total bound.
     budget.reserve(extensions.len()).map_err(access)?;
     let mut groups: Vec<BasicGroupBucket> = Vec::new();
+    // Ending: the previous selected candidate's true boundary closed its group.
+    // Before any candidate, the next selected candidate opens the first group.
+    let mut ending_group_closed = true;
     for (index, extension) in extensions.iter().enumerate() {
         reserve_observed_copy(
             budget,
@@ -1591,15 +1597,26 @@ fn eval_basic_owned_groups<'a>(
                 &item_positions,
                 &mut HashSet::new(),
             )?,
-            BasicGroupPartition::StartingWith(_) => Value::Null,
+            BasicGroupPartition::StartingWith(_) | BasicGroupPartition::EndingWith(_) => {
+                Value::Null
+            }
         };
-        // Evaluate even the first boundary, and require its exact Bool before
-        // post. A leading false prefix still creates the first nonempty group.
-        let starts_group = match partition {
+        // Evaluate every boundary, including the first and last, and require
+        // its exact Bool before post. A leading false Starting prefix and a
+        // trailing false Ending suffix still form real nonempty groups.
+        let boundary = match partition {
             BasicGroupPartition::StartingWith(predicate) => passes_scope_filter(
                 candidate_program,
                 Some(predicate),
                 TraceFilterPhase::GroupStarting,
+                trace_scope,
+                &item_context,
+                &item_positions,
+            )?,
+            BasicGroupPartition::EndingWith(predicate) => passes_scope_filter(
+                candidate_program,
+                Some(predicate),
+                TraceFilterPhase::GroupEnding,
                 trace_scope,
                 &item_context,
                 &item_positions,
@@ -1626,13 +1643,23 @@ fn eval_basic_owned_groups<'a>(
                 groups.last_mut().filter(|group| group.key == value)
             }
             BasicGroupPartition::StartingWith(_) => {
-                if starts_group {
+                if boundary {
+                    None
+                } else {
+                    groups.last_mut()
+                }
+            }
+            // A true boundary closes the group containing it; the next selected
+            // candidate opens a new one. Retention never reopens a closed group.
+            BasicGroupPartition::EndingWith(_) => {
+                if ending_group_closed {
                     None
                 } else {
                     groups.last_mut()
                 }
             }
         };
+        ending_group_closed = boundary;
         if let Some(group) = existing {
             group.members.push(index);
             group.retained |= retained;
@@ -1670,6 +1697,7 @@ fn eval_basic_owned_groups<'a>(
                     BasicGroupPartition::By(node) => TraceGrouping::By { node },
                     BasicGroupPartition::AdjacentBy(node) => TraceGrouping::AdjacentBy { node },
                     BasicGroupPartition::StartingWith(node) => TraceGrouping::StartingWith { node },
+                    BasicGroupPartition::EndingWith(node) => TraceGrouping::EndingWith { node },
                 },
                 group_index: index + 1,
                 member_count: group.members.len(),
@@ -1677,7 +1705,9 @@ fn eval_basic_owned_groups<'a>(
                     BasicGroupPartition::By(_) | BasicGroupPartition::AdjacentBy(_) => {
                         Some(TraceValue::new(&group.key))
                     }
-                    BasicGroupPartition::StartingWith(_) => None,
+                    BasicGroupPartition::StartingWith(_) | BasicGroupPartition::EndingWith(_) => {
+                        None
+                    }
                 },
                 retained: group.retained,
                 positions: trace_positions(&item_positions),

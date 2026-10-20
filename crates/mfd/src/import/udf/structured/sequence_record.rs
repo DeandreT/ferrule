@@ -567,6 +567,7 @@ mod tests {
             conditional_ownership: None,
             raw_parse_date_pins_valid: false,
             parse_date_ownership: None,
+            raw_clock_signature_valid: false,
             group_by_ownership: None,
             input_type: None,
             input_parameter_name: None,
