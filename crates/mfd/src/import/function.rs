@@ -7,6 +7,7 @@ use crate::canonical_function;
 
 use super::schema::parse_u32;
 
+mod clock;
 mod parse_date;
 #[cfg(test)]
 #[path = "function/total_string_tests.rs"]
@@ -218,6 +219,9 @@ pub(super) struct FnComponent {
     /// Raw owners and connected operand feeds from the entire owning structure,
     /// including components which the ordinary reader may skip.
     pub(super) parse_date_ownership: Option<RawParseDateOwnership>,
+    /// Exact inputless `lang` `now` / `xpath2` `current-dateTime` signature.
+    /// Separate from the bounded scalar contract and the general clock lowering.
+    pub(super) raw_clock_signature_valid: bool,
     /// Dedicated raw owner and source-position proof for String group-by keys.
     pub(super) group_by_ownership: Option<RawGroupByOwnership>,
     /// Scalar coercion declared by a transparent kind=6 input parameter.
@@ -357,6 +361,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
     let parse_date_ownership = raw_parse_date_pins_valid
         .then(|| parse_date::ownership(component))
         .flatten();
+    let raw_clock_signature_valid = clock::signature_valid(component, &output_pins);
 
     let data = component
         .children()
@@ -508,6 +513,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         conditional_ownership,
         raw_parse_date_pins_valid,
         parse_date_ownership,
+        raw_clock_signature_valid,
         group_by_ownership: group_by::ownership(component),
         input_type,
         input_parameter_name,

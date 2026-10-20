@@ -1,0 +1,218 @@
+[
+  {
+    "input": "{\"Choose\":true,\"Note\":\"kept\"}",
+    "outputs": [
+      {
+        "clock": "2026-03-04T05:06:07.125-08:00",
+        "expected": {
+          "Records": [
+            {
+              "Text": "created",
+              "Stamp": "2026-03-04T05:06:07.125-08:00",
+              "Picked": "2026-03-04T05:06:07.125-08:00"
+            }
+          ]
+        }
+      },
+      {
+        "clock": "2031-11-12T23:58:59Z",
+        "expected": {
+          "Records": [
+            {
+              "Text": "created",
+              "Stamp": "2031-11-12T23:58:59Z",
+              "Picked": "2031-11-12T23:58:59Z"
+            }
+          ]
+        }
+      }
+    ],
+    "without_clock": {
+      "missing_clock": true
+    }
+  },
+  {
+    "input": "{\"Choose\":true}",
+    "outputs": [
+      {
+        "clock": "2026-03-04T05:06:07.125-08:00",
+        "expected": {
+          "Records": [
+            {
+              "Text": "created",
+              "Stamp": "2026-03-04T05:06:07.125-08:00",
+              "Picked": "2026-03-04T05:06:07.125-08:00"
+            }
+          ]
+        }
+      },
+      {
+        "clock": "2031-11-12T23:58:59Z",
+        "expected": {
+          "Records": [
+            {
+              "Text": "created",
+              "Stamp": "2031-11-12T23:58:59Z",
+              "Picked": "2031-11-12T23:58:59Z"
+            }
+          ]
+        }
+      }
+    ],
+    "without_clock": {
+      "missing_clock": true
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Note\":\"kept\"}",
+    "outputs": [
+      {
+        "clock": "2026-03-04T05:06:07.125-08:00",
+        "expected": {
+          "Records": [
+            {
+              "Text": "created",
+              "Stamp": "kept",
+              "Picked": "kept"
+            }
+          ]
+        }
+      },
+      {
+        "clock": "2031-11-12T23:58:59Z",
+        "expected": {
+          "Records": [
+            {
+              "Text": "created",
+              "Stamp": "kept",
+              "Picked": "kept"
+            }
+          ]
+        }
+      }
+    ],
+    "without_clock": {
+      "expected": {
+        "Records": [
+          {
+            "Text": "created",
+            "Stamp": "kept",
+            "Picked": "kept"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "input": "{\"Choose\":false,\"Note\":\"\"}",
+    "outputs": [
+      {
+        "clock": "2026-03-04T05:06:07.125-08:00",
+        "expected": {
+          "Records": [
+            {
+              "Text": "created",
+              "Stamp": "",
+              "Picked": ""
+            }
+          ]
+        }
+      },
+      {
+        "clock": "2031-11-12T23:58:59Z",
+        "expected": {
+          "Records": [
+            {
+              "Text": "created",
+              "Stamp": "",
+              "Picked": ""
+            }
+          ]
+        }
+      }
+    ],
+    "without_clock": {
+      "expected": {
+        "Records": [
+          {
+            "Text": "created",
+            "Stamp": "",
+            "Picked": ""
+          }
+        ]
+      }
+    }
+  },
+  {
+    "input": "{\"Choose\":false}",
+    "outputs": [
+      {
+        "clock": "2026-03-04T05:06:07.125-08:00",
+        "expected": {
+          "Records": [
+            {
+              "Text": "created"
+            }
+          ]
+        }
+      },
+      {
+        "clock": "2031-11-12T23:58:59Z",
+        "expected": {
+          "Records": [
+            {
+              "Text": "created"
+            }
+          ]
+        }
+      }
+    ],
+    "without_clock": {
+      "expected": {
+        "Records": [
+          {
+            "Text": "created"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "input": "{\"Note\":\"kept\"}",
+    "boolean_error": {
+      "node": 2,
+      "found": "null"
+    }
+  },
+  {
+    "input": "{}",
+    "boolean_error": {
+      "node": 2,
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Choose\":null}",
+    "reject": true
+  },
+  {
+    "input": "{\"Choose\":\"true\"}",
+    "reject": true
+  },
+  {
+    "input": "{\"Choose\":false,\"Note\":7}",
+    "reject": true
+  },
+  {
+    "input": "{\"Other\":1}",
+    "reject": true
+  },
+  {
+    "input": "7",
+    "reject": true
+  },
+  {
+    "input": "{broken",
+    "reject": true
+  }
+]
