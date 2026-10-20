@@ -55,6 +55,16 @@ pub(crate) fn render_public_basic_owned_group_ending_with_source(
     )
 }
 
+pub(crate) fn render_public_basic_owned_group_into_blocks_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::GroupIntoBlocks,
+        SequenceItemAtPolicy::BasicScalarProducers,
+    )
+}
+
 pub(crate) fn render_public_basic_owned_failure_source(
     program: &Program,
 ) -> Result<String, EmitError> {
@@ -107,6 +117,7 @@ pub(super) enum Profile {
     PathHierarchy,
     /// PathHierarchy plus owned adjacency-tree construction.
     AdjacencyTree,
+    GroupIntoBlocks,
 }
 
 impl Profile {
@@ -120,6 +131,7 @@ impl Profile {
                 | Self::FailureSources
                 | Self::PathHierarchy
                 | Self::AdjacencyTree
+                | Self::GroupIntoBlocks
         )
     }
 
@@ -141,6 +153,7 @@ impl Profile {
                     | Self::FailureSources
                     | Self::PathHierarchy
                     | Self::AdjacencyTree
+                    | Self::GroupIntoBlocks
             ),
             Some(GroupingPlan::StartingWith { .. }) => matches!(
                 self,
@@ -149,6 +162,7 @@ impl Profile {
                     | Self::FailureSources
                     | Self::PathHierarchy
                     | Self::AdjacencyTree
+                    | Self::GroupIntoBlocks
             ),
             Some(GroupingPlan::EndingWith { .. }) => matches!(
                 self,
@@ -156,8 +170,10 @@ impl Profile {
                     | Self::FailureSources
                     | Self::PathHierarchy
                     | Self::AdjacencyTree
+                    | Self::GroupIntoBlocks
             ),
-            _ => false,
+            Some(GroupingPlan::IntoBlocks { .. }) => self == Self::GroupIntoBlocks,
+            None => false,
         }
     }
 }
@@ -179,6 +195,9 @@ fn render_public_basic_owned_source_policy(
     match (profile, item_at) {
         (Profile::PathHierarchy, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_path_hierarchy_emission(program)?;
+        }
+        (Profile::GroupIntoBlocks, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::validate_basic_owned_group_into_blocks_emission(program)?;
         }
         (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_group_ending_with_emission(program)?;
@@ -429,6 +448,9 @@ fn render_public_basic_owned_source_policy(
     let plan = match (profile, item_at) {
         (Profile::PathHierarchy, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy(program)?
+        }
+        (Profile::GroupIntoBlocks, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_group_into_blocks(program)?
         }
         (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_ending_with(program)?

@@ -30,6 +30,7 @@ pub(super) enum TargetControls {
     ByAndAdjacent,
     ByAndAdjacentAndStarting,
     ByAndAdjacentAndStartingAndEnding,
+    ByAndAdjacentAndStartingAndEndingAndBlocks,
 }
 
 impl TargetControls {
@@ -40,6 +41,7 @@ impl TargetControls {
                 | Self::ByAndAdjacent
                 | Self::ByAndAdjacentAndStarting
                 | Self::ByAndAdjacentAndStartingAndEnding
+                | Self::ByAndAdjacentAndStartingAndEndingAndBlocks
         )
     }
 
@@ -51,15 +53,23 @@ impl TargetControls {
                 Self::ByAndAdjacent
                     | Self::ByAndAdjacentAndStarting
                     | Self::ByAndAdjacentAndStartingAndEnding
+                    | Self::ByAndAdjacentAndStartingAndEndingAndBlocks
             ),
             Some(codegen::GroupingPlan::StartingWith { .. }) => matches!(
                 self,
-                Self::ByAndAdjacentAndStarting | Self::ByAndAdjacentAndStartingAndEnding
+                Self::ByAndAdjacentAndStarting
+                    | Self::ByAndAdjacentAndStartingAndEnding
+                    | Self::ByAndAdjacentAndStartingAndEndingAndBlocks
             ),
-            Some(codegen::GroupingPlan::EndingWith { .. }) => {
-                matches!(self, Self::ByAndAdjacentAndStartingAndEnding)
+            Some(codegen::GroupingPlan::EndingWith { .. }) => matches!(
+                self,
+                Self::ByAndAdjacentAndStartingAndEnding
+                    | Self::ByAndAdjacentAndStartingAndEndingAndBlocks
+            ),
+            Some(codegen::GroupingPlan::IntoBlocks { .. }) => {
+                matches!(self, Self::ByAndAdjacentAndStartingAndEndingAndBlocks)
             }
-            _ => false,
+            None => false,
         }
     }
 }
@@ -153,6 +163,21 @@ impl TargetExtension {
         self.path_hierarchy
     }
 
+    const GROUP_INTO_BLOCKS: Self = Self {
+        controls: TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
+        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
+        failure_sources: false,
+        path_hierarchy: false,
+        adjacency_tree: false,
+    };
+
+    fn permits_into_blocks(self) -> bool {
+        matches!(
+            self.controls,
+            TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks
+        )
+    }
+
     fn permits_ending_with(self) -> bool {
         matches!(
             self.controls,
@@ -212,6 +237,8 @@ fn render_basic_owned_mapping_profile(
         codegen::validate_program_with_basic_owned_path_hierarchy(program)?;
     } else if extension.failure_sources {
         codegen::validate_program_with_basic_owned_failure_sources(program)?;
+    } else if extension.permits_into_blocks() {
+        codegen::validate_program_with_basic_owned_group_into_blocks(program)?;
     } else if extension.permits_ending_with() {
         codegen::validate_program_with_basic_owned_group_ending_with(program)?;
     } else if extension.permits_starting_with() {
@@ -244,7 +271,9 @@ fn render_basic_owned_mapping_profile(
         extension,
     )?;
     let mut body = String::new();
-    let (primary, extras) = if extension.permits_ending_with() {
+    let (primary, extras) = if extension.permits_into_blocks() {
+        mapping::render_basic_scopes_with_group_into_blocks(program, &mut body)?
+    } else if extension.permits_ending_with() {
         mapping::render_basic_scopes_with_group_ending_with(program, &mut body)?
     } else if extension.permits_starting_with() {
         mapping::render_basic_scopes_with_group_starting_with(program, &mut body)?
@@ -689,6 +718,8 @@ fn validate_private_inventory(
         codegen::validate_basic_owned_path_hierarchy_emission(program)?;
     } else if extension.failure_sources {
         codegen::validate_basic_owned_failure_source_emission(program)?;
+    } else if extension.permits_into_blocks() {
+        codegen::validate_basic_owned_group_into_blocks_emission(program)?;
     } else if extension.permits_ending_with() {
         codegen::validate_basic_owned_group_ending_with_emission(program)?;
     } else if extension.permits_starting_with() {
@@ -1082,6 +1113,8 @@ fn render_checked_basic_owned_mapping_profile(
         codegen::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy(program)?
     } else if extension.failure_sources {
         codegen::legacy_named_input_admission_plan_with_basic_owned_failure_sources(program)?
+    } else if extension.permits_into_blocks() {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_group_into_blocks(program)?
     } else if extension.permits_ending_with() {
         codegen::legacy_named_input_admission_plan_with_basic_owned_group_ending_with(program)?
     } else if extension.permits_starting_with() {
@@ -1543,6 +1576,22 @@ pub(crate) fn render_public_basic_owned_adjacency_tree_mapping(
         true,
         true,
         TargetExtension::ADJACENCY_TREE,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_group_into_blocks_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::GROUP_INTO_BLOCKS,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)

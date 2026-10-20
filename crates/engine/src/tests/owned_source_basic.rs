@@ -843,15 +843,36 @@ fn c04_c11_owned_special_scope_and_runtime_documents_remain_closed() {
         })
     );
     p.root.group_ending_with = None;
+    // #445 admits owned fixed blocks; the parent-evaluated size is typed.
     p.root.group_into_blocks = Some(1);
     assert!(matches!(
         crate::run(&p, &input),
-        Err(EngineError::UnsupportedOwnedContext {
-            context: Domain::Grouping,
-            scope: Some(_),
+        Err(EngineError::OwnedSourceAccess {
+            node: Some(1),
+            source: crate::OwnedSourceError::UniteratedOwnedRepetition { .. },
             ..
         })
     ));
+    p.graph.nodes.insert(
+        70,
+        Node::Const {
+            value: Value::Int(2),
+        },
+    );
+    p.root.group_into_blocks = Some(70);
+    assert_eq!(
+        crate::run(&p, &input),
+        Ok(Instance::Repeated(vec![
+            group(vec![
+                ("Value", text("P1")),
+                ("Position", Instance::Scalar(Value::Int(1)))
+            ]),
+            group(vec![
+                ("Value", text("P3")),
+                ("Position", Instance::Scalar(Value::Int(2)))
+            ]),
+        ]))
+    );
     p.root.group_into_blocks = None;
     p.root.set_output_path(Some(1));
     assert!(matches!(

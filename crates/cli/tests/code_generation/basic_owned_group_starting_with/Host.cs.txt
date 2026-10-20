@@ -117,6 +117,7 @@ internal static class Driver
         if (kind == "MappingException") return Error(new FerruleRuntimeException(FerruleRuntimeError.MappingException, "frozen", node: node, mappingExceptionMessage: message));
         if (kind == "MappingFailure") return Error(new FerruleRuntimeException(FerruleRuntimeError.MappingFailure, "frozen", failureRule: recipe["rule"]!.GetValue<int>(), mappingFailureMessage: message));
         if (kind == "UnknownTarget") return Error(new FerruleRuntimeException(FerruleRuntimeError.UnknownTarget, "frozen", detail: recipe["name"]!.GetValue<string>()));
+        if (kind == "InvalidBlockSize") return Error(new FerruleRuntimeException(FerruleRuntimeError.InvalidBlockSize, "frozen", node: node));
         if (kind is "NotABool" or "NotAnItemCount") return Error(new FerruleRuntimeException(kind == "NotABool" ? FerruleRuntimeError.NotABool : FerruleRuntimeError.NotAnItemCount,
             "frozen", node: node, foundKind: recipe["found"]!.GetValue<string>() switch {
                 "bool" => FerruleValueKind.Bool, "string" => FerruleValueKind.String,

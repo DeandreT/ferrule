@@ -25,6 +25,7 @@ fn error(recipe:&Json)->RuntimeError {
         "MappingException"=>RuntimeError::MappingException {node:node.unwrap(),message:recipe["message"].as_str().map(str::to_owned)},
         "MappingFailure"=>RuntimeError::MappingFailure {rule:recipe["rule"].as_u64().unwrap() as usize,message:recipe["message"].as_str().map(str::to_owned)},
         "NotABool"=>RuntimeError::NotABool {node:node.unwrap(),found},"NotAnItemCount"=>RuntimeError::NotAnItemCount {node:node.unwrap(),found},
+        "InvalidBlockSize"=>RuntimeError::InvalidBlockSize {node:node.unwrap()},
         "UnknownTarget"=>RuntimeError::UnknownTarget {name:recipe["name"].as_str().unwrap().into()},
         "OwnedSource"=>{
             let owner=if recipe["owner"]=="Primary" {OwnedSourceIdentity::Primary} else {OwnedSourceIdentity::Named(recipe["owner"].as_str().unwrap().into())};

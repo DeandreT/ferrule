@@ -5,9 +5,9 @@ use super::*;
 use crate::{SequenceWindow, SortDirection};
 use std::cmp::Ordering;
 
-/// Static controls shared by paired By, AdjacentBy, StartingWith and EndingWith,
-/// snapshotted before any grouping expression is evaluated. The historical name does not
-/// select a partition policy.
+/// Static controls shared by paired By, AdjacentBy, StartingWith, EndingWith and
+/// IntoBlocks, snapshotted before any grouping expression is evaluated. The
+/// historical name does not select a partition policy.
 pub struct BasicGroupByMetadata<'a> {
     pub directions: &'a [SortDirection],
     pub filter_before_sort: bool,
@@ -57,6 +57,12 @@ pub trait BasicGroupEndingWithControls<E> {
     fn retain_member(&mut self, context: &BasicScopeContext<'_>) -> Result<bool, E>;
 }
 
+#[path = "basic_group_into_blocks.rs"]
+mod into_blocks;
+pub use into_blocks::BasicGroupIntoBlocksControls;
+#[cfg(test)]
+use into_blocks::blocks_run_snapshot_for_test;
+
 // Borrowed stack-only dispatch. It is never retained in Prepared, boxed, cloned
 // or converted into a key-producing public adapter. These are the only paired
 // operations that can reach member-container publication.
@@ -65,12 +71,15 @@ enum GroupControls<'a, E> {
     Adjacent(&'a mut dyn BasicGroupByControls<E>),
     Starting(&'a mut dyn BasicGroupStartingWithControls<E>),
     Ending(&'a mut dyn BasicGroupEndingWithControls<E>),
+    Blocks(&'a mut dyn BasicGroupIntoBlocksControls<E>),
 }
 enum PartitionDecision {
     By(Value),
     Adjacent(Value),
     Start(bool),
     End(bool),
+    // Blocks have no per-candidate partition callback.
+    Block,
 }
 impl<E> GroupControls<'_, E> {
     fn filter(&mut self, context: &BasicScopeContext<'_>) -> Result<bool, E> {
@@ -78,6 +87,7 @@ impl<E> GroupControls<'_, E> {
             Self::By(c) | Self::Adjacent(c) => c.filter(context),
             Self::Starting(c) => c.filter(context),
             Self::Ending(c) => c.filter(context),
+            Self::Blocks(c) => c.filter(context),
         }
     }
     fn sort_key(&mut self, key: usize, context: &BasicScopeContext<'_>) -> Result<Value, E> {
@@ -85,6 +95,7 @@ impl<E> GroupControls<'_, E> {
             Self::By(c) | Self::Adjacent(c) => c.sort_key(key, context),
             Self::Starting(c) => c.sort_key(key, context),
             Self::Ending(c) => c.sort_key(key, context),
+            Self::Blocks(c) => c.sort_key(key, context),
         }
     }
     fn window(
@@ -96,6 +107,18 @@ impl<E> GroupControls<'_, E> {
             Self::By(c) | Self::Adjacent(c) => c.window(bound, parent),
             Self::Starting(c) => c.window(bound, parent),
             Self::Ending(c) => c.window(bound, parent),
+            Self::Blocks(c) => c.window(bound, parent),
+        }
+    }
+    /// The fixed size, evaluated once in the receiving parent; keyed and
+    /// boundary partitions have none.
+    fn block_size(
+        &mut self,
+        parent: &BasicScopeContext<'_>,
+    ) -> Result<Option<std::num::NonZeroUsize>, E> {
+        match self {
+            Self::Blocks(c) => c.block_size(parent).map(Some),
+            Self::By(_) | Self::Adjacent(_) | Self::Starting(_) | Self::Ending(_) => Ok(None),
         }
     }
     fn partition(&mut self, context: &BasicScopeContext<'_>) -> Result<PartitionDecision, E> {
@@ -104,6 +127,7 @@ impl<E> GroupControls<'_, E> {
             Self::Adjacent(c) => c.group_key(context).map(PartitionDecision::Adjacent),
             Self::Starting(c) => c.starts_group(context).map(PartitionDecision::Start),
             Self::Ending(c) => c.ends_group(context).map(PartitionDecision::End),
+            Self::Blocks(_) => Ok(PartitionDecision::Block),
         }
     }
     fn retain_member(&mut self, context: &BasicScopeContext<'_>) -> Result<bool, E> {
@@ -111,6 +135,7 @@ impl<E> GroupControls<'_, E> {
             Self::By(c) | Self::Adjacent(c) => c.retain_member(context),
             Self::Starting(c) => c.retain_member(context),
             Self::Ending(c) => c.retain_member(context),
+            Self::Blocks(c) => c.retain_member(context),
         }
     }
 }
@@ -921,6 +946,8 @@ impl<'ctx> BasicScopeContext<'ctx> {
         if p.config.implicit_first {
             p.windows.push(SequenceWindow::First(1));
         }
+        // Blocks: the size follows the bounds and precedes candidate controls.
+        let block_size = controls.block_size(self)?;
         // Ending: whether the previous selected candidate closed its group.
         let mut ending_closed = true;
         for &id in &p.order {
@@ -968,6 +995,14 @@ impl<'ctx> BasicScopeContext<'ctx> {
                     ending_closed = ends;
                     (group, None)
                 }
+                // Selected candidates fill the last block; the final block may
+                // be partial. Retention never moves members between blocks.
+                PartitionDecision::Block => (
+                    p.buckets.len().checked_sub(1).filter(|&last| {
+                        block_size.is_some_and(|n| p.buckets[last].count < n.get())
+                    }),
+                    None,
+                ),
             };
             if let Some(group) = group {
                 let bucket = &mut p.buckets[group];
