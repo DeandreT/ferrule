@@ -1,0 +1,244 @@
+[
+  {
+    "input": "{}",
+    "outputs": [
+      {
+        "clock": "2026-03-04T05:06:07.125-08:00",
+        "expected": {
+          "Batches": []
+        }
+      },
+      {
+        "clock": "2031-11-12T23:58:59Z",
+        "expected": {
+          "Batches": []
+        }
+      }
+    ],
+    "without_clock": {
+      "expected": {
+        "Batches": []
+      }
+    }
+  },
+  {
+    "input": "{\"Rows\":[]}",
+    "outputs": [
+      {
+        "clock": "2026-03-04T05:06:07.125-08:00",
+        "expected": {
+          "Batches": []
+        }
+      },
+      {
+        "clock": "2031-11-12T23:58:59Z",
+        "expected": {
+          "Batches": []
+        }
+      }
+    ],
+    "without_clock": {
+      "expected": {
+        "Batches": []
+      }
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":true,\"Note\":\"a\"},{\"Choose\":false,\"Note\":\"b\"},{\"Choose\":false},{\"Choose\":true}]}",
+    "outputs": [
+      {
+        "clock": "2026-03-04T05:06:07.125-08:00",
+        "expected": {
+          "Batches": [
+            {
+              "Records": [
+                {
+                  "Text": "created",
+                  "Stamp": "2026-03-04T05:06:07.125-08:00",
+                  "Picked": "2026-03-04T05:06:07.125-08:00"
+                }
+              ]
+            },
+            {
+              "Records": [
+                {
+                  "Text": "created",
+                  "Stamp": "b",
+                  "Picked": "b"
+                }
+              ]
+            },
+            {
+              "Records": [
+                {
+                  "Text": "created"
+                }
+              ]
+            },
+            {
+              "Records": [
+                {
+                  "Text": "created",
+                  "Stamp": "2026-03-04T05:06:07.125-08:00",
+                  "Picked": "2026-03-04T05:06:07.125-08:00"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "clock": "2031-11-12T23:58:59Z",
+        "expected": {
+          "Batches": [
+            {
+              "Records": [
+                {
+                  "Text": "created",
+                  "Stamp": "2031-11-12T23:58:59Z",
+                  "Picked": "2031-11-12T23:58:59Z"
+                }
+              ]
+            },
+            {
+              "Records": [
+                {
+                  "Text": "created",
+                  "Stamp": "b",
+                  "Picked": "b"
+                }
+              ]
+            },
+            {
+              "Records": [
+                {
+                  "Text": "created"
+                }
+              ]
+            },
+            {
+              "Records": [
+                {
+                  "Text": "created",
+                  "Stamp": "2031-11-12T23:58:59Z",
+                  "Picked": "2031-11-12T23:58:59Z"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "without_clock": {
+      "missing_clock": true
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":false,\"Note\":\"b\"},{\"Choose\":false}]}",
+    "outputs": [
+      {
+        "clock": "2026-03-04T05:06:07.125-08:00",
+        "expected": {
+          "Batches": [
+            {
+              "Records": [
+                {
+                  "Text": "created",
+                  "Stamp": "b",
+                  "Picked": "b"
+                }
+              ]
+            },
+            {
+              "Records": [
+                {
+                  "Text": "created"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "clock": "2031-11-12T23:58:59Z",
+        "expected": {
+          "Batches": [
+            {
+              "Records": [
+                {
+                  "Text": "created",
+                  "Stamp": "b",
+                  "Picked": "b"
+                }
+              ]
+            },
+            {
+              "Records": [
+                {
+                  "Text": "created"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "without_clock": {
+      "expected": {
+        "Batches": [
+          {
+            "Records": [
+              {
+                "Text": "created",
+                "Stamp": "b",
+                "Picked": "b"
+              }
+            ]
+          },
+          {
+            "Records": [
+              {
+                "Text": "created"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":false},{\"Note\":\"x\"}]}",
+    "boolean_error": {
+      "node": 2,
+      "found": "null"
+    }
+  },
+  {
+    "input": "{\"Rows\":null}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Choose\":null}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{\"Note\":1}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[{},{},{},{},{}]}",
+    "reject": true
+  },
+  {
+    "input": "{\"Rows\":[],\"Other\":1}",
+    "reject": true
+  },
+  {
+    "input": "7",
+    "reject": true
+  },
+  {
+    "input": "{broken",
+    "reject": true
+  }
+]

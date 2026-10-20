@@ -1,0 +1,75 @@
+use codegen_runtime::{ExecutionContext, JsonBoundaryError, RuntimeError, RuntimeValue};
+use ferrule_generated_mapping::{
+    execute_json, execute_json_bytes, execute_json_bytes_with_context, execute_json_with_context,
+};
+use std::path::Path;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cases: Vec<serde_json::Value> = serde_json::from_str(include_str!("../cases.json"))?;
+    let path = Path::new("clocks.ferrule.json");
+    for case in &cases {
+        let input = case["input"].as_str().unwrap();
+        if case["reject"] == true {
+            for result in [execute_json(input), execute_json_bytes_text(input, None)] {
+                assert!(matches!(result, Err(JsonBoundaryError::InvalidInput { .. })), "{case}: {result:?}");
+            }
+            continue;
+        }
+        if let Some(expected) = case.get("boolean_error") {
+            let context = ExecutionContext::new(path).with_current_datetime("2026-01-01T00:00:00Z");
+            for result in [execute_json(input), execute_json_with_context(input, &context)] {
+                assert!(matches!(
+                    result,
+                    Err(JsonBoundaryError::Execution(RuntimeError::NotABool { node, found }))
+                        if node == expected["node"].as_u64().unwrap() as u32
+                            && found == expected["found"].as_str().unwrap()
+                ), "{case}: Boolean condition error differs");
+            }
+            continue;
+        }
+        // One generated library reads each supplied clock from its context.
+        for output in case["outputs"].as_array().unwrap() {
+            let clock = output["clock"].as_str().unwrap();
+            let context = ExecutionContext::new(path).with_current_datetime(clock);
+            for result in [
+                execute_json_with_context(input, &context),
+                execute_json_bytes_text(input, Some(&context)),
+            ] {
+                let actual: serde_json::Value = serde_json::from_str(&result.unwrap())?;
+                assert_eq!(actual, output["expected"], "{case}");
+            }
+        }
+        let without_clock = &case["without_clock"];
+        let context = ExecutionContext::new(path);
+        for result in [
+            execute_json(input),
+            execute_json_bytes_text(input, None),
+            execute_json_with_context(input, &context),
+        ] {
+            if without_clock["missing_clock"] == true {
+                assert!(matches!(
+                    result,
+                    Err(JsonBoundaryError::Execution(RuntimeError::MissingRuntimeValue {
+                        value: RuntimeValue::CurrentDateTime
+                    }))
+                ), "{case}: missing clock error differs: {result:?}");
+            } else {
+                let actual: serde_json::Value = serde_json::from_str(&result.unwrap())?;
+                assert_eq!(actual, without_clock["expected"], "{case}");
+            }
+        }
+    }
+    println!("verified {} constructed clock cases", cases.len());
+    Ok(())
+}
+
+fn execute_json_bytes_text(
+    input: &str,
+    context: Option<&ExecutionContext<'_>>,
+) -> Result<String, JsonBoundaryError> {
+    match context {
+        Some(context) => execute_json_bytes_with_context(input.as_bytes(), context),
+        None => execute_json_bytes(input.as_bytes()),
+    }
+    .map(|bytes| String::from_utf8(bytes).unwrap())
+}

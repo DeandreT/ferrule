@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "Choose": {
+      "type": "boolean"
+    },
+    "Note": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "title": "Source"
+}

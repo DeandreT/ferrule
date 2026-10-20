@@ -1458,6 +1458,9 @@ mod constructed_variable_conditionals;
 #[path = "code_generation/constructed_parser_runtime_inputs.rs"]
 mod constructed_parser_runtime_inputs;
 
+#[path = "code_generation/constructed_variable_clocks.rs"]
+mod constructed_variable_clocks;
+
 #[path = "code_generation/json_parser_object_presence.rs"]
 mod json_parser_object_presence;
 
