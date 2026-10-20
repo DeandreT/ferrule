@@ -641,7 +641,7 @@ fn validate_scope(
             }
             IterationSource::InnerJoin(join) => {
                 if root_context {
-                    joins::validate_plan(schemas.sources, join)?;
+                    joins::validate_root_plan(schemas.sources, join)?;
                 } else {
                     joins::validate_correlated_scope(
                         target_path,
