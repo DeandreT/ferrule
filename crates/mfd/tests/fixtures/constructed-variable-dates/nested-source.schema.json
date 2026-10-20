@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "properties": {
+    "Rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Choose": {
+            "type": "boolean"
+          },
+          "Raw": {
+            "type": "string"
+          },
+          "Alt": {
+            "type": "string"
+          },
+          "Note": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 4
+    }
+  },
+  "additionalProperties": false,
+  "title": "Source"
+}

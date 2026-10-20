@@ -1,0 +1,29 @@
+{
+  "title": "Source",
+  "type": "object",
+  "properties": {
+    "Rows": {
+      "type": "array",
+      "items": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "Label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "Total": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false
+      },
+      "maxItems": 4
+    }
+  },
+  "additionalProperties": false
+}
