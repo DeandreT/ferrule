@@ -19,7 +19,7 @@ impl FerruleApp {
     pub(super) fn finish_mfd_export(&mut self, path: &Path, profile: ExportProfile) {
         let native = profile == ExportProfile::NativeMfd;
         let qualifier = if native { "native MFD " } else { "" };
-        match mfd::export_with_profile(&self.project, path, profile) {
+        match self.export_mfd_snapshot(path, profile) {
             Ok(report) if report.warnings.is_empty() => {
                 self.status = format!("exported {qualifier}{}", path.display());
                 self.diagnostics.clear();
@@ -52,6 +52,19 @@ impl FerruleApp {
                     .error("MFD export failed", error.to_string());
             }
         }
+    }
+
+    /// Exports the current, possibly unsaved, project with its static instance
+    /// paths rebased from the document location to the design, matching the
+    /// CLI export of a saved project. The editor's project is left unchanged.
+    fn export_mfd_snapshot(
+        &self,
+        path: &Path,
+        profile: ExportProfile,
+    ) -> Result<mfd::ExportReport, MfdError> {
+        let mut project = self.project.clone();
+        cli::rebase_project_paths(&mut project, self.document.suggested_path(), path)?;
+        mfd::export_with_profile(&project, path, profile)
     }
 }
 
@@ -220,6 +233,98 @@ mod tests {
         complete_export_dialog(&mut app, DialogKind::ExportMfd, &path);
         assert_eq!(app.status, format!("exported {}", path.display()));
         assert!(std::fs::read_to_string(&path)?.contains("library=\"ferrule\""));
+        Ok(())
+    }
+
+    fn named_boundary_app() -> FerruleApp {
+        let document = |root: &str| {
+            SchemaNode::group(root, vec![SchemaNode::scalar("Value", ScalarType::String)])
+        };
+        let mut app = mapped_xml_app();
+        app.project.source_options.xml_document = true;
+        app.project.target_options.xml_document = true;
+        app.project.source_path = Some(r"..\data\source.xml".into());
+        app.project.target_path = Some("../results/target.xml".into());
+        app.project.extra_sources.push(mapping::NamedSource {
+            name: "Catalog".into(),
+            path: r"..\data\catalog.xml".into(),
+            schema: document("Catalog"),
+            options: Default::default(),
+            dynamic_path: None,
+        });
+        app.project.extra_targets.push(mapping::NamedTarget {
+            name: "Audit".into(),
+            path: Some("../results/audit.xml".into()),
+            schema: document("Audit"),
+            options: Default::default(),
+            root: Scope {
+                bindings: vec![Binding {
+                    target_field: "Value".into(),
+                    node: 1,
+                }],
+                ..Scope::default()
+            },
+        });
+        app.project.graph.nodes.insert(
+            1,
+            Node::SourceField {
+                path: vec!["Catalog".into(), "Value".into()],
+                frame: None,
+            },
+        );
+        app
+    }
+
+    #[test]
+    fn exports_rebase_unsaved_instance_paths_to_the_design_directory()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TestDir::new()?;
+        let document = temp.0.join("maps/project.json");
+        std::fs::create_dir_all(temp.0.join("maps"))?;
+        let mut app = named_boundary_app();
+        app.document = DocumentLocation::saved(document.clone());
+        app.save_document_to(&document)?;
+        let saved = std::fs::read(&document)?;
+        // An unsaved edit is exported; the saved file is never reloaded.
+        app.project.target_path = Some("../results/edited.xml".into());
+        let project = crate::project_state::project_snapshot_key(&app.project);
+        assert!(app.is_dirty());
+
+        for (kind, profile) in [
+            (DialogKind::ExportNativeMfd, mfd::ExportProfile::NativeMfd),
+            (DialogKind::ExportMfd, mfd::ExportProfile::FerruleExtensions),
+        ] {
+            let design = temp.0.join(format!("exports/{profile:?}/deep/mapping.mfd"));
+            std::fs::create_dir_all(design.parent().expect("design has a parent"))?;
+            complete_export_dialog(&mut app, kind, &design);
+            assert!(
+                app.status.starts_with("exported "),
+                "{profile:?}: {}",
+                app.status
+            );
+
+            let imported = mfd::import(&design)?.project;
+            assert_eq!(
+                imported.source_path.as_deref(),
+                Some("../../../data/source.xml")
+            );
+            assert_eq!(
+                imported.target_path.as_deref(),
+                Some("../../../results/edited.xml")
+            );
+            assert_eq!(imported.extra_sources[0].path, "../../../data/catalog.xml");
+            assert_eq!(
+                imported.extra_targets[0].path.as_deref(),
+                Some("../../../results/audit.xml")
+            );
+            assert_eq!(
+                crate::project_state::project_snapshot_key(&app.project),
+                project
+            );
+            assert_eq!(app.document, DocumentLocation::saved(document.clone()));
+            assert!(app.is_dirty());
+        }
+        assert_eq!(std::fs::read(&document)?, saved);
         Ok(())
     }
 }
