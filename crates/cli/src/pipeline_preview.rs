@@ -462,6 +462,8 @@ fn execute_preview(
     let current_datetime = jiff::Zoned::now()
         .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
         .to_string();
+    // Preview renders every stage target for inspection, so unlike a file run
+    // it intentionally retains all intermediates until rendering completes.
     let outputs = engine::run_pipeline_with_stage_contexts(pipeline, &hosts, |stage| {
         let mut context =
             ExecutionContext::with_main_mapping_file_path(&mapping_paths[stage], &main_path)

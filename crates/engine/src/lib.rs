@@ -59,10 +59,11 @@ pub use filter_map::{
 pub use owned_context::OwnedSourceError;
 
 pub use pipeline::{
-    PipelineError, PipelineOutputs, PipelineStageOutput, PipelineValidationIssue,
-    check_pipeline_source_ownership_capability,
+    PipelineError, PipelineOutputs, PipelineRetainedOutputs, PipelineStageOutput,
+    PipelineTargetRef, PipelineValidationIssue, check_pipeline_source_ownership_capability,
     check_pipeline_source_ownership_capability_with_observers, run_pipeline,
-    run_pipeline_with_context, run_pipeline_with_stage_contexts, validate_pipeline,
+    run_pipeline_retaining, run_pipeline_with_context, run_pipeline_with_stage_contexts,
+    validate_pipeline,
 };
 pub use primary_filename::{PrimaryFilenameEvaluationError, evaluate_primary_filename};
 pub use trace::{
