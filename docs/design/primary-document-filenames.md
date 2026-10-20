@@ -92,6 +92,8 @@ input expression before pruning its graph dependencies. The selected source's
 data ports identify the owning declaration; a component label or declaration
 order alone is insufficient. Ambiguous feeds, missing connections and unsupported
 wrapper controls are refused.
+An optional header containing only an empty namespace declaration is metadata,
+not another file wrapper; other header content remains refused.
 
 This is a repair-oriented metadata import, not an executable profile. All
 ordinary warnings, including unsupported input/output filename behavior, remain.

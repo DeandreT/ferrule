@@ -42,7 +42,7 @@ impl Drop for Fixture {
 }
 
 const PARAMETER: &str = r#"<component name="path" library="core" kind="6"><targets><datapoint pos="0" key="1"/></targets><data><input datatype="string" usepreviewvalue="1" previewvalue="never-parameter-preview.csv"/><parameter usageKind="input" name="InputPath"/></data></component>"#;
-const LITERAL: &str = r#"<component name="path" library="core" kind="2"><targets><datapoint pos="0" key="1"/></targets><data><constant datatype="string" value=" ./雪 &amp; β/*.csv "/></data></component>"#;
+const LITERAL: &str = r#"<component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="1"/></targets><data><constant datatype="string" value=" ./雪 &amp; β/*.csv "/></data></component>"#;
 
 fn design(expression: &str, feed: u32) -> String {
     format!(
@@ -198,6 +198,59 @@ fn source_dependent_filename_stays_retained_but_is_not_admitted() -> Result<(), 
         matches!(codegen::lower_document(&imported.document), Err(codegen::DocumentLowerError::Filename(PrimaryFilenameError::UnsupportedExpression {node: found})) if found == node)
     );
     assert_eq!(std::fs::read_to_string(path)?, xml);
+    Ok(())
+}
+
+#[test]
+fn empty_namespace_header_is_metadata_but_other_header_content_is_not() -> Result<(), Box<dyn Error>>
+{
+    let source_root = "<root><entry name=\"FileInstance\" ns=\"1\"";
+    let original = design(LITERAL, 1);
+    assert_eq!(original.matches(source_root).count(), 1);
+    let fixture = Fixture::new()?;
+    let with_header = original.replace(
+        source_root,
+        "<root><header><namespaces/></header><entry name=\"FileInstance\" ns=\"1\"",
+    );
+    let path = fixture.write(&with_header)?;
+    let imported = mfd::import_csv_document(&path)?;
+    compare_legacy(&path, &imported)?;
+    assert_eq!(
+        imported.document.global_filename(),
+        Ok(GlobalFilename::Literal(" ./雪 & β/*.csv "))
+    );
+    for header in [
+        "<header/>",
+        "<header><namespaces name=\"x\"/></header>",
+        "<header><namespaces><namespace/></namespaces></header>",
+        "<header><namespaces/>unexpected</header>",
+    ] {
+        let xml = original.replace(
+            source_root,
+            &format!("<root>{header}<entry name=\"FileInstance\" ns=\"1\""),
+        );
+        let path = fixture.write(&xml)?;
+        assert!(mfd::import_csv_document(&path).is_err(), "{header}");
+        assert_eq!(std::fs::read_to_string(path)?, xml);
+    }
+    Ok(())
+}
+
+#[test]
+fn unknown_kind_two_function_is_not_reclassified_as_a_literal() -> Result<(), Box<dyn Error>> {
+    let fixture = Fixture::new()?;
+    let expression = LITERAL.replace("name=\"constant\"", "name=\"path\"");
+    let path = fixture.write(&design(&expression, 1))?;
+    let imported = mfd::import_csv_document(&path)?;
+    compare_legacy(&path, &imported)?;
+    let node = imported.document.primary_source().filename;
+    assert_eq!(
+        imported.document.global_filename(),
+        Err(PrimaryFilenameError::UnsupportedExpression { node })
+    );
+    assert!(
+        matches!(&imported.document.project().graph.nodes[&node], Node::Call { function, .. } if function == "path")
+    );
     Ok(())
 }
 

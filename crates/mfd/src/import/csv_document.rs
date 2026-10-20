@@ -115,6 +115,7 @@ pub(super) fn retain_filename(
     let entries = root
         .children()
         .filter(roxmltree::Node::is_element)
+        .filter(|node| !empty_namespace_header(*node))
         .collect::<Vec<_>>();
     let [wrapper] = entries.as_slice() else {
         return Err(unsupported("requires one FileInstance wrapper"));
@@ -152,4 +153,26 @@ pub(super) fn retain_filename(
     builder
         .binding_node(feed, &[])
         .ok_or_else(|| unsupported("filename feed cannot be retained"))
+}
+
+fn empty_namespace_header(node: roxmltree::Node<'_, '_>) -> bool {
+    if !node.has_tag_name("header") || node.attributes().len() != 0 {
+        return false;
+    }
+    let children = node
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect::<Vec<_>>();
+    let [namespaces] = children.as_slice() else {
+        return false;
+    };
+    namespaces.has_tag_name("namespaces")
+        && namespaces.attributes().len() == 0
+        && namespaces
+            .children()
+            .all(|child| child.is_text() && child.text().is_none_or(|text| text.trim().is_empty()))
+        && node
+            .children()
+            .filter(|child| child.is_text())
+            .all(|child| child.text().is_none_or(|text| text.trim().is_empty()))
 }
