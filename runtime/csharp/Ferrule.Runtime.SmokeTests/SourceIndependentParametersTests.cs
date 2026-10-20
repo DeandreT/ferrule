@@ -36,6 +36,16 @@ internal static partial class Program
             Equal(bound.Message, direct.Message);
             Equal(bound.FoundKind, direct.FoundKind);
             Equal(bound.ExpectedScalarType, direct.ExpectedScalarType);
+            if (name == "bad")
+            {
+                Equal(FerruleValueKind.Double, direct.FoundKind);
+                Equal(FerruleScalarType.String, direct.ExpectedScalarType);
+            }
+            else
+            {
+                Equal<FerruleValueKind?>(null, direct.FoundKind);
+                Equal<FerruleScalarType?>(null, direct.ExpectedScalarType);
+            }
         }
         var absent = new FerruleExecutionContext("mapping.ferrule");
         var missingDirect = Error(FerruleRuntimeError.MissingRuntimeParameter,
