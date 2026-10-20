@@ -21,17 +21,76 @@ public static class FerrulePathHierarchy
         ArgumentException.ThrowIfNullOrEmpty(filesField);
         ArgumentException.ThrowIfNullOrEmpty(nameField);
 
-        var roots = new List<Directory>();
-        var materialized = 0;
+        return BuildFrom(
+            LegacyItems(context, collection),
+            separator,
+            directoriesField,
+            filesField,
+            nameField);
+    }
+
+    private static IEnumerable<FerruleInstance> LegacyItems(
+        ScopeContext context,
+        IReadOnlyList<string> collection)
+    {
         foreach (var candidate in context.IterateSource(collection))
         {
-            if (candidate.Frames.Count == 0)
+            if (candidate.Frames.Count != 0)
             {
-                continue;
+                yield return candidate.Frames[^1];
             }
-            if (candidate.Frames[^1] is not FerruleScalar scalar)
+        }
+    }
+
+    /// <summary>
+    /// Builds the same tree from one exact owner's collection. A same-owner frame
+    /// pins its prefix; other owners and legacy frames never supply the items.
+    /// The directory, file, and name fields describe output structure only.
+    /// </summary>
+    public static FerruleInstance BuildOwned(
+        FerruleBasicScopeContext context,
+        FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> collection,
+        string separator,
+        string directoriesField,
+        string filesField,
+        string nameField)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(collection);
+        ArgumentException.ThrowIfNullOrEmpty(separator);
+        ArgumentException.ThrowIfNullOrEmpty(directoriesField);
+        ArgumentException.ThrowIfNullOrEmpty(filesField);
+        ArgumentException.ThrowIfNullOrEmpty(nameField);
+
+        var cohort = context.WalkOwnedSourceCohort(owner, collection);
+        var items = new List<FerruleInstance>(cohort.Count);
+        foreach (var candidate in cohort)
+        {
+            var frames = candidate.Context.LegacyView.Frames;
+            if (frames.Count != 0)
             {
-                throw ValueType(InstanceKind(candidate.Frames[^1]));
+                items.Add(frames[^1]);
+            }
+        }
+        GC.KeepAlive(cohort);
+        return BuildFrom(items, separator, directoriesField, filesField, nameField);
+    }
+
+    private static FerruleInstance BuildFrom(
+        IEnumerable<FerruleInstance> items,
+        string separator,
+        string directoriesField,
+        string filesField,
+        string nameField)
+    {
+        var roots = new List<Directory>();
+        var materialized = 0;
+        foreach (var item in items)
+        {
+            if (item is not FerruleScalar scalar)
+            {
+                throw ValueType(InstanceKind(item));
             }
             var value = scalar.Value.Kind switch
             {

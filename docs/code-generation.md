@@ -381,6 +381,40 @@ mandatory five-field policy. Earlier profiles and the ordinary emitters keep
 refusing owned walks. The [owned failure contract](design/owned-failure-sources.md)
 defines the wire form, row and absence rules, and qualification.
 
+## Explicit owned path hierarchy
+
+`ScopeConstruction::OwnedPathHierarchy` builds the bounded directory tree of the
+legacy path-hierarchy construction from one explicitly owned input collection.
+Use `codegen::lower_with_basic_owned_path_hierarchy`, then
+`codegen_rust::emit_with_basic_owned_path_hierarchy(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_path_hierarchy(&program)`. The matching
+`validate_program_with_basic_owned_path_hierarchy`,
+`validate_basic_owned_path_hierarchy_emission` and
+`legacy_named_input_admission_plan_with_basic_owned_path_hierarchy` APIs select
+the same profile. It composes the EndingWith controls, scalar-producer ItemAt,
+primary-row failures and owned failure-rule walks; the execution entries and
+five-field Basic policy are unchanged.
+
+Only the collection carries an owner. The directory, file and name fields
+describe the generated recursive target and never select a source. The
+collection is read from its exact endpoint: an active same-owner frame pins its
+prefix, otherwise the endpoint root is used. Other endpoints, legacy aliases and
+outward fallback never supply items. A supplied endpoint whose collection is
+empty or missing produces the ordinary zero-root error; an unsupplied optional
+named endpoint reports the typed unavailable-source error when reached.
+
+Item order, separator rules, null and top-level-file omission, single-root
+validation, depth and materialization bounds, and the value-type error are
+shared with the legacy builders. The scope cannot contain bindings, children,
+controls or iteration, and the collection must be a repeating scalar in its
+owner's schema. Validation reports unknown, empty and unresolved owners as owned
+structure errors. The default validator and every earlier profile refuse the
+construction as a tree operator, and closed contexts (generated items, dynamic
+owners and other specialized scopes) keep their typed refusals. The legacy
+`PathHierarchy` plan, its wire form and its errors are unchanged; it continues
+to use the ordinary emitters. See [the ownership design](design/source-ownership.md#owned-path-hierarchy-input-collections)
+and [the corpus](../conformance/basic-owned-path-hierarchy/README.md).
+
 ## C#
 
 ### Build and test environment

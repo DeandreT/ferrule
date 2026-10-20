@@ -2578,7 +2578,28 @@ fn render_basic_scopes_profile<'a>(
         }
         output.push_str("    }\n\n");
         output.push_str(&format!("    private static global::Ferrule.Runtime.FerruleInstance ScopeItem_{index}(\n        global::Ferrule.Runtime.FerruleBasicScopeContext context)\n    {{\n"));
-        if let TargetConstruction::Scalar {
+        if let TargetConstruction::OwnedPathHierarchy {
+            collection,
+            separator,
+            directories,
+            files,
+            name,
+        } = scope.construction
+        {
+            // The exact stored owner selects the collection; field names only
+            // describe the generated directory tree.
+            output.push_str(
+                "        return global::Ferrule.Runtime.FerrulePathHierarchy.BuildOwned(\n            context,\n            ",
+            );
+            crate::owned_basic::render_owner(&collection.owner, output);
+            output.push_str(",\n            ");
+            render_path(&collection.path, output);
+            for value in [separator, directories, files, name] {
+                output.push_str(",\n            ");
+                output.push_str(&literal::string(value));
+            }
+            output.push_str(");\n    }\n");
+        } else if let TargetConstruction::Scalar {
             expression,
             target_domain,
         } = scope.construction

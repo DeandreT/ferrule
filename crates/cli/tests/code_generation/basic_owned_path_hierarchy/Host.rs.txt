@@ -1,0 +1,159 @@
+use codegen_runtime::{
+    BasicNamedSourceInput, ExecutionContext, Instance, OwnedSourceError, OwnedSourceLimits,
+    RuntimeError, TargetSelection, Value,
+};
+use serde_json::{Value as Json, json};
+use std::path::Path;
+
+fn decode(value: &Json) -> Instance {
+    match value {
+        Json::Null => Instance::Scalar(Value::Null),
+        Json::Bool(value) => Instance::Scalar(Value::Bool(*value)),
+        Json::Number(value) => Instance::Scalar(Value::Int(value.as_i64().unwrap())),
+        Json::String(value) => Instance::Scalar(Value::String(value.clone())),
+        Json::Array(items) => Instance::Repeated(items.iter().map(decode).collect()),
+        Json::Object(fields) => Instance::Group(
+            fields
+                .iter()
+                .map(|(name, value)| (name.clone(), decode(value)))
+                .collect::<Vec<_>>()
+                .into(),
+        ),
+    }
+}
+
+fn encode(instance: &Instance) -> Json {
+    match instance {
+        Instance::Scalar(Value::Null) => Json::Null,
+        Instance::Scalar(Value::Bool(value)) => json!(value),
+        Instance::Scalar(Value::Int(value)) => json!(value),
+        Instance::Scalar(Value::String(value)) => json!(value),
+        Instance::Repeated(items) => Json::Array(items.iter().map(encode).collect()),
+        Instance::Group(fields) => Json::Object(
+            fields
+                .iter()
+                .map(|(name, value)| (name.clone(), encode(value)))
+                .collect(),
+        ),
+        other => json!({ "unexpected": format!("{other:?}") }),
+    }
+}
+
+fn error(error: &RuntimeError) -> Json {
+    let owned = match error {
+        RuntimeError::OwnedSource(source) | RuntimeError::OwnedSourceAtNode { source, .. } => {
+            Some(source)
+        }
+        _ => None,
+    };
+    if let Some(OwnedSourceError::SourceUnavailable { name }) = owned {
+        return json!({ "kind": "SourceUnavailable", "owner": name });
+    }
+    match error {
+        RuntimeError::PathHierarchyRootCount { count } => {
+            json!({ "kind": "PathHierarchyRootCount", "count": count })
+        }
+        RuntimeError::PathHierarchyValueType { found } => {
+            json!({ "kind": "PathHierarchyValueType", "found": found })
+        }
+        RuntimeError::PathHierarchyDepth { limit } => {
+            json!({ "kind": "PathHierarchyDepth", "limit": limit })
+        }
+        RuntimeError::PathHierarchyTooLarge { max } => {
+            json!({ "kind": "PathHierarchyTooLarge", "max": max })
+        }
+        RuntimeError::UnknownTarget { name } => json!({ "kind": "UnknownTarget", "name": name }),
+        RuntimeError::MappingFailure { rule, message } => {
+            json!({ "kind": "MappingFailure", "rule": rule, "message": message })
+        }
+        other => json!({ "kind": "Unexpected", "debug": format!("{other:?}") }),
+    }
+}
+
+macro_rules! invoke {
+    ($module:ident, $selection:expr, $source:expr, $inputs:expr, $context:expr, $limits:expr) => {{
+        if $selection == "All" {
+            match $module::execute_with_basic_owned_sources($source, $inputs, Some($context), $limits) {
+                Ok(output) => {
+                    let mut trees = vec![json!([null, encode(&output.primary)])];
+                    trees.extend(
+                        output
+                            .extras
+                            .iter()
+                            .map(|named| json!([named.name, encode(&named.instance)])),
+                    );
+                    json!({ "Ok": trees })
+                }
+                Err(failure) => json!({ "Err": error(&failure) }),
+            }
+        } else {
+            let target = if $selection == "Primary" {
+                TargetSelection::Primary
+            } else {
+                TargetSelection::Named($selection)
+            };
+            match $module::execute_selected_with_basic_owned_sources(
+                $source,
+                $inputs,
+                Some($context),
+                $limits,
+                target,
+            ) {
+                Ok($module::SelectedTargetOutput::Primary(instance)) => {
+                    json!({ "Ok": [[null, encode(&instance)]] })
+                }
+                Ok($module::SelectedTargetOutput::Named(named)) => {
+                    json!({ "Ok": [[named.name, encode(&named.instance)]] })
+                }
+                Err(failure) => json!({ "Err": error(&failure) }),
+            }
+        }
+    }};
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    assert_eq!(args.len(), 2, "usage: host CONTROLS OUTPUT");
+    let controls: Json = serde_json::from_slice(&std::fs::read(&args[0])?)?;
+    let limits = OwnedSourceLimits {
+        max_roots: 16,
+        max_active_frames: 32,
+        max_path_segments: 64,
+        max_metadata_bytes: 16_777_216,
+        max_walk_contexts: 4096,
+    };
+    let context = ExecutionContext::new(Path::new("path-hierarchy465.mapping"));
+    let mut rows = Vec::new();
+    for case in controls["cases"].as_array().unwrap() {
+        let source = decode(&case["source"]);
+        let named = case["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|input| (input[0].as_str().unwrap().to_owned(), decode(&input[1])))
+            .collect::<Vec<_>>();
+        let inputs = named
+            .iter()
+            .map(|(name, instance)| BasicNamedSourceInput { name, instance })
+            .collect::<Vec<_>>();
+        for call in case["calls"].as_array().unwrap() {
+            let selection = call["selection"].as_str().unwrap();
+            let actual = match case["model"].as_u64().unwrap() {
+@DISPATCH@
+                _ => panic!("unknown model"),
+            };
+            rows.push(json!({
+                "case": case["id"],
+                "selection": selection,
+                "matched": actual == call["expected"],
+                "actual": actual,
+            }));
+        }
+    }
+    std::fs::create_dir_all(&args[1])?;
+    std::fs::write(
+        Path::new(&args[1]).join("ALL-COMPLETE-COMPARISONS.json"),
+        serde_json::to_vec_pretty(&rows)?,
+    )?;
+    Ok(())
+}

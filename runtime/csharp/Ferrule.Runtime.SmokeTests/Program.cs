@@ -62,6 +62,8 @@ internal static partial class Program
             ("X12 shared loop instance budget", X12SharedLoopInstanceBudget),
             ("X12 output byte preflight", X12OutputBytePreflight),
             ("lookup contexts", LookupContexts),
+            ("path hierarchy legacy collection", PathHierarchyLegacyBuild),
+            ("path hierarchy exact owned endpoints", PathHierarchyOwnedEndpoints),
             ("dynamic source contexts", DynamicSourceContexts),
             ("dynamic target construction", DynamicTargetConstruction),
             ("collection-find contexts", CollectionFindContexts),

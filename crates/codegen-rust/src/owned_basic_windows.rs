@@ -65,6 +65,17 @@ pub(crate) fn render_public_basic_owned_failure_source(
     )
 }
 
+/// FailureSources composition plus owned path-hierarchy construction.
+pub(crate) fn render_public_basic_owned_path_hierarchy_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::PathHierarchy,
+        SequenceItemAtPolicy::BasicScalarProducers,
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
     Closed,
@@ -81,6 +92,8 @@ pub(super) enum Profile {
     GroupEndingWith,
     /// EndingWith targets plus explicitly owned failure-rule iteration.
     FailureSources,
+    /// FailureSources controls plus owned path-hierarchy construction.
+    PathHierarchy,
 }
 
 impl Profile {
@@ -92,6 +105,7 @@ impl Profile {
                 | Self::GroupStartingWith
                 | Self::GroupEndingWith
                 | Self::FailureSources
+                | Self::PathHierarchy
         )
     }
 
@@ -104,14 +118,19 @@ impl Profile {
                     | Self::GroupStartingWith
                     | Self::GroupEndingWith
                     | Self::FailureSources
+                    | Self::PathHierarchy
             ),
             Some(GroupingPlan::StartingWith { .. }) => matches!(
                 self,
-                Self::GroupStartingWith | Self::GroupEndingWith | Self::FailureSources
+                Self::GroupStartingWith
+                    | Self::GroupEndingWith
+                    | Self::FailureSources
+                    | Self::PathHierarchy
             ),
-            Some(GroupingPlan::EndingWith { .. }) => {
-                matches!(self, Self::GroupEndingWith | Self::FailureSources)
-            }
+            Some(GroupingPlan::EndingWith { .. }) => matches!(
+                self,
+                Self::GroupEndingWith | Self::FailureSources | Self::PathHierarchy
+            ),
             _ => false,
         }
     }
@@ -132,6 +151,9 @@ fn render_public_basic_owned_source_policy(
     // The common profile closes every scope, retained expression and failure
     // domain to precisely the static Group/Scalar scalar-expression subset.
     match (profile, item_at) {
+        (Profile::PathHierarchy, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::validate_basic_owned_path_hierarchy_emission(program)?;
+        }
         (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_group_ending_with_emission(program)?;
         }
@@ -299,13 +321,15 @@ fn render_public_basic_owned_source_policy(
         }
     }
     if !program.failure_rules.is_empty() {
-        source.push_str(&if profile == Profile::FailureSources {
-            failure::render_basic_with_failure_sources(program)?
-        } else if primary_row_failures {
-            failure::render_basic_with_row_failures(program)?
-        } else {
-            failure::render_basic(program)?
-        });
+        source.push_str(
+            &if matches!(profile, Profile::FailureSources | Profile::PathHierarchy) {
+                failure::render_basic_with_failure_sources(program)?
+            } else if primary_row_failures {
+                failure::render_basic_with_row_failures(program)?
+            } else {
+                failure::render_basic(program)?
+            },
+        );
     }
     if !legacy_scopes.is_empty() {
         source.push_str("#[allow(unused_imports)]\nuse codegen_runtime::{ScopeContext, sort_candidates, SortDirection, SequenceWindow, item_count, apply_sequence_windows};\n");
@@ -376,6 +400,9 @@ fn render_public_basic_owned_source_policy(
         }
     }
     let plan = match (profile, item_at) {
+        (Profile::PathHierarchy, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy(program)?
+        }
         (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_ending_with(program)?
         }
@@ -445,7 +472,10 @@ pub fn execute_selected_with_basic_owned_sources<'name, 'src>(
 }
 
 fn local_owned(program: &Program, scope: &TargetScope) -> bool {
-    if scope
+    if matches!(
+        scope.construction,
+        TargetConstruction::OwnedPathHierarchy { .. }
+    ) || scope
         .iteration
         .as_ref()
         .is_some_and(|iteration| matches!(iteration.input(), IterationSource::OwnedSource(_)))

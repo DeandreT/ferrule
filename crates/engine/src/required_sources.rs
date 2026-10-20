@@ -128,6 +128,9 @@ impl<'a> Analysis<'a> {
             ScopeConstruction::Scalar { value } => self.pending.push(*value),
             ScopeConstruction::RecursiveFilter { plan } => self.pending.push(plan.predicate()),
             ScopeConstruction::PathHierarchy { plan } => self.inspect_path(plan.collection()),
+            ScopeConstruction::OwnedPathHierarchy { plan } => {
+                self.inspect_owner(&plan.collection().owner)
+            }
             ScopeConstruction::AdjacencyTree { plan } => {
                 self.inspect_path(plan.collection());
                 self.pending.extend(plan.root());

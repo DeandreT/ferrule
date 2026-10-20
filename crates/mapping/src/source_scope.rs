@@ -1,5 +1,5 @@
 //! Structural scope identities shared by closed ownership boundaries.
-use crate::{Project, Scope, SourceSelectorRef};
+use crate::{Project, Scope, ScopeConstruction, SourceSelectorRef};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceScopeTarget {
@@ -36,14 +36,20 @@ impl SourceScopeLocation {
 }
 
 /// Finds the first owned selector in stable structural order, without schema
-/// resolution, expression traversal, acquisition, or execution.
+/// resolution, expression traversal, acquisition, or execution. An owned
+/// path-hierarchy input collection is a scope-owned selector too.
 pub fn first_owned_source_scope(
     root: &Scope,
     location: SourceScopeLocation,
 ) -> Option<SourceScopeLocation> {
     let mut pending = vec![(root, location)];
     while let Some((scope, location)) = pending.pop() {
-        if matches!(scope.source_selector(), Some(SourceSelectorRef::Owned(_))) {
+        if matches!(scope.source_selector(), Some(SourceSelectorRef::Owned(_)))
+            || matches!(
+                scope.construction,
+                ScopeConstruction::OwnedPathHierarchy { .. }
+            )
+        {
             return Some(location);
         }
         for (index, child) in scope.dynamic_children.iter().enumerate().rev() {

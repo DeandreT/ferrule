@@ -1,0 +1,2787 @@
+{
+ "version": 1,
+ "cases": [
+  {
+   "id": "C01-disjoint-endpoints",
+   "model": "P01-endpoints",
+   "source": {
+    "Files": {
+     "File": [
+      "p/a.txt",
+      "p/sub/b.txt",
+      "p/a.txt"
+     ]
+    },
+    "Batch": [
+     {
+      "Label": "b1",
+      "File": [
+       "b/ignored"
+      ]
+     }
+    ],
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": [
+        "n/x.txt",
+        "n/y/z.txt"
+       ]
+      },
+      "Batch": [
+       {
+        "Label": "b1",
+        "File": [
+         "n/batch-only"
+        ]
+       }
+      ],
+      "Single": "s"
+     }
+    ],
+    [
+     "File",
+     {
+      "Files": {
+       "File": [
+        "f/only.txt"
+       ]
+      },
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "a.txt"
+          },
+          {
+           "name": "a.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "b.txt"
+            }
+           ],
+           "directory": [],
+           "name": "sub"
+          }
+         ],
+         "name": "p"
+        }
+       ],
+       [
+        "audit",
+        {
+         "file": [
+          {
+           "name": "x.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "z.txt"
+            }
+           ],
+           "directory": [],
+           "name": "y"
+          }
+         ],
+         "name": "n"
+        }
+       ],
+       [
+        "alias",
+        {
+         "file": [
+          {
+           "name": "only.txt"
+          }
+         ],
+         "directory": [],
+         "name": "f"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "a.txt"
+          },
+          {
+           "name": "a.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "b.txt"
+            }
+           ],
+           "directory": [],
+           "name": "sub"
+          }
+         ],
+         "name": "p"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "file": [
+          {
+           "name": "x.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "z.txt"
+            }
+           ],
+           "directory": [],
+           "name": "y"
+          }
+         ],
+         "name": "n"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Ok": [
+       [
+        "alias",
+        {
+         "file": [
+          {
+           "name": "only.txt"
+          }
+         ],
+         "directory": [],
+         "name": "f"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "absent-target",
+     "expected": {
+      "Err": {
+       "kind": "UnknownTarget",
+       "name": "absent-target"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C02-selected-empty",
+   "model": "P01-endpoints",
+   "source": {
+    "Files": {
+     "File": [
+      "p/a.txt",
+      "p/sub/b.txt",
+      "p/a.txt"
+     ]
+    },
+    "Batch": [
+     {
+      "Label": "b1",
+      "File": [
+       "b/ignored"
+      ]
+     }
+    ],
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": []
+      },
+      "Single": "s"
+     }
+    ],
+    [
+     "File",
+     {
+      "Files": {
+       "File": [
+        "f/only.txt"
+       ]
+      },
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyRootCount",
+       "count": 0
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "a.txt"
+          },
+          {
+           "name": "a.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "b.txt"
+            }
+           ],
+           "directory": [],
+           "name": "sub"
+          }
+         ],
+         "name": "p"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyRootCount",
+       "count": 0
+      }
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Ok": [
+       [
+        "alias",
+        {
+         "file": [
+          {
+           "name": "only.txt"
+          }
+         ],
+         "directory": [],
+         "name": "f"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "absent-target",
+     "expected": {
+      "Err": {
+       "kind": "UnknownTarget",
+       "name": "absent-target"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C03-selected-missing",
+   "model": "P01-endpoints",
+   "source": {
+    "Files": {
+     "File": [
+      "p/a.txt",
+      "p/sub/b.txt",
+      "p/a.txt"
+     ]
+    },
+    "Batch": [
+     {
+      "Label": "b1",
+      "File": [
+       "b/ignored"
+      ]
+     }
+    ],
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {}
+    ],
+    [
+     "File",
+     {
+      "Files": {}
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyRootCount",
+       "count": 0
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "a.txt"
+          },
+          {
+           "name": "a.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "b.txt"
+            }
+           ],
+           "directory": [],
+           "name": "sub"
+          }
+         ],
+         "name": "p"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyRootCount",
+       "count": 0
+      }
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyRootCount",
+       "count": 0
+      }
+     }
+    },
+    {
+     "selection": "absent-target",
+     "expected": {
+      "Err": {
+       "kind": "UnknownTarget",
+       "name": "absent-target"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C04-unsupplied-endpoint",
+   "model": "P01-endpoints",
+   "source": {
+    "Files": {
+     "File": [
+      "p/a.txt",
+      "p/sub/b.txt",
+      "p/a.txt"
+     ]
+    },
+    "Batch": [
+     {
+      "Label": "b1",
+      "File": [
+       "b/ignored"
+      ]
+     }
+    ],
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "File",
+     {
+      "Files": {
+       "File": [
+        "f/only.txt"
+       ]
+      },
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "SourceUnavailable",
+       "owner": "audit"
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "a.txt"
+          },
+          {
+           "name": "a.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "b.txt"
+            }
+           ],
+           "directory": [],
+           "name": "sub"
+          }
+         ],
+         "name": "p"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "SourceUnavailable",
+       "owner": "audit"
+      }
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Ok": [
+       [
+        "alias",
+        {
+         "file": [
+          {
+           "name": "only.txt"
+          }
+         ],
+         "directory": [],
+         "name": "f"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "absent-target",
+     "expected": {
+      "Err": {
+       "kind": "UnknownTarget",
+       "name": "absent-target"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C05-integer-item",
+   "model": "P01-endpoints",
+   "source": {
+    "Files": {
+     "File": [
+      "p/a.txt",
+      "p/sub/b.txt",
+      "p/a.txt"
+     ]
+    },
+    "Batch": [
+     {
+      "Label": "b1",
+      "File": [
+       "b/ignored"
+      ]
+     }
+    ],
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": [
+        "n/a",
+        7
+       ]
+      },
+      "Single": "s"
+     }
+    ],
+    [
+     "File",
+     {
+      "Files": {
+       "File": [
+        "f/only.txt"
+       ]
+      },
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyValueType",
+       "found": "int"
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "a.txt"
+          },
+          {
+           "name": "a.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "b.txt"
+            }
+           ],
+           "directory": [],
+           "name": "sub"
+          }
+         ],
+         "name": "p"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyValueType",
+       "found": "int"
+      }
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Ok": [
+       [
+        "alias",
+        {
+         "file": [
+          {
+           "name": "only.txt"
+          }
+         ],
+         "directory": [],
+         "name": "f"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "absent-target",
+     "expected": {
+      "Err": {
+       "kind": "UnknownTarget",
+       "name": "absent-target"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C06-null-empty-and-top-level",
+   "model": "P01-endpoints",
+   "source": {
+    "Files": {
+     "File": [
+      "p/a.txt",
+      "p/sub/b.txt",
+      "p/a.txt"
+     ]
+    },
+    "Batch": [
+     {
+      "Label": "b1",
+      "File": [
+       "b/ignored"
+      ]
+     }
+    ],
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": [
+        null,
+        "",
+        "top",
+        "n/a",
+        null,
+        "n/b/c"
+       ]
+      },
+      "Single": "s"
+     }
+    ],
+    [
+     "File",
+     {
+      "Files": {
+       "File": [
+        "f/only.txt"
+       ]
+      },
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "a.txt"
+          },
+          {
+           "name": "a.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "b.txt"
+            }
+           ],
+           "directory": [],
+           "name": "sub"
+          }
+         ],
+         "name": "p"
+        }
+       ],
+       [
+        "audit",
+        {
+         "file": [
+          {
+           "name": "a"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "c"
+            }
+           ],
+           "directory": [],
+           "name": "b"
+          }
+         ],
+         "name": "n"
+        }
+       ],
+       [
+        "alias",
+        {
+         "file": [
+          {
+           "name": "only.txt"
+          }
+         ],
+         "directory": [],
+         "name": "f"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "a.txt"
+          },
+          {
+           "name": "a.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "b.txt"
+            }
+           ],
+           "directory": [],
+           "name": "sub"
+          }
+         ],
+         "name": "p"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "file": [
+          {
+           "name": "a"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "c"
+            }
+           ],
+           "directory": [],
+           "name": "b"
+          }
+         ],
+         "name": "n"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Ok": [
+       [
+        "alias",
+        {
+         "file": [
+          {
+           "name": "only.txt"
+          }
+         ],
+         "directory": [],
+         "name": "f"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "absent-target",
+     "expected": {
+      "Err": {
+       "kind": "UnknownTarget",
+       "name": "absent-target"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C07-two-roots",
+   "model": "P01-endpoints",
+   "source": {
+    "Files": {
+     "File": [
+      "one/a",
+      "two/b"
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": [
+        "n/x.txt",
+        "n/y/z.txt"
+       ]
+      },
+      "Batch": [
+       {
+        "Label": "b1",
+        "File": [
+         "n/batch-only"
+        ]
+       }
+      ],
+      "Single": "s"
+     }
+    ],
+    [
+     "File",
+     {
+      "Files": {
+       "File": [
+        "f/only.txt"
+       ]
+      },
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyRootCount",
+       "count": 2
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyRootCount",
+       "count": 2
+      }
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "file": [
+          {
+           "name": "x.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "z.txt"
+            }
+           ],
+           "directory": [],
+           "name": "y"
+          }
+         ],
+         "name": "n"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Ok": [
+       [
+        "alias",
+        {
+         "file": [
+          {
+           "name": "only.txt"
+          }
+         ],
+         "directory": [],
+         "name": "f"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "absent-target",
+     "expected": {
+      "Err": {
+       "kind": "UnknownTarget",
+       "name": "absent-target"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C08-depth-limit",
+   "model": "P01-endpoints",
+   "source": {
+    "Files": {
+     "File": [
+      "p/a.txt",
+      "p/sub/b.txt",
+      "p/a.txt"
+     ]
+    },
+    "Batch": [
+     {
+      "Label": "b1",
+      "File": [
+       "b/ignored"
+      ]
+     }
+    ],
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": [
+        "n/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/leaf"
+       ]
+      },
+      "Single": "s"
+     }
+    ],
+    [
+     "File",
+     {
+      "Files": {
+       "File": [
+        "f/only.txt"
+       ]
+      },
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyDepth",
+       "limit": 256
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "a.txt"
+          },
+          {
+           "name": "a.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "b.txt"
+            }
+           ],
+           "directory": [],
+           "name": "sub"
+          }
+         ],
+         "name": "p"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyDepth",
+       "limit": 256
+      }
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Ok": [
+       [
+        "alias",
+        {
+         "file": [
+          {
+           "name": "only.txt"
+          }
+         ],
+         "directory": [],
+         "name": "f"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "absent-target",
+     "expected": {
+      "Err": {
+       "kind": "UnknownTarget",
+       "name": "absent-target"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C09-unicode-and-order",
+   "model": "P01-endpoints",
+   "source": {
+    "Files": {
+     "File": [
+      "根/ä/ß.txt",
+      "根/🙂"
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": [
+        "n/x.txt",
+        "n/y/z.txt"
+       ]
+      },
+      "Batch": [
+       {
+        "Label": "b1",
+        "File": [
+         "n/batch-only"
+        ]
+       }
+      ],
+      "Single": "s"
+     }
+    ],
+    [
+     "File",
+     {
+      "Files": {
+       "File": [
+        "f/only.txt"
+       ]
+      },
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "🙂"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "ß.txt"
+            }
+           ],
+           "directory": [],
+           "name": "ä"
+          }
+         ],
+         "name": "根"
+        }
+       ],
+       [
+        "audit",
+        {
+         "file": [
+          {
+           "name": "x.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "z.txt"
+            }
+           ],
+           "directory": [],
+           "name": "y"
+          }
+         ],
+         "name": "n"
+        }
+       ],
+       [
+        "alias",
+        {
+         "file": [
+          {
+           "name": "only.txt"
+          }
+         ],
+         "directory": [],
+         "name": "f"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "🙂"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "ß.txt"
+            }
+           ],
+           "directory": [],
+           "name": "ä"
+          }
+         ],
+         "name": "根"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "file": [
+          {
+           "name": "x.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "z.txt"
+            }
+           ],
+           "directory": [],
+           "name": "y"
+          }
+         ],
+         "name": "n"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Ok": [
+       [
+        "alias",
+        {
+         "file": [
+          {
+           "name": "only.txt"
+          }
+         ],
+         "directory": [],
+         "name": "f"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "absent-target",
+     "expected": {
+      "Err": {
+       "kind": "UnknownTarget",
+       "name": "absent-target"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C10-boolean-item",
+   "model": "P01-endpoints",
+   "source": {
+    "Files": {
+     "File": [
+      "p/a.txt",
+      "p/sub/b.txt",
+      "p/a.txt"
+     ]
+    },
+    "Batch": [
+     {
+      "Label": "b1",
+      "File": [
+       "b/ignored"
+      ]
+     }
+    ],
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": [
+        "n/x.txt",
+        "n/y/z.txt"
+       ]
+      },
+      "Batch": [
+       {
+        "Label": "b1",
+        "File": [
+         "n/batch-only"
+        ]
+       }
+      ],
+      "Single": "s"
+     }
+    ],
+    [
+     "File",
+     {
+      "Files": {
+       "File": [
+        true
+       ]
+      },
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyValueType",
+       "found": "bool"
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "a.txt"
+          },
+          {
+           "name": "a.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "b.txt"
+            }
+           ],
+           "directory": [],
+           "name": "sub"
+          }
+         ],
+         "name": "p"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "file": [
+          {
+           "name": "x.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "z.txt"
+            }
+           ],
+           "directory": [],
+           "name": "y"
+          }
+         ],
+         "name": "n"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "alias",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyValueType",
+       "found": "bool"
+      }
+     }
+    },
+    {
+     "selection": "absent-target",
+     "expected": {
+      "Err": {
+       "kind": "UnknownTarget",
+       "name": "absent-target"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "N01-pinned-batches",
+   "model": "P02-nested",
+   "source": {
+    "Files": {
+     "File": []
+    },
+    "Batch": [
+     {
+      "Label": "b1",
+      "File": [
+       "r/one/a"
+      ]
+     },
+     {
+      "Label": "b2",
+      "File": [
+       "r/two/b",
+       "r/two/c/d"
+      ]
+     }
+    ],
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": []
+      },
+      "Batch": [
+       {
+        "Label": "b1",
+        "File": [
+         "n/x"
+        ]
+       },
+       {
+        "Label": "b2",
+        "File": [
+         "n/y"
+        ]
+       }
+      ],
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Tree": [
+          {
+           "Tree": {
+            "file": [],
+            "directory": [
+             {
+              "file": [
+               {
+                "name": "a"
+               }
+              ],
+              "directory": [],
+              "name": "one"
+             }
+            ],
+            "name": "r"
+           },
+           "Audit": {
+            "file": [
+             {
+              "name": "x"
+             },
+             {
+              "name": "y"
+             }
+            ],
+            "directory": [],
+            "name": "n"
+           }
+          },
+          {
+           "Tree": {
+            "file": [],
+            "directory": [
+             {
+              "file": [
+               {
+                "name": "b"
+               }
+              ],
+              "directory": [
+               {
+                "file": [
+                 {
+                  "name": "d"
+                 }
+                ],
+                "directory": [],
+                "name": "c"
+               }
+              ],
+              "name": "two"
+             }
+            ],
+            "name": "r"
+           },
+           "Audit": {
+            "file": [
+             {
+              "name": "x"
+             },
+             {
+              "name": "y"
+             }
+            ],
+            "directory": [],
+            "name": "n"
+           }
+          }
+         ]
+        }
+       ],
+       [
+        "audit",
+        {
+         "Tree": [
+          {
+           "Tree": {
+            "file": [
+             {
+              "name": "x"
+             }
+            ],
+            "directory": [],
+            "name": "n"
+           },
+           "Audit": {
+            "file": [],
+            "directory": [
+             {
+              "file": [
+               {
+                "name": "a"
+               }
+              ],
+              "directory": [],
+              "name": "one"
+             },
+             {
+              "file": [
+               {
+                "name": "b"
+               }
+              ],
+              "directory": [
+               {
+                "file": [
+                 {
+                  "name": "d"
+                 }
+                ],
+                "directory": [],
+                "name": "c"
+               }
+              ],
+              "name": "two"
+             }
+            ],
+            "name": "r"
+           }
+          },
+          {
+           "Tree": {
+            "file": [
+             {
+              "name": "y"
+             }
+            ],
+            "directory": [],
+            "name": "n"
+           },
+           "Audit": {
+            "file": [],
+            "directory": [
+             {
+              "file": [
+               {
+                "name": "a"
+               }
+              ],
+              "directory": [],
+              "name": "one"
+             },
+             {
+              "file": [
+               {
+                "name": "b"
+               }
+              ],
+              "directory": [
+               {
+                "file": [
+                 {
+                  "name": "d"
+                 }
+                ],
+                "directory": [],
+                "name": "c"
+               }
+              ],
+              "name": "two"
+             }
+            ],
+            "name": "r"
+           }
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Tree": [
+          {
+           "Tree": {
+            "file": [],
+            "directory": [
+             {
+              "file": [
+               {
+                "name": "a"
+               }
+              ],
+              "directory": [],
+              "name": "one"
+             }
+            ],
+            "name": "r"
+           },
+           "Audit": {
+            "file": [
+             {
+              "name": "x"
+             },
+             {
+              "name": "y"
+             }
+            ],
+            "directory": [],
+            "name": "n"
+           }
+          },
+          {
+           "Tree": {
+            "file": [],
+            "directory": [
+             {
+              "file": [
+               {
+                "name": "b"
+               }
+              ],
+              "directory": [
+               {
+                "file": [
+                 {
+                  "name": "d"
+                 }
+                ],
+                "directory": [],
+                "name": "c"
+               }
+              ],
+              "name": "two"
+             }
+            ],
+            "name": "r"
+           },
+           "Audit": {
+            "file": [
+             {
+              "name": "x"
+             },
+             {
+              "name": "y"
+             }
+            ],
+            "directory": [],
+            "name": "n"
+           }
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "Tree": [
+          {
+           "Tree": {
+            "file": [
+             {
+              "name": "x"
+             }
+            ],
+            "directory": [],
+            "name": "n"
+           },
+           "Audit": {
+            "file": [],
+            "directory": [
+             {
+              "file": [
+               {
+                "name": "a"
+               }
+              ],
+              "directory": [],
+              "name": "one"
+             },
+             {
+              "file": [
+               {
+                "name": "b"
+               }
+              ],
+              "directory": [
+               {
+                "file": [
+                 {
+                  "name": "d"
+                 }
+                ],
+                "directory": [],
+                "name": "c"
+               }
+              ],
+              "name": "two"
+             }
+            ],
+            "name": "r"
+           }
+          },
+          {
+           "Tree": {
+            "file": [
+             {
+              "name": "y"
+             }
+            ],
+            "directory": [],
+            "name": "n"
+           },
+           "Audit": {
+            "file": [],
+            "directory": [
+             {
+              "file": [
+               {
+                "name": "a"
+               }
+              ],
+              "directory": [],
+              "name": "one"
+             },
+             {
+              "file": [
+               {
+                "name": "b"
+               }
+              ],
+              "directory": [
+               {
+                "file": [
+                 {
+                  "name": "d"
+                 }
+                ],
+                "directory": [],
+                "name": "c"
+               }
+              ],
+              "name": "two"
+             }
+            ],
+            "name": "r"
+           }
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "absent-target",
+     "expected": {
+      "Err": {
+       "kind": "UnknownTarget",
+       "name": "absent-target"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "N02-no-primary-batches",
+   "model": "P02-nested",
+   "source": {
+    "Files": {
+     "File": []
+    },
+    "Batch": [],
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": []
+      },
+      "Batch": [
+       {
+        "Label": "b1",
+        "File": [
+         "n/x"
+        ]
+       },
+       {
+        "Label": "b2",
+        "File": [
+         "n/y"
+        ]
+       }
+      ],
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyRootCount",
+       "count": 0
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Tree": []
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyRootCount",
+       "count": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "N03-empty-primary-batch",
+   "model": "P02-nested",
+   "source": {
+    "Files": {
+     "File": []
+    },
+    "Batch": [
+     {
+      "Label": "b1",
+      "File": [
+       "r/one/a"
+      ]
+     },
+     {
+      "Label": "b2",
+      "File": []
+     }
+    ],
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": []
+      },
+      "Batch": [
+       {
+        "Label": "b1",
+        "File": [
+         "n/x"
+        ]
+       },
+       {
+        "Label": "b2",
+        "File": [
+         "n/y"
+        ]
+       }
+      ],
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyRootCount",
+       "count": 0
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyRootCount",
+       "count": 0
+      }
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "Tree": [
+          {
+           "Tree": {
+            "file": [
+             {
+              "name": "x"
+             }
+            ],
+            "directory": [],
+            "name": "n"
+           },
+           "Audit": {
+            "file": [],
+            "directory": [
+             {
+              "file": [
+               {
+                "name": "a"
+               }
+              ],
+              "directory": [],
+              "name": "one"
+             }
+            ],
+            "name": "r"
+           }
+          },
+          {
+           "Tree": {
+            "file": [
+             {
+              "name": "y"
+             }
+            ],
+            "directory": [],
+            "name": "n"
+           },
+           "Audit": {
+            "file": [],
+            "directory": [
+             {
+              "file": [
+               {
+                "name": "a"
+               }
+              ],
+              "directory": [],
+              "name": "one"
+             }
+            ],
+            "name": "r"
+           }
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "S01-multi-character-separator",
+   "model": "P03-separator",
+   "source": {
+    "Files": {
+     "File": [
+      "x::y"
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": []
+      },
+      "Batch": [
+       {
+        "Label": "b1",
+        "File": [
+         "r::a::b.txt",
+         "r/x"
+        ]
+       },
+       {
+        "Label": "b2",
+        "File": [
+         "r::c"
+        ]
+       }
+      ],
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "c"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "b.txt"
+            }
+           ],
+           "directory": [],
+           "name": "a"
+          }
+         ],
+         "name": "r"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "c"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "b.txt"
+            }
+           ],
+           "directory": [],
+           "name": "a"
+          }
+         ],
+         "name": "r"
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "S02-empty-segments",
+   "model": "P03-separator",
+   "source": {
+    "Files": {
+     "File": []
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": []
+      },
+      "Batch": [
+       {
+        "Label": "b1",
+        "File": [
+         "r::::x"
+        ]
+       },
+       {
+        "Label": "b2",
+        "File": [
+         "r::"
+        ]
+       }
+      ],
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": ""
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "x"
+            }
+           ],
+           "directory": [],
+           "name": ""
+          }
+         ],
+         "name": "r"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": ""
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "x"
+            }
+           ],
+           "directory": [],
+           "name": ""
+          }
+         ],
+         "name": "r"
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "R01-endpoint-root-collection",
+   "model": "P04-root-collection",
+   "source": {
+    "Files": {
+     "File": []
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "paths",
+     [
+      "C:\\a.txt",
+      "C:\\d\\b.txt"
+     ]
+    ],
+    [
+     "audit",
+     {
+      "Files": {
+       "File": [
+        "n/x.txt",
+        "n/y/z.txt"
+       ]
+      },
+      "Batch": [
+       {
+        "Label": "b1",
+        "File": [
+         "n/batch-only"
+        ]
+       }
+      ],
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "a.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "b.txt"
+            }
+           ],
+           "directory": [],
+           "name": "d"
+          }
+         ],
+         "name": "C:"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "a.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "b.txt"
+            }
+           ],
+           "directory": [],
+           "name": "d"
+          }
+         ],
+         "name": "C:"
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "R02-empty-endpoint-root",
+   "model": "P04-root-collection",
+   "source": {
+    "Files": {
+     "File": [
+      "C:\\x"
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "paths",
+     []
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyRootCount",
+       "count": 0
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "PathHierarchyRootCount",
+       "count": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "F01-walk-passes",
+   "model": "P05-failure-walk",
+   "source": {
+    "Files": {
+     "File": [
+      "p/a"
+     ]
+    },
+    "Batch": [
+     {
+      "Label": "b1",
+      "File": [
+       "q/b"
+      ]
+     }
+    ],
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": [
+        "n/x.txt",
+        "n/y/z.txt"
+       ]
+      },
+      "Batch": [
+       {
+        "Label": "b1",
+        "File": [
+         "n/batch-only"
+        ]
+       }
+      ],
+      "Single": "s"
+     }
+    ],
+    [
+     "File",
+     {
+      "Files": {
+       "File": []
+      },
+      "Batch": [
+       {
+        "Label": "b1",
+        "File": [
+         "ignored"
+        ]
+       },
+       {
+        "Label": "b2",
+        "File": [
+         "also"
+        ]
+       }
+      ],
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "x.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "z.txt"
+            }
+           ],
+           "directory": [],
+           "name": "y"
+          }
+         ],
+         "name": "n"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "x.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "z.txt"
+            }
+           ],
+           "directory": [],
+           "name": "y"
+          }
+         ],
+         "name": "n"
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "F02-walk-fails-before-target",
+   "model": "P05-failure-walk",
+   "source": {
+    "Files": {
+     "File": []
+    },
+    "Batch": [
+     {
+      "Label": "b1",
+      "File": [
+       "stop"
+      ]
+     }
+    ],
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": []
+      },
+      "Single": "s"
+     }
+    ],
+    [
+     "File",
+     {
+      "Batch": [
+       {
+        "Label": "go",
+        "File": []
+       },
+       {
+        "Label": "stop",
+        "File": []
+       }
+      ]
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "MappingFailure",
+       "rule": 1,
+       "message": "stop"
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "MappingFailure",
+       "rule": 1,
+       "message": "stop"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "F03-walk-reads-only-its-owner",
+   "model": "P05-failure-walk",
+   "source": {
+    "Batch": [
+     {
+      "Label": "stop",
+      "File": []
+     }
+    ]
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": [
+        "n/x.txt",
+        "n/y/z.txt"
+       ]
+      },
+      "Batch": [
+       {
+        "Label": "b1",
+        "File": [
+         "n/batch-only"
+        ]
+       }
+      ],
+      "Single": "s"
+     }
+    ],
+    [
+     "File",
+     {
+      "Batch": []
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "x.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "z.txt"
+            }
+           ],
+           "directory": [],
+           "name": "y"
+          }
+         ],
+         "name": "n"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "file": [
+          {
+           "name": "x.txt"
+          }
+         ],
+         "directory": [
+          {
+           "file": [
+            {
+             "name": "z.txt"
+            }
+           ],
+           "directory": [],
+           "name": "y"
+          }
+         ],
+         "name": "n"
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "F04-unsupplied-walk-owner",
+   "model": "P05-failure-walk",
+   "source": {
+    "Files": {
+     "File": []
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Files": {
+       "File": [
+        "n/x.txt",
+        "n/y/z.txt"
+       ]
+      },
+      "Batch": [
+       {
+        "Label": "b1",
+        "File": [
+         "n/batch-only"
+        ]
+       }
+      ],
+      "Single": "s"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "SourceUnavailable",
+       "owner": "File"
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "SourceUnavailable",
+       "owner": "File"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

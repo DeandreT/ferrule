@@ -206,7 +206,8 @@ fn scope_roots(scope: &TargetScope, roots: &mut Vec<NodeId>) {
         TargetConstruction::Group
         | TargetConstruction::CopyCurrentSource
         | TargetConstruction::XmlMixedContent { .. }
-        | TargetConstruction::PathHierarchy { .. } => {}
+        | TargetConstruction::PathHierarchy { .. }
+        | TargetConstruction::OwnedPathHierarchy { .. } => {}
     }
     if let Some(iteration) = &scope.iteration {
         roots.extend(iteration.roots());

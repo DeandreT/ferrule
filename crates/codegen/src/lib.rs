@@ -55,6 +55,7 @@ pub use json5_boundary::{
     Json5BoundaryPolicyError, Json5BoundaryProfile, Json5BoundarySide, prepare_json5_boundary,
     validate_json5_boundary, validate_json5_format_options,
 };
+pub use lower::lower_with_basic_owned_path_hierarchy;
 pub use lower::{
     lower, lower_with_basic_owned_failure_sources, lower_with_basic_owned_filters,
     lower_with_basic_owned_group_adjacent_by, lower_with_basic_owned_group_by,
@@ -75,6 +76,7 @@ pub use model::{
     XmlBoundaryProgram, XmlInputPolicy, XmlInputProfile, XmlMixedContentElement,
     XmlMixedContentReplacement, XmlOutputMode, XmlOutputPolicy,
 };
+pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy;
 pub use owned_admission::{
     NamedInputAdmission, NamedInputAdmissionPlan, NamedInputAvailability, NamedInputCatalogue,
     NamedTargetInputCatalogue, legacy_named_input_admission_plan,
@@ -109,6 +111,9 @@ pub use validate::{
     validate_program_with_basic_owned_row_failures,
     validate_program_with_basic_owned_sequence_item_at, validate_program_with_basic_owned_sort,
     validate_program_with_basic_owned_windows,
+};
+pub use validate::{
+    validate_basic_owned_path_hierarchy_emission, validate_program_with_basic_owned_path_hierarchy,
 };
 pub use x12_boundary::{
     MAX_EMBEDDED_X12_DESCRIPTOR_BYTES, MAX_X12_SCHEMA_DEPTH, MAX_X12_SCHEMA_NODES,

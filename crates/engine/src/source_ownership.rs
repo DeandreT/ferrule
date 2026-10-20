@@ -218,7 +218,11 @@ impl<'a> Admission<'a> {
             .map(|(scope, location)| (scope, location, OwnedCapabilityContext::Basic, false))
             .collect();
         while let Some((scope, location, inherited, inherited_owned)) = pending.pop() {
-            let own = matches!(scope.source_selector(), Some(SourceSelectorRef::Owned(_)));
+            let own = matches!(scope.source_selector(), Some(SourceSelectorRef::Owned(_)))
+                || matches!(
+                    scope.construction,
+                    ScopeConstruction::OwnedPathHierarchy { .. }
+                );
             let mut ancestry = inherited_owned || own;
             let dynamic_scope = matches!(scope.source_selector(), Some(SourceSelectorRef::Legacy(path))
                 if path.first().is_some_and(|name| self.project.extra_sources.iter().any(|source| source.name == *name && source.dynamic_path.is_some())));
@@ -318,6 +322,11 @@ impl<'a> Admission<'a> {
                     [plan.predicate()],
                 ),
                 ScopeConstruction::PathHierarchy { plan } => self.path(plan.collection()),
+                ScopeConstruction::OwnedPathHierarchy { plan } => {
+                    let source = plan.collection();
+                    self.static_owner(&source.owner, &source.path, None, None, Some(&location))?;
+                    self.summary.used_owned = true;
+                }
                 ScopeConstruction::AdjacencyTree { plan } => {
                     self.path(plan.collection());
                     self.push(
@@ -901,6 +910,10 @@ fn scope_demands_owned(project: &Project, scope: &Scope) -> bool {
     }
     scope.children.iter().any(|child| {
         matches!(child.source_selector(), Some(SourceSelectorRef::Owned(_)))
+            || matches!(
+                child.construction,
+                ScopeConstruction::OwnedPathHierarchy { .. }
+            )
             || scope_demands_owned(project, child)
     })
 }
@@ -941,9 +954,11 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
         return OwnedCapabilityContext::Concatenate;
     }
     match scope.construction {
-        ScopeConstruction::Constructed | ScopeConstruction::Scalar { .. } => {
-            OwnedCapabilityContext::Basic
-        }
+        // The owned hierarchy reads its collection through the receiving
+        // exact-owner context and evaluates no item, key or root expression.
+        ScopeConstruction::Constructed
+        | ScopeConstruction::Scalar { .. }
+        | ScopeConstruction::OwnedPathHierarchy { .. } => OwnedCapabilityContext::Basic,
         ScopeConstruction::XmlMixedContent { .. } => OwnedCapabilityContext::XmlOperator,
         ScopeConstruction::RecursiveFilter { .. }
         | ScopeConstruction::PathHierarchy { .. }
