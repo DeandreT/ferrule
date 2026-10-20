@@ -39,6 +39,32 @@ internal static partial class Program
         Equal(false, rows[0].SameOccurrence(rows[1]));
         Equal(false, rows[0].SameOccurrence(second.Rows().First()));
 
+        var typed = FerruleCsvSourceDocument.ParseBytes("original.csv", null,
+            Encoding.UTF8.GetBytes("Key,Amount,Flag\n\"Snow,☃\nline\",7,true\n,0,false\ntail\n"),
+            [new("Key", FerruleScalarType.String), new("Amount", FerruleScalarType.Int64),
+                new("Flag", FerruleScalarType.Bool)],
+            FerruleCsvByteDecodingPolicy.StrictUtf8,
+            new FerruleCsvReadOptions { PreserveEmptyStrings = true });
+        var expected = new[] {
+            new[] { FerruleValue.FromString("Snow,☃\nline"), FerruleValue.FromInt64(7), FerruleValue.FromBoolean(true) },
+            new[] { FerruleValue.FromString(""), FerruleValue.FromInt64(0), FerruleValue.FromBoolean(false) },
+            new[] { FerruleValue.FromString("tail"), FerruleValue.Null, FerruleValue.Null },
+        };
+        var typedRows = typed.Rows().ToArray();
+        Equal(expected.Length, typedRows.Length);
+        for (var i = 0; i < typedRows.Length; i++)
+        {
+            Equal(i + 1, typedRows[i].Position);
+            Equal(true, typedRows[i].Document.SameDocument(typed));
+            var value = (FerruleGroup)typedRows[i].Value;
+            Equal(3, value.Fields.Count);
+            for (var column = 0; column < 3; column++)
+            {
+                Equal(new[] { "Key", "Amount", "Flag" }[column], value.Fields[column].Name);
+                Equal(expected[i][column], ((FerruleScalar)value.Fields[column].Value).Value);
+            }
+        }
+
         var requested = new List<string>();
         var loaded = new List<string>();
         IEnumerable<string> Requests()

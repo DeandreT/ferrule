@@ -54,6 +54,54 @@ fn rows_keep_exact_documents_positions_and_whole_parsed_values() {
 }
 
 #[test]
+fn occurrences_retain_complete_typed_rows_and_missing_cells() {
+    let schema = SchemaNode::group(
+        "Row",
+        vec![
+            SchemaNode::scalar("Key", ScalarType::String),
+            SchemaNode::scalar("Amount", ScalarType::Int),
+            SchemaNode::scalar("Flag", ScalarType::Bool),
+        ],
+    );
+    let options = CsvReadOptions {
+        preserve_empty_strings: true,
+        ..Default::default()
+    };
+    let document = CsvSourceDocument::parse_bytes(
+        "original.csv",
+        None,
+        "Key,Amount,Flag\n\"Snow,☃\nline\",7,true\n,0,false\ntail\n".as_bytes(),
+        &schema,
+        &options,
+        CsvByteDecodingPolicy::StrictUtf8,
+    )
+    .unwrap();
+    let row = |key: &str, amount, flag| {
+        Instance::Group(
+            vec![
+                ("Key".into(), Instance::Scalar(Value::String(key.into()))),
+                ("Amount".into(), Instance::Scalar(amount)),
+                ("Flag".into(), Instance::Scalar(flag)),
+            ]
+            .into(),
+        )
+    };
+    let expected = [
+        row("Snow,☃\nline", Value::Int(7), Value::Bool(true)),
+        row("", Value::Int(0), Value::Bool(false)),
+        row("tail", Value::Null, Value::Null),
+    ];
+    let actual: Vec<_> = document.rows().collect();
+    assert_eq!(actual.len(), expected.len());
+    for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+        assert_eq!(actual.value(), &expected);
+        assert_eq!(actual.position(), index + 1);
+        assert!(actual.document().same_document(&document));
+        assert_eq!(actual.document().source_path(), "original.csv");
+    }
+}
+
+#[test]
 fn cross_file_groups_retain_each_row_origin_in_host_order() {
     let requested = Rc::new(RefCell::new(Vec::new()));
     let loaded = Rc::new(RefCell::new(Vec::new()));
