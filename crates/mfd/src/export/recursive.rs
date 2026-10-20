@@ -293,6 +293,13 @@ fn validate_scope(
         ScopeConstruction::PathHierarchy { .. } => {
             require_root_only(chain, scope, "path-hierarchy")?;
         }
+        // The ownership preflight refuses this first; native owner export is
+        // a separate capability.
+        ScopeConstruction::OwnedPathHierarchy { .. } => {
+            return Err(unsupported(
+                "owned path-hierarchy collections are not exportable",
+            ));
+        }
         ScopeConstruction::AdjacencyTree { plan } => {
             require_root_only(chain, scope, "adjacency-tree")?;
             if plan
@@ -303,6 +310,13 @@ fn validate_scope(
                     "adjacency-tree root references a missing graph node",
                 ));
             }
+        }
+        // The ownership preflight refuses this first; native owner export is
+        // a separate capability.
+        ScopeConstruction::OwnedAdjacencyTree { .. } => {
+            return Err(unsupported(
+                "owned adjacency-tree row collections are not exportable",
+            ));
         }
         ScopeConstruction::Constructed
         | ScopeConstruction::CopyCurrentSource

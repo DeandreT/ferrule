@@ -2578,7 +2578,57 @@ fn render_basic_scopes_profile<'a>(
         }
         output.push_str("    }\n\n");
         output.push_str(&format!("    private static global::Ferrule.Runtime.FerruleInstance ScopeItem_{index}(\n        global::Ferrule.Runtime.FerruleBasicScopeContext context)\n    {{\n"));
-        if let TargetConstruction::Scalar {
+        if let TargetConstruction::OwnedPathHierarchy {
+            collection,
+            separator,
+            directories,
+            files,
+            name,
+        } = scope.construction
+        {
+            // The exact stored owner selects the collection; field names only
+            // describe the generated directory tree.
+            output.push_str(
+                "        return global::Ferrule.Runtime.FerrulePathHierarchy.BuildOwned(\n            context,\n            ",
+            );
+            crate::owned_basic::render_owner(&collection.owner, output);
+            output.push_str(",\n            ");
+            render_path(&collection.path, output);
+            for value in [separator, directories, files, name] {
+                output.push_str(",\n            ");
+                output.push_str(&literal::string(value));
+            }
+            output.push_str(");\n    }\n");
+        } else if let TargetConstruction::OwnedAdjacencyTree {
+            collection,
+            key,
+            parent,
+            target_key,
+            target_children,
+            root,
+        } = scope.construction
+        {
+            // The exact stored owner selects the rows; key/parent are row-relative
+            // and the root reads this receiving context.
+            output.push_str(
+                "        return global::Ferrule.Runtime.FerruleAdjacencyTree.BuildOwned(\n            context,\n            ",
+            );
+            crate::owned_basic::render_owner(&collection.owner, output);
+            for path in [&collection.path, key, parent] {
+                output.push_str(",\n            ");
+                render_path(path, output);
+            }
+            for value in [target_key, target_children] {
+                output.push_str(",\n            ");
+                output.push_str(&literal::string(value));
+            }
+            output.push_str(",\n            ");
+            match root {
+                Some(root) => output.push_str(&format!("Node_{root}")),
+                None => output.push_str("null"),
+            }
+            output.push_str(");\n    }\n");
+        } else if let TargetConstruction::Scalar {
             expression,
             target_domain,
         } = scope.construction

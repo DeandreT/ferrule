@@ -28,7 +28,68 @@ public static class FerruleAdjacencyTree
                 $"adjacency-tree collection '{path}' is missing",
                 sourceField: path);
         }
-        if ((ulong)collection.Items.Count > FerruleSequences.MaximumGeneratedSequenceItems)
+        return BuildFrom(
+            collection.Items,
+            keyPath,
+            parentPath,
+            targetKey,
+            targetChildren,
+            root is null ? null : () => root(context));
+    }
+
+    /// <summary>
+    /// Builds the same tree from one exact owner's rows. A same-owner frame pins
+    /// its prefix; other owners and legacy frames never supply rows. Key and
+    /// parent paths stay row-relative, and the root reads the receiving context.
+    /// </summary>
+    public static FerruleInstance BuildOwned(
+        FerruleBasicScopeContext context,
+        FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> collectionPath,
+        IReadOnlyList<string> keyPath,
+        IReadOnlyList<string> parentPath,
+        string targetKey,
+        string targetChildren,
+        Func<FerruleBasicScopeContext, FerruleValue>? root)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(collectionPath);
+        ArgumentNullException.ThrowIfNull(keyPath);
+        ArgumentNullException.ThrowIfNull(parentPath);
+        ArgumentException.ThrowIfNullOrEmpty(targetKey);
+        ArgumentException.ThrowIfNullOrEmpty(targetChildren);
+
+        var cohort = context.WalkOwnedSourceCohort(owner, collectionPath);
+        var items = new List<FerruleInstance>(cohort.Count);
+        foreach (var candidate in cohort)
+        {
+            var frames = candidate.Context.LegacyView.Frames;
+            if (frames.Count != 0)
+            {
+                items.Add(frames[^1]);
+            }
+        }
+        GC.KeepAlive(cohort);
+        return BuildFrom(
+            items,
+            keyPath,
+            parentPath,
+            targetKey,
+            targetChildren,
+            root is null ? null : () => root(context));
+    }
+
+    // Legacy and owned rows share source order, limits and error precedence:
+    // rows, then the root expression, then root count and recursion.
+    private static FerruleInstance BuildFrom(
+        IReadOnlyList<FerruleInstance> items,
+        IReadOnlyList<string> keyPath,
+        IReadOnlyList<string> parentPath,
+        string targetKey,
+        string targetChildren,
+        Func<FerruleValue>? root)
+    {
+        if ((ulong)items.Count > FerruleSequences.MaximumGeneratedSequenceItems)
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.AdjacencyTreeTooLarge,
@@ -36,13 +97,13 @@ public static class FerruleAdjacencyTree
                 maximumItems: FerruleSequences.MaximumGeneratedSequenceItems);
         }
 
-        var rows = new List<Row>(collection.Items.Count);
+        var rows = new List<Row>(items.Count);
         var byKey = new Dictionary<string, int>(StringComparer.Ordinal);
         var roots = new List<int>();
         var byParent = new Dictionary<string, List<int>>(StringComparer.Ordinal);
-        for (var index = 0; index < collection.Items.Count; index++)
+        for (var index = 0; index < items.Count; index++)
         {
-            var instance = collection.Items[index];
+            var instance = items[index];
             var key = StringField(instance, keyPath, "key");
             if (!byKey.TryAdd(key, index))
             {
@@ -68,7 +129,7 @@ public static class FerruleAdjacencyTree
             rows.Add(new Row(key));
         }
 
-        var selectedRoot = root is null ? null : RootValue(root(context));
+        var selectedRoot = root is null ? null : RootValue(root());
         IReadOnlyList<int> selectedRoots;
         if (selectedRoot is null)
         {

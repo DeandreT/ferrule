@@ -3,12 +3,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use ir::{SchemaKind, SchemaNode, XML_TYPE_FIELD};
 use mapping::{IterationOutput, JoinId, Node, Project, Scope, ScopeConstruction, ScopeIteration};
 
-use super::graph::validate_adjacency_string_field;
 use super::join::{
     is_root_context, validate_plan as validate_join_plan, validate_root_singletons,
     validate_roots as validate_join_roots, validate_scope_nodes as validate_scope_join_nodes,
 };
-use super::schema::{current_source_schema, display_path, source_path_matches, source_schema_at};
+use super::schema::{
+    current_source_schema, display_path, follow_schema, owned_source_root, source_path_matches,
+    source_schema_at,
+};
 use super::{
     ValidationIssue, ValidationOwner, ValidationScopeLocation, ValidationScopeStep, own_issues,
 };
@@ -399,179 +401,56 @@ pub(super) fn validate_scope(
                 ),
             ));
         }
-        if target.is_none_or(|node| !matches!(node.kind, SchemaKind::Group { .. })) {
-            issues.push(ValidationIssue::new(
-                &location,
-                "path-hierarchy construction requires a group target schema",
-            ));
-        }
-        if let Some(target) = target {
-            if target
-                .child(plan.name())
-                .is_none_or(|name| name.repeating || !name.is_scalar())
-            {
-                issues.push(ValidationIssue::new(
-                    &location,
-                    format!(
-                        "path-hierarchy name field `{}` must be a non-repeating scalar",
-                        plan.name()
-                    ),
-                ));
-            }
-            if target.child(plan.files()).is_none_or(|files| {
-                !files.repeating
-                    || !matches!(files.kind, SchemaKind::Group { .. })
-                    || files
-                        .child(plan.name())
-                        .is_none_or(|name| name.repeating || !name.is_scalar())
-            }) {
-                issues.push(ValidationIssue::new(
-                    &location,
-                    format!(
-                        "path-hierarchy file field `{}` must be a repeating group with scalar `{}`",
-                        plan.files(),
-                        plan.name()
-                    ),
-                ));
-            }
-            if target.child(plan.directories()).is_none_or(|directories| {
-                !directories.repeating
-                    || directories.recursive_ref.as_deref() != Some(target.name.as_str())
-                    || !matches!(directories.kind, SchemaKind::Group { .. })
-            }) {
-                issues.push(ValidationIssue::new(
-                    &location,
-                    format!(
-                        "path-hierarchy directory field `{}` must recursively reference `{}`",
-                        plan.directories(),
-                        target.name
-                    ),
-                ));
-            }
-        }
-        if !(scope.bindings.is_empty()
-            && scope.children.is_empty()
-            && scope.dynamic_bindings.is_empty()
-            && scope.dynamic_children.is_empty()
-            && !scope.merge_dynamic_fields)
-        {
-            issues.push(ValidationIssue::new(
-                &location,
-                "path-hierarchy construction cannot contain bindings, child scopes, or dynamic target content",
-            ));
-        }
-        if scope.filter.is_some()
-            || scope.post_group_filter.is_some()
-            || scope.has_grouping()
-            || scope.has_sort()
-            || !scope.windows.is_empty()
-        {
-            issues.push(ValidationIssue::new(
-                &location,
-                "path-hierarchy construction cannot use scope controls",
-            ));
-        }
-        if !matches!(&scope.iteration, ScopeIteration::None) {
-            issues.push(ValidationIssue::new(
-                &location,
-                "path-hierarchy construction cannot use scope iteration",
-            ));
-        }
+        validate_path_hierarchy_output(
+            scope,
+            target,
+            PathHierarchyOutput {
+                directories: plan.directories(),
+                files: plan.files(),
+                name: plan.name(),
+            },
+            &location,
+            issues,
+        );
     }
 
-    if let ScopeConstruction::AdjacencyTree { plan } = &scope.construction {
-        let collection = source_schema_at(project, schemas.parent_source, plan.collection());
-        if collection
-            .is_none_or(|node| !node.repeating || !matches!(node.kind, SchemaKind::Group { .. }))
+    if let ScopeConstruction::OwnedPathHierarchy { plan } = &scope.construction {
+        // The collection belongs to its exact endpoint; the parent source
+        // schema and legacy aliases never participate.
+        let source = plan.collection();
+        if let Some(root) = owned_source_root(project, &source.owner, &location, issues)
+            && follow_schema(root, &source.path)
+                .is_none_or(|node| !node.repeating || !node.is_scalar())
         {
             issues.push(ValidationIssue::new(
                 &location,
                 format!(
-                    "adjacency-tree collection `{}` must be a repeating group",
-                    display_path(plan.collection())
+                    "owned path-hierarchy collection `{}` must be a repeating scalar in its owner",
+                    source.path.join("/")
                 ),
             ));
         }
-        if let Some(collection) = collection {
-            validate_adjacency_string_field(&location, collection, plan.key(), "key", issues);
-            validate_adjacency_string_field(&location, collection, plan.parent(), "parent", issues);
-        }
-        if target.is_none_or(|node| !matches!(node.kind, SchemaKind::Group { .. })) {
-            issues.push(ValidationIssue::new(
-                &location,
-                "adjacency-tree construction requires a group target schema",
-            ));
-        }
-        if let Some(target) = target {
-            if target.child(plan.target_key()).is_none_or(|key| {
-                key.repeating
-                    || !matches!(
-                        key.kind,
-                        SchemaKind::Scalar {
-                            ty: ir::ScalarType::String
-                        }
-                    )
-            }) {
-                issues.push(ValidationIssue::new(
-                    &location,
-                    format!(
-                        "adjacency-tree target key `{}` must be a non-repeating string",
-                        plan.target_key()
-                    ),
-                ));
-            }
-            if target.child(plan.target_children()).is_none_or(|children| {
-                !children.repeating
-                    || !matches!(children.kind, SchemaKind::Group { .. })
-                    || children.recursive_ref.as_deref() != Some(target.name.as_str())
-            }) {
-                issues.push(ValidationIssue::new(
-                    &location,
-                    format!(
-                        "adjacency-tree child field `{}` must recursively reference `{}`",
-                        plan.target_children(),
-                        target.name
-                    ),
-                ));
-            }
-        }
-        if let Some(root) = plan.root()
-            && !project.graph.nodes.contains_key(&root)
-        {
-            issues.push(ValidationIssue::new(
-                &location,
-                format!("adjacency-tree root references missing node {root}"),
-            ));
-        }
-        if !(scope.bindings.is_empty()
-            && scope.children.is_empty()
-            && scope.dynamic_bindings.is_empty()
-            && scope.dynamic_children.is_empty()
-            && !scope.merge_dynamic_fields)
-        {
-            issues.push(ValidationIssue::new(
-                &location,
-                "adjacency-tree construction cannot contain bindings, child scopes, or dynamic target content",
-            ));
-        }
-        if scope.filter.is_some()
-            || scope.post_group_filter.is_some()
-            || scope.has_grouping()
-            || scope.has_sort()
-            || !scope.windows.is_empty()
-        {
-            issues.push(ValidationIssue::new(
-                &location,
-                "adjacency-tree construction cannot use scope controls",
-            ));
-        }
-        if !matches!(&scope.iteration, ScopeIteration::None) {
-            issues.push(ValidationIssue::new(
-                &location,
-                "adjacency-tree construction cannot use scope iteration",
-            ));
-        }
+        validate_path_hierarchy_output(
+            scope,
+            target,
+            PathHierarchyOutput {
+                directories: plan.directories(),
+                files: plan.files(),
+                name: plan.name(),
+            },
+            &location,
+            issues,
+        );
     }
+
+    super::adjacency_tree::validate(
+        project,
+        scope,
+        schemas.parent_source,
+        target,
+        &location,
+        issues,
+    );
 
     match scope.source_selector() {
         Some(mapping::SourceSelectorRef::Owned(source)) => {
@@ -1069,4 +948,97 @@ pub(super) fn validate_scope(
         &mut issues[start..],
         ValidationOwner::Scope(schemas.owner.clone()),
     );
+}
+
+/// Generated target structure shared by legacy and owned path hierarchies.
+struct PathHierarchyOutput<'a> {
+    directories: &'a str,
+    files: &'a str,
+    name: &'a str,
+}
+
+fn validate_path_hierarchy_output(
+    scope: &Scope,
+    target: Option<&SchemaNode>,
+    output: PathHierarchyOutput<'_>,
+    location: &str,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let PathHierarchyOutput {
+        directories,
+        files,
+        name,
+    } = output;
+    if target.is_none_or(|node| !matches!(node.kind, SchemaKind::Group { .. })) {
+        issues.push(ValidationIssue::new(
+            location,
+            "path-hierarchy construction requires a group target schema",
+        ));
+    }
+    if let Some(target) = target {
+        if target
+            .child(name)
+            .is_none_or(|field| field.repeating || !field.is_scalar())
+        {
+            issues.push(ValidationIssue::new(
+                location,
+                format!("path-hierarchy name field `{name}` must be a non-repeating scalar"),
+            ));
+        }
+        if target.child(files).is_none_or(|field| {
+            !field.repeating
+                || !matches!(field.kind, SchemaKind::Group { .. })
+                || field
+                    .child(name)
+                    .is_none_or(|name| name.repeating || !name.is_scalar())
+        }) {
+            issues.push(ValidationIssue::new(
+                location,
+                format!(
+                    "path-hierarchy file field `{files}` must be a repeating group with scalar `{name}`"
+                ),
+            ));
+        }
+        if target.child(directories).is_none_or(|field| {
+            !field.repeating
+                || field.recursive_ref.as_deref() != Some(target.name.as_str())
+                || !matches!(field.kind, SchemaKind::Group { .. })
+        }) {
+            issues.push(ValidationIssue::new(
+                location,
+                format!(
+                    "path-hierarchy directory field `{directories}` must recursively reference `{}`",
+                    target.name
+                ),
+            ));
+        }
+    }
+    if !(scope.bindings.is_empty()
+        && scope.children.is_empty()
+        && scope.dynamic_bindings.is_empty()
+        && scope.dynamic_children.is_empty()
+        && !scope.merge_dynamic_fields)
+    {
+        issues.push(ValidationIssue::new(
+            location,
+            "path-hierarchy construction cannot contain bindings, child scopes, or dynamic target content",
+        ));
+    }
+    if scope.filter.is_some()
+        || scope.post_group_filter.is_some()
+        || scope.has_grouping()
+        || scope.has_sort()
+        || !scope.windows.is_empty()
+    {
+        issues.push(ValidationIssue::new(
+            location,
+            "path-hierarchy construction cannot use scope controls",
+        ));
+    }
+    if !matches!(&scope.iteration, ScopeIteration::None) {
+        issues.push(ValidationIssue::new(
+            location,
+            "path-hierarchy construction cannot use scope iteration",
+        ));
+    }
 }

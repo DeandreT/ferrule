@@ -4,6 +4,7 @@
 //! saved/loaded.
 
 mod adjacency;
+mod adjacency_owned;
 mod csv_repair;
 mod document_project;
 pub mod document_project_file;
@@ -20,6 +21,7 @@ mod idoc_native_text;
 mod iteration;
 mod model;
 mod path_hierarchy;
+mod path_hierarchy_owned;
 mod pdf;
 pub mod pdf_layout_file;
 mod pdf_repair;
@@ -40,6 +42,7 @@ mod xbrl;
 mod xlsx_output;
 
 pub use adjacency::AdjacencyTreePlan;
+pub use adjacency_owned::OwnedAdjacencyTreePlan;
 pub use csv_repair::{CsvRuntimeDependency, CsvTextRepairCause, CsvTextRepairDependency};
 pub use document_project::{
     DocumentProject, DocumentProjectFormat, GlobalFilename, PrimaryFilenameError, PrimarySourcePlan,
@@ -95,6 +98,7 @@ pub use model::{
     XlsxTableRegion, XlsxWorksheetSetLayout, XmlMixedContentElement, XmlMixedContentReplacement,
 };
 pub use path_hierarchy::PathHierarchyPlan;
+pub use path_hierarchy_owned::OwnedPathHierarchyPlan;
 pub use pdf::{
     PdfAnchorAssignment, PdfAnchorAxis, PdfCapture, PdfCaptureAlgorithm, PdfCommand, PdfCoordinate,
     PdfEdgeFind, PdfEdgeRows, PdfGroup, PdfLayout, PdfLayoutError, PdfMerge, PdfMergeComposition,

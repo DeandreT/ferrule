@@ -374,6 +374,7 @@ fn validate_scope<'a>(
         ScopeConstruction::Scalar { value } => Some(*value),
         ScopeConstruction::RecursiveFilter { plan } => Some(plan.predicate()),
         ScopeConstruction::AdjacencyTree { plan } => plan.root(),
+        ScopeConstruction::OwnedAdjacencyTree { plan } => plan.root(),
         _ => None,
     };
     let bindings = scope

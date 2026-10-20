@@ -13,6 +13,10 @@ use crate::{
 use ir::{SchemaKind, SchemaNode};
 use mapping::{NodeId, SourceScopeLocation, SourceScopeStep, SourceScopeTarget};
 
+mod adjacency_tree;
+pub(super) use adjacency_tree::AdjacencyTreePolicy;
+pub use adjacency_tree::validate_basic_owned_adjacency_tree_emission;
+use adjacency_tree::{owned_root, owned_rows};
 mod failure_sources;
 pub(super) use failure_sources::FailurePolicy;
 pub use failure_sources::validate_basic_owned_failure_source_emission;
@@ -157,13 +161,22 @@ fn structure(
         .into(),
     })
 }
+fn owned_path_hierarchy(scope: &TargetScope) -> Option<&mapping::OwnedSourceRef> {
+    match &scope.construction {
+        TargetConstruction::OwnedPathHierarchy { collection, .. } => Some(collection),
+        _ => None,
+    }
+}
 fn scope_has_owned(scope: &TargetScope) -> bool {
-    scope.iteration.as_ref().is_some_and(|iteration| {
-        iteration.owned_source_iteration().is_some()
-            || iteration
-                .concatenated()
-                .is_some_and(|segments| segments.iter().any(scope_has_owned))
-    }) || scope.children.iter().any(scope_has_owned)
+    owned_path_hierarchy(scope).is_some()
+        || owned_rows(scope).is_some()
+        || scope.iteration.as_ref().is_some_and(|iteration| {
+            iteration.owned_source_iteration().is_some()
+                || iteration
+                    .concatenated()
+                    .is_some_and(|segments| segments.iter().any(scope_has_owned))
+        })
+        || scope.children.iter().any(scope_has_owned)
         || matches!(&scope.construction, TargetConstruction::DynamicGroup { children, .. } if children.iter().any(|child| scope_has_owned(&child.scope)))
 }
 fn has_owned(program: &Program) -> bool {
@@ -288,8 +301,17 @@ pub(super) fn validate_structure(program: &Program) -> Result<(), ProgramValidat
         {
             structure(
                 program,
-                Location::Iteration { scope: route },
+                Location::Iteration {
+                    scope: route.clone(),
+                },
                 iteration_request(source.source()),
+            )?;
+        }
+        if let Some(collection) = owned_path_hierarchy(scope).or_else(|| owned_rows(scope)) {
+            structure(
+                program,
+                Location::Iteration { scope: route },
+                iteration_request(collection),
             )?;
         }
     }
@@ -387,6 +409,14 @@ pub(super) enum BasicOwnedProfile {
     ByAndAdjacentByAndWindowsAndSortAndFilter,
     ByAndAdjacentByAndStartingWithAndWindowsAndSortAndFilter,
     ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter,
+}
+
+/// Construction permission for an owned path-hierarchy input collection. It is
+/// orthogonal to source controls; only its explicit companion opts in.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum PathHierarchyPolicy {
+    Closed,
+    Owned,
 }
 
 /// Consumer permission is orthogonal to source controls and failure eligibility.
@@ -554,6 +584,8 @@ struct Admission<'a> {
     program: &'a Program,
     profile: BasicOwnedProfile,
     sequence_item_at: SequenceItemAtPolicy,
+    path_hierarchy: PathHierarchyPolicy,
+    adjacency_tree: AdjacencyTreePolicy,
     visited: Vec<Visit<'a>>,
 }
 impl<'a> Admission<'a> {
@@ -755,11 +787,21 @@ impl<'a> Admission<'a> {
         }
         let construction_reason = match scope.construction {
             TargetConstruction::Group => None,
+            TargetConstruction::OwnedAdjacencyTree { .. } if self.adjacency_tree.admits(scope) => {
+                None
+            }
+            TargetConstruction::OwnedPathHierarchy { .. }
+                if self.path_hierarchy == PathHierarchyPolicy::Owned =>
+            {
+                None
+            }
             TargetConstruction::DynamicGroup { .. } => Some(Capability::DynamicTarget),
             TargetConstruction::XmlMixedContent { .. } => Some(Capability::XmlOperator),
             TargetConstruction::RecursiveFilter { .. }
             | TargetConstruction::PathHierarchy { .. }
-            | TargetConstruction::AdjacencyTree { .. } => Some(Capability::TreeOperator),
+            | TargetConstruction::OwnedPathHierarchy { .. }
+            | TargetConstruction::AdjacencyTree { .. }
+            | TargetConstruction::OwnedAdjacencyTree { .. } => Some(Capability::TreeOperator),
             TargetConstruction::Scalar { .. }
                 if self.profile.permits_sort(scope)
                     || self.profile.permits_windows(scope)
@@ -778,6 +820,23 @@ impl<'a> Admission<'a> {
                     scope: route.clone(),
                 },
             });
+        }
+        // A hierarchy's collection or a tree's rows are an owned read in the
+        // receiving context; any inherited or construction closure refuses it there.
+        if let Some(collection) = owned_path_hierarchy(scope).or_else(|| owned_rows(scope)) {
+            let query = iteration_request(collection);
+            if let Some(closed) = closed
+                .clone()
+                .or_else(|| dynamic_owner(self.program, &query))
+            {
+                return Err(failure(
+                    Location::Iteration {
+                        scope: route.clone(),
+                    },
+                    Some(query),
+                    closed,
+                ));
+            }
         }
         if let Some(closed) = closed.clone().filter(|_| owns(&ancestry)) {
             let query = ancestry.iter().rev().find_map(|entry| match entry {
@@ -891,6 +950,9 @@ impl<'a> Admission<'a> {
             TargetConstruction::RecursiveFilter { predicate, .. } => roots.push(*predicate),
             TargetConstruction::AdjacencyTree {
                 root: Some(root), ..
+            }
+            | TargetConstruction::OwnedAdjacencyTree {
+                root: Some(root), ..
             } => roots.push(*root),
             TargetConstruction::DynamicGroup {
                 bindings, children, ..
@@ -991,6 +1053,40 @@ pub(super) fn validate_closed_contexts_with_failures(
     failures: FailurePolicy,
     sequence_item_at: SequenceItemAtPolicy,
 ) -> Result<(), ProgramValidationError> {
+    validate_closed_contexts_with_hierarchy(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        PathHierarchyPolicy::Closed,
+    )
+}
+
+pub(super) fn validate_closed_contexts_with_hierarchy(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+    path_hierarchy: PathHierarchyPolicy,
+) -> Result<(), ProgramValidationError> {
+    validate_closed_contexts_with_constructions(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        AdjacencyTreePolicy::Closed,
+    )
+}
+
+pub(super) fn validate_closed_contexts_with_constructions(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+    path_hierarchy: PathHierarchyPolicy,
+    adjacency_tree: AdjacencyTreePolicy,
+) -> Result<(), ProgramValidationError> {
     if !has_owned(program) {
         return Ok(());
     }
@@ -998,6 +1094,8 @@ pub(super) fn validate_closed_contexts_with_failures(
         program,
         profile,
         sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
         visited: Vec::new(),
     };
     admission.scope(
@@ -1258,6 +1356,22 @@ pub fn validate_basic_owned_sequence_item_at_emission(
     )
 }
 
+/// Explicitly admits an owned path-hierarchy input collection, composing the
+/// qualified EndingWith controls, scalar-producer ItemAt, primary-row failures
+/// and owned failure-source walks. Legacy hierarchies and every other tree
+/// operator stay closed.
+pub fn validate_basic_owned_path_hierarchy_emission(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_with_hierarchy(
+        program,
+        BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter,
+        FailurePolicy::OwnedSources,
+        SequenceItemAtPolicy::BasicScalarProducers,
+        PathHierarchyPolicy::Owned,
+    )
+}
+
 fn validate_basic_owned_with_profile(
     program: &Program,
     profile: BasicOwnedProfile,
@@ -1298,12 +1412,58 @@ fn validate_basic_owned_with_failures(
     failures: FailurePolicy,
     sequence_item_at: SequenceItemAtPolicy,
 ) -> Result<(), ProgramValidationError> {
-    super::validate_program_with_owned_failures(program, profile, failures, sequence_item_at)?;
+    validate_basic_owned_with_hierarchy(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        PathHierarchyPolicy::Closed,
+    )
+}
+
+fn validate_basic_owned_with_hierarchy(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+    path_hierarchy: PathHierarchyPolicy,
+) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_with_constructions(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        AdjacencyTreePolicy::Closed,
+    )
+}
+
+fn validate_basic_owned_with_constructions(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+    path_hierarchy: PathHierarchyPolicy,
+    adjacency_tree: AdjacencyTreePolicy,
+) -> Result<(), ProgramValidationError> {
+    super::validate_program_with_owned_constructions(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+    )?;
+    let policy = BasicScopePolicy {
+        profile,
+        path_hierarchy,
+        adjacency_tree,
+    };
     basic_scope(
         program,
         &program.root,
         SourceScopeLocation::root(SourceScopeTarget::Primary),
-        profile,
+        policy,
         false,
     )?;
     for (index, target) in program.extra_targets.iter().enumerate() {
@@ -1314,7 +1474,7 @@ fn validate_basic_owned_with_failures(
                 index,
                 name: target.name.clone(),
             }),
-            profile,
+            policy,
             false,
         )?;
     }
@@ -1409,7 +1569,9 @@ fn basic_scope_refusal(
         .iteration
         .as_ref()
         .and_then(|iteration| iteration.owned_source_iteration())
-        .map(|source| iteration_request(source.source()));
+        .map(|source| iteration_request(source.source()))
+        .or_else(|| owned_path_hierarchy(scope).map(iteration_request))
+        .or_else(|| owned_rows(scope).map(iteration_request));
     failure(
         Location::Iteration {
             scope: route.clone(),
@@ -1422,13 +1584,21 @@ fn basic_scope_refusal(
     )
 }
 
+#[derive(Clone, Copy)]
+struct BasicScopePolicy {
+    profile: BasicOwnedProfile,
+    path_hierarchy: PathHierarchyPolicy,
+    adjacency_tree: AdjacencyTreePolicy,
+}
+
 fn basic_scope(
     program: &Program,
     scope: &TargetScope,
     route: SourceScopeLocation,
-    profile: BasicOwnedProfile,
+    policy: BasicScopePolicy,
     inherited_owned: bool,
 ) -> Result<(), ProgramValidationError> {
+    let profile = policy.profile;
     if let Some(iteration) = &scope.iteration {
         let reason = match iteration.input() {
             IterationSource::OwnedSource(_) | IterationSource::Source(_) => None,
@@ -1460,16 +1630,23 @@ fn basic_scope(
             return Err(basic_scope_refusal(scope, route, Capability::ScopeControl));
         }
     }
-    if !matches!(
-        scope.construction,
-        TargetConstruction::Group | TargetConstruction::Scalar { .. }
-    ) {
+    let admitted_construction = policy.path_hierarchy == PathHierarchyPolicy::Owned
+        && owned_path_hierarchy(scope).is_some()
+        || policy.adjacency_tree.admits(scope);
+    if !admitted_construction
+        && !matches!(
+            scope.construction,
+            TargetConstruction::Group | TargetConstruction::Scalar { .. }
+        )
+    {
         let reason = match scope.construction {
             TargetConstruction::XmlMixedContent { .. } => Capability::XmlOperator,
             TargetConstruction::DynamicGroup { .. } => Capability::DynamicTarget,
             TargetConstruction::RecursiveFilter { .. }
             | TargetConstruction::PathHierarchy { .. }
-            | TargetConstruction::AdjacencyTree { .. } => Capability::TreeOperator,
+            | TargetConstruction::OwnedPathHierarchy { .. }
+            | TargetConstruction::AdjacencyTree { .. }
+            | TargetConstruction::OwnedAdjacencyTree { .. } => Capability::TreeOperator,
             _ => Capability::SpecialConstruction,
         };
         return Err(basic_scope_refusal(scope, route, reason));
@@ -1490,7 +1667,7 @@ fn basic_scope(
             program,
             child,
             route.descendant(SourceScopeStep::Child(index)),
-            profile,
+            policy,
             inherited_owned,
         )?;
     }
@@ -1498,10 +1675,12 @@ fn basic_scope(
 }
 
 fn basic_scope_needs_owned(program: &Program, scope: &TargetScope) -> bool {
-    if scope
-        .iteration
-        .as_ref()
-        .is_some_and(|iteration| iteration.owned_source_iteration().is_some())
+    if owned_path_hierarchy(scope).is_some()
+        || owned_rows(scope).is_some()
+        || scope
+            .iteration
+            .as_ref()
+            .is_some_and(|iteration| iteration.owned_source_iteration().is_some())
     {
         return true;
     }
@@ -1581,6 +1760,8 @@ fn basic_target_expressions(
         if let TargetConstruction::Scalar { expression, .. } = &scope.construction {
             output.push(*expression);
         }
+        // An owned tree's root is a parent-context target expression.
+        output.extend(owned_root(scope));
         output.extend(scope.bindings.iter().map(|binding| binding.expression));
         if profile.permits_filter(scope) {
             // A predicate retains every potential scalar dependency, including

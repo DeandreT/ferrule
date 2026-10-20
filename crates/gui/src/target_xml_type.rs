@@ -282,10 +282,14 @@ fn reserved_ids(project: &Project) -> std::collections::BTreeSet<NodeId> {
             ScopeConstruction::AdjacencyTree { plan } => {
                 reserved.extend(plan.root());
             }
+            ScopeConstruction::OwnedAdjacencyTree { plan } => {
+                reserved.extend(plan.root());
+            }
             ScopeConstruction::Constructed
             | ScopeConstruction::CopyCurrentSource
             | ScopeConstruction::XmlMixedContent { .. }
-            | ScopeConstruction::PathHierarchy { .. } => {}
+            | ScopeConstruction::PathHierarchy { .. }
+            | ScopeConstruction::OwnedPathHierarchy { .. } => {}
         }
         reserved.extend(scope.bindings.iter().map(|binding| binding.node));
         reserved.extend(

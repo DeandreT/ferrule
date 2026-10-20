@@ -1011,6 +1011,12 @@ mod iteration_output_tests;
 #[path = "tests/join.rs"]
 mod join_tests;
 #[cfg(test)]
+#[path = "tests/owned_adjacency_tree.rs"]
+mod owned_adjacency_tree_tests;
+#[cfg(test)]
+#[path = "tests/owned_path_hierarchy.rs"]
+mod owned_path_hierarchy_tests;
+#[cfg(test)]
 #[path = "tests/path_hierarchy.rs"]
 mod path_hierarchy_tests;
 #[cfg(test)]

@@ -78,10 +78,12 @@ fn collect_scope_roots(scope: &Scope, roots: &mut Vec<NodeId>) {
         ScopeConstruction::Scalar { value } => roots.push(*value),
         ScopeConstruction::RecursiveFilter { plan } => roots.push(plan.predicate()),
         ScopeConstruction::AdjacencyTree { plan } => roots.extend(plan.root()),
+        ScopeConstruction::OwnedAdjacencyTree { plan } => roots.extend(plan.root()),
         ScopeConstruction::Constructed
         | ScopeConstruction::CopyCurrentSource
         | ScopeConstruction::XmlMixedContent { .. }
-        | ScopeConstruction::PathHierarchy { .. } => {}
+        | ScopeConstruction::PathHierarchy { .. }
+        | ScopeConstruction::OwnedPathHierarchy { .. } => {}
     }
     if let Some(sequence) = scope.sequence() {
         roots.extend(sequence.inputs());

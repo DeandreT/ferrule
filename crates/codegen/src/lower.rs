@@ -95,12 +95,33 @@ pub fn lower_with_basic_owned_failure_sources(project: &Project) -> Result<Progr
     )
 }
 
+/// Lowers an owned adjacency-tree row collection with the composed owned
+/// failure-source, EndingWith, scalar-producer ItemAt and primary-row failure
+/// policies. Legacy trees keep their ordinary route; lowering is unchanged.
+pub fn lower_with_basic_owned_adjacency_tree(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_adjacency_tree,
+    )
+}
+
 /// Lowers the explicit Basic scalar-producer SequenceItemAt profile, composing
 /// qualified By controls and primary-row failures without changing their gates.
 pub fn lower_with_basic_owned_sequence_item_at(project: &Project) -> Result<Program, LowerError> {
     lower_with_validator(
         project,
         crate::validate_program_with_basic_owned_sequence_item_at,
+    )
+}
+
+/// Lowers an owned path-hierarchy input collection with the composed EndingWith
+/// controls, scalar-producer ItemAt, primary-row failures and owned failure-source
+/// walks. Legacy hierarchies keep their ordinary route; graph and wire lowering
+/// are unchanged.
+pub fn lower_with_basic_owned_path_hierarchy(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_path_hierarchy,
     )
 }
 
@@ -654,10 +675,30 @@ fn lower_scope(
             files: plan.files().to_string(),
             name: plan.name().to_string(),
         },
+        ScopeConstruction::OwnedPathHierarchy { plan } => {
+            crate::TargetConstruction::OwnedPathHierarchy {
+                collection: plan.collection().clone(),
+                separator: plan.separator().to_string(),
+                directories: plan.directories().to_string(),
+                files: plan.files().to_string(),
+                name: plan.name().to_string(),
+            }
+        }
         ScopeConstruction::AdjacencyTree { plan } => {
             roots.extend(plan.root());
             crate::TargetConstruction::AdjacencyTree {
                 collection: plan.collection().to_vec(),
+                key: plan.key().to_vec(),
+                parent: plan.parent().to_vec(),
+                target_key: plan.target_key().to_string(),
+                target_children: plan.target_children().to_string(),
+                root: plan.root(),
+            }
+        }
+        ScopeConstruction::OwnedAdjacencyTree { plan } => {
+            roots.extend(plan.root());
+            crate::TargetConstruction::OwnedAdjacencyTree {
+                collection: plan.collection().clone(),
                 key: plan.key().to_vec(),
                 parent: plan.parent().to_vec(),
                 target_key: plan.target_key().to_string(),

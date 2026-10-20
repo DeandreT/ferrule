@@ -12,6 +12,24 @@ pub(super) struct Construction<'a> {
     pub name: &'a str,
 }
 
+/// Generated target structure; these names never select a source.
+pub(super) struct Output<'a> {
+    pub separator: &'a str,
+    pub directories: &'a str,
+    pub files: &'a str,
+    pub name: &'a str,
+}
+
+impl Output<'_> {
+    fn is_valid(&self) -> bool {
+        !self.separator.is_empty()
+            && !self.directories.is_empty()
+            && !self.files.is_empty()
+            && !self.name.is_empty()
+            && self.directories != self.files
+    }
+}
+
 pub(super) fn validate(
     scope: &TargetScope,
     construction: Construction<'_>,
@@ -26,14 +44,13 @@ pub(super) fn validate(
         files,
         name,
     } = construction;
-    if collection.is_empty()
-        || collection.iter().any(String::is_empty)
-        || separator.is_empty()
-        || directories.is_empty()
-        || files.is_empty()
-        || name.is_empty()
-        || directories == files
-    {
+    let output = Output {
+        separator,
+        directories,
+        files,
+        name,
+    };
+    if collection.is_empty() || collection.iter().any(String::is_empty) || !output.is_valid() {
         return Err(ProgramValidationError::InvalidPathHierarchyConstruction {
             target_path: target_path.to_vec(),
         });
@@ -48,6 +65,49 @@ pub(super) fn validate(
             collection: collection.to_vec(),
         });
     }
+    validate_output(scope, output, target, target_path)
+}
+
+/// Validates an owned collection against its exact endpoint schema. Unknown or
+/// unresolved owners and paths are left to the ownership structure diagnostic.
+pub(super) fn validate_owned(
+    scope: &TargetScope,
+    collection: &mapping::OwnedSourceRef,
+    output: Output<'_>,
+    schemas: ScopeSchemas<'_>,
+    target: &SchemaNode,
+    target_path: &[String],
+) -> Result<(), ProgramValidationError> {
+    if !output.is_valid() {
+        return Err(ProgramValidationError::InvalidPathHierarchyConstruction {
+            target_path: target_path.to_vec(),
+        });
+    }
+    if schemas
+        .sources
+        .owned_schema_at(collection)
+        .is_some_and(|node| !node.node().repeating || !node.node().is_scalar())
+    {
+        return Err(ProgramValidationError::InvalidPathHierarchyCollection {
+            target_path: target_path.to_vec(),
+            collection: collection.path.clone(),
+        });
+    }
+    validate_output(scope, output, target, target_path)
+}
+
+fn validate_output(
+    scope: &TargetScope,
+    output: Output<'_>,
+    target: &SchemaNode,
+    target_path: &[String],
+) -> Result<(), ProgramValidationError> {
+    let Output {
+        directories,
+        files,
+        name,
+        ..
+    } = output;
     if !matches!(target.kind, SchemaKind::Group { .. }) {
         return Err(
             ProgramValidationError::PathHierarchyConstructionRequiresGroupTarget {

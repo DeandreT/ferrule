@@ -14,6 +14,8 @@ use mapping::{Binding, FunctionId, Graph, Node, Project, Scope, ScopeIteration, 
 mod adjacency_tree;
 #[path = "code_generation/aggregates.rs"]
 mod aggregates;
+#[path = "code_generation/basic_owned_adjacency_tree.rs"]
+mod basic_owned_adjacency_tree;
 #[path = "code_generation/basic_owned_failure_sources.rs"]
 mod basic_owned_failure_sources;
 #[path = "code_generation/basic_owned_group_adjacent_by.rs"]
@@ -28,6 +30,8 @@ mod basic_owned_group_starting_with;
 mod basic_owned_json_adapters;
 #[path = "code_generation/basic_owned_nested_phases.rs"]
 mod basic_owned_nested_phases;
+#[path = "code_generation/basic_owned_path_hierarchy.rs"]
+mod basic_owned_path_hierarchy;
 #[path = "code_generation/basic_owned_row_failures.rs"]
 mod basic_owned_row_failures;
 #[path = "code_generation/basic_owned_sequence_item_at.rs"]

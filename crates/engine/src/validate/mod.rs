@@ -3,6 +3,7 @@ use std::fmt;
 
 use mapping::{Project, XbrlBoundaryMode};
 
+mod adjacency_tree;
 mod graph;
 mod join;
 mod options;

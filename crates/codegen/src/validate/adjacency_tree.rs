@@ -51,21 +51,115 @@ pub(super) fn validate(
             collection: collection.to_vec(),
         });
     };
-    validate_string_field(
-        collection_schema.follow(key).map(super::SchemaCursor::node),
+    validate_rows(
+        collection_schema,
+        Output {
+            key,
+            parent,
+            target_key,
+            target_children,
+        },
         target_path,
-        key,
+    )?;
+    validate_output(
+        scope,
+        Output {
+            key,
+            parent,
+            target_key,
+            target_children,
+        },
+        target,
+        target_path,
+    )
+}
+
+/// Row-relative fields and generated target names; none selects a source.
+pub(super) struct Output<'a> {
+    pub key: &'a [String],
+    pub parent: &'a [String],
+    pub target_key: &'a str,
+    pub target_children: &'a str,
+}
+
+impl Output<'_> {
+    fn is_valid(&self) -> bool {
+        !invalid_path(self.key)
+            && !invalid_path(self.parent)
+            && self.key != self.parent
+            && !self.target_key.is_empty()
+            && !self.target_children.is_empty()
+            && self.target_key != self.target_children
+    }
+}
+
+/// Validates an owned row collection against its exact endpoint schema.
+/// Unknown or unresolved owners and paths are left to the ownership structure
+/// diagnostic; key and parent stay relative to each selected row.
+pub(super) fn validate_owned(
+    scope: &TargetScope,
+    collection: &mapping::OwnedSourceRef,
+    output: Output<'_>,
+    schemas: ScopeSchemas<'_>,
+    target: &SchemaNode,
+    target_path: &[String],
+) -> Result<(), ProgramValidationError> {
+    if !output.is_valid() {
+        return Err(ProgramValidationError::InvalidAdjacencyTreeConstruction {
+            target_path: target_path.to_vec(),
+        });
+    }
+    if let Some(rows) = schemas.sources.owned_schema_at(collection) {
+        if !rows.node().repeating || !matches!(rows.node().kind, SchemaKind::Group { .. }) {
+            return Err(ProgramValidationError::InvalidAdjacencyTreeCollection {
+                target_path: target_path.to_vec(),
+                collection: collection.path.clone(),
+            });
+        }
+        validate_rows(
+            rows,
+            Output {
+                key: output.key,
+                parent: output.parent,
+                target_key: output.target_key,
+                target_children: output.target_children,
+            },
+            target_path,
+        )?;
+    }
+    validate_output(scope, output, target, target_path)
+}
+
+fn validate_rows(
+    rows: super::SchemaCursor<'_>,
+    output: Output<'_>,
+    target_path: &[String],
+) -> Result<(), ProgramValidationError> {
+    validate_string_field(
+        rows.follow(output.key).map(super::SchemaCursor::node),
+        target_path,
+        output.key,
         "key",
     )?;
     validate_string_field(
-        collection_schema
-            .follow(parent)
-            .map(super::SchemaCursor::node),
+        rows.follow(output.parent).map(super::SchemaCursor::node),
         target_path,
-        parent,
+        output.parent,
         "parent",
-    )?;
+    )
+}
 
+fn validate_output(
+    scope: &TargetScope,
+    output: Output<'_>,
+    target: &SchemaNode,
+    target_path: &[String],
+) -> Result<(), ProgramValidationError> {
+    let Output {
+        target_key,
+        target_children,
+        ..
+    } = output;
     if !matches!(target.kind, SchemaKind::Group { .. }) {
         return Err(
             ProgramValidationError::AdjacencyTreeConstructionRequiresGroupTarget {

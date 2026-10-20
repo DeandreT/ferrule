@@ -70,6 +70,10 @@ struct TargetExtension {
     sequence_item_at: SequenceItemAtPolicy,
     /// Explicitly owned failure walks, beside the primary-row permission.
     failure_sources: bool,
+    /// Owned path-hierarchy construction is an orthogonal explicit permission.
+    path_hierarchy: bool,
+    /// Owned adjacency-tree construction is an orthogonal explicit permission.
+    adjacency_tree: bool,
 }
 
 impl TargetExtension {
@@ -77,41 +81,77 @@ impl TargetExtension {
         controls: TargetControls::Closed,
         sequence_item_at: SequenceItemAtPolicy::Closed,
         failure_sources: false,
+        path_hierarchy: false,
+        adjacency_tree: false,
     };
     const GROUP_BY: Self = Self {
         controls: TargetControls::By,
         sequence_item_at: SequenceItemAtPolicy::Closed,
         failure_sources: false,
+        path_hierarchy: false,
+        adjacency_tree: false,
     };
     const SEQUENCE_ITEM_AT: Self = Self {
         controls: TargetControls::By,
         sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
         failure_sources: false,
+        path_hierarchy: false,
+        adjacency_tree: false,
     };
 
     const GROUP_ADJACENT_BY: Self = Self {
         controls: TargetControls::ByAndAdjacent,
         sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
         failure_sources: false,
+        path_hierarchy: false,
+        adjacency_tree: false,
     };
 
     const GROUP_STARTING_WITH: Self = Self {
         controls: TargetControls::ByAndAdjacentAndStarting,
         sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
         failure_sources: false,
+        path_hierarchy: false,
+        adjacency_tree: false,
     };
 
     const FAILURE_SOURCES: Self = Self {
         controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
         sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
         failure_sources: true,
+        path_hierarchy: false,
+        adjacency_tree: false,
     };
 
     const GROUP_ENDING_WITH: Self = Self {
         controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
         sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
         failure_sources: false,
+        path_hierarchy: false,
+        adjacency_tree: false,
     };
+
+    /// The newest companion: FailureSources plus owned hierarchy construction.
+    const PATH_HIERARCHY: Self = Self {
+        controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
+        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
+        failure_sources: true,
+        path_hierarchy: true,
+        adjacency_tree: false,
+    };
+
+    /// PATH_HIERARCHY plus owned adjacency-tree construction.
+    const ADJACENCY_TREE: Self = Self {
+        controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
+        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
+        failure_sources: true,
+        path_hierarchy: true,
+        adjacency_tree: true,
+    };
+
+    fn permits_path_hierarchy(self) -> bool {
+        self.path_hierarchy
+    }
 
     fn permits_ending_with(self) -> bool {
         matches!(
@@ -166,7 +206,11 @@ fn render_basic_owned_mapping_profile(
 ) -> Result<String, EmitError> {
     let allow_scoped_groups = extension.controls.has_scoped_groups();
     // Select the control/consumer pair before the older ItemAt-only companion.
-    if extension.failure_sources {
+    if extension.adjacency_tree {
+        codegen::validate_program_with_basic_owned_adjacency_tree(program)?;
+    } else if extension.permits_path_hierarchy() {
+        codegen::validate_program_with_basic_owned_path_hierarchy(program)?;
+    } else if extension.failure_sources {
         codegen::validate_program_with_basic_owned_failure_sources(program)?;
     } else if extension.permits_ending_with() {
         codegen::validate_program_with_basic_owned_group_ending_with(program)?;
@@ -361,6 +405,8 @@ struct ScopeControls {
     sort: bool,
     windows: bool,
     grouping: TargetControls,
+    path_hierarchy: bool,
+    adjacency_tree: bool,
 }
 
 fn check_scope(
@@ -395,16 +441,30 @@ fn check_scope(
             return Err(scope_error(scope, route, Reason::ScopeControl));
         }
     }
-    if !matches!(
-        scope.construction,
-        TargetConstruction::Group | TargetConstruction::Scalar { .. }
-    ) {
+    let admitted_construction = controls.path_hierarchy
+        && matches!(
+            scope.construction,
+            TargetConstruction::OwnedPathHierarchy { .. }
+        )
+        || controls.adjacency_tree
+            && matches!(
+                scope.construction,
+                TargetConstruction::OwnedAdjacencyTree { .. }
+            );
+    if !admitted_construction
+        && !matches!(
+            scope.construction,
+            TargetConstruction::Group | TargetConstruction::Scalar { .. }
+        )
+    {
         let reason = match scope.construction {
             TargetConstruction::XmlMixedContent { .. } => Reason::XmlOperator,
             TargetConstruction::DynamicGroup { .. } => Reason::DynamicTarget,
             TargetConstruction::RecursiveFilter { .. }
             | TargetConstruction::PathHierarchy { .. }
-            | TargetConstruction::AdjacencyTree { .. } => Reason::TreeOperator,
+            | TargetConstruction::OwnedPathHierarchy { .. }
+            | TargetConstruction::AdjacencyTree { .. }
+            | TargetConstruction::OwnedAdjacencyTree { .. } => Reason::TreeOperator,
             _ => Reason::SpecialConstruction,
         };
         return Err(scope_error(scope, route, reason));
@@ -452,6 +512,13 @@ fn retained_expressions(program: &Program) -> BTreeSet<NodeId> {
     fn roots(scope: &TargetScope, pending: &mut Vec<NodeId>) {
         if let TargetConstruction::Scalar { expression, .. } = &scope.construction {
             pending.push(*expression);
+        }
+        // The owned tree root is a parent-context target expression.
+        if let TargetConstruction::OwnedAdjacencyTree {
+            root: Some(root), ..
+        } = &scope.construction
+        {
+            pending.push(*root);
         }
         pending.extend(scope.bindings.iter().map(|binding| binding.expression));
         if let Some(iteration) = &scope.iteration {
@@ -594,6 +661,8 @@ fn validate_private_inventory(
         sort: allow_sort,
         windows: allow_windows,
         grouping: extension.controls,
+        path_hierarchy: extension.permits_path_hierarchy(),
+        adjacency_tree: extension.adjacency_tree,
     };
     check_scope(
         program,
@@ -614,7 +683,11 @@ fn validate_private_inventory(
             false,
         )?;
     }
-    if extension.failure_sources {
+    if extension.adjacency_tree {
+        codegen::validate_basic_owned_adjacency_tree_emission(program)?;
+    } else if extension.permits_path_hierarchy() {
+        codegen::validate_basic_owned_path_hierarchy_emission(program)?;
+    } else if extension.failure_sources {
         codegen::validate_basic_owned_failure_source_emission(program)?;
     } else if extension.permits_ending_with() {
         codegen::validate_basic_owned_group_ending_with_emission(program)?;
@@ -1003,7 +1076,11 @@ fn render_checked_basic_owned_mapping_profile(
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = if extension.failure_sources {
+    let plan = if extension.adjacency_tree {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_adjacency_tree(program)?
+    } else if extension.permits_path_hierarchy() {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy(program)?
+    } else if extension.failure_sources {
         codegen::legacy_named_input_admission_plan_with_basic_owned_failure_sources(program)?
     } else if extension.permits_ending_with() {
         codegen::legacy_named_input_admission_plan_with_basic_owned_group_ending_with(program)?
@@ -1254,7 +1331,11 @@ fn expression_needs_owned_sources(program: &Program, root: NodeId) -> bool {
 }
 
 pub(super) fn scope_needs_owned_sources(program: &Program, scope: &TargetScope) -> bool {
-    if scope
+    if matches!(
+        scope.construction,
+        TargetConstruction::OwnedPathHierarchy { .. }
+            | TargetConstruction::OwnedAdjacencyTree { .. }
+    ) || scope
         .iteration
         .as_ref()
         .is_some_and(|iteration| matches!(iteration.input(), IterationSource::OwnedSource(_)))
@@ -1430,6 +1511,38 @@ pub(crate) fn render_public_basic_owned_failure_source_mapping(
         true,
         true,
         TargetExtension::FAILURE_SOURCES,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_path_hierarchy_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::PATH_HIERARCHY,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_adjacency_tree_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::ADJACENCY_TREE,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)

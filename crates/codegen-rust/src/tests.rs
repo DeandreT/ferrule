@@ -1521,6 +1521,7 @@ impl Drop for TempDir {
     }
 }
 
+mod owned_adjacency_tree;
 mod owned_basic;
 mod owned_basic_group_adjacent_by;
 mod owned_basic_group_by;
@@ -1528,4 +1529,5 @@ mod owned_basic_group_starting_with;
 mod owned_failure_sources;
 #[path = "owned_json_api_tests.rs"]
 mod owned_json_api;
+mod owned_path_hierarchy;
 mod owned_sequence_item_at;

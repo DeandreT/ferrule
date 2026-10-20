@@ -59,7 +59,22 @@ pub(super) fn validate(
                 files: _,
                 name: _,
             }
+            | TargetConstruction::OwnedPathHierarchy {
+                collection: _,
+                separator: _,
+                directories: _,
+                files: _,
+                name: _,
+            }
             | TargetConstruction::AdjacencyTree {
+                collection: _,
+                key: _,
+                parent: _,
+                target_key: _,
+                target_children: _,
+                root: _,
+            }
+            | TargetConstruction::OwnedAdjacencyTree {
                 collection: _,
                 key: _,
                 parent: _,

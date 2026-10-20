@@ -1504,8 +1504,28 @@ pub enum TargetConstruction {
         files: String,
         name: String,
     },
+    /// The same tree over one exact endpoint collection. Only `collection`
+    /// carries ownership; the output field names never select a source.
+    OwnedPathHierarchy {
+        collection: mapping::OwnedSourceRef,
+        separator: String,
+        directories: String,
+        files: String,
+        name: String,
+    },
     AdjacencyTree {
         collection: Vec<String>,
+        key: Vec<String>,
+        parent: Vec<String>,
+        target_key: String,
+        target_children: String,
+        root: Option<NodeId>,
+    },
+    /// The same tree over one exact endpoint's rows. Only `collection` carries
+    /// ownership; key/parent stay row-relative and `root` keeps the receiving
+    /// context. Target names never select a source.
+    OwnedAdjacencyTree {
+        collection: mapping::OwnedSourceRef,
         key: Vec<String>,
         parent: Vec<String>,
         target_key: String,

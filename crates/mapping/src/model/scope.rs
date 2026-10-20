@@ -2,8 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AdjacencyTreePlan, Binding, DynamicBinding, DynamicChild, JoinId, JoinPlan, NodeId,
-    OwnedSourceAccess, PathHierarchyPlan, RecursiveFilterPlan, ScopeIteration, ScopeSequence,
-    SequenceExpr, SourceSelector, SourceSelectorMut, SourceSelectorRef,
+    OwnedAdjacencyTreePlan, OwnedPathHierarchyPlan, OwnedSourceAccess, PathHierarchyPlan,
+    RecursiveFilterPlan, ScopeIteration, ScopeSequence, SequenceExpr, SourceSelector,
+    SourceSelectorMut, SourceSelectorRef,
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,8 +40,14 @@ pub enum ScopeConstruction {
     RecursiveFilter { plan: RecursiveFilterPlan },
     /// Group scalar path strings into one bounded recursive directory tree.
     PathHierarchy { plan: PathHierarchyPlan },
+    /// Build the same bounded directory tree from one explicitly owned input
+    /// collection. Generated directory/file/name fields never select a source.
+    OwnedPathHierarchy { plan: OwnedPathHierarchyPlan },
     /// Build a bounded recursive target group from flat adjacency rows.
     AdjacencyTree { plan: AdjacencyTreePlan },
+    /// Build the same bounded tree from one explicitly owned row collection.
+    /// Key and parent paths stay row-relative; target names never select a source.
+    OwnedAdjacencyTree { plan: OwnedAdjacencyTreePlan },
 }
 
 /// One direct-child rename in an XML mixed-content construction.

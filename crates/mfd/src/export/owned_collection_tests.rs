@@ -61,3 +61,74 @@ fn qualified_early_route_and_nested_segments_cannot_omit_owned_selector() {
         vec![SourceScopeStep::Segment(1)],
     );
 }
+#[test]
+fn owned_path_hierarchy_collection_is_refused_before_artifact_io() {
+    let mut p = project();
+    let plan = mapping::OwnedPathHierarchyPlan::new(
+        OwnedSourceRef {
+            owner: SourceOwner::Named {
+                name: "audit".into(),
+            },
+            path: vec!["File".into()],
+        },
+        "/".into(),
+        "directory".into(),
+        "file".into(),
+        "name".into(),
+    )
+    .unwrap();
+    p.root = Scope {
+        children: vec![Scope {
+            target_field: "Tree".into(),
+            construction: mapping::ScopeConstruction::OwnedPathHierarchy { plan },
+            ..Scope::default()
+        }],
+        ..Scope::default()
+    };
+    let path = Path::new("nonexistent-owned-hierarchy-export-parent/output.mfd");
+    for profile in [ExportProfile::default(), ExportProfile::NativeMfd] {
+        check(
+            export_with_profile(&p, path, profile).unwrap_err(),
+            vec![SourceScopeStep::Child(0)],
+        );
+    }
+    assert!(!path.exists());
+}
+#[test]
+fn owned_adjacency_tree_rows_are_refused_before_artifact_io() {
+    let mut p = project();
+    let plan = mapping::OwnedAdjacencyTreePlan::new(
+        OwnedSourceRef {
+            owner: SourceOwner::Named {
+                name: "audit".into(),
+            },
+            path: vec!["Row".into()],
+        },
+        vec!["Key".into()],
+        vec!["Parent".into()],
+        "name".into(),
+        "children".into(),
+        None,
+    )
+    .unwrap();
+    p.root = Scope {
+        children: vec![Scope {
+            target_field: "Tree".into(),
+            construction: mapping::ScopeConstruction::OwnedAdjacencyTree { plan },
+            ..Scope::default()
+        }],
+        ..Scope::default()
+    };
+    let path = Path::new("nonexistent-owned-adjacency-export-parent/output.mfd");
+    check(
+        preflight_export(&p, path).unwrap_err(),
+        vec![SourceScopeStep::Child(0)],
+    );
+    for profile in [ExportProfile::default(), ExportProfile::NativeMfd] {
+        check(
+            export_with_profile(&p, path, profile).unwrap_err(),
+            vec![SourceScopeStep::Child(0)],
+        );
+    }
+    assert!(!path.exists());
+}
