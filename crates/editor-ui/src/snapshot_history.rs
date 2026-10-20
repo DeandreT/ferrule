@@ -85,6 +85,19 @@ impl<T: Clone + PartialEq> SnapshotHistory<T> {
         self.redo.clear();
     }
 
+    /// Updates every retained undo and redo snapshot in place, for hosts whose
+    /// snapshots must follow a change of the basis they are interpreted
+    /// against. The save point is left to the host. Stops at the first error.
+    pub fn try_for_each_retained_mut<E>(
+        &mut self,
+        mut update: impl FnMut(&mut T) -> Result<(), E>,
+    ) -> Result<(), E> {
+        self.undo
+            .iter_mut()
+            .chain(self.redo.iter_mut())
+            .try_for_each(|entry| update(&mut entry.snapshot))
+    }
+
     pub fn clear_redo(&mut self) {
         self.redo.clear();
     }
@@ -184,6 +197,32 @@ mod tests {
         assert!(!history.is_dirty(&2));
         history.mark_unsaved();
         assert!(history.is_dirty(&2));
+    }
+
+    #[test]
+    fn retained_snapshots_update_in_place_without_moving_the_save_point() {
+        let mut history = SnapshotHistory::new(1, DocumentOrigin::Saved);
+        history.record(1, "One");
+        history.record(2, "Two");
+        assert_eq!(history.undo(3).map(HistoryStep::into_snapshot), Some(2));
+
+        let updated: Result<(), ()> = history.try_for_each_retained_mut(|snapshot| {
+            *snapshot *= 10;
+            Ok(())
+        });
+        assert!(updated.is_ok());
+        assert!(!history.is_dirty(&1));
+        assert_eq!(history.redo(20).map(HistoryStep::into_snapshot), Some(30));
+        assert_eq!(history.undo(30).map(HistoryStep::into_snapshot), Some(20));
+        assert_eq!(history.undo(20).map(HistoryStep::into_snapshot), Some(10));
+
+        let mut visited = 0;
+        let stopped = history.try_for_each_retained_mut(|_| {
+            visited += 1;
+            Err("stop")
+        });
+        assert_eq!(stopped, Err("stop"));
+        assert_eq!(visited, 1);
     }
 
     #[test]

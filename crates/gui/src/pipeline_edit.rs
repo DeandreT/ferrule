@@ -1,16 +1,14 @@
 //! A file-backed pipeline document independent of the current mapping canvas.
 
 use std::collections::BTreeSet;
-use std::fs::{self, OpenOptions};
-use std::io::{Read as _, Write as _};
+use std::fs;
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context as _, bail};
 use mapping::{Pipeline, PipelineInput, PipelineNamedInput, PipelineStage, Project};
 
 const MAX_DOCUMENT_BYTES: u64 = 64 * 1024 * 1024;
-static NEXT_SAVE: AtomicU64 = AtomicU64::new(0);
 
 pub(super) struct PipelineEditorDocument {
     pub path: PathBuf,
@@ -383,7 +381,7 @@ impl PipelineEditorDocument {
         if bytes.len() as u64 > MAX_DOCUMENT_BYTES {
             bail!("serialized pipeline exceeds the 64 MiB file limit");
         }
-        atomic_replace(&self.path, &bytes)?;
+        crate::document_file::replace(&self.path, &bytes)?;
         self.original_bytes = Some(bytes);
         self.saved_semantic = Some(crate::project_state::pipeline_snapshot_key(&self.pipeline));
         Ok(())
@@ -435,40 +433,4 @@ fn read_bounded(path: &Path) -> anyhow::Result<Vec<u8>> {
         bail!("{} exceeds the 64 MiB file limit", path.display());
     }
     Ok(bytes)
-}
-
-fn atomic_replace(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let name = path
-        .file_name()
-        .context("pipeline path has no file name")?
-        .to_string_lossy();
-    for _ in 0..32 {
-        let nonce = NEXT_SAVE.fetch_add(1, Ordering::Relaxed);
-        let staged = parent.join(format!(".{name}.{}-{nonce}.tmp", std::process::id()));
-        let file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&staged);
-        let mut file = match file {
-            Ok(file) => file,
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error).with_context(|| format!("staging {}", path.display())),
-        };
-        let result = (|| -> anyhow::Result<()> {
-            file.write_all(bytes)?;
-            file.sync_all()?;
-            drop(file);
-            fs::rename(&staged, path).with_context(|| format!("publishing {}", path.display()))?;
-            Ok(())
-        })();
-        if result.is_err() {
-            let _ = fs::remove_file(&staged);
-        }
-        return result;
-    }
-    bail!("could not reserve a temporary file for {}", path.display())
 }

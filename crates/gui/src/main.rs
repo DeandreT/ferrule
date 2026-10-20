@@ -17,6 +17,7 @@ mod canvas_search;
 mod canvas_tools;
 mod diagnostics;
 mod document;
+mod document_file;
 mod extra_sources;
 mod extra_targets;
 mod filter_map_editor;

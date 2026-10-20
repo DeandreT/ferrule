@@ -27,6 +27,13 @@ pub fn rebase(
     Ok(())
 }
 
+/// Whether moving a project document between these paths changes the meaning
+/// of its relative instance paths, i.e. whether [`rebase`] resolves them
+/// against a different directory.
+pub fn relocates(from_document: &Path, to_document: &Path) -> std::io::Result<bool> {
+    Ok(absolute_parent(from_document)? != absolute_parent(to_document)?)
+}
+
 /// Stores an imported mapping's active-file identity relative to a saved
 /// pipeline, so moving the two files together preserves runtime path values.
 pub fn mapping_identity_relative_to(
@@ -320,6 +327,17 @@ mod tests {
             rebase_path(r"..\data\*.xml", from, to).unwrap().as_deref(),
             Some("../../data/*.xml")
         );
+    }
+
+    #[test]
+    fn relocation_compares_normalized_document_directories() {
+        let maps = absolute("/package/maps/project.json");
+        let renamed = absolute("/package/maps/./nested/../renamed.json");
+        let moved = absolute("/package/projects/project.json");
+        let (maps, renamed, moved) = (Path::new(&maps), Path::new(&renamed), Path::new(&moved));
+
+        assert!(!relocates(maps, renamed).unwrap());
+        assert!(relocates(maps, moved).unwrap());
     }
 
     #[test]
