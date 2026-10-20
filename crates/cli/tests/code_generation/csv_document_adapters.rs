@@ -260,6 +260,7 @@ fn csv_document_artifacts_preserve_existing_files_and_exact_runtime_sources() ->
     paths.extend([
         "GeneratedMapping.CsvDocument.cs",
         "Runtime/FerruleCsvInput.cs",
+        "Runtime/FerruleCsvSource.cs",
     ]);
     paths.sort_unstable();
     assert_eq!(
@@ -305,6 +306,18 @@ fn csv_document_artifacts_preserve_existing_files_and_exact_runtime_sources() ->
             .unwrap()
             .contents,
         runtime
+    );
+    assert_eq!(
+        emitted
+            .files()
+            .iter()
+            .find(|f| f.path.as_str() == "Runtime/FerruleCsvSource.cs")
+            .unwrap()
+            .contents,
+        std::fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs")
+        )?
     );
     assert_eq!(
         emitted

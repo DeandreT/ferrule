@@ -81,6 +81,10 @@ pub(crate) fn emit(
     }
     files.push(file("GeneratedMapping.CsvX12.cs", render(&profile))?);
     files.push(file("Runtime/FerruleCsvInput.cs", INPUT_SOURCE)?);
+    files.push(file(
+        "Runtime/FerruleCsvSource.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs"),
+    )?);
     for (path, source) in crate::x12_output::X12_SOURCES {
         files.push(file(path, source)?);
     }

@@ -72,6 +72,13 @@ pub fn emit_with_csv_document_adapters(
         )
         .map_err(CsvDocumentEmitError::Emit)?,
     );
+    files.push(
+        file(
+            "Runtime/FerruleCsvSource.cs",
+            include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs"),
+        )
+        .map_err(CsvDocumentEmitError::Emit)?,
+    );
     ArtifactSet::new(files)
         .map_err(EmitError::from)
         .map_err(CsvDocumentEmitError::Emit)

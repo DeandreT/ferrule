@@ -53,6 +53,8 @@ internal static partial class Program
             ("CSV actual UTF-8 byte limit", CsvActualUtf8Limit),
             ("Raw-delimited CRLF text", CsvRawDelimitedCrLf),
             ("Explicit CSV byte decoding", CsvByteDecodingPolicy),
+            ("CSV source exact occurrences", CsvSourceOccurrences),
+            ("CSV source reached failures", CsvSourceFailures),
             ("X12 literal Unicode, syntax and envelope", X12LiteralUnicodeAndSyntax),
             ("X12 fixed literals and control ownership", X12FixedLiteralsAndControlOwnership),
             ("X12 envelope identity ownership", X12EnvelopeIdentityOwnership),
