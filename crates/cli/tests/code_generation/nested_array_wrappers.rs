@@ -32,10 +32,12 @@ fn nested_array_wrappers_compiled_complete_oracles() -> TestResult<()> {
     if !parent.is_absolute() {
         return Err("nested-array evidence parent must be absolute".into());
     }
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let root = parent.join(format!(
-        "ferrule-nested-array-compiled-{}-{stamp}",
-        std::process::id()
+        "ferrule-nested-array-compiled-{}-{stamp}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&root)?;
     eprintln!("NESTED_ARRAY_ORIGINALS={}", root.display());

@@ -8,6 +8,7 @@ use mapping::FormatOptions;
 use serde_json::{Value as Json, json};
 use std::error::Error;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src/csv_x12_boundary/fixtures")
@@ -20,12 +21,14 @@ fn literal(name: &str) -> Result<Json, Box<dyn Error>> {
 }
 
 fn evidence(label: &str) -> Result<PathBuf, Box<dyn Error>> {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let path = std::env::temp_dir().join(format!(
-        "ferrule-csv-x12-policy-{label}-{}-{}",
+        "ferrule-csv-x12-policy-{label}-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)?
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&path)?;
     Ok(path)

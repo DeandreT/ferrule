@@ -2,6 +2,7 @@ use super::*;
 use crate::{DynamicSourceProgram, IterationPlan, SourceIteration};
 use ir::{ScalarType, SchemaKind};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const BASE: &str = include_str!(concat!(
@@ -24,10 +25,12 @@ const NO_SOURCES: &str = include_str!(concat!(
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 fn record(label: &str, original: &impl std::fmt::Debug) -> TestResult<PathBuf> {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "ferrule-static-documents274-{label}-{}-{}",
+        "ferrule-static-documents274-{label}-{}-{}-{}",
         std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&root)?;
     std::fs::write(
