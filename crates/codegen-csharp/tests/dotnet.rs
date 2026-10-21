@@ -793,6 +793,16 @@ using System.Text.Json;
 using Ferrule.Generated;
 using Ferrule.Runtime;
 
+var counters = new FerruleInvocationCounters(2, 8);
+Assert(counters.Next("line", 1, 1, null) == 1);
+Assert(counters.Next("line", 999, 2, null) == 3);
+Assert(counters.Next("line", 10, 2, "") == 10);
+Assert(counters.Next("line", 999, 2, "") == 12);
+Assert(counters.Reset("line"));
+Assert(counters.Next("line", long.MaxValue, 1, null) == long.MaxValue);
+Assert(counters.Next("line", 0, 1, null) == long.MinValue);
+Assert(new FerruleInvocationCounters(2, 8).Next("line", 1, 1, null) == 1);
+
 var source = Source(FerruleValue.FromBoolean(true), true);
 var extraSources = ExtraSources();
 
