@@ -782,13 +782,9 @@ impl<'a> Admission<'a> {
                     Node::OwnedLookup(mapping::OwnedLookup { collection, .. })
                     | Node::OwnedCollectionFind(mapping::OwnedCollectionFind {
                         collection, ..
-                    }) => self.static_owner(
-                        &collection.owner,
-                        &collection.path,
-                        None,
-                        Some(id),
-                        None,
-                    )?,
+                    })
+                    | Node::OwnedAggregate(mapping::OwnedAggregate { collection, .. }) => self
+                        .static_owner(&collection.owner, &collection.path, None, Some(id), None)?,
                     // The structured read has the field's frame rules and
                     // evaluates no expression of its own.
                     Node::OwnedXmlSerialize(serializer) => {
@@ -935,7 +931,8 @@ fn root_failure_node_is_static(project: &Project, node: &Node) -> bool {
         | Node::Position { .. }
         | Node::OwnedDynamicSourceField(_)
         | Node::OwnedLookup(_)
-        | Node::OwnedCollectionFind(_) => false,
+        | Node::OwnedCollectionFind(_)
+        | Node::OwnedAggregate(_) => false,
         Node::OwnedSourceField(field) => field.frame.as_ref().is_none_or(Vec::is_empty),
         Node::SourceField { path, frame } => {
             frame.as_ref().is_none_or(Vec::is_empty)
@@ -973,6 +970,7 @@ fn primary_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
         Node::OwnedDynamicSourceField(_)
         | Node::OwnedLookup(_)
         | Node::OwnedCollectionFind(_)
+        | Node::OwnedAggregate(_)
         | Node::OwnedRowDocumentPath(_) => false,
         Node::OwnedPosition(position) => matches!(position.owner, SourceOwner::Primary),
         Node::OwnedSourceField(field) => match &field.source.owner {
@@ -1003,9 +1001,10 @@ fn owned_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
     }
     match node {
         Node::OwnedPosition(_) | Node::OwnedSourceField(_) => true,
-        Node::OwnedLookup(_) | Node::OwnedCollectionFind(_) | Node::OwnedRowDocumentPath(_) => {
-            false
-        }
+        Node::OwnedLookup(_)
+        | Node::OwnedCollectionFind(_)
+        | Node::OwnedAggregate(_)
+        | Node::OwnedRowDocumentPath(_) => false,
         Node::UserFunctionCall { .. } | Node::OwnedDynamicSourceField(_) => false,
         // Owned XML serialization is a target-context operator only.
         Node::OwnedXmlSerialize(_) => false,

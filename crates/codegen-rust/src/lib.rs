@@ -578,6 +578,26 @@ pub fn emit_with_basic_owned_sequence_aggregate(
     .map_err(EmitError::from)
 }
 
+/// Emit owned-search-profile targets with explicitly owned collection
+/// aggregates over one exact endpoint. Older emitters keep refusing them.
+pub fn emit_with_basic_owned_collection_aggregates(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_collection_aggregates(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_collection_aggregates_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_collection_aggregates_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.
 /// Flat row/schema and literal dialect eligibility are checked before artifacts
 /// exist. The ordinary mapper, JSON/XML adapters, and manifest remain intact.
@@ -1072,6 +1092,7 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
         Expression::Lookup { matches, .. } => vec![*matches],
         Expression::OwnedLookup(lookup) => vec![lookup.matches],
         Expression::OwnedCollectionFind(find) => vec![find.predicate, find.value],
+        Expression::OwnedAggregate(aggregate) => aggregate.inputs(),
         Expression::CollectionFind {
             predicate, value, ..
         } => vec![*predicate, *value],
@@ -1854,13 +1875,17 @@ fn render_expression_in_context_with_scalar_item_at(
             Expression::OwnedXmlSerialize(serializer) if basic => {
                 owned_basic::render_owned_xml_serialize(id, serializer)?
             }
+            Expression::OwnedAggregate(aggregate) if basic => {
+                owned_basic::render_owned_aggregate(id, aggregate, call_expression)
+            }
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
             | Expression::OwnedDynamicSourceField(_)
             | Expression::OwnedLookup(_)
             | Expression::OwnedCollectionFind(_)
-            | Expression::OwnedXmlSerialize(_) => {
+            | Expression::OwnedXmlSerialize(_)
+            | Expression::OwnedAggregate(_) => {
                 let namespace = owner_function.map_or(codegen::OwnedSourceNamespace::Main, |id| {
                     codegen::OwnedSourceNamespace::Function(FunctionId::new(id))
                 });

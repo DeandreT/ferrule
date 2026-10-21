@@ -337,6 +337,14 @@ fn eval_expr_inner(
             positions,
             in_progress,
         ),
+        Node::OwnedAggregate(aggregate) => crate::owned_aggregate::eval_owned_aggregate(
+            program,
+            node_id,
+            aggregate,
+            context,
+            positions,
+            in_progress,
+        ),
         Node::SourceRootXmlTypeEquals {
             canonical_expanded_type,
         } => ir::primary_root_xml_type_equals(program.primary_source, canonical_expanded_type)

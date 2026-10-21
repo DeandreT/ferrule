@@ -24,6 +24,7 @@ mod filter_map;
 mod grouping;
 mod iteration_output;
 mod join;
+mod owned_aggregate;
 mod owned_context;
 mod owned_search;
 #[cfg(test)]
@@ -1169,6 +1170,9 @@ mod owned_failure_iteration_tests;
 #[path = "tests/owned_sequence_exists.rs"]
 mod owned_sequence_exists_tests;
 
+#[cfg(test)]
+#[path = "tests/owned_collection_aggregates.rs"]
+mod owned_collection_aggregates_tests;
 #[cfg(test)]
 #[path = "tests/owned_lookup_find.rs"]
 mod owned_lookup_find_tests;

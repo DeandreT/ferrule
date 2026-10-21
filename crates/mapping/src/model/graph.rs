@@ -208,6 +208,90 @@ pub struct OwnedCollectionFind {
     pub value: NodeId,
 }
 
+/// How an owned aggregate obtains each selected item's value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnedAggregateValue {
+    /// An item-relative scalar path; the empty path reads a scalar item itself.
+    Path(Vec<String>),
+    /// A graph expression evaluated in each selected owner item's context.
+    Expression(NodeId),
+}
+
+/// Reduces one explicitly owned collection to one scalar. The value path or
+/// expression reads each selected owner item; `arg` evaluates once in the
+/// parent context after every item value, as for [`Node::Aggregate`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "OwnedAggregateWire", into = "OwnedAggregateWire")]
+pub struct OwnedAggregate {
+    pub function: AggregateOp,
+    pub collection: OwnedSourceRef,
+    pub value: OwnedAggregateValue,
+    pub arg: Option<NodeId>,
+}
+
+/// Exactly one of `value` and `expression` is present on the wire.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OwnedAggregateWire {
+    function: AggregateOp,
+    collection: OwnedSourceRef,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    value: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    expression: Option<NodeId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    arg: Option<NodeId>,
+}
+
+impl TryFrom<OwnedAggregateWire> for OwnedAggregate {
+    type Error = &'static str;
+
+    fn try_from(wire: OwnedAggregateWire) -> Result<Self, Self::Error> {
+        let value = match (wire.value, wire.expression) {
+            (Some(path), None) => OwnedAggregateValue::Path(path),
+            (None, Some(expression)) => OwnedAggregateValue::Expression(expression),
+            _ => return Err("owned aggregate requires exactly one of `value` and `expression`"),
+        };
+        Ok(Self {
+            function: wire.function,
+            collection: wire.collection,
+            value,
+            arg: wire.arg,
+        })
+    }
+}
+
+impl From<OwnedAggregate> for OwnedAggregateWire {
+    fn from(aggregate: OwnedAggregate) -> Self {
+        let (value, expression) = match aggregate.value {
+            OwnedAggregateValue::Path(path) => (Some(path), None),
+            OwnedAggregateValue::Expression(expression) => (None, Some(expression)),
+        };
+        Self {
+            function: aggregate.function,
+            collection: aggregate.collection,
+            value,
+            expression,
+            arg: aggregate.arg,
+        }
+    }
+}
+
+impl OwnedAggregate {
+    /// The per-item expression, when the value is computed.
+    pub fn expression(&self) -> Option<NodeId> {
+        match self.value {
+            OwnedAggregateValue::Path(_) => None,
+            OwnedAggregateValue::Expression(expression) => Some(expression),
+        }
+    }
+
+    /// Graph inputs in evaluation order: the item expression, then `arg`.
+    pub fn inputs(&self) -> Vec<NodeId> {
+        self.expression().into_iter().chain(self.arg).collect()
+    }
+}
+
 /// A single node in the mapping graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -224,6 +308,8 @@ pub enum Node {
     OwnedCollectionFind(OwnedCollectionFind),
     /// Serializes one structured element read from exactly its declared owner.
     OwnedXmlSerialize(crate::OwnedXmlSerialize),
+    /// Reduction over exactly one owned endpoint collection.
+    OwnedAggregate(OwnedAggregate),
     /// Reads a scalar field at `path`, resolved against the innermost
     /// currently-iterating source item, falling back to enclosing items
     /// (nearest enclosing wins) if not found there. That fallback is what
@@ -501,6 +587,7 @@ impl Node {
             }
             Self::OwnedLookup(_) => Some("owned_lookup"),
             Self::OwnedCollectionFind(_) => Some("owned_collection_find"),
+            Self::OwnedAggregate(_) => Some("owned_aggregate"),
             _ => None,
         }
     }
@@ -538,6 +625,7 @@ impl Node {
             Self::Lookup { matches, .. } => vec![*matches],
             Self::OwnedLookup(lookup) => vec![lookup.matches],
             Self::OwnedCollectionFind(find) => vec![find.predicate, find.value],
+            Self::OwnedAggregate(aggregate) => aggregate.inputs(),
             Self::DynamicSourceField { key, .. } => vec![*key],
             Self::OwnedDynamicSourceField(field) => vec![field.key],
             Self::XmlMixedContent { replacements, .. } => replacements
@@ -595,7 +683,8 @@ pub struct XmlMixedContentReplacement {
     pub expression: NodeId,
 }
 
-/// A reduction applied by [`Node::Aggregate`] or [`Node::JoinAggregate`].
+/// A reduction applied by [`Node::Aggregate`], [`Node::OwnedAggregate`] or
+/// [`Node::JoinAggregate`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AggregateOp {

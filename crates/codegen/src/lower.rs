@@ -156,6 +156,17 @@ pub fn lower_with_basic_owned_dynamic_field(project: &Project) -> Result<Program
     )
 }
 
+/// Lowers explicitly owned collection aggregates with the owned search
+/// profile. Every older companion keeps refusing owned aggregates.
+pub fn lower_with_basic_owned_collection_aggregates(
+    project: &Project,
+) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_collection_aggregates,
+    )
+}
+
 /// Lowers the explicit Basic scalar-producer SequenceItemAt profile, composing
 /// qualified By controls and primary-row failures without changing their gates.
 pub fn lower_with_basic_owned_sequence_item_at(project: &Project) -> Result<Program, LowerError> {
@@ -1284,6 +1295,7 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
         Node::OwnedLookup(lookup) => Expression::OwnedLookup(lookup.clone()),
         Node::OwnedCollectionFind(find) => Expression::OwnedCollectionFind(find.clone()),
         Node::OwnedXmlSerialize(serializer) => Expression::OwnedXmlSerialize(serializer.clone()),
+        Node::OwnedAggregate(aggregate) => Expression::OwnedAggregate(aggregate.clone()),
         Node::SourceField { path, frame } => Expression::SourceField {
             frame: frame.clone(),
             path: path.clone(),
