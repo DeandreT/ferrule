@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     FilterMapV1, FunctionId, FunctionParameterId, JoinId, JoinPlan, OwnedDynamicSourceField,
-    OwnedRecursiveCollect, OwnedSourceRef, Scope, SourceOwner,
+    OwnedJoinPlan, OwnedRecursiveCollect, OwnedSourceRef, Scope, SourceOwner,
 };
 
 pub type NodeId = u32;
@@ -310,6 +310,32 @@ pub struct OwnedJoinSourcePosition {
     pub collection: OwnedSourceRef,
 }
 
+/// Reduces the tuples of one owned inner join planned in the receiving
+/// context. Each source walks its declared endpoint from the latest active
+/// frame of the same owner, so a source naming an active owned row correlates
+/// to that row and a source inside an owned group walks only its members.
+/// `expression`, when set, evaluates once per tuple with only this join's
+/// members and position active; `arg` evaluates once in the receiving context
+/// after every tuple value, as for [`Node::JoinAggregate`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OwnedJoinAggregate {
+    pub function: AggregateOp,
+    pub join: JoinId,
+    pub plan: OwnedJoinPlan,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expression: Option<NodeId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arg: Option<NodeId>,
+}
+
+impl OwnedJoinAggregate {
+    /// Graph inputs in evaluation order: the tuple expression, then `arg`.
+    pub fn inputs(&self) -> Vec<NodeId> {
+        self.expression.into_iter().chain(self.arg).collect()
+    }
+}
+
 /// A single node in the mapping graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -336,6 +362,8 @@ pub enum Node {
     /// replacing direct child occurrences in explicit parent or owned
     /// occurrence contexts.
     OwnedXmlMixedContent(crate::OwnedXmlMixedContent),
+    /// Reduction over the tuples of one owned inner join.
+    OwnedJoinAggregate(OwnedJoinAggregate),
     /// Reads a scalar field at `path`, resolved against the innermost
     /// currently-iterating source item, falling back to enclosing items
     /// (nearest enclosing wins) if not found there. That fallback is what
@@ -617,6 +645,7 @@ impl Node {
             Self::OwnedAggregate(_) => Some("owned_aggregate"),
             Self::OwnedJoinField(_) => Some("owned_join_field"),
             Self::OwnedJoinSourcePosition(_) => Some("owned_join_source_position"),
+            Self::OwnedJoinAggregate(_) => Some("owned_join_aggregate"),
             _ => None,
         }
     }
@@ -657,6 +686,7 @@ impl Node {
             Self::OwnedLookup(lookup) => vec![lookup.matches],
             Self::OwnedCollectionFind(find) => vec![find.predicate, find.value],
             Self::OwnedAggregate(aggregate) => aggregate.inputs(),
+            Self::OwnedJoinAggregate(aggregate) => aggregate.inputs(),
             Self::DynamicSourceField { key, .. } => vec![*key],
             Self::OwnedDynamicSourceField(field) => vec![field.key],
             Self::XmlMixedContent { replacements, .. } => replacements
@@ -719,8 +749,8 @@ pub struct XmlMixedContentReplacement {
     pub expression: NodeId,
 }
 
-/// A reduction applied by [`Node::Aggregate`], [`Node::OwnedAggregate`] or
-/// [`Node::JoinAggregate`].
+/// A reduction applied by [`Node::Aggregate`], [`Node::OwnedAggregate`],
+/// [`Node::JoinAggregate`] or [`Node::OwnedJoinAggregate`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AggregateOp {

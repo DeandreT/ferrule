@@ -241,6 +241,11 @@ impl<'a> Analysis<'a> {
                 self.inspect_owner(&position.collection.owner)
             }
             Node::OwnedXmlMixedContent(mixed) => self.inspect_owner(&mixed.source.owner),
+            Node::OwnedJoinAggregate(aggregate) => {
+                for source in aggregate.plan.sources() {
+                    self.inspect_owner(&source.collection().owner);
+                }
+            }
             Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }
