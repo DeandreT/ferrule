@@ -24,11 +24,13 @@ mod failure;
 mod json5_api;
 mod owned_basic;
 mod owned_json_api;
+mod primary_csv;
 mod primary_filename;
 mod scalar_sequence;
 mod selected_json_api;
 
 pub use json5_api::{Json5EmitError, emit_with_json5};
+pub use primary_csv::{PrimaryCsvEmitError, emit_with_primary_csv_acquisition};
 pub use primary_filename::emit_with_primary_filename;
 mod x12_api;
 mod xml_api;

@@ -1,0 +1,52 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static void Require(bool value) { if(!value) throw new Exception("CSV acquisition assertion failed"); }
+static FerruleCsvSourceData Load(string path) => new(File.ReadAllBytes(path),"resolved/"+path);
+static FerruleCsvAcquisitionException Failure(FerruleCsvAcquisition source,FerruleCsvAcquisitionError error)
+{
+    try {source.MoveNext();}
+    catch(FerruleCsvAcquisitionException found) {Require(found.Error==error);return found;}
+    throw new Exception("Expected acquisition refusal");
+}
+var context=FerruleExecutionContext.WithParameters("authored.mapping",new FerruleRuntimeParameters(new Dictionary<string,FerruleValue> { ["Input"]=FerruleValue.FromString(" selected *.csv ") }));
+if(args[0]!="literal")
+{
+    using var absent=GeneratedMapping.AcquirePrimaryCsv(new FerruleExecutionContext("authored.mapping"),_=>throw new Exception("unexpected selection"),Load,FerruleCsvByteDecodingPolicy.StrictUtf8,3);
+    var error=Failure(absent,FerruleCsvAcquisitionError.Filename);
+    Require(error.InnerException is FerruleRuntimeException {Error:FerruleRuntimeError.MissingRuntimeParameter,Node:17});
+    Require(!absent.MoveNext());
+}
+var calls=new List<string>();
+using(var rows=GeneratedMapping.AcquirePrimaryCsv(context,name=>{calls.Add("select:"+name);return ["first.csv","empty.csv","first.csv"];},name=>{calls.Add("load:"+name);return Load(name);},FerruleCsvByteDecodingPolicy.StrictUtf8,3))
+{
+    Require(calls.Count==0);Require(rows.MoveNext());
+    Require(string.Join("|",calls)=="select: selected *.csv |load:first.csv");
+    var all=new List<FerruleCsvRowOccurrence>{rows.Current};while(rows.MoveNext()) all.Add(rows.Current);
+    Require(all.Count==4 && string.Join("|",calls)=="select: selected *.csv |load:first.csv|load:empty.csv|load:first.csv");
+    for(int index=0;index<all.Count;index++)
+    {
+        var row=all[index];var value=(FerruleGroup)row.Value;
+        Require(row.Position==index%2+1 && row.Document.SourcePath=="resolved/first.csv");
+        Require(((FerruleScalar)value.Fields[0].Value).Value.StringValue==(index%2==0 ? "Snow\nline":""));
+        Require(((FerruleScalar)value.Fields[1].Value).Value.Int64Value==(index%2==0 ? 7:8));
+    }
+    Require(all[0].Document.SameDocument(all[1].Document));Require(!all[0].Document.SameDocument(all[2].Document));Require(!all[0].SameOccurrence(all[2]));
+}
+using(var failed=GeneratedMapping.AcquirePrimaryCsv(context,_=>["first.csv","broken.csv","never.csv"],Load,FerruleCsvByteDecodingPolicy.StrictUtf8,3))
+{
+    Require(failed.MoveNext() && failed.MoveNext());
+    var error=Failure(failed,FerruleCsvAcquisitionError.Input);Require(error.Path=="broken.csv" && error.InnerException is FerruleCsvInputException {Error:FerruleCsvInputError.Parse});Require(!failed.MoveNext());
+}
+using(var missing=GeneratedMapping.AcquirePrimaryCsv(context,_=>["absent.csv"],Load,FerruleCsvByteDecodingPolicy.StrictUtf8,1))
+{
+    var error=Failure(missing,FerruleCsvAcquisitionError.Load);Require(error.Path=="absent.csv" && error.InnerException is FileNotFoundException);Require(!missing.MoveNext());
+}
+foreach(var decoding in new[] {FerruleCsvByteDecodingPolicy.StrictUtf8,FerruleCsvByteDecodingPolicy.BomAwareNonFlushingReplacement})
+{
+    using var rows=GeneratedMapping.AcquirePrimaryCsv(context,_=>["wide.csv"],Load,decoding,1);
+    if(decoding==FerruleCsvByteDecodingPolicy.StrictUtf8) Failure(rows,FerruleCsvAcquisitionError.Input);
+    else {Require(rows.MoveNext());Require(((FerruleScalar)((FerruleGroup)rows.Current.Value).Fields[0].Value).Value.StringValue=="Wide☃");}
+    Require(!rows.MoveNext());
+}
+Console.WriteLine("primary CSV acquisition cases passed");

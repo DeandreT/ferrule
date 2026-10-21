@@ -57,6 +57,8 @@ internal static partial class Program
             ("Explicit CSV byte decoding", CsvByteDecodingPolicy),
             ("CSV source exact occurrences", CsvSourceOccurrences),
             ("CSV source reached failures", CsvSourceFailures),
+            ("CSV acquisition order and identity", CsvAcquisitionOrder),
+            ("CSV acquisition terminal failures", CsvAcquisitionFailures),
             ("X12 literal Unicode, syntax and envelope", X12LiteralUnicodeAndSyntax),
             ("X12 fixed literals and control ownership", X12FixedLiteralsAndControlOwnership),
             ("X12 envelope identity ownership", X12EnvelopeIdentityOwnership),

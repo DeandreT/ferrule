@@ -15,6 +15,7 @@ use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::{CsvTextRepairDependency, FormatOptions};
 use thiserror::Error;
 
+mod acquisition;
 mod bounded;
 mod bounded_read;
 mod byte_decoding;
@@ -23,6 +24,7 @@ mod fixed_width;
 mod read;
 mod source_document;
 
+pub use acquisition::{CsvAcquisitionError, CsvSourceAcquisition, CsvSourceData};
 pub use bounded::{CsvBoundedError, to_bytes_with_options_bounded, to_string_with_options_bounded};
 pub use bounded_read::{
     CsvReadError, CsvReadLimit, MAX_CSV_INPUT_BYTES, MAX_CSV_INPUT_CELL_BYTES,

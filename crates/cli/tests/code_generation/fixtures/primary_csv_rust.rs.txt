@@ -1,0 +1,51 @@
+use std::{cell::RefCell,rc::Rc};
+use codegen_runtime::{CsvAcquisitionError,CsvByteDecodingPolicy,CsvSourceData,ExecutionContext,Instance,RuntimeError,RuntimeParameters,Value};
+use primary_csv_fixture::acquire_primary_csv;
+
+fn load(path:&str)->Result<CsvSourceData,std::io::Error> {
+    Ok(CsvSourceData {bytes:std::fs::read(path)?,resolved_path:Some(format!("resolved/{path}"))})
+}
+fn main() {
+    let literal=std::env::args().nth(1).as_deref()==Some("literal");
+    let mut parameters=RuntimeParameters::new();parameters.insert("Input",Value::String(" selected *.csv ".into())).unwrap();
+    let context=ExecutionContext::new(std::path::Path::new("authored.mapping")).with_parameters(&parameters);
+    let absent=ExecutionContext::new(std::path::Path::new("authored.mapping"));
+    if !literal {
+        let mut rows=acquire_primary_csv(&absent,|_|->Result<std::iter::Empty<Result<String,std::io::Error>>,std::io::Error>{panic!("selection after missing filename")},load,CsvByteDecodingPolicy::StrictUtf8,3).unwrap();
+        assert!(matches!(rows.next(),Some(Err(CsvAcquisitionError::Filename(RuntimeError::MissingRuntimeParameter {node:17,..})))));
+        assert!(rows.next().is_none());
+    }
+    let calls=Rc::new(RefCell::new(Vec::new()));let selected=calls.clone();let loaded=calls.clone();
+    let mut rows=acquire_primary_csv(&context,move |name| {
+        selected.borrow_mut().push(format!("select:{name}"));
+        Ok(["first.csv","empty.csv","first.csv"].into_iter().map(|name|Ok(name.into())))
+    },move |name| {loaded.borrow_mut().push(format!("load:{name}"));load(name)},CsvByteDecodingPolicy::StrictUtf8,3).unwrap();
+    assert!(calls.borrow().is_empty());
+    let first=rows.next().unwrap().unwrap();
+    assert_eq!(&*calls.borrow(),&["select: selected *.csv ","load:first.csv"]);
+    let mut all=vec![first];all.extend(rows.map(Result::unwrap));
+    assert_eq!(all.len(),4);
+    assert_eq!(&*calls.borrow(),&["select: selected *.csv ","load:first.csv","load:empty.csv","load:first.csv"]);
+    for (index,row) in all.iter().enumerate() {
+        assert_eq!(row.position(),index%2+1);assert_eq!(row.document().source_path(),"resolved/first.csv");
+        assert_eq!(row.value().field("Text").and_then(Instance::as_scalar),Some(&Value::String(if index%2==0 {"Snow\nline"}else{""}.into())));
+        assert_eq!(row.value().field("Count").and_then(Instance::as_scalar),Some(&Value::Int(if index%2==0 {7}else{8})));
+    }
+    assert!(all[0].document().same_document(all[1].document()));
+    assert!(!all[0].document().same_document(all[2].document()));
+    assert!(!all[0].same_occurrence(&all[2]));
+    let mut failed=acquire_primary_csv(&context,|_|Ok(["first.csv","broken.csv","never.csv"].into_iter().map(|name|Ok(name.into()))),load,CsvByteDecodingPolicy::StrictUtf8,3).unwrap();
+    assert!(failed.next().unwrap().is_ok());assert!(failed.next().unwrap().is_ok());
+    assert!(matches!(failed.next(),Some(Err(CsvAcquisitionError::Input {path,..})) if path=="broken.csv"));
+    assert!(failed.next().is_none());
+    let mut missing=acquire_primary_csv(&context,|_|Ok(std::iter::once(Ok("absent.csv".into()))),load,CsvByteDecodingPolicy::StrictUtf8,1).unwrap();
+    assert!(matches!(missing.next(),Some(Err(CsvAcquisitionError::Load {path,source})) if path=="absent.csv" && source.kind()==std::io::ErrorKind::NotFound));
+    assert!(missing.next().is_none());
+    for decoding in [CsvByteDecodingPolicy::StrictUtf8,CsvByteDecodingPolicy::BomAwareNonFlushingReplacement] {
+        let mut wide=acquire_primary_csv(&context,|_|Ok(std::iter::once(Ok("wide.csv".into()))),load,decoding,1).unwrap();
+        if decoding==CsvByteDecodingPolicy::StrictUtf8 {assert!(matches!(wide.next(),Some(Err(CsvAcquisitionError::Input {..}))));}
+        else {assert_eq!(wide.next().unwrap().unwrap().value().field("Text").and_then(Instance::as_scalar),Some(&Value::String("Wide☃".into())));}
+        assert!(wide.next().is_none());
+    }
+    println!("primary CSV acquisition cases passed");
+}

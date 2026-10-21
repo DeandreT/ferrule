@@ -320,3 +320,14 @@ pub(crate) fn source_fields(schema: &SchemaNode) -> Result<&[SchemaNode], CsvInp
     }
     Ok(children)
 }
+
+/// Validate only the explicitly selected primary CSV input. This is not
+/// admission of mapping execution, output ownership or source acquisition I/O.
+pub fn validate_primary_csv_acquisition(
+    program: &crate::Program,
+    policy: &CsvInputPolicy,
+) -> Result<(), CsvInputBoundaryError> {
+    policy.validate_dialect()?;
+    source_fields(&program.source)?;
+    Ok(())
+}
