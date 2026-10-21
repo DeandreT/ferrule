@@ -151,6 +151,7 @@ fn append_value(output: &mut String, value: Value) {
         Value::Bool(value) => output.push_str(if value { "true" } else { "false" }),
         Value::Int(value) => output.push_str(&value.to_string()),
         Value::Float(value) => output.push_str(&value.to_string()),
+        Value::Decimal(value) => output.push_str(&value.to_string()),
         Value::String(value) => output.push_str(&value),
     }
 }
@@ -161,6 +162,7 @@ fn mixed_content_text(value: &Value) -> String {
         Value::Bool(value) => value.to_string(),
         Value::Int(value) => value.to_string(),
         Value::Float(value) => value.to_string(),
+        Value::Decimal(value) => value.to_string(),
         Value::String(value) => value.clone(),
     }
 }

@@ -483,6 +483,7 @@ fn evaluate_body_input(
 
 fn adapt_scalar(value: Value, expected: ScalarType) -> Option<Value> {
     match (expected, value) {
+        (_, Value::Decimal(_)) => None,
         (_, value @ (Value::Null | Value::JsonNull(_) | Value::XmlNil(_))) => Some(value),
         (ScalarType::String, value @ Value::String(_))
         | (ScalarType::Int, value @ Value::Int(_))

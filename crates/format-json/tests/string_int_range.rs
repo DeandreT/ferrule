@@ -151,6 +151,7 @@ fn instance_original(instance: &Instance) -> serde_json::Value {
                 Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => serde_json::Value::Null,
                 Value::String(value) => json!(value),
                 Value::Int(value) => json!(value),
+                Value::Decimal(value) => json!({"decimal96":value.to_string()}),
                 Value::Bool(value) => json!(value),
                 Value::Float(value) => {
                     json!({"bits":format!("{:016x}",value.to_bits()),"display":value.to_string()})

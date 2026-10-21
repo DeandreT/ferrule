@@ -13,6 +13,78 @@ use super::{
     recursive, wsdl, xbrl,
 };
 
+#[cfg(test)]
+mod decimal_tests {
+    use super::*;
+    use ir::{Decimal96, Value};
+    use mapping::{Graph, Node};
+
+    #[test]
+    fn decimal_literals_are_refused_even_in_unused_nodes_and_tables() {
+        let value = Value::decimal(Decimal96::parse_exact("9007199254740993.1").unwrap());
+        for node in [
+            Node::Const {
+                value: value.clone(),
+            },
+            Node::ValueMap {
+                input: 1,
+                input_type: None,
+                table: vec![(value.clone(), Value::Int(1))],
+                default: None,
+            },
+            Node::ValueMap {
+                input: 1,
+                input_type: None,
+                table: vec![(Value::Int(1), value.clone())],
+                default: None,
+            },
+            Node::ValueMap {
+                input: 1,
+                input_type: None,
+                table: vec![],
+                default: Some(value.clone()),
+            },
+        ] {
+            let mut project = Project {
+                source: SchemaNode::group("Source", vec![]),
+                target: SchemaNode::group("Target", vec![]),
+                source_path: None,
+                target_path: None,
+                source_options: Default::default(),
+                target_options: Default::default(),
+                extra_sources: vec![],
+                extra_targets: vec![],
+                failure_rules: vec![],
+                user_functions: Default::default(),
+                graph: Graph {
+                    nodes: [(7, node)].into(),
+                },
+                root: Scope::default(),
+            };
+            assert!(
+                matches!(crate::preflight_export(&project, Path::new("decimal.mfd")), Err(MfdError::Unsupported(message)) if message.contains("decimal literal at node 7"))
+            );
+            let body = std::mem::take(&mut project.graph);
+            project.user_functions.insert(
+                mapping::FunctionId::new(1),
+                mapping::UserFunction {
+                    library: "local".into(),
+                    name: "UnusedDecimal".into(),
+                    description: None,
+                    parameters: vec![],
+                    output_name: "Value".into(),
+                    output_type: ir::ScalarType::String,
+                    body,
+                    output: 7,
+                },
+            );
+            assert!(
+                matches!(crate::preflight_export(&project, Path::new("decimal.mfd")), Err(MfdError::Unsupported(message)) if message.contains("decimal literal at node 7"))
+            );
+        }
+    }
+}
+
 /// Export represents all stored main nodes and every declared function body.
 pub(super) fn validate_optional_parser_input_provenance(project: &Project) -> Result<(), MfdError> {
     if !project
@@ -67,6 +139,36 @@ pub(super) fn validate_source_ownership(project: &Project) -> Result<(), MfdErro
                     function: Some(function),
                     kind,
                 });
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn validate_decimal_values(project: &Project) -> Result<(), MfdError> {
+    // Scan stored literals, including unused nodes and declared function bodies.
+    // A decimal type must not be reinterpreted as the legacy Float export path.
+    for graph in std::iter::once(&project.graph).chain(
+        project
+            .user_functions
+            .values()
+            .map(|function| &function.body),
+    ) {
+        for (node, value) in &graph.nodes {
+            let decimal = match value {
+                mapping::Node::Const { value } => matches!(value, ir::Value::Decimal(_)),
+                mapping::Node::ValueMap { table, default, .. } => {
+                    table.iter().any(|(key, value)| {
+                        matches!(key, ir::Value::Decimal(_))
+                            || matches!(value, ir::Value::Decimal(_))
+                    }) || matches!(default, Some(ir::Value::Decimal(_)))
+                }
+                _ => false,
+            };
+            if decimal {
+                return Err(MfdError::Unsupported(format!(
+                    "decimal literal at node {node} has no admitted .mfd export profile"
+                )));
             }
         }
     }
