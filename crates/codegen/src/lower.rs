@@ -225,6 +225,16 @@ pub fn lower_with_basic_owned_xml_serialize(project: &Project) -> Result<Program
     )
 }
 
+/// Lowers owned XML mixed-content atomization in Basic target contexts,
+/// composing the owned XML serialization companion. Legacy mixed-content nodes
+/// keep their ordinary route.
+pub fn lower_with_basic_owned_xml_mixed_content(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_xml_mixed_content,
+    )
+}
+
 /// Whether a lowering route admits owned join scopes past its preflight.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum OwnedJoinLowering {
@@ -1328,6 +1338,7 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
         Node::OwnedJoinSourcePosition(position) => {
             Expression::OwnedJoinSourcePosition(position.clone())
         }
+        Node::OwnedXmlMixedContent(mixed) => Expression::OwnedXmlMixedContent(mixed.clone()),
         Node::SourceField { path, frame } => Expression::SourceField {
             frame: frame.clone(),
             path: path.clone(),

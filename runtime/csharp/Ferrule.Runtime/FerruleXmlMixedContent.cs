@@ -54,10 +54,10 @@ public sealed class FerruleXmlMixedContentElement
 /// <summary>Engine-compatible ordered XML mixed-content atomization.</summary>
 public static class FerruleXmlMixedContent
 {
-    private const string MixedContentField = "\u001fferrule-xml-mixed-content";
-    private const string MixedValueField = "\u001fferrule-xml-mixed-value";
-    private const string NodeNameField = "NodeName";
-    private const string TextField = "#text";
+    internal const string MixedContentField = "\u001fferrule-xml-mixed-content";
+    internal const string MixedValueField = "\u001fferrule-xml-mixed-value";
+    internal const string NodeNameField = "NodeName";
+    internal const string TextField = "#text";
 
     public static FerruleValue Evaluate(
         ScopeContext context,
@@ -198,7 +198,7 @@ public static class FerruleXmlMixedContent
         return false;
     }
 
-    private static string StringField(FerruleInstance item, string name) =>
+    internal static string StringField(FerruleInstance item, string name) =>
         OptionalStringField(item, name) ?? string.Empty;
 
     private static string? OptionalStringField(FerruleInstance item, string name) =>
@@ -208,7 +208,7 @@ public static class FerruleXmlMixedContent
             ? scalar.Value.StringValue
             : null;
 
-    private static void Append(StringBuilder output, FerruleValue value)
+    internal static void Append(StringBuilder output, FerruleValue value)
     {
         switch (value.Kind)
         {

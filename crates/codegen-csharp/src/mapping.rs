@@ -1865,6 +1865,15 @@ fn render_expression(
             crate::owned_basic::render_owned_aggregate(node, aggregate, output);
             return Ok(());
         }
+        Expression::OwnedXmlMixedContent(mixed)
+            if matches!(
+                mode,
+                ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes
+            ) =>
+        {
+            crate::owned_basic::render_owned_xml_mixed_content(node, mixed, output);
+            return Ok(());
+        }
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
@@ -1874,7 +1883,8 @@ fn render_expression(
         | Expression::OwnedXmlSerialize(_)
         | Expression::OwnedAggregate(_)
         | Expression::OwnedJoinField(_)
-        | Expression::OwnedJoinSourcePosition(_) => {
+        | Expression::OwnedJoinSourcePosition(_)
+        | Expression::OwnedXmlMixedContent(_) => {
             if matches!(
                 mode,
                 ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes

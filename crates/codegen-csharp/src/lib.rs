@@ -345,6 +345,19 @@ pub fn emit_with_basic_owned_joins(program: &Program) -> Result<ArtifactSet, Emi
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits owned XML mixed-content atomization in Basic target contexts,
+/// composing the owned XML serialization companion. Legacy mixed-content nodes
+/// keep the ordinary emitter and older companions keep refusing the owned form.
+pub fn emit_with_basic_owned_xml_mixed_content(
+    program: &Program,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_xml_mixed_content(program)?;
+    codegen::validate_basic_owned_xml_mixed_content_emission(program)?;
+    let generated_mapping =
+        owned_basic::render_public_basic_owned_xml_mixed_content_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,
@@ -466,6 +479,8 @@ mod tests {
     mod owned_sequence_aggregate;
     #[path = "owned_sequence_exists.rs"]
     mod owned_sequence_exists;
+    #[path = "owned_xml_mixed_content.rs"]
+    mod owned_xml_mixed_content;
     #[path = "owned_xml_serialize.rs"]
     mod owned_xml_serialize;
     use ::mapping::FunctionId;

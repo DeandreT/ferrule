@@ -484,3 +484,37 @@ fn owned_aggregates_refuse_before_writing_anything() {
         assert!(!path.exists());
     }
 }
+
+#[test]
+fn owned_xml_mixed_content_is_refused_before_writing_anything() {
+    let mut project = project();
+    project.graph.nodes.insert(
+        9,
+        Node::OwnedXmlMixedContent(mapping::OwnedXmlMixedContent {
+            source: mapping::OwnedSourceRef {
+                owner: SourceOwner::Named {
+                    name: "audit".into(),
+                },
+                path: vec!["Header".into()],
+            },
+            frame: None,
+            replacements: vec![],
+        }),
+    );
+    let path = Path::new("nonexistent-owned-xml-mixed-export-parent/output.mfd");
+    let refused = |error: MfdError| {
+        assert!(matches!(
+            error,
+            MfdError::UnsupportedSourceOwnership {
+                node: 9,
+                function: None,
+                kind: "owned_xml_mixed_content",
+            }
+        ));
+    };
+    refused(preflight_export(&project, path).unwrap_err());
+    for profile in [ExportProfile::default(), ExportProfile::NativeMfd] {
+        refused(export_with_profile(&project, path, profile).unwrap_err());
+    }
+    assert!(!path.exists());
+}

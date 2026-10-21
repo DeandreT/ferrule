@@ -272,6 +272,15 @@ pub fn validate_program_with_basic_owned_xml_serialize(
     owned_sources::validate_basic_owned_xml_serialize_emission(program)
 }
 
+/// Validates owned XML mixed-content atomization in Basic target contexts,
+/// explicitly composing the owned XML serialization companion. Legacy
+/// mixed-content nodes and every older companion keep their existing gates.
+pub fn validate_program_with_basic_owned_xml_mixed_content(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_xml_mixed_content_emission(program)
+}
+
 fn validate_program_with_owned_policies(
     program: &Program,
     profile: owned_sources::BasicOwnedProfile,
@@ -338,7 +347,7 @@ fn validate_program_with_owned_dynamic_fields(
         path_hierarchy,
         adjacency_tree,
         dynamic_field,
-        owned_sources::XmlSerializePolicy::Closed,
+        owned_sources::OwnedXmlPolicy::Closed,
     )
 }
 
@@ -352,7 +361,7 @@ fn validate_program_with_owned_xml(
     path_hierarchy: owned_sources::PathHierarchyPolicy,
     adjacency_tree: owned_sources::AdjacencyTreePolicy,
     dynamic_field: owned_sources::DynamicFieldPolicy,
-    xml_serialize: owned_sources::XmlSerializePolicy,
+    owned_xml: owned_sources::OwnedXmlPolicy,
 ) -> Result<(), ProgramValidationError> {
     validate_program_with_owned_joins(
         program,
@@ -362,7 +371,7 @@ fn validate_program_with_owned_xml(
         path_hierarchy,
         adjacency_tree,
         dynamic_field,
-        xml_serialize,
+        owned_xml,
         owned_sources::JoinPolicy::Closed,
     )
 }
@@ -376,7 +385,7 @@ fn validate_program_with_owned_joins(
     path_hierarchy: owned_sources::PathHierarchyPolicy,
     adjacency_tree: owned_sources::AdjacencyTreePolicy,
     dynamic_field: owned_sources::DynamicFieldPolicy,
-    xml_serialize: owned_sources::XmlSerializePolicy,
+    owned_xml: owned_sources::OwnedXmlPolicy,
     join: owned_sources::JoinPolicy,
 ) -> Result<(), ProgramValidationError> {
     xml::validate_boundary(program)?;
@@ -437,7 +446,7 @@ fn validate_program_with_owned_joins(
         path_hierarchy,
         adjacency_tree,
         dynamic_field,
-        xml_serialize,
+        owned_xml,
         join,
     )
 }
@@ -1709,7 +1718,6 @@ fn validate_scope(
 pub use owned_sources::validate_basic_owned_adjacency_tree_emission;
 pub use owned_sources::validate_basic_owned_path_hierarchy_emission;
 pub use owned_sources::validate_basic_owned_recursive_filter_emission;
-pub use owned_sources::validate_basic_owned_xml_serialize_emission;
 pub use owned_sources::{
     is_basic_owned_primary_row_failure, validate_basic_owned_dynamic_field_emission,
     validate_basic_owned_emission, validate_basic_owned_failure_source_emission,
@@ -1720,6 +1728,9 @@ pub use owned_sources::{
     validate_basic_owned_lookup_find_emission, validate_basic_owned_recursive_collect_emission,
     validate_basic_owned_row_failure_emission, validate_basic_owned_sequence_item_at_emission,
     validate_basic_owned_sort_emission, validate_basic_owned_window_emission,
+};
+pub use owned_sources::{
+    validate_basic_owned_xml_mixed_content_emission, validate_basic_owned_xml_serialize_emission,
 };
 
 pub use owned_sources::{

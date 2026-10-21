@@ -163,6 +163,17 @@ pub(crate) fn render_public_basic_owned_sequence_aggregate_source(
     )
 }
 
+/// The owned XML serialization composition plus mixed-content atomization.
+pub(crate) fn render_public_basic_owned_xml_mixed_content_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::XmlMixedContent,
+        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+    )
+}
+
 /// The owned dynamic-field composition plus owned XML serialization.
 pub(crate) fn render_public_basic_owned_xml_serialize_source(
     program: &Program,
@@ -235,6 +246,8 @@ pub(super) enum Profile {
     CollectionAggregates,
     /// LookupFind plus owned inner joins and their tuple reads.
     Joins,
+    /// XmlSerialize plus owned XML mixed-content atomization.
+    XmlMixedContent,
 }
 
 impl Profile {
@@ -255,6 +268,7 @@ impl Profile {
                 | Self::XmlSerialize
                 | Self::CollectionAggregates
                 | Self::Joins
+                | Self::XmlMixedContent
         )
     }
 
@@ -270,6 +284,7 @@ impl Profile {
                 | Self::XmlSerialize
                 | Self::CollectionAggregates
                 | Self::Joins
+                | Self::XmlMixedContent
         )
     }
 
@@ -291,6 +306,7 @@ impl Profile {
                     | Self::XmlSerialize
                     | Self::CollectionAggregates
                     | Self::Joins
+                    | Self::XmlMixedContent
             ),
             Some(GroupingPlan::StartingWith { .. }) => matches!(
                 self,
@@ -306,6 +322,7 @@ impl Profile {
                     | Self::XmlSerialize
                     | Self::CollectionAggregates
                     | Self::Joins
+                    | Self::XmlMixedContent
             ),
             Some(GroupingPlan::EndingWith { .. }) => matches!(
                 self,
@@ -320,6 +337,7 @@ impl Profile {
                     | Self::XmlSerialize
                     | Self::CollectionAggregates
                     | Self::Joins
+                    | Self::XmlMixedContent
             ),
             Some(GroupingPlan::IntoBlocks { .. }) => {
                 matches!(
@@ -330,6 +348,7 @@ impl Profile {
                         | Self::XmlSerialize
                         | Self::CollectionAggregates
                         | Self::Joins
+                        | Self::XmlMixedContent
                 )
             }
             None => false,
@@ -360,6 +379,9 @@ fn render_public_basic_owned_source_policy(
         }
         (Profile::XmlSerialize, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::validate_basic_owned_xml_serialize_emission(program)?;
+        }
+        (Profile::XmlMixedContent, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::validate_basic_owned_xml_mixed_content_emission(program)?;
         }
         (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducersWithExists) => {
             codegen::validate_basic_owned_sequence_exists_emission(program)?;
@@ -542,6 +564,9 @@ fn render_public_basic_owned_source_policy(
                 Expression::OwnedXmlSerialize(serializer) => {
                     serializer.frame.as_ref().is_some_and(Vec::is_empty)
                 }
+                Expression::OwnedXmlMixedContent(mixed) => {
+                    mixed.frame.as_ref().is_some_and(Vec::is_empty)
+                }
                 _ => false,
             }
     }) {
@@ -687,6 +712,9 @@ fn render_public_basic_owned_source_policy(
         }
         (Profile::XmlSerialize, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_xml_serialize(program)?
+        }
+        (Profile::XmlMixedContent, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_xml_mixed_content(program)?
         }
         (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducersWithExists) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_exists(program)?
@@ -859,7 +887,8 @@ fn local_owned(program: &Program, scope: &TargetScope) -> bool {
                 | Expression::OwnedAggregate(_)
                 | Expression::OwnedJoinField(_)
                 | Expression::OwnedJoinSourcePosition(_)
-                | Expression::JoinPosition { .. } => true,
+                | Expression::JoinPosition { .. }
+                | Expression::OwnedXmlMixedContent(_) => true,
                 // An owned producer reads its root through the paired context.
                 Expression::SequenceItemAt { sequence, .. } => sequence.owned_source().is_some(),
                 _ => false,

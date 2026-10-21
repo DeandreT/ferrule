@@ -15,6 +15,18 @@ pub struct XmlMixedContentReplacement<'a> {
     pub expression: XmlMixedContentExpression,
 }
 
+/// One statically validated replacement of owned mixed-content atomization.
+/// An occurrence replacement evaluates in an owned occurrence of the group's
+/// own owner; otherwise it evaluates in the receiving context.
+pub struct OwnedXmlMixedContentReplacement<'a> {
+    pub element: &'a str,
+    pub occurrence: bool,
+    pub expression: OwnedXmlMixedContentExpression,
+}
+
+pub type OwnedXmlMixedContentExpression =
+    for<'a, 'b> fn(&'b crate::BasicScopeContext<'a>) -> Result<Value, RuntimeError>;
+
 /// One direct-child rename retained in a constructed mixed-content stream.
 pub struct XmlMixedContentElement<'a> {
     pub source: &'a str,

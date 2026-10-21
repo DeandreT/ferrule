@@ -985,6 +985,10 @@ fn node_label(node: &mapping::Node) -> String {
             position.collection.owner,
             position.collection.path
         ),
+        mapping::Node::OwnedXmlMixedContent(mixed) => format!(
+            "owned XML mixed content {:?} {:?}; frame {:?} (unavailable)",
+            mixed.source.owner, mixed.source.path, mixed.frame
+        ),
         mapping::Node::SourceField { path, .. } => format!("field {}", display_path(path)),
         mapping::Node::SourceDocumentPath => "source document path".to_string(),
         mapping::Node::SourceRootXmlTypeEquals { .. } => {
