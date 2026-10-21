@@ -49,12 +49,13 @@ jobs:
           FERRULE_CI_SUITE: codegen
           FERRULE_CI_EVIDENCE_SUITE: codegen-${{ matrix.suite }}
         run: bash scripts/ci/prepare-ovh-build.sh
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.98.1
           components: clippy
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
       - uses: Swatinem/rust-cache@v2
         if: runner.environment == 'github-hosted'
         with:
@@ -62,13 +63,13 @@ jobs:
       - name: clippy
         run: >-
           cargo clippy -p cli --test code_generation
-          --features codegen-tests -- -D warnings
+          --features codegen-tests --locked -- -D warnings
       - name: codegen crate tests
         if: matrix.suite == 'crates'
         env:
           RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
         run: >-
-          cargo test
+          cargo test --locked
           -p codegen
           -p codegen-runtime
           -p codegen-rust
@@ -80,7 +81,7 @@ jobs:
           RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
         run: >-
           cargo test -p cli --test code_generation
-          --features codegen-tests -- --test-threads=${{ runner.environment == 'self-hosted' && '1' || '2' }}
+          --features codegen-tests --locked -- --test-threads=${{ runner.environment == 'self-hosted' && '1' || '2' }}
       - name: compiled string and integral boundary regressions
         id: compiled_boundaries
         if: matrix.suite == 'mappings'
@@ -127,9 +128,9 @@ jobs:
             string_int_range_boundaries::exact_integral_schema_bounds_compiled_rust_and_csharp_complete_text_and_bytes; do
             test_label="${test_name##*::}"
             check_storage "$test_label.before"
-            printf '%s\n' "cargo test -p cli --test code_generation --features codegen-tests $test_name -- --ignored --exact --nocapture --test-threads=1" > "$evidence_dir/$test_label.command.original"
+            printf '%s\n' "cargo test -p cli --test code_generation --features codegen-tests --locked $test_name -- --ignored --exact --nocapture --test-threads=1" > "$evidence_dir/$test_label.command.original"
             set +e
-            cargo test -p cli --test code_generation --features codegen-tests "$test_name" \
+            cargo test -p cli --test code_generation --features codegen-tests --locked "$test_name" \
               -- --ignored --exact --nocapture --test-threads=1 \
               > "$evidence_dir/$test_label.stdout.original" 2> "$evidence_dir/$test_label.stderr.original"
             status=$?
