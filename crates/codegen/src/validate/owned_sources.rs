@@ -2140,9 +2140,13 @@ fn validate_basic_owned_with_joins(
             | Expression::OwnedAggregate(_) => Capability::AggregateLookup,
             // Validation binds each read to its dominating owned join, whose
             // tuple admission checked the closed scalar subset.
+            Expression::OwnedJoinAggregate(aggregate)
+                if join == JoinPolicy::Owned && joins::admitted_reducer(aggregate.function) =>
+            {
+                continue;
+            }
             Expression::OwnedJoinField(_)
             | Expression::OwnedJoinSourcePosition(_)
-            | Expression::OwnedJoinAggregate(_)
             | Expression::JoinPosition { .. }
                 if join == JoinPolicy::Owned =>
             {

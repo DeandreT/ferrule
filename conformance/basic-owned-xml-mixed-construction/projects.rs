@@ -38,11 +38,13 @@ pub fn input_schema() -> SchemaNode {
             SchemaNode::group("Doc", vec![para_schema().repeating()]),
             SchemaNode::group(
                 "Docs",
-                vec![SchemaNode::group(
-                    "Doc",
-                    vec![string("id").attribute(), para_schema().repeating()],
-                )
-                .repeating()],
+                vec![
+                    SchemaNode::group(
+                        "Doc",
+                        vec![string("id").attribute(), para_schema().repeating()],
+                    )
+                    .repeating(),
+                ],
             ),
         ],
     )
@@ -200,7 +202,10 @@ fn base(target: SchemaNode, children: Vec<Scope>, nodes: Vec<(NodeId, Node)>) ->
         target_path: None,
         source_options: Default::default(),
         target_options: Default::default(),
-        extra_sources: vec![named("notes", input_schema()), named("Para", input_schema())],
+        extra_sources: vec![
+            named("notes", input_schema()),
+            named("Para", input_schema()),
+        ],
         extra_targets: vec![],
         failure_rules: vec![],
         user_functions: Default::default(),
@@ -258,11 +263,10 @@ fn nested() -> Project {
     base(
         SchemaNode::group(
             "Out",
-            vec![SchemaNode::group(
-                "Row",
-                vec![string("Id"), paragraph_target("P", &["Doc"])],
-            )
-            .repeating()],
+            vec![
+                SchemaNode::group("Row", vec![string("Id"), paragraph_target("P", &["Doc"])])
+                    .repeating(),
+            ],
         ),
         vec![Scope {
             target_field: "Row".into(),
