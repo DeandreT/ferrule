@@ -733,6 +733,29 @@ impl<'a> Admission<'a> {
                         Some(id),
                         None,
                     )?,
+                    // The object is an exact owned read; its key stays a
+                    // Basic parent-context scalar.
+                    Node::OwnedDynamicSourceField(field) => {
+                        self.static_owner(
+                            &field.object.owner,
+                            &field.object.path,
+                            field.frame.as_deref(),
+                            Some(id),
+                            None,
+                        )?;
+                        if let Some(frame) = &field.frame
+                            && !field.object.path.starts_with(frame)
+                        {
+                            return Err(access_error(
+                                Some(id),
+                                None,
+                                OwnedSourceError::UnsupportedFramePathCombination {
+                                    path: field.object.path.clone(),
+                                    frame: frame.clone(),
+                                },
+                            ));
+                        }
+                    }
                     Node::SequenceExists { sequence, .. }
                     | Node::SequenceItemAt { sequence, .. }
                     | Node::SequenceAggregate { sequence, .. } => {
@@ -886,6 +909,7 @@ fn root_failure_node_is_static(project: &Project, node: &Node) -> bool {
         Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
         | Node::Position { .. }
+        | Node::OwnedDynamicSourceField(_)
         | Node::OwnedLookup(_)
         | Node::OwnedCollectionFind(_) => false,
         Node::OwnedSourceField(field) => field.frame.as_ref().is_none_or(Vec::is_empty),
@@ -921,9 +945,11 @@ fn primary_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
         return false;
     }
     match node {
-        Node::OwnedLookup(_) | Node::OwnedCollectionFind(_) | Node::OwnedRowDocumentPath(_) => {
-            false
-        }
+        // Owned dynamic reads are qualified only in Basic target contexts.
+        Node::OwnedDynamicSourceField(_)
+        | Node::OwnedLookup(_)
+        | Node::OwnedCollectionFind(_)
+        | Node::OwnedRowDocumentPath(_) => false,
         Node::OwnedPosition(position) => matches!(position.owner, SourceOwner::Primary),
         Node::OwnedSourceField(field) => match &field.source.owner {
             SourceOwner::Primary => true,
@@ -952,7 +978,7 @@ fn owned_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
         Node::OwnedLookup(_) | Node::OwnedCollectionFind(_) | Node::OwnedRowDocumentPath(_) => {
             false
         }
-        Node::UserFunctionCall { .. } => false,
+        Node::UserFunctionCall { .. } | Node::OwnedDynamicSourceField(_) => false,
         Node::SourceField { path, frame } => ![Some(path.as_slice()), frame.as_deref()]
             .into_iter()
             .flatten()

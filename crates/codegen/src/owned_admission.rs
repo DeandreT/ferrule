@@ -231,6 +231,16 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_lookup_find(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plans the explicit owned dynamic-field profile. The selected owner is
+/// demand-driven like every owned read and its key keeps the receiving
+/// context; legacy dynamic reads keep their eager alias requirements.
+pub fn legacy_named_input_admission_plan_with_basic_owned_dynamic_field(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_dynamic_field(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     admission_plan_with_primary_row_failures(program, false)
 }
@@ -659,6 +669,9 @@ impl<'a> Analysis<'a> {
                     let item = self.child(context, Step::OwnedSource(find.collection.clone()));
                     self.queue(namespace, item, find.predicate);
                     self.queue(namespace, item, find.value);
+                }
+                Expression::OwnedDynamicSourceField(field) => {
+                    self.queue(namespace, context, field.key)
                 }
                 Expression::SourceField { path, frame }
                 | Expression::DynamicSourceField {

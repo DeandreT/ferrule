@@ -141,6 +141,17 @@ pub(crate) fn render_public_basic_owned_lookup_find_source(
     )
 }
 
+/// The owned lookup/find profile plus owned dynamic source-field reads.
+pub(crate) fn render_public_basic_owned_dynamic_field_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::DynamicField,
+        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
     Closed,
@@ -170,6 +181,8 @@ pub(super) enum Profile {
     GroupIntoBlocks,
     /// The recursive-filter profile and IntoBlocks plus owned Lookup and CollectionFind.
     LookupFind,
+    /// LookupFind plus owned dynamic source-field reads.
+    DynamicField,
 }
 
 impl Profile {
@@ -184,6 +197,7 @@ impl Profile {
                 | Self::PathHierarchy
                 | Self::AdjacencyTree
                 | Self::RecursiveFilter
+                | Self::DynamicField
                 | Self::GroupIntoBlocks
                 | Self::LookupFind
         )
@@ -197,6 +211,7 @@ impl Profile {
                 | Self::AdjacencyTree
                 | Self::RecursiveFilter
                 | Self::LookupFind
+                | Self::DynamicField
         )
     }
 
@@ -212,6 +227,7 @@ impl Profile {
                     | Self::PathHierarchy
                     | Self::AdjacencyTree
                     | Self::RecursiveFilter
+                    | Self::DynamicField
                     | Self::GroupIntoBlocks
                     | Self::LookupFind
             ),
@@ -223,6 +239,7 @@ impl Profile {
                     | Self::PathHierarchy
                     | Self::AdjacencyTree
                     | Self::RecursiveFilter
+                    | Self::DynamicField
                     | Self::GroupIntoBlocks
                     | Self::LookupFind
             ),
@@ -233,11 +250,15 @@ impl Profile {
                     | Self::PathHierarchy
                     | Self::AdjacencyTree
                     | Self::RecursiveFilter
+                    | Self::DynamicField
                     | Self::GroupIntoBlocks
                     | Self::LookupFind
             ),
             Some(GroupingPlan::IntoBlocks { .. }) => {
-                matches!(self, Self::GroupIntoBlocks | Self::LookupFind)
+                matches!(
+                    self,
+                    Self::GroupIntoBlocks | Self::LookupFind | Self::DynamicField
+                )
             }
             None => false,
         }
@@ -285,6 +306,9 @@ fn render_public_basic_owned_source_policy(
         }
         (Profile::LookupFind, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::validate_basic_owned_lookup_find_emission(program)?;
+        }
+        (Profile::DynamicField, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::validate_basic_owned_dynamic_field_emission(program)?;
         }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_group_starting_with_emission(program)?;
@@ -413,8 +437,15 @@ fn render_public_basic_owned_source_policy(
     }
     if program.expressions.iter().any(|node| {
         basic_retained.contains(&node.id)
-            && matches!(&node.expression, Expression::OwnedSourceField(field)
-                if field.frame.as_ref().is_some_and(Vec::is_empty))
+            && match &node.expression {
+                Expression::OwnedSourceField(field) => {
+                    field.frame.as_ref().is_some_and(Vec::is_empty)
+                }
+                Expression::OwnedDynamicSourceField(field) => {
+                    field.frame.as_ref().is_some_and(Vec::is_empty)
+                }
+                _ => false,
+            }
     }) {
         source.push_str("fn basic_declared_root_nonrepeating(owner: SourceOwnerRef<'_>) -> bool {\n    match owner {\n");
         source.push_str(&format!(
@@ -568,6 +599,9 @@ fn render_public_basic_owned_source_policy(
         (Profile::LookupFind, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_lookup_find(program)?
         }
+        (Profile::DynamicField, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_field(program)?
+        }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(
                 program,
@@ -676,7 +710,8 @@ fn local_owned(program: &Program, scope: &TargetScope) -> bool {
                 | Expression::OwnedPosition(_)
                 | Expression::OwnedRowDocumentPath(_)
                 | Expression::OwnedLookup(_)
-                | Expression::OwnedCollectionFind(_) => true,
+                | Expression::OwnedCollectionFind(_)
+                | Expression::OwnedDynamicSourceField(_) => true,
                 // An owned producer reads its root through the paired context.
                 Expression::SequenceItemAt { sequence, .. } => sequence.owned_source().is_some(),
                 _ => false,

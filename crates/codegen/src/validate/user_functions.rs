@@ -103,6 +103,7 @@ fn validate_definition(
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
+            | Expression::OwnedDynamicSourceField(_)
             | Expression::OwnedLookup(_)
             | Expression::OwnedCollectionFind(_) => {}
             Expression::Const { .. }

@@ -519,6 +519,52 @@ fn eval_expr_inner(
                 _ => Ok(Value::Null),
             }
         }
+        Node::OwnedDynamicSourceField(field) => {
+            let Some(owned) = program.owned_context else {
+                return Err(EngineError::UnsupportedSourceOwnership {
+                    node: node_id,
+                    function: None,
+                    kind: "owned_dynamic_source_field",
+                });
+            };
+            // The key evaluates before any source access; a non-string key
+            // reads nothing, as in the legacy node.
+            let key = eval_node_input(
+                program,
+                node_id,
+                field.key,
+                0,
+                context,
+                positions,
+                in_progress,
+            )?;
+            match key {
+                Value::String(key) => {
+                    owned
+                        .dynamic_field(field, &key)
+                        .map_err(|source| match source {
+                            crate::OwnedSourceError::UnsupportedSourceDomain { found } => {
+                                EngineError::UnsupportedOwnedContext {
+                                    node: Some(node_id),
+                                    function: None,
+                                    scope: None,
+                                    context: if found == "a document set" {
+                                        crate::OwnedCapabilityContext::Document
+                                    } else {
+                                        crate::OwnedCapabilityContext::GeneratedItem
+                                    },
+                                }
+                            }
+                            source => EngineError::OwnedSourceAccess {
+                                node: Some(node_id),
+                                scope: None,
+                                source,
+                            },
+                        })
+                }
+                _ => Ok(Value::Null),
+            }
+        }
         Node::XmlMixedContent {
             path,
             frame,

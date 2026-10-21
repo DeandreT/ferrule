@@ -94,6 +94,8 @@ struct TargetExtension {
     recursive_filter: bool,
     /// Explicitly owned Lookup and CollectionFind.
     owned_search: bool,
+    /// Owned dynamic source-field reads are an orthogonal explicit permission.
+    dynamic_field: bool,
 }
 
 impl TargetExtension {
@@ -105,6 +107,7 @@ impl TargetExtension {
         adjacency_tree: false,
         recursive_filter: false,
         owned_search: false,
+        dynamic_field: false,
     };
     const GROUP_BY: Self = Self {
         controls: TargetControls::By,
@@ -114,6 +117,7 @@ impl TargetExtension {
         adjacency_tree: false,
         recursive_filter: false,
         owned_search: false,
+        dynamic_field: false,
     };
     const SEQUENCE_ITEM_AT: Self = Self {
         controls: TargetControls::By,
@@ -123,6 +127,7 @@ impl TargetExtension {
         adjacency_tree: false,
         recursive_filter: false,
         owned_search: false,
+        dynamic_field: false,
     };
 
     const GROUP_ADJACENT_BY: Self = Self {
@@ -133,6 +138,7 @@ impl TargetExtension {
         adjacency_tree: false,
         recursive_filter: false,
         owned_search: false,
+        dynamic_field: false,
     };
 
     const SEQUENCE_EXISTS: Self = Self {
@@ -143,6 +149,7 @@ impl TargetExtension {
         adjacency_tree: false,
         recursive_filter: false,
         owned_search: false,
+        dynamic_field: false,
     };
 
     const GROUP_STARTING_WITH: Self = Self {
@@ -153,6 +160,7 @@ impl TargetExtension {
         adjacency_tree: false,
         recursive_filter: false,
         owned_search: false,
+        dynamic_field: false,
     };
 
     const FAILURE_SOURCES: Self = Self {
@@ -163,6 +171,7 @@ impl TargetExtension {
         adjacency_tree: false,
         recursive_filter: false,
         owned_search: false,
+        dynamic_field: false,
     };
 
     const GROUP_ENDING_WITH: Self = Self {
@@ -173,6 +182,7 @@ impl TargetExtension {
         adjacency_tree: false,
         recursive_filter: false,
         owned_search: false,
+        dynamic_field: false,
     };
 
     /// The newest companion: FailureSources plus owned hierarchy construction.
@@ -184,6 +194,7 @@ impl TargetExtension {
         adjacency_tree: false,
         recursive_filter: false,
         owned_search: false,
+        dynamic_field: false,
     };
 
     /// PATH_HIERARCHY plus owned adjacency-tree construction.
@@ -195,6 +206,7 @@ impl TargetExtension {
         adjacency_tree: true,
         recursive_filter: false,
         owned_search: false,
+        dynamic_field: false,
     };
 
     /// ADJACENCY_TREE plus ItemAt over owned recursive collection walks.
@@ -206,6 +218,7 @@ impl TargetExtension {
         adjacency_tree: true,
         recursive_filter: false,
         owned_search: false,
+        dynamic_field: false,
     };
 
     /// RECURSIVE_COLLECT plus recursive filtering of owned selectors.
@@ -217,6 +230,7 @@ impl TargetExtension {
         adjacency_tree: true,
         recursive_filter: true,
         owned_search: false,
+        dynamic_field: false,
     };
 
     /// RECURSIVE_FILTER and IntoBlocks controls plus owned Lookup and
@@ -229,6 +243,19 @@ impl TargetExtension {
         adjacency_tree: true,
         recursive_filter: true,
         owned_search: true,
+        dynamic_field: false,
+    };
+
+    /// LOOKUP_FIND plus owned dynamic source-field reads.
+    const DYNAMIC_FIELD: Self = Self {
+        controls: TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
+        sequence_item_at: SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+        failure_sources: true,
+        path_hierarchy: true,
+        adjacency_tree: true,
+        recursive_filter: true,
+        owned_search: true,
+        dynamic_field: true,
     };
 
     fn permits_path_hierarchy(self) -> bool {
@@ -243,6 +270,7 @@ impl TargetExtension {
         adjacency_tree: false,
         recursive_filter: false,
         owned_search: false,
+        dynamic_field: false,
     };
 
     fn permits_into_blocks(self) -> bool {
@@ -318,7 +346,9 @@ fn render_basic_owned_mapping_profile(
 ) -> Result<String, EmitError> {
     let allow_scoped_groups = extension.controls.has_scoped_groups();
     // Select the control/consumer pair before the older ItemAt-only companion.
-    if extension.owned_search {
+    if extension.dynamic_field {
+        codegen::validate_program_with_basic_owned_dynamic_field(program)?;
+    } else if extension.owned_search {
         codegen::validate_program_with_basic_owned_lookup_find(program)?;
     } else if extension.recursive_filter {
         codegen::validate_program_with_basic_owned_recursive_filter(program)?;
@@ -435,8 +465,15 @@ fn render_basic_owned_mapping_profile(
     )?;
     if program.expressions.iter().any(|node| {
         retained.contains(&node.id)
-            && matches!(&node.expression, Expression::OwnedSourceField(field)
-                if field.frame.as_ref().is_some_and(Vec::is_empty))
+            && match &node.expression {
+                Expression::OwnedSourceField(field) => {
+                    field.frame.as_ref().is_some_and(Vec::is_empty)
+                }
+                Expression::OwnedDynamicSourceField(field) => {
+                    field.frame.as_ref().is_some_and(Vec::is_empty)
+                }
+                _ => false,
+            }
     }) {
         render_empty_root_pin_declarations(program, &mut output);
     }
@@ -717,6 +754,7 @@ fn retained_expressions(program: &Program) -> BTreeSet<NodeId> {
 fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
     match expression {
         Expression::DynamicSourceField { key, .. } => vec![*key],
+        Expression::OwnedDynamicSourceField(field) => vec![field.key],
         Expression::XmlMixedContent { replacements, .. } => replacements
             .iter()
             .map(|replacement| replacement.expression)
@@ -819,7 +857,9 @@ fn validate_private_inventory(
             false,
         )?;
     }
-    if extension.owned_search {
+    if extension.dynamic_field {
+        codegen::validate_basic_owned_dynamic_field_emission(program)?;
+    } else if extension.owned_search {
         codegen::validate_basic_owned_lookup_find_emission(program)?;
     } else if extension.recursive_filter {
         codegen::validate_basic_owned_recursive_filter_emission(program)?;
@@ -899,6 +939,7 @@ fn validate_private_inventory(
             {
                 continue;
             }
+            Expression::OwnedDynamicSourceField(_) if extension.dynamic_field => continue,
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
@@ -1042,6 +1083,27 @@ pub(super) fn render_owned_leaf(
             output.push_str(", ");
             mapping::render_optional_path(path.collection.as_deref(), output);
             output.push_str(");\n");
+        }
+        // The receiving-context key is evaluated before the owned read.
+        Expression::OwnedDynamicSourceField(field) => {
+            output.push_str(&format!(
+                "\n    {{\n        var key = Node_{}(context);\n        return context.ResolveOwnedDynamicField(",
+                field.key
+            ));
+            render_owner(&field.object.owner, output);
+            output.push_str(", ");
+            mapping::basic_path(&field.object.path, output);
+            output.push_str(", ");
+            mapping::render_optional_path(field.frame.as_deref(), output);
+            output.push_str(", key, ");
+            if field.frame.as_ref().is_some_and(Vec::is_empty) {
+                output.push_str("OwnedRootIsDeclaredNonrepeating(");
+                render_owner(&field.object.owner, output);
+                output.push(')');
+            } else {
+                output.push_str("false");
+            }
+            output.push_str(");\n    }\n");
         }
         _ => unreachable!("shared expression mode dispatches only owned leaves"),
     }
@@ -1242,7 +1304,9 @@ fn render_checked_basic_owned_mapping_profile(
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = if extension.owned_search {
+    let plan = if extension.dynamic_field {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_field(program)?
+    } else if extension.owned_search {
         codegen::legacy_named_input_admission_plan_with_basic_owned_lookup_find(program)?
     } else if extension.recursive_filter {
         codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_filter(program)?
@@ -1499,7 +1563,8 @@ fn expression_needs_owned_sources(program: &Program, root: NodeId) -> bool {
                 | Expression::OwnedPosition(_)
                 | Expression::OwnedRowDocumentPath(_)
                 | Expression::OwnedLookup(_)
-                | Expression::OwnedCollectionFind(_) => true,
+                | Expression::OwnedCollectionFind(_)
+                | Expression::OwnedDynamicSourceField(_) => true,
                 // An owned producer reads its root through the paired context.
                 Expression::SequenceItemAt { sequence, .. } => sequence.owned_source().is_some(),
                 _ => false,
@@ -1817,6 +1882,22 @@ pub(crate) fn render_public_basic_owned_lookup_find_mapping(
         true,
         true,
         TargetExtension::LOOKUP_FIND,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_dynamic_field_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::DYNAMIC_FIELD,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)

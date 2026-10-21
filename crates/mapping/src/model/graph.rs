@@ -4,8 +4,8 @@ use ir::{ScalarType, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    FilterMapV1, FunctionId, FunctionParameterId, JoinId, JoinPlan, OwnedRecursiveCollect,
-    OwnedSourceRef, Scope, SourceOwner,
+    FilterMapV1, FunctionId, FunctionParameterId, JoinId, JoinPlan, OwnedDynamicSourceField,
+    OwnedRecursiveCollect, OwnedSourceRef, Scope, SourceOwner,
 };
 
 pub type NodeId = u32;
@@ -380,6 +380,9 @@ pub enum Node {
         frame: Option<Vec<String>>,
         key: NodeId,
     },
+    /// The same runtime-named read from an open object of exactly one owner
+    /// and frame. Older readers refuse this kind rather than reinterpreting it.
+    OwnedDynamicSourceField(OwnedDynamicSourceField),
     /// Atomizes one XML mixed-content group while replacing selected direct
     /// child occurrences with graph-computed strings. XML readers retain the
     /// source node order as private instance metadata; `path` and `frame`
@@ -485,6 +488,7 @@ impl Node {
             Self::OwnedSourceField(_) => Some("owned_source_field"),
             Self::OwnedPosition(_) => Some("owned_position"),
             Self::OwnedRowDocumentPath(_) => Some("owned_row_document_path"),
+            Self::OwnedDynamicSourceField(_) => Some("owned_dynamic_source_field"),
             Self::SequenceExists { sequence, .. }
             | Self::SequenceItemAt { sequence, .. }
             | Self::SequenceAggregate { sequence, .. }
@@ -531,6 +535,7 @@ impl Node {
             Self::OwnedLookup(lookup) => vec![lookup.matches],
             Self::OwnedCollectionFind(find) => vec![find.predicate, find.value],
             Self::DynamicSourceField { key, .. } => vec![*key],
+            Self::OwnedDynamicSourceField(field) => vec![field.key],
             Self::XmlMixedContent { replacements, .. } => replacements
                 .iter()
                 .map(|replacement| replacement.expression)

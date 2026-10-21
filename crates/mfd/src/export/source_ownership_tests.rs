@@ -339,3 +339,67 @@ fn owned_lookup_and_find_refuse_before_writing_anything() {
         assert!(!path.exists());
     }
 }
+
+#[test]
+fn owned_dynamic_reads_refuse_before_writing_in_every_profile() {
+    let read = Node::OwnedDynamicSourceField(mapping::OwnedDynamicSourceField {
+        object: mapping::OwnedSourceRef {
+            owner: SourceOwner::Named {
+                name: "Lookup".into(),
+            },
+            path: vec!["Props".into()],
+        },
+        frame: None,
+        key: 1,
+    });
+    let path = Path::new("nonexistent-owned-dynamic-parent/output.mfd");
+    let mut graph = project();
+    graph.graph.nodes = BTreeMap::from([
+        (
+            1,
+            Node::Const {
+                value: ir::Value::String("color".into()),
+            },
+        ),
+        (9, read.clone()),
+    ]);
+    assert!(matches!(
+        preflight_export(&graph, path).unwrap_err(),
+        MfdError::UnsupportedSourceOwnership {
+            node: 9,
+            function: None,
+            kind: "owned_dynamic_source_field"
+        }
+    ));
+    let mut function = project();
+    function.graph.nodes.clear();
+    let mut body = Graph::default();
+    body.nodes.insert(9, read);
+    function.user_functions.insert(
+        FunctionId::new(1),
+        UserFunction {
+            library: "user".into(),
+            name: "read".into(),
+            description: None,
+            parameters: Vec::new(),
+            output_name: "result".into(),
+            output_type: ScalarType::String,
+            body,
+            output: 9,
+        },
+    );
+    assert!(matches!(
+        preflight_export(&function, path).unwrap_err(),
+        MfdError::UnsupportedSourceOwnership {
+            node: 9,
+            function: Some(_),
+            kind: "owned_dynamic_source_field"
+        }
+    ));
+    for project in [&graph, &function] {
+        for profile in [ExportProfile::default(), ExportProfile::NativeMfd] {
+            assert!(export_with_profile(project, path, profile).is_err());
+        }
+    }
+    assert!(!path.exists());
+}

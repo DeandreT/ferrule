@@ -25,7 +25,7 @@ pub(crate) const DYNAMIC_INPUT_DOCUMENT_OUTPUTS_SOURCE: (&str, &str) = (
     ),
 );
 
-pub(crate) const SOURCES: [(&str, &str); 81] = [
+pub(crate) const SOURCES: [(&str, &str); 82] = [
     (
         "Runtime/FerruleSourceOrigin.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleSourceOrigin.cs"),
@@ -45,6 +45,10 @@ pub(crate) const SOURCES: [(&str, &str); 81] = [
     (
         "Runtime/FerruleBasicGroupBy.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleBasicGroupBy.cs"),
+    ),
+    (
+        "Runtime/FerruleOwnedDynamicField.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleOwnedDynamicField.cs"),
     ),
     (
         "Runtime/FerruleXml.DynamicInputDocumentSet.cs",
