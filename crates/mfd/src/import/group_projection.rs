@@ -8,12 +8,13 @@ use super::graph::GraphBuilder;
 use super::schema::{
     ComponentFormat, SchemaComponent, collect_matching_scalar_paths, schema_node_at,
 };
-use super::scope::{ScopeBuilder, TargetLeaf};
+use super::scope::{BindingOccurrence, ScopeBuilder, TargetLeaf};
 
 pub(super) enum Projection {
     CopyCurrentSource,
     Group(Vec<String>, u32),
-    Text(Vec<String>, u32),
+    /// Target group path, feed and the authored input of the group entry.
+    Text(Vec<String>, u32, u32),
 }
 
 #[derive(Clone)]
@@ -269,13 +270,13 @@ pub(super) fn classify_target_connection(
                 || target_node.name != ir::XML_ELEMENTS_FIELD)
             && is_scalar_feed(builder, feed)
         {
-            projections.push(Projection::Text(target_path.to_vec(), feed));
+            projections.push(Projection::Text(target_path.to_vec(), feed, input_key));
         }
     } else if is_xml_text_group(target, target_node)
         && !text_is_connected(target, target_path, builder)
         && is_scalar_feed(builder, feed)
     {
-        projections.push(Projection::Text(target_path.to_vec(), feed));
+        projections.push(Projection::Text(target_path.to_vec(), feed, input_key));
     } else if copy_all && has_connected_descendant(target, target_path, builder) {
         builder.warnings.push(format!(
             "copy-all group connection into `{}` also has connected descendants; mapping skipped",
@@ -777,7 +778,7 @@ pub(super) fn build(
                 continue;
             }
             Projection::Group(target_path, feed) => (target_path, feed),
-            Projection::Text(target_path, feed) => {
+            Projection::Text(target_path, feed, input) => {
                 if skipped_iterations
                     .iter()
                     .any(|skipped| target_path.starts_with(skipped))
@@ -789,7 +790,7 @@ pub(super) fn build(
                 if let Some(leaf) = TargetLeaf::from_path(&text_path)
                     && let Some(node) = builder.binding_node(feed, &text_path)
                 {
-                    scopes.add_binding(leaf, node);
+                    scopes.add_binding(leaf, node, BindingOccurrence::authored(target, input));
                 }
                 continue;
             }
@@ -858,7 +859,7 @@ pub(super) fn build(
                     source_leaf.path.extend(path);
                     if let Some(node) = builder.source_field_at_anchor(&source_leaf, &active_anchor)
                     {
-                        scopes.add_binding(target_leaf, node);
+                        scopes.add_binding(target_leaf, node, BindingOccurrence::Expression);
                     }
                 }
                 GroupProjectionStep::UnsupportedRepetition => {}

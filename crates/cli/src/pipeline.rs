@@ -11,7 +11,7 @@ use mapping::{FormatOptions, Pipeline, PipelineInput};
 use crate::read_set::ReadSet;
 use crate::{
     FilesystemPdfReader, OutputDestination, ProjectDynamicSourceLoader, TargetOutput,
-    absolute_mapping_path, read_instance, read_instance_with_pdf_reader, write_target_outputs,
+    absolute_mapping_path, read_instance_with_pdf_reader, write_target_outputs,
 };
 
 /// One explicitly supplied host document. Paths follow the process working
@@ -85,6 +85,9 @@ pub struct PipelineRunOptions<'a> {
     pub stage_trace_source_row_capacity: Option<&'a dyn Fn() -> bool>,
     /// Called after every stage succeeds, before any selected output is staged.
     pub before_publish: Option<&'a dyn Fn() -> bool>,
+    /// Host authority shared by every stage; `None` is the trusted default.
+    /// Budgets are counted per stage evaluation.
+    pub execution_policy: Option<&'a engine::ExecutionPolicy>,
 }
 
 impl<'a> PipelineRunOptions<'a> {
@@ -173,6 +176,16 @@ impl<'a> PipelineRunOptions<'a> {
     pub fn with_before_publish(mut self, gate: &'a dyn Fn() -> bool) -> Self {
         self.before_publish = Some(gate);
         self
+    }
+
+    pub fn with_execution_policy(mut self, policy: &'a engine::ExecutionPolicy) -> Self {
+        self.execution_policy = Some(policy);
+        self
+    }
+
+    pub(crate) fn policy(&self) -> &'a engine::ExecutionPolicy {
+        self.execution_policy
+            .unwrap_or(&crate::execution_policy::TRUSTED)
     }
 }
 
@@ -393,6 +406,10 @@ fn run_pipeline_value_with_pdf_reader(
     let host_boundaries = infer_host_boundaries(pipeline)?;
     let paths = validate_host_inputs(&host_boundaries, inputs)?;
     let selected = select_outputs(pipeline, outputs)?;
+    let policy = options.policy();
+    for selection in &selected {
+        policy.authorize_write(selection.destination.path())?;
+    }
 
     // Admission follows execution's dependency order and includes every target;
     // selected outputs only choose the files to publish.
@@ -408,13 +425,9 @@ fn run_pipeline_value_with_pdf_reader(
     let mut hosts = BTreeMap::new();
     for (name, boundary) in &host_boundaries {
         let path = paths[name];
-        let instance = match reader {
-            Some(reader) => {
-                read_instance_with_pdf_reader(path, boundary.schema, boundary.options, Some(reader))
-            }
-            None => read_instance(path, boundary.schema, boundary.options),
-        }
-        .with_context(|| format!("loading pipeline host input `{name}`"))?;
+        let instance =
+            read_instance_with_pdf_reader(path, boundary.schema, boundary.options, reader, policy)
+                .with_context(|| format!("loading pipeline host input `{name}`"))?;
         read_set.push_source(path, &instance);
         hosts.insert((*name).to_owned(), instance);
     }
@@ -452,16 +465,12 @@ fn run_pipeline_value_with_pdf_reader(
         .map(|stage| {
             (
                 stage.id.as_str(),
-                match reader {
-                    Some(reader) => ProjectDynamicSourceLoader::with_pdf_reader(
-                        pipeline_dir,
-                        &stage.project.extra_sources,
-                        Some(reader),
-                    ),
-                    None => {
-                        ProjectDynamicSourceLoader::new(pipeline_dir, &stage.project.extra_sources)
-                    }
-                },
+                ProjectDynamicSourceLoader::with_pdf_reader(
+                    pipeline_dir,
+                    &stage.project.extra_sources,
+                    reader,
+                )
+                .with_execution_policy(policy),
             )
         })
         .collect::<BTreeMap<_, _>>();
@@ -496,7 +505,8 @@ fn run_pipeline_value_with_pdf_reader(
             &main_mapping_path,
         )
         .with_current_datetime(&current_datetime)
-        .with_dynamic_source_loader(&dynamic_loaders[stage]);
+        .with_dynamic_source_loader(&dynamic_loaders[stage])
+        .with_policy(policy);
         if let Some(parameters) = options.runtime_parameters {
             execution = execution.with_parameters(parameters);
         }
@@ -538,7 +548,7 @@ fn run_pipeline_value_with_pdf_reader(
     if options.before_publish.is_some_and(|gate| !gate()) {
         return Err(engine::EngineError::DebugCancelled.into());
     }
-    let published = write_target_outputs(&writes, &protected_refs)?;
+    let published = write_target_outputs(&writes, &protected_refs, policy)?;
     let artifacts = selected
         .iter()
         .zip(published)

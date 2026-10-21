@@ -1,0 +1,44 @@
+[
+  {
+    "name": "shared_repeating_values",
+    "design": "shared_repeating_values.mfd",
+    "input_xml": "<Source><Left><Item><Value>a</Value></Item><Item><Value>b</Value></Item></Left></Source>",
+    "input_json": {
+      "Left": [
+        {
+          "Item": [
+            {
+              "Value": "a"
+            },
+            {
+              "Value": "b"
+            }
+          ]
+        }
+      ]
+    },
+    "expected_json": {
+      "Line": [
+        "shared",
+        "between",
+        "shared"
+      ],
+      "Row": [
+        {
+          "Tag": [
+            "a-x",
+            "a",
+            "a-x"
+          ]
+        },
+        {
+          "Tag": [
+            "b-x",
+            "b",
+            "b-x"
+          ]
+        }
+      ]
+    }
+  }
+]

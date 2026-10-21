@@ -24,12 +24,14 @@ mod filter_map;
 mod grouping;
 mod iteration_output;
 mod join;
+mod owned_aggregate;
 mod owned_context;
 mod owned_search;
 #[cfg(test)]
 mod owned_source_context;
 mod path_hierarchy;
 mod pipeline;
+mod policy;
 mod primary_csv;
 mod primary_filename;
 mod recursive_collect_owned;
@@ -68,6 +70,10 @@ pub use pipeline::{
     check_pipeline_source_ownership_capability_with_observers, run_pipeline,
     run_pipeline_retaining, run_pipeline_with_context, run_pipeline_with_stage_contexts,
     validate_pipeline,
+};
+pub use policy::{
+    DynamicSourceLoadError, ExecutionBudgetKind, ExecutionBudgets, ExecutionPolicy, PathAccess,
+    PolicyConfigError, PolicyRefusal, RestrictedCapability, RestrictedPolicy, RootAccess,
 };
 pub use primary_csv::acquire_primary_csv;
 pub use primary_filename::{PrimaryFilenameEvaluationError, evaluate_primary_filename};
@@ -423,6 +429,17 @@ pub enum EngineError {
         path: String,
         message: String,
     },
+    #[error("dynamic source `{source_name}`: {refusal}")]
+    DynamicSourceRefused {
+        source_name: String,
+        #[source]
+        refusal: PolicyRefusal,
+    },
+    #[error("restricted execution {kind:?} budget of {limit} is exhausted")]
+    ExecutionBudgetExceeded {
+        kind: ExecutionBudgetKind,
+        limit: u64,
+    },
     #[error("a scope with `filter` but no `source` filtered out its only item")]
     FilteredNonRepeatingScope,
     #[error("node {node}: dynamic target property name must be a string, got {found}")]
@@ -604,13 +621,33 @@ pub struct ExecutionContext<'a> {
     debug_hook: Option<&'a dyn DebugHook>,
     filter_map_limits: FilterMapLimits,
     filter_map_cancellation: Option<&'a dyn FilterMapCancellation>,
+    policy: &'a ExecutionPolicy,
 }
 
 /// Host boundary for typed secondary sources whose path is computed during
 /// mapping execution. Implementations should cache by source name and path.
 pub trait DynamicSourceLoader {
     fn load(&self, source: &str, path: &str) -> Result<Arc<Instance>, String>;
+
+    /// Restricted runs call this instead of [`Self::load`]. A loader must check
+    /// the resolved location against `policy` before acquiring it; the default
+    /// refuses because the engine cannot see where an unaware loader reads.
+    fn load_restricted(
+        &self,
+        source: &str,
+        path: &str,
+        policy: &RestrictedPolicy,
+    ) -> Result<Arc<Instance>, DynamicSourceLoadError> {
+        let _ = (source, path, policy);
+        Err(DynamicSourceLoadError::Refused(
+            PolicyRefusal::UnsupportedCapability {
+                capability: RestrictedCapability::UnconfinedDynamicSourceLoader,
+            },
+        ))
+    }
 }
+
+static TRUSTED: ExecutionPolicy = ExecutionPolicy::Trusted;
 impl<'a> ExecutionContext<'a> {
     /// Uses one path for both the active and top-level mapping.
     pub fn new(mapping_file_path: &'a Path) -> Self {
@@ -625,6 +662,7 @@ impl<'a> ExecutionContext<'a> {
             debug_hook: None,
             filter_map_limits: FilterMapLimits::default(),
             filter_map_cancellation: None,
+            policy: &TRUSTED,
         }
     }
 
@@ -644,6 +682,7 @@ impl<'a> ExecutionContext<'a> {
             debug_hook: None,
             filter_map_limits: FilterMapLimits::default(),
             filter_map_cancellation: None,
+            policy: &TRUSTED,
         }
     }
 
@@ -700,6 +739,13 @@ impl<'a> ExecutionContext<'a> {
     /// calls. A checker does not forcibly interrupt an in-progress builtin.
     pub fn with_filter_map_cancellation(mut self, checker: &'a dyn FilterMapCancellation) -> Self {
         self.filter_map_cancellation = Some(checker);
+        self
+    }
+
+    /// Selects the host authority profile. Trusted is the default; see
+    /// `docs/design/execution-profiles.md` for what restricted governs.
+    pub fn with_policy(mut self, policy: &'a ExecutionPolicy) -> Self {
+        self.policy = policy;
         self
     }
 
@@ -944,6 +990,8 @@ fn evaluate_run<R>(
         }),
         execution.and_then(|execution| execution.filter_map_cancellation),
     );
+    let restricted = execution.and_then(|execution| execution.policy.restricted());
+    let budget = restricted.map(|policy| policy::BudgetMeter::new(policy.budgets()));
     let program = eval_expr::EvalProgram::new(
         &project.graph,
         &project.user_functions,
@@ -953,7 +1001,8 @@ fn evaluate_run<R>(
     .with_filter_map_run_state(&filter_map_run_state)
     .with_primary_source(source)
     .with_debug_hook(execution.and_then(|execution| execution.debug_hook))
-    .with_purpose(execution.map_or(ExecutionPurpose::Run, ExecutionContext::purpose));
+    .with_purpose(execution.map_or(ExecutionPurpose::Run, ExecutionContext::purpose))
+    .with_restricted_policy(restricted, budget.as_ref());
     let program = match owned.as_ref() {
         Some(owned) => program.with_owned_context(owned),
         None => program,
@@ -1126,6 +1175,9 @@ mod owned_failure_iteration_tests;
 #[path = "tests/owned_sequence_exists.rs"]
 mod owned_sequence_exists_tests;
 
+#[cfg(test)]
+#[path = "tests/owned_collection_aggregates.rs"]
+mod owned_collection_aggregates_tests;
 #[cfg(test)]
 #[path = "tests/owned_lookup_find.rs"]
 mod owned_lookup_find_tests;

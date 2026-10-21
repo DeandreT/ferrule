@@ -324,6 +324,18 @@ pub fn emit_with_basic_owned_xml_serialize(program: &Program) -> Result<Artifact
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emit owned-search-profile targets with explicitly owned collection
+/// aggregates over one exact endpoint. Older emitters keep refusing them.
+pub fn emit_with_basic_owned_collection_aggregates(
+    program: &Program,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_collection_aggregates(program)?;
+    codegen::validate_basic_owned_collection_aggregates_emission(program)?;
+    let generated_mapping =
+        owned_basic::render_public_basic_owned_collection_aggregates_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,
@@ -425,6 +437,8 @@ mod tests {
     mod owned_adjacency_tree;
     #[path = "owned_basic.rs"]
     mod owned_basic;
+    #[path = "owned_collection_aggregates.rs"]
+    mod owned_collection_aggregates;
     #[path = "owned_dynamic_field.rs"]
     mod owned_dynamic_field;
     #[path = "owned_failure_sources.rs"]

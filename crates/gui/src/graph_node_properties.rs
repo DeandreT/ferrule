@@ -85,7 +85,8 @@ impl GraphViewer<'_> {
                 | Node::OwnedDynamicSourceField(_)
                 | Node::OwnedLookup(_)
                 | Node::OwnedCollectionFind(_)
-                | Node::OwnedXmlSerialize(_)) => {
+                | Node::OwnedXmlSerialize(_)
+                | Node::OwnedAggregate(_)) => {
                     ui.label(
                         graph_node_presentation::owned_source_title(node).expect("owned title"),
                     );

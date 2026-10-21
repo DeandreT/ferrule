@@ -276,6 +276,21 @@ pub(super) fn validate_expression(
                     )?;
                 }
             }
+            Expression::OwnedAggregate(aggregate) => {
+                if let Some(value) = aggregate.expression() {
+                    validate_expression(value, expressions, sources, None, active_joins, false)?;
+                }
+                if let Some(arg) = aggregate.arg {
+                    validate_expression(
+                        arg,
+                        expressions,
+                        sources,
+                        current_source,
+                        active_joins,
+                        root_context,
+                    )?;
+                }
+            }
             Expression::CollectionFind {
                 predicate, value, ..
             }

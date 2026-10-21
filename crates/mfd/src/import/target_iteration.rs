@@ -10,7 +10,7 @@ use super::iteration::{SequenceWindowFeed, split_at_innermost_repeating};
 use super::schema::{
     ComponentFormat, SchemaComponent, collect_matching_scalar_paths, schema_node_at,
 };
-use super::scope::{IterationNodes, ScopeBuilder, TargetLeaf};
+use super::scope::{BindingOccurrence, IterationNodes, ScopeBuilder, TargetLeaf};
 use super::source::SourcePath;
 
 mod branch_owners;
@@ -184,10 +184,7 @@ fn build_concatenated(
             skipped.push(target_path);
             return;
         };
-        let mut segment_builder = ScopeBuilder {
-            root: mapping::Scope::default(),
-            anchors,
-        };
+        let mut segment_builder = ScopeBuilder::new(anchors);
         let mut segment_skipped = Vec::new();
         build_one(
             TargetIteration {
@@ -207,12 +204,16 @@ fn build_concatenated(
         );
         let mut origins = BindingOrigins::new();
         for index in &branch_bindings {
-            let (binding, feed, _) = &bindings[*index];
+            let (binding, feed, input) = &bindings[*index];
             let path = binding.path();
             let active_anchor = segment_builder.enclosing_anchor(&path);
             if let Some(node) = builder.binding_node_at_anchor(*feed, &path, &active_anchor) {
                 origins.entry((path, node)).or_default().insert(*index);
-                segment_builder.add_binding(binding.clone(), node);
+                segment_builder.add_binding(
+                    binding.clone(),
+                    node,
+                    BindingOccurrence::authored(target, *input),
+                );
             }
         }
         let Some(mut segment) = take_scope(&mut segment_builder.root, &target_path) else {
@@ -313,10 +314,7 @@ fn build_ordered_branches(
             skipped.push(target_path);
             return;
         };
-        let mut segment_builder = ScopeBuilder {
-            root: mapping::Scope::default(),
-            anchors,
-        };
+        let mut segment_builder = ScopeBuilder::new(anchors);
         let mut segment_skipped = Vec::new();
         if let Some((feed, projects_whole_group)) = feeds.get(&branch) {
             build_one(
@@ -338,12 +336,16 @@ fn build_ordered_branches(
         }
         let mut origins = BindingOrigins::new();
         for index in &indices {
-            let (binding, feed, _) = &bindings[*index];
+            let (binding, feed, input) = &bindings[*index];
             let path = binding.path();
             let active_anchor = segment_builder.enclosing_anchor(&path);
             if let Some(node) = builder.binding_node_at_anchor(*feed, &path, &active_anchor) {
                 origins.entry((path, node)).or_default().insert(*index);
-                segment_builder.add_binding(binding.clone(), node);
+                segment_builder.add_binding(
+                    binding.clone(),
+                    node,
+                    BindingOccurrence::authored(target, *input),
+                );
             }
         }
         let Some(mut segment) = take_scope(&mut segment_builder.root, &target_path) else {
@@ -598,7 +600,7 @@ fn build_one(
                     if let Some(nodes) = nodes {
                         scopes.ensure_scope(&target_path);
                         for (target, node) in nodes {
-                            scopes.add_binding(target, node);
+                            scopes.add_binding(target, node, BindingOccurrence::Expression);
                         }
                         return;
                     }
@@ -993,7 +995,7 @@ fn build_one(
         let mut marker_path = target_path;
         marker_path.push(XML_TYPE_FIELD.to_string());
         if let Some(target) = TargetLeaf::from_path(&marker_path) {
-            scopes.add_binding(target, type_value);
+            scopes.add_binding(target, type_value, BindingOccurrence::Expression);
         }
     }
 }
@@ -1170,7 +1172,7 @@ fn project_join_branch(
         }
         if let Some(target) = TargetLeaf::from_path(&target_leaf) {
             let node = builder.alloc(node);
-            scopes.add_binding(target, node);
+            scopes.add_binding(target, node, BindingOccurrence::Expression);
         }
     }
 }
@@ -1327,7 +1329,7 @@ fn project_whole_group(
                     TargetLeaf::from_path(&target_leaf),
                     builder.source_field_at(&source_leaf),
                 ) {
-                    scopes.add_binding(target, node);
+                    scopes.add_binding(target, node, BindingOccurrence::Expression);
                 }
             }
             GroupProjectionStep::CopyRepeatedGroup(relative) => {
@@ -1377,7 +1379,7 @@ fn project_connected_fields(
         if let Some(node) = builder.value_node(*feed)
             && let Some(target) = TargetLeaf::from_path(&target_leaf)
         {
-            scopes.add_binding(target, node);
+            scopes.add_binding(target, node, BindingOccurrence::Expression);
         }
     }
 }

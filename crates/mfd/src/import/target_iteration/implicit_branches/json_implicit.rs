@@ -269,10 +269,12 @@ pub(super) fn bindings_preserved(
     let mut retained = BTreeMap::new();
     collect(segment, &mut path.to_vec(), &mut retained);
     let expected = indices.iter().copied().collect::<BTreeSet<_>>();
-    origins.len() == indices.len()
+    // Bindings are installed per authored input, so one interned expression
+    // feeding several entries is retained once for each of them.
+    origins.values().map(BTreeSet::len).sum::<usize>() == indices.len()
         && retained.len() == origins.len()
         && origins
             .iter()
-            .all(|(binding, indices)| indices.len() == 1 && retained.get(binding) == Some(&1))
+            .all(|(binding, indices)| retained.get(binding) == Some(&indices.len()))
         && origins.values().flatten().copied().collect::<BTreeSet<_>>() == expected
 }
