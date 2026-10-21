@@ -573,6 +573,10 @@ pub enum OwnedSourceError {
         owner: OwnedSourceIdentity,
         collection: Option<Vec<String>>,
     },
+    MissingRowDocumentPath {
+        owner: OwnedSourceIdentity,
+        collection: Option<Vec<String>>,
+    },
     IncompatibleFramePath {
         owner: OwnedSourceIdentity,
         frame: Vec<String>,
@@ -623,6 +627,10 @@ impl fmt::Display for OwnedSourceError {
             Self::InactiveSourceFrame { owner, collection } => write!(
                 formatter,
                 "owned source frame {owner:?} {collection:?} is not active"
+            ),
+            Self::MissingRowDocumentPath { owner, collection } => write!(
+                formatter,
+                "owned source {owner:?} {collection:?} has no physical row document path"
             ),
             Self::IncompatibleFramePath { owner, frame, path } => write!(
                 formatter,
