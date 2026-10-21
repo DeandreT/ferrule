@@ -114,6 +114,12 @@ pub(super) fn owned_source_title(node: &Node) -> Option<String> {
             owner(&find.collection.owner),
             find.collection.path,
         )),
+        Node::OwnedDynamicSourceField(field) => Some(format!(
+            "Owned dynamic field: {}\nObject: {:?}\nFrame: {}\nRead-only; source ownership authoring is unavailable",
+            owner(&field.object.owner),
+            field.object.path,
+            frame(field.frame.as_deref()),
+        )),
         _ => None,
     }
 }

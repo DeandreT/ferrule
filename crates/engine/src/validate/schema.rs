@@ -353,6 +353,54 @@ pub(super) fn validate_owned_source_node(
     }
 }
 
+/// The object must be an open scalar object in its declared owner; an explicit
+/// frame must prefix it and be the endpoint root or a repeating owner path.
+pub(super) fn validate_owned_dynamic_field(
+    project: &Project,
+    field: &mapping::OwnedDynamicSourceField,
+    location: &str,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let Some(root) = owned_source_root(project, &field.object.owner, location, issues) else {
+        return;
+    };
+    let path = &field.object.path;
+    if follow_schema_resolved(root, path).is_none_or(|object| {
+        object
+            .dynamic_fields()
+            .is_none_or(|dynamic| dynamic.repeating || !dynamic.is_scalar())
+    }) {
+        issues.push(ValidationIssue::new(
+            location,
+            format!(
+                "owned dynamic object `{}` matches no open scalar object in its owner",
+                path.join("/")
+            ),
+        ));
+    }
+    let Some(frame) = &field.frame else {
+        return;
+    };
+    if !path.starts_with(frame) {
+        issues.push(ValidationIssue::new(
+            location,
+            format!(
+                "owned frame `{}` does not prefix dynamic object `{}`",
+                frame.join("/"),
+                path.join("/")
+            ),
+        ));
+    } else if !frame.is_empty() && follow_schema(root, frame).is_none_or(|node| !node.repeating) {
+        issues.push(ValidationIssue::new(
+            location,
+            format!(
+                "owned collection `{}` is not a repeating path in its owner",
+                frame.join("/")
+            ),
+        ));
+    }
+}
+
 pub(super) fn current_source_schema<'a>(
     project: &'a Project,
     parent: Option<&'a SchemaNode>,
