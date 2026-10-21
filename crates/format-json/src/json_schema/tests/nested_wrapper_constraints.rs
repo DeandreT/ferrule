@@ -3,6 +3,7 @@ use std::{
     fmt::{Debug, Display},
     fs,
     path::Path,
+    sync::atomic::{AtomicUsize, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -271,11 +272,13 @@ fn error_equals<T>(actual: &Result<T, JsonFormatError>, expected: &Negative) -> 
 #[test]
 fn nested_wrapper_constraints_preserve_full_models_values_exports_and_errors()
 -> Result<(), Box<dyn Error>> {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let evidence = std::env::temp_dir().join(format!(
-        "ferrule_nested_wrapper_constraints_{}_{}",
+        "ferrule_nested_wrapper_constraints_{}_{}_{}",
         std::process::id(),
-        suffix
+        suffix,
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     // create_dir refuses a preexisting evidence namespace; originals are never cleaned up.
     fs::create_dir(&evidence)?;

@@ -9,6 +9,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::route_capability::{
+    HostRoute, InputRole, PlannedAcquisition, PlannedPublication, RoutePlan,
+};
 use anyhow::{Context, bail};
 use ir::{Instance, SchemaNode};
 use mapping::{EdiBoundaryKind, ExternalPayloadFormat, FormatOptions};
@@ -205,12 +208,51 @@ pub fn run_project_payloads(
     run_project_value_payloads(&project, project_path, options)
 }
 
-/// Executes an in-memory project against host-owned input bytes.
-pub fn run_project_value_payloads(
+/// Reports what a payload run will parse and return, applying the same
+/// validation, budget and capability checks without parsing any payload.
+pub fn plan_payload_run(
     project: &mapping::Project,
     project_path: &Path,
     options: &PayloadRunOptions<'_>,
-) -> anyhow::Result<PayloadRunOutcome> {
+) -> anyhow::Result<RoutePlan> {
+    preflight_payload_run(project, options)?;
+    let mut plan = RoutePlan::new(HostRoute::Payload, project_path);
+    plan.acquire(PlannedAcquisition::Payload {
+        role: InputRole::Primary,
+        identity: options.primary.path.to_path_buf(),
+    });
+    for source in options.extra_sources {
+        plan.acquire(PlannedAcquisition::Payload {
+            role: InputRole::Named(source.name.to_owned()),
+            identity: source.document.path.to_path_buf(),
+        });
+    }
+    let targets = match options.target {
+        Some(engine::TargetSelection::Primary) => vec![project.target.name.as_str()],
+        Some(engine::TargetSelection::Named(name)) => vec![name],
+        None => std::iter::once(project.target.name.as_str())
+            .chain(
+                project
+                    .extra_targets
+                    .iter()
+                    .map(|target| target.name.as_str()),
+            )
+            .collect(),
+    };
+    for target in targets {
+        plan.publish(PlannedPublication::Payload {
+            target: target.to_owned(),
+        });
+    }
+    Ok(plan)
+}
+
+/// Checks everything known before a payload is parsed, including the
+/// selected target, and returns that target's required named sources.
+fn preflight_payload_run<'p>(
+    project: &'p mapping::Project,
+    options: &PayloadRunOptions<'_>,
+) -> anyhow::Result<Option<engine::RequiredTargetSources<'p>>> {
     require_valid(project)?;
     validate_input_budget(options)?;
     engine::check_source_ownership_capability_with_observers(
@@ -221,13 +263,22 @@ pub fn run_project_value_payloads(
             debugging: options.debug_hook.is_some(),
         },
     )?;
+    Ok(options
+        .target
+        .map(|selection| engine::required_sources_for_target(project, selection))
+        .transpose()?)
+}
+
+/// Executes an in-memory project against host-owned input bytes.
+pub fn run_project_value_payloads(
+    project: &mapping::Project,
+    project_path: &Path,
+    options: &PayloadRunOptions<'_>,
+) -> anyhow::Result<PayloadRunOutcome> {
+    let required_sources = preflight_payload_run(project, options)?;
 
     let source = read_payload(options.primary, &project.source, &project.source_options)
         .context("reading primary input payload")?;
-    let required_sources = options
-        .target
-        .map(|selection| engine::required_sources_for_target(project, selection))
-        .transpose()?;
     let required_static_names = required_sources.as_ref().map(|sources| {
         sources
             .static_sources

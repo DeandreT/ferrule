@@ -2,6 +2,7 @@
 //! compared only where their declared contracts agree.
 use super::*;
 use ir::{Instance, Value};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const CONTRACT: &str = include_str!("modern/contract.json");
 const HOST: &str = include_str!("modern/Host.cs");
@@ -73,13 +74,15 @@ const FIXTURES: &[(&str, &str)] = &[
 ];
 
 fn evidence(label: &str) -> std::path::PathBuf {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "ferrule_x12_modern_{label}_{}_{}",
+        "ferrule_x12_modern_{label}_{}_{}_{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&root).unwrap();
     eprintln!("complete invented modern X12 evidence: {}", root.display());

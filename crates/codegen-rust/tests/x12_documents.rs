@@ -6,6 +6,7 @@ use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use codegen::{X12BoundaryOptions, X12BoundaryPolicy, X12EnvelopeProfile};
 use codegen_rust::{Options, RuntimeDependency, emit_with_x12};
@@ -260,12 +261,14 @@ fn evidence() -> Result<PathBuf, Box<dyn Error>> {
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
     fs::create_dir_all(&parent)?;
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = parent.join(format!(
-        "x12-{}-{}",
+        "x12-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)?
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&root)?;
     Ok(root)

@@ -709,6 +709,16 @@ fn eval_expr_inner(
                 namespace.as_deref(),
             )
         }
+        Node::OwnedXmlMixedContent(mixed) => {
+            crate::owned_xml_mixed_content::eval_owned_xml_mixed_content(
+                program,
+                node_id,
+                mixed,
+                context,
+                positions,
+                in_progress,
+            )
+        }
         Node::OwnedXmlSerialize(serializer) => match program.owned_context {
             Some(owned) => {
                 let access = |source| owned_access_error(node_id, source);

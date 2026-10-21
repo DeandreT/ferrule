@@ -101,10 +101,19 @@ struct TargetExtension {
     owned_search: OwnedSearch,
     /// Owned dynamic source-field reads are an orthogonal explicit permission.
     dynamic_field: bool,
-    /// Owned XML serialization is an orthogonal explicit expression permission.
-    xml_serialize: bool,
+    /// Owned XML operators are one nested explicit expression permission.
+    owned_xml: OwnedXml,
     /// Owned inner joins and their tuple reads.
     owned_joins: bool,
+}
+
+/// The owned XML companions nest: each admits the operators it composes.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum OwnedXml {
+    Closed,
+    Serialize,
+    MixedContent,
+    MixedConstruction,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -125,7 +134,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
     const GROUP_BY: Self = Self {
@@ -137,7 +146,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
     const SEQUENCE_ITEM_AT: Self = Self {
@@ -149,7 +158,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
 
@@ -162,7 +171,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
 
@@ -175,7 +184,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
 
@@ -188,7 +197,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
 
@@ -201,7 +210,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
 
@@ -214,7 +223,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
 
@@ -227,7 +236,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
 
@@ -241,7 +250,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
 
@@ -255,7 +264,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
 
@@ -269,7 +278,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
 
@@ -283,7 +292,7 @@ impl TargetExtension {
         recursive_filter: true,
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
 
@@ -298,7 +307,7 @@ impl TargetExtension {
         recursive_filter: true,
         owned_search: OwnedSearch::LookupFind,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
 
@@ -312,7 +321,7 @@ impl TargetExtension {
         recursive_filter: true,
         owned_search: OwnedSearch::LookupFind,
         dynamic_field: true,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
 
@@ -326,7 +335,7 @@ impl TargetExtension {
         recursive_filter: true,
         owned_search: OwnedSearch::LookupFind,
         dynamic_field: true,
-        xml_serialize: true,
+        owned_xml: OwnedXml::Serialize,
         owned_joins: false,
     };
 
@@ -340,7 +349,7 @@ impl TargetExtension {
         recursive_filter: true,
         owned_search: OwnedSearch::LookupFind,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: true,
     };
 
@@ -363,12 +372,32 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
-        xml_serialize: false,
+        owned_xml: OwnedXml::Closed,
         owned_joins: false,
     };
 
+    /// XML_SERIALIZE plus owned XML mixed-content atomization.
+    const XML_MIXED_CONTENT: Self = Self {
+        owned_xml: OwnedXml::MixedContent,
+        ..Self::XML_SERIALIZE
+    };
+
+    /// XML_MIXED_CONTENT plus mixed-content construction by an owned selector.
+    const XML_MIXED_CONSTRUCTION: Self = Self {
+        owned_xml: OwnedXml::MixedConstruction,
+        ..Self::XML_SERIALIZE
+    };
+
     fn permits_xml_serialize(self) -> bool {
-        self.xml_serialize
+        self.owned_xml >= OwnedXml::Serialize
+    }
+
+    fn permits_xml_mixed_content(self) -> bool {
+        self.owned_xml >= OwnedXml::MixedContent
+    }
+
+    fn permits_xml_mixed_construction(self) -> bool {
+        self.owned_xml >= OwnedXml::MixedConstruction
     }
 
     fn permits_into_blocks(self) -> bool {
@@ -452,7 +481,11 @@ fn render_basic_owned_mapping_profile(
 ) -> Result<String, EmitError> {
     let allow_scoped_groups = extension.controls.has_scoped_groups();
     // Select the control/consumer pair before the older ItemAt-only companion.
-    if extension.permits_xml_serialize() {
+    if extension.permits_xml_mixed_construction() {
+        codegen::validate_program_with_basic_owned_xml_mixed_construction(program)?;
+    } else if extension.permits_xml_mixed_content() {
+        codegen::validate_program_with_basic_owned_xml_mixed_content(program)?;
+    } else if extension.permits_xml_serialize() {
         codegen::validate_program_with_basic_owned_xml_serialize(program)?;
     } else if extension.dynamic_field {
         codegen::validate_program_with_basic_owned_dynamic_field(program)?;
@@ -589,6 +622,9 @@ fn render_basic_owned_mapping_profile(
                 Expression::OwnedXmlSerialize(serializer) => {
                     serializer.frame.as_ref().is_some_and(Vec::is_empty)
                 }
+                Expression::OwnedXmlMixedContent(mixed) => {
+                    mixed.frame.as_ref().is_some_and(Vec::is_empty)
+                }
                 _ => false,
             }
     }) {
@@ -650,6 +686,11 @@ fn expression_refusal(node: NodeId, expression: &Expression, reason: Reason) -> 
             path: serializer.source.path.clone(),
             frame: serializer.frame.clone(),
         }),
+        Expression::OwnedXmlMixedContent(mixed) => Some(Request::XmlElement {
+            owner: (&mixed.source.owner).into(),
+            path: mixed.source.path.clone(),
+            frame: mixed.frame.clone(),
+        }),
         _ => None,
     };
     capability(
@@ -696,6 +737,8 @@ struct ScopeControls {
     path_hierarchy: bool,
     adjacency_tree: bool,
     recursive_filter: bool,
+    /// Mixed-content construction by an ungrouped scope's own owned selector.
+    mixed_construction: bool,
 }
 
 fn check_scope(
@@ -746,7 +789,17 @@ fn check_scope(
                 scope.construction,
                 TargetConstruction::OwnedAdjacencyTree { .. }
             )
-        || controls.recursive_filter && owned_recursive_filter_predicate(scope).is_some();
+        || controls.recursive_filter && owned_recursive_filter_predicate(scope).is_some()
+        || controls.mixed_construction
+            && matches!(
+                scope.construction,
+                TargetConstruction::XmlMixedContent { .. }
+            )
+            && scope.iteration.as_ref().is_some_and(|iteration| {
+                iteration.owned_source_iteration().is_some()
+                    && iteration.grouping().is_none()
+                    && iteration.post_group_filter().is_none()
+            });
     if !admitted_construction
         && !matches!(
             scope.construction,
@@ -888,6 +941,11 @@ fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
             .iter()
             .map(|replacement| replacement.expression)
             .collect(),
+        Expression::OwnedXmlMixedContent(mixed) => mixed
+            .replacements
+            .iter()
+            .map(|replacement| replacement.expression)
+            .collect(),
         Expression::RuntimeParameterDefault { default, .. } => vec![*default],
         Expression::Call { args, .. } | Expression::UserFunctionCall { args, .. } => args.clone(),
         Expression::DelimitedTextField { input, .. } | Expression::ValueMap { input, .. } => {
@@ -971,6 +1029,7 @@ fn validate_private_inventory(
         path_hierarchy: extension.permits_path_hierarchy(),
         adjacency_tree: extension.adjacency_tree,
         recursive_filter: extension.recursive_filter,
+        mixed_construction: extension.permits_xml_mixed_construction(),
     };
     check_scope(
         program,
@@ -991,7 +1050,11 @@ fn validate_private_inventory(
             false,
         )?;
     }
-    if extension.permits_xml_serialize() {
+    if extension.permits_xml_mixed_construction() {
+        codegen::validate_basic_owned_xml_mixed_construction_emission(program)?;
+    } else if extension.permits_xml_mixed_content() {
+        codegen::validate_basic_owned_xml_mixed_content_emission(program)?;
+    } else if extension.permits_xml_serialize() {
         codegen::validate_basic_owned_xml_serialize_emission(program)?;
     } else if extension.dynamic_field {
         codegen::validate_basic_owned_dynamic_field_emission(program)?;
@@ -1102,7 +1165,12 @@ fn validate_private_inventory(
                 continue;
             }
             Expression::OwnedXmlSerialize(_) if extension.permits_xml_serialize() => continue,
-            Expression::OwnedXmlSerialize(_) => Reason::XmlOperator,
+            Expression::OwnedXmlMixedContent(_) if extension.permits_xml_mixed_content() => {
+                continue;
+            }
+            Expression::OwnedXmlSerialize(_) | Expression::OwnedXmlMixedContent(_) => {
+                Reason::XmlOperator
+            }
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
@@ -1526,7 +1594,11 @@ fn render_checked_basic_owned_mapping_profile(
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = if extension.permits_xml_serialize() {
+    let plan = if extension.permits_xml_mixed_construction() {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_xml_mixed_construction(program)?
+    } else if extension.permits_xml_mixed_content() {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_xml_mixed_content(program)?
+    } else if extension.permits_xml_serialize() {
         codegen::legacy_named_input_admission_plan_with_basic_owned_xml_serialize(program)?
     } else if extension.dynamic_field {
         codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_field(program)?
@@ -1799,7 +1871,8 @@ fn expression_needs_owned_sources(program: &Program, root: NodeId) -> bool {
                 | Expression::OwnedAggregate(_)
                 | Expression::OwnedJoinField(_)
                 | Expression::OwnedJoinSourcePosition(_)
-                | Expression::JoinPosition { .. } => true,
+                | Expression::JoinPosition { .. }
+                | Expression::OwnedXmlMixedContent(_) => true,
                 // An owned producer reads its root through the paired context.
                 Expression::SequenceItemAt { sequence, .. } => sequence.owned_source().is_some(),
                 _ => false,
@@ -2201,4 +2274,71 @@ pub(crate) fn render_public_basic_owned_joins_mapping(
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_xml_mixed_content_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::XML_MIXED_CONTENT,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_xml_mixed_construction_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::XML_MIXED_CONSTRUCTION,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+/// Owned mixed-content atomization; the runtime attributes only its own group
+/// read and occurrence frames to this node.
+pub(crate) fn render_owned_xml_mixed_content(
+    node: NodeId,
+    mixed: &::mapping::OwnedXmlMixedContent,
+    output: &mut String,
+) {
+    output.push_str(&format!(
+        " =>\n        context.OwnedXmlMixedContent(\n            {node}U,\n            "
+    ));
+    render_owner(&mixed.source.owner, output);
+    output.push_str(",\n            ");
+    mapping::basic_path(&mixed.source.path, output);
+    output.push_str(",\n            ");
+    mapping::render_optional_path(mixed.frame.as_deref(), output);
+    output.push_str(",\n            ");
+    if mixed.frame.as_ref().is_some_and(Vec::is_empty) {
+        output.push_str("OwnedRootIsDeclaredNonrepeating(");
+        render_owner(&mixed.source.owner, output);
+        output.push(')');
+    } else {
+        output.push_str("false");
+    }
+    output.push_str(",\n            new global::Ferrule.Runtime.FerruleOwnedXmlMixedContentReplacement[]\n            {\n");
+    for replacement in &mixed.replacements {
+        output.push_str(&format!(
+            "                new({}, {}, Node_{}),\n",
+            literal::string(&replacement.element),
+            replacement.context == ::mapping::OwnedXmlMixedContentContext::Occurrence,
+            replacement.expression,
+        ));
+    }
+    output.push_str("            });\n");
 }

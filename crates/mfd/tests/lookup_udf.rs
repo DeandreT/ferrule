@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use mapping::Node;
@@ -8,12 +9,14 @@ struct TempDir(PathBuf);
 
 impl TempDir {
     fn new() -> Self {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-lookup-udf-{}-{}",
+            "ferrule-mfd-lookup-udf-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_nanos())
+                .map_or(0, |duration| duration.as_nanos()),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir_all(&path).unwrap();
         Self(path)

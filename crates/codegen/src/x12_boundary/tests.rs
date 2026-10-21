@@ -1,6 +1,7 @@
 use super::*;
 use crate::{Binding, Expression, ExpressionNode, TargetScope};
 use ir::{ItemCountRange, StringLengthRange, Value};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 type SchemaMutation = Box<dyn Fn(&mut SchemaNode)>;
 
@@ -22,14 +23,16 @@ fn retained_capture(
     label: &str,
     options: &FormatOptions,
 ) -> Result<X12BoundaryOptions, X12BoundaryPolicyError> {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "ferrule-x12-capture-{}-{}-{}",
+        "ferrule-x12-capture-{}-{}-{}-{}",
         evidence_label(label),
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(root.join("OPTIONS.original.txt"), format!("{options:#?}")).unwrap();
@@ -45,14 +48,16 @@ fn retained_profile(
     options: &X12BoundaryOptions,
     side: X12BoundarySide,
 ) -> Result<String, X12BoundaryPolicyError> {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "ferrule-x12-profile-{}-{}-{}",
+        "ferrule-x12-profile-{}-{}-{}-{}",
         evidence_label(label),
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(root.join("SCHEMA.original.txt"), format!("{schema:#?}")).unwrap();

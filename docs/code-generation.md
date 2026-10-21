@@ -751,7 +751,8 @@ default validator and every earlier profile refuse the expression as an XML
 operator; failure rules, generated items, isolated functions, dynamic owners and
 other specialized contexts keep their typed refusals. The legacy
 `XmlSerialize` node, its wire form, defaults, fallback and errors are unchanged
-and continue to use the ordinary emitters. See
+and continue to use the ordinary emitters; only the owned XML mixed-content
+profile composes this one. See
 [the ownership design](design/source-ownership.md#owned-xml-element-serialization)
 and [the corpus](../conformance/basic-owned-xml-serialize/README.md).
 
@@ -812,6 +813,91 @@ nodes. Owned joined aggregates and legacy joins stay closed in the Basic
 profiles, and owned dynamic source-field reads, owned XML serialization and
 owned collection aggregates keep their separate sibling companions. The [owned join contract](design/owned-joins.md) defines the wire
 form, members, positions and qualification.
+
+## Explicit owned XML mixed content
+
+`Node::OwnedXmlMixedContent` atomizes one mixed-content group read from exactly
+one Primary or named endpoint, replacing matching direct child elements with
+graph-computed values. Use
+`codegen::lower_with_basic_owned_xml_mixed_content`, then
+`codegen_rust::emit_with_basic_owned_xml_mixed_content(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_xml_mixed_content(&program)`. The
+matching `validate_program_with_basic_owned_xml_mixed_content`,
+`validate_basic_owned_xml_mixed_content_emission` and
+`legacy_named_input_admission_plan_with_basic_owned_xml_mixed_content` APIs
+select the same profile. It composes the owned XML serialization profile and
+everything that profile composes; the execution entries and five-field Basic
+policy are unchanged. The owned collection-aggregate and owned join profiles
+are separate branches built on owned search: they refuse owned mixed content,
+and this profile refuses owned aggregates and owned joins.
+
+The group is read with the owned element rules of the serializer: an explicit
+frame selects the latest exact same-owner occurrence, an explicit empty frame
+reads the declared nonrepeating endpoint root, and an unframed read uses the
+latest same-owner occurrence prefixing the path or else the endpoint root. A
+missing group is a typed owned-source failure attributed to the node and is
+never repaired from another endpoint, a legacy alias or an outer frame. A group
+without a retained ordered stream returns its text value, or Null.
+
+Text nodes and unmatched elements keep their text in source order. Each
+replacement names its context. A `parent` replacement evaluates in the
+receiving context once per matching element. An `occurrence` replacement
+evaluates with the matching element's retained value as the latest occurrence
+of the group's own endpoint at the group path plus the element name, numbered
+per element name from one, so owned fields and positions of that collection
+read the occurrence while every outer frame stays active; reads of another
+endpoint never see it. An element item without a retained value is no
+occurrence and keeps its text. Null-like replacement values contribute nothing;
+other scalars use their lexical form. Replacements for elements that do not
+occur are never evaluated, and replacement failures keep their own node.
+
+Validation requires a mixed group in the exact owner's schema, a frame that
+prefixes the path and is the endpoint root or a repeating owner path, nonempty
+unique replacement elements, and a repeating direct child element for every
+occurrence replacement; the legacy replacement diagnostics report these. The
+default validator and every earlier profile, including the owned serialization
+profile, refuse the expression as an XML operator; failure rules, generated
+items, isolated functions, dynamic owners and other specialized contexts keep
+their typed refusals. The legacy `XmlMixedContent` node, its wire form,
+outward fallback and untyped missing-group error are unchanged and continue to
+use the ordinary emitters; only the owned mixed-content construction profile
+composes this one. See
+[the ownership design](design/source-ownership.md#owned-xml-mixed-content-atomization)
+and [the corpus](../conformance/basic-owned-xml-mixed-content/README.md).
+
+## Explicit owned XML mixed-content construction
+
+A scope whose iteration is an owned source selector may use the existing
+`XmlMixedContent` construction. Use
+`codegen::lower_with_basic_owned_xml_mixed_construction`, then
+`codegen_rust::emit_with_basic_owned_xml_mixed_construction(&program, &options)`
+or `codegen_csharp::emit_with_basic_owned_xml_mixed_construction(&program)`.
+The matching `validate_program_with_basic_owned_xml_mixed_construction`,
+`validate_basic_owned_xml_mixed_construction_emission` and
+`legacy_named_input_admission_plan_with_basic_owned_xml_mixed_construction`
+APIs select the same profile, which composes the owned mixed-content
+atomization profile. No new wire field exists: the scope's owned selector is
+the construction's only owner.
+
+Each item's retained text/element order comes from that selector's exact
+current occurrence, or from the immutable endpoint root when the selector is
+the endpoint root; another endpoint's frame and the innermost legacy frame are
+never consulted. Bindings and child scopes are evaluated as for any owned item,
+so mapped direct children, renames, filters, cardinality, empty occurrences,
+Null values and lazy errors keep the legacy construction's meaning: element
+occurrences take the mapped target values in order, exhausted occurrences and
+unmapped elements are omitted, and text nodes are kept. A group without a
+retained stream gets no stream.
+
+Grouped or post-group-filtered owned selectors, legacy-selected constructions
+inside owned ancestry and constructions without their own selector keep
+refusing the scope (as grouping or an XML operator); dynamic owners and
+specialized contexts keep their typed refusals. Default validation and every
+earlier profile, including the owned atomization profile, refuse the
+construction as an XML operator. Legacy-selected constructions keep their wire,
+current-frame source and ordinary emitters. See
+[the ownership design](design/source-ownership.md#owned-xml-mixed-content-construction)
+and [the corpus](../conformance/basic-owned-xml-mixed-construction/README.md).
 
 ## C#
 
