@@ -89,6 +89,7 @@ internal static partial class Program
             ("collection-find contexts", CollectionFindContexts),
             ("inner join contexts", InnerJoinContexts),
             ("owned inner join tuples", OwnedInnerJoinContexts),
+            ("owned joined aggregates", OwnedJoinedAggregates),
             ("grouping contexts", GroupingContexts),
             ("owned By representatives complete members and exact owners", BasicOwnedByRepresentativesAndMembers),
             ("owned By sort filter bounds and error order", BasicOwnedByPhasesAndErrorOrder),

@@ -199,9 +199,9 @@ pub fn validate_program_with_basic_owned_collection_aggregates(
     owned_sources::validate_basic_owned_collection_aggregates_emission(program)
 }
 
-/// Validates owned inner joins and their tuple reads, composed with the owned
-/// Lookup and CollectionFind profile. Every older validator keeps refusing
-/// owned joins; owned joined aggregates stay closed.
+/// Validates owned inner joins, their tuple reads and owned joined aggregates,
+/// composed with the owned Lookup and CollectionFind profile. Every older
+/// validator keeps refusing them.
 pub fn validate_program_with_basic_owned_joins(
     program: &Program,
 ) -> Result<(), ProgramValidationError> {

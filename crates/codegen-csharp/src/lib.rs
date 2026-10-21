@@ -336,8 +336,8 @@ pub fn emit_with_basic_owned_collection_aggregates(
     emit_mapping_files(generated_mapping, false)
 }
 
-/// Emit owned-search-profile targets with owned inner joins and their tuple
-/// reads. Older emitters keep refusing owned joins; joined aggregates stay closed.
+/// Emit owned-search-profile targets with owned inner joins, their tuple reads
+/// and owned joined aggregates. Older emitters keep refusing both.
 pub fn emit_with_basic_owned_joins(program: &Program) -> Result<ArtifactSet, EmitError> {
     codegen::validate_program_with_basic_owned_joins(program)?;
     codegen::validate_basic_owned_joins_emission(program)?;
