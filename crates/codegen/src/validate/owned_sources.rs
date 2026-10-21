@@ -29,6 +29,9 @@ pub use recursive_collect::{
 };
 mod recursive_filter;
 pub use recursive_filter::validate_basic_owned_recursive_filter_emission;
+mod dynamic_field;
+pub(super) use dynamic_field::DynamicFieldPolicy;
+pub use dynamic_field::validate_basic_owned_dynamic_field_emission;
 mod primary_row_failures;
 pub use primary_row_failures::{
     is_basic_owned_primary_row_failure, validate_basic_owned_row_failure_emission,
@@ -49,6 +52,7 @@ fn request(expression: &Expression) -> Option<Request> {
             owner: (&path.owner).into(),
             collection: path.collection.clone(),
         }),
+        Expression::OwnedDynamicSourceField(field) => Some(dynamic_field::request(field)),
         // A consumer of an owned producer requests that root collection.
         Expression::SequenceExists { sequence, .. }
         | Expression::SequenceItemAt { sequence, .. }
@@ -173,6 +177,11 @@ fn check_request(program: &Program, query: &Request) -> Result<(), Structure> {
             Ok(())
         }
         Request::Iteration { owner, path } => collection(endpoint(program, owner)?, path),
+        Request::DynamicField {
+            owner,
+            object,
+            frame,
+        } => dynamic_field::check(program, owner, object, frame.as_deref()),
     }
 }
 fn structure(
@@ -423,7 +432,8 @@ fn dynamic_owner(program: &Program, query: &Request) -> Option<Closed> {
         Request::Field { owner, .. }
         | Request::Position { owner, .. }
         | Request::RowDocumentPath { owner, .. }
-        | Request::Iteration { owner, .. } => owner,
+        | Request::Iteration { owner, .. }
+        | Request::DynamicField { owner, .. } => owner,
     };
     let Owner::Named { name } = owner else {
         return None;
@@ -665,6 +675,7 @@ struct Admission<'a> {
     sequence_item_at: SequenceItemAtPolicy,
     path_hierarchy: PathHierarchyPolicy,
     adjacency_tree: AdjacencyTreePolicy,
+    dynamic_field: DynamicFieldPolicy,
     visited: Vec<Visit<'a>>,
 }
 impl<'a> Admission<'a> {
@@ -719,6 +730,19 @@ impl<'a> Admission<'a> {
                     Some(query),
                     Closed {
                         reason: Capability::GeneratedItem,
+                        origin: Origin::Expression {
+                            namespace: visit.namespace,
+                            node: visit.node,
+                        },
+                    },
+                ));
+            }
+            if let Some(query) = dynamic_field::closed_read(expression, self.dynamic_field) {
+                return Err(failure(
+                    location,
+                    Some(query),
+                    Closed {
+                        reason: Capability::UnsupportedBasicContext,
                         origin: Origin::Expression {
                             namespace: visit.namespace,
                             node: visit.node,
@@ -916,16 +940,10 @@ impl<'a> Admission<'a> {
             | TargetConstruction::OwnedPathHierarchy { .. }
             | TargetConstruction::AdjacencyTree { .. }
             | TargetConstruction::OwnedAdjacencyTree { .. } => Some(Capability::TreeOperator),
-            TargetConstruction::Scalar { .. }
-                if self.profile.permits_sort(scope)
-                    || self.profile.permits_windows(scope)
-                    || self.profile.supports_groups() =>
-            {
-                None
-            }
-            TargetConstruction::CopyCurrentSource | TargetConstruction::Scalar { .. } => {
-                Some(Capability::SpecialConstruction)
-            }
+            // A scalar target evaluates one expression in the receiving context
+            // and creates no frame, so every Basic profile admits it.
+            TargetConstruction::Scalar { .. } => None,
+            TargetConstruction::CopyCurrentSource => Some(Capability::SpecialConstruction),
         };
         if closed.is_none() {
             closed = construction_reason.map(|reason| Closed {
@@ -1206,6 +1224,26 @@ pub(super) fn validate_closed_contexts_with_constructions(
     path_hierarchy: PathHierarchyPolicy,
     adjacency_tree: AdjacencyTreePolicy,
 ) -> Result<(), ProgramValidationError> {
+    validate_closed_contexts_with_dynamic_fields(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        DynamicFieldPolicy::Closed,
+    )
+}
+
+pub(super) fn validate_closed_contexts_with_dynamic_fields(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+    path_hierarchy: PathHierarchyPolicy,
+    adjacency_tree: AdjacencyTreePolicy,
+    dynamic_field: DynamicFieldPolicy,
+) -> Result<(), ProgramValidationError> {
     if !has_owned(program) {
         return Ok(());
     }
@@ -1215,6 +1253,7 @@ pub(super) fn validate_closed_contexts_with_constructions(
         sequence_item_at,
         path_hierarchy,
         adjacency_tree,
+        dynamic_field,
         visited: Vec::new(),
     };
     admission.scope(
@@ -1616,13 +1655,37 @@ fn validate_basic_owned_with_search(
     adjacency_tree: AdjacencyTreePolicy,
     search: SearchPolicy,
 ) -> Result<(), ProgramValidationError> {
-    super::validate_program_with_owned_constructions(
+    validate_basic_owned_with_dynamic_fields(
         program,
         profile,
         failures,
         sequence_item_at,
         path_hierarchy,
         adjacency_tree,
+        search,
+        DynamicFieldPolicy::Closed,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_basic_owned_with_dynamic_fields(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+    path_hierarchy: PathHierarchyPolicy,
+    adjacency_tree: AdjacencyTreePolicy,
+    search: SearchPolicy,
+    dynamic_field: DynamicFieldPolicy,
+) -> Result<(), ProgramValidationError> {
+    super::validate_program_with_owned_dynamic_fields(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        dynamic_field,
     )?;
     let policy = BasicScopePolicy {
         profile,
@@ -1665,7 +1728,7 @@ fn validate_basic_owned_with_search(
         ));
     }
     basic_failures_with_profile(program, failures)?;
-    let retained = basic_target_expressions(program, profile, sequence_item_at);
+    let retained = basic_target_expressions(program, profile, sequence_item_at, dynamic_field);
     for node in &program.expressions {
         if let Expression::SourceField { path, frame } = &node.expression
             && retained.contains(&node.id)
@@ -1690,6 +1753,9 @@ fn validate_basic_owned_with_search(
             }
             Expression::OwnedLookup(_) | Expression::OwnedCollectionFind(_) => {
                 Capability::AggregateLookup
+            }
+            Expression::OwnedDynamicSourceField(_) if dynamic_field.permits(&node.expression) => {
+                continue;
             }
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
@@ -1939,6 +2005,7 @@ fn basic_target_expressions(
     program: &Program,
     profile: BasicOwnedProfile,
     sequence_item_at: SequenceItemAtPolicy,
+    dynamic_field: DynamicFieldPolicy,
 ) -> std::collections::BTreeSet<NodeId> {
     fn roots(scope: &TargetScope, profile: BasicOwnedProfile, output: &mut Vec<NodeId>) {
         if let TargetConstruction::Scalar { expression, .. } = &scope.construction {
@@ -2012,6 +2079,8 @@ fn basic_target_expressions(
                 // Item declarations grant no endpoint permission.
                 graph_dependencies::of(expression)
             }
+            // The key is a receiving-context scalar demand of the owned read.
+            expression if dynamic_field.permits(expression) => graph_dependencies::of(expression),
             _ => continue,
         };
         // Only target admission gains the explicitly permitted consumer edges.

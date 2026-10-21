@@ -960,6 +960,10 @@ fn node_label(node: &mapping::Node) -> String {
             "owned find {:?} {:?} (read-only)",
             find.collection.owner, find.collection.path
         ),
+        mapping::Node::OwnedDynamicSourceField(field) => format!(
+            "owned dynamic field {:?} {:?}; frame {:?} (read-only)",
+            field.object.owner, field.object.path, field.frame
+        ),
         mapping::Node::SourceField { path, .. } => format!("field {}", display_path(path)),
         mapping::Node::SourceDocumentPath => "source document path".to_string(),
         mapping::Node::SourceRootXmlTypeEquals { .. } => {

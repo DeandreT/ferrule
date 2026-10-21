@@ -100,6 +100,9 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
             Node::OwnedSourceField(_) | Node::OwnedPosition(_) | Node::OwnedRowDocumentPath(_) => {
                 super::schema::validate_owned_source_node(project, node, &location, issues)
             }
+            Node::OwnedDynamicSourceField(field) => {
+                super::schema::validate_owned_dynamic_field(project, field, &location, issues)
+            }
             Node::SequenceExists { sequence, .. }
             | Node::SequenceItemAt { sequence, .. }
             | Node::SequenceAggregate { sequence, .. }
@@ -663,6 +666,16 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
     match node {
         Node::OwnedSourceField(field) => {
             if let mapping::SourceOwner::Named { name } = &field.source.owner
+                && project
+                    .extra_sources
+                    .iter()
+                    .any(|source| source.name == *name && source.dynamic_path.is_some())
+            {
+                sources.insert(name.as_str());
+            }
+        }
+        Node::OwnedDynamicSourceField(field) => {
+            if let mapping::SourceOwner::Named { name } = &field.object.owner
                 && project
                     .extra_sources
                     .iter()
@@ -1311,6 +1324,7 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
             ("value expression".into(), find.value),
         ],
         Node::DynamicSourceField { key, .. } => vec![("property name".into(), *key)],
+        Node::OwnedDynamicSourceField(field) => vec![("property name".into(), field.key)],
         Node::XmlMixedContent { replacements, .. } => replacements
             .iter()
             .map(|replacement| {

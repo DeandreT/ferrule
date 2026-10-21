@@ -951,6 +951,7 @@ fn node_dependencies(node: &Node) -> Vec<NodeId> {
         Node::Lookup { matches, .. } => vec![*matches],
         Node::OwnedLookup(_) | Node::OwnedCollectionFind(_) => node.dependencies(),
         Node::DynamicSourceField { key, .. } => vec![*key],
+        Node::OwnedDynamicSourceField(field) => vec![field.key],
         Node::XmlMixedContent { replacements, .. } => replacements
             .iter()
             .map(|replacement| replacement.expression)

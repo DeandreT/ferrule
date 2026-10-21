@@ -516,6 +516,26 @@ pub fn emit_with_basic_owned_lookup_find(
     .map_err(EmitError::from)
 }
 
+/// Emit the owned recursive-filter profile plus explicitly owned dynamic
+/// source-field reads. Every older emitter keeps refusing them.
+pub fn emit_with_basic_owned_dynamic_field(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_dynamic_field(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_dynamic_field_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_dynamic_field_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.
 /// Flat row/schema and literal dialect eligibility are checked before artifacts
 /// exist. The ordinary mapper, JSON/XML adapters, and manifest remain intact.
@@ -991,6 +1011,7 @@ fn expression_usage(
 fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
     match expression {
         Expression::DynamicSourceField { key, .. } => vec![*key],
+        Expression::OwnedDynamicSourceField(field) => vec![field.key],
         Expression::XmlMixedContent { replacements, .. } => replacements
             .iter()
             .map(|replacement| replacement.expression)
@@ -1752,14 +1773,17 @@ fn render_expression_in_context_with_scalar_item_at(
     } else {
         "context"
     };
-    let owned_body = if basic {
-        owned_basic::render_owned_access(expression)
-    } else {
-        None
-    };
     let parameter_argument = parameters.map(|_| ", parameters").unwrap_or_default();
     let call_expression =
         |node: NodeId, context: &str| format!("{prefix}{node}({context}{parameter_argument})");
+    let owned_body = match expression {
+        // The key is evaluated in the receiving context before the owned read.
+        Expression::OwnedDynamicSourceField(field) if basic => Some(
+            owned_basic::render_owned_dynamic_field(field, &call_expression(field.key, "context")),
+        ),
+        _ if basic => owned_basic::render_owned_access(expression),
+        _ => None,
+    };
     let body = if let Some(body) = owned_body {
         if emission.owned_leaf_nodes {
             // Keep the leaf's early `?` inside the Result being annotated.
@@ -1787,6 +1811,7 @@ fn render_expression_in_context_with_scalar_item_at(
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
+            | Expression::OwnedDynamicSourceField(_)
             | Expression::OwnedLookup(_)
             | Expression::OwnedCollectionFind(_) => {
                 let namespace = owner_function.map_or(codegen::OwnedSourceNamespace::Main, |id| {

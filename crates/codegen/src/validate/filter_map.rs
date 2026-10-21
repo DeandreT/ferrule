@@ -209,6 +209,7 @@ fn validate_stage(
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
+            | Expression::OwnedDynamicSourceField(_)
             | Expression::Const { .. }
             | Expression::FunctionParameter { .. }
             | Expression::If { .. }

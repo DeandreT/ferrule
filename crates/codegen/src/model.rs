@@ -912,6 +912,9 @@ pub enum Expression {
         frame: Option<Vec<String>>,
         key: NodeId,
     },
+    /// Reads one runtime-named scalar property from the open object of exactly
+    /// one owner and frame. Only explicit dynamic-field companions emit it.
+    OwnedDynamicSourceField(mapping::OwnedDynamicSourceField),
     /// Serializes one complete structured XML source element with its exact
     /// static schema and document-level formatting policy.
     XmlSerialize {

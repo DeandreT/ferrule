@@ -111,6 +111,7 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
         Node::OwnedLookup(lookup) => vec![Some(lookup.matches)],
         Node::OwnedCollectionFind(find) => vec![Some(find.predicate), Some(find.value)],
         Node::DynamicSourceField { key, .. } => vec![Some(*key)],
+        Node::OwnedDynamicSourceField(field) => vec![Some(field.key)],
         Node::XmlMixedContent { replacements, .. } => replacements
             .iter()
             .map(|replacement| Some(replacement.expression))
@@ -175,6 +176,10 @@ fn node_title(node: &Node) -> String {
         Node::OwnedCollectionFind(find) => format!(
             "owned find {:?} {:?}; read-only",
             find.collection.owner, find.collection.path
+        ),
+        Node::OwnedDynamicSourceField(field) => format!(
+            "owned dynamic field {:?} {:?}; frame {:?}",
+            field.object.owner, field.object.path, field.frame
         ),
         Node::SourceField { path, .. } => format!("field · {}", path.join("/")),
         Node::SourceDocumentPath => "source document path".to_string(),

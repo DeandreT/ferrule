@@ -298,7 +298,8 @@ fn render_user_function_expression(
     match expression {
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
-        | Expression::OwnedRowDocumentPath(_) => {
+        | Expression::OwnedRowDocumentPath(_)
+        | Expression::OwnedDynamicSourceField(_) => {
             return Err(codegen::owned_expression_emission_error(
                 codegen::OwnedSourceNamespace::Function(function),
                 node,
@@ -1823,6 +1824,7 @@ fn render_expression(
                 Expression::OwnedSourceField(_)
                     | Expression::OwnedPosition(_)
                     | Expression::OwnedRowDocumentPath(_)
+                    | Expression::OwnedDynamicSourceField(_)
             )
         {
             output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleValue Node_{node}(\n        {context_type} context)\n    {{\n        ObserveOwnedBasicNode({node}U, context);\n        try {{ return NodeBody_{node}(context); }}\n        catch (global::Ferrule.Runtime.FerruleRuntimeException error)\n        {{\n            error.WithOwnedSourceNode({node}U);\n            throw;\n        }}\n    }}\n"));
@@ -1852,6 +1854,7 @@ fn render_expression(
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
+        | Expression::OwnedDynamicSourceField(_)
         | Expression::OwnedLookup(_)
         | Expression::OwnedCollectionFind(_) => {
             if matches!(
