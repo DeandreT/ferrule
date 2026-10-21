@@ -38,6 +38,54 @@ fn check(error: MfdError, function: Option<FunctionId>) {
 }
 
 #[test]
+fn ordered_text_selection_is_refused_in_unused_graphs_before_any_export() {
+    for operation in [
+        mapping::AggregateOp::LastPresentText,
+        mapping::AggregateOp::LastDistinctText,
+    ] {
+        for in_function in [false, true] {
+            let mut project = project();
+            project.graph.nodes.insert(
+                9,
+                Node::Aggregate {
+                    function: operation,
+                    collection: vec![],
+                    value: vec![],
+                    expression: None,
+                    arg: None,
+                },
+            );
+            if in_function {
+                project.user_functions.insert(
+                    FunctionId::new(7),
+                    UserFunction {
+                        library: "tests".into(),
+                        name: "unused_text_selector".into(),
+                        description: None,
+                        parameters: vec![],
+                        output_name: "value".into(),
+                        output_type: ScalarType::String,
+                        body: std::mem::take(&mut project.graph),
+                        output: 9,
+                    },
+                );
+            }
+            let path = Path::new("nonexistent-owned-export-parent/text-selection.mfd");
+            for result in [
+                preflight_export(&project, path).map(|_| ()),
+                export(&project, path).map(|_| ()),
+                export_with_profile(&project, path, ExportProfile::NativeMfd).map(|_| ()),
+            ] {
+                assert!(
+                    matches!(result, Err(MfdError::Unsupported(message)) if message.contains("ordered text selection at node 9"))
+                );
+            }
+            assert!(!path.exists());
+        }
+    }
+}
+
+#[test]
 fn every_export_profile_refuses_dead_owned_nodes_before_writing_anything() {
     let project = project();
     // A nonexistent parent discriminates an early typed refusal from artifact I/O.

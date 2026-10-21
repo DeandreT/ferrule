@@ -607,6 +607,10 @@ pub enum AggregateOp {
     Join,
     ItemAt,
     DecimalSum,
+    /// Final present string, ignoring only the missing-value sentinel.
+    LastPresentText,
+    /// Final first-seen distinct string, with exact ordinal string identity.
+    LastDistinctText,
 }
 
 /// The mapping graph for one project: every node that can be wired into a

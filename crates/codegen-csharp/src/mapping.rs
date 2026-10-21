@@ -1601,6 +1601,8 @@ const fn aggregate_function_name(function: AggregateFunction) -> &'static str {
         AggregateFunction::Count => "Count",
         AggregateFunction::Sum => "Sum",
         AggregateFunction::DecimalSum => "DecimalSum",
+        AggregateFunction::LastPresentText => "LastPresentText",
+        AggregateFunction::LastDistinctText => "LastDistinctText",
         AggregateFunction::Avg => "Avg",
         AggregateFunction::Min => "Min",
         AggregateFunction::Max => "Max",
