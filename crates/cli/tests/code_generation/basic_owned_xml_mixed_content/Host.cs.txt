@@ -1,0 +1,172 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+internal static class Driver
+{
+    private static FerruleInstance Decode(JsonNode? node) => node switch
+    {
+        null => new FerruleScalar(FerruleValue.Null),
+        JsonObject group => new FerruleGroup(group.Select(field => new FerruleField(field.Key, Decode(field.Value)))),
+        JsonArray items => new FerruleRepeated(items.Select(Decode)),
+        JsonValue value when value.GetValueKind() == JsonValueKind.String =>
+            new FerruleScalar(FerruleValue.FromString(value.GetValue<string>())),
+        JsonValue value when value.GetValueKind() is JsonValueKind.True or JsonValueKind.False =>
+            new FerruleScalar(FerruleValue.FromBoolean(value.GetValue<bool>())),
+        JsonValue value => new FerruleScalar(FerruleValue.FromInt64(value.GetValue<long>())),
+        _ => throw new InvalidOperationException("Closed corpus tree."),
+    };
+
+    private static JsonNode? Encode(FerruleInstance instance)
+    {
+        switch (instance)
+        {
+            case FerruleGroup group:
+                var fields = new JsonObject();
+                foreach (var field in group.Fields)
+                {
+                    fields.Add(field.Name, Encode(field.Value));
+                }
+                return fields;
+            case FerruleRepeated repeated:
+                return new JsonArray(repeated.Items.Select(Encode).ToArray());
+            case FerruleScalar scalar:
+                return scalar.Value.Kind switch
+                {
+                    FerruleValueKind.Null => null,
+                    FerruleValueKind.String => JsonValue.Create(scalar.Value.StringValue),
+                    FerruleValueKind.Bool => JsonValue.Create(scalar.Value.BooleanValue),
+                    FerruleValueKind.Int64 => JsonValue.Create(scalar.Value.Int64Value),
+                    _ => new JsonObject { ["unexpected"] = scalar.Value.Kind.ToString() },
+                };
+            default:
+                return new JsonObject { ["unexpected"] = instance.GetType().Name };
+        }
+    }
+
+    private static JsonNode? Node(FerruleRuntimeException runtime) =>
+        runtime.Node is { } node ? JsonValue.Create((long)node) : null;
+
+    private static JsonArray? Segments(IReadOnlyList<string>? path) =>
+        path is null ? null : new JsonArray(path.Select(segment => (JsonNode?)JsonValue.Create(segment)).ToArray());
+
+    private static JsonNode Owned(FerruleRuntimeException runtime)
+    {
+        var owned = runtime.OwnedSourceFailure!;
+        var traversal = owned.InnerException as FerruleOwnedSourceTraversalException;
+        switch (owned.Error)
+        {
+            case FerruleOwnedSourceErrorKind.SourceUnavailable:
+                return new JsonObject { ["kind"] = "SourceUnavailable",
+                    ["owner"] = owned.Owner?.Name ?? owned.RequestedName, ["node"] = Node(runtime) };
+            case FerruleOwnedSourceErrorKind.Traversal
+                when traversal?.Error == FerruleOwnedSourceTraversalKind.MissingInstance:
+                return new JsonObject { ["kind"] = "MissingElement", ["owner"] = owned.Owner?.Name,
+                    ["path"] = Segments(owned.Path), ["node"] = Node(runtime) };
+            case FerruleOwnedSourceErrorKind.InactiveSourceFrame:
+                return new JsonObject { ["kind"] = "InactiveSourceFrame", ["owner"] = owned.Owner?.Name,
+                    ["collection"] = Segments(owned.Collection), ["node"] = Node(runtime) };
+            case FerruleOwnedSourceErrorKind.UniteratedRepetition:
+                return new JsonObject { ["kind"] = "UniteratedRepetition",
+                    ["path"] = Segments(owned.Path), ["node"] = Node(runtime) };
+            default:
+                return new JsonObject { ["kind"] = "Unexpected", ["debug"] = runtime.ToString() };
+        }
+    }
+
+    private static JsonNode Error(Exception error)
+    {
+        if (error is not FerruleRuntimeException runtime)
+        {
+            return new JsonObject { ["kind"] = "Unexpected", ["debug"] = error.ToString() };
+        }
+        switch (runtime.Error)
+        {
+            case FerruleRuntimeError.MappingException:
+                return new JsonObject { ["kind"] = "MappingException", ["node"] = Node(runtime),
+                    ["message"] = runtime.MappingExceptionMessage };
+            case FerruleRuntimeError.MappingFailure:
+                return new JsonObject { ["kind"] = "MappingFailure", ["rule"] = runtime.FailureRule, ["message"] = runtime.MappingFailureMessage };
+            case FerruleRuntimeError.UnknownTarget:
+                return new JsonObject { ["kind"] = "UnknownTarget", ["name"] = runtime.Detail };
+            case FerruleRuntimeError.OwnedSource when runtime.OwnedSourceFailure is not null:
+                return Owned(runtime);
+            default:
+                return new JsonObject { ["kind"] = "Unexpected", ["debug"] = runtime.ToString() };
+        }
+    }
+
+    private static JsonNode Invoke(string selection, FerruleInstance source, IReadOnlyList<NamedInput> inputs,
+        FerruleOwnedSourceLimits limits, FerruleExecutionContext context)
+    {
+        try
+        {
+            if (selection == "All")
+            {
+                var all = GeneratedMapping.ExecuteWithBasicOwnedSources(source, inputs, limits, context);
+                var trees = new JsonArray(new JsonArray(null, Encode(all.Primary)));
+                foreach (var named in all.Extras)
+                {
+                    trees.Add(new JsonArray(JsonValue.Create(named.Name), Encode(named.Instance)));
+                }
+                return new JsonObject { ["Ok"] = trees };
+            }
+            var target = selection == "Primary"
+                ? FerruleTargetSelection.Primary()
+                : FerruleTargetSelection.Named(selection);
+            var selected = GeneratedMapping.ExecuteSelectedWithBasicOwnedSources(source, target, inputs, limits, context);
+            JsonArray tree = selected switch
+            {
+                SelectedTargetOutput.Primary primary => new JsonArray(null, Encode(primary.Instance)),
+                SelectedTargetOutput.Named named => new JsonArray(JsonValue.Create(named.Output.Name), Encode(named.Output.Instance)),
+                _ => throw new InvalidOperationException("Closed selected output."),
+            };
+            return new JsonObject { ["Ok"] = new JsonArray(tree) };
+        }
+        catch (Exception error)
+        {
+            return new JsonObject { ["Err"] = Error(error) };
+        }
+    }
+
+    private static int Main(string[] args)
+    {
+        if (args.Length != 3)
+        {
+            throw new InvalidOperationException("usage: host CONTROLS MODEL OUTPUT");
+        }
+        var controls = JsonNode.Parse(File.ReadAllText(args[0]))!;
+        var model = long.Parse(args[1]);
+        var limits = new FerruleOwnedSourceLimits(16, 32, 64, 16_777_216, 4096);
+        var context = new FerruleExecutionContext("xml-mixed468.mapping");
+        var rows = new JsonArray();
+        foreach (var caseNode in controls["cases"]!.AsArray())
+        {
+            if (caseNode!["model"]!.GetValue<long>() != model)
+            {
+                continue;
+            }
+            var source = Decode(caseNode["source"]);
+            var inputs = caseNode["inputs"]!.AsArray()
+                .Select(input => new NamedInput(input![0]!.GetValue<string>(), Decode(input[1])))
+                .ToArray();
+            foreach (var call in caseNode["calls"]!.AsArray())
+            {
+                var selection = call!["selection"]!.GetValue<string>();
+                var actual = Invoke(selection, source, inputs, limits, context);
+                rows.Add(new JsonObject
+                {
+                    ["case"] = caseNode["id"]!.DeepClone(),
+                    ["selection"] = selection,
+                    ["matched"] = JsonNode.DeepEquals(actual, call["expected"]),
+                    ["actual"] = actual,
+                });
+            }
+        }
+        Directory.CreateDirectory(args[2]);
+        File.WriteAllText(Path.Combine(args[2], "ALL-COMPLETE-COMPARISONS.json"),
+            rows.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        return 0;
+    }
+}

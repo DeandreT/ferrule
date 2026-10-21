@@ -54,10 +54,10 @@ public sealed class FerruleXmlMixedContentElement
 /// <summary>Engine-compatible ordered XML mixed-content atomization.</summary>
 public static class FerruleXmlMixedContent
 {
-    private const string MixedContentField = "\u001fferrule-xml-mixed-content";
-    private const string MixedValueField = "\u001fferrule-xml-mixed-value";
-    private const string NodeNameField = "NodeName";
-    private const string TextField = "#text";
+    internal const string MixedContentField = "\u001fferrule-xml-mixed-content";
+    internal const string MixedValueField = "\u001fferrule-xml-mixed-value";
+    internal const string NodeNameField = "NodeName";
+    internal const string TextField = "#text";
 
     public static FerruleValue Evaluate(
         ScopeContext context,
@@ -124,8 +124,17 @@ public static class FerruleXmlMixedContent
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(elements);
-        if (context.Frames.Count == 0 ||
-            !TrySourceField(context.Frames[^1], MixedContentField, out var retained) ||
+        return PreserveFrom(context.Frames.Count == 0 ? null : context.Frames[^1], output, elements);
+    }
+
+    // Shared by the legacy current-frame and the owned exact-occurrence constructions.
+    internal static FerruleGroup PreserveFrom(
+        FerruleInstance? source,
+        FerruleGroup output,
+        IReadOnlyList<FerruleXmlMixedContentElement> elements)
+    {
+        if (source is null ||
+            !TrySourceField(source, MixedContentField, out var retained) ||
             retained is not FerruleRepeated sourceItems)
         {
             return output;
@@ -198,7 +207,7 @@ public static class FerruleXmlMixedContent
         return false;
     }
 
-    private static string StringField(FerruleInstance item, string name) =>
+    internal static string StringField(FerruleInstance item, string name) =>
         OptionalStringField(item, name) ?? string.Empty;
 
     private static string? OptionalStringField(FerruleInstance item, string name) =>
@@ -208,7 +217,7 @@ public static class FerruleXmlMixedContent
             ? scalar.Value.StringValue
             : null;
 
-    private static void Append(StringBuilder output, FerruleValue value)
+    internal static void Append(StringBuilder output, FerruleValue value)
     {
         switch (value.Kind)
         {
