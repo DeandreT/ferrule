@@ -127,6 +127,8 @@ fn owned_emitters_refuse_reachable_and_unused_counters() {
         codegen_csharp::emit_with_basic_owned_sequence_aggregate,
         codegen_csharp::emit_with_basic_owned_collection_aggregates,
         codegen_csharp::emit_with_basic_owned_joins,
+        codegen_csharp::emit_with_basic_owned_xml_mixed_content,
+        codegen_csharp::emit_with_basic_owned_xml_mixed_construction,
     ];
     for program in admission::owned_programs() {
         for emit in emitters {
