@@ -1,0 +1,30 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+using System.Text.Json;
+
+using var cases = JsonDocument.Parse(File.ReadAllText("cases.json"));
+var sourceSchema = File.ReadAllText("source-schema.json");
+var targetSchema = File.ReadAllText("target-schema.json");
+foreach (var item in cases.RootElement.EnumerateArray())
+{
+    var id = item.GetProperty("id").GetString();
+    var source = FerruleJson.Parse(sourceSchema, item.GetProperty("input").GetRawText());
+    if (item.TryGetProperty("error", out var kind))
+    {
+        try { _ = GeneratedMapping.Execute(source); throw new InvalidOperationException($"{id}: unexpectedly returned output"); }
+        catch (FerruleRuntimeException error)
+        {
+            var expected = kind.GetString() == "conversion" ? FerruleRuntimeError.DecimalConversion : FerruleRuntimeError.AggregateDecimal;
+            if (error.Error != expected) throw new InvalidOperationException($"{id}: wrong error {error.Error}", error);
+        }
+    }
+    else
+    {
+        var text = FerruleJson.Serialize(targetSchema, GeneratedMapping.Execute(source));
+        using var actual = JsonDocument.Parse(text);
+        var expected = item.GetProperty("expected");
+        if (actual.RootElement.ValueKind != JsonValueKind.Object || actual.RootElement.EnumerateObject().Count() != 1 || actual.RootElement.GetProperty("Total").ValueKind != JsonValueKind.String || actual.RootElement.GetProperty("Total").GetString() != expected.GetProperty("Total").GetString())
+            throw new InvalidOperationException($"{id}: wrong document {text}");
+    }
+    Console.WriteLine($"PASS {id}");
+}
