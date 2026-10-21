@@ -6,6 +6,9 @@ distinct from integer, binary64, string and missing/null values. Boxing preserve
 the Rust value union's existing layout; the C# kind is appended without changing
 earlier kind numbers.
 
+Every generated C# package includes the bounded decimal implementation because
+the shared scalar type references it, even when the mapping has no decimal values.
+
 ## Persistence
 
 Decimal values use `{"$decimal96":"<canonical decimal>"}` in model serialization.
