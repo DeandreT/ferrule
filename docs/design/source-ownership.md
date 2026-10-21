@@ -165,6 +165,18 @@ collection misses without consulting another endpoint, Null-like keys never
 match, and the first match in source order wins with a miss as `Null`. See the
 [search contract](owned-lookup-find.md).
 
+## Owned collection aggregates
+
+An owned aggregate qualifies one collection of exactly its declared endpoint
+with the owned search walk, beside the unchanged legacy aggregate. Its value
+path or expression reads each selected item as the latest occurrence of its
+owner, while the `join` separator or `item_at` index evaluates once in the
+parent context after every item value. A grouped or block scope therefore
+reduces only its members, an ordinary owned row anchors same-owner walks at
+that row, and an absent or empty collection reduces as empty without consulting
+another endpoint. Every legacy reducer keeps its empty, null and type policy.
+See the [aggregate contract](owned-collection-aggregates.md).
+
 ## Owned join identity
 
 An owned inner join names each source and each condition's left collection by

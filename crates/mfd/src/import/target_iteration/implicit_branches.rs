@@ -8,7 +8,7 @@ use super::{build_one, literal_constant_value, take_scope};
 use crate::import::graph::GraphBuilder;
 use crate::import::group_projection::TargetIteration;
 use crate::import::schema::{ComponentFormat, SchemaComponent, schema_node_at};
-use crate::import::scope::{ScopeBuilder, TargetLeaf};
+use crate::import::scope::{BindingOccurrence, ScopeBuilder, TargetLeaf};
 
 mod csv_x12;
 mod edi_json;

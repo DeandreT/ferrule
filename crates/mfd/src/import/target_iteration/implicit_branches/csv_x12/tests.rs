@@ -1,5 +1,5 @@
 use super::*;
-use mapping::{Graph, Scope};
+use mapping::Graph;
 
 type Bindings = Vec<(TargetLeaf, u32, u32)>;
 const DESIGN: &str =
@@ -166,10 +166,7 @@ fn with_world_at_row(
             })
         })
         .collect::<Bindings>();
-    let mut scopes = ScopeBuilder {
-        root: Scope::default(),
-        anchors: BTreeMap::new(),
-    };
+    let mut scopes = ScopeBuilder::new(BTreeMap::new());
     if install_row {
         let mut skipped = Vec::new();
         let connected = bindings.iter().map(|(leaf, _, _)| leaf.path()).collect();
