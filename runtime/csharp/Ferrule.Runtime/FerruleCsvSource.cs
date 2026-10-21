@@ -35,7 +35,7 @@ public sealed class FerruleCsvSourceDocument
         return new FerruleCsvSourceDocument(path, resolvedPath, rows);
     }
 
-    private static void ValidatePath(string path, string parameter)
+    internal static void ValidatePath(string path, string parameter)
     {
         if (string.IsNullOrEmpty(path) || path.Contains('\0') ||
             !FerruleUnicode.IsWellFormed(path) || Encoding.UTF8.GetByteCount(path) > MaximumPathBytes)
