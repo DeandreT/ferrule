@@ -613,6 +613,9 @@ pub(crate) fn show_scope_editor(
         if let Some(output_path) = output_path {
             ui.monospace(format!("output path node: {output_path}"));
         }
+        if let ScopeConstruction::XmlMixedContent { elements } = &scope.construction {
+            ui.monospace(owned_mixed_construction_label(elements));
+        }
         return None;
     }
     if let Some((id, plan)) = scope.iteration.owned_join() {
@@ -985,6 +988,10 @@ fn node_label(node: &mapping::Node) -> String {
             position.collection.owner,
             position.collection.path
         ),
+        mapping::Node::OwnedXmlMixedContent(mixed) => format!(
+            "owned XML mixed content {:?} {:?}; frame {:?} (unavailable)",
+            mixed.source.owner, mixed.source.path, mixed.frame
+        ),
         mapping::Node::SourceField { path, .. } => format!("field {}", display_path(path)),
         mapping::Node::SourceDocumentPath => "source document path".to_string(),
         mapping::Node::SourceRootXmlTypeEquals { .. } => {
@@ -1070,6 +1077,18 @@ fn display_path(path: &[String]) -> String {
     } else {
         path.join("/")
     }
+}
+
+/// The saved child renames of an owned selector's mixed-content construction.
+fn owned_mixed_construction_label(elements: &[mapping::XmlMixedContentElement]) -> String {
+    format!(
+        "XML mixed content: {}",
+        elements
+            .iter()
+            .map(|element| format!("{} -> {}", element.source, element.target))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
 }
 
 #[cfg(test)]

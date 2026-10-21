@@ -5,6 +5,7 @@ use ir::{Instance, Value};
 use mapping::Node;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use support::{ConnectionStyle, ScalarContext, ScalarLiteral, ScalarMfdBuilder};
 
@@ -19,10 +20,12 @@ fn unit_float(value: &Value) {
 }
 
 fn retain(design: &Path, tag: &str) -> TestResult<PathBuf> {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "ferrule_random_mfd_{tag}_{}_{}",
+        "ferrule_random_mfd_{tag}_{}_{}_{}",
         std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&root)?;
     for entry in std::fs::read_dir(design.parent().expect("fixture directory"))? {

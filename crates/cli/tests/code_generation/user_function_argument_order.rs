@@ -17,10 +17,12 @@ impl Evidence {
             return Err("evidence parent must be absolute".into());
         }
         std::fs::create_dir_all(&parent)?;
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let path = parent.join(format!(
-            "ferrule-udf-order186-{label}-{}-{stamp}",
-            std::process::id()
+            "ferrule-udf-order186-{label}-{}-{stamp}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&path)?;
         eprintln!("UDF_ORDER186_ORIGINALS={}", path.display());

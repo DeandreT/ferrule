@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
 
@@ -73,12 +74,14 @@ fn marked_nested_json_array_ports_preserve_each_declared_level()
     let project: mapping::Project = serde_json::from_str(include_str!(
         "../../../tests/fixtures/nested_array_wrappers/project.json"
     ))?;
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_nanos();
     let root = std::env::temp_dir().join(format!(
-        "ferrule-nested-array-ports-{}-{stamp}",
-        std::process::id()
+        "ferrule-nested-array-ports-{}-{stamp}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&root)?;
     std::fs::write(

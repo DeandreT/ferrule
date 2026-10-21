@@ -3,12 +3,13 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 
 use anyhow::{Context, bail};
-use engine::{DebugDecision, DebugHook, ExecutionContext, ExecutionPurpose};
+use engine::{ExecutionContext, ExecutionPurpose};
 use mapping::{FormatOptions, Pipeline};
 
+use super::cancellation::{CancellableHook, check_cancelled};
 use super::payload::{
     PayloadDestination, read_payload, render_payload, target_artifact_count, validate_logical_path,
     visit_target_documents,
@@ -445,9 +446,9 @@ fn execute_preview(
     }
     check_cancelled(options.cancellation)?;
     let callbacks = &options.callbacks;
-    let debug = (options.cancellation.is_some() || callbacks.requests_debug_hook()).then(|| {
-        PreviewDebugHook {
-            inner: StageDebugHook {
+    let stage_hook =
+        (options.cancellation.is_some() || callbacks.requests_debug_hook()).then(|| {
+            StageDebugHook {
                 stage: RefCell::new(String::new()),
                 hook: callbacks.stage_debug_hook,
                 node_hook: callbacks.stage_node_debug_hook,
@@ -457,9 +458,11 @@ fn execute_preview(
                 node_failure_hook: callbacks.stage_node_failure_debug_hook,
                 function_failure_hook: callbacks.stage_function_failure_debug_hook,
                 probe: callbacks.stage_source_field_probe,
-            },
-            cancellation: options.cancellation,
-        }
+            }
+        });
+    let debug = stage_hook.as_ref().map(|inner| CancellableHook {
+        inner,
+        cancellation: options.cancellation,
     });
     let trace = callbacks.stage_trace_sink.map(|sink| StageTraceSink {
         stage: RefCell::new(String::new()),
@@ -710,78 +713,4 @@ fn logical_absolute(path: &Path) -> anyhow::Result<PathBuf> {
             .context("resolving logical mapping identity")?
             .join(path)
     })
-}
-
-fn check_cancelled(cancellation: Option<&AtomicBool>) -> anyhow::Result<()> {
-    if cancellation.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
-        return Err(engine::EngineError::DebugCancelled.into());
-    }
-    Ok(())
-}
-
-struct PreviewDebugHook<'a> {
-    inner: StageDebugHook<'a>,
-    cancellation: Option<&'a AtomicBool>,
-}
-
-impl PreviewDebugHook<'_> {
-    fn control(&self, callback: impl FnOnce() -> DebugDecision) -> DebugDecision {
-        if check_cancelled(self.cancellation).is_err() {
-            return DebugDecision::Cancel;
-        }
-        let decision = callback();
-        if check_cancelled(self.cancellation).is_err() {
-            DebugDecision::Cancel
-        } else {
-            decision
-        }
-    }
-}
-
-impl DebugHook for PreviewDebugHook<'_> {
-    fn wants_node_values(&self) -> bool {
-        self.inner.wants_node_values()
-    }
-    fn wants_function_node_values(&self) -> bool {
-        self.inner.wants_function_node_values()
-    }
-    fn wants_node_inputs(&self) -> bool {
-        self.inner.wants_node_inputs()
-    }
-    fn wants_function_node_inputs(&self) -> bool {
-        self.inner.wants_function_node_inputs()
-    }
-    fn wants_node_failures(&self) -> bool {
-        self.inner.wants_node_failures()
-    }
-    fn wants_function_node_failures(&self) -> bool {
-        self.inner.wants_function_node_failures()
-    }
-    fn source_field_probe(&self) -> Option<(usize, String)> {
-        self.inner.source_field_probe()
-    }
-    fn before_target_write(&self, value: &engine::PendingTargetWrite) -> DebugDecision {
-        self.control(|| self.inner.before_target_write(value))
-    }
-    fn after_node_value(&self, value: &engine::PendingNodeValue) -> DebugDecision {
-        self.control(|| self.inner.after_node_value(value))
-    }
-    fn after_function_node_value(&self, value: &engine::PendingFunctionNodeValue) -> DebugDecision {
-        self.control(|| self.inner.after_function_node_value(value))
-    }
-    fn after_node_input(&self, value: &engine::PendingNodeInput) -> DebugDecision {
-        self.control(|| self.inner.after_node_input(value))
-    }
-    fn after_function_node_input(&self, value: &engine::PendingFunctionNodeInput) -> DebugDecision {
-        self.control(|| self.inner.after_function_node_input(value))
-    }
-    fn after_node_failure(&self, value: &engine::PendingNodeFailure) -> DebugDecision {
-        self.control(|| self.inner.after_node_failure(value))
-    }
-    fn after_function_node_failure(
-        &self,
-        value: &engine::PendingFunctionNodeFailure,
-    ) -> DebugDecision {
-        self.control(|| self.inner.after_function_node_failure(value))
-    }
 }

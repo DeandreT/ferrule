@@ -6,6 +6,7 @@ use std::{
     fs,
     path::Path,
     process::Command,
+    sync::atomic::{AtomicUsize, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -185,13 +186,15 @@ fn retain_command(root: &Path, label: &str, command: &mut Command) -> std::proce
 #[test]
 #[ignore = "explicit package-free C# JSON5 cohort; root runs serial after source admission"]
 fn generated_json5_all_four_routes_match17_literals_and6_mapping_context_cases() {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "ferrule_json5_cohort_{}_{}",
+        "ferrule_json5_cohort_{}_{}_{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&root).unwrap();
     fs::write(root.join("CASES.json"), include_bytes!("json5/CASES.json")).unwrap();

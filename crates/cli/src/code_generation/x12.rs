@@ -95,6 +95,7 @@ fn boundary(
 mod tests {
     use super::*;
     use ir::ScalarType;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn schema() -> SchemaNode {
         SchemaNode::group(
@@ -150,13 +151,15 @@ mod tests {
             }),
             ..Default::default()
         };
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-x12-cli-profile-{}-{}",
+            "ferrule-x12-cli-profile-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("OPTIONS.original.txt"), format!("{options:#?}")).unwrap();
@@ -279,13 +282,15 @@ mod tests {
 
     #[test]
     fn envelope_selection_is_explicit_and_never_selects_a_json_endpoint() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-x12-cli-envelope-{}-{}",
+            "ferrule-x12-cli-envelope-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&root).unwrap();
         let json = FormatOptions {
@@ -346,13 +351,15 @@ mod tests {
 
     #[test]
     fn rust_grouped_facade_load_failure_preserves_output_parent() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-grouped-x12-backend-{}-{}",
+            "ferrule-grouped-x12-backend-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&root).unwrap();
         let output = root.join("absent-parent/unpublished");
@@ -383,13 +390,15 @@ mod tests {
         let project = include_str!(
             "../../tests/code_generation/static_document_adapters/fixtures/projects/base.json"
         );
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-grouped-x12-json-refusal-{}-{}",
+            "ferrule-grouped-x12-json-refusal-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&root).unwrap();
         let input = root.join("project.json");

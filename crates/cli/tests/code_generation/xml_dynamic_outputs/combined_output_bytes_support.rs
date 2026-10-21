@@ -3,6 +3,9 @@ use super::*;
 use sha2::{Digest, Sha256};
 use std::io::Read;
 
+#[path = "../gnu_tool_path.rs"]
+mod gnu_tool_path;
+
 pub(super) struct Originals {
     pub(super) path: PathBuf,
 }
@@ -74,6 +77,7 @@ pub(super) fn source_identities() -> TestResult<Json> {
         .join("../..")
         .canonicalize()?;
     let paths = [
+        "crates/cli/tests/code_generation/gnu_tool_path.rs",
         "crates/cli/tests/code_generation/xml_dynamic_outputs.rs",
         "crates/cli/tests/code_generation/xml_dynamic_outputs/combined_output_bytes.rs",
         "crates/cli/tests/code_generation/xml_dynamic_outputs/combined_output_bytes_support.rs",
@@ -105,9 +109,15 @@ pub(super) fn source_identities() -> TestResult<Json> {
         .collect::<Result<Vec<_>, _>>()?;
     values.push(identity(Path::new(env!("CARGO_BIN_EXE_ferrule")))?);
     values.push(identity(&std::env::current_exe()?)?);
-    values.push(identity(&gnu_timeout()?)?);
-    values.push(identity(&gnu_time()?)?);
+    values.push(tool_identity(&gnu_timeout()?, "GNU timeout")?);
+    values.push(tool_identity(&gnu_time()?, "GNU time")?);
     Ok(json!(values))
+}
+fn tool_identity(invocation: &Path, name: &str) -> TestResult<Json> {
+    let resolved = gnu_tool_path::resolve(invocation, name)?;
+    // Keep the selected invocation path: multicall tools can depend on argv[0].
+    // Only the executable identity follows aliases; source/input identity does not.
+    Ok(json!({"invocation":invocation,"executable":identity(&resolved)?}))
 }
 pub(super) fn library_identities(root: &Path) -> TestResult<Json> {
     let files = artifact_files(root)?;
@@ -196,6 +206,28 @@ fn gnu_timeout() -> TestResult<PathBuf> {
         return Err(io::Error::other("an absolute GNU timeout executable is required").into());
     }
     Ok(path)
+}
+
+#[test]
+fn original_file_identity_stays_closed_to_tool_symlinks() -> TestResult<()> {
+    let originals = Originals::new("tool-symlink-custody", false)?;
+    let target = originals.path.join("tool");
+    let alias = originals.path.join("alias");
+    std::fs::write(&target, "fixture")?;
+    std::os::unix::fs::symlink(&target, &alias)?;
+    assert!(identity(&alias).is_err());
+    assert_eq!(
+        gnu_tool_path::resolve(&alias, "GNU time")?,
+        target.canonicalize()?
+    );
+    let observed = tool_identity(&alias, "GNU time")?;
+    assert_eq!(observed["invocation"], json!(alias));
+    assert_eq!(
+        observed["executable"]["path"],
+        json!(target.canonicalize()?)
+    );
+    assert!(identity(&target).is_ok());
+    Ok(())
 }
 pub(super) fn recorded(
     command: &mut Command,

@@ -2,13 +2,16 @@
 
 use std::collections::BTreeSet;
 
-use ir::{ScalarType, SchemaKind, SchemaNode};
+use ir::{EffectiveSchemaView, ScalarType, SchemaKind, SchemaNode};
 use mapping::ScopeConstruction;
 
 use super::graph::GraphBuilder;
 use super::schema::{ComponentFormat, SchemaComponent, parse_u32, read_xsd_metadata_text};
 use super::scope::ScopeBuilder;
 use crate::resource::ResourceResolver;
+
+#[cfg(test)]
+mod tests;
 
 pub(super) fn install(
     target: &SchemaComponent,
@@ -200,13 +203,14 @@ fn prepare(
     Ok(feed)
 }
 
+// Contradictory role metadata has no effective view and is refused.
 fn required_singleton(node: &SchemaNode) -> bool {
-    !node.repeating
-        && !node.xml_optional
-        && !node.nillable
-        && !node.nullable
-        && !node.container_nullable
-        && (!node.attribute || node.xml_attribute_required)
+    #[cfg(test)]
+    if tests::legacy_selected() {
+        return tests::legacy_required_singleton(node);
+    }
+    node.effective_view()
+        .is_ok_and(EffectiveSchemaView::is_required_non_null_singleton)
 }
 
 // XSD occurrence minima greater than one and annotations on a global root

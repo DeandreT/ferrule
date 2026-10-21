@@ -1184,6 +1184,10 @@ impl GraphViewer<'_> {
             Node::XmlMixedContent { replacements, .. } => replacements
                 .get(idx)
                 .map(|replacement| replacement.expression),
+            Node::OwnedXmlMixedContent(mixed) => mixed
+                .replacements
+                .get(idx)
+                .map(|replacement| replacement.expression),
             Node::CollectionFind {
                 predicate, value, ..
             } => [*predicate, *value].get(idx).copied(),
@@ -1455,6 +1459,7 @@ impl GraphViewer<'_> {
             | Node::DynamicSourceField { .. }
             | Node::OwnedDynamicSourceField(_) => 1,
             Node::XmlMixedContent { replacements, .. } => replacements.len(),
+            Node::OwnedXmlMixedContent(mixed) => mixed.replacements.len(),
             Node::CollectionFind { .. } | Node::OwnedCollectionFind(_) => 2,
             Node::OwnedLookup(_) => 1,
             Node::OwnedAggregate(aggregate) => aggregate.inputs().len(),
@@ -1621,6 +1626,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         position.join.get(),
                         position.collection.path.join("/")
                     ),
+                    Some(Node::OwnedXmlMixedContent(mixed)) => {
+                        format!("Owned XML mixed content: {}", mixed.source.path.join("/"))
+                    }
                     Some(Node::SourceField { .. })
                         if self.function_output.is_none()
                             && !graph_references::sequence_item_owners(
@@ -2349,8 +2357,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         // callback. egui can read its current hit response before registration
         // using the preceding pass, without a second hit target or auto ID.
         let graph_node = Self::mapping_id(canvas_node).and_then(|id| self.graph.nodes.get(&id));
-        if matches!(graph_node, Some(Node::XmlMixedContent { .. }))
-            && let Some(response) = ui.ctx().read_response(ui.next_auto_id())
+        if matches!(
+            graph_node,
+            Some(Node::XmlMixedContent { .. } | Node::OwnedXmlMixedContent(_))
+        ) && let Some(response) = ui.ctx().read_response(ui.next_auto_id())
             && response.contains_pointer()
             && let Some(hint) = graph_node_presentation::input_pin_hint(graph_node, idx)
         {
