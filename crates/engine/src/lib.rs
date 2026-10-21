@@ -1109,5 +1109,8 @@ mod owned_sequence_exists_tests;
 #[path = "tests/owned_recursive_collect.rs"]
 mod owned_recursive_collect_tests;
 #[cfg(test)]
+#[path = "tests/owned_recursive_filter.rs"]
+mod owned_recursive_filter_tests;
+#[cfg(test)]
 #[path = "tests/owned_source_context.rs"]
 mod owned_source_context_tests;

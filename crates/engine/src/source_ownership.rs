@@ -336,9 +336,15 @@ impl<'a> Admission<'a> {
             );
             match &scope.construction {
                 ScopeConstruction::Scalar { value } => self.push(None, context, ancestry, [*value]),
+                // An owned selector's filter evaluates its predicate in Basic
+                // item frames of that same owner; a legacy filter stays closed.
                 ScopeConstruction::RecursiveFilter { plan } => self.push(
                     None,
-                    OwnedCapabilityContext::TreeOperator,
+                    if scope.owned_recursive_filter().is_some() {
+                        context
+                    } else {
+                        OwnedCapabilityContext::TreeOperator
+                    },
                     ancestry,
                     [plan.predicate()],
                 ),
@@ -1018,6 +1024,10 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
         | ScopeConstruction::OwnedPathHierarchy { .. }
         | ScopeConstruction::OwnedAdjacencyTree { .. } => OwnedCapabilityContext::Basic,
         ScopeConstruction::XmlMixedContent { .. } => OwnedCapabilityContext::XmlOperator,
+        // Only the scope's own owned selector qualifies a recursive filter.
+        ScopeConstruction::RecursiveFilter { .. } if scope.owned_recursive_filter().is_some() => {
+            OwnedCapabilityContext::Basic
+        }
         ScopeConstruction::RecursiveFilter { .. }
         | ScopeConstruction::PathHierarchy { .. }
         | ScopeConstruction::AdjacencyTree { .. } => OwnedCapabilityContext::TreeOperator,

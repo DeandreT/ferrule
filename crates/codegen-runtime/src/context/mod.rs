@@ -702,7 +702,7 @@ pub struct SourceRoots<'a> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum OwnedOwnerKey {
+pub(crate) enum OwnedOwnerKey {
     Primary,
     Named(usize),
 }

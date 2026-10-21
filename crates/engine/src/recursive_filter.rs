@@ -3,10 +3,11 @@ use std::collections::HashSet;
 use ir::{
     Instance, Value, XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD,
 };
-use mapping::RecursiveFilterPlan;
+use mapping::{OwnedSourceRef, RecursiveFilterPlan};
 
 use crate::EngineError;
 use crate::eval_expr::{EvalProgram, eval_expr};
+use crate::owned_context::{OccurrenceKind, OwnedContext, OwnerKey, SourceFrame};
 use crate::sequence::MAX_RECURSIVE_SEQUENCE_DEPTH;
 use crate::source_iteration::PositionFrame;
 
@@ -19,8 +20,113 @@ pub(super) fn execute(
 ) -> Result<Instance, EngineError> {
     let mut context = context.to_vec();
     let mut positions = positions.to_vec();
-    filter_group(program, plan, current, &mut context, &mut positions, 0)
+    filter_group(
+        program,
+        plan,
+        current,
+        &mut context,
+        &mut positions,
+        0,
+        None,
+    )
 }
+
+/// The owned frames a predicate sees. Every visited group keeps the scope's
+/// owner and collection, and every item keeps that collection plus the item
+/// field: the same-shape structure gives each depth one endpoint-local
+/// identity. A newer frame with the same identity shadows the older one, so
+/// only the innermost group frame is retained beside the scope's own frames.
+struct OwnedRecursion<'s, 'a> {
+    state: &'s OwnedContext<'a>,
+    owner: OwnerKey,
+    group: &'s [String],
+    items: Vec<String>,
+}
+
+impl<'a> OwnedRecursion<'_, 'a> {
+    fn frame(&self, collection: &[String], item: &'a Instance, slot: usize) -> SourceFrame<'a> {
+        SourceFrame {
+            owner: self.owner,
+            collection: collection.to_vec(),
+            item,
+            position_slot: slot,
+            kind: OccurrenceKind::Item,
+        }
+    }
+
+    fn context(&self, frames: impl IntoIterator<Item = SourceFrame<'a>>) -> OwnedContext<'a> {
+        let mut active = self.state.frames.clone();
+        active.extend(frames);
+        OwnedContext {
+            roots: self.state.roots,
+            frames: active,
+            origins: self.state.origins.clone(),
+            owned_ancestry: true,
+        }
+    }
+}
+
+/// Filters the current group of a scope that iterates an explicitly owned
+/// collection. The scope's selector is the only owner: the current group is
+/// that owner's active occurrence (or its identity root), and the predicate's
+/// owned reads and positions resolve through frames of that same owner.
+pub(super) fn execute_owned<'a>(
+    program: EvalProgram<'_>,
+    plan: &RecursiveFilterPlan,
+    source: &OwnedSourceRef,
+    state: &'a OwnedContext<'a>,
+    context: &[&'a Instance],
+    positions: &[PositionFrame],
+) -> Result<Instance, EngineError> {
+    let owner =
+        state
+            .roots
+            .key(&source.owner)
+            .map_err(|source| EngineError::OwnedSourceAccess {
+                node: None,
+                scope: None,
+                source,
+            })?;
+    let current = state
+        .frames
+        .iter()
+        .rev()
+        .find(|frame| frame.owner == owner && frame.collection == source.path)
+        .map(|frame| frame.item)
+        .or_else(|| {
+            // An endpoint-root group is an identity selection without a frame.
+            source
+                .path
+                .is_empty()
+                .then(|| state.roots.root(owner).ok())
+                .flatten()
+        })
+        .ok_or(EngineError::RecursiveFilterRequiresGroup {
+            found: "missing context",
+        })?;
+    let mut items = source.path.clone();
+    items.push(plan.items().to_owned());
+    let owned = OwnedRecursion {
+        state,
+        owner,
+        group: &source.path,
+        items,
+    };
+    let mut context = context.to_vec();
+    let mut positions = positions.to_vec();
+    filter_group(
+        program,
+        plan,
+        current,
+        &mut context,
+        &mut positions,
+        0,
+        Some((&owned, None)),
+    )
+}
+
+/// Owned recursion state plus the innermost visited child-group frame.
+type Owned<'r, 's, 'a> = Option<(&'r OwnedRecursion<'s, 'a>, Option<SourceFrame<'a>>)>;
 
 fn filter_group<'a>(
     program: EvalProgram<'_>,
@@ -29,6 +135,7 @@ fn filter_group<'a>(
     context: &mut Vec<&'a Instance>,
     positions: &mut Vec<PositionFrame>,
     depth: usize,
+    owned: Owned<'_, '_, 'a>,
 ) -> Result<Instance, EngineError> {
     if depth >= MAX_RECURSIVE_SEQUENCE_DEPTH {
         return Err(EngineError::RecursiveFilterDepth {
@@ -46,12 +153,21 @@ fn filter_group<'a>(
     let mut filtered_children = false;
     for (name, value) in fields {
         let value = if name == plan.items() {
-            let (filtered, kept) = filter_items(program, plan, value, context, positions)?;
+            let (filtered, kept) =
+                filter_items(program, plan, value, context, positions, owned.clone())?;
             kept_items = Some(kept);
             filtered
         } else if name == plan.children() {
             filtered_children = true;
-            filter_children(program, plan, value, context, positions, depth)?
+            filter_children(
+                program,
+                plan,
+                value,
+                context,
+                positions,
+                depth,
+                owned.clone(),
+            )?
         } else {
             value.clone()
         };
@@ -153,6 +269,7 @@ fn filter_items<'a>(
     collection: &'a Instance,
     context: &mut Vec<&'a Instance>,
     positions: &mut Vec<PositionFrame>,
+    owned: Owned<'_, '_, 'a>,
 ) -> Result<(Instance, Vec<bool>), EngineError> {
     let Instance::Repeated(items) = collection else {
         return Err(EngineError::RecursiveFilterRequiresCollection {
@@ -163,16 +280,30 @@ fn filter_items<'a>(
     let mut output = Vec::with_capacity(items.len());
     let mut kept = Vec::with_capacity(items.len());
     for (index, item) in items.iter().enumerate() {
+        let slot = positions.len();
         context.push(item);
         positions.push(position(plan.items(), index));
         let mut in_progress = HashSet::new();
-        let keep = eval_expr(
-            program,
-            plan.predicate(),
-            context,
-            positions,
-            &mut in_progress,
-        );
+        let keep = match &owned {
+            Some((recursion, group)) => {
+                let item = recursion.frame(&recursion.items, item, slot);
+                let state = recursion.context(group.clone().into_iter().chain([item]));
+                eval_expr(
+                    program.with_owned_context(&state),
+                    plan.predicate(),
+                    context,
+                    positions,
+                    &mut in_progress,
+                )
+            }
+            None => eval_expr(
+                program,
+                plan.predicate(),
+                context,
+                positions,
+                &mut in_progress,
+            ),
+        };
         positions.pop();
         context.pop();
         match keep? {
@@ -199,6 +330,7 @@ fn filter_children<'a>(
     context: &mut Vec<&'a Instance>,
     positions: &mut Vec<PositionFrame>,
     depth: usize,
+    owned: Owned<'_, '_, 'a>,
 ) -> Result<Instance, EngineError> {
     let Instance::Repeated(children) = collection else {
         return Err(EngineError::RecursiveFilterRequiresCollection {
@@ -208,9 +340,16 @@ fn filter_children<'a>(
     };
     let mut output = Vec::with_capacity(children.len());
     for (index, child) in children.iter().enumerate() {
+        let slot = positions.len();
         context.push(child);
         positions.push(position(plan.children(), index));
-        let filtered = filter_group(program, plan, child, context, positions, depth + 1);
+        let owned = owned.as_ref().map(|(recursion, _)| {
+            (
+                *recursion,
+                Some(recursion.frame(recursion.group, child, slot)),
+            )
+        });
+        let filtered = filter_group(program, plan, child, context, positions, depth + 1, owned);
         positions.pop();
         context.pop();
         output.push(filtered?);

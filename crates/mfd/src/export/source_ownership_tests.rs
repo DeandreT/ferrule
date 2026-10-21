@@ -217,3 +217,53 @@ fn owned_recursive_walks_refuse_before_writing_in_every_placement() {
     }
     assert!(!path.exists());
 }
+
+#[test]
+fn owned_recursive_filters_refuse_before_writing_in_every_profile() {
+    let directory = || {
+        SchemaNode::group(
+            "Dir",
+            vec![
+                SchemaNode::scalar("name", ScalarType::String),
+                SchemaNode::group("file", vec![SchemaNode::scalar("name", ScalarType::String)])
+                    .repeating(),
+                SchemaNode::recursive_group("Dir", "Dir").repeating(),
+            ],
+        )
+    };
+    let mut project = project();
+    project.source = SchemaNode::group("Input", vec![directory().repeating()]);
+    project.target = SchemaNode::group("Output", vec![directory().repeating()]);
+    project.graph.nodes = BTreeMap::from([(
+        9,
+        Node::Const {
+            value: ir::Value::Bool(true),
+        },
+    )]);
+    project.root.children = vec![Scope {
+        target_field: "Dir".into(),
+        iteration: mapping::ScopeIteration::OwnedSource {
+            source: mapping::OwnedSourceRef {
+                owner: SourceOwner::Primary,
+                path: vec!["Dir".into()],
+            },
+            output_path: None,
+        },
+        construction: mapping::ScopeConstruction::RecursiveFilter {
+            plan: mapping::RecursiveFilterPlan::new("Dir".into(), "file".into(), 9).unwrap(),
+        },
+        ..Scope::default()
+    }];
+    let path = Path::new("nonexistent-owned-filter-parent/output.mfd");
+    let expected = mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Primary)
+        .descendant(mapping::SourceScopeStep::Child(0));
+    let refused = |error: MfdError| matches!(error, MfdError::UnsupportedSourceIteration { scope } if scope == expected);
+    assert!(refused(preflight_export(&project, path).unwrap_err()));
+    assert!(refused(export(&project, path).unwrap_err()));
+    for profile in [ExportProfile::default(), ExportProfile::NativeMfd] {
+        assert!(refused(
+            export_with_profile(&project, path, profile).unwrap_err()
+        ));
+    }
+    assert!(!path.exists());
+}

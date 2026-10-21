@@ -126,6 +126,16 @@ pub fn lower_with_basic_owned_recursive_collect(project: &Project) -> Result<Pro
     )
 }
 
+/// Lowers recursive filtering of an explicitly owned scope selector with the
+/// owned recursive-collect profile. Older companions keep refusing the owned
+/// filter; lowering itself is unchanged.
+pub fn lower_with_basic_owned_recursive_filter(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_recursive_filter,
+    )
+}
+
 /// Lowers the explicit Basic scalar-producer SequenceItemAt profile, composing
 /// qualified By controls and primary-row failures without changing their gates.
 pub fn lower_with_basic_owned_sequence_item_at(project: &Project) -> Result<Program, LowerError> {

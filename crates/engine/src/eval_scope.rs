@@ -2268,6 +2268,25 @@ impl ItemEvaluator<'_> {
             return Ok(Some(Instance::Scalar(adapt_target_scalar(value, target))));
         }
 
+        if let Some((source, plan)) = scope.owned_recursive_filter() {
+            // Admission routes every owned recursive filter through the paired context.
+            let state =
+                program
+                    .owned_context
+                    .ok_or_else(|| EngineError::UnsupportedSourceIteration {
+                        scope: trace_scope.source_scope.clone(),
+                    })?;
+            return recursive_filter::execute_owned(
+                program,
+                plan,
+                source,
+                state,
+                context,
+                output_positions,
+            )
+            .map(Some);
+        }
+
         if let ScopeConstruction::RecursiveFilter { plan } = &scope.construction {
             let current =
                 context

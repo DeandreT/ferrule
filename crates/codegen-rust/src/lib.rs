@@ -474,6 +474,26 @@ pub fn emit_with_basic_owned_sequence_exists(
     .map_err(EmitError::from)
 }
 
+/// Emit the owned recursive-collect profile plus recursive filtering of an
+/// owned scope selector. Every older emitter keeps refusing the owned filter.
+pub fn emit_with_basic_owned_recursive_filter(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_recursive_filter(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_recursive_filter_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_recursive_filter_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.
 /// Flat row/schema and literal dialect eligibility are checked before artifacts
 /// exist. The ordinary mapper, JSON/XML adapters, and manifest remain intact.
@@ -2938,6 +2958,36 @@ fn render_scope_item(
             *target_domain,
         );
         output.push_str(&format!("{indent}let output = scalar({value});\n"));
+        return output;
+    }
+    if let TargetConstruction::RecursiveFilter {
+        children,
+        items,
+        predicate,
+    } = &scope.construction
+        && let Some(source) = scope
+            .iteration
+            .as_ref()
+            .and_then(IterationPlan::owned_source_iteration)
+    {
+        // Only paired Basic scopes render an owned selector: the stored owner
+        // is the filter's only owner and the predicate reads paired items.
+        let source = source.source();
+        let owner = match &source.owner {
+            mapping::SourceOwner::Primary => "codegen_runtime::SourceOwnerRef::Primary".to_string(),
+            mapping::SourceOwner::Named { name } => {
+                format!(
+                    "codegen_runtime::SourceOwnerRef::Named({})",
+                    rust_string(name)
+                )
+            }
+        };
+        output.push_str(&format!(
+            "{indent}let output = codegen_runtime::owned_recursive_filter(\n{indent}    {context},\n{indent}    {owner},\n{indent}    &[{}],\n{indent}    {},\n{indent}    {},\n{indent}    {predicate},\n{indent}    expression_{predicate},\n{indent})?;\n",
+            render_string_path(&source.path),
+            rust_string(children),
+            rust_string(items),
+        ));
         return output;
     }
     if let TargetConstruction::RecursiveFilter {

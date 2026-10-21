@@ -24,6 +24,9 @@ mod failure_rows;
 
 #[path = "basic_group_by.rs"]
 mod group_by;
+
+#[path = "basic_recursive_filter.rs"]
+mod recursive_filter;
 pub use group_by::{
     BasicGroupByControls, BasicGroupByMetadata, BasicGroupEndingWithControls,
     BasicGroupIntoBlocksControls, BasicGroupStartingWithControls,

@@ -271,6 +271,16 @@ pub fn emit_with_basic_owned_sequence_exists(program: &Program) -> Result<Artifa
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits the owned recursive-collect profile plus recursive filtering of an
+/// owned scope selector. Older emitters keep refusing the owned filter.
+pub fn emit_with_basic_owned_recursive_filter(program: &Program) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_recursive_filter(program)?;
+    codegen::validate_basic_owned_recursive_filter_emission(program)?;
+    let generated_mapping =
+        owned_basic::render_public_basic_owned_recursive_filter_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,
@@ -378,6 +388,8 @@ mod tests {
     mod owned_path_hierarchy;
     #[path = "owned_recursive_collect.rs"]
     mod owned_recursive_collect;
+    #[path = "owned_recursive_filter.rs"]
+    mod owned_recursive_filter;
     #[path = "owned_sequence_exists.rs"]
     mod owned_sequence_exists;
     use ::mapping::FunctionId;

@@ -18,6 +18,7 @@ mod owned_json_api;
 #[cfg(test)]
 mod owned_json_api_tests;
 mod owned_recursive_collect;
+mod owned_recursive_filter;
 mod selected_json_api;
 mod xml_api;
 
@@ -2602,7 +2603,8 @@ fn render_basic_scopes_profile<'a>(
         }
         output.push_str("    }\n\n");
         output.push_str(&format!("    private static global::Ferrule.Runtime.FerruleInstance ScopeItem_{index}(\n        global::Ferrule.Runtime.FerruleBasicScopeContext context)\n    {{\n"));
-        if let TargetConstruction::OwnedPathHierarchy {
+        if owned_recursive_filter::render_item(scope.construction, scope.iteration, output) {
+        } else if let TargetConstruction::OwnedPathHierarchy {
             collection,
             separator,
             directories,

@@ -88,6 +88,8 @@ struct TargetExtension {
     path_hierarchy: bool,
     /// Owned adjacency-tree construction is an orthogonal explicit permission.
     adjacency_tree: bool,
+    /// Recursive filtering of an owned selector is an orthogonal permission.
+    recursive_filter: bool,
 }
 
 impl TargetExtension {
@@ -97,6 +99,7 @@ impl TargetExtension {
         failure_sources: false,
         path_hierarchy: false,
         adjacency_tree: false,
+        recursive_filter: false,
     };
     const GROUP_BY: Self = Self {
         controls: TargetControls::By,
@@ -104,6 +107,7 @@ impl TargetExtension {
         failure_sources: false,
         path_hierarchy: false,
         adjacency_tree: false,
+        recursive_filter: false,
     };
     const SEQUENCE_ITEM_AT: Self = Self {
         controls: TargetControls::By,
@@ -111,6 +115,7 @@ impl TargetExtension {
         failure_sources: false,
         path_hierarchy: false,
         adjacency_tree: false,
+        recursive_filter: false,
     };
 
     const GROUP_ADJACENT_BY: Self = Self {
@@ -119,6 +124,7 @@ impl TargetExtension {
         failure_sources: false,
         path_hierarchy: false,
         adjacency_tree: false,
+        recursive_filter: false,
     };
 
     const SEQUENCE_EXISTS: Self = Self {
@@ -127,6 +133,7 @@ impl TargetExtension {
         failure_sources: false,
         path_hierarchy: false,
         adjacency_tree: false,
+        recursive_filter: false,
     };
 
     const GROUP_STARTING_WITH: Self = Self {
@@ -135,6 +142,7 @@ impl TargetExtension {
         failure_sources: false,
         path_hierarchy: false,
         adjacency_tree: false,
+        recursive_filter: false,
     };
 
     const FAILURE_SOURCES: Self = Self {
@@ -143,6 +151,7 @@ impl TargetExtension {
         failure_sources: true,
         path_hierarchy: false,
         adjacency_tree: false,
+        recursive_filter: false,
     };
 
     const GROUP_ENDING_WITH: Self = Self {
@@ -151,6 +160,7 @@ impl TargetExtension {
         failure_sources: false,
         path_hierarchy: false,
         adjacency_tree: false,
+        recursive_filter: false,
     };
 
     /// The newest companion: FailureSources plus owned hierarchy construction.
@@ -160,6 +170,7 @@ impl TargetExtension {
         failure_sources: true,
         path_hierarchy: true,
         adjacency_tree: false,
+        recursive_filter: false,
     };
 
     /// PATH_HIERARCHY plus owned adjacency-tree construction.
@@ -169,6 +180,7 @@ impl TargetExtension {
         failure_sources: true,
         path_hierarchy: true,
         adjacency_tree: true,
+        recursive_filter: false,
     };
 
     /// ADJACENCY_TREE plus ItemAt over owned recursive collection walks.
@@ -178,6 +190,17 @@ impl TargetExtension {
         failure_sources: true,
         path_hierarchy: true,
         adjacency_tree: true,
+        recursive_filter: false,
+    };
+
+    /// RECURSIVE_COLLECT plus recursive filtering of owned selectors.
+    const RECURSIVE_FILTER: Self = Self {
+        controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
+        sequence_item_at: SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+        failure_sources: true,
+        path_hierarchy: true,
+        adjacency_tree: true,
+        recursive_filter: true,
     };
 
     fn permits_path_hierarchy(self) -> bool {
@@ -190,6 +213,7 @@ impl TargetExtension {
         failure_sources: false,
         path_hierarchy: false,
         adjacency_tree: false,
+        recursive_filter: false,
     };
 
     fn permits_into_blocks(self) -> bool {
@@ -265,7 +289,9 @@ fn render_basic_owned_mapping_profile(
 ) -> Result<String, EmitError> {
     let allow_scoped_groups = extension.controls.has_scoped_groups();
     // Select the control/consumer pair before the older ItemAt-only companion.
-    if extension.permits_sequence_exists() {
+    if extension.recursive_filter {
+        codegen::validate_program_with_basic_owned_recursive_filter(program)?;
+    } else if extension.permits_sequence_exists() {
         codegen::validate_program_with_basic_owned_sequence_exists(program)?;
     } else if extension.permits_owned_recursive_collect() {
         codegen::validate_program_with_basic_owned_recursive_collect(program)?;
@@ -474,6 +500,7 @@ struct ScopeControls {
     grouping: TargetControls,
     path_hierarchy: bool,
     adjacency_tree: bool,
+    recursive_filter: bool,
 }
 
 fn check_scope(
@@ -517,7 +544,8 @@ fn check_scope(
             && matches!(
                 scope.construction,
                 TargetConstruction::OwnedAdjacencyTree { .. }
-            );
+            )
+        || controls.recursive_filter && owned_recursive_filter_predicate(scope).is_some();
     if !admitted_construction
         && !matches!(
             scope.construction,
@@ -587,6 +615,8 @@ fn retained_expressions(program: &Program) -> BTreeSet<NodeId> {
         {
             pending.push(*root);
         }
+        // An owned recursive filter's predicate reads each item of its owner.
+        pending.extend(owned_recursive_filter_predicate(scope));
         pending.extend(scope.bindings.iter().map(|binding| binding.expression));
         if let Some(iteration) = &scope.iteration {
             pending.extend(iteration.filter());
@@ -730,6 +760,7 @@ fn validate_private_inventory(
         grouping: extension.controls,
         path_hierarchy: extension.permits_path_hierarchy(),
         adjacency_tree: extension.adjacency_tree,
+        recursive_filter: extension.recursive_filter,
     };
     check_scope(
         program,
@@ -750,7 +781,9 @@ fn validate_private_inventory(
             false,
         )?;
     }
-    if extension.permits_sequence_exists() {
+    if extension.recursive_filter {
+        codegen::validate_basic_owned_recursive_filter_emission(program)?;
+    } else if extension.permits_sequence_exists() {
         codegen::validate_basic_owned_sequence_exists_emission(program)?;
     } else if extension.permits_owned_recursive_collect() {
         codegen::validate_basic_owned_recursive_collect_emission(program)?;
@@ -1154,7 +1187,9 @@ fn render_checked_basic_owned_mapping_profile(
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = if extension.permits_sequence_exists() {
+    let plan = if extension.recursive_filter {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_filter(program)?
+    } else if extension.permits_sequence_exists() {
         codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_exists(program)?
     } else if extension.permits_owned_recursive_collect() {
         codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_collect(program)?
@@ -1677,6 +1712,34 @@ pub(crate) fn render_public_basic_owned_sequence_exists_mapping(
         true,
         true,
         TargetExtension::SEQUENCE_EXISTS,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+/// The predicate of a recursive filter whose scope iterates an owned source.
+pub(crate) fn owned_recursive_filter_predicate(scope: &TargetScope) -> Option<NodeId> {
+    match (&scope.construction, &scope.iteration) {
+        (TargetConstruction::RecursiveFilter { predicate, .. }, Some(iteration))
+            if iteration.owned_source_iteration().is_some() =>
+        {
+            Some(*predicate)
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn render_public_basic_owned_recursive_filter_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::RECURSIVE_FILTER,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)

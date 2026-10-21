@@ -24,6 +24,8 @@ mod recursive_collect;
 pub use recursive_collect::{
     owned_sequence_emission_error, validate_basic_owned_recursive_collect_emission,
 };
+mod recursive_filter;
+pub use recursive_filter::validate_basic_owned_recursive_filter_emission;
 mod primary_row_failures;
 pub use primary_row_failures::{
     is_basic_owned_primary_row_failure, validate_basic_owned_row_failure_emission,
@@ -879,7 +881,10 @@ impl<'a> Admission<'a> {
         }
         let construction_reason = match scope.construction {
             TargetConstruction::Group => None,
-            TargetConstruction::OwnedAdjacencyTree { .. } if self.adjacency_tree.admits(scope) => {
+            TargetConstruction::OwnedAdjacencyTree { .. }
+            | TargetConstruction::RecursiveFilter { .. }
+                if self.adjacency_tree.admits(scope) =>
+            {
                 None
             }
             TargetConstruction::OwnedPathHierarchy { .. }
@@ -1890,8 +1895,10 @@ fn basic_target_expressions(
         if let TargetConstruction::Scalar { expression, .. } = &scope.construction {
             output.push(*expression);
         }
-        // An owned tree's root is a parent-context target expression.
+        // An owned tree's root is a parent-context target expression; an owned
+        // recursive filter's predicate reads each item of that same owner.
         output.extend(owned_root(scope));
+        output.extend(recursive_filter::owned_predicate(scope));
         output.extend(scope.bindings.iter().map(|binding| binding.expression));
         if profile.permits_filter(scope) {
             // A predicate retains every potential scalar dependency, including
