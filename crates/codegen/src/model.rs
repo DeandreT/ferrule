@@ -32,6 +32,8 @@ pub enum AggregateFunction {
     Join,
     ItemAt,
     DecimalSum,
+    LastPresentText,
+    LastDistinctText,
 }
 
 impl AggregateFunction {
@@ -44,6 +46,8 @@ impl AggregateFunction {
         Self::Join,
         Self::ItemAt,
         Self::DecimalSum,
+        Self::LastPresentText,
+        Self::LastDistinctText,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -56,6 +60,8 @@ impl AggregateFunction {
             Self::Join => "join",
             Self::ItemAt => "item_at",
             Self::DecimalSum => "decimal_sum",
+            Self::LastPresentText => "last_present_text",
+            Self::LastDistinctText => "last_distinct_text",
         }
     }
 }
@@ -71,6 +77,8 @@ impl From<AggregateOp> for AggregateFunction {
             AggregateOp::Join => Self::Join,
             AggregateOp::ItemAt => Self::ItemAt,
             AggregateOp::DecimalSum => Self::DecimalSum,
+            AggregateOp::LastPresentText => Self::LastPresentText,
+            AggregateOp::LastDistinctText => Self::LastDistinctText,
         }
     }
 }

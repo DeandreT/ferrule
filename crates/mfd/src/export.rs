@@ -311,6 +311,7 @@ struct PreparedExport {
 }
 
 fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdError> {
+    preflight::validate_text_selection_operations(project)?;
     preflight::validate_decimal_values(project)?;
     preflight::validate_optional_parser_input_provenance(project)?;
     preflight::validate_source_ownership(project)?;

@@ -521,8 +521,14 @@ impl SequenceItemAtPolicy {
         let Some(sequence) = (match expression {
             Expression::SequenceItemAt { sequence, .. } => Some(sequence),
             Expression::SequenceExists { sequence, .. } if with_exists => Some(sequence),
-            Expression::SequenceAggregate { sequence, .. }
-                if self == Self::BasicScalarProducersWithExistsAndAggregate =>
+            Expression::SequenceAggregate {
+                function, sequence, ..
+            } if self == Self::BasicScalarProducersWithExistsAndAggregate
+                && !matches!(
+                    function,
+                    crate::AggregateFunction::LastPresentText
+                        | crate::AggregateFunction::LastDistinctText
+                ) =>
             {
                 Some(sequence)
             }
@@ -549,6 +555,37 @@ impl SequenceItemAtPolicy {
                         crate::GeneratedSequence::OwnedRecursiveCollect { .. }
                     )
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod ordered_text_admission_tests {
+    use super::*;
+
+    #[test]
+    fn existing_owned_aggregate_profile_does_not_admit_new_text_selectors() {
+        for function in [
+            crate::AggregateFunction::Sum,
+            crate::AggregateFunction::LastPresentText,
+            crate::AggregateFunction::LastDistinctText,
+        ] {
+            let expression = Expression::SequenceAggregate {
+                function,
+                sequence: crate::GeneratedSequence::Tokenize {
+                    input: 1,
+                    delimiter: 2,
+                    item: 3,
+                },
+                predicate: None,
+                expression: Some(3),
+                arg: None,
+            };
+            assert_eq!(
+                SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate
+                    .permits(&expression),
+                function == crate::AggregateFunction::Sum
+            );
         }
     }
 }
