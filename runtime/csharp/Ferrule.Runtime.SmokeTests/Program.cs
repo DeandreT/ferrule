@@ -44,6 +44,7 @@ internal static partial class Program
             ("typed resolver errors", TypedResolverErrors),
             ("null and XML nil", NullAndXmlNil),
             ("double domain", DoubleDomain),
+            ("invocation counter state", InvocationCounters),
             ("standalone decimal lexical domain", Decimal96Domain),
             ("standalone decimal arithmetic", Decimal96Arithmetic),
             ("standalone binary64 decimal conversion", Decimal96FloatConversion),
