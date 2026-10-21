@@ -273,6 +273,7 @@ internal static partial class Program
             ("recursive generated sequence exact owned roots", RecursiveCollectOwnedEndpoints),
             ("recursive filter exact owned frames", RecursiveFilterOwnedEndpoints),
             ("recursive filter owned roots and errors", RecursiveFilterOwnedRootsAndErrors),
+            ("owned dynamic source fields exact owner and frame", OwnedDynamicFieldEndpoints),
             ("owned runtime exact namespaces", OwnedRuntimeNamed),
             ("owned runtime strict fields and walking", OwnedRuntimeFieldAndWalk),
             ("owned runtime positions and immutable copies", OwnedRuntimePositionsAndCopies),

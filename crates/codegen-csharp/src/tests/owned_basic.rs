@@ -854,33 +854,14 @@ fn private_ordinary_context_scalar_call_if_parameter_and_construction_seams() {
         children: vec![],
     };
     p.target = target_schema(&p.root, "Output");
-    let refused = render_basic_owned_mapping(&p);
-    eprintln!("518 owned scalar construction complete Program={p:#?} Result={refused:#?}");
-    let Err(EmitError::ProgramValidation(ProgramValidationError::OwnedSource { diagnostic })) =
-        refused
-    else {
-        panic!("complete owned scalar construction refusal captured");
-    };
-    let route = ::mapping::SourceScopeLocation::root(::mapping::SourceScopeTarget::Primary);
-    assert_eq!(
-        *diagnostic,
-        codegen::OwnedSourceDiagnostic::Capability {
-            location: codegen::OwnedSourceDiagnosticLocation::Expression {
-                namespace: codegen::OwnedSourceNamespace::Main,
-                node: 1,
-                scope: Some(route.clone()),
-            },
-            request: Some(codegen::OwnedSourceDiagnosticRequest::Field {
-                owner: codegen::OwnedSourceDiagnosticOwner::Primary,
-                path: path(&["Value"]),
-                frame: None,
-            }),
-            reason: codegen::OwnedSourceCapabilityReason::SpecialConstruction,
-            origin: codegen::OwnedSourceCapabilityOrigin::Scope { scope: route },
-        }
+    // Owned scalar construction is common Basic and reads the exact owner.
+    let owned = retain_host(
+        "550-owned-scalar-construction",
+        &p,
+        r#"var a=Reach("owned.scalar.target",()=>ExecuteOwnedBasic(Input,Declared,Limits));ExpectTree(a,"\"P.root\"");"#,
     );
-    // This is the ordinary scalar construction control in the paired context.
-    // Owned scalar construction stays explicitly closed by shared validation.
+    assert!(owned.contains("FerruleOwnedSourceOwner.Primary, new string[] { \"Value\" }, null"));
+    // The ordinary scalar construction control in the same paired context.
     p.expressions[0].expression = Expression::SourceField {
         path: path(&["Value"]),
         frame: None,
