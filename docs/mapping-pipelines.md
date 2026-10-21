@@ -8,8 +8,8 @@ CSV, fixed-width text, configured FlexText, JSON, Protocol Buffers, XBRL
 without presentation metadata, or a new XLSX workbook:
 
 ```sh
-cargo +nightly run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
-cargo +nightly run -p cli -- run-pipeline --pipeline flow.json \
+cargo run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
+cargo run -p cli -- run-pipeline --pipeline flow.json \
   --input source source.xml --output mfd-stage-2 final.xml
 ```
 
@@ -127,7 +127,7 @@ Save the pipeline envelope as JSON and provide every host input and published
 output explicitly:
 
 ```sh
-cargo +nightly run -p cli -- run-pipeline \
+cargo run -p cli -- run-pipeline \
   --pipeline flow.json \
   --input orders ./orders.json \
   --input taxes ./taxes.json \

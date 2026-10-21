@@ -47,7 +47,7 @@
         </figure>
 
         <h2>C#</h2>
-        <pre><code>cargo +nightly run -p cli -- generate \
+        <pre><code>cargo run -p cli -- generate \
   --project project.json \
   --language csharp \
   --out generated-csharp</code></pre>
@@ -59,7 +59,7 @@
         </p>
 
         <h2>Rust</h2>
-        <pre><code>cargo +nightly run -p cli -- generate \
+        <pre><code>cargo run -p cli -- generate \
   --project project.json \
   --language rust \
   --out generated-rust \
@@ -329,18 +329,18 @@
 
         <h3>Generate and run Rust only</h3>
         <pre><code>find examples/codegen/generated/rust -depth -delete 2&gt;/dev/null || true
-cargo +nightly run -p cli -- generate \
+cargo run -p cli -- generate \
   --project examples/codegen/project.json \
   --language rust \
   --out examples/codegen/generated/rust \
   --rust-runtime-path crates/codegen-runtime
 
-cargo +nightly run \
+cargo run \
   --manifest-path examples/codegen/rust/Cargo.toml</code></pre>
 
         <h3>Generate and run C# only</h3>
         <pre><code>find examples/codegen/generated/csharp -depth -delete 2&gt;/dev/null || true
-cargo +nightly run -p cli -- generate \
+cargo run -p cli -- generate \
   --project examples/codegen/project.json \
   --language csharp \
   --out examples/codegen/generated/csharp

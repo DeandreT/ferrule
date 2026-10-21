@@ -45,7 +45,7 @@ GC/allocator overrides, or production instrumentation is used.
 
 ## Reproduce
 
-Use a reviewed Linux checkout, Python 3, the repository Rust nightly and cached
+Use a reviewed Linux checkout, Python 3, the repository's pinned Rust toolchain and cached
 Cargo dependencies, .NET SDK 10/reference packs, and sufficient headroom. One
 study owns its dedicated generated-Rust prerequisite build lane. Other agents
 must use separate lanes or coordinate its lease. The runner holds an advisory
@@ -66,10 +66,10 @@ mkdir -p "$TOOLS/analyzer" "$HOST_TARGET"
 cd "$REPO"
 export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
-cargo +nightly build --offline -j2 -p codegen-csharp \
+cargo build --offline -j2 -p codegen-csharp \
   --example json5_allocation_fixture --message-format=json \
   > "$TOOLS/emitter-build.jsonl" 2> "$TOOLS/emitter-build.stderr"
-cargo +nightly test --offline -j2 -p cli --features codegen-tests \
+cargo test --offline -j2 -p cli --features codegen-tests \
   --test code_generation --no-run --message-format=json \
   > "$TOOLS/small-build.jsonl" 2> "$TOOLS/small-build.stderr"
 cp examples/performance/json5-allocations/{Analyzer.csproj,Program.cs,packages.lock.json} \
