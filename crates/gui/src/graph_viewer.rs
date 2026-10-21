@@ -1790,13 +1790,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             }
             CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => (None, None),
         };
-        if let Some(width) = endpoint_width {
-            let width = self.endpoint_scroll.width(canvas_node, width);
-            // Account for the nested node/header frame margins. Pin labels are
-            // painted independently so right-to-left rows cannot grow sideways.
-            ui.set_min_width((width - 32.0).max(0.0));
-            ui.set_max_width((width - 32.0).max(0.0));
-        }
+        // Account for the nested node/header frame margins. Pin labels are
+        // painted independently so right-to-left rows cannot grow sideways.
+        let endpoint_content_width = endpoint_width
+            .map(|width| (self.endpoint_scroll.width(canvas_node, width) - 32.0).max(0.0));
         let function_call = Self::mapping_id(canvas_node)
             .and_then(|id| self.graph.nodes.get(&id))
             .and_then(|node| match node {
@@ -1899,17 +1896,40 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 response
             })
             .inner
-        } else if endpoint_width.is_some() {
+        } else if let Some(width) = endpoint_content_width {
             let total = match canvas_node {
                 CanvasNode::SourceBlock(block) => self.source_blocks[block].leaves.len(),
                 CanvasNode::TargetBlock(block) => self.target_blocks[block].leaves.len(),
                 CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => 0,
             };
-            ui.vertical(|ui| {
-                let response = show_title(ui);
-                graph_endpoint_view::show_filter(ui, canvas_node, total, self.endpoint_scroll);
-                response
-            })
+            // egui-snarl has already placed its collapse button and drag space
+            // on this row. Only the title row is indented past them; the
+            // filter below keeps the full header width. Bounding a fresh
+            // column also matters because set_max_width on the row itself
+            // would move its cursor back over the collapse button.
+            let left = ui.min_rect().left();
+            let indent = ui.cursor().min.x - left;
+            let column = egui::Rect::from_min_max(
+                egui::pos2(left, ui.cursor().min.y),
+                egui::pos2(left + indent + width, ui.max_rect().bottom()),
+            );
+            ui.scope_builder(
+                egui::UiBuilder::new()
+                    .max_rect(column)
+                    .layout(egui::Layout::top_down(egui::Align::Min)),
+                |ui| {
+                    ui.set_min_width(column.width());
+                    ui.set_max_width(column.width());
+                    let response = ui
+                        .horizontal(|ui| {
+                            ui.add_space(indent);
+                            show_title(ui)
+                        })
+                        .inner;
+                    graph_endpoint_view::show_filter(ui, canvas_node, total, self.endpoint_scroll);
+                    response
+                },
+            )
             .inner
         } else {
             show_title(ui)
