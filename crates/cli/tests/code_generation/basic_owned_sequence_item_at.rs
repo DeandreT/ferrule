@@ -1385,3 +1385,16 @@ fn qualify_basic_owned_itemat473_native_and_public_consumers() -> TestResult<()>
     }
     Ok(())
 }
+
+/// The models and the closed Projects, for the owned capability preset record.
+pub(super) fn capability_corpus() -> TestResult<super::owned_capability_presets::Corpus> {
+    use super::owned_capability_presets as presets;
+    let (_, models, profiles) = corpus()?;
+    let mut corpus = presets::projects(profiles.into_iter().zip(models));
+    corpus.extend(presets::projects(
+        closed::projects()
+            .into_iter()
+            .map(|(id, project, _)| (format!("closed/{id}"), project)),
+    ));
+    Ok(corpus)
+}
