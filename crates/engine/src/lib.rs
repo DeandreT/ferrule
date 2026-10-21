@@ -26,6 +26,7 @@ mod iteration_output;
 mod join;
 mod owned_aggregate;
 mod owned_context;
+mod owned_join_tuple;
 mod owned_search;
 #[cfg(test)]
 mod owned_source_context;
@@ -1084,6 +1085,9 @@ mod owned_adjacency_tree_tests;
 #[cfg(test)]
 #[path = "tests/owned_join.rs"]
 mod owned_join_tests;
+#[cfg(test)]
+#[path = "tests/owned_join_tuples.rs"]
+mod owned_join_tuple_tests;
 #[cfg(test)]
 #[path = "tests/owned_path_hierarchy.rs"]
 mod owned_path_hierarchy_tests;
