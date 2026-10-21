@@ -158,10 +158,7 @@ fn with_state(
         projects_whole_group: false,
         join: None,
     };
-    let mut scopes = ScopeBuilder {
-        root: Scope::default(),
-        anchors: BTreeMap::new(),
-    };
+    let mut scopes = ScopeBuilder::new(BTreeMap::new());
     let mut declared = DeclaredBranches::default();
     let mut skipped = Vec::new();
     let mut claimed = BTreeSet::new();
@@ -698,12 +695,19 @@ fn sparse_child_late_lowering_failure_keeps_full_state_then_ordinary_sibling() {
             let sibling_node = builder
                 .binding_node_at_anchor(11, &sibling_field, &path(&["First"]))
                 .unwrap();
-            scopes.add_binding(TargetLeaf::from_path(&sibling_field).unwrap(), sibling_node);
+            scopes.add_binding(
+                TargetLeaf::from_path(&sibling_field).unwrap(),
+                sibling_node,
+                BindingOccurrence::Expression,
+            );
             let sibling_node = control_graph
                 .binding_node_at_anchor(11, &sibling_field, &path(&["First"]))
                 .unwrap();
-            control_scopes
-                .add_binding(TargetLeaf::from_path(&sibling_field).unwrap(), sibling_node);
+            control_scopes.add_binding(
+                TargetLeaf::from_path(&sibling_field).unwrap(),
+                sibling_node,
+                BindingOccurrence::Expression,
+            );
             assert!(actual_skipped.is_empty());
             assert_eq!(actual_skipped, expected_skipped);
             assert!(

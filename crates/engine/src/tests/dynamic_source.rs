@@ -189,6 +189,101 @@ fn dynamic_sources_require_a_host_loader() {
     );
 }
 
+/// Admits only `first.xml`, as a policy-aware host loader would after
+/// resolving and checking the location.
+struct PolicyAwareLoader;
+
+impl DynamicSourceLoader for PolicyAwareLoader {
+    fn load(&self, source: &str, path: &str) -> Result<Arc<Instance>, String> {
+        FixtureLoader.load(source, path)
+    }
+
+    fn load_restricted(
+        &self,
+        source: &str,
+        path: &str,
+        _policy: &crate::RestrictedPolicy,
+    ) -> Result<Arc<Instance>, crate::DynamicSourceLoadError> {
+        if path != "first.xml" {
+            return Err(crate::DynamicSourceLoadError::Refused(
+                crate::PolicyRefusal::HttpOriginDenied {
+                    origin: path.into(),
+                },
+            ));
+        }
+        self.load(source, path)
+            .map_err(crate::DynamicSourceLoadError::Failed)
+    }
+}
+
+#[test]
+fn restricted_dynamic_sources_require_a_policy_aware_loader() {
+    let project = dynamic_project();
+    let files = |paths: &[Option<&str>]| {
+        Instance::Group(
+            (vec![(
+                "File".into(),
+                Instance::Repeated(
+                    paths
+                        .iter()
+                        .map(|path| {
+                            Instance::Scalar(
+                                path.map_or(Value::Null, |path| Value::String(path.into())),
+                            )
+                        })
+                        .collect(),
+                ),
+            )])
+            .into(),
+        )
+    };
+    let policy = crate::ExecutionPolicy::Restricted(crate::RestrictedPolicy::new(
+        crate::ExecutionBudgets::new(1_000, 64, 0),
+    ));
+    let run = |loader: &dyn DynamicSourceLoader, source: &Instance| {
+        run_with_context(
+            &project,
+            source,
+            &ExecutionContext::new(Path::new("mapping.ferrule.json"))
+                .with_dynamic_source_loader(loader)
+                .with_policy(&policy),
+        )
+    };
+
+    let first = files(&[Some("first.xml")]);
+    assert_eq!(
+        run(&FixtureLoader, &first),
+        Err(EngineError::DynamicSourceRefused {
+            source_name: "document".into(),
+            refusal: crate::PolicyRefusal::UnsupportedCapability {
+                capability: crate::RestrictedCapability::UnconfinedDynamicSourceLoader,
+            },
+        })
+    );
+    // A Null path acquires nothing, so even an unaware loader is never asked.
+    assert!(run(&FixtureLoader, &files(&[None])).is_ok());
+
+    let trusted = run_with_context(
+        &project,
+        &first,
+        &ExecutionContext::new(Path::new("mapping.ferrule.json"))
+            .with_dynamic_source_loader(&FixtureLoader),
+    );
+    assert_eq!(run(&PolicyAwareLoader, &first), trusted);
+    assert_eq!(
+        run(
+            &PolicyAwareLoader,
+            &files(&[Some("first.xml"), Some("second.xml")])
+        ),
+        Err(EngineError::DynamicSourceRefused {
+            source_name: "document".into(),
+            refusal: crate::PolicyRefusal::HttpOriginDenied {
+                origin: "second.xml".into(),
+            },
+        })
+    );
+}
+
 fn owned_dynamic_project() -> Project {
     use mapping::{
         AggregateOp, Binding, FailureIteration, FailureRule, FailureSelection, NamedTarget,

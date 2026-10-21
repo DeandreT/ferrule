@@ -674,8 +674,9 @@ endpoint optional in the named-input catalogue.
 Earlier profiles, including the path-hierarchy, adjacency-tree, IntoBlocks,
 recursive-collect, SequenceExists and recursive-filter companions, refuse
 owned search
-with `AggregateLookup`, and owned
-aggregates, joins and legacy Lookup or CollectionFind stay closed. The
+with `AggregateLookup`, and joins and legacy Lookup or CollectionFind stay
+closed. Owned aggregates stay closed in this profile and open in its explicit
+aggregate companion below. The
 [owned search contract](design/owned-lookup-find.md) defines the wire form,
 selection rules and qualification.
 
@@ -753,6 +754,35 @@ other specialized contexts keep their typed refusals. The legacy
 and continue to use the ordinary emitters. See
 [the ownership design](design/source-ownership.md#owned-xml-element-serialization)
 and [the corpus](../conformance/basic-owned-xml-serialize/README.md).
+
+## Explicit owned collection aggregates
+
+Use `codegen::lower_with_basic_owned_collection_aggregates`, then
+`codegen_rust::emit_with_basic_owned_collection_aggregates(&program, &options)`
+or `codegen_csharp::emit_with_basic_owned_collection_aggregates(&program)`.
+Direct Program hosts use
+`validate_program_with_basic_owned_collection_aggregates` and
+`validate_basic_owned_collection_aggregates_emission`; named-input discovery uses
+`legacy_named_input_admission_plan_with_basic_owned_collection_aggregates`.
+
+The profile composes the complete owned search profile with `owned_aggregate`
+expressions. Each qualifies one collection of exactly its declared Primary or
+named endpoint once, anchored by the latest active frame of that owner, so a
+grouped or block scope reduces only its members; another endpoint never
+supplies items. A value path is an owned read of each item and a value
+expression runs in each item's context in source order; Count never reads a
+value path. The optional `join` separator or `item_at` index then runs once in
+the parent context. All seven reducers keep their legacy empty, null, numeric
+and typed overflow/non-finite behavior, and owned aggregates keep their
+endpoint optional in the named-input catalogue.
+
+Every other profile, including the owned search companion, the dynamic-field and
+XML-serialization companions built beside it and the generated-sequence
+aggregate companion, refuses owned aggregates with `AggregateLookup`; owned
+dynamic source fields and XML serializers, joins, the legacy aggregate, Lookup
+and CollectionFind, generated-item contexts and SequenceExists stay closed. The
+[owned aggregate contract](design/owned-collection-aggregates.md) defines the
+wire form, evaluation order and qualification.
 
 ## C#
 
