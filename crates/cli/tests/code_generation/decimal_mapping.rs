@@ -66,12 +66,111 @@ fn project() -> Project {
 
 #[test]
 fn complete_decimal_documents_match_interpreter_and_generated_backends() -> TestResult<()> {
-    let project = project();
+    verify_documents(
+        project(),
+        include_str!("fixtures/decimal_mapping_cases.json"),
+        "decimal-documents",
+    )
+}
+
+#[test]
+fn decimal_sequence_and_join_projection_failures_keep_source_order() -> TestResult<()> {
     let cases: serde_json::Value =
-        serde_json::from_str(include_str!("fixtures/decimal_mapping_cases.json"))?;
-    for case in cases.as_array().unwrap() {
+        serde_json::from_str(include_str!("fixtures/decimal_projection_cases.json"))?;
+    let mut sequence = project();
+    sequence.source = SchemaNode::group("Source", vec![string("Numbers")]);
+    sequence.graph.nodes.insert(
+        1,
+        Node::SourceField {
+            path: vec![],
+            frame: None,
+        },
+    );
+    sequence.graph.nodes.insert(
+        5,
+        Node::SourceField {
+            path: vec!["Numbers".into()],
+            frame: None,
+        },
+    );
+    sequence.graph.nodes.insert(
+        6,
+        Node::Const {
+            value: Value::String("|".into()),
+        },
+    );
+    sequence.graph.nodes.insert(
+        3,
+        Node::SequenceAggregate {
+            function: AggregateOp::DecimalSum,
+            sequence: mapping::SequenceExpr::Tokenize {
+                input: 5,
+                delimiter: 6,
+                item: 1,
+            },
+            predicate: None,
+            expression: Some(2),
+            arg: None,
+        },
+    );
+    verify_documents(sequence, &cases["sequence"].to_string(), "decimal-sequence")?;
+
+    let mut joined = project();
+    let mut amount = string("Amount");
+    amount.nullable = true;
+    joined.source = SchemaNode::group(
+        "Source",
+        vec![
+            string("Key"),
+            SchemaNode::group("Rows", vec![string("Key"), amount]).repeating(),
+        ],
+    );
+    let join = mapping::JoinId::new(7);
+    joined.graph.nodes.insert(
+        1,
+        Node::JoinField {
+            join,
+            collection: vec!["Rows".into()],
+            path: vec!["Amount".into()],
+        },
+    );
+    joined.graph.nodes.insert(
+        3,
+        Node::JoinAggregate {
+            function: AggregateOp::DecimalSum,
+            join,
+            plan: mapping::JoinPlan::new(
+                mapping::JoinSource::new(vec!["Rows".into()]),
+                mapping::JoinSource::singleton(vec![]),
+                mapping::JoinConditions::new(mapping::JoinKey::new(
+                    vec!["Rows".into()],
+                    vec!["Key".into()],
+                    vec!["Key".into()],
+                )),
+            )?,
+            expression: Some(2),
+            arg: None,
+        },
+    );
+    verify_documents(joined, &cases["join"].to_string(), "decimal-join")
+}
+
+fn verify_documents(project: Project, cases_json: &str, label: &str) -> TestResult<()> {
+    let directory = TempDir::new(label)?;
+    let cases: serde_json::Value = serde_json::from_str(cases_json)?;
+    for (index, case) in cases.as_array().unwrap().iter().enumerate() {
         let input = format_json::from_str(&case["input"].to_string(), &project.source)?;
         let result = engine::run(&project, &input);
+        let observation = match &result {
+            Ok(value) => {
+                serde_json::json!({"id":case["id"], "output":format_json::to_value(&project.target, value)?})
+            }
+            Err(error) => serde_json::json!({"id":case["id"], "error":format!("{error:?}")}),
+        };
+        std::fs::write(
+            directory.0.join(format!("native-{index:02}.json")),
+            serde_json::to_vec_pretty(&observation)?,
+        )?;
         if let Some(kind) = case.get("error").and_then(serde_json::Value::as_str) {
             match (kind, result) {
                 (
@@ -93,7 +192,6 @@ fn complete_decimal_documents_match_interpreter_and_generated_backends() -> Test
         }
     }
 
-    let directory = TempDir::new("decimal-documents")?;
     let path = directory.0.join("mapping.json");
     std::fs::write(&path, mapping::project_file::encode_pretty(&project)?)?;
     let rust = directory.0.join("rust");
@@ -107,10 +205,7 @@ fn complete_decimal_documents_match_interpreter_and_generated_backends() -> Test
     let csharp = directory.0.join("csharp");
     generate_project(&path, &csharp, GenerateTarget::CSharp)?;
     for output in [&rust, &csharp] {
-        std::fs::write(
-            output.join("cases.json"),
-            include_str!("fixtures/decimal_mapping_cases.json"),
-        )?;
+        std::fs::write(output.join("cases.json"), cases_json)?;
         std::fs::write(
             output.join("source-schema.json"),
             serde_json::to_string(&project.source)?,
@@ -140,6 +235,8 @@ fn complete_decimal_documents_match_interpreter_and_generated_backends() -> Test
         .env("CARGO_BUILD_BUILD_DIR", directory.0.join("cargo-target"))
         .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
         .isolated_output()?;
+    std::fs::write(directory.0.join("rust.stdout.txt"), &result.stdout)?;
+    std::fs::write(directory.0.join("rust.stderr.txt"), &result.stderr)?;
     assert!(
         result.status.success(),
         "Rust decimal documents: {}\n{}",
@@ -166,6 +263,8 @@ fn complete_decimal_documents_match_interpreter_and_generated_backends() -> Test
         ])
         .current_dir(&csharp)
         .isolated_output()?;
+    std::fs::write(directory.0.join("csharp.stdout.txt"), &result.stdout)?;
+    std::fs::write(directory.0.join("csharp.stderr.txt"), &result.stderr)?;
     assert!(
         result.status.success(),
         "C# decimal documents: {}\n{}",

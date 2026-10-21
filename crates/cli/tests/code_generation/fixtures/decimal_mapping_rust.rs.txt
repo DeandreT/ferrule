@@ -8,14 +8,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let result = execute(&source);
         if let Some(kind) = case.get("error").and_then(serde_json::Value::as_str) {
             match (kind, result) {
-                ("conversion", Err(RuntimeError::Function(FunctionError::DecimalConversion { .. })))
-                | ("sum", Err(RuntimeError::AggregateDecimal { .. })) => {}
+                ("conversion", Err(error @ RuntimeError::Function(FunctionError::DecimalConversion { .. }))) => println!("OBSERVATION {}", serde_json::json!({"id":case["id"],"error":"conversion","detail":format!("{error:?}")})),
+                ("sum", Err(error @ RuntimeError::AggregateDecimal { .. })) => println!("OBSERVATION {}", serde_json::json!({"id":case["id"],"error":"sum","detail":format!("{error:?}")})),
                 (_, actual) => panic!("{}: unexpected {actual:?}", case["id"]),
             }
         } else {
             let text = serialize_json_compact(include_str!("../target-schema.json"), &result?)?;
             let document: serde_json::Value = serde_json::from_str(&text)?;
             assert_eq!(document, case["expected"], "{}", case["id"]);
+            println!("OBSERVATION {}", serde_json::json!({"id":case["id"],"output":document}));
         }
         println!("PASS {}", case["id"]);
     }
