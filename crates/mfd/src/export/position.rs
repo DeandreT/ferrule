@@ -50,7 +50,8 @@ fn graph_node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::OwnedAggregate(_)
         | Node::OwnedCollectionFind(_)
         | Node::OwnedJoinField(_)
-        | Node::OwnedJoinSourcePosition(_) => node.dependencies(),
+        | Node::OwnedJoinSourcePosition(_)
+        | Node::OwnedJoinAggregate(_) => node.dependencies(),
         Node::DynamicSourceField { key, .. } => vec![*key],
         Node::OwnedDynamicSourceField(field) => vec![field.key],
         Node::XmlMixedContent { replacements, .. } => replacements

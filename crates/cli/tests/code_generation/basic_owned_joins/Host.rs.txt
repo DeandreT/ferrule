@@ -1,5 +1,5 @@
-use codegen_runtime::{BasicNamedSourceInput, ExecutionContext, Instance, OwnedSourceError,
-    OwnedSourceLimits, RuntimeError, TargetSelection};
+use codegen_runtime::{AggregateFunction, BasicNamedSourceInput, ExecutionContext, Instance,
+    OwnedSourceError, OwnedSourceLimits, RuntimeError, TargetSelection};
 use serde_json::{Value as Json, json};
 use std::path::Path;
 #[allow(dead_code)]
@@ -14,10 +14,26 @@ fn expected_error(recipe: &Json) -> RuntimeError {
                 _ => panic!("authored found kind"),
             },
         },
-        // Scope-level walk failures carry no node.
-        "OwnedSource" => RuntimeError::OwnedSource(OwnedSourceError::SourceUnavailable {
-            name: recipe["owner"].as_str().unwrap().into(),
-        }),
+        // Scope-level walk failures carry no node; a joined aggregate's carry its own.
+        "OwnedSource" => {
+            let source = OwnedSourceError::SourceUnavailable {
+                name: recipe["owner"].as_str().unwrap().into(),
+            };
+            match recipe["node"].as_u64() {
+                None => RuntimeError::OwnedSource(source),
+                Some(node) => RuntimeError::OwnedSourceAtNode { node: node as u32, source },
+            }
+        }
+        "AggregateNonFinite" => RuntimeError::AggregateNonFinite {
+            function: match recipe["function"].as_str().unwrap() {
+                "Sum" => AggregateFunction::Sum,
+                _ => panic!("authored aggregate function"),
+            },
+        },
+        "MappingException" => RuntimeError::MappingException {
+            node: recipe["node"].as_u64().unwrap() as u32,
+            message: recipe["message"].as_str().map(str::to_owned),
+        },
         _ => panic!("authored error recipe"),
     }
 }

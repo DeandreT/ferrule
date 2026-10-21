@@ -646,8 +646,8 @@ pub fn emit_with_basic_owned_collection_aggregates(
     .map_err(EmitError::from)
 }
 
-/// Emit owned-search-profile targets with owned inner joins and their tuple
-/// reads. Older emitters keep refusing owned joins; joined aggregates stay closed.
+/// Emit owned-search-profile targets with owned inner joins, their tuple reads
+/// and owned joined aggregates. Older emitters keep refusing both.
 pub fn emit_with_basic_owned_joins(
     program: &Program,
     options: &Options,
@@ -1175,6 +1175,7 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
         Expression::OwnedLookup(lookup) => vec![lookup.matches],
         Expression::OwnedCollectionFind(find) => vec![find.predicate, find.value],
         Expression::OwnedAggregate(aggregate) => aggregate.inputs(),
+        Expression::OwnedJoinAggregate(aggregate) => aggregate.inputs(),
         Expression::CollectionFind {
             predicate, value, ..
         } => vec![*predicate, *value],
@@ -1962,6 +1963,9 @@ fn render_expression_in_context_with_scalar_item_at(
             Expression::OwnedAggregate(aggregate) if basic => {
                 owned_basic::render_owned_aggregate(id, aggregate, call_expression)
             }
+            Expression::OwnedJoinAggregate(aggregate) if basic => {
+                owned_basic::render_owned_join_aggregate(id, aggregate, call_expression)
+            }
             Expression::JoinPosition { join } if basic => format!(
                 "Ok(Value::Int(context.owned_join_position({})? as i64))",
                 join.get()
@@ -1979,7 +1983,8 @@ fn render_expression_in_context_with_scalar_item_at(
             | Expression::OwnedAggregate(_)
             | Expression::OwnedJoinField(_)
             | Expression::OwnedJoinSourcePosition(_)
-            | Expression::OwnedXmlMixedContent(_) => {
+            | Expression::OwnedXmlMixedContent(_)
+            | Expression::OwnedJoinAggregate(_) => {
                 let namespace = owner_function.map_or(codegen::OwnedSourceNamespace::Main, |id| {
                     codegen::OwnedSourceNamespace::Function(FunctionId::new(id))
                 });

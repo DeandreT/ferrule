@@ -76,6 +76,7 @@ fn request(expression: &Expression) -> Option<Request> {
         | Expression::OwnedAggregate(mapping::OwnedAggregate { collection, .. }) => {
             Some(iteration_request(collection))
         }
+        Expression::OwnedJoinAggregate(aggregate) => joins::aggregate_request(aggregate),
         Expression::OwnedXmlSerialize(serializer) => Some(Request::XmlElement {
             owner: (&serializer.source.owner).into(),
             path: serializer.source.path.clone(),
@@ -349,6 +350,9 @@ pub(super) fn validate_structure(program: &Program) -> Result<(), ProgramValidat
                 Expression::OwnedAggregate(aggregate) => {
                     collection_aggregates::value_structure(program, location, aggregate)?
                 }
+                Expression::OwnedJoinAggregate(aggregate) => {
+                    joins::aggregate_structure(program, location, aggregate)?
+                }
                 _ => {}
             }
         }
@@ -370,6 +374,9 @@ pub(super) fn validate_structure(program: &Program) -> Result<(), ProgramValidat
                     }
                     Expression::OwnedAggregate(aggregate) => {
                         collection_aggregates::value_structure(program, location, aggregate)?
+                    }
+                    Expression::OwnedJoinAggregate(aggregate) => {
+                        joins::aggregate_structure(program, location, aggregate)?
                     }
                     _ => {}
                 }
@@ -460,8 +467,9 @@ struct Visit<'a> {
     closed: Option<Closed>,
     scope: Option<SourceScopeLocation>,
     ancestry: Vec<Ancestor<'a>>,
-    /// The admitted owned join scope whose tuple this expression reads.
-    join_tuple: Option<SourceScopeLocation>,
+    /// The origin of the admitted owned join tuple this expression reads: its
+    /// join scope, or the joined aggregate that reduces it.
+    join_tuple: Option<Origin>,
     node: NodeId,
 }
 fn owns(ancestry: &[Ancestor<'_>]) -> bool {
@@ -786,16 +794,14 @@ impl<'a> Admission<'a> {
                 node: visit.node,
                 scope: visit.scope.clone(),
             };
-            if let Some(join_scope) = &visit.join_tuple {
+            if let Some(origin) = &visit.join_tuple {
                 if !joins::admitted_in_tuple(expression) {
                     return Err(failure(
                         location,
                         request(expression),
                         Closed {
                             reason: Capability::Join,
-                            origin: Origin::Scope {
-                                scope: join_scope.clone(),
-                            },
+                            origin: origin.clone(),
                         },
                     ));
                 }
@@ -840,6 +846,10 @@ impl<'a> Admission<'a> {
                     })
             {
                 return Err(failure(location, Some(query), closed));
+            }
+            if let Expression::OwnedJoinAggregate(aggregate) = expression {
+                self.joined_aggregate(&visit, location, aggregate, &mut pending)?;
+                continue;
             }
             if let Some(query) =
                 recursive_collect::closed_consumer(expression, self.sequence_item_at)
@@ -2040,14 +2050,15 @@ fn validate_basic_owned_with_joins(
             // tuple admission checked the closed scalar subset.
             Expression::OwnedJoinField(_)
             | Expression::OwnedJoinSourcePosition(_)
+            | Expression::OwnedJoinAggregate(_)
             | Expression::JoinPosition { .. }
                 if join == JoinPolicy::Owned =>
             {
                 continue;
             }
-            Expression::OwnedJoinField(_) | Expression::OwnedJoinSourcePosition(_) => {
-                Capability::Join
-            }
+            Expression::OwnedJoinField(_)
+            | Expression::OwnedJoinSourcePosition(_)
+            | Expression::OwnedJoinAggregate(_) => Capability::Join,
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
@@ -2294,6 +2305,7 @@ fn basic_expression_nodes(
                 | Expression::OwnedLookup(_)
                 | Expression::OwnedCollectionFind(_)
                 | Expression::OwnedAggregate(_)
+                | Expression::OwnedJoinAggregate(_)
         ) {
             pending.extend(graph_dependencies::of(&node.expression));
         }
