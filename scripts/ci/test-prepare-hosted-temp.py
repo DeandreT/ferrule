@@ -81,6 +81,16 @@ class HostedTemporaryDirectoryTests(unittest.TestCase):
         self.assertNotEqual(first, second)
         self.assertTrue(first.is_dir())
 
+    def test_workflow_runs_setup_only_for_hosted_codegen(self):
+        workflow = Path(__file__).resolve().parents[2] / ".github/workflows/codegen.yml"
+        body = workflow.read_text(encoding="utf8")
+        block = ("      - name: Hosted disk-backed test temp\n"
+                 "        if: runner.environment == 'github-hosted'\n"
+                 "        run: python3 -B scripts/ci/prepare-hosted-temp.py\n")
+        self.assertIn(block, body)
+        self.assertLess(body.index(block), body.index("      - name: OVH build resources"))
+        self.assertIn("python3 -B scripts/ci/test-prepare-hosted-temp.py", body)
+
 
 if __name__ == "__main__":
     unittest.main()
