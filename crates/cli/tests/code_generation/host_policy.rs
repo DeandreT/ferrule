@@ -126,6 +126,25 @@ pub(super) fn preflight_environment(directory: &Path) -> io::Result<()> {
     checked_target(directory).map(|_| ())
 }
 
+/// Run `build` against the host Cargo target chosen for `directory`, holding
+/// this process's shared-target lock when that target is the dedicated one.
+pub(super) fn with_cargo_target<T>(
+    directory: &Path,
+    build: impl FnOnce(&Path) -> T,
+) -> io::Result<T> {
+    let (target, shared) = checked_target(directory)?;
+    let _shared_run = if shared {
+        Some(
+            SHARED_HOST_RUN
+                .lock()
+                .map_err(|_| io::Error::other("shared host run lock poisoned"))?,
+        )
+    } else {
+        None
+    };
+    Ok(build(&target))
+}
+
 fn keep(value: Option<&OsStr>) -> bool {
     value == Some(OsStr::new("1"))
 }
