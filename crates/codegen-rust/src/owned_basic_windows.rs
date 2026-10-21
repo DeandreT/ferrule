@@ -118,6 +118,17 @@ pub(crate) fn render_public_basic_owned_sequence_exists_source(
     )
 }
 
+/// The recursive-collect profile plus recursive filtering of owned selectors.
+pub(crate) fn render_public_basic_owned_recursive_filter_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::RecursiveFilter,
+        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
     Closed,
@@ -142,6 +153,8 @@ pub(super) enum Profile {
     PathHierarchy,
     /// PathHierarchy plus owned adjacency-tree construction.
     AdjacencyTree,
+    /// AdjacencyTree plus recursive filtering of an owned selector.
+    RecursiveFilter,
     GroupIntoBlocks,
 }
 
@@ -156,6 +169,7 @@ impl Profile {
                 | Self::FailureSources
                 | Self::PathHierarchy
                 | Self::AdjacencyTree
+                | Self::RecursiveFilter
                 | Self::GroupIntoBlocks
         )
     }
@@ -163,7 +177,10 @@ impl Profile {
     fn has_failure_sources(self) -> bool {
         matches!(
             self,
-            Self::FailureSources | Self::PathHierarchy | Self::AdjacencyTree
+            Self::FailureSources
+                | Self::PathHierarchy
+                | Self::AdjacencyTree
+                | Self::RecursiveFilter
         )
     }
 
@@ -178,6 +195,7 @@ impl Profile {
                     | Self::FailureSources
                     | Self::PathHierarchy
                     | Self::AdjacencyTree
+                    | Self::RecursiveFilter
                     | Self::GroupIntoBlocks
             ),
             Some(GroupingPlan::StartingWith { .. }) => matches!(
@@ -187,6 +205,7 @@ impl Profile {
                     | Self::FailureSources
                     | Self::PathHierarchy
                     | Self::AdjacencyTree
+                    | Self::RecursiveFilter
                     | Self::GroupIntoBlocks
             ),
             Some(GroupingPlan::EndingWith { .. }) => matches!(
@@ -195,6 +214,7 @@ impl Profile {
                     | Self::FailureSources
                     | Self::PathHierarchy
                     | Self::AdjacencyTree
+                    | Self::RecursiveFilter
                     | Self::GroupIntoBlocks
             ),
             Some(GroupingPlan::IntoBlocks { .. }) => self == Self::GroupIntoBlocks,
@@ -238,6 +258,9 @@ fn render_public_basic_owned_source_policy(
         }
         (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::validate_basic_owned_recursive_collect_emission(program)?;
+        }
+        (Profile::RecursiveFilter, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::validate_basic_owned_recursive_filter_emission(program)?;
         }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_group_starting_with_emission(program)?;
@@ -514,6 +537,9 @@ fn render_public_basic_owned_source_policy(
         }
         (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_collect(program)?
+        }
+        (Profile::RecursiveFilter, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_filter(program)?
         }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(

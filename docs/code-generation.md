@@ -548,6 +548,37 @@ wire, admission and emission. The
 [owned recursive collection contract](design/owned-recursive-collect.md)
 defines the wire form, phases, limits and qualification.
 
+## Explicit owned recursive filter
+
+Use `codegen::lower_with_basic_owned_recursive_filter`, then
+`codegen_rust::emit_with_basic_owned_recursive_filter(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_recursive_filter(&program)`. Direct
+Program hosts use `validate_program_with_basic_owned_recursive_filter` and
+`validate_basic_owned_recursive_filter_emission`; named-input discovery uses
+`legacy_named_input_admission_plan_with_basic_owned_recursive_filter`.
+
+The profile composes the owned recursive-collect profile with recursive-filter
+scopes whose source is an owned selector and whose output is repeated. The
+selector is the filter's only owner: generated Rust calls
+`codegen_runtime::owned_recursive_filter` and generated C# calls
+`FerruleRecursiveFilter.ApplyOwned` with that exact owner and collection. Each
+item's predicate runs in a paired Basic context whose owned frames give every
+group the owner's collection identity and every item that collection plus the
+item field, so owned reads and positions resolve the current item and innermost
+group without falling back; legacy reads keep the legacy filter's stacked
+frames. Traversal order, the 256-group depth limit, copied fields, the rebuilt
+ordered XML stream and typed errors match the legacy filter. Each level also
+adds one legacy frame to the paired view, bounded by the host's legacy-frame
+limit. The owner stays optional in the named-input catalogue.
+
+Legacy recursive filters, scope controls, First and mapped-sequence output,
+generated or dynamic parents and closed predicate operators keep their typed
+refusals, as do every earlier profile (including the recursive-collect,
+adjacency-tree, fixed-block and SequenceExists companions) and the ordinary
+emitters. The
+[owned recursive filter contract](design/owned-recursive-filter.md) defines the
+wire form, frames, limits and qualification.
+
 ## C#
 
 ### Build and test environment

@@ -161,6 +161,15 @@ pub fn validate_program_with_basic_owned_recursive_collect(
     owned_sources::validate_basic_owned_recursive_collect_emission(program)
 }
 
+/// Validates recursive filtering of an explicitly owned scope selector,
+/// composed with the owned recursive-collect profile. The selector is the
+/// filter's only owner; legacy filters and older validators keep their gates.
+pub fn validate_program_with_basic_owned_recursive_filter(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_recursive_filter_emission(program)
+}
+
 /// Validates static Basic scalar-producer SequenceItemAt, explicitly composing
 /// the qualified By, filter/sort/window and primary-row failure permissions.
 pub fn validate_program_with_basic_owned_sequence_item_at(
@@ -1028,9 +1037,13 @@ fn validate_scope(
                 );
             }
             if let Some(iteration) = &scope.iteration {
+                // Owned selectors stay structurally valid; capability gates
+                // decide which profiles may execute them.
                 if !matches!(
                     iteration.input(),
-                    IterationSource::Source(_) | IterationSource::DynamicDocuments(_)
+                    IterationSource::Source(_)
+                        | IterationSource::OwnedSource(_)
+                        | IterationSource::DynamicDocuments(_)
                 ) {
                     return Err(
                         ProgramValidationError::RecursiveFilterConstructionHasInvalidIteration {
@@ -1560,6 +1573,7 @@ fn validate_scope(
 
 pub use owned_sources::validate_basic_owned_adjacency_tree_emission;
 pub use owned_sources::validate_basic_owned_path_hierarchy_emission;
+pub use owned_sources::validate_basic_owned_recursive_filter_emission;
 pub use owned_sources::{
     is_basic_owned_primary_row_failure, validate_basic_owned_emission,
     validate_basic_owned_failure_source_emission, validate_basic_owned_filter_emission,

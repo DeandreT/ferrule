@@ -160,3 +160,7 @@ mod owned_failure_iteration_tests;
 #[cfg(test)]
 #[path = "tests/owned_recursive_collect.rs"]
 mod owned_recursive_collect_tests;
+
+#[cfg(test)]
+#[path = "tests/owned_recursive_filter.rs"]
+mod owned_recursive_filter_tests;
