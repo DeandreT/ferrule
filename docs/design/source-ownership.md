@@ -200,6 +200,24 @@ FilterMap and closed operators in any phase remain closed, and collection and
 joined aggregates keep their own scopes. See
 [the aggregate contract](owned-sequence-aggregate.md).
 
+## Owned XML element serialization
+
+`OwnedXmlSerialize` pairs an `OwnedSourceRef` element path and optional
+endpoint-local frame with the legacy serializer's schema and document options.
+It is a separate `owned_xml_serialize` graph node beside the unchanged legacy
+`xml_serialize`, so older readers reject it. Its strict reader rejects unknown
+fields, malformed owners, legacy paths and empty namespaces, and requires the
+declaration and indent options explicitly.
+
+The element is an owned read in the receiving context with the owned field's
+frame rules; it creates no source frame and evaluates no expression of its own.
+Absence in the selected owner is a typed failure rather than a fallback, and an
+uniterated repetition is never reduced to its first item. The schema-known
+subtree reaches the unchanged writer. Only Basic target contexts admit it;
+failure rules, generated items, functions and other specialized contexts refuse
+it. Interpreter, generated Rust and generated C# share the selection, writer
+bytes and error categories. Native export and GUI authoring remain closed.
+
 ## Existing coordinated issues
 
 Reuse these existing scopes; the capability column concerns **explicit ownership**.

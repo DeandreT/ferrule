@@ -1,0 +1,2086 @@
+{
+ "version": 1,
+ "cases": [
+  {
+   "id": "C01-disjoint-endpoints",
+   "model": "X01-endpoints",
+   "source": {
+    "Header": {
+     "id": "p",
+     "Note": "primary note",
+     "Tag": [
+      "a",
+      "b"
+     ]
+    },
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Note": "audit & <note>",
+       "Tag": [
+        "z"
+       ]
+      },
+      "Orders": {
+       "Order": [
+        {
+         "num": "9",
+         "Label": "go",
+         "Detail": {
+          "code": "A9",
+          "Text": "audit text",
+          "Line": [
+           {
+            "n": "7",
+            "Qty": 70
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "Single": "t"
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Primary": "<Header id=\"p\"><Note>primary note</Note><Tag>a</Tag><Tag>b</Tag></Header>",
+         "Alias": "<Header id=\"h\">\n  <Note>alias</Note>\n</Header>"
+        }
+       ],
+       [
+        "audit",
+        {
+         "Header": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Header xmlns=\"urn:audit\" id=\"a\">\n  <Note>audit &amp; &lt;note&gt;</Note>\n  <Tag>z</Tag>\n</Header>"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Primary": "<Header id=\"p\"><Note>primary note</Note><Tag>a</Tag><Tag>b</Tag></Header>",
+         "Alias": "<Header id=\"h\">\n  <Note>alias</Note>\n</Header>"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "Header": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Header xmlns=\"urn:audit\" id=\"a\">\n  <Note>audit &amp; &lt;note&gt;</Note>\n  <Tag>z</Tag>\n</Header>"
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C02-unsupplied-audit",
+   "model": "X01-endpoints",
+   "source": {
+    "Header": {
+     "id": "p",
+     "Note": "primary note",
+     "Tag": [
+      "a",
+      "b"
+     ]
+    },
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "SourceUnavailable",
+       "owner": "audit",
+       "node": 2
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Primary": "<Header id=\"p\"><Note>primary note</Note><Tag>a</Tag><Tag>b</Tag></Header>",
+         "Alias": "<Header id=\"h\">\n  <Note>alias</Note>\n</Header>"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "SourceUnavailable",
+       "owner": "audit",
+       "node": 2
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C03-missing-primary-element",
+   "model": "X01-endpoints",
+   "source": {
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Note": "audit & <note>",
+       "Tag": [
+        "z"
+       ]
+      },
+      "Orders": {
+       "Order": [
+        {
+         "num": "9",
+         "Label": "go",
+         "Detail": {
+          "code": "A9",
+          "Text": "audit text",
+          "Line": [
+           {
+            "n": "7",
+            "Qty": 70
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "Single": "t"
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "MissingElement",
+       "owner": null,
+       "path": [
+        "Header"
+       ],
+       "node": 1
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "MissingElement",
+       "owner": null,
+       "path": [
+        "Header"
+       ],
+       "node": 1
+      }
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "Header": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Header xmlns=\"urn:audit\" id=\"a\">\n  <Note>audit &amp; &lt;note&gt;</Note>\n  <Tag>z</Tag>\n</Header>"
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C04-missing-alias-element",
+   "model": "X01-endpoints",
+   "source": {
+    "Header": {
+     "id": "p",
+     "Note": "primary note",
+     "Tag": [
+      "a",
+      "b"
+     ]
+    },
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Note": "audit & <note>",
+       "Tag": [
+        "z"
+       ]
+      },
+      "Orders": {
+       "Order": [
+        {
+         "num": "9",
+         "Label": "go",
+         "Detail": {
+          "code": "A9",
+          "Text": "audit text",
+          "Line": [
+           {
+            "n": "7",
+            "Qty": 70
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "Single": "t"
+     }
+    ],
+    [
+     "Header",
+     {
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "MissingElement",
+       "owner": "Header",
+       "path": [
+        "Header"
+       ],
+       "node": 3
+      }
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "Header": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Header xmlns=\"urn:audit\" id=\"a\">\n  <Note>audit &amp; &lt;note&gt;</Note>\n  <Tag>z</Tag>\n</Header>"
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C05-empty-and-null-children",
+   "model": "X01-endpoints",
+   "source": {
+    "Header": {},
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": null,
+       "Note": null,
+       "Tag": []
+      }
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "Note": ""
+      }
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Primary": "<Header></Header>",
+         "Alias": "<Header>\n  <Note></Note>\n</Header>"
+        }
+       ],
+       [
+        "audit",
+        {
+         "Header": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Header xmlns=\"urn:audit\">\n</Header>"
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C06-repeated-null-type-failure",
+   "model": "X01-endpoints",
+   "source": {
+    "Header": {
+     "id": "p",
+     "Note": "primary note",
+     "Tag": [
+      "a",
+      "b"
+     ]
+    },
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Tag": [
+        null,
+        "q"
+       ]
+      }
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Primary": "<Header id=\"p\"><Note>primary note</Note><Tag>a</Tag><Tag>b</Tag></Header>",
+         "Alias": "<Header id=\"h\">\n  <Note>alias</Note>\n</Header>"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "XmlSerialization",
+       "node": 2
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C07-scalar-element-type-failure",
+   "model": "X01-endpoints",
+   "source": {
+    "Header": "flat",
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Note": "audit & <note>",
+       "Tag": [
+        "z"
+       ]
+      },
+      "Orders": {
+       "Order": [
+        {
+         "num": "9",
+         "Label": "go",
+         "Detail": {
+          "code": "A9",
+          "Text": "audit text",
+          "Line": [
+           {
+            "n": "7",
+            "Qty": 70
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "Single": "t"
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "XmlSerialization",
+       "node": 1
+      }
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "Header": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Header xmlns=\"urn:audit\" id=\"a\">\n  <Note>audit &amp; &lt;note&gt;</Note>\n  <Tag>z</Tag>\n</Header>"
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C08-group-for-scalar-type-failure",
+   "model": "X01-endpoints",
+   "source": {
+    "Header": {
+     "id": "p",
+     "Note": {
+      "x": "y"
+     },
+     "Tag": [
+      "a",
+      "b"
+     ]
+    },
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Note": "audit & <note>",
+       "Tag": [
+        "z"
+       ]
+      },
+      "Orders": {
+       "Order": [
+        {
+         "num": "9",
+         "Label": "go",
+         "Detail": {
+          "code": "A9",
+          "Text": "audit text",
+          "Line": [
+           {
+            "n": "7",
+            "Qty": 70
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "Single": "t"
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "XmlSerialization",
+       "node": 1
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C09-nested-orders",
+   "model": "X02-nested",
+   "source": {
+    "Header": {
+     "id": "p",
+     "Note": "primary note",
+     "Tag": [
+      "a",
+      "b"
+     ]
+    },
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Note": "audit & <note>",
+       "Tag": [
+        "z"
+       ]
+      },
+      "Orders": {
+       "Order": [
+        {
+         "num": "9",
+         "Label": "go",
+         "Detail": {
+          "code": "A9",
+          "Text": "audit text",
+          "Line": [
+           {
+            "n": "7",
+            "Qty": 70
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "Single": "t"
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Order": [
+          {
+           "Detail": "<Detail code=\"P1\"><Text>first</Text><Line n=\"1\"><Qty>2</Qty></Line><Line n=\"2\"><Qty>3</Qty></Line></Detail>",
+           "Unpinned": "<Detail xmlns=\"urn:detail\" code=\"P1\">\n  <Text>first</Text>\n  <Line n=\"1\">\n    <Qty>2</Qty>\n  </Line>\n  <Line n=\"2\">\n    <Qty>3</Qty>\n  </Line>\n</Detail>",
+           "AuditHeader": "<Header id=\"a\"><Note>audit &amp; &lt;note&gt;</Note><Tag>z</Tag></Header>",
+           "Line": [
+            {
+             "Xml": "<Line n=\"1\"><Qty>2</Qty></Line>",
+             "Detail": "<Detail code=\"P1\"><Text>first</Text><Line n=\"1\"><Qty>2</Qty></Line><Line n=\"2\"><Qty>3</Qty></Line></Detail>"
+            },
+            {
+             "Xml": "<Line n=\"2\"><Qty>3</Qty></Line>",
+             "Detail": "<Detail code=\"P1\"><Text>first</Text><Line n=\"1\"><Qty>2</Qty></Line><Line n=\"2\"><Qty>3</Qty></Line></Detail>"
+            }
+           ]
+          },
+          {
+           "Detail": "<Detail code=\"P2\"><Text>second</Text></Detail>",
+           "Unpinned": "<Detail xmlns=\"urn:detail\" code=\"P2\">\n  <Text>second</Text>\n</Detail>",
+           "AuditHeader": "<Header id=\"a\"><Note>audit &amp; &lt;note&gt;</Note><Tag>z</Tag></Header>",
+           "Line": []
+          }
+         ]
+        }
+       ],
+       [
+        "audit",
+        {
+         "Order": [
+          {
+           "Detail": "<Detail code=\"A9\"><Text>audit text</Text><Line n=\"7\"><Qty>70</Qty></Line></Detail>",
+           "PrimaryHeader": "<Header id=\"p\"><Note>primary note</Note><Tag>a</Tag><Tag>b</Tag></Header>"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Order": [
+          {
+           "Detail": "<Detail code=\"P1\"><Text>first</Text><Line n=\"1\"><Qty>2</Qty></Line><Line n=\"2\"><Qty>3</Qty></Line></Detail>",
+           "Unpinned": "<Detail xmlns=\"urn:detail\" code=\"P1\">\n  <Text>first</Text>\n  <Line n=\"1\">\n    <Qty>2</Qty>\n  </Line>\n  <Line n=\"2\">\n    <Qty>3</Qty>\n  </Line>\n</Detail>",
+           "AuditHeader": "<Header id=\"a\"><Note>audit &amp; &lt;note&gt;</Note><Tag>z</Tag></Header>",
+           "Line": [
+            {
+             "Xml": "<Line n=\"1\"><Qty>2</Qty></Line>",
+             "Detail": "<Detail code=\"P1\"><Text>first</Text><Line n=\"1\"><Qty>2</Qty></Line><Line n=\"2\"><Qty>3</Qty></Line></Detail>"
+            },
+            {
+             "Xml": "<Line n=\"2\"><Qty>3</Qty></Line>",
+             "Detail": "<Detail code=\"P1\"><Text>first</Text><Line n=\"1\"><Qty>2</Qty></Line><Line n=\"2\"><Qty>3</Qty></Line></Detail>"
+            }
+           ]
+          },
+          {
+           "Detail": "<Detail code=\"P2\"><Text>second</Text></Detail>",
+           "Unpinned": "<Detail xmlns=\"urn:detail\" code=\"P2\">\n  <Text>second</Text>\n</Detail>",
+           "AuditHeader": "<Header id=\"a\"><Note>audit &amp; &lt;note&gt;</Note><Tag>z</Tag></Header>",
+           "Line": []
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "Order": [
+          {
+           "Detail": "<Detail code=\"A9\"><Text>audit text</Text><Line n=\"7\"><Qty>70</Qty></Line></Detail>",
+           "PrimaryHeader": "<Header id=\"p\"><Note>primary note</Note><Tag>a</Tag><Tag>b</Tag></Header>"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C10-absent-second-detail",
+   "model": "X02-nested",
+   "source": {
+    "Header": {
+     "id": "p",
+     "Note": "primary note",
+     "Tag": [
+      "a",
+      "b"
+     ]
+    },
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y"
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Note": "audit & <note>",
+       "Tag": [
+        "z"
+       ]
+      },
+      "Orders": {
+       "Order": [
+        {
+         "num": "9",
+         "Label": "go",
+         "Detail": {
+          "code": "A9",
+          "Text": "audit text",
+          "Line": [
+           {
+            "n": "7",
+            "Qty": 70
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "Single": "t"
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "MissingElement",
+       "owner": null,
+       "path": [
+        "Orders",
+        "Order",
+        "Detail"
+       ],
+       "node": 10
+      }
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "Order": [
+          {
+           "Detail": "<Detail code=\"A9\"><Text>audit text</Text><Line n=\"7\"><Qty>70</Qty></Line></Detail>",
+           "PrimaryHeader": "<Header id=\"p\"><Note>primary note</Note><Tag>a</Tag><Tag>b</Tag></Header>"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C11-empty-orders",
+   "model": "X02-nested",
+   "source": {
+    "Header": {
+     "id": "p",
+     "Note": "primary note",
+     "Tag": [
+      "a",
+      "b"
+     ]
+    },
+    "Orders": {
+     "Order": []
+    }
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Note": "audit & <note>",
+       "Tag": [
+        "z"
+       ]
+      },
+      "Orders": {}
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Order": []
+        }
+       ],
+       [
+        "audit",
+        {
+         "Order": []
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C12-unsupplied-nested-audit",
+   "model": "X02-nested",
+   "source": {
+    "Header": {
+     "id": "p",
+     "Note": "primary note",
+     "Tag": [
+      "a",
+      "b"
+     ]
+    },
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "SourceUnavailable",
+       "owner": "audit",
+       "node": 12
+      }
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "SourceUnavailable",
+       "owner": "audit",
+       "node": null
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C13-root-pins",
+   "model": "X03-frames",
+   "source": {
+    "Header": {
+     "id": "p",
+     "Note": "primary note",
+     "Tag": [
+      "a",
+      "b"
+     ]
+    },
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Note": "audit & <note>",
+       "Tag": [
+        "z"
+       ]
+      },
+      "Orders": {
+       "Order": [
+        {
+         "num": "9",
+         "Label": "go",
+         "Detail": {
+          "code": "A9",
+          "Text": "audit text",
+          "Line": [
+           {
+            "n": "7",
+            "Qty": 70
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "Single": "t"
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "InactiveSourceFrame",
+       "owner": null,
+       "collection": [
+        "Orders",
+        "Order"
+       ],
+       "node": 32
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Order": [
+          {
+           "RootHeader": "<Header id=\"p\"><Note>primary note</Note><Tag>a</Tag><Tag>b</Tag></Header>",
+           "AuditHeader": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Header id=\"a\"><Note>audit &amp; &lt;note&gt;</Note><Tag>z</Tag></Header>"
+          },
+          {
+           "RootHeader": "<Header id=\"p\"><Note>primary note</Note><Tag>a</Tag><Tag>b</Tag></Header>",
+           "AuditHeader": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Header id=\"a\"><Note>audit &amp; &lt;note&gt;</Note><Tag>z</Tag></Header>"
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "inactive",
+     "expected": {
+      "Err": {
+       "kind": "InactiveSourceFrame",
+       "owner": null,
+       "collection": [
+        "Orders",
+        "Order"
+       ],
+       "node": 32
+      }
+     }
+    },
+    {
+     "selection": "uniterated",
+     "expected": {
+      "Err": {
+       "kind": "UniteratedRepetition",
+       "path": [
+        "Orders",
+        "Order",
+        "Detail"
+       ],
+       "node": 33
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C14-root-pin-missing",
+   "model": "X03-frames",
+   "source": {
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Note": "audit & <note>",
+       "Tag": [
+        "z"
+       ]
+      },
+      "Orders": {
+       "Order": [
+        {
+         "num": "9",
+         "Label": "go",
+         "Detail": {
+          "code": "A9",
+          "Text": "audit text",
+          "Line": [
+           {
+            "n": "7",
+            "Qty": 70
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "Single": "t"
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "MissingElement",
+       "owner": null,
+       "path": [
+        "Header"
+       ],
+       "node": 30
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C15-grouped-members",
+   "model": "X04-grouped",
+   "source": {
+    "Header": {
+     "id": "p",
+     "Note": "primary note",
+     "Tag": [
+      "a",
+      "b"
+     ]
+    },
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      },
+      {
+       "num": "3",
+       "Label": "x",
+       "Detail": {
+        "code": "P3",
+        "Text": "third",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Note": "audit & <note>",
+       "Tag": [
+        "z"
+       ]
+      },
+      "Orders": {
+       "Order": [
+        {
+         "num": "9",
+         "Label": "go",
+         "Detail": {
+          "code": "A9",
+          "Text": "audit text",
+          "Line": [
+           {
+            "n": "7",
+            "Qty": 70
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "Single": "t"
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Group": [
+          {
+           "First": "<Detail code=\"P1\"><Text>first</Text><Line n=\"1\"><Qty>2</Qty></Line><Line n=\"2\"><Qty>3</Qty></Line></Detail>",
+           "Pinned": "<Detail code=\"P1\"><Text>first</Text><Line n=\"1\"><Qty>2</Qty></Line><Line n=\"2\"><Qty>3</Qty></Line></Detail>",
+           "Member": [
+            {
+             "Detail": "<Detail code=\"P1\"><Text>first</Text><Line n=\"1\"><Qty>2</Qty></Line><Line n=\"2\"><Qty>3</Qty></Line></Detail>"
+            },
+            {
+             "Detail": "<Detail code=\"P3\"><Text>third</Text></Detail>"
+            }
+           ]
+          },
+          {
+           "First": "<Detail code=\"P2\"><Text>second</Text></Detail>",
+           "Pinned": "<Detail code=\"P2\"><Text>second</Text></Detail>",
+           "Member": [
+            {
+             "Detail": "<Detail code=\"P2\"><Text>second</Text></Detail>"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C16-grouped-first-member-absent",
+   "model": "X04-grouped",
+   "source": {
+    "Header": {
+     "id": "p",
+     "Note": "primary note",
+     "Tag": [
+      "a",
+      "b"
+     ]
+    },
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x"
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      },
+      {
+       "num": "3",
+       "Label": "x",
+       "Detail": {
+        "code": "P3",
+        "Text": "third",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Note": "audit & <note>",
+       "Tag": [
+        "z"
+       ]
+      },
+      "Orders": {
+       "Order": [
+        {
+         "num": "9",
+         "Label": "go",
+         "Detail": {
+          "code": "A9",
+          "Text": "audit text",
+          "Line": [
+           {
+            "n": "7",
+            "Qty": 70
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "Single": "t"
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "MissingElement",
+       "owner": null,
+       "path": [
+        "Orders",
+        "Order",
+        "Detail"
+       ],
+       "node": 41
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C17-failure-walk-passes",
+   "model": "X05-failure-walk",
+   "source": {
+    "Header": {
+     "id": "p",
+     "Note": "primary note",
+     "Tag": [
+      "a",
+      "b"
+     ]
+    },
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Note": "audit & <note>",
+       "Tag": [
+        "z"
+       ]
+      },
+      "Orders": {
+       "Order": [
+        {
+         "num": "9",
+         "Label": "go",
+         "Detail": {
+          "code": "A9",
+          "Text": "audit text",
+          "Line": [
+           {
+            "n": "7",
+            "Qty": 70
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "Single": "t"
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Primary": "<Header id=\"p\"><Note>primary note</Note><Tag>a</Tag><Tag>b</Tag></Header>"
+        }
+       ]
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "C18-failure-walk-stops-first",
+   "model": "X05-failure-walk",
+   "source": {
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Note": "audit & <note>",
+       "Tag": [
+        "z"
+       ]
+      },
+      "Orders": {
+       "Order": [
+        {
+         "num": "9",
+         "Label": "go",
+         "Detail": {
+          "code": "A9",
+          "Text": "audit text",
+          "Line": [
+           {
+            "n": "7",
+            "Qty": 70
+           }
+          ]
+         }
+        },
+        {
+         "num": "10",
+         "Label": "stop"
+        }
+       ]
+      },
+      "Single": "t"
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "MappingFailure",
+       "rule": 1,
+       "message": "10"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C19-failure-walk-then-missing",
+   "model": "X05-failure-walk",
+   "source": {
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a",
+       "Note": "audit & <note>",
+       "Tag": [
+        "z"
+       ]
+      },
+      "Orders": {
+       "Order": [
+        {
+         "num": "9",
+         "Label": "go",
+         "Detail": {
+          "code": "A9",
+          "Text": "audit text",
+          "Line": [
+           {
+            "n": "7",
+            "Qty": 70
+           }
+          ]
+         }
+        }
+       ]
+      },
+      "Single": "t"
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "MissingElement",
+       "owner": null,
+       "path": [
+        "Header"
+       ],
+       "node": 1
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

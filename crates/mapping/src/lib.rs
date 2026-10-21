@@ -43,6 +43,7 @@ mod tabular;
 mod wsdl;
 mod xbrl;
 mod xlsx_output;
+mod xml_serialize_owned;
 
 pub use adjacency::AdjacencyTreePlan;
 pub use adjacency_owned::OwnedAdjacencyTreePlan;
@@ -142,6 +143,7 @@ pub use xbrl::{
 pub use xlsx_output::{
     XlsxCellKind, XlsxHierarchicalLayout, XlsxOutputColumn, XlsxOutputRange, XlsxRangeStart,
 };
+pub use xml_serialize_owned::OwnedXmlSerialize;
 
 pub(crate) use model::{is_constructed_scope, is_repeated_output};
 
