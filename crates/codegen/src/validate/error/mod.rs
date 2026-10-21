@@ -368,6 +368,21 @@ pub enum ProgramValidationError {
         collection: Vec<String>,
         path: Vec<String>,
     },
+    /// An owned join read names a collection identity that is not a source of
+    /// its active owned join.
+    InvalidOwnedJoinMember {
+        node: NodeId,
+        join: crate::JoinId,
+        collection: mapping::OwnedSourceRef,
+    },
+    /// An owned join field path is not a nonrepeating scalar below its member;
+    /// a singleton member is read with an empty path.
+    InvalidOwnedJoinFieldPath {
+        node: NodeId,
+        join: crate::JoinId,
+        collection: mapping::OwnedSourceRef,
+        path: Vec<String>,
+    },
     InvalidSourceIteration {
         target_path: Vec<String>,
         source_path: Vec<String>,

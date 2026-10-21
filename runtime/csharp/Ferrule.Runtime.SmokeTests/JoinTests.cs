@@ -129,4 +129,89 @@ internal static partial class Program
         ulong join,
         params string[] collection) =>
         context.ResolveJoinScalar(join, collection, new[] { "label" }).StringValue;
+
+    private static FerruleGroup OwnedJoinDocument(string header, params (long Id, string Code)[] rows) =>
+        Group(
+            Field("Header", Group(Field("code", Scalar(Text(header))))),
+            Field("Rows", Repeated(rows.Select(row => (FerruleInstance)Group(
+                Field("id", Scalar(FerruleValue.FromInt64(row.Id))),
+                Field("code", Scalar(Text(row.Code))))).ToArray())));
+
+    private static readonly FerruleOwnedJoinSource PrimaryJoinRows =
+        new(FerruleOwnedSourceOwner.Primary, new[] { "Rows" });
+    private static readonly FerruleOwnedJoinSource LookupJoinRows =
+        new(FerruleOwnedSourceOwner.Named("Lookup"), new[] { "Rows" });
+    private static readonly FerruleOwnedJoinKey[] JoinById = { new(0, new[] { "id" }, new[] { "id" }) };
+
+    private static string OwnedJoinSummary(FerruleBasicScopeContext tuple) => string.Join(",",
+        tuple.OwnedJoinField(5, FerruleOwnedSourceOwner.Primary, new[] { "Rows" }, new[] { "code" }).StringValue,
+        tuple.OwnedJoinField(5, FerruleOwnedSourceOwner.Named("Lookup"), new[] { "Rows" }, new[] { "code" }).StringValue,
+        tuple.OwnedJoinSourcePosition(5, FerruleOwnedSourceOwner.Primary, new[] { "Rows" }),
+        tuple.OwnedJoinSourcePosition(5, FerruleOwnedSourceOwner.Named("Lookup"), new[] { "Rows" }),
+        tuple.OwnedJoinPosition(5));
+
+    private static void OwnedInnerJoinContexts()
+    {
+        // Same-path sources join by full identity, left-major with duplicates.
+        var primary = OwnedJoinDocument("H", (1, "p1"), (2, "p2"), (2, "p3"), (3, "p4"));
+        var lookup = OwnedJoinDocument("l2", (2, "l1"), (1, "l2"), (2, "l3"), (4, "l4"));
+        var root = BasicRoot(primary, new FerruleDeclaredNamedSourceRoot("Lookup", lookup));
+        var tuples = root.OwnedInnerJoin(5, PrimaryJoinRows, new[] { new FerruleOwnedJoinStage(LookupJoinRows, JoinById) });
+        Equal("p1,l2,1,2,1|p2,l1,2,1,2|p2,l3,2,3,3|p3,l1,3,1,4|p3,l3,3,3,5",
+            string.Join("|", tuples.Select(OwnedJoinSummary)));
+        Equal("p3,l1,3,1,1", OwnedJoinSummary(tuples[3].WithOwnedJoinPosition(5, 1)));
+        Error(FerruleRuntimeError.MissingJoinContext, () => tuples[0].OwnedJoinPosition(6));
+        Error(FerruleRuntimeError.MissingSourceField,
+            () => tuples[0].OwnedJoinField(5, FerruleOwnedSourceOwner.Named("Lookup"), new[] { "Header" }, new[] { "code" }));
+
+        // A singleton third stage keys on the Lookup row code.
+        var header = new FerruleOwnedJoinSource(FerruleOwnedSourceOwner.Named("Lookup"), new[] { "Header", "code" }, singleton: true);
+        var staged = root.OwnedInnerJoin(5, PrimaryJoinRows, new[]
+        {
+            new FerruleOwnedJoinStage(LookupJoinRows, JoinById),
+            new FerruleOwnedJoinStage(header, new[] { new FerruleOwnedJoinKey(1, new[] { "code" }, Array.Empty<string>()) }),
+        });
+        Equal("p1,l2,1,2,1", string.Join("|", staged.Select(OwnedJoinSummary)));
+        Equal(Text("l2"), staged[0].OwnedJoinField(5, header.Owner, header.Collection, Array.Empty<string>()));
+        Equal((nuint)1, staged[0].OwnedJoinSourcePosition(5, header.Owner, header.Collection));
+
+        // Null-like keys and empty sides never match; an unsupplied owner fails typed.
+        var nulls = Group(Field("Rows", Repeated(
+            Group(Field("id", Scalar(FerruleValue.Null)), Field("code", Scalar(Text("p1")))),
+            Group(Field("id", Scalar(FerruleValue.JsonNull)), Field("code", Scalar(Text("p2")))))));
+        var nullLookup = Group(Field("Rows", Repeated(
+            Group(Field("id", Scalar(FerruleValue.Null)), Field("code", Scalar(Text("l1")))))));
+        Equal(0, BasicRoot(nulls, new FerruleDeclaredNamedSourceRoot("Lookup", nullLookup))
+            .OwnedInnerJoin(5, PrimaryJoinRows, new[] { new FerruleOwnedJoinStage(LookupJoinRows, JoinById) }).Count);
+        Equal(0, BasicRoot(primary, new FerruleDeclaredNamedSourceRoot("Lookup", Group(Field("Rows", Repeated()))))
+            .OwnedInnerJoin(5, PrimaryJoinRows, new[] { new FerruleOwnedJoinStage(LookupJoinRows, JoinById) }).Count);
+        var unavailable = Error(FerruleRuntimeError.OwnedSource,
+            () => BasicRoot(primary, new FerruleDeclaredNamedSourceRoot("Lookup", null))
+                .OwnedInnerJoin(5, PrimaryJoinRows, new[] { new FerruleOwnedJoinStage(LookupJoinRows, JoinById) }));
+        Equal(FerruleOwnedSourceErrorKind.SourceUnavailable, unavailable.OwnedSourceFailure!.Error);
+
+        // An active owned row correlates its own source and anchors its lines.
+        FerruleGroup Line(long order, string sku) =>
+            Group(Field("order", Scalar(FerruleValue.FromInt64(order))), Field("sku", Scalar(Text(sku))));
+        var orders = Group(Field("Orders", Repeated(
+            Group(Field("id", Scalar(FerruleValue.FromInt64(7))), Field("Lines", Repeated(Line(7, "a"), Line(9, "b"), Line(7, "b")))),
+            Group(Field("id", Scalar(FerruleValue.FromInt64(9))), Field("Lines", Repeated(Line(9, "a"), Line(9, "c")))))));
+        var order = new FerruleOwnedJoinSource(FerruleOwnedSourceOwner.Primary, new[] { "Orders" });
+        var lines = new FerruleOwnedJoinSource(FerruleOwnedSourceOwner.Primary, new[] { "Orders", "Lines" });
+        var byOrder = new[] { new FerruleOwnedJoinStage(lines, new[] { new FerruleOwnedJoinKey(0, new[] { "id" }, new[] { "order" }) }) };
+        var ordersRoot = BasicRoot(orders);
+        var correlated = string.Join("/", ordersRoot.WalkOwnedSourceCohort(order.Owner, order.Collection).Select(row =>
+            string.Join("|", row.Context.OwnedInnerJoin(5, order, byOrder).Select(tuple => string.Join(",",
+                tuple.OwnedJoinField(5, lines.Owner, lines.Collection, new[] { "sku" }).StringValue,
+                tuple.OwnedJoinSourcePosition(5, order.Owner, order.Collection),
+                tuple.OwnedJoinSourcePosition(5, lines.Owner, lines.Collection))))));
+        Equal("a,1,1|b,1,3/a,2,1|c,2,2", correlated);
+        var flattened = ordersRoot.OwnedInnerJoin(5, lines, new[]
+        {
+            new FerruleOwnedJoinStage(order, new[] { new FerruleOwnedJoinKey(0, new[] { "order" }, new[] { "id" }) }),
+        });
+        Equal("1:1|2:2|3:1|1:2|2:2", string.Join("|", flattened.Select(tuple =>
+            $"{tuple.OwnedJoinSourcePosition(5, lines.Owner, lines.Collection)}:{tuple.OwnedJoinSourcePosition(5, order.Owner, order.Collection)}")));
+        Throws<ArgumentException>(() => new FerruleOwnedJoinStage(lines, Array.Empty<FerruleOwnedJoinKey>()));
+    }
 }

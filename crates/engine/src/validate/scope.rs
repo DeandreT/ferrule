@@ -4,9 +4,10 @@ use ir::{SchemaKind, SchemaNode, XML_TYPE_FIELD};
 use mapping::{IterationOutput, JoinId, Node, Project, Scope, ScopeConstruction, ScopeIteration};
 
 use super::join::{
-    is_root_context, validate_owned_plan as validate_owned_join_plan,
-    validate_plan as validate_join_plan, validate_root_singletons,
-    validate_roots as validate_join_roots, validate_scope_nodes as validate_scope_join_nodes,
+    ActiveJoin, active_legacy_join, active_owned_join, is_root_context,
+    validate_owned_plan as validate_owned_join_plan, validate_plan as validate_join_plan,
+    validate_root_singletons, validate_roots as validate_join_roots,
+    validate_scope_nodes as validate_scope_join_nodes,
 };
 use super::schema::{
     current_source_schema, display_path, follow_schema, owned_source_root, source_path_matches,
@@ -28,7 +29,7 @@ pub(super) fn validate_scope(
     scope: &Scope,
     schemas: ScopeSchemas<'_>,
     path: &mut Vec<String>,
-    active_joins: &[(JoinId, Vec<Vec<String>>)],
+    active_joins: &[ActiveJoin],
     join_owners: &mut BTreeMap<JoinId, String>,
     issues: &mut Vec<ValidationIssue>,
 ) {
@@ -581,12 +582,7 @@ pub(super) fn validate_scope(
                 ),
             ));
         }
-        active_joins.push((
-            join,
-            plan.sources()
-                .map(|source| source.collection().to_vec())
-                .collect(),
-        ));
+        active_joins.push(active_legacy_join(join, plan));
         if scope.has_grouping() {
             issues.push(ValidationIssue::new(
                 &location,
@@ -594,8 +590,8 @@ pub(super) fn validate_scope(
             ));
         }
     }
-    // Owned join identities are validated here but never become active joins:
-    // join fields and execution stay closed for them.
+    // An owned join dominates its own controls, bindings and descendants;
+    // owned join reads bind its members by full identity.
     if let Some((join, plan)) = scope.iteration.owned_join() {
         validate_owned_join_plan(project, join, plan, &location, issues);
         if let Some(first) = join_owners.insert(join, location.clone()) {
@@ -607,6 +603,7 @@ pub(super) fn validate_scope(
                 ),
             ));
         }
+        active_joins.push(active_owned_join(join, plan));
         if scope.has_grouping() {
             issues.push(ValidationIssue::new(
                 &location,

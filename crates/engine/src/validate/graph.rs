@@ -153,6 +153,9 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
                     );
                 }
             }
+            // Membership and the relative path are checked against the active
+            // owned join that dominates each read.
+            Node::OwnedJoinField(_) | Node::OwnedJoinSourcePosition(_) => {}
             Node::SourceRootXmlTypeEquals { .. } | Node::SourceRootField { .. } => {}
             Node::SourceField { .. } if sequence_items.contains(&id) => {}
             Node::SourceField { path, frame } => {
@@ -725,7 +728,9 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
         }
         Node::OwnedLookup(mapping::OwnedLookup { collection, .. })
         | Node::OwnedCollectionFind(mapping::OwnedCollectionFind { collection, .. })
-        | Node::OwnedAggregate(mapping::OwnedAggregate { collection, .. }) => {
+        | Node::OwnedAggregate(mapping::OwnedAggregate { collection, .. })
+        | Node::OwnedJoinField(mapping::OwnedJoinField { collection, .. })
+        | Node::OwnedJoinSourcePosition(mapping::OwnedJoinSourcePosition { collection, .. }) => {
             if let mapping::SourceOwner::Named { name } = &collection.owner
                 && project
                     .extra_sources
@@ -1313,6 +1318,8 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
         | Node::OwnedXmlSerialize(_)
+        | Node::OwnedJoinField(_)
+        | Node::OwnedJoinSourcePosition(_)
         | Node::SourceField { .. }
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }

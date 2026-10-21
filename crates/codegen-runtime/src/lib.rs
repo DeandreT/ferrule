@@ -43,8 +43,8 @@ pub use context::{
     BasicGroupByControls, BasicGroupByMetadata, BasicGroupEndingWithControls,
     BasicGroupIntoBlocksControls, BasicGroupStartingWithControls, BasicNamedSourceDeclaration,
     BasicNamedSourceInput, BasicNamedSourceMode, BasicScopeContext, BasicSourceBridgeError,
-    BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort, PhaseSelection,
-    RetainedSourceCohort,
+    BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort, OwnedJoinKey, OwnedJoinSource,
+    OwnedJoinStage, PhaseSelection, RetainedSourceCohort,
 };
 pub use context::{
     BasicJsonDocumentRef, BasicJsonInputAdmission, BasicJsonParsedInputs,
