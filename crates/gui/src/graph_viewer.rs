@@ -43,6 +43,7 @@ mod graph_sequence_ownership;
 mod node_palette;
 
 use graph_node_ids::NodeIdReservation;
+pub(crate) use graph_node_ids::{PlannedNodeRemoval, removal_journal};
 use graph_references::node_inputs;
 pub(crate) use graph_references::{
     InactiveTargetScope, ProjectGraphReferences, inactive_target_scopes, project_sequence_item_ids,
@@ -2835,7 +2836,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             .add_enabled(references.is_empty(), egui::Button::new("Remove"))
             .on_disabled_hover_text(format!("Used by: {}", references.join(", ")));
         if remove.clicked() {
-            self.remove_graph_node(mapping_id, node, snarl);
+            self.remove_snarl_nodes_from_ui(ui, &[node], snarl);
             ui.close();
         }
     }

@@ -8,7 +8,9 @@
 
 use std::path::{Path, PathBuf};
 
-use editor_ui::{DocumentOrigin, SnapshotHistory};
+#[cfg(test)]
+use editor_ui::HistoryRecord;
+use editor_ui::{DocumentOrigin, EditHistory, RevisionKeyed, RevisionTracker, SemanticRevision};
 use egui_snarl::Snarl;
 #[cfg(test)]
 use egui_snarl::{InPinId, OutPinId};
@@ -27,7 +29,7 @@ use crate::document::DocumentLocation;
 use crate::extra_sources::{ExtraSourceDraft, remove_extra_source};
 use crate::extra_targets::ExtraTargetDraft;
 use crate::graph_viewer::GraphViewer;
-use crate::layout_store::{project_fingerprint, read_layout};
+use crate::layout_store::{fingerprint_of_key, project_fingerprint, read_layout};
 use crate::new_mapping::{NewMappingSetup, SchemaSide, blank_project};
 use crate::path_picker::SourcePathCatalog;
 use crate::schema_tree::{SchemaExplorerState, schema_field_count, show_schema_tree};
@@ -58,6 +60,8 @@ mod extra_source_ui;
 mod extra_target_ui;
 mod failure_rules;
 mod file_run_teardown;
+mod graph_commands;
+mod history;
 pub(crate) use file_run_teardown::{SavedFileRunTeardownPort, SavedFileRunTeardownService};
 mod filter_map_authoring;
 #[path = "../workspace/functions.rs"]
@@ -429,6 +433,8 @@ struct EditorState {
     layout: CanvasLayout,
 }
 
+type EditorHistory = EditHistory<EditorSnapshot, graph_commands::GraphCommandRecord>;
+
 impl PartialEq for EditorSnapshot {
     fn eq(&self, other: &Self) -> bool {
         self.state == other.state
@@ -539,7 +545,11 @@ pub struct FerruleApp {
     pending_save_continuation: Option<SaveContinuation>,
     allow_close: bool,
     observed_editor: EditorSnapshot,
-    history: SnapshotHistory<EditorSnapshot>,
+    history: EditorHistory,
+    /// Revisions of the observed state; the save point is content-addressed.
+    revisions: RevisionTracker,
+    saved_state: Option<EditorState>,
+    fingerprints: RevisionKeyed<SemanticRevision, String>,
     pending_history: Option<PendingHistory>,
 }
 
@@ -602,7 +612,12 @@ impl Default for FerruleApp {
         let main_canvas = CanvasDocumentState::main(&project);
         let mapping_workspace = MappingWorkspace::default();
         let snapshot = editor_snapshot(&project, &main_canvas.snarl, &mapping_workspace);
-        let history = SnapshotHistory::new(snapshot.clone(), DocumentOrigin::Saved);
+        let revisions = RevisionTracker::new(DocumentOrigin::Saved);
+        let mut fingerprints = RevisionKeyed::default();
+        if let Some(fingerprint) = &snapshot.state.layout.project_fingerprint {
+            fingerprints.get_or_compute(revisions.current().semantic(), || fingerprint.clone());
+        }
+        let saved_state = Some(snapshot.state.clone());
         Self {
             project,
             main_canvas,
@@ -706,7 +721,10 @@ impl Default for FerruleApp {
             pending_save_continuation: None,
             allow_close: false,
             observed_editor: snapshot,
-            history,
+            history: EditorHistory::default(),
+            revisions,
+            saved_state,
+            fingerprints,
             pending_history: None,
         }
     }
@@ -728,14 +746,24 @@ fn editor_state(
     snarl: &Snarl<CanvasNode>,
     workspace: &MappingWorkspace,
 ) -> EditorState {
+    let serialized_project = crate::project_state::project_snapshot_key(project);
+    let fingerprint = fingerprint_of_key(&serialized_project);
     EditorState {
-        serialized_project: crate::project_state::project_snapshot_key(project),
-        layout: CanvasLayout::capture(project, snarl, workspace),
+        serialized_project,
+        layout: CanvasLayout::capture_with_fingerprint(fingerprint, snarl, workspace),
     }
 }
 
 impl CanvasLayout {
     fn capture(project: &Project, snarl: &Snarl<CanvasNode>, workspace: &MappingWorkspace) -> Self {
+        Self::capture_with_fingerprint(project_fingerprint(project), snarl, workspace)
+    }
+
+    fn capture_with_fingerprint(
+        fingerprint: String,
+        snarl: &Snarl<CanvasNode>,
+        workspace: &MappingWorkspace,
+    ) -> Self {
         let function_nodes = workspace
             .function_canvases
             .iter()
@@ -776,7 +804,7 @@ impl CanvasLayout {
             .collect::<Vec<_>>();
         Self {
             version: LAYOUT_VERSION,
-            project_fingerprint: Some(project_fingerprint(project)),
+            project_fingerprint: Some(fingerprint),
             nodes: Self::capture_nodes(snarl),
             function_nodes,
             target_nodes,
@@ -821,6 +849,18 @@ impl CanvasLayout {
                 info.pos = pos;
             }
         }
+    }
+
+    /// Equality of the view state alone; the fingerprint follows the project.
+    fn same_view(&self, other: &Self) -> bool {
+        self.version == other.version
+            && self.nodes == other.nodes
+            && self.function_nodes == other.function_nodes
+            && self.target_nodes == other.target_nodes
+            && self.open_functions == other.open_functions
+            && self.open_documents == other.open_documents
+            && self.active_function == other.active_function
+            && self.active_document == other.active_document
     }
 
     fn matches_project(&self, project: &Project) -> bool {
@@ -899,109 +939,6 @@ impl FerruleApp {
         drop(self.pending_file_run.take());
     }
 
-    fn is_dirty(&self) -> bool {
-        let state = editor_state(
-            &self.project,
-            &self.main_canvas.snarl,
-            &self.mapping_workspace,
-        );
-        self.history.is_dirty_by(&state, |snapshot| &snapshot.state)
-    }
-
-    fn mark_clean(&mut self) {
-        self.history.mark_saved(&editor_snapshot(
-            &self.project,
-            &self.main_canvas.snarl,
-            &self.mapping_workspace,
-        ));
-    }
-
-    fn rebase_history(&mut self) {
-        self.clear_diagnostic_navigation();
-        let snapshot = editor_snapshot(
-            &self.project,
-            &self.main_canvas.snarl,
-            &self.mapping_workspace,
-        );
-        let origin = if self.history.is_dirty(&snapshot) {
-            DocumentOrigin::Unsaved
-        } else {
-            DocumentOrigin::Saved
-        };
-        self.history.rebase(snapshot.clone(), origin);
-        self.observed_editor = snapshot;
-        self.pending_history = None;
-    }
-
-    fn commit_pending_history(&mut self) {
-        if let Some(pending) = self.pending_history.take()
-            && pending.before != self.observed_editor
-        {
-            self.history.record(pending.before, "Edit mapping");
-        }
-    }
-
-    /// Observes project and canvas-layout mutations after the frame has rendered. Changes
-    /// close together form one user-level undo transaction instead of one
-    /// entry per keystroke/frame.
-    fn observe_editor_history(
-        &mut self,
-        now: std::time::Instant,
-        coalesce_change: bool,
-    ) -> Option<std::time::Duration> {
-        let current_state = editor_state(
-            &self.project,
-            &self.main_canvas.snarl,
-            &self.mapping_workspace,
-        );
-        if current_state != self.observed_editor.state {
-            let current = EditorSnapshot {
-                project: self.project.clone(),
-                state: current_state,
-            };
-            if coalesce_change {
-                if self.pending_history.as_ref().is_some_and(|pending| {
-                    now.saturating_duration_since(pending.last_change) >= HISTORY_COALESCE_DELAY
-                }) {
-                    self.commit_pending_history();
-                }
-                match &mut self.pending_history {
-                    Some(pending) => pending.last_change = now,
-                    None => {
-                        self.pending_history = Some(PendingHistory {
-                            before: self.observed_editor.clone(),
-                            last_change: now,
-                        });
-                        self.history.clear_redo();
-                    }
-                }
-                self.observed_editor = current;
-            } else {
-                self.commit_pending_history();
-                self.history
-                    .record(self.observed_editor.clone(), "Edit mapping");
-                self.observed_editor = current;
-                return None;
-            }
-        }
-
-        let pending = self.pending_history.as_ref()?;
-        let elapsed = now.saturating_duration_since(pending.last_change);
-        if elapsed >= HISTORY_COALESCE_DELAY {
-            self.commit_pending_history();
-            None
-        } else {
-            Some(HISTORY_COALESCE_DELAY - elapsed)
-        }
-    }
-
-    fn can_undo(&self) -> bool {
-        self.pending_history
-            .as_ref()
-            .is_some_and(|pending| pending.before != self.observed_editor)
-            || self.history.can_undo()
-    }
-
     fn refresh_source_canvases(&mut self, previous_names: &[String]) {
         self.main_canvas.snarl = canvas_build::rebuild_source_snarl(
             &self.project,
@@ -1019,45 +956,6 @@ impl FerruleApp {
             );
             canvas.reset_endpoint_catalog_view();
         }
-    }
-
-    fn restore_history_snapshot(&mut self, snapshot: EditorSnapshot) {
-        self.clear_diagnostic_navigation();
-        self.project = snapshot.project.clone();
-        self.mapping_workspace =
-            MappingWorkspace::from_layout(&self.project, Some(&snapshot.state.layout));
-        self.main_canvas = CanvasDocumentState::with_snarl(build_snarl_with_layout(
-            &self.project,
-            Some(&snapshot.state.layout),
-        ));
-        self.selected_scope.clear();
-        // Rebuilding can materialize graph nodes in previously unvisited canvases.
-        // That layout change belongs to this restore, not a new undo transaction.
-        self.observed_editor = editor_snapshot(
-            &self.project,
-            &self.main_canvas.snarl,
-            &self.mapping_workspace,
-        );
-        self.pending_history = None;
-    }
-
-    fn undo_project(&mut self) {
-        self.commit_pending_history();
-        let Some(previous) = self.history.undo(self.observed_editor.clone()) else {
-            return;
-        };
-        let label = previous.label().to_string();
-        self.restore_history_snapshot(previous.into_snapshot());
-        self.status = format!("undid {label}");
-    }
-
-    fn redo_project(&mut self) {
-        let Some(next) = self.history.redo(self.observed_editor.clone()) else {
-            return;
-        };
-        let label = next.label().to_string();
-        self.restore_history_snapshot(next.into_snapshot());
-        self.status = format!("redid {label}");
     }
 
     fn ui_project_editing_enabled(&self) -> bool {
@@ -1445,7 +1343,7 @@ impl FerruleApp {
                     self.project = imported.project;
                     self.host_parameters = host_parameters::HostParameterEditor::default();
                     self.mapping_workspace.reset();
-                    self.history.mark_unsaved();
+                    self.mark_unsaved();
                     self.selected_scope.clear();
                     self.rebase_history();
                     self.document = DocumentLocation::untitled(project_path);
@@ -1642,12 +1540,17 @@ impl eframe::App for FerruleApp {
         self.show_new_function_dialog(ui.ctx(), project_editing_enabled);
         self.show_function_navigator(ui.ctx(), project_editing_enabled);
         self.show_floating_function_windows(ui.ctx(), project_editing_enabled);
+        let was_dirty = self.observed_dirty();
         if let Some(repaint_after) =
             self.observe_editor_history(std::time::Instant::now(), coalesce_history_change)
         {
             ui.ctx().request_repaint_after(repaint_after);
         }
-        let marker = if self.is_dirty() { " *" } else { "" };
+        if self.observed_dirty() != was_dirty {
+            // The status bar was drawn before this frame's edits were observed.
+            ui.ctx().request_repaint();
+        }
+        let marker = if self.observed_dirty() { " *" } else { "" };
         let name = self.document.display_name();
         ui.ctx()
             .send_viewport_cmd(egui::ViewportCommand::Title(format!(
