@@ -8,6 +8,7 @@ mod adjacency_owned;
 mod csv_repair;
 mod document_project;
 pub mod document_project_file;
+mod dynamic_field_owned;
 mod edi;
 mod external_source;
 mod file_codec;
@@ -49,6 +50,7 @@ pub use csv_repair::{CsvRuntimeDependency, CsvTextRepairCause, CsvTextRepairDepe
 pub use document_project::{
     DocumentProject, DocumentProjectFormat, GlobalFilename, PrimaryFilenameError, PrimarySourcePlan,
 };
+pub use dynamic_field_owned::OwnedDynamicSourceField;
 pub use edi::{
     EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind,
     EdiValueConstraint, EdifactAutocomplete, X12Autocomplete, X12Separators,
@@ -173,3 +175,7 @@ mod owned_recursive_collect_tests;
 #[cfg(test)]
 #[path = "tests/owned_recursive_filter.rs"]
 mod owned_recursive_filter_tests;
+
+#[cfg(test)]
+#[path = "tests/owned_dynamic_field.rs"]
+mod owned_dynamic_field_tests;

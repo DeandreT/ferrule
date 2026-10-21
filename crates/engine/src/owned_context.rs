@@ -331,6 +331,14 @@ impl<'a> SourceRoots<'a> {
         self.declared
     }
 
+    /// Whether the owner's declared root schema repeats.
+    pub(crate) fn declared_repeating(&self, key: OwnerKey) -> bool {
+        match key {
+            OwnerKey::Primary => self.primary_repeating,
+            OwnerKey::Named(index) => self.declared[index].schema.repeating,
+        }
+    }
+
     pub fn new(
         project: &'a Project,
         primary: &'a Instance,
