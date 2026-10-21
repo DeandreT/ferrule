@@ -362,7 +362,7 @@ fn csv_selection_survives_save_cancel_and_failure_then_uses_the_captured_save_as
     let temp = TestDir::new()?;
     let mut app = csv_mapped_app(&temp.0)?;
     app.document = DocumentLocation::untitled(temp.0.join("untitled-csv.json"));
-    app.history.mark_unsaved();
+    app.mark_unsaved();
     choose_csharp(&mut app, "captured-csv-library");
     app.library_generation_draft
         .as_mut()
@@ -575,7 +575,7 @@ fn cancelled_failed_and_successful_save_as_only_launch_after_a_real_saved_projec
     let temp = TestDir::new()?;
     let mut app = mapped_app(&temp.0)?;
     app.document = DocumentLocation::untitled(temp.0.join("unsaved.json"));
-    app.history.mark_unsaved();
+    app.mark_unsaved();
     choose_csharp(&mut app, "generated-after-save");
     let old_destination = temp.0.join("generated-after-save");
     std::fs::create_dir(&old_destination)?;
@@ -657,7 +657,7 @@ fn untitled_rust_checks_presence_then_resolves_the_runtime_only_beside_the_saved
     let temp = TestDir::new()?;
     let mut app = mapped_app(&temp.0)?;
     app.document = DocumentLocation::untitled(temp.0.join("untitled-rust.json"));
-    app.history.mark_unsaved();
+    app.mark_unsaved();
     app.begin_library_generation();
     app.library_generation_draft
         .as_mut()

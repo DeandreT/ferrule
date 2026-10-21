@@ -40,7 +40,7 @@ impl FerruleApp {
             // Within one directory rebasing only normalizes spelling, so retained
             // snapshots keep their meaning; the observation must still match
             // the normalized project so the save is not recorded as an edit.
-            rebase_snapshot(&mut self.observed_editor, &previous_path, path)
+            self.rebase_observed(&previous_path, path)
         };
         if rebased.is_err() {
             // A snapshot whose paths cannot be expressed from the new directory
@@ -61,11 +61,20 @@ impl FerruleApp {
     /// relative paths keep their original input and output identities.
     fn rebase_retained_history(&mut self, from: &Path, to: &Path) -> std::io::Result<()> {
         self.history
-            .try_for_each_retained_mut(|snapshot| rebase_snapshot(snapshot, from, to))?;
+            .try_for_each_retained_snapshot_mut(|snapshot| rebase_snapshot(snapshot, from, to))?;
         if let Some(pending) = &mut self.pending_history {
             rebase_snapshot(&mut pending.before, from, to)?;
         }
-        rebase_snapshot(&mut self.observed_editor, from, to)
+        self.rebase_observed(from, to)
+    }
+
+    /// Rebases the observation without recording an edit; its revision
+    /// still follows the rewritten content.
+    fn rebase_observed(&mut self, from: &Path, to: &Path) -> std::io::Result<()> {
+        let previous = self.observed_editor.state.clone();
+        let rebased = rebase_snapshot(&mut self.observed_editor, from, to);
+        self.record_observed_revision(&previous);
+        rebased
     }
 
     pub(super) fn saved_status(path: &Path, outcome: &DocumentSaveOutcome) -> String {
