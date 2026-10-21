@@ -367,6 +367,7 @@ fn prepare_export_mode(
             profile: mapping::SQLITE_READ_V1_CAPABILITY,
         });
     }
+    preflight::validate_text_selection_operations(project)?;
     preflight::validate_decimal_values(project)?;
     preflight::validate_invocation_counters(project)?;
     preflight::validate_optional_parser_input_provenance(project)?;
