@@ -1,22 +1,60 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    Binding, DynamicBinding, DynamicChild, IterationOutput, JoinId, JoinPlan, NodeId, Scope,
-    ScopeConstruction, ScopeIteration, ScopeSequence, SequenceExpr, SequenceWindow,
-    SortFilterOrder, SortKey, SourceSelector, SourceSelectorRef, is_constructed_scope, is_false,
-    is_repeated_output,
+    Binding, DynamicBinding, DynamicChild, IterationOutput, JoinId, JoinPlan, NodeId,
+    OwnedJoinPlan, Scope, ScopeConstruction, ScopeIteration, ScopeSequence, SequenceExpr,
+    SequenceWindow, SortFilterOrder, SortKey, SourceSelector, SourceSelectorRef,
+    is_constructed_scope, is_false, is_repeated_output,
 };
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum JoinPlanRef<'a> {
+    Legacy(&'a JoinPlan),
+    Owned(&'a OwnedJoinPlan),
+}
 
 #[derive(Serialize)]
 struct JoinRef<'a> {
     id: JoinId,
-    plan: &'a JoinPlan,
+    plan: JoinPlanRef<'a>,
 }
 
 #[derive(Deserialize)]
 struct JoinOwned {
     id: JoinId,
-    plan: JoinPlan,
+    plan: AnyJoinPlan,
+}
+
+/// Both plan forms share the `join` scope key, so readers that only know
+/// collection arrays refuse owned plans instead of dropping them. Owned plans
+/// are recognized by an object first collection and are never mixed with
+/// legacy collection arrays.
+enum AnyJoinPlan {
+    Legacy(JoinPlan),
+    Owned(OwnedJoinPlan),
+}
+
+impl<'de> Deserialize<'de> for AnyJoinPlan {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let owned = value
+            .get("first")
+            .and_then(|first| first.get("collection"))
+            .is_some_and(serde_json::Value::is_object);
+        if owned {
+            serde_json::from_value(value)
+                .map(Self::Owned)
+                .map_err(serde::de::Error::custom)
+        } else {
+            serde_json::from_value(value)
+                .map(Self::Legacy)
+                .map_err(serde::de::Error::custom)
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -139,9 +177,24 @@ impl Serialize for Scope {
                 (Some(SourceSelectorRef::Owned(source)), None, None, None)
             }
             ScopeIteration::Sequence(sequence) => (None, Some(sequence), None, None),
-            ScopeIteration::InnerJoin { id, plan } => {
-                (None, None, Some(JoinRef { id: *id, plan }), None)
-            }
+            ScopeIteration::InnerJoin { id, plan } => (
+                None,
+                None,
+                Some(JoinRef {
+                    id: *id,
+                    plan: JoinPlanRef::Legacy(plan),
+                }),
+                None,
+            ),
+            ScopeIteration::OwnedInnerJoin { id, plan } => (
+                None,
+                None,
+                Some(JoinRef {
+                    id: *id,
+                    plan: JoinPlanRef::Owned(plan),
+                }),
+                None,
+            ),
             ScopeIteration::Concatenate(segments) => (None, None, None, Some(segments)),
         };
         ScopeRef {
@@ -213,9 +266,9 @@ impl<'de> Deserialize<'de> for Scope {
                 }
             }
             (None, Some(sequence), None, None, None) => ScopeIteration::Sequence(sequence),
-            (None, None, Some(join), None, None) => ScopeIteration::InnerJoin {
-                id: join.id,
-                plan: join.plan,
+            (None, None, Some(join), None, None) => match join.plan {
+                AnyJoinPlan::Legacy(plan) => ScopeIteration::InnerJoin { id: join.id, plan },
+                AnyJoinPlan::Owned(plan) => ScopeIteration::OwnedInnerJoin { id: join.id, plan },
             },
             (None, None, None, Some(segments), None) => ScopeIteration::Concatenate(segments),
             (None, None, None, None, None) => ScopeIteration::None,

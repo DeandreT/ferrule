@@ -2,7 +2,10 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{NodeId, OwnedSourceAccess, OwnedSourceRef, Scope, SequenceExpr, SourceSelectorRef};
+use crate::{
+    NodeId, OwnedJoinPlan, OwnedSourceAccess, OwnedSourceRef, Scope, SequenceExpr,
+    SourceSelectorRef,
+};
 
 /// Stable identity of one joined iteration within a project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -329,6 +332,12 @@ pub enum ScopeIteration {
         id: JoinId,
         plan: JoinPlan,
     },
+    /// Inner join over explicit owner and collection identities; execution
+    /// and emission remain unavailable.
+    OwnedInnerJoin {
+        id: JoinId,
+        plan: OwnedJoinPlan,
+    },
     Concatenate(ScopeSequence),
 }
 
@@ -339,7 +348,11 @@ impl ScopeIteration {
                 Some(SourceSelectorRef::Legacy(path))
             }
             Self::OwnedSource { source, .. } => Some(SourceSelectorRef::Owned(source)),
-            Self::None | Self::Sequence(_) | Self::InnerJoin { .. } | Self::Concatenate(_) => None,
+            Self::None
+            | Self::Sequence(_)
+            | Self::InnerJoin { .. }
+            | Self::OwnedInnerJoin { .. }
+            | Self::Concatenate(_) => None,
         }
     }
 
@@ -360,6 +373,7 @@ impl ScopeIteration {
             | Self::OwnedSource { .. }
             | Self::DynamicDocuments { .. }
             | Self::InnerJoin { .. }
+            | Self::OwnedInnerJoin { .. }
             | Self::Concatenate(_) => None,
         }
     }
@@ -372,6 +386,20 @@ impl ScopeIteration {
             | Self::OwnedSource { .. }
             | Self::DynamicDocuments { .. }
             | Self::Sequence(_)
+            | Self::OwnedInnerJoin { .. }
+            | Self::Concatenate(_) => None,
+        }
+    }
+
+    pub fn owned_join(&self) -> Option<(JoinId, &OwnedJoinPlan)> {
+        match self {
+            Self::OwnedInnerJoin { id, plan } => Some((*id, plan)),
+            Self::None
+            | Self::Source(_)
+            | Self::OwnedSource { .. }
+            | Self::DynamicDocuments { .. }
+            | Self::Sequence(_)
+            | Self::InnerJoin { .. }
             | Self::Concatenate(_) => None,
         }
     }
@@ -384,7 +412,8 @@ impl ScopeIteration {
             | Self::OwnedSource { .. }
             | Self::DynamicDocuments { .. }
             | Self::Sequence(_)
-            | Self::InnerJoin { .. } => None,
+            | Self::InnerJoin { .. }
+            | Self::OwnedInnerJoin { .. } => None,
         }
     }
 
@@ -396,7 +425,8 @@ impl ScopeIteration {
             | Self::OwnedSource { .. }
             | Self::DynamicDocuments { .. }
             | Self::Sequence(_)
-            | Self::InnerJoin { .. } => None,
+            | Self::InnerJoin { .. }
+            | Self::OwnedInnerJoin { .. } => None,
         }
     }
 
