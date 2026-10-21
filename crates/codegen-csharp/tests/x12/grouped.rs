@@ -517,6 +517,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "GeneratedTargetBuilder.cs",
         "Runtime/FerruleAdjacencyTree.cs",
         "Runtime/FerruleAggregates.cs",
+        "Runtime/FerruleBasicGeneratedItems.cs",
         "Runtime/FerruleBasicGroupBy.cs",
         "Runtime/FerruleDelimitedText.cs",
         "Runtime/FerruleDynamicDocuments.cs",

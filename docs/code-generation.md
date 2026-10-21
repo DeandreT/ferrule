@@ -297,6 +297,45 @@ export, GUI authoring and observer eligibility are independently gated.
 See [the ownership contract](design/owned-sequence-item-at.md) and
 [the genuine-Project corpus](../conformance/basic-owned-sequence-item-at/README.md).
 
+## Explicit owned sequence Exists
+
+Use `codegen::lower_with_basic_owned_sequence_exists`, followed by
+`codegen_rust::emit_with_basic_owned_sequence_exists(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_sequence_exists(&program)`. Direct Program
+validation and named-input admission use
+`validate_program_with_basic_owned_sequence_exists`,
+`validate_basic_owned_sequence_exists_emission` and
+`legacy_named_input_admission_plan_with_basic_owned_sequence_exists`.
+
+This profile admits `SequenceExists` over Generate, Tokenize, TokenizeByLength
+and TokenizeRegex beside the ItemAt permission and the By, AdjacentBy, StartingWith
+and EndingWith controls with their filter, sort, window and primary-row-failure
+permissions. Owned scalar reads are allowed in the producer arguments and the
+predicate, including nested eligible Exists and ItemAt consumers. The generated
+libraries use the two typed Basic execution entries and the mandatory
+five-field policy.
+
+Producer arguments evaluate once in the receiving context and materialize the
+complete sequence. Items are then visited in order; the first true predicate
+returns true and later items are not evaluated, so their predicate errors are
+not raised. An empty or null-suppressed sequence returns false without
+evaluating the predicate. A producer exception prevents every predicate, and a
+non-Boolean predicate fails with a typed error naming the predicate node.
+
+Each predicate evaluation appends the private item to the receiving context as
+an empty-path collection frame. The item declaration, empty-path ordinary reads
+and empty legacy positions see that item. Owned reads ignore it: exact owners,
+root and collection pins, grouped representatives and member positions keep
+their receiving meaning, and an unavailable selected owner fails only when a
+reached predicate reads it. The generated Rust and C# contexts copy the paired
+view for each reached item and admit that copy against the caller's policy.
+
+Legacy and owned RecursiveCollect, FilterMap, closed operators inside the predicate, owned
+failure predicates and generated-sequence scopes keep their refusals. Existing
+generation profiles, including ItemAt and EndingWith, continue to reject
+`SequenceExists` in owned contexts. See [the ownership contract](design/owned-sequence-exists.md)
+and [the genuine-Project corpus](../conformance/basic-owned-sequence-exists/README.md).
+
 ## Explicit owned adjacent grouping
 
 Use `codegen::lower_with_basic_owned_group_adjacent_by`, then

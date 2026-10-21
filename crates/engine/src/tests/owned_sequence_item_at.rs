@@ -1006,12 +1006,11 @@ fn inherited_closed_context_and_context_keyed_reuse_are_not_erased() {
 }
 
 #[test]
-fn sequence_exists_and_sequence_aggregate_item_at_reducer_stay_closed() {
-    for node in [
-        Node::SequenceExists {
-            sequence: tokenize(90),
-            predicate: 30,
-        },
+fn sequence_aggregate_item_at_reducer_stays_closed() {
+    // SequenceExists over a pure producer is qualified separately (#472).
+    let mut p = project(tokenize(90), ScalarType::String);
+    p.graph.nodes.insert(
+        40,
         Node::SequenceAggregate {
             function: AggregateOp::ItemAt,
             sequence: tokenize(90),
@@ -1019,18 +1018,15 @@ fn sequence_exists_and_sequence_aggregate_item_at_reducer_stay_closed() {
             expression: None,
             arg: Some(30),
         },
-    ] {
-        let mut p = project(tokenize(90), ScalarType::String);
-        p.graph.nodes.insert(40, node);
-        assert!(matches!(
-            run(&p),
-            Err(EngineError::UnsupportedOwnedContext {
-                node: Some(30),
-                context: Domain::GeneratedItem,
-                ..
-            })
-        ));
-    }
+    );
+    assert!(matches!(
+        run(&p),
+        Err(EngineError::UnsupportedOwnedContext {
+            node: Some(30),
+            context: Domain::GeneratedItem,
+            ..
+        })
+    ));
     let mut p = project(tokenize(90), ScalarType::String);
     p.graph.nodes.insert(
         60,

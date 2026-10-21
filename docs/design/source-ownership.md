@@ -123,6 +123,17 @@ an endpoint, and the generated item stays a private declaration. Only a Basic
 parent-context ItemAt consumes the owned producer. See the
 [recursive collection contract](owned-recursive-collect.md).
 
+## Generated-item predicates
+
+`SequenceExists` over the same four producers evaluates producer arguments in
+the receiving source context, then evaluates its predicate once per item until
+the first true result. The predicate context appends only a private scalar item
+frame: the item declaration and empty-path ordinary reads see it, while owned
+reads keep the receiving owner, pins and positions. Producer errors precede the
+predicate, and an empty sequence never evaluates it. RecursiveCollect, FilterMap
+and closed operators inside the predicate remain closed. See
+[the Exists contract](owned-sequence-exists.md).
+
 ## Existing coordinated issues
 
 Reuse these existing scopes; the capability column concerns **explicit ownership**.

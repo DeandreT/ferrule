@@ -453,11 +453,22 @@ pub(super) enum SequenceItemAtPolicy {
     BasicScalarProducers,
     /// The four scalar producers plus the owned recursive collection walk.
     BasicScalarAndOwnedRecursiveProducers,
+    /// Also admits SequenceExists over the same producers. Its predicate reads
+    /// a private generated item beside the unchanged receiving source context.
+    BasicScalarProducersWithExists,
 }
 
 impl SequenceItemAtPolicy {
     fn permits(self, expression: &Expression) -> bool {
-        let Expression::SequenceItemAt { sequence, .. } = expression else {
+        let Some(sequence) = (match expression {
+            Expression::SequenceItemAt { sequence, .. } => Some(sequence),
+            Expression::SequenceExists { sequence, .. }
+                if self == Self::BasicScalarProducersWithExists =>
+            {
+                Some(sequence)
+            }
+            _ => None,
+        }) else {
             return false;
         };
         let scalar = matches!(
@@ -469,7 +480,7 @@ impl SequenceItemAtPolicy {
         );
         match self {
             Self::Closed => false,
-            Self::BasicScalarProducers => scalar,
+            Self::BasicScalarProducers | Self::BasicScalarProducersWithExists => scalar,
             Self::BasicScalarAndOwnedRecursiveProducers => {
                 scalar
                     || matches!(
@@ -733,7 +744,9 @@ impl<'a> Admission<'a> {
                 }
             }
             let reason = match expression {
-                Expression::SequenceItemAt { .. } if self.sequence_item_at.permits(expression) => {
+                Expression::SequenceItemAt { .. } | Expression::SequenceExists { .. }
+                    if self.sequence_item_at.permits(expression) =>
+                {
                     None
                 }
                 Expression::SequenceExists { .. }
@@ -1472,6 +1485,21 @@ pub fn validate_basic_owned_path_hierarchy_emission(
     )
 }
 
+/// Explicitly admits SequenceExists over the same four scalar producers beside
+/// ItemAt and the By/AdjacentBy/StartingWith/EndingWith controls. Producer
+/// arguments keep the receiving context; the predicate adds only its private
+/// generated item. Older profiles and failure scalar subsets retain their permissions.
+pub fn validate_basic_owned_sequence_exists_emission(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_with_policies(
+        program,
+        BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter,
+        true,
+        SequenceItemAtPolicy::BasicScalarProducersWithExists,
+    )
+}
+
 fn validate_basic_owned_with_profile(
     program: &Program,
     profile: BasicOwnedProfile,
@@ -1608,7 +1636,9 @@ fn validate_basic_owned_with_constructions(
             ));
         }
         let reason = match &node.expression {
-            Expression::SequenceItemAt { .. } if sequence_item_at.permits(&node.expression) => {
+            Expression::SequenceItemAt { .. } | Expression::SequenceExists { .. }
+                if sequence_item_at.permits(&node.expression) =>
+            {
                 continue;
             }
             Expression::OwnedSourceField(_)
@@ -1921,8 +1951,9 @@ fn basic_target_expressions(
         let dependencies = match &node.expression {
             Expression::ValueMap { input, .. } => vec![*input],
             expression if sequence_item_at.permits(expression) => {
-                // Both producer scalar inputs and index are parent demands;
-                // generated item declarations grant no endpoint permission.
+                // Producer scalar inputs and an ItemAt index are parent demands;
+                // an Exists predicate adds only its private generated item.
+                // Item declarations grant no endpoint permission.
                 graph_dependencies::of(expression)
             }
             _ => continue,

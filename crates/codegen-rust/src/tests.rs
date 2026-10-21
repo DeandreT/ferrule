@@ -1531,4 +1531,5 @@ mod owned_failure_sources;
 mod owned_json_api;
 mod owned_path_hierarchy;
 mod owned_recursive_collect;
+mod owned_sequence_exists;
 mod owned_sequence_item_at;

@@ -144,5 +144,13 @@ pub use validate::{
     validate_basic_owned_window_emission,
 };
 
+// Explicit owned SequenceExists generation profile.
+pub use lower::lower_with_basic_owned_sequence_exists;
+pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_sequence_exists;
+pub use validate::{
+    validate_basic_owned_sequence_exists_emission,
+    validate_program_with_basic_owned_sequence_exists,
+};
+
 #[cfg(test)]
 mod tests;
