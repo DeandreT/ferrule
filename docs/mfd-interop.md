@@ -7,14 +7,14 @@ references, but ferrule's implementation and committed fixtures are original.
 ## Import
 
 ```sh
-cargo +nightly run -p cli -- import-mfd --mfd design.mfd --out project.json
+cargo run -p cli -- import-mfd --mfd design.mfd --out project.json
 ```
 
 For a single project that must pass static execution admission, add
 `--require-executable`:
 
 ```sh
-cargo +nightly run -p cli -- import-mfd \
+cargo run -p cli -- import-mfd \
   --mfd design.mfd --out project.json --require-executable
 ```
 
@@ -69,7 +69,7 @@ For a mapping package whose resources sit above or beside the design directory,
 declare the trusted package root:
 
 ```sh
-cargo +nightly run -p cli -- import-mfd \
+cargo run -p cli -- import-mfd \
   --mfd package/maps/design.mfd \
   --package-root package \
   --out project.json
@@ -89,7 +89,7 @@ For a relocatable package, put `ferrule-package.json` at its root:
 ```
 
 ```sh
-cargo +nightly run -p cli -- import-mfd \
+cargo run -p cli -- import-mfd \
   --mfd package/maps/design.mfd \
   --package-manifest package/ferrule-package.json \
   --out package/projects/project.json
@@ -146,8 +146,8 @@ The authored resource-boundary fixtures live in
 controls live in `crates/mfd/tests/udf_resource_boundary.rs`. XML-column and
 conditioned-type refinement controls also run in the MFD library tests. Run the
 integration cohort with
-`cargo +nightly test -p format-xml -p mfd --test resource_boundary` and
-`cargo +nightly test -p mfd --test udf_resource_boundary`.
+`cargo test -p format-xml -p mfd --test resource_boundary` and
+`cargo test -p mfd --test udf_resource_boundary`.
 Each fixture retains its authored temporary tree and complete schema/import
 outcomes before assertions, including failed runs, and prints the evidence
 location. Use an owned `TMPDIR` for repeatable collection, and copy those
@@ -180,7 +180,7 @@ If EDI configurations live in a separately managed release catalog, declare
 each trusted catalog in search order:
 
 ```sh
-cargo +nightly run -p cli -- import-mfd \
+cargo run -p cli -- import-mfd \
   --mfd package/maps/design.mfd \
   --package-root package \
   --edi-catalog-root edi-configs/current \
@@ -200,7 +200,7 @@ Separately managed JSON Schema catalogs use the same explicit ordered trust
 model:
 
 ```sh
-cargo +nightly run -p cli -- import-mfd \
+cargo run -p cli -- import-mfd \
   --mfd package/maps/design.mfd \
   --package-root package \
   --json-schema-root schemas/current \
@@ -555,7 +555,7 @@ with up to 64 serial pass-through targets, import the design as a typed
 pipeline instead:
 
 ```sh
-cargo +nightly run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
+cargo run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
 ```
 
 Each computed intermediate target supplies the next stage's source, with
@@ -605,10 +605,10 @@ XML character references, including field names, paths, fixed values, and
 defaults.
 
 ```sh
-cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd
-cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd --check --report-json
-cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd
-cargo +nightly run -p cli -- export-mfd --project flow.json --pipeline --out chained.mfd --profile native-mfd
+cargo run -p cli -- export-mfd --project project.json --out design.mfd
+cargo run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd --check --report-json
+cargo run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd
+cargo run -p cli -- export-mfd --project flow.json --pipeline --out chained.mfd --profile native-mfd
 ```
 
 The native editor exposes both profiles under File: “Export MFD (Ferrule)...”

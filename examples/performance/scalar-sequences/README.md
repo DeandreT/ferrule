@@ -1,7 +1,7 @@
 # Scalar filter/map memory study
 
-These Linux fixtures and hosts reproduce the bounded study for
-[#207](https://github.com/DeandreT/ferrule/issues/207).
+Use these Linux fixtures to compare the memory cost of capturing and
+returning scalar sequences through the interpreter and generated Rust and C#.
 
 Both Projects generate `1..=Count`, evaluate one string capture, keep every item,
 and call predicate then mapper with item, input position and capture. The numeric
@@ -13,16 +13,12 @@ input/output recipes, two small byte literals and the two reversed repetitions.
 The largest output is 33,558,419 bytes; the hosts require every document to be
 strictly below 64 MiB.
 
-The commands below reproduce public preparation and host routes. The reported
-study used a separately reviewed owning runner for deadlines, exclusive compiler
-ownership, source/survey guards, process reaping, lease release and retained
-originals. These command patterns are not a replacement for that runner or proof
-of its closure. Retain all commands, full stdout/stderr and exit statuses, including
-refusals; review complete artifacts and outcomes before calling a campaign qualified.
+Prepare fixtures and generated hosts before measuring. Run each host under the
+same resource limits and retain the complete outputs as well as the measurements.
 
 ## Tools, paths and shared build profile
 
-Use Linux with `/proc`, GNU `time -v`, Python 3, Ferrule's Rust nightly
+Use Linux with `/proc`, GNU `time -v`, Python 3, Ferrule's pinned Rust
 toolchain and a .NET 10 SDK with its `net10.0` reference packs already installed. Offline
 Rust builds also require the locked dependencies in the existing Cargo cache.
 No NuGet package is used by the C# host; offline does not install missing SDK packs.
