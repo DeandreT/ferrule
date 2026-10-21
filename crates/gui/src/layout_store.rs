@@ -5,7 +5,11 @@ use mapping::Project;
 use crate::app::{CanvasLayout, LAYOUT_VERSION};
 
 pub fn project_fingerprint(project: &Project) -> String {
-    let key = crate::project_state::project_snapshot_key(project);
+    fingerprint_of_key(&crate::project_state::project_snapshot_key(project))
+}
+
+/// Derives the fingerprint from an already computed project snapshot key.
+pub(crate) fn fingerprint_of_key(key: &str) -> String {
     let hash = key.bytes().fold(0xcbf29ce484222325_u64, |hash, byte| {
         (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
     });
