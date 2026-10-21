@@ -141,11 +141,11 @@ fn decimal_sequence_and_join_projection_failures_keep_source_order() -> TestResu
             join,
             plan: mapping::JoinPlan::new(
                 mapping::JoinSource::new(vec!["Rows".into()]),
-                mapping::JoinSource::singleton(vec![]),
+                mapping::JoinSource::singleton(vec!["Key".into()]),
                 mapping::JoinConditions::new(mapping::JoinKey::new(
                     vec!["Rows".into()],
                     vec!["Key".into()],
-                    vec!["Key".into()],
+                    vec![],
                 )),
             )?,
             expression: Some(2),
@@ -157,6 +157,14 @@ fn decimal_sequence_and_join_projection_failures_keep_source_order() -> TestResu
 
 fn verify_documents(project: Project, cases_json: &str, label: &str) -> TestResult<()> {
     let directory = TempDir::new(label)?;
+    let path = directory.0.join("mapping.json");
+    std::fs::write(&path, mapping::project_file::encode_pretty(&project)?)?;
+    let validation = engine::validate(&project);
+    std::fs::write(
+        directory.0.join("validation.txt"),
+        format!("{validation:#?}\n"),
+    )?;
+    assert!(validation.is_empty(), "{label}: {validation:?}");
     let cases: serde_json::Value = serde_json::from_str(cases_json)?;
     for (index, case) in cases.as_array().unwrap().iter().enumerate() {
         let input = format_json::from_str(&case["input"].to_string(), &project.source)?;
@@ -192,8 +200,6 @@ fn verify_documents(project: Project, cases_json: &str, label: &str) -> TestResu
         }
     }
 
-    let path = directory.0.join("mapping.json");
-    std::fs::write(&path, mapping::project_file::encode_pretty(&project)?)?;
     let rust = directory.0.join("rust");
     generate_project(
         &path,
