@@ -30,6 +30,7 @@ pub(crate) use windows::render_public_basic_owned_sequence_aggregate_source;
 pub(crate) use windows::render_public_basic_owned_sequence_exists_source;
 pub(crate) use windows::render_public_basic_owned_sequence_item_at_source;
 pub(crate) use windows::render_public_basic_owned_window_source;
+pub(crate) use windows::render_public_basic_owned_xml_mixed_construction_source;
 pub(crate) use windows::render_public_basic_owned_xml_mixed_content_source;
 pub(crate) use windows::render_public_basic_owned_xml_serialize_source;
 #[path = "owned_basic_aggregate.rs"]

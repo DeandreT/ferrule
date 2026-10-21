@@ -69,4 +69,38 @@ internal static partial class Program
         Equal(" t ", plain.OwnedXmlMixedContent(4, FerruleOwnedSourceOwner.Primary, para, null, false,
             Array.Empty<FerruleOwnedXmlMixedContentReplacement>()).StringValue);
     }
+
+    private static string[] MixedStreamNames(FerruleGroup output) =>
+        output.TryGetField(MixedStream, out var stream) && stream is FerruleRepeated items
+            ? items.Items.Select(item =>
+            {
+                var group = (FerruleGroup)item;
+                group.TryGetField("NodeName", out var name);
+                group.TryGetField("#text", out var text);
+                return $"{((FerruleScalar)name!).Value.StringValue}={((FerruleScalar)text!).Value.StringValue}";
+            }).ToArray()
+            : Array.Empty<string>();
+
+    private static void OwnedXmlMixedConstructionExactItems()
+    {
+        var first = (FerruleGroup)MixedInput("P", "first ", "x").Fields.Single(field => field.Name == "Para").Value;
+        var second = (FerruleGroup)MixedInput("P", "second ", "y").Fields.Single(field => field.Name == "Para").Value;
+        var primary = Group(Field("Para", new FerruleRepeated(new FerruleInstance[] { first, second })));
+        var note = (FerruleGroup)MixedInput("N", "note ", "z").Fields.Single(field => field.Name == "Para").Value;
+        var declared = new[] { new FerruleDeclaredNamedSourceRoot("note", note) };
+        var context = FerruleBasicSourceRoots.Create(primary, declared, BasicLimits).RootContext();
+        var elements = new[] { new FerruleXmlMixedContentElement("b", "Strong") };
+        FerruleGroup Strong(params string[] values) => Group(Field("Strong",
+            new FerruleRepeated(values.Select(value => (FerruleInstance)Scalar(Text(value))))));
+        var rows = context.IterateOwnedSource(FerruleOwnedSourceOwner.Primary, new[] { "Para" });
+        Equal("=first |Strong=X|=|", string.Join("|", MixedStreamNames(rows[0].Context.PreserveOwnedXmlMixedContent(
+            FerruleOwnedSourceOwner.Primary, new[] { "Para" }, Strong("X"), elements))));
+        // An endpoint-root selection inside the primary row attaches the named
+        // root, never the row item that is the innermost legacy frame.
+        Equal("=note |Strong=Z|=|", string.Join("|", MixedStreamNames(rows[1].Context.PreserveOwnedXmlMixedContent(
+            FerruleOwnedSourceOwner.Named("note"), Array.Empty<string>(), Strong("Z"), elements))));
+        var inactive = Error(FerruleRuntimeError.OwnedSource, () => context.PreserveOwnedXmlMixedContent(
+            FerruleOwnedSourceOwner.Primary, new[] { "Para" }, Strong(), elements));
+        Equal(FerruleOwnedSourceErrorKind.InactiveSourceFrame, inactive.OwnedSourceFailure!.Error);
+    }
 }

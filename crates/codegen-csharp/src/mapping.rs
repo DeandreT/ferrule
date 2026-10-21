@@ -2429,9 +2429,25 @@ fn render_bound_group(scope_index: usize, scope: &ScopePlan<'_>, output: &mut St
         "        var group_{scope_index} = new global::Ferrule.Runtime.FerruleGroup(fields_{scope_index});\n"
     ));
     if let TargetConstruction::XmlMixedContent { elements } = scope.construction {
-        output.push_str(&format!(
-            "        return global::Ferrule.Runtime.FerruleXmlMixedContent.Preserve(\n            context,\n            group_{scope_index},\n            new global::Ferrule.Runtime.FerruleXmlMixedContentElement[]\n            {{\n"
-        ));
+        // An owned selector (always a paired Basic context) attaches only its
+        // own exact current occurrence; the legacy form keeps the current frame.
+        match scope
+            .iteration
+            .and_then(|iteration| iteration.owned_source_iteration())
+        {
+            Some(selector) => {
+                output.push_str("        return context.PreserveOwnedXmlMixedContent(\n            ");
+                crate::owned_basic::render_owner(&selector.source().owner, output);
+                output.push_str(",\n            ");
+                render_path(&selector.source().path, output);
+                output.push_str(&format!(
+                    ",\n            group_{scope_index},\n            new global::Ferrule.Runtime.FerruleXmlMixedContentElement[]\n            {{\n"
+                ));
+            }
+            None => output.push_str(&format!(
+                "        return global::Ferrule.Runtime.FerruleXmlMixedContent.Preserve(\n            context,\n            group_{scope_index},\n            new global::Ferrule.Runtime.FerruleXmlMixedContentElement[]\n            {{\n"
+            )),
+        }
         for element in elements {
             output.push_str("                new(");
             output.push_str(&literal::string(&element.source));

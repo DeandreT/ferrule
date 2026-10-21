@@ -124,8 +124,17 @@ public static class FerruleXmlMixedContent
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(elements);
-        if (context.Frames.Count == 0 ||
-            !TrySourceField(context.Frames[^1], MixedContentField, out var retained) ||
+        return PreserveFrom(context.Frames.Count == 0 ? null : context.Frames[^1], output, elements);
+    }
+
+    // Shared by the legacy current-frame and the owned exact-occurrence constructions.
+    internal static FerruleGroup PreserveFrom(
+        FerruleInstance? source,
+        FerruleGroup output,
+        IReadOnlyList<FerruleXmlMixedContentElement> elements)
+    {
+        if (source is null ||
+            !TrySourceField(source, MixedContentField, out var retained) ||
             retained is not FerruleRepeated sourceItems)
         {
             return output;

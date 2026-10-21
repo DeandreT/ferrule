@@ -84,11 +84,20 @@ pub fn xml_mixed_content(
 /// attaching or rebuilding fields invalidates that output's owning origin fact.
 pub fn preserve_xml_mixed_content(
     context: &ScopeContext<'_>,
+    output: Instance,
+    elements: &[XmlMixedContentElement<'_>],
+) -> Instance {
+    preserve_from(context.current_instance(), output, elements)
+}
+
+/// Attaches `source`'s ordered stream to `output`, shared by the legacy
+/// current-frame and the owned exact-occurrence constructions.
+pub(crate) fn preserve_from(
+    source: Option<&Instance>,
     mut output: Instance,
     elements: &[XmlMixedContentElement<'_>],
 ) -> Instance {
-    let Some(source_items) = context
-        .current_instance()
+    let Some(source_items) = source
         .and_then(|source| source.field(XML_MIXED_CONTENT_FIELD))
         .and_then(Instance::as_repeated)
     else {

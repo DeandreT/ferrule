@@ -358,6 +358,19 @@ pub fn emit_with_basic_owned_xml_mixed_content(
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits mixed-content construction by an owned selector in Basic target
+/// contexts, composing the owned XML mixed-content companion. Legacy,
+/// inherited and grouped constructions keep refusing.
+pub fn emit_with_basic_owned_xml_mixed_construction(
+    program: &Program,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_xml_mixed_construction(program)?;
+    codegen::validate_basic_owned_xml_mixed_construction_emission(program)?;
+    let generated_mapping =
+        owned_basic::render_public_basic_owned_xml_mixed_construction_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,

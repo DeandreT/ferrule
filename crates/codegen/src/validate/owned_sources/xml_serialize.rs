@@ -16,6 +16,8 @@ pub(crate) enum OwnedXmlPolicy {
     Serialize,
     /// Serialization plus owned mixed-content atomization.
     MixedContent,
+    /// Atomization plus mixed-content construction by an owned selector.
+    MixedConstruction,
 }
 
 impl OwnedXmlPolicy {
@@ -26,6 +28,21 @@ impl OwnedXmlPolicy {
             Expression::OwnedXmlMixedContent(_) => self < Self::MixedContent,
             _ => false,
         }
+    }
+
+    /// Whether this policy admits `scope`'s mixed-content construction: only
+    /// an ungrouped scope whose own owned selector supplies the current item.
+    pub(super) fn admits_construction(self, scope: &crate::TargetScope) -> bool {
+        self >= Self::MixedConstruction
+            && matches!(
+                scope.construction,
+                crate::TargetConstruction::XmlMixedContent { .. }
+            )
+            && scope.iteration.as_ref().is_some_and(|iteration| {
+                iteration.owned_source_iteration().is_some()
+                    && iteration.grouping().is_none()
+                    && iteration.post_group_filter().is_none()
+            })
     }
 
     /// Whether an admitted owned XML operator contributes the receiving
@@ -73,4 +90,15 @@ pub fn validate_basic_owned_xml_mixed_content_emission(
     program: &crate::Program,
 ) -> Result<(), ProgramValidationError> {
     validate_basic_owned_xml_with(program, OwnedXmlPolicy::MixedContent)
+}
+
+/// Explicitly admits mixed-content construction by an ungrouped scope's own
+/// owned selector in Basic target contexts, composing the owned XML
+/// mixed-content atomization companion. The selected occurrence supplies the
+/// retained text/element order; legacy-selected, inherited and grouped
+/// constructions keep refusing.
+pub fn validate_basic_owned_xml_mixed_construction_emission(
+    program: &crate::Program,
+) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_xml_with(program, OwnedXmlPolicy::MixedConstruction)
 }

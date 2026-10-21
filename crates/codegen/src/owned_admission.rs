@@ -290,6 +290,15 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_xml_mixed_content(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plans the explicit owned mixed-content construction companion. The owned
+/// selector is demand-driven like every owned iteration.
+pub fn legacy_named_input_admission_plan_with_basic_owned_xml_mixed_construction(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_xml_mixed_construction(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     admission_plan_with_primary_row_failures(program, false)
 }

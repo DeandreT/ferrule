@@ -14,10 +14,37 @@ use ir::{
     Instance, Value, XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD,
     XML_TEXT_FIELD,
 };
-use mapping::{NodeId, OwnedXmlMixedContent, OwnedXmlMixedContentContext};
+use mapping::{NodeId, OwnedSourceRef, OwnedXmlMixedContent, OwnedXmlMixedContentContext};
 
 use crate::eval_expr::{EvalProgram, eval_node_input};
 use crate::owned_context::{OccurrenceKind, OwnedContext, SourceFrame};
+
+/// The item a mixed-content construction iterating `source` attaches from:
+/// that owner's latest exact occurrence of the collection (a group-member
+/// occurrence supplies its first member), or the immutable endpoint root of an
+/// endpoint-root selection. Another owner's frame is never consulted.
+pub(crate) fn owned_construction_item<'a>(
+    state: &OwnedContext<'a>,
+    source: &OwnedSourceRef,
+) -> Result<Option<&'a Instance>, OwnedSourceError> {
+    let key = state.roots.key(&source.owner)?;
+    match state
+        .frames
+        .iter()
+        .rev()
+        .find(|frame| frame.owner == key && frame.collection == source.path)
+    {
+        Some(frame) => Ok(match (frame.kind, frame.item) {
+            (OccurrenceKind::GroupMembers, Instance::Repeated(members)) => members.first(),
+            _ => Some(frame.item),
+        }),
+        None if source.path.is_empty() => state.roots.root(key).map(Some),
+        None => Err(OwnedSourceError::InactiveSourceFrame {
+            owner: source.owner.clone(),
+            collection: Some(source.path.clone()),
+        }),
+    }
+}
 use crate::source_iteration::PositionFrame;
 use crate::{EngineError, OwnedCapabilityContext, OwnedSourceError};
 

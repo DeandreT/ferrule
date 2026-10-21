@@ -106,6 +106,29 @@ public sealed partial class FerruleBasicScopeContext
         return FerruleValue.FromString(output.ToString());
     }
 
+    /// <summary>
+    /// Attaches the ordered stream of the owner's current occurrence of
+    /// <paramref name="collection"/> (the scope's own owned selector) to a
+    /// constructed group: its latest exact frame, a group-member frame's first
+    /// member, or the registry root of an endpoint-root selection. Another
+    /// owner's frame and the innermost legacy frame are never consulted.
+    /// </summary>
+    public FerruleGroup PreserveOwnedXmlMixedContent(FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> collection, FerruleGroup output,
+        IReadOnlyList<FerruleXmlMixedContentElement> elements)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(elements);
+        try
+        {
+            var budget = Begin();
+            var source = _owned.ConstructionItem(owner, collection, Query(budget, owner, collection));
+            return FerruleXmlMixedContent.PreserveFrom(source, output, elements);
+        }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+
     // Stacks one occurrence of `element` under the owner's group at `path` on
     // both views, keeping every existing owned frame.
     internal FerruleBasicScopeContext WithOwnedMixedOccurrence(FerruleOwnedSourceOwner owner,
@@ -142,6 +165,22 @@ public sealed partial class FerruleOwnedScopeContext
 {
     internal int ResolveOwnerKey(FerruleOwnedSourceOwner owner, OwnedQuery query) =>
         Roots.Resolve(owner, query);
+
+    internal FerruleInstance? ConstructionItem(FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> collection, OwnedQuery query)
+    {
+        var key = Roots.Resolve(owner, query);
+        var selected = Match(key, collection, true);
+        if (selected >= 0)
+        {
+            var frame = _frames[selected];
+            if (!frame.GroupMembers) return frame.Item;
+            var members = ((FerruleRepeated)frame.Item).Items;
+            return members.Count == 0 ? null : members[0];
+        }
+        if (collection.Count == 0) return Roots.Instance(key);
+        throw query.Error(FerruleOwnedSourceErrorKind.InactiveSourceFrame, collection: collection);
+    }
 }
 
 public sealed partial class ScopeContext

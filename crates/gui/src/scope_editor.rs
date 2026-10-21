@@ -613,6 +613,9 @@ pub(crate) fn show_scope_editor(
         if let Some(output_path) = output_path {
             ui.monospace(format!("output path node: {output_path}"));
         }
+        if let ScopeConstruction::XmlMixedContent { elements } = &scope.construction {
+            ui.monospace(owned_mixed_construction_label(elements));
+        }
         return None;
     }
     if let Some((id, plan)) = scope.iteration.owned_join() {
@@ -1073,6 +1076,18 @@ fn display_path(path: &[String]) -> String {
     } else {
         path.join("/")
     }
+}
+
+/// The saved child renames of an owned selector's mixed-content construction.
+fn owned_mixed_construction_label(elements: &[mapping::XmlMixedContentElement]) -> String {
+    format!(
+        "XML mixed content: {}",
+        elements
+            .iter()
+            .map(|element| format!("{} -> {}", element.source, element.target))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
 }
 
 #[cfg(test)]

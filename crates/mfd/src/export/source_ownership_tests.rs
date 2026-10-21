@@ -518,3 +518,61 @@ fn owned_xml_mixed_content_is_refused_before_writing_anything() {
     }
     assert!(!path.exists());
 }
+
+#[test]
+fn owned_mixed_content_constructions_refuse_before_writing_anything() {
+    let mut project = project();
+    let paragraph = || {
+        SchemaNode::group(
+            "Para",
+            vec![
+                SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text(),
+                SchemaNode::scalar("b", ScalarType::String).repeating(),
+            ],
+        )
+        .repeating()
+    };
+    project.source = SchemaNode::group("Input", vec![paragraph()]);
+    project.target = SchemaNode::group(
+        "Output",
+        vec![
+            SchemaNode::group(
+                "Para",
+                vec![
+                    SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text(),
+                    SchemaNode::scalar("Strong", ScalarType::String).repeating(),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    project.graph.nodes = BTreeMap::new();
+    project.root.children = vec![Scope {
+        target_field: "Para".into(),
+        iteration: mapping::ScopeIteration::OwnedSource {
+            source: mapping::OwnedSourceRef {
+                owner: SourceOwner::Primary,
+                path: vec!["Para".into()],
+            },
+            output_path: None,
+        },
+        construction: mapping::ScopeConstruction::XmlMixedContent {
+            elements: vec![mapping::XmlMixedContentElement {
+                source: "b".into(),
+                target: "Strong".into(),
+            }],
+        },
+        ..Scope::default()
+    }];
+    let path = Path::new("nonexistent-owned-mixed-construction-parent/output.mfd");
+    let expected = mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Primary)
+        .descendant(mapping::SourceScopeStep::Child(0));
+    let refused = |error: MfdError| matches!(error, MfdError::UnsupportedSourceIteration { scope } if scope == expected);
+    assert!(refused(preflight_export(&project, path).unwrap_err()));
+    for profile in [ExportProfile::default(), ExportProfile::NativeMfd] {
+        assert!(refused(
+            export_with_profile(&project, path, profile).unwrap_err()
+        ));
+    }
+    assert!(!path.exists());
+}

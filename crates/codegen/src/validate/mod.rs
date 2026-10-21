@@ -272,6 +272,15 @@ pub fn validate_program_with_basic_owned_xml_serialize(
     owned_sources::validate_basic_owned_xml_serialize_emission(program)
 }
 
+/// Validates mixed-content construction by an owned selector in Basic target
+/// contexts, explicitly composing the owned XML mixed-content atomization
+/// companion. Legacy, inherited and grouped constructions keep refusing.
+pub fn validate_program_with_basic_owned_xml_mixed_construction(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_xml_mixed_construction_emission(program)
+}
+
 /// Validates owned XML mixed-content atomization in Basic target contexts,
 /// explicitly composing the owned XML serialization companion. Legacy
 /// mixed-content nodes and every older companion keep their existing gates.
@@ -1730,6 +1739,7 @@ pub use owned_sources::{
     validate_basic_owned_sort_emission, validate_basic_owned_window_emission,
 };
 pub use owned_sources::{
+    validate_basic_owned_xml_mixed_construction_emission,
     validate_basic_owned_xml_mixed_content_emission, validate_basic_owned_xml_serialize_emission,
 };
 

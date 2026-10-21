@@ -1083,6 +1083,9 @@ mod owned_join_tuple_tests;
 #[path = "tests/owned_path_hierarchy.rs"]
 mod owned_path_hierarchy_tests;
 #[cfg(test)]
+#[path = "tests/owned_xml_mixed_construction.rs"]
+mod owned_xml_mixed_construction_tests;
+#[cfg(test)]
 #[path = "tests/owned_xml_mixed_content.rs"]
 mod owned_xml_mixed_content_tests;
 #[cfg(test)]

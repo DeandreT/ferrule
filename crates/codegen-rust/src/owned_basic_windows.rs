@@ -163,6 +163,17 @@ pub(crate) fn render_public_basic_owned_sequence_aggregate_source(
     )
 }
 
+/// The owned mixed-content composition plus owned-selector construction.
+pub(crate) fn render_public_basic_owned_xml_mixed_construction_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::XmlMixedConstruction,
+        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+    )
+}
+
 /// The owned XML serialization composition plus mixed-content atomization.
 pub(crate) fn render_public_basic_owned_xml_mixed_content_source(
     program: &Program,
@@ -248,6 +259,8 @@ pub(super) enum Profile {
     Joins,
     /// XmlSerialize plus owned XML mixed-content atomization.
     XmlMixedContent,
+    /// XmlMixedContent plus mixed-content construction by an owned selector.
+    XmlMixedConstruction,
 }
 
 impl Profile {
@@ -269,6 +282,7 @@ impl Profile {
                 | Self::CollectionAggregates
                 | Self::Joins
                 | Self::XmlMixedContent
+                | Self::XmlMixedConstruction
         )
     }
 
@@ -285,6 +299,7 @@ impl Profile {
                 | Self::CollectionAggregates
                 | Self::Joins
                 | Self::XmlMixedContent
+                | Self::XmlMixedConstruction
         )
     }
 
@@ -307,6 +322,7 @@ impl Profile {
                     | Self::CollectionAggregates
                     | Self::Joins
                     | Self::XmlMixedContent
+                    | Self::XmlMixedConstruction
             ),
             Some(GroupingPlan::StartingWith { .. }) => matches!(
                 self,
@@ -323,6 +339,7 @@ impl Profile {
                     | Self::CollectionAggregates
                     | Self::Joins
                     | Self::XmlMixedContent
+                    | Self::XmlMixedConstruction
             ),
             Some(GroupingPlan::EndingWith { .. }) => matches!(
                 self,
@@ -338,6 +355,7 @@ impl Profile {
                     | Self::CollectionAggregates
                     | Self::Joins
                     | Self::XmlMixedContent
+                    | Self::XmlMixedConstruction
             ),
             Some(GroupingPlan::IntoBlocks { .. }) => {
                 matches!(
@@ -349,6 +367,7 @@ impl Profile {
                         | Self::CollectionAggregates
                         | Self::Joins
                         | Self::XmlMixedContent
+                        | Self::XmlMixedConstruction
                 )
             }
             None => false,
@@ -382,6 +401,12 @@ fn render_public_basic_owned_source_policy(
         }
         (Profile::XmlMixedContent, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::validate_basic_owned_xml_mixed_content_emission(program)?;
+        }
+        (
+            Profile::XmlMixedConstruction,
+            SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+        ) => {
+            codegen::validate_basic_owned_xml_mixed_construction_emission(program)?;
         }
         (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducersWithExists) => {
             codegen::validate_basic_owned_sequence_exists_emission(program)?;
@@ -716,6 +741,12 @@ fn render_public_basic_owned_source_policy(
         (Profile::XmlMixedContent, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_xml_mixed_content(program)?
         }
+        (
+            Profile::XmlMixedConstruction,
+            SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+        ) => codegen::legacy_named_input_admission_plan_with_basic_owned_xml_mixed_construction(
+            program,
+        )?,
         (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducersWithExists) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_exists(program)?
         }

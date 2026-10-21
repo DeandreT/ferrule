@@ -1292,6 +1292,11 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
         | ScopeConstruction::Scalar { .. }
         | ScopeConstruction::OwnedPathHierarchy { .. }
         | ScopeConstruction::OwnedAdjacencyTree { .. } => OwnedCapabilityContext::Basic,
+        // Only the scope's own owned selector qualifies a mixed-content
+        // construction; grouped and legacy-selected forms stay closed.
+        ScopeConstruction::XmlMixedContent { .. } if owned_mixed_construction(scope) => {
+            OwnedCapabilityContext::Basic
+        }
         ScopeConstruction::XmlMixedContent { .. } => OwnedCapabilityContext::XmlOperator,
         // Only the scope's own owned selector qualifies a recursive filter.
         ScopeConstruction::RecursiveFilter { .. } if scope.owned_recursive_filter().is_some() => {
@@ -1302,6 +1307,17 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
         | ScopeConstruction::AdjacencyTree { .. } => OwnedCapabilityContext::TreeOperator,
         ScopeConstruction::CopyCurrentSource => OwnedCapabilityContext::SpecialConstruction,
     }
+}
+
+/// An ungrouped scope whose own owned selector supplies the constructed
+/// mixed-content item.
+pub(crate) fn owned_mixed_construction(scope: &Scope) -> bool {
+    matches!(
+        scope.construction,
+        ScopeConstruction::XmlMixedContent { .. }
+    ) && matches!(scope.source_selector(), Some(SourceSelectorRef::Owned(_)))
+        && !scope.has_grouping()
+        && scope.post_group_filter.is_none()
 }
 
 /// Parent-context ItemAt producers. The owned recursive walk is qualified

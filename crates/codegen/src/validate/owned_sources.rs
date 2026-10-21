@@ -44,6 +44,7 @@ pub use primary_row_failures::{
 };
 pub(super) use xml_serialize::OwnedXmlPolicy;
 pub use xml_serialize::{
+    validate_basic_owned_xml_mixed_construction_emission,
     validate_basic_owned_xml_mixed_content_emission, validate_basic_owned_xml_serialize_emission,
 };
 
@@ -1062,6 +1063,11 @@ impl<'a> Admission<'a> {
                 None
             }
             TargetConstruction::DynamicGroup { .. } => Some(Capability::DynamicTarget),
+            TargetConstruction::XmlMixedContent { .. }
+                if self.owned_xml.admits_construction(scope) =>
+            {
+                None
+            }
             TargetConstruction::XmlMixedContent { .. } => Some(Capability::XmlOperator),
             TargetConstruction::RecursiveFilter { .. }
             | TargetConstruction::PathHierarchy { .. }
@@ -1951,6 +1957,7 @@ fn validate_basic_owned_with_joins(
         path_hierarchy,
         adjacency_tree,
         join,
+        owned_xml,
     };
     basic_scope(
         program,
@@ -2121,6 +2128,7 @@ struct BasicScopePolicy {
     path_hierarchy: PathHierarchyPolicy,
     adjacency_tree: AdjacencyTreePolicy,
     join: JoinPolicy,
+    owned_xml: OwnedXmlPolicy,
 }
 
 fn basic_scope(
@@ -2170,7 +2178,8 @@ fn basic_scope(
     }
     let admitted_construction = policy.path_hierarchy == PathHierarchyPolicy::Owned
         && owned_path_hierarchy(scope).is_some()
-        || policy.adjacency_tree.admits(scope);
+        || policy.adjacency_tree.admits(scope)
+        || policy.owned_xml.admits_construction(scope);
     if !admitted_construction
         && !matches!(
             scope.construction,

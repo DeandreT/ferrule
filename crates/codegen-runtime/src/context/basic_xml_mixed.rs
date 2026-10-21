@@ -14,7 +14,7 @@ use ir::{
 };
 
 use super::*;
-use crate::OwnedXmlMixedContentReplacement;
+use crate::{OwnedXmlMixedContentReplacement, XmlMixedContentElement};
 
 fn string_field<'a>(item: &'a Instance, name: &str) -> &'a str {
     match item.field(name).and_then(Instance::as_scalar) {
@@ -91,6 +91,45 @@ impl<'ctx> BasicScopeContext<'ctx> {
         Ok(Value::String(output))
     }
 
+    /// Attaches the ordered stream of the owner's current occurrence of
+    /// `collection` (the scope's own owned selector) to a constructed group:
+    /// its latest exact frame, a group-member frame's first member, or the
+    /// registry root of an endpoint-root selection. Another owner's frame and
+    /// the innermost legacy frame are never consulted.
+    pub fn preserve_owned_xml_mixed_content(
+        &self,
+        owner: SourceOwnerRef<'_>,
+        collection: &[&str],
+        output: Instance,
+        elements: &[XmlMixedContentElement<'_>],
+    ) -> Result<Instance, RuntimeError> {
+        self.budget(owner, collection, None, false)?;
+        let (key, root) = self.owned.resolve_owned_owner(owner)?;
+        let source = match self.owned.owned_frame_index(key, Some(collection)) {
+            Some(index) => {
+                let frame = &self.owned.frames[index];
+                match (frame.kind, frame.instance) {
+                    (
+                        super::super::OwnedOccurrenceKind::GroupMembers,
+                        Instance::Repeated(members),
+                    ) => members.first(),
+                    (_, instance) => Some(instance),
+                }
+            }
+            None if collection.is_empty() => Some(root),
+            None => {
+                return Err(OwnedSourceError::InactiveSourceFrame {
+                    owner: self.owned.owned_identity(key),
+                    collection: Some(collection.iter().map(|part| (*part).to_owned()).collect()),
+                }
+                .into());
+            }
+        };
+        Ok(crate::xml_mixed_content::preserve_from(
+            source, output, elements,
+        ))
+    }
+
     /// Stacks one occurrence of `element` under the owner's group at `path`
     /// on both views, keeping every existing owned frame.
     pub(crate) fn with_owned_mixed_occurrence(
@@ -165,7 +204,7 @@ mod tests {
     use crate::{
         BasicScopeContext, BasicSourceRoots, DeclaredNamedSourceRoot, Instance, OwnedSourceError,
         OwnedSourceIdentity, OwnedSourceLimits, OwnedXmlMixedContentReplacement, RuntimeError,
-        SourceOwnerRef, SourcePathError, Value,
+        SourceOwnerRef, SourcePathError, Value, XmlMixedContentElement,
     };
 
     fn group(fields: Vec<(&str, Instance)>) -> Instance {
@@ -330,5 +369,98 @@ mod tests {
             ),
             Ok(Value::String(" t ".into()))
         );
+    }
+
+    fn strong(values: &[&str]) -> Instance {
+        group(vec![(
+            "Strong",
+            Instance::Repeated(values.iter().map(|value| text(value)).collect()),
+        )])
+    }
+
+    fn stream_names(output: &Instance) -> Vec<(String, String)> {
+        output
+            .field(XML_MIXED_CONTENT_FIELD)
+            .and_then(Instance::as_repeated)
+            .unwrap_or_default()
+            .iter()
+            .map(|item| {
+                let field = |name| match item.field(name).and_then(Instance::as_scalar) {
+                    Some(Value::String(value)) => value.clone(),
+                    other => format!("{other:?}"),
+                };
+                (field(XML_NODE_NAME_FIELD), field(XML_TEXT_FIELD))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn owned_construction_attaches_only_the_selected_occurrence_or_endpoint_root() {
+        // Each `Para` occurrence of the primary attaches its own stream.
+        let primary = group(vec![(
+            "Para",
+            Instance::Repeated(vec![
+                input("P", "first ", &["x"]).field("Para").cloned().unwrap(),
+                input("P", "second ", &["y"])
+                    .field("Para")
+                    .cloned()
+                    .unwrap(),
+            ]),
+        )]);
+        let note = input("N", "note ", &["z"]).field("Para").cloned().unwrap();
+        let declared = [DeclaredNamedSourceRoot {
+            name: "note",
+            instance: Some(&note),
+        }];
+        let roots = BasicSourceRoots::try_new(&primary, &declared, LIMITS).unwrap();
+        let root = roots.root_context().unwrap();
+        let elements = [XmlMixedContentElement {
+            source: "b",
+            target: "Strong",
+        }];
+        let rows = root
+            .walk_owned_source(SourceOwnerRef::Primary, &["Para"])
+            .unwrap();
+        let pair = |name: &str, value: &str| (name.to_owned(), value.to_owned());
+        let first = rows[0]
+            .context()
+            .preserve_owned_xml_mixed_content(
+                SourceOwnerRef::Primary,
+                &["Para"],
+                strong(&["X"]),
+                &elements,
+            )
+            .unwrap();
+        assert_eq!(
+            stream_names(&first),
+            [pair("", "first "), pair("Strong", "X"), pair("", "|")]
+        );
+        // An endpoint-root selection inside the primary row attaches the
+        // named root, never the row item that is the innermost legacy frame.
+        let nested = rows[1]
+            .context()
+            .preserve_owned_xml_mixed_content(
+                SourceOwnerRef::Named("note"),
+                &[],
+                strong(&["Z"]),
+                &elements,
+            )
+            .unwrap();
+        assert_eq!(
+            stream_names(&nested),
+            [pair("", "note "), pair("Strong", "Z"), pair("", "|")]
+        );
+        // A non-root selector without its own occurrence is a typed failure.
+        assert!(matches!(
+            root.preserve_owned_xml_mixed_content(
+                SourceOwnerRef::Primary,
+                &["Para"],
+                strong(&[]),
+                &elements
+            ),
+            Err(RuntimeError::OwnedSource(
+                OwnedSourceError::InactiveSourceFrame { .. }
+            ))
+        ));
     }
 }

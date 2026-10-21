@@ -225,6 +225,17 @@ pub fn lower_with_basic_owned_xml_serialize(project: &Project) -> Result<Program
     )
 }
 
+/// Lowers mixed-content construction by an owned selector in Basic target
+/// contexts, composing the owned XML mixed-content atomization companion.
+pub fn lower_with_basic_owned_xml_mixed_construction(
+    project: &Project,
+) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_xml_mixed_construction,
+    )
+}
+
 /// Lowers owned XML mixed-content atomization in Basic target contexts,
 /// composing the owned XML serialization companion. Legacy mixed-content nodes
 /// keep their ordinary route.
