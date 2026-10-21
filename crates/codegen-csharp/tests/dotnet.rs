@@ -1282,6 +1282,10 @@ impl TempDirectory {
 
 impl Drop for TempDirectory {
     fn drop(&mut self) {
+        if std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").is_some() {
+            eprintln!("retained generated host artifacts at {}", self.0.display());
+            return;
+        }
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
