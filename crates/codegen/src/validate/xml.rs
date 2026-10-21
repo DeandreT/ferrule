@@ -71,6 +71,10 @@ pub(super) fn validate(
             }
             continue;
         }
+        if let Expression::OwnedXmlMixedContent(mixed) = expression {
+            validate_owned_mixed_content(node, sources, mixed)?;
+            continue;
+        }
         if let Expression::OwnedXmlSerialize(serializer) = expression {
             validate_serializer_schema(node, &serializer.schema, serializer.namespace.as_deref())?;
             // Only the exact owner's schema can supply the element. Unknown
@@ -114,6 +118,57 @@ pub(super) fn validate(
                 node,
                 path: absolute,
                 schema: schema.name.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Owned mixed-content rules use the legacy replacement diagnostics. Only the
+/// exact owner's schema can supply the group and its occurrence collections;
+/// unknown owners and unresolved paths are left to the ownership diagnostic.
+fn validate_owned_mixed_content(
+    node: NodeId,
+    sources: SourceCatalog<'_>,
+    mixed: &mapping::OwnedXmlMixedContent,
+) -> Result<(), ProgramValidationError> {
+    let mut elements = BTreeSet::new();
+    for (replacement, rule) in mixed.replacements.iter().enumerate() {
+        if rule.element.is_empty() {
+            return Err(ProgramValidationError::EmptyXmlMixedContentElement { node, replacement });
+        }
+        if !elements.insert(rule.element.as_str()) {
+            return Err(ProgramValidationError::DuplicateXmlMixedContentElement {
+                node,
+                element: rule.element.clone(),
+            });
+        }
+    }
+    let Some(group) = sources
+        .owned_schema_at(&mixed.source)
+        .and_then(|candidate| candidate.resolved())
+    else {
+        return Ok(());
+    };
+    let group = group.node();
+    if !matches!(group.kind, SchemaKind::Group { .. })
+        || group.child(XML_TEXT_FIELD).is_none_or(|text| !text.text)
+    {
+        return Err(ProgramValidationError::InvalidXmlMixedContentSource {
+            node,
+            path: mixed.source.path.clone(),
+        });
+    }
+    for (replacement, rule) in mixed.replacements.iter().enumerate() {
+        if rule.context == mapping::OwnedXmlMixedContentContext::Occurrence
+            && group
+                .child(&rule.element)
+                .is_none_or(|child| !child.repeating || child.attribute || child.text)
+        {
+            return Err(ProgramValidationError::InvalidXmlMixedContentCollection {
+                node,
+                replacement,
+                collection: mixed.occurrence_collection(&rule.element),
             });
         }
     }

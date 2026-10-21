@@ -3,6 +3,7 @@
 
 use serde_json::{Value as Json, json};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 #[path = "json5_resources/corpus.rs"]
 mod corpus;
@@ -130,10 +131,15 @@ fn json5_original_normalized_and_output_physical_boundaries_all48() -> TestResul
     if !parent.is_dir() {
         return Err("existing confined evidence parent required".into());
     }
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_nanos();
-    let root = parent.join(format!("json5-resource145-{}-{nonce}", std::process::id()));
+    let root = parent.join(format!(
+        "json5-resource145-{}-{nonce}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
     std::fs::create_dir(&root)?;
     println!(
         "retained complete original resource cohort: {}",

@@ -36,6 +36,8 @@ pub use owned_join::{OwnedJoinKey, OwnedJoinSource, OwnedJoinStage};
 mod recursive_filter;
 #[path = "basic_xml.rs"]
 mod xml;
+#[path = "basic_xml_mixed.rs"]
+mod xml_mixed;
 pub use group_by::{
     BasicGroupByControls, BasicGroupByMetadata, BasicGroupEndingWithControls,
     BasicGroupIntoBlocksControls, BasicGroupStartingWithControls,

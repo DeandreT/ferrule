@@ -4,6 +4,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
+    sync::atomic::{AtomicUsize, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -215,13 +216,15 @@ fn complete_document_emission_keeps_shared_policy_refusals_and_named_ownership()
 #[test]
 #[ignore = "explicit package-free generated-C# cohort; requires the .NET 10 SDK"]
 fn generated_static_document_outputs_match_literals_and_refuse_whole_bundles() {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "ferrule-csharp-document-outputs-{}-{}",
+        "ferrule-csharp-document-outputs-{}-{}-{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&root).unwrap();
     eprintln!(

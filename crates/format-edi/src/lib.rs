@@ -631,6 +631,7 @@ pub fn dialect_of(schema: &SchemaNode) -> Result<Dialect, EdiFormatError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn malformed_roots_fail_while_nested_composites_select_the_dialect() {
@@ -870,13 +871,15 @@ mod tests {
             ("12:34", 8, 8, Some("12340000")),
             ("12:34:56.120Z", 4, 8, Some("12345612")),
         ];
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let retained = std::env::temp_dir().join(format!(
-            "ferrule_compact_time_width_{}_{}",
+            "ferrule_compact_time_width_{}_{}_{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&retained).unwrap();
         eprintln!(

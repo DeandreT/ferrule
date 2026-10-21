@@ -332,6 +332,10 @@ pub enum Node {
     OwnedJoinField(OwnedJoinField),
     /// Raw source position of one exact owned join tuple member.
     OwnedJoinSourcePosition(OwnedJoinSourcePosition),
+    /// Atomizes one mixed-content group read from exactly its declared owner,
+    /// replacing direct child occurrences in explicit parent or owned
+    /// occurrence contexts.
+    OwnedXmlMixedContent(crate::OwnedXmlMixedContent),
     /// Reads a scalar field at `path`, resolved against the innermost
     /// currently-iterating source item, falling back to enclosing items
     /// (nearest enclosing wins) if not found there. That fallback is what
@@ -600,6 +604,7 @@ impl Node {
             Self::OwnedRowDocumentPath(_) => Some("owned_row_document_path"),
             Self::OwnedDynamicSourceField(_) => Some("owned_dynamic_source_field"),
             Self::OwnedXmlSerialize(_) => Some("owned_xml_serialize"),
+            Self::OwnedXmlMixedContent(_) => Some("owned_xml_mixed_content"),
             Self::SequenceExists { sequence, .. }
             | Self::SequenceItemAt { sequence, .. }
             | Self::SequenceAggregate { sequence, .. }
@@ -655,6 +660,11 @@ impl Node {
             Self::DynamicSourceField { key, .. } => vec![*key],
             Self::OwnedDynamicSourceField(field) => vec![field.key],
             Self::XmlMixedContent { replacements, .. } => replacements
+                .iter()
+                .map(|replacement| replacement.expression)
+                .collect(),
+            Self::OwnedXmlMixedContent(mixed) => mixed
+                .replacements
                 .iter()
                 .map(|replacement| replacement.expression)
                 .collect(),

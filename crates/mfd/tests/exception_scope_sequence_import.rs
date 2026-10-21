@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use engine::EngineError;
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
@@ -10,13 +11,15 @@ use mfd::{ExportProfile, ImportIssueKind, ImportOptions, ImportProfile, MfdError
 struct Directory(PathBuf);
 impl Directory {
     fn new(label: &str) -> Self {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_scope_sequence_{label}_{}_{}",
+            "ferrule_mfd_scope_sequence_{label}_{}_{}_{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&path).unwrap();
         Self(path)

@@ -1,5 +1,6 @@
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use format_json::{JsonFormatError, from_str, json_schema, to_string};
@@ -24,10 +25,12 @@ impl Evidence {
         if !parent.is_absolute() {
             return Err("evidence parent must be absolute".into());
         }
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let directory = parent.join(format!(
-            "ferrule-string-float-native-{}-{stamp}",
-            std::process::id()
+            "ferrule-string-float-native-{}-{stamp}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&directory)?;
         std::fs::write(directory.join("cases.json"), CASES)?;
