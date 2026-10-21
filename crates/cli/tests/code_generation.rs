@@ -56,6 +56,10 @@ mod basic_owned_sequence_aggregate;
 mod basic_owned_sequence_exists;
 #[path = "code_generation/basic_owned_sequence_item_at.rs"]
 mod basic_owned_sequence_item_at;
+#[path = "code_generation/basic_owned_xml_mixed_construction.rs"]
+mod basic_owned_xml_mixed_construction;
+#[path = "code_generation/basic_owned_xml_mixed_content.rs"]
+mod basic_owned_xml_mixed_content;
 #[path = "code_generation/basic_owned_xml_serialize.rs"]
 mod basic_owned_xml_serialize;
 #[path = "code_generation/collection_find.rs"]
@@ -916,6 +920,7 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "Runtime/FerruleXml.OutputSet.cs",
         "Runtime/FerruleXml.Owned.cs",
         "Runtime/FerruleXml.cs",
+        "Runtime/FerruleXmlMixedContent.Owned.cs",
         "Runtime/FerruleXmlMixedContent.cs",
         "Runtime/FerruleXmlTypeOrigin.cs",
         "Runtime/Json/FerruleJson.AllowedValues.cs",

@@ -60,6 +60,8 @@ pub use json5_boundary::{
 pub use lower::lower_with_basic_owned_adjacency_tree;
 pub use lower::lower_with_basic_owned_path_hierarchy;
 pub use lower::lower_with_basic_owned_recursive_filter;
+pub use lower::lower_with_basic_owned_xml_mixed_construction;
+pub use lower::lower_with_basic_owned_xml_mixed_content;
 pub use lower::lower_with_basic_owned_xml_serialize;
 pub use lower::{
     lower, lower_with_basic_owned_collection_aggregates, lower_with_basic_owned_dynamic_field,
@@ -87,6 +89,8 @@ pub use model::{
 pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_adjacency_tree;
 pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy;
 pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_recursive_filter;
+pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_xml_mixed_construction;
+pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_xml_mixed_content;
 pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_xml_serialize;
 pub use owned_admission::{
     NamedInputAdmission, NamedInputAdmissionPlan, NamedInputAvailability, NamedInputCatalogue,
@@ -141,8 +145,12 @@ pub use validate::{
     validate_program_with_basic_owned_path_hierarchy,
 };
 pub use validate::{
-    validate_basic_owned_recursive_filter_emission, validate_basic_owned_xml_serialize_emission,
+    validate_basic_owned_recursive_filter_emission,
+    validate_basic_owned_xml_mixed_construction_emission,
+    validate_basic_owned_xml_mixed_content_emission, validate_basic_owned_xml_serialize_emission,
     validate_program_with_basic_owned_recursive_filter,
+    validate_program_with_basic_owned_xml_mixed_construction,
+    validate_program_with_basic_owned_xml_mixed_content,
     validate_program_with_basic_owned_xml_serialize,
 };
 pub use x12_boundary::{

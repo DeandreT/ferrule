@@ -316,6 +316,7 @@ fn wildcard_matches(pattern: &str, value: &str) -> bool {
 mod tests {
     use std::error::Error;
     use std::num::{NonZeroU64, NonZeroUsize};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use ir::{ScalarType, SchemaNode};
@@ -326,13 +327,15 @@ mod tests {
 
     impl TempDir {
         fn new() -> std::io::Result<Self> {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
             let suffix = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_nanos();
             let path = std::env::temp_dir().join(format!(
-                "ferrule-local-xml-file-set-{}-{suffix}",
-                std::process::id()
+                "ferrule-local-xml-file-set-{}-{suffix}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
             ));
             std::fs::create_dir(&path)?;
             Ok(Self(path))

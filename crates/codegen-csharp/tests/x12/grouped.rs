@@ -3,6 +3,7 @@
 use super::*;
 use codegen::X12EnvelopeProfile;
 use ir::{Instance, Value};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const HOST: &str = include_str!("grouped/Host.cs");
 const RUST_HOST: &str = include_str!("grouped/Host.rs.txt");
@@ -288,13 +289,15 @@ fn schema(version: &str) -> SchemaNode {
     serde_json::from_str(fixture(&format!("{version}-schema.json"))).unwrap()
 }
 fn evidence(label: &str) -> std::path::PathBuf {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "ferrule_x12_grouped_{label}_{}_{}",
+        "ferrule_x12_grouped_{label}_{}_{}_{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&root).unwrap();
     eprintln!("complete authored grouped X12 evidence: {}", root.display());
@@ -581,6 +584,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "Runtime/FerruleXml.OutputSet.cs",
         "Runtime/FerruleXml.Owned.cs",
         "Runtime/FerruleXml.cs",
+        "Runtime/FerruleXmlMixedContent.Owned.cs",
         "Runtime/FerruleXmlMixedContent.cs",
         "Runtime/FerruleXmlTypeOrigin.cs",
         "Runtime/Json/FerruleJson.AllowedValues.cs",

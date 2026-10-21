@@ -13,10 +13,12 @@ impl Evidence {
         if !parent.is_absolute() {
             return Err("evidence parent must be absolute".into());
         }
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let path = parent.join(format!(
-            "ferrule-string-float-compiled-{}-{stamp}",
-            std::process::id()
+            "ferrule-string-float-compiled-{}-{stamp}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&path)?;
         std::fs::write(path.join("cases.json"), CASES)?;

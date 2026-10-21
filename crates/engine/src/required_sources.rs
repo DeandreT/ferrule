@@ -240,6 +240,7 @@ impl<'a> Analysis<'a> {
             Node::OwnedJoinSourcePosition(position) => {
                 self.inspect_owner(&position.collection.owner)
             }
+            Node::OwnedXmlMixedContent(mixed) => self.inspect_owner(&mixed.source.owner),
             Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }

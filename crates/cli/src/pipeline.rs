@@ -9,6 +9,7 @@ use ir::SchemaNode;
 use mapping::{FormatOptions, Pipeline, PipelineInput};
 
 use crate::read_set::ReadSet;
+use crate::route_capability::{HostRoute, InputRole, PlannedPublication, RoutePlan};
 use crate::{
     FilesystemPdfReader, OutputDestination, ProjectDynamicSourceLoader, TargetOutput,
     absolute_mapping_path, read_instance_with_pdf_reader, write_target_outputs,
@@ -391,35 +392,13 @@ fn run_pipeline_value_with_pdf_reader(
     options: &PipelineRunOptions<'_>,
     reader: Option<&dyn FilesystemPdfReader>,
 ) -> anyhow::Result<PipelineRunOutcome> {
-    let issues = engine::validate_pipeline(pipeline);
-    if !issues.is_empty() {
-        bail!(
-            "pipeline validation failed with {} issue(s):\n{}",
-            issues.len(),
-            issues
-                .iter()
-                .map(|issue| format!("  - {issue}"))
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
-    }
-    let host_boundaries = infer_host_boundaries(pipeline)?;
-    let paths = validate_host_inputs(&host_boundaries, inputs)?;
-    let selected = select_outputs(pipeline, outputs)?;
+    let PreparedPipeline {
+        host_boundaries,
+        paths,
+        selected,
+        plan: _,
+    } = prepare_pipeline(pipeline, pipeline_path, inputs, outputs, options)?;
     let policy = options.policy();
-    for selection in &selected {
-        policy.authorize_write(selection.destination.path())?;
-    }
-
-    // Admission follows execution's dependency order and includes every target;
-    // selected outputs only choose the files to publish.
-    engine::check_pipeline_source_ownership_capability_with_observers(
-        pipeline,
-        engine::SourceOwnershipObservers {
-            tracing: options.stage_trace_sink.is_some(),
-            debugging: options.requests_debug_hook(),
-        },
-    )?;
 
     let mut read_set = ReadSet::new(pipeline_path);
     let mut hosts = BTreeMap::new();
@@ -567,6 +546,107 @@ fn run_pipeline_value_with_pdf_reader(
     Ok(PipelineRunOutcome {
         stages_executed: results.stages_executed,
         artifacts,
+    })
+}
+
+/// Reports what a pipeline run will acquire and publish, applying the same
+/// validation, capability and policy checks as [`run_pipeline_file_with_options`]
+/// without reading any host input or creating any output.
+pub fn plan_pipeline_run(
+    pipeline_path: &Path,
+    inputs: &[PipelineHostFile],
+    outputs: &[PipelineOutputFile],
+    options: &PipelineRunOptions<'_>,
+) -> anyhow::Result<RoutePlan> {
+    let json = std::fs::read_to_string(pipeline_path)
+        .with_context(|| format!("reading pipeline file {}", pipeline_path.display()))?;
+    let pipeline = mapping::pipeline_file::decode_str(&json)
+        .with_context(|| format!("parsing pipeline file {}", pipeline_path.display()))?;
+    Ok(prepare_pipeline(&pipeline, pipeline_path, inputs, outputs, options)?.plan)
+}
+
+struct PreparedPipeline<'a> {
+    host_boundaries: BTreeMap<&'a str, HostBoundary<'a>>,
+    paths: BTreeMap<&'a str, &'a Path>,
+    selected: Vec<SelectedOutput<'a>>,
+    plan: RoutePlan,
+}
+
+fn prepare_pipeline<'a>(
+    pipeline: &'a Pipeline,
+    pipeline_path: &Path,
+    inputs: &'a [PipelineHostFile],
+    outputs: &'a [PipelineOutputFile],
+    options: &PipelineRunOptions<'_>,
+) -> anyhow::Result<PreparedPipeline<'a>> {
+    let issues = engine::validate_pipeline(pipeline);
+    if !issues.is_empty() {
+        bail!(
+            "pipeline validation failed with {} issue(s):\n{}",
+            issues.len(),
+            issues
+                .iter()
+                .map(|issue| format!("  - {issue}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+    let host_boundaries = infer_host_boundaries(pipeline)?;
+    let paths = validate_host_inputs(&host_boundaries, inputs)?;
+    let selected = select_outputs(pipeline, outputs)?;
+    let policy = options.policy();
+    for selection in &selected {
+        policy.authorize_write(selection.destination.path())?;
+    }
+
+    // Admission follows execution's dependency order and includes every target;
+    // selected outputs only choose the files to publish.
+    engine::check_pipeline_source_ownership_capability_with_observers(
+        pipeline,
+        engine::SourceOwnershipObservers {
+            tracing: options.stage_trace_sink.is_some(),
+            debugging: options.requests_debug_hook(),
+        },
+    )?;
+
+    let mut plan = RoutePlan::new(HostRoute::RunPipeline, pipeline_path);
+    for (name, boundary) in &host_boundaries {
+        plan.acquire_location(
+            InputRole::PipelineHost((*name).to_owned()),
+            paths[name],
+            boundary.options,
+        );
+    }
+    for stage in &pipeline.stages {
+        for source in &stage.project.extra_sources {
+            if source.dynamic_path.is_some() {
+                plan.acquire_dynamic(&format!("{}/{}", stage.id, source.name));
+            }
+        }
+    }
+    for selection in &selected {
+        let target = format!("{}/{}", selection.request.stage, selection.name);
+        plan.publish(match &selection.destination {
+            OutputDestination::Static(path) => PlannedPublication::File {
+                target,
+                path: path.clone(),
+            },
+            OutputDestination::DynamicBase(base) => PlannedPublication::Documents {
+                target,
+                base: base.clone(),
+            },
+        });
+    }
+    // Every host input is admitted before the first one is acquired.
+    plan.authorize_reads(policy, |role| match role {
+        InputRole::PipelineHost(name) => Some(format!("loading pipeline host input `{name}`")),
+        InputRole::Primary | InputRole::Named(_) => None,
+    })?;
+    Ok(PreparedPipeline {
+        host_boundaries,
+        paths,
+        selected,
+        plan,
     })
 }
 
