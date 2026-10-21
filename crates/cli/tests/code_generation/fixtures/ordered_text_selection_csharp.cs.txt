@@ -1,0 +1,37 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+using System.Text.Json;
+
+using var cases = JsonDocument.Parse(File.ReadAllText("cases.json"));
+var sourceSchema = File.ReadAllText("source-schema.json");
+var targetSchema = File.ReadAllText("target-schema.json");
+foreach (var item in cases.RootElement.EnumerateArray())
+{
+    var id = item.GetProperty("id").GetString();
+    var input = FerruleJson.Parse(sourceSchema, item.GetProperty("input").GetRawText());
+    if (item.TryGetProperty("error", out _))
+    {
+        try { _ = GeneratedMapping.Execute(input); throw new InvalidOperationException($"{id}: unexpectedly returned output"); }
+        catch (FerruleRuntimeException error)
+        {
+            if (error.Error != FerruleRuntimeError.AggregateUnsupportedScalar || error.AggregateOperation != FerruleAggregateOperation.LastPresentText || error.FoundKind != FerruleValueKind.JsonNull)
+                throw new InvalidOperationException($"{id}: unexpected error", error);
+            Console.WriteLine("OBSERVATION " + JsonSerializer.Serialize(new { id, error = "unsupported", detail = error.Message }));
+        }
+    }
+    else
+    {
+        var text = FerruleJson.Serialize(targetSchema, GeneratedMapping.Execute(input));
+        using var actual = JsonDocument.Parse(text);
+        var expected = item.GetProperty("expected");
+        var result = actual.RootElement;
+        if (result.ValueKind != JsonValueKind.Object || result.EnumerateObject().Count() != 3 ||
+            result.GetProperty("Last").ValueKind != JsonValueKind.String || result.GetProperty("Distinct").ValueKind != JsonValueKind.String ||
+            result.GetProperty("Last").GetString() != expected.GetProperty("Last").GetString() ||
+            result.GetProperty("Distinct").GetString() != expected.GetProperty("Distinct").GetString() ||
+            result.GetProperty("Present").GetBoolean() != expected.GetProperty("Present").GetBoolean())
+            throw new InvalidOperationException($"{id}: wrong document {text}");
+        Console.WriteLine("OBSERVATION " + JsonSerializer.Serialize(new { id, output = result }));
+    }
+    Console.WriteLine($"PASS {id}");
+}
