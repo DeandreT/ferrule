@@ -255,7 +255,7 @@ pub(super) enum Profile {
     XmlSerialize,
     /// LookupFind plus owned collection aggregates.
     CollectionAggregates,
-    /// LookupFind plus owned inner joins and their tuple reads.
+    /// LookupFind plus owned inner joins, their tuple reads and joined aggregates.
     Joins,
     /// XmlSerialize plus owned XML mixed-content atomization.
     XmlMixedContent,
@@ -918,6 +918,7 @@ fn local_owned(program: &Program, scope: &TargetScope) -> bool {
                 | Expression::OwnedAggregate(_)
                 | Expression::OwnedJoinField(_)
                 | Expression::OwnedJoinSourcePosition(_)
+                | Expression::OwnedJoinAggregate(_)
                 | Expression::JoinPosition { .. }
                 | Expression::OwnedXmlMixedContent(_) => true,
                 // An owned producer reads its root through the paired context.

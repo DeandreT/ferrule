@@ -38,11 +38,14 @@ impl ActiveJoin {
     }
 
     pub(super) fn owned(join: &OwnedInnerJoin) -> Self {
+        Self::owned_plan(join.id(), join.plan())
+    }
+
+    fn owned_plan(id: JoinId, plan: &mapping::OwnedJoinPlan) -> Self {
         Self {
-            id: join.id(),
+            id,
             sources: ActiveSources::Owned(
-                join.plan()
-                    .sources()
+                plan.sources()
                     .map(|source| (source.collection().clone(), source.cardinality().into()))
                     .collect(),
             ),
@@ -336,6 +339,33 @@ pub(super) fn validate_expression(
                 if let Some(arg) = arg {
                     validate_expression(
                         *arg,
+                        expressions,
+                        sources,
+                        current_source,
+                        active_joins,
+                        root_context,
+                    )?;
+                }
+            }
+            // Only this join is active in its tuple expression; the argument
+            // keeps the receiving context and its dominating joins.
+            Expression::OwnedJoinAggregate(aggregate) => {
+                if let Some(expression) = aggregate.expression {
+                    validate_expression(
+                        expression,
+                        expressions,
+                        sources,
+                        None,
+                        &[ActiveJoin::owned_plan(
+                            JoinId::from(aggregate.join),
+                            &aggregate.plan,
+                        )],
+                        false,
+                    )?;
+                }
+                if let Some(arg) = aggregate.arg {
+                    validate_expression(
+                        arg,
                         expressions,
                         sources,
                         current_source,

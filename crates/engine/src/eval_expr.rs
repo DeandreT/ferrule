@@ -376,6 +376,16 @@ fn eval_expr_inner(
         Node::OwnedJoinSourcePosition(position) => {
             crate::owned_join_tuple::eval_source_position(program, node_id, position)
         }
+        Node::OwnedJoinAggregate(aggregate) => {
+            crate::owned_join_aggregate::eval_owned_join_aggregate(
+                program,
+                node_id,
+                aggregate,
+                context,
+                positions,
+                in_progress,
+            )
+        }
         Node::SourceRootXmlTypeEquals {
             canonical_expanded_type,
         } => ir::primary_root_xml_type_equals(program.primary_source, canonical_expanded_type)

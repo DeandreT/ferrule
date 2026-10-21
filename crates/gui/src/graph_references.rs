@@ -166,7 +166,8 @@ pub(super) fn node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::OwnedCollectionFind(_)
         | Node::OwnedJoinField(_)
         | Node::OwnedJoinSourcePosition(_)
-        | Node::OwnedXmlMixedContent(_) => node.dependencies(),
+        | Node::OwnedXmlMixedContent(_)
+        | Node::OwnedJoinAggregate(_) => node.dependencies(),
         Node::DynamicSourceField { key, .. } => vec![*key],
         Node::OwnedDynamicSourceField(field) => vec![field.key],
         Node::XmlMixedContent { replacements, .. } => replacements

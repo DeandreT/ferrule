@@ -1,6 +1,6 @@
-//! Refusal controls: unsupported owned joins, wrong or inactive owned join
-//! reads, older generation profiles and directly constructed Programs.
-//! Expected errors are authored here.
+//! Refusal controls: unsupported owned joins and joined aggregates, wrong or
+//! inactive owned join reads, older generation profiles and directly
+//! constructed Programs. Expected errors are authored here.
 use super::*;
 use codegen::{
     OwnedSourceCapabilityOrigin as Origin, OwnedSourceCapabilityReason as Reason,
@@ -35,6 +35,34 @@ pub fn join_closed() -> ProgramValidationError {
         }),
     }
 }
+/// The J08 `Totals` scope.
+fn totals_scope() -> SourceScopeLocation {
+    join_scope()
+}
+
+/// Every earlier profile refuses the first J08 joined aggregate, the Count
+/// bound in `Totals`, at its expression.
+pub fn aggregate_closed() -> ProgramValidationError {
+    ProgramValidationError::OwnedSource {
+        diagnostic: Box::new(Diagnostic::Capability {
+            location: Location::Expression {
+                namespace: Namespace::Main,
+                node: 70,
+                scope: Some(totals_scope()),
+            },
+            request: Some(Request::Iteration {
+                owner: Owner::Primary,
+                path: path(&["Rows"]),
+            }),
+            reason: Reason::Join,
+            origin: Origin::Expression {
+                namespace: Namespace::Main,
+                node: 70,
+            },
+        }),
+    }
+}
+
 fn validation(location: &str, message: &str) -> codegen::Diagnostic {
     codegen::Diagnostic::Validation {
         location: location.into(),
@@ -194,6 +222,209 @@ pub fn projects() -> Vec<(&'static str, Project, Refusal)> {
     result
 }
 
+/// Joined aggregate Projects refused by the owned join profile.
+pub fn aggregate_projects() -> Vec<(&'static str, Project, Refusal)> {
+    let j10 = || projects::project("J10-parent-arguments-and-stages");
+    let mut result = Vec::new();
+    // A tuple read naming the other owner's same collection text.
+    let mut p = j10();
+    p.graph
+        .nodes
+        .insert(111, projects::join_field(14, LOOKUP, &["Orders"], &["id"]));
+    result.push((
+        "A01-aggregate-wrong-owner",
+        p,
+        Refusal::Validation(vec![validation(
+            "scope `Totals`",
+            "owned join node 111 collection named `Lookup` `Orders` does not belong to join 14",
+        )]),
+    ));
+    // Only the aggregate's own join is active in its tuple expression.
+    let mut p = j10();
+    p.graph.nodes.insert(
+        111,
+        projects::join_field(15, "Primary", &["Rows"], &["code"]),
+    );
+    result.push((
+        "A02-aggregate-inactive-join",
+        p,
+        Refusal::Validation(vec![validation(
+            "scope `Totals`",
+            "owned join node 111 references inactive join 15",
+        )]),
+    ));
+    // Its argument is a receiving-context scalar where tuple reads are inactive.
+    let mut p = j10();
+    p.graph.nodes.insert(
+        112,
+        projects::join_field(14, "Primary", &["Rows"], &["code"]),
+    );
+    result.push((
+        "A03-aggregate-argument-reads-tuple",
+        p,
+        Refusal::Validation(vec![validation(
+            "scope `Totals`",
+            "owned join node 112 references inactive join 14",
+        )]),
+    ));
+    // Ordinary owned reads stay closed in the tuple expression.
+    let mut p = j10();
+    p.graph.nodes.insert(
+        111,
+        Node::OwnedSourceField(mapping::OwnedSourceField {
+            source: projects::source("Primary", &["Header", "code"]),
+            frame: None,
+        }),
+    );
+    result.push((
+        "A04-owned-read-in-aggregate-tuple",
+        p,
+        Refusal::Capability(Reason::Join),
+    ));
+    // A join tuple admits no joined aggregate.
+    let mut p = projects::project("J01-same-path-rows");
+    p.graph.nodes.insert(
+        1,
+        projects::joined(
+            mapping::AggregateOp::Join,
+            20,
+            projects::rows_plan(false),
+            None,
+            None,
+        ),
+    );
+    result.push((
+        "A05-aggregate-in-join-tuple",
+        p,
+        Refusal::Capability(Reason::Join),
+    ));
+    // A dynamic owner is never a static endpoint.
+    let mut p = j10();
+    p.graph.nodes.insert(
+        140,
+        Node::Const {
+            value: Value::String("lookup.json".into()),
+        },
+    );
+    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
+        node: 140,
+        iteration: Vec::new(),
+    });
+    result.push((
+        "A06-dynamic-aggregate-owner",
+        p,
+        Refusal::Capability(Reason::DynamicOwner),
+    ));
+    result
+}
+
+/// Programs constructed directly from the lowered J08 Program.
+pub fn aggregate_programs(
+    base: &codegen::Program,
+) -> Vec<(&'static str, codegen::Program, ProgramValidationError)> {
+    let replace = |id: u32, expression: codegen::Expression| {
+        let mut program = base.clone();
+        for node in &mut program.expressions {
+            if node.id == id {
+                node.expression = expression.clone();
+            }
+        }
+        program
+    };
+    let read = |join: u64, name: &str, collection: &[&str], relative: &[&str]| {
+        codegen::Expression::OwnedJoinField(mapping::OwnedJoinField {
+            join: mapping::JoinId::new(join),
+            collection: projects::source(name, collection),
+            path: path(relative),
+        })
+    };
+    let missing_key = mapping::OwnedJoinPlan::new(
+        mapping::OwnedJoinSource::new(projects::source("Primary", &["Rows"])),
+        mapping::OwnedJoinSource::new(projects::source(LOOKUP, &["Rows"])),
+        mapping::OwnedJoinConditions::new(projects::key(
+            "Primary",
+            &["Rows"],
+            &["id"],
+            &["missing"],
+        )),
+    )
+    .expect("authored owned plan");
+    let aggregate = |plan: mapping::OwnedJoinPlan| {
+        codegen::Expression::OwnedJoinAggregate(mapping::OwnedJoinAggregate {
+            function: mapping::AggregateOp::Count,
+            join: mapping::JoinId::new(8),
+            plan,
+            expression: None,
+            arg: None,
+        })
+    };
+    vec![
+        (
+            "D06-aggregate-inactive-read",
+            replace(61, read(1, LOOKUP, &["Rows"], &["code"])),
+            ProgramValidationError::InactiveJoinExpression {
+                node: 61,
+                join: codegen::JoinId::new(1),
+            },
+        ),
+        (
+            "D07-aggregate-wrong-member",
+            replace(61, read(8, LOOKUP, &["Orders"], &["code"])),
+            ProgramValidationError::InvalidOwnedJoinMember {
+                node: 61,
+                join: codegen::JoinId::new(8),
+                collection: projects::source(LOOKUP, &["Orders"]),
+            },
+        ),
+        (
+            "D08-aggregate-missing-key-path",
+            replace(70, aggregate(missing_key)),
+            ProgramValidationError::OwnedSource {
+                diagnostic: Box::new(Diagnostic::Structure {
+                    location: Location::Expression {
+                        namespace: Namespace::Main,
+                        node: 70,
+                        scope: None,
+                    },
+                    request: Request::Field {
+                        owner: Owner::Named {
+                            name: LOOKUP.into(),
+                        },
+                        path: path(&["Rows", "missing"]),
+                        frame: Some(path(&["Rows"])),
+                    },
+                    reason: Structure::MissingOwnedPath { segment: 1 },
+                }),
+            },
+        ),
+        (
+            "D09-aggregate-tuple-legacy-read",
+            replace(
+                61,
+                codegen::Expression::SourceField {
+                    frame: None,
+                    path: path(&["Rows", "code"]),
+                },
+            ),
+            ProgramValidationError::OwnedSource {
+                diagnostic: Box::new(Diagnostic::Capability {
+                    location: Location::Expression {
+                        namespace: Namespace::Main,
+                        node: 61,
+                        scope: Some(totals_scope()),
+                    },
+                    request: None,
+                    reason: Reason::Join,
+                    origin: Origin::Expression {
+                        namespace: Namespace::Main,
+                        node: 75,
+                    },
+                }),
+            },
+        ),
+    ]
+}
+
 /// Programs constructed directly from the lowered J01 Program.
 pub fn programs(
     base: &codegen::Program,
@@ -310,7 +541,8 @@ pub fn programs(
     ]
 }
 
-/// Every other generation profile, including the sibling dynamic-field companion.
+/// Every other generation profile, including the sibling dynamic-field, XML
+/// serialization, collection-aggregate and XML mixed-content companions.
 pub fn old_lower(project: &Project) -> Vec<Result<codegen::Program, codegen::LowerError>> {
     vec![
         codegen::lower(project),
@@ -335,6 +567,8 @@ pub fn old_lower(project: &Project) -> Vec<Result<codegen::Program, codegen::Low
         codegen::lower_with_basic_owned_dynamic_field(project),
         codegen::lower_with_basic_owned_xml_serialize(project),
         codegen::lower_with_basic_owned_collection_aggregates(project),
+        codegen::lower_with_basic_owned_xml_mixed_content(project),
+        codegen::lower_with_basic_owned_xml_mixed_construction(project),
     ]
 }
 pub fn old_validators(p: &codegen::Program) -> Vec<Result<(), ProgramValidationError>> {
@@ -384,6 +618,10 @@ pub fn old_validators(p: &codegen::Program) -> Vec<Result<(), ProgramValidationE
         codegen::validate_basic_owned_xml_serialize_emission(p),
         codegen::validate_program_with_basic_owned_collection_aggregates(p),
         codegen::validate_basic_owned_collection_aggregates_emission(p),
+        codegen::validate_program_with_basic_owned_xml_mixed_content(p),
+        codegen::validate_basic_owned_xml_mixed_content_emission(p),
+        codegen::validate_program_with_basic_owned_xml_mixed_construction(p),
+        codegen::validate_basic_owned_xml_mixed_construction_emission(p),
     ]
 }
 pub fn old_catalogues(p: &codegen::Program) -> Vec<Result<(), ProgramValidationError>> {
@@ -411,6 +649,9 @@ pub fn old_catalogues(p: &codegen::Program) -> Vec<Result<(), ProgramValidationE
         codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_field(p).map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_xml_serialize(p).map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_collection_aggregates(p)
+            .map(drop),
+        codegen::legacy_named_input_admission_plan_with_basic_owned_xml_mixed_content(p).map(drop),
+        codegen::legacy_named_input_admission_plan_with_basic_owned_xml_mixed_construction(p)
             .map(drop),
     ]
     .into()
@@ -442,6 +683,8 @@ pub fn old_rust(
         codegen_rust::emit_with_basic_owned_dynamic_field(p, options),
         codegen_rust::emit_with_basic_owned_xml_serialize(p, options),
         codegen_rust::emit_with_basic_owned_collection_aggregates(p, options),
+        codegen_rust::emit_with_basic_owned_xml_mixed_content(p, options),
+        codegen_rust::emit_with_basic_owned_xml_mixed_construction(p, options),
     ]
 }
 pub fn old_csharp(
@@ -470,6 +713,8 @@ pub fn old_csharp(
         codegen_csharp::emit_with_basic_owned_dynamic_field(p),
         codegen_csharp::emit_with_basic_owned_xml_serialize(p),
         codegen_csharp::emit_with_basic_owned_collection_aggregates(p),
+        codegen_csharp::emit_with_basic_owned_xml_mixed_content(p),
+        codegen_csharp::emit_with_basic_owned_xml_mixed_construction(p),
     ]
 }
 /// The ordinary emitters refuse owned joins before emission.

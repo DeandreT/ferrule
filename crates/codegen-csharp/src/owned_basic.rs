@@ -103,7 +103,7 @@ struct TargetExtension {
     dynamic_field: bool,
     /// Owned XML operators are one nested explicit expression permission.
     owned_xml: OwnedXml,
-    /// Owned inner joins and their tuple reads.
+    /// Owned inner joins, their tuple reads and owned joined aggregates.
     owned_joins: bool,
 }
 
@@ -339,7 +339,7 @@ impl TargetExtension {
         owned_joins: false,
     };
 
-    /// LOOKUP_FIND plus owned inner joins and their tuple reads.
+    /// LOOKUP_FIND plus owned inner joins, their tuple reads and joined aggregates.
     const JOINS: Self = Self {
         controls: TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
         sequence_item_at: SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
@@ -970,6 +970,7 @@ fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
         Expression::OwnedLookup(lookup) => vec![lookup.matches],
         Expression::OwnedCollectionFind(find) => vec![find.predicate, find.value],
         Expression::OwnedAggregate(aggregate) => aggregate.inputs(),
+        Expression::OwnedJoinAggregate(aggregate) => aggregate.inputs(),
         Expression::CollectionFind {
             predicate, value, ..
         } => vec![*predicate, *value],
@@ -1156,6 +1157,7 @@ fn validate_private_inventory(
             // Codegen bound each read to its dominating owned join tuple.
             Expression::OwnedJoinField(_)
             | Expression::OwnedJoinSourcePosition(_)
+            | Expression::OwnedJoinAggregate(_)
             | Expression::JoinPosition { .. }
                 if extension.owned_joins =>
             {
@@ -1201,7 +1203,8 @@ fn validate_private_inventory(
             Expression::JoinField { .. }
             | Expression::JoinPosition { .. }
             | Expression::OwnedJoinField(_)
-            | Expression::OwnedJoinSourcePosition(_) => Reason::Join,
+            | Expression::OwnedJoinSourcePosition(_)
+            | Expression::OwnedJoinAggregate(_) => Reason::Join,
             Expression::Lookup { .. }
             | Expression::CollectionFind { .. }
             | Expression::OwnedLookup(_)
@@ -1880,6 +1883,7 @@ fn expression_needs_owned_sources(program: &Program, root: NodeId) -> bool {
                 | Expression::OwnedAggregate(_)
                 | Expression::OwnedJoinField(_)
                 | Expression::OwnedJoinSourcePosition(_)
+                | Expression::OwnedJoinAggregate(_)
                 | Expression::JoinPosition { .. }
                 | Expression::OwnedXmlMixedContent(_) => true,
                 // An owned producer reads its root through the paired context.
