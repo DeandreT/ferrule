@@ -208,6 +208,7 @@ fn validate_stage(
         match expression {
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
+            | Expression::OwnedRowDocumentPath(_)
             | Expression::Const { .. }
             | Expression::FunctionParameter { .. }
             | Expression::If { .. }

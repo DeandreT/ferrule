@@ -176,6 +176,16 @@ pub struct OwnedPosition {
     pub collection: Option<Vec<String>>,
 }
 
+/// Physical row metadata from one exact endpoint. None selects its latest
+/// active row or root; an explicit empty collection selects the immutable root.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OwnedRowDocumentPath {
+    pub owner: SourceOwner,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection: Option<Vec<String>>,
+}
+
 /// Searches one explicitly owned collection for the first item whose
 /// item-relative `key` equals `matches`. The needle is evaluated once in the
 /// parent context; key and value read only the selected owner's item.
@@ -206,6 +216,8 @@ pub enum Node {
     OwnedSourceField(OwnedSourceField),
     /// Preserves explicit frame selection without opening position capability.
     OwnedPosition(OwnedPosition),
+    /// Reads only the selected owner's physical row origin, with no fallback.
+    OwnedRowDocumentPath(OwnedRowDocumentPath),
     /// First-match lookup over exactly one owned endpoint collection.
     OwnedLookup(OwnedLookup),
     /// First-match predicate search over exactly one owned endpoint collection.
@@ -472,6 +484,7 @@ impl Node {
         match self {
             Self::OwnedSourceField(_) => Some("owned_source_field"),
             Self::OwnedPosition(_) => Some("owned_position"),
+            Self::OwnedRowDocumentPath(_) => Some("owned_row_document_path"),
             Self::SequenceExists { sequence, .. }
             | Self::SequenceItemAt { sequence, .. }
             | Self::SequenceAggregate { sequence, .. }
@@ -491,6 +504,7 @@ impl Node {
         match self {
             Self::OwnedSourceField(_)
             | Self::OwnedPosition(_)
+            | Self::OwnedRowDocumentPath(_)
             | Self::SourceField { .. }
             | Self::SourceRootXmlTypeEquals { .. }
             | Self::SourceRootField { .. }

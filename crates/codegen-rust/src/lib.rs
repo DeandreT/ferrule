@@ -1039,6 +1039,7 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
             .collect(),
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
+        | Expression::OwnedRowDocumentPath(_)
         | Expression::SourceField { .. }
         | Expression::SourceRootXmlTypeEquals { .. }
         | Expression::SourceRootField { .. }
@@ -1785,6 +1786,7 @@ fn render_expression_in_context_with_scalar_item_at(
             }
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
+            | Expression::OwnedRowDocumentPath(_)
             | Expression::OwnedLookup(_)
             | Expression::OwnedCollectionFind(_) => {
                 let namespace = owner_function.map_or(codegen::OwnedSourceNamespace::Main, |id| {

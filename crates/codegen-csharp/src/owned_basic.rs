@@ -487,6 +487,10 @@ fn expression_refusal(node: NodeId, expression: &Expression, reason: Reason) -> 
             owner: (&position.owner).into(),
             collection: position.collection.clone(),
         }),
+        Expression::OwnedRowDocumentPath(path) => Some(Request::RowDocumentPath {
+            owner: (&path.owner).into(),
+            collection: path.collection.clone(),
+        }),
         _ => None,
     };
     capability(
@@ -761,6 +765,7 @@ fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
             .collect(),
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
+        | Expression::OwnedRowDocumentPath(_)
         | Expression::SourceField { .. }
         | Expression::SourceRootXmlTypeEquals { .. }
         | Expression::SourceRootField { .. }
@@ -896,6 +901,7 @@ fn validate_private_inventory(
             }
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
+            | Expression::OwnedRowDocumentPath(_)
             | Expression::SourceField { .. }
             | Expression::Position { .. }
             | Expression::Const { .. }
@@ -1030,7 +1036,14 @@ pub(super) fn render_owned_leaf(
             mapping::render_optional_path(position.collection.as_deref(), output);
             output.push_str(")));\n");
         }
-        _ => unreachable!("shared expression mode dispatches only two owned leaves"),
+        Expression::OwnedRowDocumentPath(path) => {
+            output.push_str(" =>\n        context.OwnedRowDocumentPath(");
+            render_owner(&path.owner, output);
+            output.push_str(", ");
+            mapping::render_optional_path(path.collection.as_deref(), output);
+            output.push_str(");\n");
+        }
+        _ => unreachable!("shared expression mode dispatches only owned leaves"),
     }
     Ok(())
 }
@@ -1484,6 +1497,7 @@ fn expression_needs_owned_sources(program: &Program, root: NodeId) -> bool {
             if match &node.expression {
                 Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
+                | Expression::OwnedRowDocumentPath(_)
                 | Expression::OwnedLookup(_)
                 | Expression::OwnedCollectionFind(_) => true,
                 // An owned producer reads its root through the paired context.

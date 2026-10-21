@@ -674,6 +674,7 @@ fn local_owned(program: &Program, scope: &TargetScope) -> bool {
             && match &node.expression {
                 Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
+                | Expression::OwnedRowDocumentPath(_)
                 | Expression::OwnedLookup(_)
                 | Expression::OwnedCollectionFind(_) => true,
                 // An owned producer reads its root through the paired context.
