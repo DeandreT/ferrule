@@ -27,19 +27,22 @@ use crate::trace::{
 };
 use crate::{DynamicSourceLoader, EngineError};
 
-struct GroupBucket {
+// Only the synthetic member collection is owned. Intermediate ancestors are
+// borrowed from the first member's candidate, so a group adds no copy of the
+// repeated levels crossed above its members.
+struct GroupBucket<'e, 'a> {
     key: Option<Value>,
     members: Vec<Instance>,
-    intermediate_frames: Vec<Instance>,
+    intermediate_frames: &'e [&'a Instance],
     positions: Vec<PositionFrame>,
     post_filter_match: bool,
 }
 
-struct OwnedGroup {
+struct OwnedGroup<'e, 'a> {
     // Named groups own their member list inside a one-field wrapper;
     // anonymous groups own the repeated member frame directly.
     frame: Instance,
-    intermediate_frames: Vec<Instance>,
+    intermediate_frames: &'e [&'a Instance],
     positions: Vec<PositionFrame>,
 }
 
@@ -577,10 +580,7 @@ pub(crate) fn eval_scope(
                 None => groups.push(GroupBucket {
                     key,
                     members: vec![member],
-                    intermediate_frames: extension.instances[..extension.instances.len() - 1]
-                        .iter()
-                        .map(|instance| (**instance).clone())
-                        .collect(),
+                    intermediate_frames: &extension.instances[..extension.instances.len() - 1],
                     positions: item_positions,
                     post_filter_match,
                 }),
@@ -637,7 +637,7 @@ pub(crate) fn eval_scope(
                 .expect("iteration positions have matching context frames");
             let mut next_context = context[..parent_frame_start].to_vec();
             next_context.extend_from_slice(&context[parent_frame_start..]);
-            next_context.extend(group.intermediate_frames.iter());
+            next_context.extend_from_slice(group.intermediate_frames);
             if let Some(wrapper) = wrapper {
                 next_context.push(wrapper);
             }
