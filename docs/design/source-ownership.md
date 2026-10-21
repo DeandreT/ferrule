@@ -201,8 +201,22 @@ Null-like key exclusion. Strict `owned_join_field` and
 return a scalar or its raw source position; the flattened tuple position reuses
 `join_position` and follows the legacy filter, sort and compaction phases. A
 tuple context admits only those reads and pure scalar nodes. The interpreter
-and an explicit generation companion execute owned joins; owned joined
-aggregates stay closed. See the [owned join contract](owned-joins.md).
+and an explicit generation companion execute owned joins. See the
+[owned join contract](owned-joins.md).
+
+## Owned joined aggregates
+
+A strict `owned_join_aggregate` reduces the tuples of one owned plan with the
+legacy reducers, beside the unchanged legacy `join_aggregate`. The plan runs in
+the aggregate's receiving context, so active-source correlation binds by owner
+and absolute collection: a source equal to an active owned row is that row, a
+source inside an owned group or block walks only its members, and a same-path
+source of another owner keeps its own root walk. The optional expression reads
+each tuple with only this join active and the closed tuple subset; the
+argument runs once in the receiving context after every tuple value. Empty,
+null and type policies, positions, stage order and equality are the legacy
+ones, and the `JoinId` stays independent. The owned join generation companion
+executes it; see the [owned join contract](owned-joins.md#joined-aggregates).
 
 ## Dynamic source-field objects
 
