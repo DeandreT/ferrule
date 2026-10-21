@@ -233,6 +233,17 @@ fn the_owned_join_profile_lowers_joined_aggregates_and_older_routes_refuse() {
 
 #[test]
 fn decimal_sum_stays_closed_for_owned_joined_aggregates() {
+    assert_joined_reducer_closed(AggregateOp::DecimalSum);
+}
+
+#[test]
+fn ordered_text_owned_joined_aggregates_remain_closed() {
+    for function in [AggregateOp::LastPresentText, AggregateOp::LastDistinctText] {
+        assert_joined_reducer_closed(function);
+    }
+}
+
+fn assert_joined_reducer_closed(function: AggregateOp) {
     for reached in [true, false] {
         let mut program = crate::lower_with_basic_owned_joins(&aggregate_project()).unwrap();
         let expression = &mut program
@@ -244,7 +255,7 @@ fn decimal_sum_stays_closed_for_owned_joined_aggregates() {
         let Expression::OwnedJoinAggregate(aggregate) = expression else {
             panic!("authored joined aggregate");
         };
-        aggregate.function = AggregateOp::DecimalSum;
+        aggregate.function = function;
         if !reached {
             program
                 .root
@@ -264,7 +275,7 @@ fn decimal_sum_stays_closed_for_owned_joined_aggregates() {
     let Node::OwnedJoinAggregate(aggregate) = project.graph.nodes.get_mut(&1).unwrap() else {
         panic!("authored joined aggregate");
     };
-    aggregate.function = AggregateOp::DecimalSum;
+    aggregate.function = function;
     assert!(crate::lower_with_basic_owned_joins(&project).is_err());
 }
 

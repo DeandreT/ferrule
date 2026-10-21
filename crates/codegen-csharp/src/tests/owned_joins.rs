@@ -3,6 +3,20 @@
 
 #[test]
 fn decimal_sum_stays_closed_for_owned_joined_aggregates() {
+    assert_joined_reducer_closed(mapping::AggregateOp::DecimalSum);
+}
+
+#[test]
+fn ordered_text_owned_joined_aggregates_remain_closed() {
+    for function in [
+        mapping::AggregateOp::LastPresentText,
+        mapping::AggregateOp::LastDistinctText,
+    ] {
+        assert_joined_reducer_closed(function);
+    }
+}
+
+fn assert_joined_reducer_closed(function: mapping::AggregateOp) {
     for reached in [true, false] {
         let mut program =
             codegen::lower_with_basic_owned_joins(&joined_aggregate_project()).unwrap();
@@ -15,7 +29,7 @@ fn decimal_sum_stays_closed_for_owned_joined_aggregates() {
         let codegen::Expression::OwnedJoinAggregate(aggregate) = expression else {
             panic!("authored joined aggregate");
         };
-        aggregate.function = mapping::AggregateOp::DecimalSum;
+        aggregate.function = function;
         if !reached {
             program
                 .root
