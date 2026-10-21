@@ -26,6 +26,7 @@ mod constructed_parse_date;
 mod constructed_parser_scalar;
 mod constructed_runtime_clock;
 mod constructed_variable_driver;
+mod csv_document;
 mod db_query;
 mod db_where;
 mod document_paths;
@@ -76,6 +77,7 @@ mod unused_xml_source;
 mod xml_root_view;
 mod xml_serializer;
 
+pub use csv_document::{ImportedDocument, import_csv_document, import_csv_document_with_options};
 pub use schema::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
 
 use db_query::is_routine_catalog;
@@ -156,6 +158,7 @@ struct SourceIdentity {
 
 struct LoweredStage {
     imported: Imported,
+    primary_filename: Option<mapping::NodeId>,
     /// Original component identities in primary-then-secondary source order.
     source_components: Vec<SourceIdentity>,
 }
@@ -369,6 +372,7 @@ pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Impor
         &resources,
         StageSelection::Ordinary,
         options.item_ordered_exceptions,
+        false,
     );
     resources.finish_bindings()?;
     Ok(result?.imported)
@@ -413,6 +417,7 @@ fn import_pipeline_resolved(
             target_inputs: &first_intermediate.inputs,
         },
         options.item_ordered_exceptions,
+        false,
     )?];
     for pair in chain.intermediates.windows(2) {
         let [first_intermediate, second_intermediate] = pair else {
@@ -427,6 +432,7 @@ fn import_pipeline_resolved(
                 target_inputs: &second_intermediate.inputs,
             },
             options.item_ordered_exceptions,
+            false,
         )?);
     }
     let last_intermediate = chain
@@ -443,6 +449,7 @@ fn import_pipeline_resolved(
             final_inputs: &chain.final_inputs,
         },
         options.item_ordered_exceptions,
+        false,
     )?);
 
     resources.finish_bindings()?;
@@ -1533,6 +1540,7 @@ fn import_resolved(
     resources: &ResourceResolver,
     selection: StageSelection<'_>,
     item_ordered_exceptions: bool,
+    retain_primary_filename: bool,
 ) -> Result<LoweredStage, MfdError> {
     let path = resources.mapping_path();
     let text = resources.read_design()?;
@@ -1561,6 +1569,11 @@ fn import_resolved(
         .to_ascii_lowercase();
 
     let edges = read_edge_inputs(&structure, Some(&wrapper));
+    if retain_primary_filename && (!edges.complete || !edges.conflicts.is_empty()) {
+        return Err(MfdError::UnsupportedImport(
+            "CSV document filename retention requires complete, unambiguous input feeds".into(),
+        ));
+    }
     let mut warnings = edges.conflicts.clone();
     let csv_occurrence_raw_authority =
         edges.complete && target_iteration::csv_raw_authority(&structure, &edges.feeds);
@@ -1586,7 +1599,8 @@ fn import_resolved(
     let mut skipped_libraries: Vec<String> = Vec::new();
     let inspect_unused_input = unused_xml_source::may_contain_unused_input(structure);
     let root_view_inventory = xml_root_view::Inventory::read(structure);
-    if matches!(selection, StageSelection::Ordinary)
+    if !retain_primary_filename
+        && matches!(selection, StageSelection::Ordinary)
         && edges.conflicts.is_empty()
         && !(item_ordered_exceptions && exception::item_ordered::has_exception(structure))
         && let Some((project, key)) =
@@ -1599,6 +1613,7 @@ fn import_resolved(
         let mut resource_warnings = Vec::new();
         resources.append_refusals(&mut resource_warnings);
         return Ok(LoweredStage {
+            primary_filename: None,
             imported: Imported {
                 project,
                 warnings: resource_warnings,
@@ -2610,6 +2625,15 @@ fn import_resolved(
     } else {
         (exception::lower(exception_recipes, &mut builder), None)
     };
+    let primary_filename = if retain_primary_filename {
+        Some(csv_document::retain_filename(
+            structure,
+            primary,
+            &mut builder,
+        )?)
+    } else {
+        None
+    };
     let global_auto_number_nodes = builder
         .fn_nodes
         .iter()
@@ -2642,7 +2666,14 @@ fn import_resolved(
         root,
     };
     exception::item_ordered::finish(&mut project, item_exception, &mut warnings);
-    project.prune_unreachable_nodes();
+    if let Some(filename) = primary_filename {
+        let mut document =
+            mapping::DocumentProject::new(project, mapping::PrimarySourcePlan { filename });
+        document.prune_unreachable_nodes();
+        project = document.project().clone();
+    } else {
+        project.prune_unreachable_nodes();
+    }
     // These declarations are retained for host inspection, not as executable
     // roots. Their dormant parser introduces no evaluation dependency.
     project.graph.nodes.extend(dormant_parser_parameters);
@@ -2668,6 +2699,7 @@ fn import_resolved(
     }
     resources.append_refusals(&mut warnings);
     Ok(LoweredStage {
+        primary_filename,
         imported: Imported {
             project,
             warnings,
