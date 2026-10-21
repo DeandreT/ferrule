@@ -174,6 +174,28 @@ pub(crate) fn render_public_basic_owned_xml_serialize_source(
     )
 }
 
+/// LookupFind composition plus owned collection aggregates.
+pub(crate) fn render_public_basic_owned_collection_aggregates_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::CollectionAggregates,
+        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+    )
+}
+
+/// The owned Lookup and CollectionFind profile plus owned inner joins.
+pub(crate) fn render_public_basic_owned_joins_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::Joins,
+        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
     Closed,
@@ -209,6 +231,10 @@ pub(super) enum Profile {
     DynamicField,
     /// DynamicField plus owned XML serialization.
     XmlSerialize,
+    /// LookupFind plus owned collection aggregates.
+    CollectionAggregates,
+    /// LookupFind plus owned inner joins and their tuple reads.
+    Joins,
 }
 
 impl Profile {
@@ -227,6 +253,8 @@ impl Profile {
                 | Self::GroupIntoBlocks
                 | Self::LookupFind
                 | Self::XmlSerialize
+                | Self::CollectionAggregates
+                | Self::Joins
         )
     }
 
@@ -240,6 +268,8 @@ impl Profile {
                 | Self::LookupFind
                 | Self::DynamicField
                 | Self::XmlSerialize
+                | Self::CollectionAggregates
+                | Self::Joins
         )
     }
 
@@ -259,6 +289,8 @@ impl Profile {
                     | Self::GroupIntoBlocks
                     | Self::LookupFind
                     | Self::XmlSerialize
+                    | Self::CollectionAggregates
+                    | Self::Joins
             ),
             Some(GroupingPlan::StartingWith { .. }) => matches!(
                 self,
@@ -272,6 +304,8 @@ impl Profile {
                     | Self::GroupIntoBlocks
                     | Self::LookupFind
                     | Self::XmlSerialize
+                    | Self::CollectionAggregates
+                    | Self::Joins
             ),
             Some(GroupingPlan::EndingWith { .. }) => matches!(
                 self,
@@ -284,6 +318,8 @@ impl Profile {
                     | Self::GroupIntoBlocks
                     | Self::LookupFind
                     | Self::XmlSerialize
+                    | Self::CollectionAggregates
+                    | Self::Joins
             ),
             Some(GroupingPlan::IntoBlocks { .. }) => {
                 matches!(
@@ -292,6 +328,8 @@ impl Profile {
                         | Self::LookupFind
                         | Self::DynamicField
                         | Self::XmlSerialize
+                        | Self::CollectionAggregates
+                        | Self::Joins
                 )
             }
             None => false,
@@ -352,6 +390,15 @@ fn render_public_basic_owned_source_policy(
         }
         (Profile::DynamicField, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::validate_basic_owned_dynamic_field_emission(program)?;
+        }
+        (
+            Profile::CollectionAggregates,
+            SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+        ) => {
+            codegen::validate_basic_owned_collection_aggregates_emission(program)?;
+        }
+        (Profile::Joins, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::validate_basic_owned_joins_emission(program)?;
         }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_group_starting_with_emission(program)?;
@@ -586,7 +633,16 @@ fn render_public_basic_owned_source_policy(
         }
     }
     for (name, scope, children, _) in scopes {
-        if basic.contains(&name) {
+        if let Some(join) = scope
+            .iteration
+            .as_ref()
+            .and_then(IterationPlan::owned_inner_join)
+            .filter(|_| profile == Profile::Joins)
+        {
+            source.push_str(&joins::render_owned_join_scope(
+                &name, scope, join, &children,
+            ));
+        } else if basic.contains(&name) {
             source.push_str(&if profile
                 .permits_grouping(scope.iteration.as_ref().and_then(IterationPlan::grouping))
             {
@@ -661,6 +717,15 @@ fn render_public_basic_owned_source_policy(
         }
         (Profile::DynamicField, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_field(program)?
+        }
+        (
+            Profile::CollectionAggregates,
+            SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+        ) => codegen::legacy_named_input_admission_plan_with_basic_owned_collection_aggregates(
+            program,
+        )?,
+        (Profile::Joins, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_joins(program)?
         }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(
@@ -771,11 +836,12 @@ fn local_owned(program: &Program, scope: &TargetScope) -> bool {
         scope.construction,
         TargetConstruction::OwnedPathHierarchy { .. }
             | TargetConstruction::OwnedAdjacencyTree { .. }
-    ) || scope
-        .iteration
-        .as_ref()
-        .is_some_and(|iteration| matches!(iteration.input(), IterationSource::OwnedSource(_)))
-    {
+    ) || scope.iteration.as_ref().is_some_and(|iteration| {
+        matches!(
+            iteration.input(),
+            IterationSource::OwnedSource(_) | IterationSource::OwnedInnerJoin(_)
+        )
+    }) {
         return true;
     }
     let one = vec![(String::new(), scope, Vec::new(), Vec::new())];
@@ -789,7 +855,11 @@ fn local_owned(program: &Program, scope: &TargetScope) -> bool {
                 | Expression::OwnedLookup(_)
                 | Expression::OwnedCollectionFind(_)
                 | Expression::OwnedDynamicSourceField(_)
-                | Expression::OwnedXmlSerialize(_) => true,
+                | Expression::OwnedXmlSerialize(_)
+                | Expression::OwnedAggregate(_)
+                | Expression::OwnedJoinField(_)
+                | Expression::OwnedJoinSourcePosition(_)
+                | Expression::JoinPosition { .. } => true,
                 // An owned producer reads its root through the paired context.
                 Expression::SequenceItemAt { sequence, .. } => sequence.owned_source().is_some(),
                 _ => false,
@@ -820,10 +890,12 @@ pub(super) fn mark_basic_scopes(
     // owned ancestry. Legacy-only descendants keep ordinary dispatch unless
     // an actual OwnedSource iteration (here or above) owns their source frames.
     let inherited = inherited_paired_frame
-        || scope
-            .iteration
-            .as_ref()
-            .is_some_and(|iteration| matches!(iteration.input(), IterationSource::OwnedSource(_)));
+        || scope.iteration.as_ref().is_some_and(|iteration| {
+            matches!(
+                iteration.input(),
+                IterationSource::OwnedSource(_) | IterationSource::OwnedInnerJoin(_)
+            )
+        });
     for (index, child) in scope.children.iter().enumerate() {
         mark_basic_scopes(program, child, &format!("{name}_{index}"), inherited, basic);
     }

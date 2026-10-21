@@ -96,6 +96,7 @@ pub struct PayloadRunOptions<'a> {
     execution_purpose: engine::ExecutionPurpose,
     trace_sink: Option<&'a dyn TraceSink>,
     debug_hook: Option<&'a dyn engine::DebugHook>,
+    execution_policy: &'a engine::ExecutionPolicy,
 }
 
 impl<'a> PayloadRunOptions<'a> {
@@ -110,6 +111,7 @@ impl<'a> PayloadRunOptions<'a> {
             execution_purpose: engine::ExecutionPurpose::Run,
             trace_sink: None,
             debug_hook: None,
+            execution_policy: &crate::execution_policy::TRUSTED,
         }
     }
 
@@ -167,6 +169,13 @@ impl<'a> PayloadRunOptions<'a> {
     /// Cancelling returns an error before any payload artifacts are rendered.
     pub fn with_debug_hook(mut self, debug_hook: &'a dyn engine::DebugHook) -> Self {
         self.debug_hook = Some(debug_hook);
+        self
+    }
+
+    /// Applies a restricted policy's budgets. Payload documents are host-owned
+    /// bytes, so the policy's filesystem and HTTP rights are never exercised.
+    pub fn with_execution_policy(mut self, policy: &'a engine::ExecutionPolicy) -> Self {
+        self.execution_policy = policy;
         self
     }
 }
@@ -255,7 +264,8 @@ pub fn run_project_value_payloads(
     let mut execution = engine::ExecutionContext::new(&runtime_project_path)
         .with_purpose(options.execution_purpose)
         .with_current_datetime(&current_datetime)
-        .with_dynamic_source_loader(&dynamic_loader);
+        .with_dynamic_source_loader(&dynamic_loader)
+        .with_policy(options.execution_policy);
     if let Some(parameters) = options.runtime_parameters {
         execution = execution.with_parameters(parameters);
     }
@@ -537,6 +547,17 @@ impl engine::DynamicSourceLoader for PayloadDynamicSourceLoader {
                     "host did not supply payload source `{source_name}` at logical path `{path}`"
                 )
             })
+    }
+
+    /// Logical identities select among host-supplied bytes; nothing is acquired.
+    fn load_restricted(
+        &self,
+        source_name: &str,
+        path: &str,
+        _policy: &engine::RestrictedPolicy,
+    ) -> Result<Arc<Instance>, engine::DynamicSourceLoadError> {
+        self.load(source_name, path)
+            .map_err(engine::DynamicSourceLoadError::Failed)
     }
 }
 

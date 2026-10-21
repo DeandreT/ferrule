@@ -14,6 +14,7 @@ use crate::{EmitError, literal};
 mod failures;
 mod filter_map;
 mod owned_group_by;
+mod owned_join;
 mod owned_json_api;
 #[cfg(test)]
 mod owned_json_api_tests;
@@ -1302,7 +1303,9 @@ fn render_grouping_path(input: &IterationSource, output: &mut String) {
         IterationSource::Source(source) => render_path(source.path(), output),
         IterationSource::DynamicDocuments(dynamic) => render_path(dynamic.source().path(), output),
         IterationSource::Generated(_) => render_path(&[], output),
-        IterationSource::InnerJoin(_) | IterationSource::Concatenate(_) => {
+        IterationSource::InnerJoin(_)
+        | IterationSource::OwnedInnerJoin(_)
+        | IterationSource::Concatenate(_) => {
             unreachable!("validated portable grouping cannot own an inner join")
         }
     }
@@ -1364,6 +1367,7 @@ fn render_iteration_candidates(
             ));
         }
         IterationSource::InnerJoin(join) => render_inner_join(scope, join, output),
+        IterationSource::OwnedInnerJoin(_) => unreachable!("owned join emission gate"),
         IterationSource::Concatenate(_) => {
             unreachable!("concatenated scopes render before candidate iteration")
         }
@@ -1596,7 +1600,7 @@ fn aggregate_collect_prefix(function: AggregateFunction, values: &str) -> String
     }
 }
 
-const fn aggregate_function_name(function: AggregateFunction) -> &'static str {
+pub(crate) const fn aggregate_function_name(function: AggregateFunction) -> &'static str {
     match function {
         AggregateFunction::Count => "Count",
         AggregateFunction::Sum => "Sum",
@@ -1865,13 +1869,25 @@ fn render_expression(
         {
             return crate::owned_basic::render_owned_search(node, expression, output);
         }
+        Expression::OwnedAggregate(aggregate)
+            if matches!(
+                mode,
+                ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes
+            ) =>
+        {
+            crate::owned_basic::render_owned_aggregate(node, aggregate, output);
+            return Ok(());
+        }
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
         | Expression::OwnedDynamicSourceField(_)
         | Expression::OwnedLookup(_)
         | Expression::OwnedCollectionFind(_)
-        | Expression::OwnedXmlSerialize(_) => {
+        | Expression::OwnedXmlSerialize(_)
+        | Expression::OwnedAggregate(_)
+        | Expression::OwnedJoinField(_)
+        | Expression::OwnedJoinSourcePosition(_) => {
             if matches!(
                 mode,
                 ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes
@@ -2019,6 +2035,17 @@ fn render_expression(
             output.push_str(", ");
             render_path(path, output);
             output.push_str(");\n");
+        }
+        Expression::JoinPosition { join }
+            if matches!(
+                mode,
+                ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes
+            ) =>
+        {
+            output.push_str(&format!(
+                " =>\n        global::Ferrule.Runtime.FerruleValue.FromInt64(context.OwnedJoinPosition({}UL));\n",
+                join.get()
+            ));
         }
         Expression::JoinPosition { join } => {
             output.push_str(&format!(
@@ -2586,7 +2613,11 @@ fn render_basic_scopes_profile<'a>(
             render_basic_window_legacy_scope(program, index, scope, output)?;
             continue;
         }
-        if let Some(iteration) = scope.iteration {
+        if let Some(iteration) = scope.iteration
+            && let Some(join) = iteration.owned_inner_join()
+        {
+            owned_join::render_scope(index, iteration, join, output);
+        } else if let Some(iteration) = scope.iteration {
             output.push_str(&format!("        var cohort_{index} = context."));
             match iteration.input() {
                 IterationSource::OwnedSource(source) => {
@@ -2741,10 +2772,12 @@ fn collect_basic_window_routes(
 ) {
     let owned = inherited || crate::owned_basic::scope_needs_owned_sources(program, scope);
     routes.push(owned);
-    let own_source = scope
-        .iteration
-        .as_ref()
-        .is_some_and(|iteration| matches!(iteration.input(), IterationSource::OwnedSource(_)));
+    let own_source = scope.iteration.as_ref().is_some_and(|iteration| {
+        matches!(
+            iteration.input(),
+            IterationSource::OwnedSource(_) | IterationSource::OwnedInnerJoin(_)
+        )
+    });
     // A legacy Source can enter the paired route solely through its key/boundary or
     // member-retention predicate. Its authenticated grouped output still owns
     // member ancestry; descendants may not project it back to an ordinary island.

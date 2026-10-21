@@ -111,6 +111,8 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
         Node::ValueMap { input, .. } | Node::Lookup { matches: input, .. } => vec![Some(*input)],
         Node::OwnedLookup(lookup) => vec![Some(lookup.matches)],
         Node::OwnedCollectionFind(find) => vec![Some(find.predicate), Some(find.value)],
+        Node::OwnedAggregate(aggregate) => aggregate.inputs().into_iter().map(Some).collect(),
+        Node::OwnedJoinField(_) | Node::OwnedJoinSourcePosition(_) => Vec::new(),
         Node::DynamicSourceField { key, .. } => vec![Some(*key)],
         Node::OwnedDynamicSourceField(field) => vec![Some(field.key)],
         Node::XmlMixedContent { replacements, .. } => replacements
@@ -185,6 +187,23 @@ fn node_title(node: &Node) -> String {
         Node::OwnedXmlSerialize(serializer) => format!(
             "owned XML serializer {:?} {:?}; frame {:?}; unavailable",
             serializer.source.owner, serializer.source.path, serializer.frame
+        ),
+        Node::OwnedAggregate(aggregate) => format!(
+            "owned aggregate {:?} {:?} {:?}; read-only",
+            aggregate.function, aggregate.collection.owner, aggregate.collection.path
+        ),
+        Node::OwnedJoinField(field) => format!(
+            "owned join {} field {:?} {:?} {:?}; read-only",
+            field.join.get(),
+            field.collection.owner,
+            field.collection.path,
+            field.path
+        ),
+        Node::OwnedJoinSourcePosition(position) => format!(
+            "owned join {} source position {:?} {:?}; read-only",
+            position.join.get(),
+            position.collection.owner,
+            position.collection.path
         ),
         Node::SourceField { path, .. } => format!("field · {}", path.join("/")),
         Node::SourceDocumentPath => "source document path".to_string(),

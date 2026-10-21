@@ -28,6 +28,9 @@ pub struct StandardIoRunOptions<'a> {
     /// after the run. The run refuses when one names the design or a consumed
     /// local input.
     pub protected_output_paths: &'a [&'a Path],
+    /// Host authority for local input files and budgets; `None` is trusted.
+    /// Standard streams themselves are host-owned and never checked.
+    pub execution_policy: Option<&'a engine::ExecutionPolicy>,
 }
 
 impl<'a> StandardIoRunOptions<'a> {
@@ -89,6 +92,9 @@ pub fn run_project_with_standard_streams(
 
     let project = load_project(project_path)?;
     reject_dynamic_sources(&project, options.target)?;
+    let policy = options
+        .execution_policy
+        .unwrap_or(&crate::execution_policy::TRUSTED);
 
     let input_from_stdin = options.input_path == Some(Path::new("-"));
     let input_path = if input_from_stdin {
@@ -115,11 +121,12 @@ pub fn run_project_with_standard_streams(
     let primary_bytes = if input_from_stdin {
         read_bounded(stdin, "stdin")?
     } else {
+        policy.authorize_read(&input_path)?;
         read_path_bounded(&input_path, "primary input")?
     };
     let primary = PayloadDocument::new(&input_path, &primary_bytes)?;
 
-    let extra_storage = load_static_extra_sources(project_path, &project, options.target)?;
+    let extra_storage = load_static_extra_sources(project_path, &project, options.target, policy)?;
     let mut read_set = ReadSet::new(project_path);
     if !input_from_stdin {
         read_set.push(&input_path);
@@ -140,7 +147,8 @@ pub fn run_project_with_standard_streams(
 
     let mut payload_options = PayloadRunOptions::new(primary)
         .with_extra_sources(&extra_sources)
-        .with_output_path(&output_path);
+        .with_output_path(&output_path)
+        .with_execution_policy(policy);
     if let Some(target) = options.target {
         payload_options = payload_options.with_target(target);
     }
@@ -236,6 +244,7 @@ fn load_static_extra_sources(
     project_path: &Path,
     project: &mapping::Project,
     target: Option<TargetSelection<'_>>,
+    policy: &engine::ExecutionPolicy,
 ) -> anyhow::Result<Vec<ExtraSourceBytes>> {
     let required = target
         .map(|target| engine::required_sources_for_target(project, target))
@@ -264,6 +273,7 @@ fn load_static_extra_sources(
                     source.name
                 );
             }
+            policy.authorize_read(&path)?;
             let bytes = read_path_bounded(&path, &format!("named source `{}`", source.name))?;
             Ok(ExtraSourceBytes {
                 name: source.name.clone(),

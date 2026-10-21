@@ -11,6 +11,7 @@ use crate::aggregate::aggregate;
 use crate::context::{parameter_value, runtime_field};
 use crate::filter_map::{FilterMapRunState, FilterMapWork};
 use crate::join::{AggregateInput as JoinAggregateInput, eval_aggregate as eval_join_aggregate};
+use crate::policy::{BudgetMeter, RestrictedPolicy};
 use crate::resolve::{
     dynamic_scalar, field_scalar, instance_in_active_collection, instance_in_frame, join_scalar,
     scalar_in_active_collection, scalar_in_frame, source_document_path,
@@ -31,10 +32,15 @@ pub(crate) struct EvalProgram<'a> {
     purpose: ExecutionPurpose,
     primary_source: Option<&'a Instance>,
     pub(crate) owned_context: Option<&'a crate::owned_context::OwnedContext<'a>>,
+    /// The active owned join tuple, read only by owned join reads and the
+    /// flattened join position.
+    pub(crate) owned_join: Option<&'a crate::owned_join_tuple::OwnedJoinTuple<'a>>,
     pub(crate) owned_trace_registry: Option<&'a dyn crate::trace::TraceOwnedRegistryView>,
     pub(crate) owned_trace_phase: crate::TraceOwnedPhase,
     pub(crate) filter_map_run_state: Option<&'a FilterMapRunState<'a>>,
     pub(crate) filter_map_work: Option<FilterMapWork<'a>>,
+    pub(crate) restricted: Option<&'a RestrictedPolicy>,
+    pub(crate) budget: Option<&'a BudgetMeter>,
 }
 
 impl<'a> EvalProgram<'a> {
@@ -53,11 +59,24 @@ impl<'a> EvalProgram<'a> {
             purpose: ExecutionPurpose::Run,
             primary_source: None,
             owned_context: None,
+            owned_join: None,
             owned_trace_registry: None,
             owned_trace_phase: crate::TraceOwnedPhase::Structural,
             filter_map_run_state: None,
             filter_map_work: None,
+            restricted: None,
+            budget: None,
         }
+    }
+
+    pub(crate) fn with_restricted_policy(
+        mut self,
+        policy: Option<&'a RestrictedPolicy>,
+        budget: Option<&'a BudgetMeter>,
+    ) -> Self {
+        self.restricted = policy;
+        self.budget = budget;
+        self
     }
 
     pub(crate) fn with_debug_hook(mut self, hook: Option<&'a dyn DebugHook>) -> Self {
@@ -94,6 +113,19 @@ impl<'a> EvalProgram<'a> {
     {
         EvalProgram {
             owned_context: Some(context),
+            ..self
+        }
+    }
+
+    pub(crate) fn with_owned_join<'b>(
+        self,
+        tuple: &'b crate::owned_join_tuple::OwnedJoinTuple<'b>,
+    ) -> EvalProgram<'b>
+    where
+        'a: 'b,
+    {
+        EvalProgram {
+            owned_join: Some(tuple),
             ..self
         }
     }
@@ -138,12 +170,19 @@ pub(crate) fn eval_expr(
     let work = program
         .filter_map_work
         .map(|work| work.at_node(None, node_id));
-    let result = work
-        .map_or(Ok(()), FilterMapWork::charge)
-        .and_then(|()| eval_expr_inner(program, node_id, context, positions, in_progress))
-        .map_err(|error| match work {
-            Some(work) => work.wrap(error),
-            None => error,
+    // Restricted budgets are charged before the node evaluates and before any
+    // filter/map charge, so a refused node has no value or side effects.
+    let result = program
+        .budget
+        .map(BudgetMeter::enter_node)
+        .transpose()
+        .and_then(|_depth| {
+            work.map_or(Ok(()), FilterMapWork::charge)
+                .and_then(|()| eval_expr_inner(program, node_id, context, positions, in_progress))
+                .map_err(|error| match work {
+                    Some(work) => work.wrap(error),
+                    None => error,
+                })
         });
     if let Err(error) = &result {
         crate::debug::after_node_failure(
@@ -315,6 +354,18 @@ fn eval_expr_inner(
             positions,
             in_progress,
         ),
+        Node::OwnedAggregate(aggregate) => crate::owned_aggregate::eval_owned_aggregate(
+            program,
+            node_id,
+            aggregate,
+            context,
+            positions,
+            in_progress,
+        ),
+        Node::OwnedJoinField(field) => crate::owned_join_tuple::eval_field(program, node_id, field),
+        Node::OwnedJoinSourcePosition(position) => {
+            crate::owned_join_tuple::eval_source_position(program, node_id, position)
+        }
         Node::SourceRootXmlTypeEquals {
             canonical_expanded_type,
         } => ir::primary_root_xml_type_equals(program.primary_source, canonical_expanded_type)
@@ -363,6 +414,12 @@ fn eval_expr_inner(
                     .join_position
                     .filter(|(owner, _)| owner == join)
                     .map(|(_, index)| Value::Int(index as i64))
+            })
+            .or_else(|| {
+                program
+                    .owned_join
+                    .and_then(|tuple| tuple.position(*join))
+                    .map(|index| Value::Int(index as i64))
             })
             .ok_or(EngineError::MissingJoinContext { join: *join }),
         Node::Unconnected => Ok(Value::Null),
@@ -465,6 +522,7 @@ fn eval_expr_inner(
                 positions,
                 program.purpose,
                 program.filter_map_work,
+                program.budget,
             )
         }
         Node::If {

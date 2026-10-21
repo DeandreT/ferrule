@@ -1154,7 +1154,9 @@ impl GraphViewer<'_> {
             Node::ValueMap { input, .. } => (idx == 0).then_some(*input),
             Node::Lookup { matches, .. } => (idx == 0).then_some(*matches),
             Node::OwnedLookup(lookup) => (idx == 0).then_some(lookup.matches),
+            Node::OwnedJoinField(_) | Node::OwnedJoinSourcePosition(_) => None,
             Node::OwnedCollectionFind(find) => [find.predicate, find.value].get(idx).copied(),
+            Node::OwnedAggregate(aggregate) => aggregate.inputs().get(idx).copied(),
             Node::DynamicSourceField { key, .. } => (idx == 0).then_some(*key),
             Node::OwnedDynamicSourceField(field) => (idx == 0).then_some(field.key),
             Node::XmlMixedContent { replacements, .. } => replacements
@@ -1401,6 +1403,8 @@ impl GraphViewer<'_> {
             | Node::OwnedPosition(_)
             | Node::OwnedRowDocumentPath(_)
             | Node::OwnedXmlSerialize(_)
+            | Node::OwnedJoinField(_)
+            | Node::OwnedJoinSourcePosition(_)
             | Node::SourceField { .. }
             | Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
@@ -1424,6 +1428,7 @@ impl GraphViewer<'_> {
             Node::XmlMixedContent { replacements, .. } => replacements.len(),
             Node::CollectionFind { .. } | Node::OwnedCollectionFind(_) => 2,
             Node::OwnedLookup(_) => 1,
+            Node::OwnedAggregate(aggregate) => aggregate.inputs().len(),
             Node::SequenceExists {
                 sequence,
                 predicate: _,
@@ -1571,6 +1576,22 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     }
                     Some(Node::OwnedDynamicSourceField(_)) => "Owned dynamic field".into(),
                     Some(Node::OwnedXmlSerialize(_)) => "Owned XML serializer".into(),
+                    Some(Node::OwnedAggregate(aggregate)) => format!(
+                        "Owned {:?}: {}",
+                        aggregate.function,
+                        aggregate.collection.path.join("/")
+                    ),
+                    Some(Node::OwnedJoinField(field)) => format!(
+                        "Owned join {} field: {}/{}",
+                        field.join.get(),
+                        field.collection.path.join("/"),
+                        field.path.join("/")
+                    ),
+                    Some(Node::OwnedJoinSourcePosition(position)) => format!(
+                        "Owned join {} position: {}",
+                        position.join.get(),
+                        position.collection.path.join("/")
+                    ),
                     Some(Node::SourceField { .. })
                         if self.function_output.is_none()
                             && !graph_references::sequence_item_owners(
@@ -2224,6 +2245,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         Node::Aggregate { expression, .. } | Node::JoinAggregate { expression, .. },
                     ) if expression.is_some() && idx == 0 => "values".to_string(),
                     Some(Node::Aggregate { .. } | Node::JoinAggregate { .. }) => "arg".to_string(),
+                    Some(Node::OwnedAggregate(aggregate))
+                        if aggregate.expression().is_some() && idx == 0 =>
+                    {
+                        "values".to_string()
+                    }
+                    Some(Node::OwnedAggregate(_)) => "arg".to_string(),
                     _ => String::new(),
                 })
             }

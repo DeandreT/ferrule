@@ -1,12 +1,12 @@
-//! Owned join identities validate against their own endpoints and stay closed
-//! for execution.
+//! Owned join identities validate against their own endpoints; execution is
+//! covered by `owned_join_tuples`.
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
     Graph, JoinId, NamedSource, OwnedJoinConditions, OwnedJoinKey, OwnedJoinPlan, OwnedJoinSource,
     OwnedSourceRef, Project, Scope, ScopeIteration, SourceOwner,
 };
 
-use crate::{EngineError, OwnedCapabilityContext, run_with_sources, validate};
+use crate::{run_with_sources, validate};
 
 fn rows_schema() -> SchemaNode {
     SchemaNode::group(
@@ -131,41 +131,43 @@ fn validation_checks_each_owner_collection_and_key() {
 }
 
 #[test]
-fn execution_refuses_owned_joins_as_a_join_context() {
+fn execution_admits_owned_joins_and_keeps_the_owner_of_each_row() {
     let row =
         |id| Instance::Group(vec![("id".to_owned(), Instance::Scalar(Value::Int(id)))].into());
-    let input = Instance::Group(
-        vec![
-            ("Rows".to_owned(), Instance::Repeated(vec![row(1)])),
-            (
-                "Header".to_owned(),
-                Instance::Group(
-                    vec![(
-                        "code".to_owned(),
-                        Instance::Scalar(Value::String("H".into())),
-                    )]
-                    .into(),
-                ),
-            ),
-        ]
+    let header = Instance::Group(
+        vec![(
+            "code".to_owned(),
+            Instance::Scalar(Value::String("H".into())),
+        )]
         .into(),
     );
-    let error = run_with_sources(
+    let input = |ids: &[i64]| {
+        Instance::Group(
+            vec![
+                (
+                    "Rows".to_owned(),
+                    Instance::Repeated(ids.iter().copied().map(row).collect()),
+                ),
+                ("Header".to_owned(), header.clone()),
+            ]
+            .into(),
+        )
+    };
+    // Two primary rows and one matching named row: one tuple.
+    let output = run_with_sources(
         &project(plan(named("lookup", &["Rows"]), "id")),
-        &input,
-        vec![("lookup".into(), input.clone())],
+        &input(&[1, 2]),
+        vec![("lookup".into(), input(&[2]))],
     )
-    .unwrap_err();
-    assert!(
-        matches!(
-            error,
-            EngineError::UnsupportedOwnedContext {
-                context: OwnedCapabilityContext::Join,
-                scope: Some(_),
-                node: None,
-                function: None,
-            }
-        ),
-        "{error:?}"
+    .unwrap();
+    assert_eq!(
+        output,
+        Instance::Group(
+            vec![(
+                "Row".to_owned(),
+                Instance::Repeated(vec![Instance::Group(Default::default())])
+            )]
+            .into()
+        )
     );
 }

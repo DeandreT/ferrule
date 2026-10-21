@@ -16,6 +16,8 @@ mod adjacency_tree;
 mod aggregates;
 #[path = "code_generation/basic_owned_adjacency_tree.rs"]
 mod basic_owned_adjacency_tree;
+#[path = "code_generation/basic_owned_collection_aggregates.rs"]
+mod basic_owned_collection_aggregates;
 #[path = "code_generation/basic_owned_dynamic_field.rs"]
 mod basic_owned_dynamic_field;
 #[path = "code_generation/basic_owned_failure_sources.rs"]
@@ -30,6 +32,8 @@ mod basic_owned_group_ending_with;
 mod basic_owned_group_into_blocks;
 #[path = "code_generation/basic_owned_group_starting_with.rs"]
 mod basic_owned_group_starting_with;
+#[path = "code_generation/basic_owned_joins.rs"]
+mod basic_owned_joins;
 #[path = "code_generation/basic_owned_json_adapters.rs"]
 mod basic_owned_json_adapters;
 #[path = "code_generation/basic_owned_lookup_find.rs"]
@@ -875,6 +879,7 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "Runtime/FerruleFunctions.cs",
         "Runtime/FerruleGrouping.cs",
         "Runtime/FerruleInstance.cs",
+        "Runtime/FerruleInvocationCounters.cs",
         "Runtime/FerruleJoins.cs",
         "Runtime/FerruleOwnedDynamicField.cs",
         "Runtime/FerrulePathHierarchy.cs",

@@ -1536,8 +1536,10 @@ mod owned_basic;
 mod owned_basic_group_adjacent_by;
 mod owned_basic_group_by;
 mod owned_basic_group_starting_with;
+mod owned_collection_aggregates;
 mod owned_dynamic_field;
 mod owned_failure_sources;
+mod owned_joins;
 #[path = "owned_json_api_tests.rs"]
 mod owned_json_api;
 mod owned_lookup_find;

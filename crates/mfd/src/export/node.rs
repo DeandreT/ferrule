@@ -303,7 +303,10 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
             | Node::OwnedDynamicSourceField(_)
             | Node::OwnedLookup(_)
             | Node::OwnedCollectionFind(_)
- | Node::OwnedXmlSerialize(_) => {
+ | Node::OwnedXmlSerialize(_)
+            | Node::OwnedAggregate(_)
+            | Node::OwnedJoinField(_)
+            | Node::OwnedJoinSourcePosition(_) => {
                 return Err(MfdError::UnsupportedSourceOwnership {
                     node: id,
                     function: None,

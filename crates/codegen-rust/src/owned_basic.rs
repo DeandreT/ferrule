@@ -13,12 +13,14 @@ use mapping::{SourceOwner, SourceScopeLocation, SourceScopeStep, SourceScopeTarg
 #[path = "owned_basic_windows.rs"]
 mod windows;
 pub(crate) use windows::render_public_basic_owned_adjacency_tree_source;
+pub(crate) use windows::render_public_basic_owned_collection_aggregates_source;
 pub(crate) use windows::render_public_basic_owned_dynamic_field_source;
 pub(crate) use windows::render_public_basic_owned_failure_source;
 pub(crate) use windows::render_public_basic_owned_group_adjacent_by_source;
 pub(crate) use windows::render_public_basic_owned_group_ending_with_source;
 pub(crate) use windows::render_public_basic_owned_group_into_blocks_source;
 pub(crate) use windows::render_public_basic_owned_group_starting_with_source;
+pub(crate) use windows::render_public_basic_owned_joins_source;
 pub(crate) use windows::render_public_basic_owned_lookup_find_source;
 pub(crate) use windows::render_public_basic_owned_path_hierarchy_source;
 pub(crate) use windows::render_public_basic_owned_recursive_collect_source;
@@ -29,12 +31,17 @@ pub(crate) use windows::render_public_basic_owned_sequence_exists_source;
 pub(crate) use windows::render_public_basic_owned_sequence_item_at_source;
 pub(crate) use windows::render_public_basic_owned_window_source;
 pub(crate) use windows::render_public_basic_owned_xml_serialize_source;
+#[path = "owned_basic_aggregate.rs"]
+mod aggregate;
 #[path = "owned_basic_group_by.rs"]
 mod group_by;
+#[path = "owned_basic_joins.rs"]
+mod joins;
 #[path = "owned_basic_rows.rs"]
 mod rows;
 #[path = "owned_basic_search.rs"]
 mod search;
+pub(super) use aggregate::render_owned_aggregate;
 pub(crate) use group_by::render_public_basic_owned_group_by_source;
 pub(super) use search::{render_owned_collection_find, render_owned_lookup};
 
@@ -191,7 +198,7 @@ fn check_scope(
             IterationSource::Generated(_) => {
                 return Err(scope_refusal(route, Capability::GeneratedItem, None));
             }
-            IterationSource::InnerJoin(_) => {
+            IterationSource::InnerJoin(_) | IterationSource::OwnedInnerJoin(_) => {
                 return Err(scope_refusal(route, Capability::Join, None));
             }
             IterationSource::Concatenate(_) => {
@@ -429,6 +436,19 @@ pub(super) fn render_owned_access(expression: &Expression) -> Option<String> {
                 Some(format!("context.owned_field({owner}, &[{path}], {frame})"))
             }
         }
+        Expression::OwnedJoinField(field) => Some(format!(
+            "context.owned_join_field({}, {}, &[{}], &[{}])",
+            field.join.get(),
+            owner_literal(&field.collection.owner),
+            render_string_path(&field.collection.path),
+            render_string_path(&field.path)
+        )),
+        Expression::OwnedJoinSourcePosition(position) => Some(format!(
+            "{{ let position = context.owned_join_source_position({}, {}, &[{}])?; Ok(Value::Int(position as i64)) }}",
+            position.join.get(),
+            owner_literal(&position.collection.owner),
+            render_string_path(&position.collection.path)
+        )),
         Expression::OwnedPosition(position) => {
             let owner = owner_literal(&position.owner);
             let collection = position.collection.as_ref().map_or_else(
@@ -988,7 +1008,7 @@ fn check_sort_scope(
             IterationSource::Generated(_) => {
                 return Err(scope_refusal(route, Capability::GeneratedItem, None));
             }
-            IterationSource::InnerJoin(_) => {
+            IterationSource::InnerJoin(_) | IterationSource::OwnedInnerJoin(_) => {
                 return Err(scope_refusal(route, Capability::Join, None));
             }
             IterationSource::Concatenate(_) => {

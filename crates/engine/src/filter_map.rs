@@ -293,7 +293,11 @@ impl FilterMapWork<'_> {
 
 fn wrap(boundary: FilterMapBoundary, source: EngineError) -> EngineError {
     // Preserve the first, most specific envelope and its complete original cause.
-    if matches!(source, EngineError::FilterMapRuntime { .. }) {
+    // Restricted budget failures stay unwrapped so hosts always see them typed.
+    if matches!(
+        source,
+        EngineError::FilterMapRuntime { .. } | EngineError::ExecutionBudgetExceeded { .. }
+    ) {
         source
     } else {
         EngineError::FilterMapRuntime {
@@ -564,6 +568,7 @@ fn stage(
         positions,
         program.purpose(),
         Some(work),
+        program.budget,
     )
     .map_err(|error| work.wrap(error))?;
     #[cfg(test)]

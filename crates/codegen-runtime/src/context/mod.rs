@@ -28,7 +28,7 @@ pub use basic::{
     BasicGroupByControls, BasicGroupByMetadata, BasicGroupEndingWithControls,
     BasicGroupIntoBlocksControls, BasicGroupStartingWithControls, BasicScopeContext,
     BasicSourceBridgeError, BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort,
-    PhaseSelection, RetainedSourceCohort,
+    OwnedJoinKey, OwnedJoinSource, OwnedJoinStage, PhaseSelection, RetainedSourceCohort,
 };
 pub use basic_json_inputs::{
     BasicJsonDocumentRef, BasicJsonInputAdmission, BasicJsonParsedInputs,

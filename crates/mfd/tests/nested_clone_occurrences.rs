@@ -1,6 +1,6 @@
 //! Identical interned bindings in distinct declared clone occurrences keep
-//! distinct provenance, while one occurrence that aliases several authored
-//! edges remains refused in the established warning order.
+//! distinct provenance, while one occurrence whose sibling entries share one
+//! expression keeps a binding per entry and refuses like distinct feeds.
 
 use std::error::Error;
 use std::path::PathBuf;
@@ -143,27 +143,54 @@ fn nested_sibling_clones_share_one_interned_node_as_separate_segments() -> Resul
 }
 
 #[test]
-fn one_occurrence_aliasing_two_edges_keeps_ordered_refusals() -> Result<(), Box<dyn Error>> {
-    let directory = package("aliased_cell_values.mfd")?;
-    let imported = mfd::import(&directory.join("mapping.mfd"))?;
-    // The deeper wrapper refuses first; its retained child then prevents the
-    // enclosing Row wrapper from being distributed.
-    assert_eq!(
-        imported.warnings,
-        [
-            "nested cloned target `Group/Row/Cell` cannot prove complete placeholder binding preservation; its scope remains unsupported",
-            "nested cloned target `Group/Row` has no complete, unique declared ancestor ownership; its scope remains unsupported",
-        ]
-    );
-    assert!(!engine::validate(&imported.project).is_empty());
-    assert!(matches!(
-        mfd::import_with_profile(
-            &directory.join("mapping.mfd"),
+fn one_occurrence_aliasing_two_edges_refuses_like_distinct_feeds() -> Result<(), Box<dyn Error>> {
+    let aliased = package("aliased_cell_values.mfd")?;
+    // The control feeds the second sibling Value entry from its own constant.
+    let distinct = package("aliased_cell_values.mfd")?;
+    let design = std::fs::read_to_string(distinct.join("mapping.mfd"))?;
+    let control = design
+        .replace(
+            "<edge from=\"181\" to=\"307\"/>",
+            "<edge from=\"188\" to=\"307\"/>",
+        )
+        .replace(
+            "</children>",
+            "<component name=\"constant\" library=\"core\" kind=\"2\"><targets><datapoint key=\"188\"/></targets><data><constant value=\"left-one-cell-alt\" datatype=\"string\"/></data></component></children>",
+        );
+    assert_ne!(control, design);
+    std::fs::write(distinct.join("mapping.mfd"), control)?;
+
+    let mut outcomes = Vec::new();
+    for directory in [&aliased, &distinct] {
+        let mapping = directory.join("mapping.mfd");
+        let imported = mfd::import(&mapping)?;
+        // Both sibling entries survive as bindings, so clone distribution is
+        // proved and only the singular duplicate-binding refusal remains.
+        assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+        let validation = engine::validate(&imported.project);
+        let Err(mfd::MfdError::IncompatibleImport(report)) = mfd::import_with_profile(
+            &mapping,
             &mfd::ImportOptions::default(),
             mfd::ImportProfile::Executable,
-        ),
-        Err(mfd::MfdError::IncompatibleImport(_))
-    ));
-    std::fs::remove_dir_all(directory)?;
+        ) else {
+            return Err("executable import did not refuse".into());
+        };
+        outcomes.push((validation, report));
+    }
+    let (aliased_validation, aliased_report) = &outcomes[0];
+    assert_eq!(
+        aliased_validation
+            .iter()
+            .map(|issue| (issue.location.as_str(), issue.message.as_str()))
+            .collect::<Vec<_>>(),
+        [(
+            "scope `Group/<segment 1>/Row/<segment 2>/Cell/<segment 1>`",
+            "target field `Value` is bound more than once"
+        )]
+    );
+    assert_eq!(outcomes[1].0, *aliased_validation);
+    assert_eq!(outcomes[1].1, *aliased_report);
+    std::fs::remove_dir_all(aliased)?;
+    std::fs::remove_dir_all(distinct)?;
     Ok(())
 }

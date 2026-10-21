@@ -109,7 +109,10 @@ pub(in crate::export) fn selector_context_warnings(
                 | Node::OwnedDynamicSourceField(_)
                 | Node::OwnedLookup(_)
                 | Node::OwnedCollectionFind(_)
-                | Node::OwnedXmlSerialize(_) => {
+                | Node::OwnedXmlSerialize(_)
+                | Node::OwnedAggregate(_)
+                | Node::OwnedJoinField(_)
+                | Node::OwnedJoinSourcePosition(_) => {
                     self.warnings
                         .insert(format!("owned source node {id} has no export capability"));
                 }

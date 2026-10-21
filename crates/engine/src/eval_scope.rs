@@ -27,6 +27,9 @@ use crate::trace::{
 };
 use crate::{DynamicSourceLoader, EngineError};
 
+#[path = "eval_scope/owned_join_scope.rs"]
+mod owned_join_scope;
+
 // Only the synthetic member collection is owned. Intermediate ancestors are
 // borrowed from the first member's candidate, so a group adds no copy of the
 // repeated levels crossed above its members.
@@ -96,13 +99,17 @@ pub(crate) fn eval_scope(
             trace_scope,
         );
     }
-    if matches!(
-        scope.source_selector(),
-        Some(mapping::SourceSelectorRef::Owned(_))
-    ) || matches!(
-        scope.construction,
-        ScopeConstruction::OwnedPathHierarchy { .. } | ScopeConstruction::OwnedAdjacencyTree { .. }
-    ) {
+    if scope.iteration.owned_join().is_some()
+        || matches!(
+            scope.source_selector(),
+            Some(mapping::SourceSelectorRef::Owned(_))
+        )
+        || matches!(
+            scope.construction,
+            ScopeConstruction::OwnedPathHierarchy { .. }
+                | ScopeConstruction::OwnedAdjacencyTree { .. }
+        )
+    {
         return Err(EngineError::UnsupportedSourceIteration {
             scope: trace_scope.source_scope.clone(),
         });
@@ -163,7 +170,7 @@ pub(crate) fn eval_scope(
         });
     let join_rows = scope
         .join()
-        .map(|(join, plan)| execute_join(context, positions, join, plan))
+        .map(|(join, plan)| execute_join(context, positions, join, plan, program.budget))
         .transpose()?;
     let dynamic_source = scope
         .source()
@@ -222,12 +229,24 @@ pub(crate) fn eval_scope(
                     found: path.type_name(),
                 });
             };
-            let instance = loader.load(&source.name, &path).map_err(|message| {
-                EngineError::DynamicSourceLoad {
+            let loaded = match program.restricted {
+                None => loader
+                    .load(&source.name, &path)
+                    .map_err(crate::DynamicSourceLoadError::Failed),
+                Some(policy) => loader.load_restricted(&source.name, &path, policy),
+            };
+            let instance = loaded.map_err(|error| match error {
+                crate::DynamicSourceLoadError::Refused(refusal) => {
+                    EngineError::DynamicSourceRefused {
+                        source_name: source.name.clone(),
+                        refusal,
+                    }
+                }
+                crate::DynamicSourceLoadError::Failed(message) => EngineError::DynamicSourceLoad {
                     source_name: source.name.clone(),
                     path,
                     message,
-                }
+                },
             })?;
             loaded_dynamic.push((driver_index, instance));
         }
@@ -753,13 +772,17 @@ pub(crate) fn eval_scope(
 }
 
 fn scope_needs_owned(program: EvalProgram<'_>, scope: &Scope) -> bool {
-    if matches!(
-        scope.source_selector(),
-        Some(mapping::SourceSelectorRef::Owned(_))
-    ) || matches!(
-        scope.construction,
-        ScopeConstruction::OwnedPathHierarchy { .. } | ScopeConstruction::OwnedAdjacencyTree { .. }
-    ) {
+    if scope.iteration.owned_join().is_some()
+        || matches!(
+            scope.source_selector(),
+            Some(mapping::SourceSelectorRef::Owned(_))
+        )
+        || matches!(
+            scope.construction,
+            ScopeConstruction::OwnedPathHierarchy { .. }
+                | ScopeConstruction::OwnedAdjacencyTree { .. }
+        )
+    {
         return true;
     }
     let mut pending: Vec<_> = scope
@@ -922,6 +945,20 @@ fn eval_basic_owned_scope<'a>(
         ObservedExtension, ObservedWalkRequest, reserve_observed_copy, select_observed,
         select_observed_with_candidate_observer,
     };
+    if let Some((join, plan)) = scope.iteration.owned_join() {
+        return owned_join_scope::eval_owned_join_scope(
+            program,
+            scope,
+            target,
+            context,
+            positions,
+            extra_sources,
+            source_loader,
+            trace_scope,
+            join,
+            plan,
+        );
+    }
     // Scope boundaries observe the incoming receiving context and phase.
     // Traversal and item producers retain their existing explicit phase programs.
     let receiving_program = program;

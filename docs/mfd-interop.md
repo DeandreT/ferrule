@@ -268,8 +268,8 @@ redistribution records which declared child occurrences it placed under each
 parent occurrence; an ancestor proof attributes a retained binding to the
 innermost recorded occurrence that holds it, so sibling clones bound to one
 shared expression keep distinct provenance. That attribution never adds an
-origin, and one occurrence that holds several original bindings remains
-refused. Each level is proved completely before its scopes or diagnostics
+origin, and one occurrence must retain one binding for each original binding
+it holds. Each level is proved completely before its scopes or diagnostics
 change, and diagnostics keep child declaration order. A placeholder
 with unclaimed, missing, broadcast, ambiguous, or controlled content remains
 intact with a refusal diagnostic. A unique child entry may reuse its parent's
@@ -278,8 +278,10 @@ retained provenance is
 restricted to that descendant path. Numeric port order, equal branch counts,
 and similar source paths
 do not establish ownership. Direct IR without declared entry owners remains
-subject to the ordinary concatenation validator. Multiple distinct feeds to a
-singular target retain their duplicate-binding refusal; their selection
+subject to the ordinary concatenation validator. Duplicated sibling target entries keep one
+binding each even when one expression feeds them, so a repeating scalar emits
+every entry's value in entry-tree order. Multiple feeds to a singular target,
+identical or distinct, retain their duplicate-binding refusal; their selection
 semantics are tracked separately in [#241](https://github.com/DeandreT/ferrule/issues/241).
 
 Bounded adjacent C# and Java source modules can likewise lower direct numeric
