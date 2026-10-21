@@ -1,0 +1,45 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var cases = new (long Start, long Step, string Primary, string Audit)[] {
+    (1, 1, "{\n  \"A\": 1,\n  \"B\": 2\n}\n", "{\n  \"Value\": 3\n}\n"),
+    (long.MaxValue, 1, "{\n  \"A\": 9223372036854775807,\n  \"B\": -9223372036854775808\n}\n", "{\n  \"Value\": -9223372036854775807\n}\n"),
+    (long.MinValue, -1, "{\n  \"A\": -9223372036854775808,\n  \"B\": 9223372036854775807\n}\n", "{\n  \"Value\": 9223372036854775806\n}\n"),
+    (5, 0, "{\n  \"A\": 5,\n  \"B\": 5\n}\n", "{\n  \"Value\": 5\n}\n"),
+    (5, 3, "{\n  \"A\": 5,\n  \"B\": 8\n}\n", "{\n  \"Value\": 11\n}\n"),
+};
+foreach (var item in cases)
+{
+    var parameters = new FerruleRuntimeParameters(new Dictionary<string, FerruleValue> {
+        ["start"] = FerruleValue.FromInt64(item.Start), ["step"] = FerruleValue.FromInt64(item.Step),
+    });
+    var execution = FerruleExecutionContext.WithParameters("counter.ferrule", parameters)
+        .WithInvocationCounterLimits(new FerruleInvocationCounterLimits(1, 4));
+    for (int repeat = 0; repeat < 2; repeat++)
+    {
+        var actual = GeneratedMapping.ExecuteJsonOutputs("{}", execution);
+        if (actual.Primary != item.Primary || actual.Extras.Count != 1 ||
+            actual.Extras[0].Name != "audit" || actual.Extras[0].Document != item.Audit)
+            throw new InvalidOperationException("Complete counter documents differ.");
+        var named = (SelectedJsonTargetOutput.Named)GeneratedMapping.ExecuteJsonSelectedTargetWithHost(
+            "{}", FerruleTargetSelection.Named("audit"), Array.Empty<NamedJsonInput>(), execution);
+        if (named.Output.Name != "audit" || named.Output.Document != "{\n  \"Value\": " + item.Start.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\n}\n")
+            throw new InvalidOperationException("Named-only execution consumed another target's counter.");
+        var primary = (SelectedJsonTargetOutput.Primary)GeneratedMapping.ExecuteJsonSelectedTargetWithHost(
+            "{}", FerruleTargetSelection.Primary(), Array.Empty<NamedJsonInput>(), execution);
+        if (primary.Document != item.Primary) throw new InvalidOperationException("Primary-only document differs.");
+    }
+}
+try
+{
+    GeneratedMapping.Execute(new FerruleGroup(Array.Empty<FerruleField>()), new FerruleExecutionContext("counter.ferrule"));
+    throw new InvalidOperationException("Unconfigured counters were admitted.");
+}
+catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.MissingInvocationCounters && error.Node == 1) { }
+try
+{
+    GeneratedMapping.ExecuteSelectedTarget(new FerruleGroup(Array.Empty<FerruleField>()), FerruleTargetSelection.Named("Audit"));
+    throw new InvalidOperationException("Unknown target was admitted.");
+}
+catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.UnknownTarget && error.Detail == "Audit") { }
+Console.WriteLine("PASS counter documents");

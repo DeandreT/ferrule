@@ -1417,6 +1417,17 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
             ty: *ty,
             default: *default,
         },
+        Node::InvocationCounter {
+            key,
+            start,
+            step,
+            restart,
+        } => Expression::InvocationCounter {
+            key: key.clone(),
+            start: *start,
+            step: *step,
+            restart: *restart,
+        },
         Node::Call { function, args } => {
             if function == "flextext_parse_field" {
                 let [input, layout, path] = args.as_slice() else {

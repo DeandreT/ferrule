@@ -1,6 +1,8 @@
 //! Interprets a mapping graph against a source instance to produce a target instance.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+
+pub use functions::{InvocationCounterError, InvocationCounterLimits};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -271,6 +273,20 @@ pub enum OwnedCapabilityContext {
 
 #[derive(Debug, Error, PartialEq)]
 pub enum EngineError {
+    #[error("graph node {node}: invocation counters require explicit host limits")]
+    MissingInvocationCounters { node: NodeId },
+    #[error("graph node {node}: counter {operand} expected {expected}, got {found}")]
+    InvocationCounterOperand {
+        node: NodeId,
+        operand: &'static str,
+        expected: &'static str,
+        found: &'static str,
+    },
+    #[error("graph node {node}: {source}")]
+    InvocationCounter {
+        node: NodeId,
+        source: functions::InvocationCounterError,
+    },
     #[error("owned source access (node {node:?}, scope {scope:?}): {source}")]
     OwnedSourceAccess {
         node: Option<NodeId>,
@@ -618,6 +634,7 @@ pub struct ExecutionContext<'a> {
     filter_map_limits: FilterMapLimits,
     filter_map_cancellation: Option<&'a dyn FilterMapCancellation>,
     policy: &'a ExecutionPolicy,
+    invocation_counter_limits: Option<functions::InvocationCounterLimits>,
 }
 
 /// Host boundary for typed secondary sources whose path is computed during
@@ -659,6 +676,7 @@ impl<'a> ExecutionContext<'a> {
             filter_map_limits: FilterMapLimits::default(),
             filter_map_cancellation: None,
             policy: &TRUSTED,
+            invocation_counter_limits: None,
         }
     }
 
@@ -679,6 +697,7 @@ impl<'a> ExecutionContext<'a> {
             filter_map_limits: FilterMapLimits::default(),
             filter_map_cancellation: None,
             policy: &TRUSTED,
+            invocation_counter_limits: None,
         }
     }
 
@@ -691,6 +710,15 @@ impl<'a> ExecutionContext<'a> {
     /// Supplies bounded named scalar inputs for runtime-parameter nodes.
     pub fn with_parameters(mut self, parameters: &'a RuntimeParameters) -> Self {
         self.parameters = Some(parameters);
+        self
+    }
+
+    /// Enables bounded counters; each mapping call still creates fresh state.
+    pub fn with_invocation_counter_limits(
+        mut self,
+        limits: functions::InvocationCounterLimits,
+    ) -> Self {
+        self.invocation_counter_limits = Some(limits);
         self
     }
 
@@ -980,6 +1008,9 @@ fn evaluate_run<R>(
         .as_ref()
         .map(|roots| trace::TraceOwnedRegistry::new(project, roots));
     let first_failure_reported = Cell::new(false);
+    let invocation_counters = execution
+        .and_then(|execution| execution.invocation_counter_limits)
+        .map(|limits| RefCell::new(functions::InvocationCounters::new(limits)));
     let filter_map_run_state = filter_map::FilterMapRunState::new(
         execution.map_or_else(FilterMapLimits::default, |execution| {
             execution.filter_map_limits
@@ -995,6 +1026,7 @@ fn evaluate_run<R>(
         &first_failure_reported,
     )
     .with_filter_map_run_state(&filter_map_run_state)
+    .with_invocation_counters(invocation_counters.as_ref())
     .with_primary_source(source)
     .with_debug_hook(execution.and_then(|execution| execution.debug_hook))
     .with_purpose(execution.map_or(ExecutionPurpose::Run, ExecutionContext::purpose))

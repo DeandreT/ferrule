@@ -346,6 +346,13 @@ fn render_user_function_expression(
             output.push_str(scalar_type_name(*ty));
             output.push_str(&format!(", () => {});\n", call(*default)));
         }
+        Expression::InvocationCounter { .. } => {
+            return Err(ProgramValidationError::UnsupportedUserFunctionExpression {
+                function,
+                node,
+            }
+            .into());
+        }
         Expression::Call {
             function: builtin,
             args,
@@ -2079,6 +2086,20 @@ fn render_expression(
             output.push_str(", global::Ferrule.Runtime.FerruleScalarType.");
             output.push_str(scalar_type_name(*ty));
             output.push_str(&format!(", () => Node_{default}(context));\n"));
+        }
+        Expression::InvocationCounter {
+            key,
+            start,
+            step,
+            restart,
+        } => {
+            let restart = restart.map_or_else(
+                || "global::Ferrule.Runtime.FerruleValue.Null".to_string(),
+                |id| format!("Node_{id}(context)"),
+            );
+            output.push_str(&format!(
+                "\n    {{\n        {legacy_receiver}.RequireInvocationCounters({node}U);\n        var start = global::Ferrule.Runtime.FerruleInvocationCounterOperands.RequireInteger({node}U, \"start\", Node_{start}(context));\n        var step = global::Ferrule.Runtime.FerruleInvocationCounterOperands.RequireInteger({node}U, \"step\", Node_{step}(context));\n        var restart = global::Ferrule.Runtime.FerruleInvocationCounterOperands.RequireRestart({node}U, {restart});\n        return {legacy_receiver}.NextInvocationCounter({node}U, {}, start, step, restart);\n    }}\n",
+                literal::string(key)));
         }
         Expression::Call { function, args } => {
             output.push_str(" =>\n        global::Ferrule.Runtime.FerruleFunctions.Call(");
