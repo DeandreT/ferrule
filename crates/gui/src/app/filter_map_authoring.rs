@@ -29,6 +29,7 @@ fn compatible_scope(app: &FerruleApp) -> bool {
             || matches!(
                 scope.iteration,
                 ScopeIteration::InnerJoin { .. }
+                    | ScopeIteration::OwnedInnerJoin { .. }
                     | ScopeIteration::Concatenate(_)
                     | ScopeIteration::OwnedSource { .. }
             )

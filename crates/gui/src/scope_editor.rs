@@ -615,6 +615,18 @@ pub(crate) fn show_scope_editor(
         }
         return None;
     }
+    if let Some((id, plan)) = scope.iteration.owned_join() {
+        ui.label("Owned join iteration is unavailable; this saved scope is read-only.");
+        ui.monospace(format!("join id: {}", id.get()));
+        for (index, source) in plan.sources().enumerate() {
+            ui.monospace(format!(
+                "input {}: {}",
+                index + 1,
+                mapping::describe_owned_collection(source.collection())
+            ));
+        }
+        return None;
+    }
     let whole_group_copy = matches!(scope.construction, ScopeConstruction::CopyCurrentSource);
     if whole_group_copy {
         copy_controls::show_reason(ui);
@@ -633,7 +645,7 @@ pub(crate) fn show_scope_editor(
     output_controls::show(ui, scope, output_profile);
 
     match &scope.iteration {
-        ScopeIteration::OwnedSource { .. } => return None,
+        ScopeIteration::OwnedSource { .. } | ScopeIteration::OwnedInnerJoin { .. } => return None,
         ScopeIteration::Sequence(sequence) => {
             ui.horizontal(|ui| {
                 ui.label("iteration:");
@@ -1495,5 +1507,64 @@ mod tests {
             join_condition_label(source, conditions.iter().next().expect("stage has a key")),
             "orders/sku = products/sku"
         );
+    }
+
+    #[test]
+    fn owned_joins_render_read_only_and_stay_unchanged() {
+        use crate::test_ui::ContextExt as _;
+
+        let rows = |owner| mapping::OwnedSourceRef {
+            owner,
+            path: vec!["Rows".into()],
+        };
+        let named = || mapping::SourceOwner::Named {
+            name: "lookup".into(),
+        };
+        let plan = mapping::OwnedJoinPlan::new(
+            mapping::OwnedJoinSource::new(rows(mapping::SourceOwner::Primary)),
+            mapping::OwnedJoinSource::new(rows(named())),
+            mapping::OwnedJoinConditions::new(mapping::OwnedJoinKey::new(
+                rows(mapping::SourceOwner::Primary),
+                vec!["id".into()],
+                vec!["id".into()],
+            )),
+        )
+        .unwrap();
+        let original = Scope {
+            target_field: "Row".into(),
+            iteration: ScopeIteration::OwnedInnerJoin {
+                id: mapping::JoinId::new(9),
+                plan,
+            },
+            ..Scope::default()
+        };
+        let mut scope = original.clone();
+        let schema = ir::SchemaNode::group("Input", vec![]);
+        let catalog = SourcePathCatalog::new(&schema, &[]);
+        let context = egui::Context::default();
+        let mut action = None;
+        let _ = context.run_test_ui(Default::default(), |ui| {
+            action = show_scope_editor(
+                ui,
+                &mut scope,
+                &Graph::default(),
+                &catalog,
+                &[],
+                ScopeEditorOwner {
+                    nested: true,
+                    primary_root_bindings: false,
+                    target_xml_types: &[],
+                    target_xml_default: None,
+                    target_type_editable: false,
+                },
+                ScopeOutputProfile::XmlElements,
+            );
+        });
+        assert!(action.is_none());
+        assert_eq!(
+            serde_json::to_value(&scope).unwrap(),
+            serde_json::to_value(&original).unwrap()
+        );
+        assert!(scope_iterates(&scope));
     }
 }
