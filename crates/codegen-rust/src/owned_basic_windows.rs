@@ -152,6 +152,17 @@ pub(crate) fn render_public_basic_owned_dynamic_field_source(
     )
 }
 
+/// The SequenceExists composition plus SequenceAggregate over the same pure producers.
+pub(crate) fn render_public_basic_owned_sequence_aggregate_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::GroupEndingWith,
+        SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate,
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
     Closed,
@@ -160,6 +171,8 @@ enum SequenceItemAtPolicy {
     BasicScalarAndOwnedRecursiveProducers,
     /// Also renders SequenceExists over the same pure producers.
     BasicScalarProducersWithExists,
+    /// Also renders SequenceAggregate over the same pure producers.
+    BasicScalarProducersWithExistsAndAggregate,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -280,6 +293,12 @@ fn render_public_basic_owned_source_policy(
     // The common profile closes every scope, retained expression and failure
     // domain to precisely the static Group/Scalar scalar-expression subset.
     match (profile, item_at) {
+        (
+            Profile::GroupEndingWith,
+            SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate,
+        ) => {
+            codegen::validate_basic_owned_sequence_aggregate_emission(program)?;
+        }
         (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducersWithExists) => {
             codegen::validate_basic_owned_sequence_exists_emission(program)?;
         }
@@ -407,7 +426,8 @@ fn render_public_basic_owned_source_policy(
     );
     if item_at != SequenceItemAtPolicy::Closed {
         // Demand includes both paired functions and ordinary legacy islands.
-        // Add only the pure helpers actually called; only Exists owns items.
+        // Add only the pure helpers actually called; only Exists and
+        // SequenceAggregate own items.
         let mut imports = BTreeSet::new();
         for node in &program.expressions {
             if !(basic_retained.contains(&node.id) || legacy_retained.contains(&node.id)) {
@@ -420,6 +440,10 @@ fn render_public_basic_owned_source_policy(
                 }
                 Expression::SequenceExists { sequence, .. } => {
                     imports.insert("GeneratedItems");
+                    sequence
+                }
+                Expression::SequenceAggregate { sequence, .. } => {
+                    imports.extend(["aggregate", "AggregateFunction", "GeneratedItems"]);
                     sequence
                 }
                 _ => continue,
@@ -572,6 +596,12 @@ fn render_public_basic_owned_source_policy(
         }
     }
     let plan = match (profile, item_at) {
+        (
+            Profile::GroupEndingWith,
+            SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate,
+        ) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_aggregate(program)?
+        }
         (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducersWithExists) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_exists(program)?
         }
@@ -664,8 +694,8 @@ pub fn execute_selected_with_basic_owned_sources<'name, 'src>(
     Ok(source)
 }
 
-/// Exists item declarations that no rendered expression reads. Its owning
-/// consumer retains the declaration but never calls it.
+/// Exists and SequenceAggregate item declarations that no rendered expression
+/// reads. Their owning consumer retains the declaration but never calls it.
 fn unread_exists_items(program: &Program, retained: &BTreeSet<NodeId>) -> BTreeSet<NodeId> {
     let mut items = BTreeSet::new();
     let mut read = BTreeSet::new();
@@ -681,6 +711,23 @@ fn unread_exists_items(program: &Program, retained: &BTreeSet<NodeId>) -> BTreeS
                 // The declaration itself is not a read; the predicate may be one.
                 items.insert(sequence.item());
                 read.extend(sequence.inputs().chain([*predicate]));
+            }
+            Expression::SequenceAggregate {
+                sequence,
+                predicate,
+                expression,
+                arg,
+                ..
+            } => {
+                // Without an expression the consumer itself reads its item.
+                items.insert(sequence.item());
+                read.extend(
+                    sequence
+                        .inputs()
+                        .chain(*predicate)
+                        .chain(Some(expression.unwrap_or(sequence.item())))
+                        .chain(*arg),
+                );
             }
             expression => read.extend(expression_inputs(expression)),
         }
@@ -708,6 +755,7 @@ fn local_owned(program: &Program, scope: &TargetScope) -> bool {
             && match &node.expression {
                 Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
+                | Expression::OwnedRowDocumentPath(_)
                 | Expression::OwnedLookup(_)
                 | Expression::OwnedCollectionFind(_)
                 | Expression::OwnedDynamicSourceField(_) => true,

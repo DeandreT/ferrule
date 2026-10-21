@@ -1,0 +1,27 @@
+use codegen_runtime::{Instance,SourceDocumentOrigin,RuntimeError,OwnedSourceError,OwnedSourceIdentity,OwnedSourceLimits,BasicNamedSourceInput};
+use owned_row_paths_fixture::execute_with_basic_owned_sources;
+fn mark(instance:Instance,path:&str,enabled:bool)->Instance {
+    let Instance::Group(group)=instance else {panic!("group")};
+    Instance::Group(if enabled {group.with_source_origin(SourceDocumentOrigin::new(path,None).unwrap().row(1).unwrap())} else {group})
+}
+fn endpoint(prefix:&str,missing:Option<usize>)->Instance {
+    let rows=(1..=2).map(|i|mark(Instance::Group(vec![].into()),&format!("{prefix}.{i}.csv"),missing!=Some(i))).collect();
+    mark(Instance::Group(vec![("Rows".into(),Instance::Repeated(rows))].into()),&format!("{prefix}.root.csv"),missing!=Some(0))
+}
+fn main()->Result<(),Box<dyn std::error::Error>> {
+    let limits=OwnedSourceLimits {max_roots:8,max_active_frames:16,max_path_segments:16,max_metadata_bytes:1048576,max_walk_contexts:64};
+    let p=endpoint("p",None);let n=endpoint("n",None);let supplied=[BasicNamedSourceInput {name:"Ref",instance:&n}];
+    let output=execute_with_basic_owned_sources(&p,&supplied,None,limits)?.primary;
+    let expected=std::fs::read_to_string("expected.json")?;let schema=std::fs::read_to_string("target.schema")?;
+    assert_eq!(codegen_runtime::serialize_json_compact(&schema,&output)?,expected);
+    for (pm,nm,node,owner,collection) in [
+        (Some(0),None,1,OwnedSourceIdentity::Primary,Some(vec![])),
+        (Some(2),None,3,OwnedSourceIdentity::Primary,None),
+        (None,Some(2),4,OwnedSourceIdentity::Named("Ref".into()),None),
+    ] {
+        let p=endpoint("p",pm);let n=endpoint("n",nm);let supplied=[BasicNamedSourceInput {name:"Ref",instance:&n}];
+        let error=match execute_with_basic_owned_sources(&p,&supplied,None,limits) {Ok(_)=>panic!("expected missing metadata"),Err(error)=>error};
+        assert_eq!(error,RuntimeError::OwnedSourceAtNode {node,source:OwnedSourceError::MissingRowDocumentPath {owner,collection}});
+    }
+    println!("owned row document path cases passed");Ok(())
+}

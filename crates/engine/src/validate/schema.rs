@@ -312,6 +312,7 @@ pub(super) fn validate_owned_source_node(
             field.frame.as_deref(),
         ),
         Node::OwnedPosition(position) => (&position.owner, None, position.collection.as_deref()),
+        Node::OwnedRowDocumentPath(path) => (&path.owner, None, path.collection.as_deref()),
         _ => return,
     };
     let Some(root) = owned_source_root(project, owner, location, issues) else {
