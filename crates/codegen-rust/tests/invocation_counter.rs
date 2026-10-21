@@ -125,6 +125,8 @@ fn owned_emitters_refuse_reachable_and_unused_counters() {
         codegen_rust::emit_with_basic_owned_sequence_aggregate,
         codegen_rust::emit_with_basic_owned_collection_aggregates,
         codegen_rust::emit_with_basic_owned_joins,
+        codegen_rust::emit_with_basic_owned_xml_mixed_content,
+        codegen_rust::emit_with_basic_owned_xml_mixed_construction,
     ];
     let options = codegen_rust::Options {
         package_name: "closed_counter".into(),
