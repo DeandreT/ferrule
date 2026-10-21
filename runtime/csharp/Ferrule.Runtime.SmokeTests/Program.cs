@@ -59,6 +59,7 @@ internal static partial class Program
             ("CSV source reached failures", CsvSourceFailures),
             ("CSV acquisition order and identity", CsvAcquisitionOrder),
             ("CSV acquisition terminal failures", CsvAcquisitionFailures),
+            ("CSV acquisition host failure stages", CsvAcquisitionHostFailures),
             ("X12 literal Unicode, syntax and envelope", X12LiteralUnicodeAndSyntax),
             ("X12 fixed literals and control ownership", X12FixedLiteralsAndControlOwnership),
             ("X12 envelope identity ownership", X12EnvelopeIdentityOwnership),

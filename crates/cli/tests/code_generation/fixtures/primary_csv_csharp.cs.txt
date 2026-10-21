@@ -49,4 +49,18 @@ foreach(var decoding in new[] {FerruleCsvByteDecodingPolicy.StrictUtf8,FerruleCs
     else {Require(rows.MoveNext());Require(((FerruleScalar)((FerruleGroup)rows.Current.Value).Fields[0].Value).Value.StringValue=="Wide☃");}
     Require(!rows.MoveNext());
 }
+var cause=new InvalidOperationException("host");
+using(var selected=GeneratedMapping.AcquirePrimaryCsv(context,_=>throw cause,_=>throw new Exception("loaded after selection failure"),FerruleCsvByteDecodingPolicy.StrictUtf8,1))
+{
+    Require(ReferenceEquals(cause,Failure(selected,FerruleCsvAcquisitionError.Selection).InnerException));Require(!selected.MoveNext());
+}
+IEnumerable<string> BrokenRequests() { foreach(var path in Array.Empty<string>()) yield return path; throw cause; }
+using(var request=GeneratedMapping.AcquirePrimaryCsv(context,_=>BrokenRequests(),_=>throw new Exception("loaded after request failure"),FerruleCsvByteDecodingPolicy.StrictUtf8,1))
+{
+    Require(ReferenceEquals(cause,Failure(request,FerruleCsvAcquisitionError.Request).InnerException));Require(!request.MoveNext());
+}
+using(var limit=GeneratedMapping.AcquirePrimaryCsv(context,_=>["first.csv"],_=>throw new Exception("loaded above document limit"),FerruleCsvByteDecodingPolicy.StrictUtf8,0))
+{
+    Require(Failure(limit,FerruleCsvAcquisitionError.Documents).Maximum==0);Require(!limit.MoveNext());
+}
 Console.WriteLine("primary CSV acquisition cases passed");

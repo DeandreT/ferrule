@@ -74,4 +74,60 @@ internal static partial class Program
         using var invalid=new FerruleCsvAcquisition(()=>"files",_=>[""],_=>throw new Exception("invalid path loaded"),AcquisitionFields(),null,FerruleCsvByteDecodingPolicy.StrictUtf8,1);
         AcquisitionError(FerruleCsvAcquisitionError.Input,()=>invalid.MoveNext());Equal(false,invalid.MoveNext());
     }
+
+    private sealed class AcquisitionBrokenRequests(Exception cause, bool failOnCurrent)
+        : IEnumerable<string>, IEnumerator<string>
+    {
+        public IEnumerator<string> GetEnumerator() => failOnCurrent ? this : throw cause;
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        public string Current => throw cause;
+        object System.Collections.IEnumerator.Current => Current;
+        public bool MoveNext() => true;
+        public void Reset() => throw new NotSupportedException();
+        public void Dispose() { }
+    }
+
+    private static void CsvAcquisitionHostFailures()
+    {
+        var cause=new InvalidOperationException("host selection failed");
+        using(var selection=new FerruleCsvAcquisition(()=>"files",_=>throw cause,
+            _=>throw new Exception("loaded after selection failure"),AcquisitionFields(),null,FerruleCsvByteDecodingPolicy.StrictUtf8,1))
+        {
+            Equal(true,ReferenceEquals(cause,AcquisitionError(FerruleCsvAcquisitionError.Selection,()=>selection.MoveNext()).InnerException));
+            Equal(false,selection.MoveNext());
+        }
+        foreach(bool current in new[] {false,true})
+        {
+            using var request=new FerruleCsvAcquisition(()=>"files",_=>new AcquisitionBrokenRequests(cause,current),
+                _=>throw new Exception("loaded after enumeration failure"),AcquisitionFields(),null,FerruleCsvByteDecodingPolicy.StrictUtf8,1);
+            Equal(true,ReferenceEquals(cause,AcquisitionError(FerruleCsvAcquisitionError.Request,()=>request.MoveNext()).InnerException));
+            Equal(false,request.MoveNext());
+            Throws<InvalidOperationException>(()=>{_ = request.Current;});
+        }
+        IEnumerable<string> LaterFailure()
+        {
+            yield return "first";
+            throw cause;
+        }
+        int loads=0;
+        using(var request=new FerruleCsvAcquisition(()=>"files",_=>LaterFailure(),_=>{
+            loads++;return AcquisitionData("Text,Count\nfirst,1\n");
+        },AcquisitionFields(),null,FerruleCsvByteDecodingPolicy.StrictUtf8,3))
+        {
+            Equal(true,request.MoveNext());
+            var retained=request.Current;
+            Equal(true,ReferenceEquals(cause,AcquisitionError(FerruleCsvAcquisitionError.Request,()=>request.MoveNext()).InnerException));
+            Equal(false,request.MoveNext());Equal(1,loads);Equal(1,retained.Position);
+        }
+        int callbacks=0;
+        using(var disposed=new FerruleCsvAcquisition(()=>{callbacks++;return "files";},_=>throw cause,
+            _=>throw cause,AcquisitionFields(),null,FerruleCsvByteDecodingPolicy.StrictUtf8,1))
+        {
+            disposed.Dispose();Equal(false,disposed.MoveNext());Equal(0,callbacks);
+        }
+        var invalid=AcquisitionError(FerruleCsvAcquisitionError.InvalidLimit,()=>
+            new FerruleCsvAcquisition(()=>{callbacks++;return "files";},_=>throw cause,_=>throw cause,
+                AcquisitionFields(),null,FerruleCsvByteDecodingPolicy.StrictUtf8,FerruleCsvSourceRows.MaximumDocuments+1));
+        Equal(FerruleCsvSourceRows.MaximumDocuments+1,invalid.Maximum);Equal(0,callbacks);
+    }
 }
