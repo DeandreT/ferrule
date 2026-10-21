@@ -72,6 +72,7 @@ fn invocation_operand_helpers_keep_strict_types_and_restart_presence() {
         Value::Null,
         Value::String("3".into()),
         Value::Float(3.0),
+        Value::decimal(ir::Decimal96::parse_exact("3").unwrap()),
         Value::Bool(true),
         Value::json_null(),
         Value::xml_nil(),
@@ -94,6 +95,10 @@ fn invocation_operand_helpers_keep_strict_types_and_restart_presence() {
     );
     assert!(invocation_counter_restart(9, Value::json_null()).is_err());
     assert!(invocation_counter_restart(9, Value::xml_nil()).is_err());
+    assert!(
+        invocation_counter_restart(9, Value::decimal(ir::Decimal96::parse_exact("3").unwrap()))
+            .is_err()
+    );
 }
 
 #[test]
