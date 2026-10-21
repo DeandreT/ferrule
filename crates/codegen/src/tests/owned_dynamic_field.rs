@@ -151,6 +151,9 @@ fn every_earlier_profile_and_direct_validation_refuses_the_owned_read() {
         validate_basic_owned_recursive_filter_emission(&program),
         validate_program_with_basic_owned_lookup_find(&program),
         validate_basic_owned_lookup_find_emission(&program),
+        // The sibling aggregate companion also composes owned search only.
+        validate_program_with_basic_owned_collection_aggregates(&program),
+        validate_basic_owned_collection_aggregates_emission(&program),
     ] {
         assert!(
             result == Err(closed(10, true)) || result == Err(closed(10, false)),
@@ -166,6 +169,7 @@ fn every_earlier_profile_and_direct_validation_refuses_the_owned_read() {
         lower_with_basic_owned_sequence_exists(&project()),
         lower_with_basic_owned_recursive_filter(&project()),
         lower_with_basic_owned_lookup_find(&project()),
+        lower_with_basic_owned_collection_aggregates(&project()),
     ] {
         assert!(lowered.is_err());
     }

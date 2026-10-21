@@ -174,6 +174,17 @@ pub(crate) fn render_public_basic_owned_xml_serialize_source(
     )
 }
 
+/// LookupFind composition plus owned collection aggregates.
+pub(crate) fn render_public_basic_owned_collection_aggregates_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::CollectionAggregates,
+        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
     Closed,
@@ -209,6 +220,8 @@ pub(super) enum Profile {
     DynamicField,
     /// DynamicField plus owned XML serialization.
     XmlSerialize,
+    /// LookupFind plus owned collection aggregates.
+    CollectionAggregates,
 }
 
 impl Profile {
@@ -227,6 +240,7 @@ impl Profile {
                 | Self::GroupIntoBlocks
                 | Self::LookupFind
                 | Self::XmlSerialize
+                | Self::CollectionAggregates
         )
     }
 
@@ -240,6 +254,7 @@ impl Profile {
                 | Self::LookupFind
                 | Self::DynamicField
                 | Self::XmlSerialize
+                | Self::CollectionAggregates
         )
     }
 
@@ -259,6 +274,7 @@ impl Profile {
                     | Self::GroupIntoBlocks
                     | Self::LookupFind
                     | Self::XmlSerialize
+                    | Self::CollectionAggregates
             ),
             Some(GroupingPlan::StartingWith { .. }) => matches!(
                 self,
@@ -272,6 +288,7 @@ impl Profile {
                     | Self::GroupIntoBlocks
                     | Self::LookupFind
                     | Self::XmlSerialize
+                    | Self::CollectionAggregates
             ),
             Some(GroupingPlan::EndingWith { .. }) => matches!(
                 self,
@@ -284,6 +301,7 @@ impl Profile {
                     | Self::GroupIntoBlocks
                     | Self::LookupFind
                     | Self::XmlSerialize
+                    | Self::CollectionAggregates
             ),
             Some(GroupingPlan::IntoBlocks { .. }) => {
                 matches!(
@@ -292,6 +310,7 @@ impl Profile {
                         | Self::LookupFind
                         | Self::DynamicField
                         | Self::XmlSerialize
+                        | Self::CollectionAggregates
                 )
             }
             None => false,
@@ -352,6 +371,12 @@ fn render_public_basic_owned_source_policy(
         }
         (Profile::DynamicField, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::validate_basic_owned_dynamic_field_emission(program)?;
+        }
+        (
+            Profile::CollectionAggregates,
+            SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+        ) => {
+            codegen::validate_basic_owned_collection_aggregates_emission(program)?;
         }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_group_starting_with_emission(program)?;
@@ -662,6 +687,12 @@ fn render_public_basic_owned_source_policy(
         (Profile::DynamicField, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_field(program)?
         }
+        (
+            Profile::CollectionAggregates,
+            SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+        ) => codegen::legacy_named_input_admission_plan_with_basic_owned_collection_aggregates(
+            program,
+        )?,
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(
                 program,
@@ -789,7 +820,8 @@ fn local_owned(program: &Program, scope: &TargetScope) -> bool {
                 | Expression::OwnedLookup(_)
                 | Expression::OwnedCollectionFind(_)
                 | Expression::OwnedDynamicSourceField(_)
-                | Expression::OwnedXmlSerialize(_) => true,
+                | Expression::OwnedXmlSerialize(_)
+                | Expression::OwnedAggregate(_) => true,
                 // An owned producer reads its root through the paired context.
                 Expression::SequenceItemAt { sequence, .. } => sequence.owned_source().is_some(),
                 _ => false,
