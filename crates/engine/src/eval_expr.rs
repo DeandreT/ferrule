@@ -32,6 +32,9 @@ pub(crate) struct EvalProgram<'a> {
     purpose: ExecutionPurpose,
     primary_source: Option<&'a Instance>,
     pub(crate) owned_context: Option<&'a crate::owned_context::OwnedContext<'a>>,
+    /// The active owned join tuple, read only by owned join reads and the
+    /// flattened join position.
+    pub(crate) owned_join: Option<&'a crate::owned_join_tuple::OwnedJoinTuple<'a>>,
     pub(crate) owned_trace_registry: Option<&'a dyn crate::trace::TraceOwnedRegistryView>,
     pub(crate) owned_trace_phase: crate::TraceOwnedPhase,
     pub(crate) filter_map_run_state: Option<&'a FilterMapRunState<'a>>,
@@ -56,6 +59,7 @@ impl<'a> EvalProgram<'a> {
             purpose: ExecutionPurpose::Run,
             primary_source: None,
             owned_context: None,
+            owned_join: None,
             owned_trace_registry: None,
             owned_trace_phase: crate::TraceOwnedPhase::Structural,
             filter_map_run_state: None,
@@ -109,6 +113,19 @@ impl<'a> EvalProgram<'a> {
     {
         EvalProgram {
             owned_context: Some(context),
+            ..self
+        }
+    }
+
+    pub(crate) fn with_owned_join<'b>(
+        self,
+        tuple: &'b crate::owned_join_tuple::OwnedJoinTuple<'b>,
+    ) -> EvalProgram<'b>
+    where
+        'a: 'b,
+    {
+        EvalProgram {
+            owned_join: Some(tuple),
             ..self
         }
     }
@@ -345,6 +362,10 @@ fn eval_expr_inner(
             positions,
             in_progress,
         ),
+        Node::OwnedJoinField(field) => crate::owned_join_tuple::eval_field(program, node_id, field),
+        Node::OwnedJoinSourcePosition(position) => {
+            crate::owned_join_tuple::eval_source_position(program, node_id, position)
+        }
         Node::SourceRootXmlTypeEquals {
             canonical_expanded_type,
         } => ir::primary_root_xml_type_equals(program.primary_source, canonical_expanded_type)
@@ -393,6 +414,12 @@ fn eval_expr_inner(
                     .join_position
                     .filter(|(owner, _)| owner == join)
                     .map(|(_, index)| Value::Int(index as i64))
+            })
+            .or_else(|| {
+                program
+                    .owned_join
+                    .and_then(|tuple| tuple.position(*join))
+                    .map(|index| Value::Int(index as i64))
             })
             .ok_or(EngineError::MissingJoinContext { join: *join }),
         Node::Unconnected => Ok(Value::Null),

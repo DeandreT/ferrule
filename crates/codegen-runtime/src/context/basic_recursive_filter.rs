@@ -90,6 +90,7 @@ impl<'ctx> BasicScopeContext<'ctx> {
             bindings: self.bindings,
             projection_bytes: self.projection_bytes,
             identity: Arc::new(()),
+            join: None,
         })
     }
 }

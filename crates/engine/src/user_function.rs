@@ -215,7 +215,9 @@ fn evaluate_body_node_inner(
         | Node::OwnedLookup(_)
         | Node::OwnedCollectionFind(_)
         | Node::OwnedXmlSerialize(_)
-        | Node::OwnedAggregate(_) => Err(EngineError::UnsupportedSourceOwnership {
+        | Node::OwnedAggregate(_)
+        | Node::OwnedJoinField(_)
+        | Node::OwnedJoinSourcePosition(_) => Err(EngineError::UnsupportedSourceOwnership {
             node: node_id,
             function: Some(function_id),
             kind: node.owned_source_kind().expect("owned node kind"),
