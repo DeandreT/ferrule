@@ -13,6 +13,7 @@ use mapping::{SourceOwner, SourceScopeLocation, SourceScopeStep, SourceScopeTarg
 #[path = "owned_basic_windows.rs"]
 mod windows;
 pub(crate) use windows::render_public_basic_owned_adjacency_tree_source;
+pub(crate) use windows::render_public_basic_owned_dynamic_field_source;
 pub(crate) use windows::render_public_basic_owned_failure_source;
 pub(crate) use windows::render_public_basic_owned_group_adjacent_by_source;
 pub(crate) use windows::render_public_basic_owned_group_ending_with_source;
@@ -439,6 +440,28 @@ pub(super) fn render_owned_access(expression: &Expression) -> Option<String> {
         }
         _ => None,
     }
+}
+
+/// The receiving-context key is evaluated first. The owner's declared root
+/// repetition is a static proof, used only by an explicit empty pin.
+pub(super) fn render_owned_dynamic_field(
+    field: &mapping::OwnedDynamicSourceField,
+    key: &str,
+) -> String {
+    let owner = owner_literal(&field.object.owner);
+    let object = render_string_path(&field.object.path);
+    let frame = field.frame.as_ref().map_or_else(
+        || "None".into(),
+        |frame| format!("Some(&[{}][..])", render_string_path(frame)),
+    );
+    let root_pin = if field.frame.as_ref().is_some_and(Vec::is_empty) {
+        format!("basic_declared_root_nonrepeating({owner})")
+    } else {
+        "false".into()
+    };
+    format!(
+        "let key = {key}?; context.owned_dynamic_field({owner}, &[{object}], {frame}, &key, {root_pin})"
+    )
 }
 
 fn render_basic_scope(

@@ -1155,6 +1155,7 @@ impl GraphViewer<'_> {
             Node::OwnedLookup(lookup) => (idx == 0).then_some(lookup.matches),
             Node::OwnedCollectionFind(find) => [find.predicate, find.value].get(idx).copied(),
             Node::DynamicSourceField { key, .. } => (idx == 0).then_some(*key),
+            Node::OwnedDynamicSourceField(field) => (idx == 0).then_some(field.key),
             Node::XmlMixedContent { replacements, .. } => replacements
                 .get(idx)
                 .map(|replacement| replacement.expression),
@@ -1411,7 +1412,10 @@ impl GraphViewer<'_> {
             Node::RuntimeParameterDefault { .. } | Node::Raise { .. } => 1,
             Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.len(),
             Node::If { .. } => 3,
-            Node::ValueMap { .. } | Node::Lookup { .. } | Node::DynamicSourceField { .. } => 1,
+            Node::ValueMap { .. }
+            | Node::Lookup { .. }
+            | Node::DynamicSourceField { .. }
+            | Node::OwnedDynamicSourceField(_) => 1,
             Node::XmlMixedContent { replacements, .. } => replacements.len(),
             Node::CollectionFind { .. } | Node::OwnedCollectionFind(_) => 2,
             Node::OwnedLookup(_) => 1,
@@ -1559,6 +1563,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     Some(Node::OwnedCollectionFind(find)) => {
                         format!("Owned find: {}", find.collection.path.join("/"))
                     }
+                    Some(Node::OwnedDynamicSourceField(_)) => "Owned dynamic field".into(),
                     Some(Node::SourceField { .. })
                         if self.function_output.is_none()
                             && !graph_references::sequence_item_owners(
