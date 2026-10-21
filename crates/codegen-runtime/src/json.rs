@@ -11,6 +11,7 @@ mod compact;
 mod contains;
 #[cfg(test)]
 mod dependent_schemas;
+mod document_cause;
 #[cfg(test)]
 mod embedded_schema;
 #[cfg(test)]
@@ -32,6 +33,8 @@ mod unique_items;
 #[cfg(test)]
 mod utf8;
 
+pub use document_cause::{JsonDocumentError, parse_json_with_format_cause};
+
 pub const MAX_EMBEDDED_JSON_SCHEMA_BYTES: usize = 1024 * 1024;
 pub const MAX_JSON_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 
@@ -43,6 +46,7 @@ pub enum JsonBoundaryError {
     InputTooLarge { bytes: usize, max: usize },
     InvalidInput { message: String },
     InvalidUtf8(std::str::Utf8Error),
+    InvalidDocument(JsonDocumentError),
     Execution(RuntimeError),
     InvalidOutput { message: String },
     OutputTooLarge { bytes: usize, max: usize },
@@ -68,6 +72,7 @@ impl fmt::Display for JsonBoundaryError {
                     "JSON input is invalid: document is not UTF-8: {error}"
                 )
             }
+            Self::InvalidDocument(error) => write!(formatter, "JSON input is invalid: {error}"),
             Self::Execution(error) => error.fmt(formatter),
             Self::InvalidOutput { message } => {
                 write!(formatter, "JSON output is invalid: {message}")
@@ -84,6 +89,7 @@ impl std::error::Error for JsonBoundaryError {
         match self {
             Self::Execution(error) => Some(error),
             Self::InvalidUtf8(error) => Some(error),
+            Self::InvalidDocument(error) => Some(error),
             Self::EmbeddedSchemaTooLarge { .. }
             | Self::InvalidEmbeddedSchema { .. }
             | Self::InputTooLarge { .. }

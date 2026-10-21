@@ -116,7 +116,7 @@ public sealed class FerruleXmlDynamicSourceAdapter : IFerruleDynamicSourceLoader
             }
         }
         if (policy is null || !string.Equals(sourceName, policy.Source, StringComparison.Ordinal))
-            throw new InvalidOperationException($"undeclared dynamic XML source '{sourceName}'");
+            throw FerruleDynamicSourceFault.ForUndeclaredSource(sourceName);
         var owner = FerruleXmlInputSource.Named(policy.DeclarationIndex, policy.Source);
         var ordinal = _ordinal == ulong.MaxValue ? ulong.MaxValue : _ordinal + 1;
         var request = new FerruleXmlDynamicInputRequest(policy.DeclarationIndex, policy.Source,

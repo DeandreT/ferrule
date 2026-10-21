@@ -1490,10 +1490,10 @@ fn render_json_api(program: &Program) -> Result<String, EmitError> {
                      .iter()\n\
                      .map(|(name, instance)| NamedInput { name, instance })\n\
                      .collect::<Vec<_>>();\n\
-                 let loader = GeneratedDynamicJsonSourceLoader {\n\
+                 let loader = codegen_runtime::JsonDynamicSourceAdapter::new(\n\
                      loader,\n\
-                     total_bytes: std::cell::Cell::new(0),\n\
-                 };\n\
+                     dynamic_source_json_schema,\n\
+                 );\n\
                  let outputs = match execution {\n\
                      Some(execution) => execute_outputs_with_sources_context_and_dynamic_source_loader(\n\
                          &source,\n\
@@ -1509,45 +1509,17 @@ fn render_json_api(program: &Program) -> Result<String, EmitError> {
                  };\n\
                  serialize_json_outputs(outputs)\n\
              }\n\n\
-             struct GeneratedDynamicJsonSourceLoader<'a> {\n\
-                 loader: &'a dyn DynamicJsonSourceLoader,\n\
-                 total_bytes: std::cell::Cell<usize>,\n\
-             }\n\n\
-             impl DynamicSourceLoader for GeneratedDynamicJsonSourceLoader<'_> {\n\
-                 fn load(&self, source: &str, path: &str) -> Result<Instance, String> {\n\
-                     let document = self.loader.load(source, path)?;\n\
-                     if document.len() > codegen_runtime::MAX_DYNAMIC_SOURCE_BYTES {\n\
-                         return Err(format!(\n\
-                             \"document exceeds the {}-byte dynamic-source limit\",\n\
-                             codegen_runtime::MAX_DYNAMIC_SOURCE_BYTES,\n\
-                         ));\n\
-                     }\n\
-                     let total = self\n\
-                         .total_bytes\n\
-                         .get()\n\
-                         .checked_add(document.len())\n\
-                         .ok_or_else(|| \"dynamic-source byte total overflowed\".to_string())?;\n\
-                     if total > codegen_runtime::MAX_DYNAMIC_SOURCE_TOTAL_BYTES {\n\
-                         return Err(format!(\n\
-                             \"documents exceed the {}-byte combined dynamic-source limit\",\n\
-                             codegen_runtime::MAX_DYNAMIC_SOURCE_TOTAL_BYTES,\n\
-                         ));\n\
-                     }\n\
-                     self.total_bytes.set(total);\n\
-                     let document = std::str::from_utf8(&document)\n\
-                         .map_err(|error| format!(\"document is not UTF-8: {error}\"))?;\n\
-                     let schema = match source {\n",
+             fn dynamic_source_json_schema(source: &str) -> Option<&'static str> {\n\
+                 match source {\n",
         );
         for (index, source) in dynamic_sources.iter().enumerate() {
             output.push_str(&format!(
-                "            {} => DYNAMIC_SOURCE_JSON_SCHEMAS[{index}],\n",
+                "        {} => Some(DYNAMIC_SOURCE_JSON_SCHEMAS[{index}]),\n",
                 rust_string(&source.name),
             ));
         }
         output.push_str(
-            "            _ => return Err(format!(\"undeclared dynamic source {source:?}\")),\n\
-                     };\n\
-                     parse_json(schema, document).map_err(|error| error.to_string())\n\
+            "        _ => None,\n\
                  }\n\
              }\n\n",
         );

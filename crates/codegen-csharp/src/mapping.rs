@@ -875,7 +875,9 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
                  ValidateNamedJsonInputNames(extraSources);\n\
                  var parsedSource = global::Ferrule.Runtime.FerruleJson.ParseEmbedded(SourceJsonSchema, source);\n\
                  var parsedInputs = ParseNamedJsonInputs(extraSources);\n\
-                 var adapter = new GeneratedDynamicJsonSourceLoader(loader);\n\
+                 var adapter = new global::Ferrule.Runtime.FerruleJsonDynamicSourceAdapter(\n\
+                     loader,\n\
+                     DynamicSourceJsonSchema);\n\
                  var outputs = executionContext is null\n\
                      ? ExecuteOutputsWithSourcesAndDynamicSourceLoader(\n\
                          parsedSource,\n\
@@ -888,51 +890,14 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
                          adapter);\n\
                  return SerializeJsonOutputs(outputs);\n\
              }\n\
-             \n    private sealed class GeneratedDynamicJsonSourceLoader :\n\
-                 global::Ferrule.Runtime.IFerruleDynamicSourceLoader\n\
-             {\n\
-                 private readonly global::Ferrule.Runtime.IFerruleDynamicJsonSourceLoader _loader;\n\
-                 private int _totalBytes;\n\
-             \n        internal GeneratedDynamicJsonSourceLoader(\n\
-                     global::Ferrule.Runtime.IFerruleDynamicJsonSourceLoader loader)\n\
-                 {\n\
-                     _loader = loader;\n\
-                 }\n\
-             \n        public global::Ferrule.Runtime.FerruleInstance Load(\n\
-                     string sourceName,\n\
-                     string logicalPath)\n\
-                 {\n\
-                     var document = _loader.Load(sourceName, logicalPath) ??\n\
-                         throw new global::System.InvalidOperationException(\"loader returned null\");\n\
-                     if (document.Length > global::Ferrule.Runtime.FerruleDynamicSourceLimits.MaximumDocumentBytes)\n\
-                     {\n\
-                         throw new global::System.InvalidOperationException(\n\
-                             \"document exceeds the \" + global::Ferrule.Runtime.FerruleDynamicSourceLimits.MaximumDocumentBytes + \"-byte dynamic-source limit\");\n\
-                     }\n\
-                     var total = (long)_totalBytes + document.Length;\n\
-                     if (total > global::Ferrule.Runtime.FerruleDynamicSourceLimits.MaximumTotalBytes)\n\
-                     {\n\
-                         throw new global::System.InvalidOperationException(\n\
-                             \"documents exceed the \" + global::Ferrule.Runtime.FerruleDynamicSourceLimits.MaximumTotalBytes + \"-byte combined dynamic-source limit\");\n\
-                     }\n\
-                     _totalBytes = (int)total;\n\
-                     var text = new global::System.Text.UTF8Encoding(false, true).GetString(document);\n\
-                     var schema = sourceName switch\n\
-                     {\n",
+             \n    private static string? DynamicSourceJsonSchema(string sourceName) => sourceName switch\n    {\n",
         );
         for (index, source) in dynamic_sources.iter().enumerate() {
-            output.push_str("                ");
+            output.push_str("        ");
             output.push_str(&literal::string(&source.name));
             output.push_str(&format!(" => DynamicSourceJsonSchemas[{index}],\n"));
         }
-        output.push_str(
-            "                _ => throw new global::System.InvalidOperationException(\n\
-                                 $\"undeclared dynamic source '{sourceName}'\"),\n\
-                         };\n\
-                     return global::Ferrule.Runtime.FerruleJson.ParseEmbedded(schema, text);\n\
-                 }\n\
-             }\n",
-        );
+        output.push_str("        _ => null,\n    };\n");
     }
 
     output.push_str(

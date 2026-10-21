@@ -460,6 +460,44 @@ if (!json.Contains("\"loaded:a.json\"", StringComparison.Ordinal) ||
     throw new InvalidOperationException("JSON dynamic output changed");
 }
 
+// Generated JSON adapter refusals are tagged and keep their original cause.
+var invalid = new JsonLoader { InvalidPath = "b.json" };
+try
+{
+    GeneratedMapping.ExecuteJsonWithDynamicSourceLoader(
+        """{"Files":[{"path":"a.json"},{"path":"b.json"},{"path":"c.json"}]}""",
+        invalid);
+    throw new InvalidOperationException("invalid UTF-8 was accepted");
+}
+catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.DynamicSourceLoad)
+{
+    if (error.InnerException is not FerruleDynamicSourceFault { InnerException: DecoderFallbackException } ||
+        FerruleDynamicSourceDiagnostic.Find(error) is not
+            { PhaseToken: "codec", CategoryToken: "encoding", Endpoint: "Catalog", Path: "b.json" } ||
+        !invalid.Calls.SequenceEqual(new[] { "a.json", "b.json" }))
+    {
+        throw new InvalidOperationException("JSON codec refusal lost its tag, cause or order", error);
+    }
+}
+
+// A legacy host exception remains the original inner exception.
+var hostFailure = new UnauthorizedAccessException("host refused");
+try
+{
+    GeneratedMapping.ExecuteJsonWithDynamicSourceLoader(
+        """{"Files":[{"path":"a.json"}]}""",
+        new JsonLoader { Failure = hostFailure });
+    throw new InvalidOperationException("host failure was accepted");
+}
+catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.DynamicSourceLoad)
+{
+    if (!ReferenceEquals(hostFailure, error.InnerException) ||
+        FerruleDynamicSourceDiagnostic.Find(error) is not { PhaseToken: "acquisition", CategoryToken: "host" })
+    {
+        throw new InvalidOperationException("JSON host failure lost its original cause", error);
+    }
+}
+
 static FerruleValue Read(FerruleGroup group, string name)
 {
     if (!group.TryGetField(name, out var field) || field is not FerruleScalar scalar)
@@ -500,11 +538,26 @@ sealed class TypedLoader : IFerruleDynamicSourceLoader
 
 sealed class JsonLoader : IFerruleDynamicJsonSourceLoader
 {
+    internal List<string> Calls { get; } = new();
+
+    internal string? InvalidPath { get; init; }
+
+    internal Exception? Failure { get; init; }
+
     public byte[] Load(string sourceName, string logicalPath)
     {
         if (sourceName != "Catalog")
         {
             throw new InvalidOperationException("unexpected source");
+        }
+        Calls.Add(logicalPath);
+        if (Failure is not null)
+        {
+            throw Failure;
+        }
+        if (logicalPath == InvalidPath)
+        {
+            return new byte[] { 0xff };
         }
         return Encoding.UTF8.GetBytes(
             $$"""{"Rows":[{"value":"loaded:{{logicalPath}}"}]}""");
