@@ -1,0 +1,334 @@
+# Canonical format capability reference.
+#
+# Edit this file, then regenerate the Markdown guide and published site with
+# `cargo run -p reference-docs`. `cargo test -p reference-docs` fails while a
+# generated region is stale. See README.md in this directory.
+#
+# Text fields are Markdown limited to plain words and `code` spans; runs of
+# whitespace collapse to one space. `summary` is implemented capability backed
+# by the listed `evidence` paths. `qualified` names separately recorded routes,
+# each limited to its own profile. `unsupported` lists profiles that refuse
+# explicitly instead of being approximated.
+
+[[format]]
+name = "XML"
+source = "yes"
+target = "yes"
+selection = "`.xml` or `xml_document`"
+summary = """
+Hierarchical instance I/O with namespace-aware element and attribute names;
+XSD-lite with local import graphs, compatible `complexContent` and
+scalar-text/attribute-only `simpleContent` derivations, and named model and
+attribute groups; `xs:any` and `xs:anyAttribute` wildcards with `##any`,
+`##other`, `##local`, `##targetNamespace`, or listed-namespace constraints under
+`skip`, declaration-aware `lax`, or closed `strict` processing; bounded DTD
+import with internal content-model parameter entities; `xsi:nil`, generic
+elements, and ordered mixed content
+"""
+evidence = [
+    "crates/format-xml/src/xsd.rs",
+    "crates/format-xml/src/dtd.rs",
+    "crates/format-xml/tests/xsd_lax_wildcards.rs",
+    "crates/format-xml/tests/xsd_qname_wildcards.rs",
+    "crates/format-xml/tests/mixed_content.rs",
+]
+unsupported = [
+    "XSD 1.1 wildcard exclusions (`notNamespace`, `notQName`) and `xs:any` inside `xs:all`",
+    "Strict wildcards whose matching declaration set is not closed, and same-local-name strict declarations with incompatible typed shapes",
+    "Element wildcard occurrences other than `1..1`, `0..1`, or `0..unbounded`, and optional single-occurrence `skip` wildcards",
+    "Sibling elements or attributes that differ only by namespace, because mapping paths use local field names",
+    "External DTD subsets and external entities, which are never loaded",
+    "Output to a local XML file set or an HTTP URL (`local_xml_file_set` and HTTP sources are input-only)",
+]
+
+[[format.qualified]]
+route = "Generated Rust and C# XML document APIs"
+scope = "Structured or admitted root-view XML boundaries in the indexed route families"
+record = "docs/generated-xml-qualification-index.md"
+
+[[format]]
+name = "JSON"
+source = "yes"
+target = "yes"
+selection = "`.json`; `.jsonl`, `.ndjson`, or `json_lines` for JSON Lines"
+summary = """
+Hierarchical instance I/O and JSON Lines; JSON Schema import with
+traversal-confined local-file and document-local references, compatible
+structural `allOf` intersections, bounded exact scalar `const`/`enum` domains,
+numeric ranges and decimal `multipleOf`, array-count, `contains`,
+object-property-count, and Unicode string-length intervals, structural
+`uniqueItems`, bounded portable `pattern` assertions, closed homogeneous
+`patternProperties`, property dependencies, dependent-schema predicates,
+single-property-presence conditionals, `propertyNames`, open or closed object
+contracts, heterogeneous scalar type arrays, exact scalar `anyOf`,
+pairwise-disjoint scalar `oneOf`, selected object alternatives, nullable
+scalar/object/array shapes, and typed or unconstrained dynamic properties
+"""
+evidence = [
+    "crates/format-json/src/json_schema.rs",
+    "crates/format-json/src/json_schema/tests/resources.rs",
+    "crates/format-json/src/json_schema/tests/patterns.rs",
+    "crates/json-pattern/src/lib.rs",
+]
+unsupported = [
+    "General heterogeneous array composition, heterogeneous or correlated numeric-range scalar unions, and mixed structural unions",
+    "Heterogeneous `prefixItems` or legacy tuple members and active `unevaluatedItems`",
+    "Required-only schemas without an object shape",
+    "External references from in-memory schema import (`json_schema::import_str`)",
+    "Enforcement of other shape-neutral validation keywords, which are accepted only for schema recovery",
+]
+
+[[format.qualified]]
+route = "Ordered JSON source documents in the native and generated C# runtimes"
+scope = "One complete UTF-8 JSON value with ordered and duplicate members, checked against a self-authored corpus"
+record = "conformance/json-source/README.md"
+
+[[format]]
+name = "JSON5"
+source = "yes"
+target = "yes"
+selection = "`.json5` or `json5`"
+summary = """
+One schema-shaped document in JSON5 instance syntax with ordinary JSON schemas
+and the same typed mapping boundary; input accepts comments, trailing commas,
+and single-quoted strings, and is limited to 64 MiB and 128 nested containers;
+output omits property-name quotes where JSON5 allows; CLI and browser runtime
+"""
+evidence = [
+    "crates/format-json/tests/json5_original_bytes.rs",
+    "crates/format-json/tests/json5_nonfinite.rs",
+    "crates/cli/tests/json5_resources.rs",
+    "crates/web-demo/src/runtime.rs",
+]
+unsupported = [
+    "Combining JSON5 with JSON Lines",
+    "Nonfinite numbers such as `Infinity` and `NaN`",
+    "Comment preservation; comments are not mapped or written back",
+    "JSON5 in ordinary generated Rust and C# entry points, which exchange strict JSON",
+    "Native `.mfd` export of JSON5 boundaries",
+]
+
+[[format.qualified]]
+route = "Generated Rust and C# JSON5 companions (`generate --json5-adapters`)"
+scope = "One JSON5 object in and strict JSON out, for closed nonrepeating object schemas with scalar leaves and static target construction"
+record = "docs/generated-json5-contract.md"
+
+[[format]]
+name = "CSV"
+source = "yes"
+target = "yes"
+selection = "`.csv` or `.txt`"
+summary = """
+Delimited flat rows with a configurable delimiter, printable or disabled
+quoting, headers, optional present-empty text, and optional UTF-8 BOM output
+"""
+evidence = [
+    "crates/format-csv/src/read.rs",
+    "crates/cli/tests/csv_quote_disabled.rs",
+    "crates/cli/tests/csv_empty_text.rs",
+    "crates/cli/tests/csv_utf8_bom.rs",
+]
+unsupported = [
+    "Unquoted output of field text that requires escaping when quoting is disabled",
+]
+
+[[format.qualified]]
+route = "Generated Rust and C# complete CSV document adapters (`generate --csv-document-adapters`)"
+scope = "One positional CSV document in and out, including header, BOM, and raw-delimited CRLF output modes"
+record = "conformance/csv-documents/README.md"
+
+[[format]]
+name = "Fixed-width"
+source = "yes"
+target = "yes"
+selection = "`fixed_width` layout"
+summary = """
+Validated Unicode-scalar column layouts, configurable fill, record separators,
+and empty-value handling
+"""
+evidence = [
+    "crates/format-csv/src/fixed_width.rs",
+    "crates/cli/tests/fixed_width.rs",
+]
+unsupported = [
+    "Combining a fixed-width layout with CSV dialect options",
+]
+
+[[format]]
+name = "XLSX"
+source = "yes"
+target = "yes"
+selection = "`.xlsx`"
+summary = """
+Typed worksheets, flat, transposed, composite, worksheet-set, and grid source
+shapes, flat and hierarchical targets, and update-existing flat writes
+"""
+evidence = [
+    "crates/format-xlsx/src/grid.rs",
+    "crates/format-xlsx/src/composite.rs",
+    "crates/format-xlsx/src/hierarchical.rs",
+    "crates/format-xlsx/src/update.rs",
+]
+unsupported = [
+    "Grid, worksheet-set, composite, and transposed output, which are input-only layouts",
+    "Update-existing writes for hierarchical output",
+]
+
+[[format.qualified]]
+route = "Native editor flat-worksheet setup, save, and reopen"
+scope = "One flat-row XLSX source and target configuration on the Linux desktop"
+record = "docs/qualification/flat-workbook-desktop-2026-10-08.md"
+
+[[format]]
+name = "SQLite"
+source = "yes"
+target = "yes"
+selection = "`.db`, `.sqlite`, or `.sqlite3`"
+summary = """
+Read-only table introspection, typed reads, imported relational query shapes,
+validated declared relations, structured XML text columns, and idempotent
+full-replace writes
+"""
+evidence = [
+    "crates/format-db/src/relational.rs",
+    "crates/format-db/tests/readonly_metadata.rs",
+]
+unsupported = [
+    "Other database engines, general SQL mutation, and multi-database connections",
+]
+
+[[format]]
+name = "X12 / EDIFACT"
+source = "yes"
+target = "yes"
+selection = "`.edi`, `.x12`, or `.edifact` with a schema dialect, or `edi_kind`"
+summary = """
+Schema-guided interchange I/O, custom syntax separators, repetitions, qualifier
+loops, retained field lengths and code lists, optional lenient parsing, and
+bounded output validation that leaves the destination unchanged on failure
+"""
+evidence = [
+    "crates/format-edi/src/x12.rs",
+    "crates/format-edi/src/edifact.rs",
+    "crates/format-edi/src/validation.rs",
+    "crates/cli/tests/edi_output.rs",
+]
+unsupported = [
+    "Invisible or whitespace explicit X12 output separators, including LF",
+]
+
+[[format.qualified]]
+route = "Generated C# X12 companions (`generate --x12-adapters`)"
+scope = "Raw X12 text and bytes with single, grouped, or MapForce-shaped envelope profiles around the ordinary typed mapping"
+record = "docs/design/generated-x12-csharp.md"
+
+[[format]]
+name = "HL7 v2 / TRADACOMS"
+source = "yes"
+target = "yes"
+selection = "`.hl7` or an EDI schema dialect"
+summary = """
+Bounded schema-guided message I/O, retained field lengths and code lists, HL7
+escapes and subcomponents, and TRADACOMS release escaping
+"""
+evidence = [
+    "crates/format-edi/src/hl7.rs",
+    "crates/format-edi/src/tradacoms.rs",
+]
+
+[[format]]
+name = "SAP IDoc"
+source = "yes"
+target = "yes"
+selection = "`idoc` layout"
+summary = """
+Embedded fixed-record layouts with bounded byte-position parsing and
+deterministic output
+"""
+evidence = [
+    "crates/format-edi/src/idoc.rs",
+    "crates/cli/tests/idoc.rs",
+]
+unsupported = [
+    "`.idoc` input without an embedded layout",
+]
+
+[[format]]
+name = "SWIFT MT"
+source = "yes"
+target = "no"
+selection = "`swift_mt` layout"
+summary = "Input through embedded message and field grammars"
+evidence = [
+    "crates/format-edi/src/swift.rs",
+    "crates/cli/tests/swift.rs",
+]
+unsupported = [
+    "SWIFT MT output",
+]
+
+[[format]]
+name = "FlexText"
+source = "yes"
+target = "yes"
+selection = "`flextext` layout imported from `.mft`"
+summary = """
+Embedded recursive split, store, and switch layouts, including fixed-width and
+delimited records
+"""
+evidence = [
+    "crates/format-flextext/src/lib.rs",
+    "crates/cli/tests/flextext.rs",
+]
+
+[[format]]
+name = "Protocol Buffers"
+source = "yes"
+target = "yes"
+selection = "`protobuf` schema and root message"
+summary = """
+Bounded proto2/proto3 binary I/O with self-contained local import graphs,
+public imports, nested messages, enums, repeated fields, and packed scalars
+"""
+evidence = [
+    "crates/format-protobuf/src/lib.rs",
+    "crates/cli/tests/protobuf.rs",
+]
+unsupported = [
+    "Recursive messages, which the tree-shaped instance model cannot represent",
+]
+
+[[format]]
+name = "XBRL"
+source = "yes"
+target = "yes"
+selection = "`xbrl` options"
+summary = """
+Typed instance facts, contexts, dimensions, units, and namespace-qualified
+concepts through table-shaped boundaries
+"""
+evidence = [
+    "crates/format-xbrl/src/lib.rs",
+    "crates/cli/tests/xbrl.rs",
+]
+unsupported = [
+    "Taxonomy formula, presentation, calculation, and linkbase execution",
+]
+
+[[format]]
+name = "PDF"
+source = "yes"
+target = "no"
+selection = "`pdf` extraction options"
+summary = """
+Layout-driven visual extraction from positioned text, anchors, painted edges,
+and table regions, typed BasicVisual text capture, and visible inherited
+CropBox and page-rotation normalization
+"""
+evidence = [
+    "crates/format-pdf/src/layout.rs",
+    "crates/cli/tests/pdf.rs",
+]
+unsupported = [
+    "PDF output",
+]
