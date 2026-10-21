@@ -29,7 +29,7 @@ public sealed class FerruleDecimalException : Exception
     public FerruleDecimalError Error { get; }
 }
 
-/// <summary>A standalone bounded decimal, not an admitted FerruleValue kind.</summary>
+/// <summary>The bounded decimal used by the explicit decimal scalar domain.</summary>
 public readonly struct FerruleDecimal96 : IEquatable<FerruleDecimal96>, IComparable<FerruleDecimal96>
 {
     public const int MaximumLexicalBytes = 4096;

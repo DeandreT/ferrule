@@ -1,0 +1,23 @@
+use codegen_runtime::{FunctionError, RuntimeError, parse_json, serialize_json_compact};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cases: serde_json::Value = serde_json::from_str(include_str!("../cases.json"))?;
+    for case in cases.as_array().unwrap() {
+        let source = parse_json(include_str!("../source-schema.json"), &case["input"].to_string())?;
+        let result = execute(&source);
+        if let Some(kind) = case.get("error").and_then(serde_json::Value::as_str) {
+            match (kind, result) {
+                ("conversion", Err(RuntimeError::Function(FunctionError::DecimalConversion { .. })))
+                | ("sum", Err(RuntimeError::AggregateDecimal { .. })) => {}
+                (_, actual) => panic!("{}: unexpected {actual:?}", case["id"]),
+            }
+        } else {
+            let text = serialize_json_compact(include_str!("../target-schema.json"), &result?)?;
+            let document: serde_json::Value = serde_json::from_str(&text)?;
+            assert_eq!(document, case["expected"], "{}", case["id"]);
+        }
+        println!("PASS {}", case["id"]);
+    }
+    Ok(())
+}

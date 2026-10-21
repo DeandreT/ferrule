@@ -7,6 +7,7 @@ pub(super) fn aggregate_component_name(op: AggregateOp) -> &'static str {
     match op {
         AggregateOp::Count => "count",
         AggregateOp::Sum => "sum",
+        AggregateOp::DecimalSum => "decimal-sum",
         AggregateOp::Avg => "avg",
         AggregateOp::Min => "min",
         AggregateOp::Max => "max",

@@ -99,7 +99,7 @@ pub(super) fn eval_aggregate(
             }
             None => Value::Null,
         };
-        values.push(value);
+        super::aggregate::collect_value(input.function, &mut values, value)?;
     }
     let arg = input
         .arg

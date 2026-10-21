@@ -25,7 +25,7 @@ pub(crate) const DYNAMIC_INPUT_DOCUMENT_OUTPUTS_SOURCE: (&str, &str) = (
     ),
 );
 
-pub(crate) const SOURCES: [(&str, &str); 81] = [
+pub(crate) const SOURCES: [(&str, &str); 83] = [
     (
         "Runtime/FerruleSourceOrigin.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleSourceOrigin.cs"),
@@ -117,6 +117,10 @@ pub(crate) const SOURCES: [(&str, &str); 81] = [
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleValue.cs"),
     ),
     (
+        "Runtime/FerruleDecimal96.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleDecimal96.cs"),
+    ),
+    (
         "Runtime/FerruleValueMaps.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleValueMaps.cs"),
     ),
@@ -205,6 +209,10 @@ pub(crate) const SOURCES: [(&str, &str); 81] = [
     (
         "Runtime/FerruleFunctions.Numeric.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleFunctions.Numeric.cs"),
+    ),
+    (
+        "Runtime/FerruleFunctions.Decimal.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleFunctions.Decimal.cs"),
     ),
     (
         "Runtime/FerruleFunctions.FormatNumber.cs",
