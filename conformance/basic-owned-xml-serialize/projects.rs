@@ -191,7 +191,10 @@ fn endpoints() -> Project {
             ..Scope::default()
         },
         vec![
-            (1, serializer(None, &["Header"], None, header_schema(), COMPACT)),
+            (
+                1,
+                serializer(None, &["Header"], None, header_schema(), COMPACT),
+            ),
             (
                 2,
                 serializer(
@@ -272,7 +275,10 @@ fn nested() -> Project {
             ..Scope::default()
         },
         vec![
-            (1, serializer(None, &["Header"], None, header_schema(), COMPACT)),
+            (
+                1,
+                serializer(None, &["Header"], None, header_schema(), COMPACT),
+            ),
             (
                 10,
                 serializer(
@@ -478,7 +484,10 @@ fn failure_walk() -> Project {
             ..Scope::default()
         },
         vec![
-            (1, serializer(None, &["Header"], None, header_schema(), COMPACT)),
+            (
+                1,
+                serializer(None, &["Header"], None, header_schema(), COMPACT),
+            ),
             (50, field(Some("audit"), &["Orders", "Order", "Label"])),
             (
                 51,
