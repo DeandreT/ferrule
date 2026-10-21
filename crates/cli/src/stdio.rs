@@ -4,7 +4,11 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 
+use crate::file_run::RunRequest;
 use crate::read_set::ReadSet;
+use crate::route_capability::{
+    HostRoute, InputRole, PlannedAcquisition, PlannedPublication, RoutePlan, RouteRefusal,
+};
 use crate::{
     MAX_PAYLOAD_DOCUMENT_BYTES, NamedPayloadInput, PayloadDocument, PayloadRunOptions,
     PayloadRunOutcome, TargetSelection, TraceSink, load_project, resolve_run_path,
@@ -85,87 +89,206 @@ pub fn run_project_with_standard_streams(
     stdin: &mut dyn Read,
 ) -> anyhow::Result<PayloadRunOutcome> {
     if options.output_path != Some(Path::new("-")) {
-        bail!(
-            "standard-stream execution requires `--output -`; filesystem outputs use the ordinary `run` path"
-        );
+        return Err(RouteRefusal::StandardStreamsRequireStdout.into());
     }
-
     let project = load_project(project_path)?;
-    reject_dynamic_sources(&project, options.target)?;
-    let policy = options
-        .execution_policy
-        .unwrap_or(&crate::execution_policy::TRUSTED);
-
-    let input_from_stdin = options.input_path == Some(Path::new("-"));
-    let input_path = if input_from_stdin {
-        stream_source_identity(project_path, &project)?
-    } else {
-        resolve_run_path(
-            project_path,
-            options.input_path,
-            project.source_path.as_deref(),
-            "input",
-            "source_path",
-            true,
-        )?
-    };
-    let output_path = stream_target_identity(project_path, &project, options.target)?;
-    engine::check_source_ownership_capability_with_observers(
-        &project,
-        options.target,
-        engine::SourceOwnershipObservers {
+    let request = RunRequest {
+        input_path: options.input_path,
+        output_path: options.output_path,
+        target: options.target,
+        runtime_parameters: options.runtime_parameters,
+        protected_output_paths: options.protected_output_paths,
+        execution_policy: options.execution_policy,
+        observers: engine::SourceOwnershipObservers {
             tracing: options.trace_sink.is_some(),
             debugging: false,
         },
-    )?;
-    let primary_bytes = if input_from_stdin {
-        read_bounded(stdin, "stdin")?
-    } else {
-        policy.authorize_read(&input_path)?;
-        read_path_bounded(&input_path, "primary input")?
     };
-    let primary = PayloadDocument::new(&input_path, &primary_bytes)?;
+    PreparedStreamRun::prepare(&project, project_path, request)?.execute(stdin, options.trace_sink)
+}
 
-    let extra_storage = load_static_extra_sources(project_path, &project, options.target, policy)?;
-    let mut read_set = ReadSet::new(project_path);
-    if !input_from_stdin {
-        read_set.push(&input_path);
-    }
-    for source in &extra_storage {
-        read_set.push(&source.path);
-    }
-    read_set.reject_protected(options.protected_output_paths)?;
-    let extra_documents = extra_storage
-        .iter()
-        .map(|source| PayloadDocument::new(&source.path, &source.bytes))
-        .collect::<anyhow::Result<Vec<_>>>()?;
-    let extra_sources = extra_storage
-        .iter()
-        .zip(&extra_documents)
-        .map(|(source, document)| NamedPayloadInput::new(&source.name, *document))
-        .collect::<anyhow::Result<Vec<_>>>()?;
+/// A standard-stream run whose identities, named inputs and capabilities are
+/// fixed before stdin or any named input is read.
+pub struct PreparedStreamRun<'a> {
+    project: &'a mapping::Project,
+    project_path: &'a Path,
+    request: RunRequest<'a>,
+    /// None reads the primary document from stdin.
+    input_file: Option<PathBuf>,
+    input_identity: PathBuf,
+    output_identity: PathBuf,
+    named_sources: Vec<(&'a str, PathBuf)>,
+    plan: RoutePlan,
+}
 
-    let mut payload_options = PayloadRunOptions::new(primary)
-        .with_extra_sources(&extra_sources)
-        .with_output_path(&output_path)
-        .with_execution_policy(policy);
-    if let Some(target) = options.target {
-        payload_options = payload_options.with_target(target);
+impl<'a> PreparedStreamRun<'a> {
+    pub fn prepare(
+        project: &'a mapping::Project,
+        project_path: &'a Path,
+        request: RunRequest<'a>,
+    ) -> anyhow::Result<Self> {
+        if request.output_path != Some(Path::new("-")) {
+            return Err(RouteRefusal::StandardStreamsRequireStdout.into());
+        }
+        if request.observers.debugging {
+            return Err(RouteRefusal::StandardStreamsDebugging.into());
+        }
+        reject_dynamic_sources(project, request.target)?;
+        let policy = request
+            .execution_policy
+            .unwrap_or(&crate::execution_policy::TRUSTED);
+
+        let input_from_stdin = request.input_path == Some(Path::new("-"));
+        let input_identity = if input_from_stdin {
+            stream_source_identity(project_path, project)?
+        } else {
+            resolve_run_path(
+                project_path,
+                request.input_path,
+                project.source_path.as_deref(),
+                "input",
+                "source_path",
+                true,
+            )?
+        };
+        let output_identity = stream_target_identity(project_path, project, request.target)?;
+        engine::check_source_ownership_capability_with_observers(
+            project,
+            request.target,
+            request.observers,
+        )?;
+        let named_sources = static_extra_source_paths(project_path, project, request.target)?;
+
+        let mut plan = RoutePlan::new(HostRoute::StandardStreams, project_path);
+        if input_from_stdin {
+            plan.acquire(PlannedAcquisition::Stdin {
+                identity: input_identity.clone(),
+            });
+        } else {
+            plan.acquire_location(
+                InputRole::Primary,
+                &input_identity,
+                &mapping::FormatOptions::default(),
+            );
+        }
+        for (name, path) in &named_sources {
+            plan.acquire_location(
+                InputRole::Named((*name).to_owned()),
+                path,
+                &mapping::FormatOptions::default(),
+            );
+        }
+        plan.publish(PlannedPublication::Stdout {
+            target: match request.target {
+                Some(TargetSelection::Named(name)) => name.to_owned(),
+                Some(TargetSelection::Primary) | None => project.target.name.clone(),
+            },
+            identity: output_identity.clone(),
+        });
+        plan.publish_host_artifacts(request.protected_output_paths);
+        // Streams carry raw bytes, so each location is the exact file read.
+        plan.authorize_reads(policy, |_| None)?;
+
+        Ok(Self {
+            project,
+            project_path,
+            request,
+            input_file: (!input_from_stdin).then(|| input_identity.clone()),
+            input_identity,
+            output_identity,
+            named_sources,
+            plan,
+        })
     }
-    if let Some(parameters) = options.runtime_parameters {
-        payload_options = payload_options.with_runtime_parameters(parameters);
+
+    pub fn plan(&self) -> &RoutePlan {
+        &self.plan
     }
-    if let Some(trace_sink) = options.trace_sink {
-        payload_options = payload_options.with_trace_sink(trace_sink);
+
+    /// Reads the primary document from `stdin` when the request selected it,
+    /// then the named inputs, and returns exactly one serialized artifact.
+    pub fn execute(
+        self,
+        stdin: &mut dyn Read,
+        trace_sink: Option<&dyn TraceSink>,
+    ) -> anyhow::Result<PayloadRunOutcome> {
+        if trace_sink.is_some() && !self.request.observers.tracing {
+            return Err(RouteRefusal::UndeclaredObservers.into());
+        }
+        let Self {
+            project,
+            project_path,
+            request,
+            input_file,
+            input_identity,
+            output_identity,
+            named_sources,
+            plan: _,
+        } = self;
+        let policy = request
+            .execution_policy
+            .unwrap_or(&crate::execution_policy::TRUSTED);
+        let primary_bytes = match &input_file {
+            None => read_bounded(stdin, "stdin")?,
+            Some(path) => {
+                policy.authorize_read(path)?;
+                read_path_bounded(path, "primary input")?
+            }
+        };
+        let primary = PayloadDocument::new(&input_identity, &primary_bytes)?;
+
+        let extra_storage = named_sources
+            .into_iter()
+            .map(|(name, path)| {
+                policy.authorize_read(&path)?;
+                let bytes = read_path_bounded(&path, &format!("named source `{name}`"))?;
+                Ok(ExtraSourceBytes {
+                    name: name.to_owned(),
+                    path,
+                    bytes,
+                })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let mut read_set = ReadSet::new(project_path);
+        if let Some(path) = &input_file {
+            read_set.push(path);
+        }
+        for source in &extra_storage {
+            read_set.push(&source.path);
+        }
+        read_set.reject_protected(request.protected_output_paths)?;
+        let extra_documents = extra_storage
+            .iter()
+            .map(|source| PayloadDocument::new(&source.path, &source.bytes))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let extra_sources = extra_storage
+            .iter()
+            .zip(&extra_documents)
+            .map(|(source, document)| NamedPayloadInput::new(&source.name, *document))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        let mut payload_options = PayloadRunOptions::new(primary)
+            .with_extra_sources(&extra_sources)
+            .with_output_path(&output_identity)
+            .with_execution_policy(policy);
+        if let Some(target) = request.target {
+            payload_options = payload_options.with_target(target);
+        }
+        if let Some(parameters) = request.runtime_parameters {
+            payload_options = payload_options.with_runtime_parameters(parameters);
+        }
+        if let Some(trace_sink) = trace_sink {
+            payload_options = payload_options.with_trace_sink(trace_sink);
+        }
+        let outcome = run_project_value_payloads(project, project_path, &payload_options)?;
+        if !matches!(outcome.artifacts.as_slice(), [_]) {
+            bail!(
+                "stdout requires exactly one output artifact, but this mapping produced {}",
+                outcome.artifacts.len()
+            );
+        }
+        Ok(outcome)
     }
-    let outcome = run_project_value_payloads(&project, project_path, &payload_options)?;
-    if !matches!(outcome.artifacts.as_slice(), [_]) {
-        bail!(
-            "stdout requires exactly one output artifact, but this mapping produced {}",
-            outcome.artifacts.len()
-        );
-    }
-    Ok(outcome)
 }
 
 struct ExtraSourceBytes {
@@ -234,18 +357,18 @@ fn reject_dynamic_sources(
     if dynamic.is_empty() {
         return Ok(());
     }
-    bail!(
-        "standard-stream execution cannot supply per-item dynamic source(s): {}; use the filesystem runner or PayloadRunOptions",
-        dynamic.join(", ")
-    )
+    Err(RouteRefusal::StandardStreamsDynamicSources {
+        names: dynamic.into_iter().map(str::to_owned).collect(),
+    }
+    .into())
 }
 
-fn load_static_extra_sources(
+/// Resolves every required static named source to a local path.
+fn static_extra_source_paths<'p>(
     project_path: &Path,
-    project: &mapping::Project,
+    project: &'p mapping::Project,
     target: Option<TargetSelection<'_>>,
-    policy: &engine::ExecutionPolicy,
-) -> anyhow::Result<Vec<ExtraSourceBytes>> {
+) -> anyhow::Result<Vec<(&'p str, PathBuf)>> {
     let required = target
         .map(|target| engine::required_sources_for_target(project, target))
         .transpose()?;
@@ -273,13 +396,7 @@ fn load_static_extra_sources(
                     source.name
                 );
             }
-            policy.authorize_read(&path)?;
-            let bytes = read_path_bounded(&path, &format!("named source `{}`", source.name))?;
-            Ok(ExtraSourceBytes {
-                name: source.name.clone(),
-                path,
-                bytes,
-            })
+            Ok((source.name.as_str(), path))
         })
         .collect()
 }

@@ -76,6 +76,7 @@ mod mfd_import;
 mod mfd_pipeline;
 #[path = "new_mapping.rs"]
 mod new_mapping_ui;
+mod owned_worker;
 #[path = "pipeline_editor.rs"]
 mod pipeline_editor_ui;
 mod pipeline_stage_canvas;

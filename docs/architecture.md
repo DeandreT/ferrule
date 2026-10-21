@@ -133,6 +133,20 @@ primary-then-extra target order. `RunOptions::with_target` can instead evaluate
 one primary or named target; unselected target scopes are not evaluated or
 published, while the default all-target mode keeps its collision checks.
 
+Every host route (`run`, standard streams, `run-pipeline`, payload execution,
+and generation) prepares an immutable request before it acquires anything.
+Preparation resolves the known input and output identities into a
+`cli::RoutePlan`, admits the requested trace and debug observers, applies the
+execution policy to every known location, and refuses an unsupported route
+combination with a typed error such as `cli::RouteRefusal`. No input, standard
+stream, output, trace stage, or directory is touched by a refused request.
+`PreparedFileRun` and `PreparedStreamRun` execute such a request, refusing any
+observer it did not admit; `plan_run`, `plan_pipeline_run`, `plan_payload_run`,
+and `plan_generate` report the plan without executing it.
+`RunOptions::with_cancellation` stops a run at acquisition, interpreter control,
+and publication boundaries without a trace sink or host debug hook. It cannot
+interrupt one synchronous parser or request.
+
 Hosts that own transport and persistence can instead use
 `cli::PayloadRunOptions`. Each input carries bounded bytes plus a logical path
 that selects its format and supplies dynamic-source identity. The runner accepts
