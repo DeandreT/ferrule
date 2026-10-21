@@ -1,8 +1,16 @@
 use ir::{ScalarType, SchemaNode};
-use mapping::{FunctionId, NamedTarget, Scope, UserFunction};
+use mapping::{FunctionId, NamedTarget, Project, Scope, UserFunction};
 
 use super::*;
-use crate::{DocumentOrigin, EditorDocument};
+use crate::{DocumentOrigin, EditorDocument, GraphAction, GraphCommand};
+
+fn remove(
+    document: GraphDocument,
+    requested: BTreeSet<NodeId>,
+    patch: GraphPatch,
+) -> Result<GraphCommand, GraphEditError> {
+    GraphCommand::new(document, GraphAction::RemoveNodes { requested }, patch)
+}
 
 fn same_node(left: &Node, right: &Node) -> bool {
     format!("{left:?}") == format!("{right:?}")
@@ -192,17 +200,22 @@ fn scope_shape_changes_are_not_expressible_as_patches() {
 fn removals_require_their_requested_nodes_to_be_removed() {
     let document = GraphDocument::Target(TargetId::Primary);
     assert_eq!(
-        GraphNodeRemoval::new(document.clone(), BTreeSet::new(), removal_patch()).err(),
+        remove(document.clone(), BTreeSet::new(), removal_patch()).err(),
         Some(GraphEditError::EmptyRemoval)
     );
     assert_eq!(
-        GraphNodeRemoval::new(document.clone(), BTreeSet::from([2]), removal_patch()).err(),
+        remove(document.clone(), BTreeSet::from([2]), removal_patch()).err(),
         Some(GraphEditError::NotRemoved { node: 2 })
     );
-    let removal = GraphNodeRemoval::new(document, BTreeSet::from([1]), removal_patch())
-        .expect("node 1 is removed");
+    let removal =
+        remove(document, BTreeSet::from([1]), removal_patch()).expect("node 1 is removed");
     assert_eq!(removal.label(), "Remove node");
-    assert_eq!(removal.requested(), &BTreeSet::from([1]));
+    assert_eq!(
+        removal.action(),
+        &GraphAction::RemoveNodes {
+            requested: BTreeSet::from([1])
+        }
+    );
 }
 
 #[test]
@@ -217,7 +230,7 @@ fn removal_resolves_named_targets_and_functions_by_identity() {
         root,
     });
     project.root = Scope::default();
-    let removal = GraphNodeRemoval::new(
+    let removal = remove(
         GraphDocument::Target(TargetId::Named("audit".into())),
         BTreeSet::from([1]),
         removal_patch(),
@@ -255,7 +268,7 @@ fn removal_resolves_named_targets_and_functions_by_identity() {
     after_body.nodes.insert(2, call("concat", vec![3, 0]));
     let patch = GraphPatch::between((&body, &empty), (&after_body, &empty), same_node)
         .expect("function graphs have unchanged scopes");
-    let removal = GraphNodeRemoval::new(
+    let removal = remove(
         GraphDocument::Function(function),
         BTreeSet::from([1]),
         patch,
@@ -273,7 +286,7 @@ fn removal_resolves_named_targets_and_functions_by_identity() {
         "the main graph is untouched"
     );
 
-    let missing = GraphNodeRemoval::new(
+    let missing = remove(
         GraphDocument::Function(FunctionId::new(99)),
         BTreeSet::from([1]),
         removal_patch(),
@@ -289,8 +302,8 @@ fn removal_resolves_named_targets_and_functions_by_identity() {
 
 #[test]
 fn editor_documents_execute_removals_atomically_with_undo() {
-    let removal = || {
-        GraphNodeRemoval::new(
+    let command = || {
+        remove(
             GraphDocument::Target(TargetId::Primary),
             BTreeSet::from([1]),
             removal_patch(),
@@ -300,14 +313,14 @@ fn editor_documents_execute_removals_atomically_with_undo() {
     let original = project_key(&project());
     let mut document = EditorDocument::new(project(), DocumentOrigin::Saved);
 
-    assert!(document.execute(removal()).is_ok());
+    assert!(document.execute(command()).is_ok());
     assert!(document.is_dirty());
     assert_eq!(document.undo_label(), Some("Remove node"));
     assert!(!document.project().graph.nodes.contains_key(&1));
 
     // The same removal is stale once applied, and fails without changes.
     let applied = project_key(document.project());
-    assert!(document.execute(removal()).is_err());
+    assert!(document.execute(command()).is_err());
     assert_eq!(project_key(document.project()), applied);
     assert_eq!(document.undo_len(), 1);
 
