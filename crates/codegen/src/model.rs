@@ -1,7 +1,7 @@
 use ir::{ScalarType, ScalarTypeSet, SchemaNode, Value};
 use mapping::{AggregateOp, FlexCommand, FlexTextLayout, FunctionId, FunctionParameterId, NodeId};
 
-use crate::{InnerJoin, JoinId};
+use crate::{InnerJoin, JoinId, OwnedInnerJoin};
 
 /// Host-supplied values available to generated mappings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -904,6 +904,11 @@ pub enum Expression {
     /// Reduction over exactly one owned endpoint collection. The value reads
     /// or computes in each selected item; the argument runs in the parent.
     OwnedAggregate(mapping::OwnedAggregate),
+    /// Scalar read of one exact owned join tuple member, bound by its owner
+    /// and collection identity.
+    OwnedJoinField(mapping::OwnedJoinField),
+    /// Raw source position of one exact owned join tuple member.
+    OwnedJoinSourcePosition(mapping::OwnedJoinSourcePosition),
     SourceField {
         frame: Option<Vec<String>>,
         path: Vec<String>,
@@ -1384,6 +1389,8 @@ pub enum IterationSource {
     DynamicDocuments(DynamicDocumentIteration),
     Generated(GeneratedSequence),
     InnerJoin(InnerJoin),
+    /// Inner join over explicit owner and collection identities.
+    OwnedInnerJoin(OwnedInnerJoin),
     Concatenate(ScopeSequence),
 }
 
@@ -1482,6 +1489,12 @@ impl From<DynamicDocumentIteration> for IterationSource {
 impl From<InnerJoin> for IterationSource {
     fn from(join: InnerJoin) -> Self {
         Self::InnerJoin(join)
+    }
+}
+
+impl From<OwnedInnerJoin> for IterationSource {
+    fn from(join: OwnedInnerJoin) -> Self {
+        Self::OwnedInnerJoin(join)
     }
 }
 
@@ -1786,6 +1799,7 @@ impl IterationPlan {
             IterationSource::DynamicDocuments(iteration) => Some(iteration.source()),
             IterationSource::Generated(_)
             | IterationSource::InnerJoin(_)
+            | IterationSource::OwnedInnerJoin(_)
             | IterationSource::Concatenate(_) => None,
         }
     }
@@ -1797,6 +1811,7 @@ impl IterationPlan {
             IterationSource::Source(_)
             | IterationSource::Generated(_)
             | IterationSource::InnerJoin(_)
+            | IterationSource::OwnedInnerJoin(_)
             | IterationSource::Concatenate(_) => None,
         }
     }
@@ -1806,7 +1821,9 @@ impl IterationPlan {
             IterationSource::OwnedSource(_) => None,
             IterationSource::Source(_) | IterationSource::DynamicDocuments(_) => None,
             IterationSource::Generated(sequence) => Some(sequence),
-            IterationSource::InnerJoin(_) | IterationSource::Concatenate(_) => None,
+            IterationSource::InnerJoin(_)
+            | IterationSource::OwnedInnerJoin(_)
+            | IterationSource::Concatenate(_) => None,
         }
     }
 
@@ -1817,6 +1834,19 @@ impl IterationPlan {
             IterationSource::Source(_)
             | IterationSource::DynamicDocuments(_)
             | IterationSource::Generated(_)
+            | IterationSource::OwnedInnerJoin(_)
+            | IterationSource::Concatenate(_) => None,
+        }
+    }
+
+    pub const fn owned_inner_join(&self) -> Option<&OwnedInnerJoin> {
+        match &self.input {
+            IterationSource::OwnedInnerJoin(join) => Some(join),
+            IterationSource::OwnedSource(_)
+            | IterationSource::Source(_)
+            | IterationSource::DynamicDocuments(_)
+            | IterationSource::Generated(_)
+            | IterationSource::InnerJoin(_)
             | IterationSource::Concatenate(_) => None,
         }
     }
@@ -1828,7 +1858,8 @@ impl IterationPlan {
             IterationSource::Source(_)
             | IterationSource::DynamicDocuments(_)
             | IterationSource::Generated(_)
-            | IterationSource::InnerJoin(_) => None,
+            | IterationSource::InnerJoin(_)
+            | IterationSource::OwnedInnerJoin(_) => None,
         }
     }
 

@@ -8,10 +8,10 @@ use crate::{
     DynamicTargetChild, Expression, ExpressionNode, FailureIteration, FailureRule,
     FailureSelection, GeneratedFilterMapCapture, GeneratedFilterMapV1, GeneratedRange,
     GeneratedSequence, GroupingPlan, InnerJoin, IterationPlan, IterationSource, JoinId, JoinPlan,
-    LowerError, NamedSourceProgram, NamedTargetProgram, Program, ProgramValidationError,
-    ScalarFunction, ScalarTargetDomain, ScopeFeature, SequenceWindow, SortKey, SortPlan,
-    SourceIteration, TargetScope, UnsupportedNodeKind, UserFunctionParameter, UserFunctionProgram,
-    XmlMixedContentElement, XmlMixedContentReplacement, validate_program,
+    LowerError, NamedSourceProgram, NamedTargetProgram, OwnedInnerJoin, Program,
+    ProgramValidationError, ScalarFunction, ScalarTargetDomain, ScopeFeature, SequenceWindow,
+    SortKey, SortPlan, SourceIteration, TargetScope, UnsupportedNodeKind, UserFunctionParameter,
+    UserFunctionProgram, XmlMixedContentElement, XmlMixedContentReplacement, validate_program,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -167,6 +167,17 @@ pub fn lower_with_basic_owned_collection_aggregates(
     )
 }
 
+/// Lowers owned inner joins and their tuple reads with the owned Lookup and
+/// CollectionFind profile. Every older route keeps refusing owned joins at its
+/// preflight; owned joined aggregates stay closed.
+pub fn lower_with_basic_owned_joins(project: &Project) -> Result<Program, LowerError> {
+    lower_with_policy(
+        project,
+        crate::validate_program_with_basic_owned_joins,
+        OwnedJoinLowering::Open,
+    )
+}
+
 /// Lowers the explicit Basic scalar-producer SequenceItemAt profile, composing
 /// qualified By controls and primary-row failures without changing their gates.
 pub fn lower_with_basic_owned_sequence_item_at(project: &Project) -> Result<Program, LowerError> {
@@ -214,9 +225,24 @@ pub fn lower_with_basic_owned_xml_serialize(project: &Project) -> Result<Program
     )
 }
 
+/// Whether a lowering route admits owned join scopes past its preflight.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OwnedJoinLowering {
+    Closed,
+    Open,
+}
+
 fn lower_with_validator(
     project: &Project,
     validator: fn(&Program) -> Result<(), ProgramValidationError>,
+) -> Result<Program, LowerError> {
+    lower_with_policy(project, validator, OwnedJoinLowering::Closed)
+}
+
+fn lower_with_policy(
+    project: &Project,
+    validator: fn(&Program) -> Result<(), ProgramValidationError>,
+    owned_joins: OwnedJoinLowering,
 ) -> Result<Program, LowerError> {
     let validation = engine::validate(project);
     if !validation.is_empty() {
@@ -231,10 +257,10 @@ fn lower_with_validator(
         ));
     }
 
-    // Owned document outputs and owned joins remain closed at their complete
-    // original route. All static Basic selectors continue through unchanged
-    // lowering reachability.
-    if let Some(diagnostic) = owned_document_diagnostic(project) {
+    // Owned document outputs remain closed at their complete original route,
+    // and owned joins outside their explicit companion. All static Basic
+    // selectors continue through unchanged lowering reachability.
+    if let Some(diagnostic) = owned_document_diagnostic(project, owned_joins) {
         return Err(LowerError::new(vec![diagnostic]));
     }
     let primary_xml = project.source_options.xml_root_view_read_policy;
@@ -983,7 +1009,9 @@ fn lower_iteration(scope: &Scope) -> Result<Option<IterationPlan>, Diagnostic> {
         ScopeIteration::InnerJoin { id, plan } => {
             InnerJoin::new(JoinId::from(*id), JoinPlan::from_mapping(plan)).into()
         }
-        ScopeIteration::OwnedInnerJoin { .. } => unreachable!("owned join preflight"),
+        ScopeIteration::OwnedInnerJoin { id, plan } => {
+            OwnedInnerJoin::new(JoinId::from(*id), plan.clone()).into()
+        }
         ScopeIteration::None | ScopeIteration::Concatenate(_) => return Ok(None),
     };
     let grouping = if let Some(key) = scope.group_by {
@@ -1296,6 +1324,10 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
         Node::OwnedCollectionFind(find) => Expression::OwnedCollectionFind(find.clone()),
         Node::OwnedXmlSerialize(serializer) => Expression::OwnedXmlSerialize(serializer.clone()),
         Node::OwnedAggregate(aggregate) => Expression::OwnedAggregate(aggregate.clone()),
+        Node::OwnedJoinField(field) => Expression::OwnedJoinField(field.clone()),
+        Node::OwnedJoinSourcePosition(position) => {
+            Expression::OwnedJoinSourcePosition(position.clone())
+        }
         Node::SourceField { path, frame } => Expression::SourceField {
             frame: frame.clone(),
             path: path.clone(),
@@ -1536,8 +1568,15 @@ fn xml_document_output_options(options: &mapping::FormatOptions) -> bool {
         }
 }
 
-fn owned_document_diagnostic(project: &Project) -> Option<Diagnostic> {
-    fn visit(scope: &Scope, route: mapping::SourceScopeLocation) -> Option<Diagnostic> {
+fn owned_document_diagnostic(
+    project: &Project,
+    owned_joins: OwnedJoinLowering,
+) -> Option<Diagnostic> {
+    fn visit(
+        scope: &Scope,
+        route: mapping::SourceScopeLocation,
+        owned_joins: OwnedJoinLowering,
+    ) -> Option<Diagnostic> {
         if let ScopeIteration::OwnedSource {
             source,
             output_path: Some(node),
@@ -1559,7 +1598,9 @@ fn owned_document_diagnostic(project: &Project) -> Option<Diagnostic> {
                 .into(),
             });
         }
-        if let Some((_, plan)) = scope.iteration.owned_join() {
+        if let Some((_, plan)) = scope.iteration.owned_join()
+            && owned_joins == OwnedJoinLowering::Closed
+        {
             let first = plan.sources().next().map(|source| source.collection());
             return Some(Diagnostic::OwnedSource {
                 diagnostic: crate::OwnedSourceDiagnostic::Capability {
@@ -1581,6 +1622,7 @@ fn owned_document_diagnostic(project: &Project) -> Option<Diagnostic> {
                 if let Some(error) = visit(
                     segment,
                     route.descendant(mapping::SourceScopeStep::Segment(index)),
+                    owned_joins,
                 ) {
                     return Some(error);
                 }
@@ -1590,6 +1632,7 @@ fn owned_document_diagnostic(project: &Project) -> Option<Diagnostic> {
             if let Some(error) = visit(
                 child,
                 route.descendant(mapping::SourceScopeStep::Child(index)),
+                owned_joins,
             ) {
                 return Some(error);
             }
@@ -1598,6 +1641,7 @@ fn owned_document_diagnostic(project: &Project) -> Option<Diagnostic> {
             if let Some(error) = visit(
                 &child.scope,
                 route.descendant(mapping::SourceScopeStep::DynamicChild(index)),
+                owned_joins,
             ) {
                 return Some(error);
             }
@@ -1607,6 +1651,7 @@ fn owned_document_diagnostic(project: &Project) -> Option<Diagnostic> {
     if let Some(error) = visit(
         &project.root,
         mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Primary),
+        owned_joins,
     ) {
         return Some(error);
     }
@@ -1617,6 +1662,7 @@ fn owned_document_diagnostic(project: &Project) -> Option<Diagnostic> {
                 index,
                 name: target.name.clone(),
             }),
+            owned_joins,
         ) {
             return Some(error);
         }

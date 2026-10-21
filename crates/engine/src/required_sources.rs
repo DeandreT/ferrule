@@ -95,6 +95,11 @@ impl<'a> Analysis<'a> {
                 self.inspect_path(source.collection());
             }
         }
+        if let Some((_, join)) = scope.iteration.owned_join() {
+            for source in join.sources() {
+                self.inspect_owner(&source.collection().owner);
+            }
+        }
         if let Some(segments) = scope.concatenated() {
             for segment in segments.iter() {
                 self.inspect_scope(segment);
@@ -231,6 +236,10 @@ impl<'a> Analysis<'a> {
             Node::OwnedCollectionFind(find) => self.inspect_owner(&find.collection.owner),
             Node::OwnedXmlSerialize(serializer) => self.inspect_owner(&serializer.source.owner),
             Node::OwnedAggregate(aggregate) => self.inspect_owner(&aggregate.collection.owner),
+            Node::OwnedJoinField(field) => self.inspect_owner(&field.collection.owner),
+            Node::OwnedJoinSourcePosition(position) => {
+                self.inspect_owner(&position.collection.owner)
+            }
             Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }

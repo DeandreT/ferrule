@@ -187,8 +187,22 @@ Duplicate, singleton and left-stage checks compare the whole identity: a
 primary `Rows` and a named `Rows` are two sources, while the same owner's `Rows`
 twice is still a duplicate. The scope's `JoinId` stays independent of these
 identities. Validation resolves each source against its own endpoint and each
-key path under the exact collection it names. Execution, generation, `.mfd`
-export and GUI editing refuse owned joins; the GUI shows a saved one read-only.
+key path under the exact collection it names. `.mfd` export and GUI editing
+refuse owned joins; the GUI shows a saved one read-only.
+
+## Owned join tuples
+
+Each owned join source contributes members only from its declared endpoint,
+anchored by the latest active frame of the same owner, so a source equal to an
+active owned row is that row; another endpoint with the same path never
+supplies members. Tuples keep left-major order, duplicates and the legacy
+Null-like key exclusion. Strict `owned_join_field` and
+`owned_join_source_position` reads bind one member by its full identity and
+return a scalar or its raw source position; the flattened tuple position reuses
+`join_position` and follows the legacy filter, sort and compaction phases. A
+tuple context admits only those reads and pure scalar nodes. The interpreter
+and an explicit generation companion execute owned joins; owned joined
+aggregates stay closed. See the [owned join contract](owned-joins.md).
 
 ## Dynamic source-field objects
 

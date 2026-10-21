@@ -604,6 +604,26 @@ pub fn emit_with_basic_owned_collection_aggregates(
     .map_err(EmitError::from)
 }
 
+/// Emit owned-search-profile targets with owned inner joins and their tuple
+/// reads. Older emitters keep refusing owned joins; joined aggregates stay closed.
+pub fn emit_with_basic_owned_joins(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_joins(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_joins_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_joins_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.
 /// Flat row/schema and literal dialect eligibility are checked before artifacts
 /// exist. The ordinary mapper, JSON/XML adapters, and manifest remain intact.
@@ -1131,6 +1151,8 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
         | Expression::OwnedXmlSerialize(_)
+        | Expression::OwnedJoinField(_)
+        | Expression::OwnedJoinSourcePosition(_)
         | Expression::SourceField { .. }
         | Expression::SourceRootXmlTypeEquals { .. }
         | Expression::SourceRootField { .. }
@@ -1884,6 +1906,10 @@ fn render_expression_in_context_with_scalar_item_at(
             Expression::OwnedAggregate(aggregate) if basic => {
                 owned_basic::render_owned_aggregate(id, aggregate, call_expression)
             }
+            Expression::JoinPosition { join } if basic => format!(
+                "Ok(Value::Int(context.owned_join_position({})? as i64))",
+                join.get()
+            ),
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
@@ -1891,7 +1917,9 @@ fn render_expression_in_context_with_scalar_item_at(
             | Expression::OwnedLookup(_)
             | Expression::OwnedCollectionFind(_)
             | Expression::OwnedXmlSerialize(_)
-            | Expression::OwnedAggregate(_) => {
+            | Expression::OwnedAggregate(_)
+            | Expression::OwnedJoinField(_)
+            | Expression::OwnedJoinSourcePosition(_) => {
                 let namespace = owner_function.map_or(codegen::OwnedSourceNamespace::Main, |id| {
                     codegen::OwnedSourceNamespace::Function(FunctionId::new(id))
                 });
@@ -2822,6 +2850,7 @@ fn render_grouping_with_prefix(
         IterationSource::Generated(_)
         | IterationSource::InnerJoin(_)
         | IterationSource::Concatenate(_) => "None".to_string(),
+        IterationSource::OwnedInnerJoin(_) => unreachable!("owned join emission gate"),
     };
     let binding = if candidates_are_reassigned {
         "let mut candidates"
@@ -2998,6 +3027,7 @@ fn render_iteration_candidates(
             );
         }
         IterationSource::InnerJoin(join) => render_inner_join(join, binding, output),
+        IterationSource::OwnedInnerJoin(_) => unreachable!("owned join emission gate"),
         IterationSource::Concatenate(_) => {
             unreachable!("concatenated scopes render before candidate iteration")
         }

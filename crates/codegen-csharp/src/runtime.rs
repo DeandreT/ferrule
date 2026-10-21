@@ -101,6 +101,10 @@ pub(crate) const SOURCES: [(&str, &str); 85] = [
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleExecutionContext.cs"),
     ),
     (
+        "Runtime/FerruleInvocationCounters.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleInvocationCounters.cs"),
+    ),
+    (
         "Runtime/FerruleFailures.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleFailures.cs"),
     ),

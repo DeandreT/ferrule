@@ -332,8 +332,7 @@ pub enum ScopeIteration {
         id: JoinId,
         plan: JoinPlan,
     },
-    /// Inner join over explicit owner and collection identities; execution
-    /// and emission remain unavailable.
+    /// Inner join over explicit owner and collection identities.
     OwnedInnerJoin {
         id: JoinId,
         plan: OwnedJoinPlan,
