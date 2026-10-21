@@ -1,8 +1,8 @@
-//! Owned inner-join scopes. The pipeline keeps the legacy join phases: a filter
-//! before sorting and every sort key see original tuple positions, sorting
-//! renumbers them, a later filter sees sorted positions, window bounds use the
-//! receiving parent, and output sees compacted positions. Raw member
-//! positions never change.
+//! Owned inner-join scopes and joined aggregates. The scope pipeline keeps the
+//! legacy join phases: a filter before sorting and every sort key see original
+//! tuple positions, sorting renumbers them, a later filter sees sorted
+//! positions, window bounds use the receiving parent, and output sees
+//! compacted positions. Raw member positions never change.
 
 use super::*;
 
@@ -46,6 +46,53 @@ fn render_stages(plan: &::mapping::OwnedJoinPlan, output: &mut String) {
         output.push_str("}),\n");
     }
     output.push_str("            }");
+}
+
+/// Every tuple is joined in the receiving context before any tuple value. A
+/// missing expression contributes Null per tuple; the argument runs once in
+/// the parent after every tuple value, and the shared reducer keeps the legacy
+/// empty/null/type policy. Only this node's join carries its node.
+pub(super) fn render_aggregate(
+    node: NodeId,
+    aggregate: &::mapping::OwnedJoinAggregate,
+    output: &mut String,
+) {
+    let plan = &aggregate.plan;
+    let first = plan
+        .sources()
+        .next()
+        .expect("owned plans have a first source");
+    output.push_str(&format!(
+        "\n    {{\n        global::System.Collections.Generic.IReadOnlyList<{CONTEXT}> tuples_{node};\n        try\n        {{\n            tuples_{node} = context.OwnedInnerJoin({}UL,\n                ",
+        aggregate.join.get()
+    ));
+    render_source(first, output);
+    output.push_str(",\n                ");
+    render_stages(plan, output);
+    output.push_str(&format!(
+        ");\n        }}\n        catch (global::Ferrule.Runtime.FerruleRuntimeException error_{node}) {{ error_{node}.WithOwnedSourceNode({node}U); throw; }}\n        var values_{node} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleValue>(tuples_{node}.Count);\n        foreach (var tuple_{node} in tuples_{node})\n        {{\n"
+    ));
+    match aggregate.expression {
+        Some(expression) => output.push_str(&format!(
+            "            values_{node}.Add(Node_{expression}(tuple_{node}));\n"
+        )),
+        None => output.push_str(&format!(
+            "            values_{node}.Add(global::Ferrule.Runtime.FerruleValue.Null);\n"
+        )),
+    }
+    output.push_str("        }\n");
+    match aggregate.arg {
+        Some(arg) => output.push_str(&format!(
+            "        global::Ferrule.Runtime.FerruleValue? argument_{node} = Node_{arg}(context);\n"
+        )),
+        None => output.push_str(&format!(
+            "        global::Ferrule.Runtime.FerruleValue? argument_{node} = null;\n"
+        )),
+    }
+    output.push_str(&format!(
+        "        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.{}, values_{node}, argument_{node});\n    }}\n",
+        aggregate_function_name(aggregate.function.into())
+    ));
 }
 
 fn render_retain(index: usize, predicate: NodeId, output: &mut String) {
