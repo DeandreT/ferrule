@@ -146,6 +146,15 @@ pub fn lower_with_basic_owned_path_hierarchy(project: &Project) -> Result<Progra
     )
 }
 
+/// Lowers the explicit Basic scalar-producer SequenceExists profile. It composes
+/// ItemAt, By/AdjacentBy/StartingWith/EndingWith controls and primary-row failures.
+pub fn lower_with_basic_owned_sequence_exists(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_sequence_exists,
+    )
+}
+
 fn lower_with_validator(
     project: &Project,
     validator: fn(&Program) -> Result<(), ProgramValidationError>,

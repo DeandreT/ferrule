@@ -1100,6 +1100,11 @@ mod owned_sequence_item_at_tests;
 #[cfg(test)]
 #[path = "tests/owned_failure_iteration.rs"]
 mod owned_failure_iteration_tests;
+
+#[cfg(test)]
+#[path = "tests/owned_sequence_exists.rs"]
+mod owned_sequence_exists_tests;
+
 #[cfg(test)]
 #[path = "tests/owned_recursive_collect.rs"]
 mod owned_recursive_collect_tests;

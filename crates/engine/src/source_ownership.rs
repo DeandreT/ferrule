@@ -569,9 +569,9 @@ impl<'a> Admission<'a> {
         sequence: &SequenceExpr,
         function: Option<FunctionId>,
         inherited: OwnedCapabilityContext,
-        basic_item_at: bool,
+        basic_consumer: bool,
     ) {
-        let context = if basic_item_at
+        let context = if basic_consumer
             && inherited == OwnedCapabilityContext::Basic
             && basic_item_at_producer(sequence)
         {
@@ -705,7 +705,7 @@ impl<'a> Admission<'a> {
                         // Only a Basic parent-context ItemAt consumes an owned
                         // producer; reducers with private item phases stay closed.
                         let qualified = matches!(node, Node::SequenceItemAt { .. })
-                            && basic_item_at_parents(
+                            && basic_consumer_parents(
                                 project,
                                 graph.expect("node belongs to a graph"),
                                 node,
@@ -725,13 +725,14 @@ impl<'a> Admission<'a> {
                 self.summary.used_owned = true;
             }
             let child_context = if context == OwnedCapabilityContext::Basic {
-                if matches!(node, Node::SequenceItemAt { .. })
-                    && !basic_item_at_parents(
-                        project,
-                        graph.expect("node belongs to a graph"),
-                        node,
-                    )
-                {
+                if matches!(
+                    node,
+                    Node::SequenceItemAt { .. } | Node::SequenceExists { .. }
+                ) && !basic_consumer_parents(
+                    project,
+                    graph.expect("node belongs to a graph"),
+                    node,
+                ) {
                     OwnedCapabilityContext::GeneratedItem
                 } else {
                     node_context(node)
@@ -783,11 +784,10 @@ impl<'a> Admission<'a> {
                         self.path(&replacement.collection);
                     }
                 }
-                Node::SequenceItemAt { sequence, .. } => {
+                Node::SequenceItemAt { sequence, .. } | Node::SequenceExists { sequence, .. } => {
                     self.sequence(sequence, function, child_context, true)
                 }
-                Node::SequenceExists { sequence, .. }
-                | Node::SequenceAggregate { sequence, .. } => {
+                Node::SequenceAggregate { sequence, .. } => {
                     self.sequence(sequence, function, child_context, false)
                 }
                 Node::JoinAggregate { plan, .. } => {
@@ -829,8 +829,10 @@ pub(crate) fn failure_rule_uses_owned(graph: &mapping::Graph, rule: &mapping::Fa
 }
 
 fn root_failure_node_is_static(project: &Project, node: &Node) -> bool {
-    if matches!(node, Node::SequenceItemAt { .. })
-        || node_context(node) != OwnedCapabilityContext::Basic
+    if matches!(
+        node,
+        Node::SequenceItemAt { .. } | Node::SequenceExists { .. }
+    ) || node_context(node) != OwnedCapabilityContext::Basic
     {
         return false;
     }
@@ -861,8 +863,10 @@ fn primary_row_failure_is_static(project: &Project, collection: &[String]) -> bo
 }
 
 fn primary_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
-    if matches!(node, Node::SequenceItemAt { .. })
-        || node_context(node) != OwnedCapabilityContext::Basic
+    if matches!(
+        node,
+        Node::SequenceItemAt { .. } | Node::SequenceExists { .. }
+    ) || node_context(node) != OwnedCapabilityContext::Basic
     {
         return false;
     }
@@ -1023,6 +1027,11 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
 
 /// Parent-context ItemAt producers. The owned recursive walk is qualified
 /// here; the legacy recursive walk keeps its specialized tree classification.
+/// Exists predicates are qualified only over the four pure scalar producers.
+fn basic_exists_producer(sequence: &SequenceExpr) -> bool {
+    basic_item_at_producer(sequence) && !matches!(sequence, SequenceExpr::OwnedRecursiveCollect(_))
+}
+
 fn basic_item_at_producer(sequence: &SequenceExpr) -> bool {
     matches!(
         sequence,
@@ -1034,17 +1043,23 @@ fn basic_item_at_producer(sequence: &SequenceExpr) -> bool {
     )
 }
 
-/// ItemAt parent graphs remain Basic scalars (including nested eligible ItemAt).
+/// ItemAt producer arguments/index and Exists producer arguments/predicate
+/// remain Basic scalars, including nested eligible consumers. The Exists
+/// predicate adds only its private generated item, which is not an endpoint.
 /// A closed operator in one argument cannot gain permission merely because an
 /// owned read is in another. Legacy islands keep their original classification.
-fn basic_item_at_parents(project: &Project, graph: &mapping::Graph, node: &Node) -> bool {
-    let Node::SequenceItemAt { sequence, index } = node else {
-        return false;
+fn basic_consumer_parents(project: &Project, graph: &mapping::Graph, node: &Node) -> bool {
+    let (sequence, consumer) = match node {
+        Node::SequenceItemAt { sequence, index } if basic_item_at_producer(sequence) => {
+            (sequence, *index)
+        }
+        Node::SequenceExists {
+            sequence,
+            predicate,
+        } if basic_exists_producer(sequence) => (sequence, *predicate),
+        _ => return false,
     };
-    if !basic_item_at_producer(sequence) {
-        return false;
-    }
-    let mut pending: Vec<_> = sequence.inputs().into_iter().chain([*index]).collect();
+    let mut pending: Vec<_> = sequence.inputs().into_iter().chain([consumer]).collect();
     let mut visited = BTreeSet::new();
     while let Some(id) = pending.pop() {
         if !visited.insert(id) {
@@ -1087,6 +1102,9 @@ fn node_context(node: &Node) -> OwnedCapabilityContext {
             OwnedCapabilityContext::Join
         }
         Node::SequenceItemAt { sequence, .. } if basic_item_at_producer(sequence) => {
+            OwnedCapabilityContext::Basic
+        }
+        Node::SequenceExists { sequence, .. } if basic_exists_producer(sequence) => {
             OwnedCapabilityContext::Basic
         }
         Node::SequenceExists { .. }

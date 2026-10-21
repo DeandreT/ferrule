@@ -31,6 +31,7 @@ mod owned_group_by;
 mod owned_path_hierarchy;
 mod owned_recursive_collect;
 mod owned_row_failures;
+mod owned_sequence_exists;
 mod owned_sequence_item_at;
 mod path_hierarchy;
 mod raise;

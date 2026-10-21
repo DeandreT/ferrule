@@ -169,6 +169,14 @@ pub fn validate_program_with_basic_owned_sequence_item_at(
     owned_sources::validate_basic_owned_sequence_item_at_emission(program)
 }
 
+/// Validates static Basic scalar-producer SequenceExists beside ItemAt and the
+/// qualified By/AdjacentBy/StartingWith/EndingWith, source-control and row-failure policies.
+pub fn validate_program_with_basic_owned_sequence_exists(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_sequence_exists_emission(program)
+}
+
 fn validate_program_with_owned_profile(
     program: &Program,
     profile: owned_sources::BasicOwnedProfile,
@@ -1563,6 +1571,8 @@ pub use owned_sources::{
     validate_basic_owned_sequence_item_at_emission, validate_basic_owned_sort_emission,
     validate_basic_owned_window_emission,
 };
+
+pub use owned_sources::validate_basic_owned_sequence_exists_emission;
 
 #[cfg(test)]
 mod tests;

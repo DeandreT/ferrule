@@ -2366,6 +2366,9 @@ pub(super) fn observations() -> (usize, usize, usize) {
     )
 }
 
+#[path = "basic_generated_items.rs"]
+mod generated_items;
+
 #[cfg(test)]
 #[path = "basic_tests.rs"]
 mod tests;

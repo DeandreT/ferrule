@@ -2135,13 +2135,7 @@ fn only_two_keyed_families_are_admitted_and_specialized_consumers_remain_closed(
             },
             Domain::AggregateLookup,
         ),
-        (
-            Node::SequenceExists {
-                sequence: sequence.clone(),
-                predicate: 5,
-            },
-            Domain::GeneratedItem,
-        ),
+        // SequenceExists over a pure producer is qualified separately (#472).
         (
             Node::SequenceAggregate {
                 function: mapping::AggregateOp::Count,
