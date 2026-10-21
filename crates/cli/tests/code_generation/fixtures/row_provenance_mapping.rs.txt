@@ -1,0 +1,35 @@
+use codegen_runtime::{field,group,repeated,scalar,Instance,InstanceGroup,SourceDocumentOrigin,Value};
+use row_provenance_fixture::execute;
+
+fn main() -> Result<(),Box<dyn std::error::Error>> {
+    let documents=[SourceDocumentOrigin::new("same.csv",Some("resolved/same.csv"))?,SourceDocumentOrigin::new("same.csv",Some("resolved/same.csv"))?];
+    let mut rows=Vec::new();
+    for document in &documents {
+        for (index,value) in ["A","B","A"].into_iter().enumerate() {
+            rows.push(Instance::Group(InstanceGroup::from(vec![("Value".into(),scalar(Value::String(value.into())))]).with_source_origin(document.row(index+1)?)));
+        }
+    }
+    rows.push(group([field("Value",scalar(Value::String("A".into())))]));
+    let input=group([field("Rows",repeated(rows))]);
+    let output=execute(&input)?;
+    let schema=std::fs::read_to_string("target.schema")?;
+    let expected=std::fs::read_to_string("expected.json")?;
+    assert_eq!(codegen_runtime::serialize_json_compact(&schema,&output)?,expected);
+    assert_eq!(codegen_runtime::serialize_json_compact_bytes(&schema,&output)?,expected.as_bytes());
+    let Instance::Repeated(groups)=output.field("Groups").unwrap() else {panic!("groups")};
+    for (group,expected) in groups.iter().zip([vec![Some((0,1)),Some((0,3)),Some((1,1)),Some((1,3)),None],vec![Some((0,2)),Some((1,2))]]) {
+        let Instance::Group(wrapper)=group else {panic!("group")};
+        assert!(wrapper.source_origin().is_none());
+        let Instance::Repeated(members)=group.field("Member").unwrap() else {panic!("members")};
+        assert_eq!(members.len(),expected.len());
+        for (member,expected) in members.iter().zip(expected) {
+            let Instance::Group(member)=member else {panic!("member")};
+            match expected {
+                Some((owner,position))=>{let origin=member.source_origin().unwrap();assert!(origin.document().same_document(&documents[owner]));assert_eq!(origin.position(),position);},
+                None=>assert!(member.source_origin().is_none()),
+            }
+        }
+    }
+    println!("row provenance mapping cases passed");
+    Ok(())
+}

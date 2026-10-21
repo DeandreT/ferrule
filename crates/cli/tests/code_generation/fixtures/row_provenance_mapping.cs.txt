@@ -1,0 +1,32 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static void Require(bool ok) {if(!ok) throw new Exception("row provenance mapping assertion");}
+static FerruleInstance Field(FerruleGroup group,string name)=>group.Fields.Single(field=>field.Name==name).Value;
+var documents=new[]{new FerruleSourceDocumentOrigin("same.csv","resolved/same.csv"),new FerruleSourceDocumentOrigin("same.csv","resolved/same.csv")};
+var rows=new List<FerruleInstance>();
+foreach(var document in documents)
+    foreach(var (value,index) in new[]{"A","B","A"}.Select((value,index)=>(value,index)))
+        rows.Add(new FerruleGroup([new FerruleField("Value",new FerruleScalar(FerruleValue.FromString(value)))]).WithSourceOrigin(document.Row((ulong)index+1)));
+rows.Add(new FerruleGroup([new FerruleField("Value",new FerruleScalar(FerruleValue.FromString("A")))]));
+var input=new FerruleGroup([new FerruleField("Rows",new FerruleRepeated(rows))]);
+var output=(FerruleGroup)GeneratedMapping.Execute(input);
+var schema=File.ReadAllText("target.schema");var expected=File.ReadAllText("expected.json");
+Require(FerruleJson.SerializeEmbeddedCompact(schema,output)==expected);
+Require(FerruleJson.SerializeEmbeddedCompactBytes(schema,output).SequenceEqual(System.Text.Encoding.UTF8.GetBytes(expected)));
+var groups=((FerruleRepeated)Field(output,"Groups")).Items;
+Require(groups.Count==2 && output.SourceOrigin is null);
+var expectedOrigins=new (int Owner,ulong Position)?[][] {
+    [(0,1),(0,3),(1,1),(1,3),null], [(0,2),(1,2)]
+};
+for(int index=0;index<groups.Count;index++) {
+    var group=(FerruleGroup)groups[index];Require(group.SourceOrigin is null);
+    var members=((FerruleRepeated)Field(group,"Member")).Items;Require(members.Count==expectedOrigins[index].Length);
+    for(int row=0;row<members.Count;row++) {
+        var member=(FerruleGroup)members[row];var origin=member.SourceOrigin;
+        if(expectedOrigins[index][row] is { } wanted) {
+            Require(origin is not null && origin.Document.SameDocument(documents[wanted.Owner]) && origin.Position==wanted.Position);
+        } else Require(origin is null);
+    }
+}
+Console.WriteLine("row provenance mapping cases passed");
