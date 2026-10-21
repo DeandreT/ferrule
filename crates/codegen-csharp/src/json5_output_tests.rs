@@ -57,7 +57,7 @@ fn json5_opt_in_preserves_ordinary_artifacts_and_all77_sources() {
     let after = after.unwrap();
     assert_eq!(before, after);
     assert_eq!(optional, repeated);
-    assert_eq!(runtime::SOURCES.len(), 86);
+    assert_eq!(runtime::SOURCES.len(), 87);
     assert_eq!(
         optional.files().len(),
         before.files().len() + runtime::JSON5_SOURCES.len() + 1

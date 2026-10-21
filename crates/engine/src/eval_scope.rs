@@ -2572,7 +2572,25 @@ impl ItemEvaluator<'_> {
             );
         }
         if let ScopeConstruction::XmlMixedContent { elements } = &scope.construction {
-            attach_xml_mixed_content(&mut fields, context.last().copied(), elements);
+            // An owned selector attaches only its own exact current item.
+            let source = match scope.source_selector() {
+                Some(mapping::SourceSelectorRef::Owned(source)) => {
+                    let state = program.owned_context.ok_or_else(|| {
+                        EngineError::UnsupportedSourceIteration {
+                            scope: trace_scope.source_scope.clone(),
+                        }
+                    })?;
+                    crate::owned_xml_mixed_content::owned_construction_item(state, source).map_err(
+                        |source| EngineError::OwnedSourceAccess {
+                            node: None,
+                            scope: Some(Box::new(trace_scope.source_scope.clone())),
+                            source,
+                        },
+                    )?
+                }
+                _ => context.last().copied(),
+            };
+            attach_xml_mixed_content(&mut fields, source, elements);
         }
         Ok(Some(Instance::Group((fields).into())))
     }

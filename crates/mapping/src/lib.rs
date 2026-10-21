@@ -43,6 +43,7 @@ mod tabular;
 mod wsdl;
 mod xbrl;
 mod xlsx_output;
+mod xml_mixed_content_owned;
 mod xml_serialize_owned;
 
 pub use adjacency::AdjacencyTreePlan;
@@ -143,6 +144,9 @@ pub use xbrl::{
 };
 pub use xlsx_output::{
     XlsxCellKind, XlsxHierarchicalLayout, XlsxOutputColumn, XlsxOutputRange, XlsxRangeStart,
+};
+pub use xml_mixed_content_owned::{
+    OwnedXmlMixedContent, OwnedXmlMixedContentContext, OwnedXmlMixedContentReplacement,
 };
 pub use xml_serialize_owned::OwnedXmlSerialize;
 

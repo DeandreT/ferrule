@@ -69,8 +69,16 @@ pub(super) fn write_target_outputs(
     Ok(staged.into_iter().map(StagedTarget::into_result).collect())
 }
 
+impl OutputDestination {
+    pub(crate) fn path(&self) -> &Path {
+        match self {
+            Self::Static(path) | Self::DynamicBase(path) => path,
+        }
+    }
+}
+
 pub(super) fn reject_protected_static_targets(
-    targets: &[super::PlannedProjectTarget<'_>],
+    targets: &[crate::file_run::PlannedProjectTarget<'_>],
     protected_output_paths: &[&Path],
 ) -> anyhow::Result<()> {
     let protected = protected_output_paths

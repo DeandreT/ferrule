@@ -3,6 +3,7 @@ use format_json::JsonFormatError;
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use std::error::Error;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 const NONFINITE: [&str; 8] = [
@@ -96,12 +97,14 @@ struct Originals {
 }
 impl Originals {
     fn new(label: &str) -> TestResult<Self> {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)?
             .as_nanos();
         let root = std::env::temp_dir().join(format!(
-            "ferrule-json5-native130-{label}-{}-{nonce}",
-            std::process::id()
+            "ferrule-json5-native130-{label}-{}-{nonce}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root)?;
         println!("retained native JSON5 originals: {}", root.display());

@@ -917,6 +917,9 @@ pub enum Expression {
     OwnedJoinField(mapping::OwnedJoinField),
     /// Raw source position of one exact owned join tuple member.
     OwnedJoinSourcePosition(mapping::OwnedJoinSourcePosition),
+    /// Atomizes one mixed-content group read from exactly its declared owner;
+    /// each replacement runs in the parent or one owned occurrence context.
+    OwnedXmlMixedContent(mapping::OwnedXmlMixedContent),
     SourceField {
         frame: Option<Vec<String>>,
         path: Vec<String>,

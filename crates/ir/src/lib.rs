@@ -54,23 +54,24 @@ pub use source_origin::{
 };
 
 pub use schema::{
-    IntegerRange, ItemCountRange, JsonAllowedValue, JsonAllowedValues, JsonAllowedValuesError,
-    JsonContainsConstraint, JsonContainsConstraints, JsonContainsPredicate,
+    EffectiveCardinality, EffectiveNullability, EffectivePresence, EffectiveSchemaView,
+    EffectiveViewError, IntegerRange, ItemCountRange, JsonAllowedValue, JsonAllowedValues,
+    JsonAllowedValuesError, JsonContainsConstraint, JsonContainsConstraints, JsonContainsPredicate,
     JsonDependentSchemaConstraint, JsonDependentSchemaConstraints, JsonFormatAnnotations,
     JsonFormatAnnotationsError, JsonMultipleOf, JsonMultipleOfConstraints,
-    JsonMultipleOfConstraintsError, JsonPatternConstraints, JsonPatternConstraintsError,
-    JsonPatternPropertyNames, JsonPropertyDependencies, JsonPropertyDependenciesError,
-    JsonPropertyNameConstraints, JsonPropertyNameSet, JsonPropertyNameSetError,
-    JsonSchemaPredicate, MAX_DISTINCT_JSON_PATTERNS, MAX_JSON_ALLOWED_VALUE_STRING_BYTES,
-    MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES, MAX_JSON_ALLOWED_VALUES,
-    MAX_JSON_CONTAINS_CONSTRAINTS, MAX_JSON_DEPENDENT_SCHEMA_CONSTRAINTS,
+    JsonMultipleOfConstraintsError, JsonNullability, JsonPatternConstraints,
+    JsonPatternConstraintsError, JsonPatternPropertyNames, JsonPropertyDependencies,
+    JsonPropertyDependenciesError, JsonPropertyNameConstraints, JsonPropertyNameSet,
+    JsonPropertyNameSetError, JsonSchemaPredicate, MAX_DISTINCT_JSON_PATTERNS,
+    MAX_JSON_ALLOWED_VALUE_STRING_BYTES, MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES,
+    MAX_JSON_ALLOWED_VALUES, MAX_JSON_CONTAINS_CONSTRAINTS, MAX_JSON_DEPENDENT_SCHEMA_CONSTRAINTS,
     MAX_JSON_FORMAT_ANNOTATION_BYTES, MAX_JSON_FORMAT_ANNOTATION_TOTAL_BYTES,
     MAX_JSON_FORMAT_ANNOTATIONS, MAX_JSON_MULTIPLE_OF_ALTERNATIVES, MAX_JSON_MULTIPLE_OF_TERMS,
     MAX_JSON_PATTERN_ALTERNATIVES, MAX_JSON_PATTERN_INSTRUCTIONS, MAX_JSON_PATTERN_SOURCE_BYTES,
     MAX_JSON_PATTERN_TERMS, MAX_JSON_PROPERTY_DEPENDENCY_EDGES,
     MAX_JSON_PROPERTY_DEPENDENCY_NAME_BYTES, MAX_JSON_PROPERTY_DEPENDENCY_TRIGGERS,
     MAX_JSON_PROPERTY_NAME_BYTES, MAX_JSON_PROPERTY_NAME_TOTAL_BYTES, MAX_JSON_PROPERTY_NAMES,
-    NumberBound, NumberRange, NumericRange, PropertyCountRange, StringLengthRange,
+    NumberBound, NumberRange, NumericRange, PropertyCountRange, RepeatedItems, StringLengthRange,
 };
 
 /// Instance-field name used for an XML element's simple text content.

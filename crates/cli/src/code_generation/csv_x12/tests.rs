@@ -1,6 +1,7 @@
 use super::*;
 use std::error::Error;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn project() -> Result<Project, Box<dyn Error>> {
     Ok(serde_json::from_str(include_str!(
@@ -9,12 +10,14 @@ fn project() -> Result<Project, Box<dyn Error>> {
 }
 
 fn evidence(label: &str) -> Result<PathBuf, Box<dyn Error>> {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let path = std::env::temp_dir().join(format!(
-        "ferrule-csv-x12-cli-{label}-{}-{}",
+        "ferrule-csv-x12-cli-{label}-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)?
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&path)?;
     Ok(path)
