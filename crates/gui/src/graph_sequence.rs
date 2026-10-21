@@ -1,20 +1,22 @@
 use mapping::{Node, NodeId, SequenceExpr};
 
 pub(super) const READ_ONLY_INPUTS_MESSAGE: &str =
-    "Filter/map and owned recursive-collect inputs cannot be edited yet.";
+    "Filter/map, owned recursive-collect and owned dynamic-field inputs cannot be edited yet.";
 
-/// Filter/map compositions and owned producers are preserved read-only.
+/// Filter/map compositions, owned producers and owned dynamic reads are
+/// preserved read-only.
 pub(super) fn inputs_are_read_only(node: &Node) -> bool {
-    matches!(
-        node,
-        Node::SequenceExists { sequence, .. }
-            | Node::SequenceItemAt { sequence, .. }
-            | Node::SequenceAggregate { sequence, .. }
-            if matches!(
-                sequence,
-                SequenceExpr::FilterMapV1(_) | SequenceExpr::OwnedRecursiveCollect(_)
-            )
-    )
+    matches!(node, Node::OwnedDynamicSourceField(_))
+        || matches!(
+            node,
+            Node::SequenceExists { sequence, .. }
+                | Node::SequenceItemAt { sequence, .. }
+                | Node::SequenceAggregate { sequence, .. }
+                if matches!(
+                    sequence,
+                    SequenceExpr::FilterMapV1(_) | SequenceExpr::OwnedRecursiveCollect(_)
+                )
+        )
 }
 
 pub(super) fn input_at(sequence: &SequenceExpr, index: usize) -> Option<NodeId> {
@@ -171,6 +173,24 @@ mod tests {
                 item: 3,
             },
             index: 4,
+        }));
+    }
+
+    #[test]
+    fn saved_owned_dynamic_reads_are_preserved_read_only() {
+        let read = Node::OwnedDynamicSourceField(mapping::OwnedDynamicSourceField {
+            object: mapping::OwnedSourceRef {
+                owner: mapping::SourceOwner::Primary,
+                path: vec!["Props".into()],
+            },
+            frame: None,
+            key: 4,
+        });
+        assert!(inputs_are_read_only(&read));
+        assert!(!inputs_are_read_only(&Node::DynamicSourceField {
+            object: vec!["Props".into()],
+            frame: None,
+            key: 4,
         }));
     }
 }

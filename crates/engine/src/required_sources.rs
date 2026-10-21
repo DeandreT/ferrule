@@ -225,6 +225,7 @@ impl<'a> Analysis<'a> {
             }
             Node::OwnedSourceField(field) => self.inspect_owner(&field.source.owner),
             Node::OwnedPosition(position) => self.inspect_owner(&position.owner),
+            Node::OwnedDynamicSourceField(field) => self.inspect_owner(&field.object.owner),
             Node::OwnedLookup(lookup) => self.inspect_owner(&lookup.collection.owner),
             Node::OwnedCollectionFind(find) => self.inspect_owner(&find.collection.owner),
             Node::SourceDocumentPath

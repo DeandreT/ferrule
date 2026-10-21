@@ -457,10 +457,6 @@ fn basic_gate_preserves_structural_priority_and_stored_context_validation() {
     let mut p = program(false);
     p.expressions
         .push(node(99, field(SourceOwner::Primary, &["Value"], None)));
-    let route = SourceScopeLocation::root(SourceScopeTarget::Named {
-        index: 0,
-        name: "OwnedScalar".into(),
-    });
     p.extra_targets.push(NamedTargetProgram {
         name: "OwnedScalar".into(),
         target: SchemaNode::scalar("OwnedScalar", ScalarType::String),
@@ -477,21 +473,26 @@ fn basic_gate_preserves_structural_priority_and_stored_context_validation() {
         },
     });
     let actual = observed("R05 named scalar owned construction", &p);
+    assert_eq!(actual, Ok(()));
+    // The closed Stage-A gate still refuses the admitted read as Basic-only.
     assert_eq!(
-        actual,
+        crate::validate_owned_emission(&p),
         capability(
             Location::Expression {
                 namespace: Namespace::Main,
                 node: 99,
-                scope: Some(route.clone())
+                scope: None
             },
             Some(Request::Field {
                 owner: Owner::Primary,
                 path: path(&["Value"]),
                 frame: None
             }),
-            Reason::SpecialConstruction,
-            Origin::Scope { scope: route }
+            Reason::UnsupportedBasicContext,
+            Origin::RetainedExpression {
+                namespace: Namespace::Main,
+                node: 99
+            }
         )
     );
 }
@@ -2267,13 +2268,16 @@ fn basic_sort_profile_scopes_scalar_permission_and_preserves_inherited_closure()
             Vec::new(),
             IterationOutput::Repeated,
         ));
-        let expected =
-            filter_scope_error(Some(Owner::Primary), primary(), Reason::SpecialConstruction);
+        // Scalar construction is common Basic; only the control decides here.
         assert_eq!(
-            sort_observed("S667-06 unsorted Scalar marker unchanged", &p),
-            expected
+            sort_observed("S667-06 unsorted filtered Scalar is Basic", &p),
+            Ok(())
         );
-        assert_eq!(crate::validate_basic_owned_filter_emission(&p), expected);
+        assert_eq!(crate::validate_basic_owned_filter_emission(&p), Ok(()));
+        assert_eq!(
+            validate_basic_owned_emission(&p),
+            filter_scope_error(Some(Owner::Primary), primary(), Reason::ScopeControl)
+        );
     }
     for generated in [false, true] {
         let mut p = sort_program(
@@ -3010,16 +3014,12 @@ mod window_profile {
                     Vec::new(),
                     IterationOutput::Repeated,
                 ));
-                let old = filter_scope_error(
-                    Some(Owner::Primary),
-                    primary(),
-                    Reason::SpecialConstruction,
-                );
                 assert_eq!(
-                    windows_observed("unsorted unwindowed Scalar own marker unchanged", &p),
-                    old
+                    windows_observed("unsorted unwindowed Scalar own marker is Basic", &p),
+                    Ok(())
                 );
-                assert_eq!(crate::validate_basic_owned_sort_emission(&p), old);
+                assert_eq!(crate::validate_basic_owned_sort_emission(&p), Ok(()));
+                assert_eq!(validate_basic_owned_emission(&p), Ok(()));
             }
         }
         for generated in [false, true] {

@@ -61,13 +61,13 @@ pub use lower::lower_with_basic_owned_adjacency_tree;
 pub use lower::lower_with_basic_owned_path_hierarchy;
 pub use lower::lower_with_basic_owned_recursive_filter;
 pub use lower::{
-    lower, lower_with_basic_owned_failure_sources, lower_with_basic_owned_filters,
-    lower_with_basic_owned_group_adjacent_by, lower_with_basic_owned_group_by,
-    lower_with_basic_owned_group_ending_with, lower_with_basic_owned_group_into_blocks,
-    lower_with_basic_owned_group_starting_with, lower_with_basic_owned_lookup_find,
-    lower_with_basic_owned_recursive_collect, lower_with_basic_owned_row_failures,
-    lower_with_basic_owned_sequence_item_at, lower_with_basic_owned_sort,
-    lower_with_basic_owned_windows,
+    lower, lower_with_basic_owned_dynamic_field, lower_with_basic_owned_failure_sources,
+    lower_with_basic_owned_filters, lower_with_basic_owned_group_adjacent_by,
+    lower_with_basic_owned_group_by, lower_with_basic_owned_group_ending_with,
+    lower_with_basic_owned_group_into_blocks, lower_with_basic_owned_group_starting_with,
+    lower_with_basic_owned_lookup_find, lower_with_basic_owned_recursive_collect,
+    lower_with_basic_owned_row_failures, lower_with_basic_owned_sequence_item_at,
+    lower_with_basic_owned_sort, lower_with_basic_owned_windows,
 };
 pub use model::{
     AggregateFunction, AggregateValue, Binding, DelimitedTextField, DelimitedTextFieldError,
@@ -88,6 +88,7 @@ pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_recu
 pub use owned_admission::{
     NamedInputAdmission, NamedInputAdmissionPlan, NamedInputAvailability, NamedInputCatalogue,
     NamedTargetInputCatalogue, legacy_named_input_admission_plan,
+    legacy_named_input_admission_plan_with_basic_owned_dynamic_field,
     legacy_named_input_admission_plan_with_basic_owned_failure_sources,
     legacy_named_input_admission_plan_with_basic_owned_filters,
     legacy_named_input_admission_plan_with_basic_owned_group_adjacent_by,
@@ -115,6 +116,7 @@ pub use validate::{
     OwnedSourceStructureReason, ProgramValidationError, RecursiveSequencePathRole,
     SequenceExpressionRole, SequenceOwner, owned_expression_emission_error,
     owned_sequence_emission_error, validate_owned_emission, validate_program,
+    validate_program_with_basic_owned_dynamic_field,
     validate_program_with_basic_owned_failure_sources, validate_program_with_basic_owned_filters,
     validate_program_with_basic_owned_group_adjacent_by,
     validate_program_with_basic_owned_group_by,
@@ -144,10 +146,10 @@ pub use x12_boundary::{
 };
 
 pub use validate::{
-    is_basic_owned_primary_row_failure, validate_basic_owned_emission,
-    validate_basic_owned_failure_source_emission, validate_basic_owned_filter_emission,
-    validate_basic_owned_group_adjacent_by_emission, validate_basic_owned_group_by_emission,
-    validate_basic_owned_group_ending_with_emission,
+    is_basic_owned_primary_row_failure, validate_basic_owned_dynamic_field_emission,
+    validate_basic_owned_emission, validate_basic_owned_failure_source_emission,
+    validate_basic_owned_filter_emission, validate_basic_owned_group_adjacent_by_emission,
+    validate_basic_owned_group_by_emission, validate_basic_owned_group_ending_with_emission,
     validate_basic_owned_group_into_blocks_emission,
     validate_basic_owned_group_starting_with_emission, validate_basic_owned_lookup_find_emission,
     validate_basic_owned_recursive_collect_emission, validate_basic_owned_row_failure_emission,

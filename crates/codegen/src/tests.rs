@@ -25,6 +25,7 @@ mod grouping;
 mod joins;
 mod owned_adjacency_tree;
 mod owned_admission;
+mod owned_dynamic_field;
 mod owned_failure_sources;
 mod owned_group_adjacent_by;
 mod owned_group_by;
