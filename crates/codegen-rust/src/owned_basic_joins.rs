@@ -1,8 +1,8 @@
-//! Owned inner-join scopes. The pipeline keeps the legacy join phases: a filter
-//! before sorting and every sort key see original tuple positions, sorting
-//! renumbers them, a later filter sees sorted positions, window bounds use the
-//! receiving parent, and output sees compacted positions. Raw member
-//! positions never change.
+//! Owned inner-join scopes and joined aggregates. The scope pipeline keeps the
+//! legacy join phases: a filter before sorting and every sort key see original
+//! tuple positions, sorting renumbers them, a later filter sees sorted
+//! positions, window bounds use the receiving parent, and output sees
+//! compacted positions. Raw member positions never change.
 
 use super::*;
 
@@ -44,6 +44,47 @@ fn stages_literal(plan: &mapping::OwnedJoinPlan) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// Every tuple is joined in the receiving context before any tuple value. A
+/// missing expression contributes Null per tuple; the argument runs once in
+/// the parent after every tuple value, and the shared reducer keeps the legacy
+/// empty/null/type policy.
+pub(crate) fn render_owned_join_aggregate(
+    id: NodeId,
+    aggregate: &mapping::OwnedJoinAggregate,
+    call: impl Fn(NodeId, &str) -> String,
+) -> String {
+    let plan = &aggregate.plan;
+    let first = plan
+        .sources()
+        .next()
+        .expect("owned plans have a first source");
+    let mut body = format!(
+        "{{\n        let tuples = context.owned_inner_join({}, {}, &[{}]).map_err(|error| error.with_owned_source_node({id}))?;\n",
+        aggregate.join.get(),
+        source_literal(first),
+        stages_literal(plan)
+    );
+    match aggregate.expression {
+        Some(expression) => body.push_str(&format!(
+            "        let mut values = Vec::with_capacity(tuples.len());\n        for tuple in tuples.iter() {{\n            values.push({}?);\n        }}\n",
+            call(expression, "tuple")
+        )),
+        None => body.push_str("        let values = vec![Value::Null; tuples.len()];\n"),
+    }
+    match aggregate.arg {
+        Some(arg) => body.push_str(&format!(
+            "        let arg = Some({}?);\n",
+            call(arg, "context")
+        )),
+        None => body.push_str("        let arg = None;\n"),
+    }
+    body.push_str(&format!(
+        "        codegen_runtime::aggregate(codegen_runtime::AggregateFunction::{}, &values, arg)\n    }}",
+        aggregate_function_name(aggregate.function.into())
+    ));
+    body
 }
 
 fn retain(predicate: NodeId) -> String {

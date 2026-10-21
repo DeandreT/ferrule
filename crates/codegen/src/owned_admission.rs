@@ -761,6 +761,13 @@ impl<'a> Analysis<'a> {
                     self.optional(namespace, item, aggregate.expression());
                     self.optional(namespace, context, aggregate.arg);
                 }
+                // Owned join sources are demand-driven owned walks; the
+                // expression reads each tuple and the argument the parent.
+                Expression::OwnedJoinAggregate(aggregate) => {
+                    let tuple = self.child(context, Step::Join(aggregate.join.get()));
+                    self.optional(namespace, tuple, aggregate.expression);
+                    self.optional(namespace, context, aggregate.arg);
+                }
                 Expression::SourceField { path, frame }
                 | Expression::DynamicSourceField {
                     object: path,

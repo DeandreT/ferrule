@@ -99,10 +99,10 @@ pub use model::{
     FailureIteration, FailureRule, FailureSelection, FormatOptions, FunctionId, FunctionParameter,
     FunctionParameterId, Graph, IterationOutput, MAX_RUNTIME_PARAMETER_NAME_BYTES, NamedSource,
     NamedTarget, Node, NodeId, OwnedAggregate, OwnedAggregateValue, OwnedCollectionFind,
-    OwnedJoinField, OwnedJoinSourcePosition, OwnedLookup, OwnedPosition, OwnedRowDocumentPath,
-    OwnedSourceField, Project, RuntimeValue, Scope, ScopeConstruction, SequenceExpr,
-    SequenceWindow, SortFilterOrder, SortKey, UserFunction, XlsxColumn, XlsxCompositeLayout,
-    XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout, XlsxRow, XlsxTableRegion,
+    OwnedJoinAggregate, OwnedJoinField, OwnedJoinSourcePosition, OwnedLookup, OwnedPosition,
+    OwnedRowDocumentPath, OwnedSourceField, Project, RuntimeValue, Scope, ScopeConstruction,
+    SequenceExpr, SequenceWindow, SortFilterOrder, SortKey, UserFunction, XlsxColumn,
+    XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout, XlsxRow, XlsxTableRegion,
     XlsxWorksheetSetLayout, XmlMixedContentElement, XmlMixedContentReplacement,
 };
 pub use owned_join::{
@@ -175,6 +175,9 @@ mod owned_failure_iteration_tests;
 #[cfg(test)]
 #[path = "tests/owned_collection_aggregates.rs"]
 mod owned_collection_aggregates_tests;
+#[cfg(test)]
+#[path = "tests/owned_join_aggregate.rs"]
+mod owned_join_aggregate_tests;
 #[cfg(test)]
 #[path = "tests/owned_join_tuple.rs"]
 mod owned_join_tuple_tests;
