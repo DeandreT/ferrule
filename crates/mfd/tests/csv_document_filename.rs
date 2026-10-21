@@ -202,28 +202,35 @@ fn source_dependent_filename_stays_retained_but_is_not_admitted() -> Result<(), 
 }
 
 #[test]
-fn empty_namespace_header_is_metadata_but_other_header_content_is_not() -> Result<(), Box<dyn Error>>
-{
+fn namespace_headers_require_supported_protocol_identities() -> Result<(), Box<dyn Error>> {
     let source_root = "<root><entry name=\"FileInstance\" ns=\"1\"";
     let original = design(LITERAL, 1);
     assert_eq!(original.matches(source_root).count(), 1);
     let fixture = Fixture::new()?;
-    let with_header = original.replace(
-        source_root,
-        "<root><header><namespaces/></header><entry name=\"FileInstance\" ns=\"1\"",
-    );
-    let path = fixture.write(&with_header)?;
-    let imported = mfd::import_csv_document(&path)?;
-    compare_legacy(&path, &imported)?;
-    assert_eq!(
-        imported.document.global_filename(),
-        Ok(GlobalFilename::Literal(" ./雪 & β/*.csv "))
-    );
+    let protocol = "<header><namespaces><namespace/><namespace uid=\"http://www.altova.com/mapforce\"/></namespaces></header>";
+    for (header, namespace) in [
+        ("<header><namespaces/></header>", ""),
+        (protocol, " ns=\"1\""),
+        (protocol, " ns=\"0\""),
+    ] {
+        let with_header = original.replace(
+            source_root,
+            &format!("<root>{header}<entry name=\"FileInstance\"{namespace}"),
+        );
+        let path = fixture.write(&with_header)?;
+        let imported = mfd::import_csv_document(&path)?;
+        compare_legacy(&path, &imported)?;
+        assert_eq!(
+            imported.document.global_filename(),
+            Ok(GlobalFilename::Literal(" ./雪 & β/*.csv "))
+        );
+    }
     for header in [
         "<header/>",
         "<header><namespaces name=\"x\"/></header>",
         "<header><namespaces><namespace/></namespaces></header>",
         "<header><namespaces/>unexpected</header>",
+        "<header><namespaces><namespace/><namespace uid=\"urn:payload\"/></namespaces></header>",
     ] {
         let xml = original.replace(
             source_root,
@@ -232,6 +239,13 @@ fn empty_namespace_header_is_metadata_but_other_header_content_is_not() -> Resul
         let path = fixture.write(&xml)?;
         assert!(mfd::import_csv_document(&path).is_err(), "{header}");
         assert_eq!(std::fs::read_to_string(path)?, xml);
+    }
+    for prefix in [
+        format!("<root>{protocol}<entry name=\"FileInstance\" ns=\"9\""),
+        format!("<root>{protocol}{protocol}<entry name=\"FileInstance\" ns=\"1\""),
+    ] {
+        let path = fixture.write(&original.replace(source_root, &prefix))?;
+        assert!(mfd::import_csv_document(&path).is_err());
     }
     Ok(())
 }

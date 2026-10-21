@@ -112,10 +112,18 @@ pub(super) fn retain_filename(
     let [root] = roots.as_slice() else {
         return Err(unsupported("requires one root declaration"));
     };
+    if root
+        .children()
+        .filter(|node| node.has_tag_name("header"))
+        .count()
+        > 1
+    {
+        return Err(unsupported("requires at most one namespace header"));
+    }
     let entries = root
         .children()
         .filter(roxmltree::Node::is_element)
-        .filter(|node| !empty_namespace_header(*node))
+        .filter(|node| !protocol_namespace_header(*node))
         .collect::<Vec<_>>();
     let [wrapper] = entries.as_slice() else {
         return Err(unsupported("requires one FileInstance wrapper"));
@@ -141,6 +149,13 @@ pub(super) fn retain_filename(
     {
         return Err(unsupported("unsupported FileInstance wrapper content"));
     }
+    if root.children().any(|node| node.has_tag_name("header"))
+        && !super::schema::is_xml_document_wrapper(&contents[0], *root)
+    {
+        return Err(unsupported(
+            "FileInstance namespace is not a protocol namespace",
+        ));
+    }
     let input = wrapper
         .attribute("inpkey")
         .and_then(|key| key.parse::<u32>().ok())
@@ -155,7 +170,7 @@ pub(super) fn retain_filename(
         .ok_or_else(|| unsupported("filename feed cannot be retained"))
 }
 
-fn empty_namespace_header(node: roxmltree::Node<'_, '_>) -> bool {
+fn protocol_namespace_header(node: roxmltree::Node<'_, '_>) -> bool {
     if !node.has_tag_name("header") || node.attributes().len() != 0 {
         return false;
     }
@@ -166,11 +181,25 @@ fn empty_namespace_header(node: roxmltree::Node<'_, '_>) -> bool {
     let [namespaces] = children.as_slice() else {
         return false;
     };
-    namespaces.has_tag_name("namespaces")
-        && namespaces.attributes().len() == 0
+    if !namespaces.has_tag_name("namespaces") || namespaces.attributes().len() != 0 {
+        return false;
+    }
+    let declarations = namespaces
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect::<Vec<_>>();
+    let supported = declarations.is_empty()
+        || matches!(declarations.as_slice(), [empty, protocol]
+        if empty.has_tag_name("namespace") && empty.attributes().len() == 0
+            && protocol.has_tag_name("namespace") && protocol.attributes().len() == 1
+            && protocol.attribute("uid") == Some("http://www.altova.com/mapforce")
+            && [empty, protocol].into_iter().all(|entry| entry.children().all(|child| child.is_text()
+                && child.text().is_none_or(|text| text.trim().is_empty()))));
+    supported
         && namespaces
             .children()
-            .all(|child| child.is_text() && child.text().is_none_or(|text| text.trim().is_empty()))
+            .filter(|child| child.is_text())
+            .all(|child| child.text().is_none_or(|text| text.trim().is_empty()))
         && node
             .children()
             .filter(|child| child.is_text())
