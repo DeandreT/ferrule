@@ -58,6 +58,8 @@ mod csv_document_adapters;
 mod csv_json_adapters;
 #[path = "code_generation/csv_output.rs"]
 mod csv_output;
+#[path = "code_generation/csv_row_provenance.rs"]
+mod csv_row_provenance;
 #[path = "code_generation/csv_x12_adapters.rs"]
 mod csv_x12_adapters;
 #[path = "code_generation/disconnected_inputs.rs"]
