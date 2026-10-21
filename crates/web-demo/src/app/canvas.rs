@@ -112,6 +112,7 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
         Node::OwnedLookup(lookup) => vec![Some(lookup.matches)],
         Node::OwnedCollectionFind(find) => vec![Some(find.predicate), Some(find.value)],
         Node::OwnedAggregate(aggregate) => aggregate.inputs().into_iter().map(Some).collect(),
+        Node::OwnedJoinAggregate(aggregate) => aggregate.inputs().into_iter().map(Some).collect(),
         Node::OwnedJoinField(_) | Node::OwnedJoinSourcePosition(_) => Vec::new(),
         Node::DynamicSourceField { key, .. } => vec![Some(*key)],
         Node::OwnedDynamicSourceField(field) => vec![Some(field.key)],
@@ -213,6 +214,11 @@ fn node_title(node: &Node) -> String {
         Node::OwnedXmlMixedContent(mixed) => format!(
             "owned XML mixed content {:?} {:?}; frame {:?}; unavailable",
             mixed.source.owner, mixed.source.path, mixed.frame
+        ),
+        Node::OwnedJoinAggregate(aggregate) => format!(
+            "owned join {} aggregate {:?}; read-only",
+            aggregate.join.get(),
+            aggregate.function
         ),
         Node::SourceField { path, .. } => format!("field · {}", path.join("/")),
         Node::SourceDocumentPath => "source document path".to_string(),

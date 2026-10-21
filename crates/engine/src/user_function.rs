@@ -218,7 +218,8 @@ fn evaluate_body_node_inner(
         | Node::OwnedAggregate(_)
         | Node::OwnedJoinField(_)
         | Node::OwnedJoinSourcePosition(_)
-        | Node::OwnedXmlMixedContent(_) => Err(EngineError::UnsupportedSourceOwnership {
+        | Node::OwnedXmlMixedContent(_)
+        | Node::OwnedJoinAggregate(_) => Err(EngineError::UnsupportedSourceOwnership {
             node: node_id,
             function: Some(function_id),
             kind: node.owned_source_kind().expect("owned node kind"),
