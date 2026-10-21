@@ -564,6 +564,26 @@ fn show_header_contents(ui: &mut Ui, header: &Header, width: f32) -> Response {
     }
 }
 
+/// Lays out a header row exactly `width` wide, starting at the cursor.
+/// egui-snarl has already placed its collapse button and drag space on the
+/// row; bounding the row itself with set_max_width would move its cursor
+/// back over them, so a fresh child is bounded instead.
+fn header_row<R>(ui: &mut Ui, width: f32, add_contents: impl FnOnce(&mut Ui) -> R) -> R {
+    let min = ui.cursor().min;
+    let row = egui::Rect::from_min_max(min, egui::pos2(min.x + width, ui.max_rect().bottom()));
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .max_rect(row)
+            .layout(egui::Layout::left_to_right(egui::Align::Min)),
+        |ui| {
+            ui.set_min_width(width);
+            ui.set_max_width(width);
+            ui.horizontal(add_contents).inner
+        },
+    )
+    .inner
+}
+
 pub(super) fn show_header(
     ui: &mut Ui,
     header: Header,
@@ -571,11 +591,9 @@ pub(super) fn show_header(
     manual_width: Option<f32>,
 ) -> Response {
     let preferred = resolved_header_width(ui, &header, manual_width);
-    ui.set_min_width(preferred);
-    ui.set_max_width(preferred);
-    let response = ui
-        .horizontal(|ui| show_header_contents(ui, &header, preferred))
-        .inner;
+    let response = header_row(ui, preferred, |ui| {
+        show_header_contents(ui, &header, preferred)
+    });
     let accessible_label = if header.accessible_label.is_empty() {
         full_title
     } else {
@@ -604,9 +622,7 @@ pub(super) fn show_header_with_edit(
         .filter(|width| width.is_finite())
         .unwrap_or_else(|| header_size(ui, &header).x + edit_space)
         .clamp(MIN_HEADER_WIDTH + edit_space, MAX_MANUAL_HEADER_WIDTH);
-    ui.set_min_width(preferred);
-    ui.set_max_width(preferred);
-    ui.horizontal(|ui| {
+    header_row(ui, preferred, |ui| {
         let response = show_header_contents(ui, &header, preferred - edit_space);
         response.widget_info(|| {
             WidgetInfo::labeled(Role::Label, ui.is_enabled(), &header.accessible_label)
@@ -638,7 +654,6 @@ pub(super) fn show_header_with_edit(
             .inner;
         (response, edit)
     })
-    .inner
 }
 
 /// Header-aligned native pins are suitable for these individual cards only.
