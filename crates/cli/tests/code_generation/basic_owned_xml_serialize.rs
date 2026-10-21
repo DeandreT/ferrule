@@ -43,8 +43,8 @@ mod search_projects;
 #[path = "../../../../conformance/basic-owned-dynamic-field/projects.rs"]
 mod dynamic_projects;
 
-const CASES: usize = 19;
-const CALLS: usize = 35;
+const CASES: usize = 21;
+const CALLS: usize = 40;
 
 fn corpus() -> TestResult<Json> {
     let corpus: Json = serde_json::from_str(include_str!(
