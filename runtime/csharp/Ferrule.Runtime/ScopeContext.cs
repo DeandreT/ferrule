@@ -1254,7 +1254,7 @@ public enum FerruleOwnedSourceLimitKind
     Roots, Frames, PathSegments, MetadataBytes, WalkContexts, MetadataSlots,
 }
 public enum FerruleOwnedSourceInstanceKind { Scalar, Group, Repeated, DocumentSet, MappedSequence }
-public enum FerruleOwnedSourceTraversalKind { CannotTraverse, ExpectedScalar }
+public enum FerruleOwnedSourceTraversalKind { CannotTraverse, ExpectedScalar, MissingInstance }
 
 public sealed class FerruleOwnedSourceIdentity
 {

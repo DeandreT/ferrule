@@ -67,6 +67,12 @@ pub enum OwnedSourceDiagnosticRequest {
         object: Vec<String>,
         frame: Option<Vec<String>>,
     },
+    /// A structured element read by an owned XML serializer.
+    XmlElement {
+        owner: OwnedSourceDiagnosticOwner,
+        path: Vec<String>,
+        frame: Option<Vec<String>>,
+    },
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnedSourceSchemaShape {

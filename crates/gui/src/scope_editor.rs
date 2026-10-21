@@ -964,6 +964,10 @@ fn node_label(node: &mapping::Node) -> String {
             "owned dynamic field {:?} {:?}; frame {:?} (read-only)",
             field.object.owner, field.object.path, field.frame
         ),
+        mapping::Node::OwnedXmlSerialize(serializer) => format!(
+            "owned XML serializer {:?} {:?}; frame {:?} (unavailable)",
+            serializer.source.owner, serializer.source.path, serializer.frame
+        ),
         mapping::Node::SourceField { path, .. } => format!("field {}", display_path(path)),
         mapping::Node::SourceDocumentPath => "source document path".to_string(),
         mapping::Node::SourceRootXmlTypeEquals { .. } => {

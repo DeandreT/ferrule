@@ -263,7 +263,14 @@ a nonempty child partition for every parent, plain concatenation wrappers, and
 exact provenance for every binding in a replaced placeholder. Each original
 binding must survive once in its assigned descendant subtree, and each retained
 binding must identify one original binding index. Identical cached expression
-nodes alone do not prove that separate original bindings survived. A placeholder
+nodes alone do not prove that separate original bindings survived. Each
+redistribution records which declared child occurrences it placed under each
+parent occurrence; an ancestor proof attributes a retained binding to the
+innermost recorded occurrence that holds it, so sibling clones bound to one
+shared expression keep distinct provenance. That attribution never adds an
+origin, and one occurrence that holds several original bindings remains
+refused. Each level is proved completely before its scopes or diagnostics
+change, and diagnostics keep child declaration order. A placeholder
 with unclaimed, missing, broadcast, ambiguous, or controlled content remains
 intact with a refusal diagnostic. A unique child entry may reuse its parent's
 marker lineage when its deeper declared target path establishes containment;
