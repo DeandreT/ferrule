@@ -542,6 +542,27 @@ pub fn emit_with_basic_owned_dynamic_field(
     .map_err(EmitError::from)
 }
 
+/// Emit SequenceAggregate over the four pure producers beside the
+/// SequenceExists profile. Each reached item copies the receiving paired view
+/// for its predicate and value; the reducer argument keeps the receiving view.
+pub fn emit_with_basic_owned_sequence_aggregate(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_sequence_aggregate(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_sequence_aggregate_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_sequence_aggregate_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.
 /// Flat row/schema and literal dialect eligibility are checked before artifacts
 /// exist. The ordinary mapper, JSON/XML adapters, and manifest remain intact.
@@ -1066,6 +1087,7 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
             .collect(),
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
+        | Expression::OwnedRowDocumentPath(_)
         | Expression::SourceField { .. }
         | Expression::SourceRootXmlTypeEquals { .. }
         | Expression::SourceRootField { .. }
@@ -1815,6 +1837,7 @@ fn render_expression_in_context_with_scalar_item_at(
             }
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
+            | Expression::OwnedRowDocumentPath(_)
             | Expression::OwnedDynamicSourceField(_)
             | Expression::OwnedLookup(_)
             | Expression::OwnedCollectionFind(_) => {
@@ -2302,9 +2325,70 @@ fn render_expression_in_context_with_scalar_item_at(
                 function,
                 sequence,
                 predicate,
-                expression,
+                expression: value,
+                arg,
+            } if scalar_item_at => {
+                // Producer arguments and the reducer argument use the receiving
+                // context. Each item copies that view with one appended lexical
+                // item frame for the predicate and value; Basic copies are
+                // admitted against the caller's policy.
+                let mut body = String::from("{\n");
+                if !scalar_sequence::render_values(sequence, "        ", &mut body, &|node| {
+                    call_expression(node, "context")
+                }) {
+                    return Err(codegen::owned_expression_emission_error(
+                        codegen::OwnedSourceNamespace::Main,
+                        id,
+                        expression,
+                    )
+                    .into());
+                }
+                let reached = if basic {
+                    "            let item_context = item_context?;\n"
+                } else {
+                    ""
+                };
+                body.push_str(&format!(
+                    "        let generated_items = GeneratedItems::new(sequence_values);\n        let mut aggregate_values = Vec::new();\n        for item_context in context.generated_item_contexts(&generated_items) {{\n{reached}"
+                ));
+                if let Some(predicate) = predicate {
+                    let predicate_call = call_expression(*predicate, "&item_context");
+                    body.push_str(&format!(
+                        "            let selected = {predicate_call}?;\n            if !require_bool({predicate}, selected)? {{\n                continue;\n            }}\n"
+                    ));
+                }
+                let value_call = call_expression(value.unwrap_or(sequence.item()), "&item_context");
+                body.push_str(&format!(
+                    "            aggregate_values.push({value_call}?);\n        }}\n"
+                ));
+                match arg {
+                    Some(arg) => body.push_str(&format!(
+                        "        let arg = Some({}?);\n",
+                        call_expression(*arg, "context")
+                    )),
+                    None => body.push_str("        let arg = None;\n"),
+                }
+                body.push_str(&format!(
+                    "        aggregate(AggregateFunction::{}, &aggregate_values, arg)\n    }}",
+                    aggregate_function_name(*function)
+                ));
+                body
+            }
+            Expression::SequenceAggregate {
+                function,
+                sequence,
+                predicate,
+                expression: value,
                 arg,
             } => {
+                if basic {
+                    return Err(codegen::owned_expression_emission_error(
+                        codegen::OwnedSourceNamespace::Main,
+                        id,
+                        expression,
+                    )
+                    .into());
+                }
                 let mut body = String::from("{\n");
                 render_generated_values(sequence, "        ", &mut body)?;
                 body.push_str(
@@ -2320,7 +2404,7 @@ fn render_expression_in_context_with_scalar_item_at(
                 }
                 body.push_str(&format!(
                 "            aggregate_values.push(expression_{}(&item_context)?);\n        }}\n",
-                expression.unwrap_or(sequence.item())
+                value.unwrap_or(sequence.item())
             ));
                 match arg {
                     Some(arg) => body.push_str(&format!(

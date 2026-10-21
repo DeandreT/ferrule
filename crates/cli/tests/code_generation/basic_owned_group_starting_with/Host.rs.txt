@@ -1,4 +1,4 @@
-use codegen_runtime::{BasicNamedSourceInput,ExecutionContext,Instance,InstanceKind,OwnedSourceError,
+use codegen_runtime::{AggregateFunction,BasicNamedSourceInput,ExecutionContext,Instance,InstanceKind,OwnedSourceError,
     OwnedSourceIdentity,OwnedSourceLimits,RuntimeError,SourcePathError,TargetSelection};
 use serde_json::{Value as Json,json};
 use std::{fs,io::Write as _,path::{Path,PathBuf}};
@@ -14,6 +14,10 @@ fn raw_inputs(source:&Instance,named:&[(String,Instance)])->Json {
     json!({"source":codec::raw_tree(source),"inputs":named.iter().map(|(name,value)|json!([name,codec::raw_tree(value)])).collect::<Vec<_>>()})
 }
 fn strings(recipe:&Json,key:&str)->Vec<String> {recipe[key].as_array().unwrap().iter().map(|s|s.as_str().unwrap().into()).collect()}
+fn aggregate_function(recipe:&Json)->AggregateFunction {
+    match recipe["function"].as_str().unwrap() {"Count"=>AggregateFunction::Count,"Sum"=>AggregateFunction::Sum,"Avg"=>AggregateFunction::Avg,
+        "Min"=>AggregateFunction::Min,"Max"=>AggregateFunction::Max,"Join"=>AggregateFunction::Join,"ItemAt"=>AggregateFunction::ItemAt,_=>panic!("authored aggregate function")}
+}
 fn error(recipe:&Json)->RuntimeError {
     let node=recipe["node"].as_u64().map(|n|n as u32);
     let found=match recipe["found"].as_str() {Some("bool")=>"bool",Some("string")=>"string",Some("json null")=>"json null",Some("int")=>"int",Some("float")=>"float",Some("xml nil")=>"xml nil",_=>"null"};
@@ -22,6 +26,8 @@ fn error(recipe:&Json)->RuntimeError {
         "GeneratedSequenceTooLarge"=>RuntimeError::GeneratedSequenceTooLarge {requested:recipe["requested"].as_str().unwrap().parse().unwrap(),max:recipe["maximum"].as_str().unwrap().parse().unwrap()},
         "InvalidTokenizeRegexFlags"=>RuntimeError::InvalidTokenizeRegexFlags {flags:recipe["flags"].as_str().unwrap().into()},
         "ZeroWidthTokenizeRegex"=>RuntimeError::ZeroWidthTokenizeRegex,
+        "AggregateIntegerOverflow"=>RuntimeError::AggregateIntegerOverflow {function:aggregate_function(recipe)},
+        "AggregateNonFinite"=>RuntimeError::AggregateNonFinite {function:aggregate_function(recipe)},
         "MappingException"=>RuntimeError::MappingException {node:node.unwrap(),message:recipe["message"].as_str().map(str::to_owned)},
         "MappingFailure"=>RuntimeError::MappingFailure {rule:recipe["rule"].as_u64().unwrap() as usize,message:recipe["message"].as_str().map(str::to_owned)},
         "NotABool"=>RuntimeError::NotABool {node:node.unwrap(),found},"NotAnItemCount"=>RuntimeError::NotAnItemCount {node:node.unwrap(),found},

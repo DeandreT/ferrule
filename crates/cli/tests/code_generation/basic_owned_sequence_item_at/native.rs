@@ -30,6 +30,18 @@ fn scope(recipe: &Json) -> Option<Box<mapping::SourceScopeLocation>> {
             .collect(),
     }))
 }
+fn aggregate_op(recipe: &Json) -> mapping::AggregateOp {
+    match recipe["function"].as_str().unwrap() {
+        "Count" => mapping::AggregateOp::Count,
+        "Sum" => mapping::AggregateOp::Sum,
+        "Avg" => mapping::AggregateOp::Avg,
+        "Min" => mapping::AggregateOp::Min,
+        "Max" => mapping::AggregateOp::Max,
+        "Join" => mapping::AggregateOp::Join,
+        "ItemAt" => mapping::AggregateOp::ItemAt,
+        _ => panic!("authored aggregate function"),
+    }
+}
 fn expected_error(recipe: &Json) -> engine::EngineError {
     let node = recipe["node"].as_u64().map(|n| n as u32);
     let found = match recipe["found"].as_str() {
@@ -51,6 +63,12 @@ fn expected_error(recipe: &Json) -> engine::EngineError {
             flags: recipe["flags"].as_str().unwrap().into(),
         },
         "ZeroWidthTokenizeRegex" => engine::EngineError::ZeroWidthTokenizeRegex,
+        "AggregateIntegerOverflow" => engine::EngineError::AggregateIntegerOverflow {
+            function: aggregate_op(recipe),
+        },
+        "AggregateNonFinite" => engine::EngineError::AggregateNonFinite {
+            function: aggregate_op(recipe),
+        },
         "MappingException" => engine::EngineError::MappingException {
             node: node.unwrap(),
             message: recipe["message"].as_str().map(str::to_owned),

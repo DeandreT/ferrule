@@ -2102,11 +2102,6 @@ fn only_two_keyed_families_are_admitted_and_specialized_consumers_remain_closed(
             })
         ));
     }
-    let sequence = SequenceExpr::Generate {
-        from: None,
-        to: 9,
-        item: 90,
-    };
     for (node, domain) in [
         (
             Node::Lookup {
@@ -2135,17 +2130,8 @@ fn only_two_keyed_families_are_admitted_and_specialized_consumers_remain_closed(
             },
             Domain::AggregateLookup,
         ),
-        // SequenceExists over a pure producer is qualified separately (#472).
-        (
-            Node::SequenceAggregate {
-                function: mapping::AggregateOp::Count,
-                sequence,
-                predicate: None,
-                expression: None,
-                arg: None,
-            },
-            Domain::GeneratedItem,
-        ),
+        // SequenceExists (#472) and SequenceAggregate (#474) over a pure
+        // producer are qualified separately.
     ] {
         let mut p = project(SourceOwner::Primary);
         p.graph.nodes.insert(
