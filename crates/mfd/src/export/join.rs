@@ -1216,6 +1216,7 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         } => expression.iter().chain(arg).copied().collect(),
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
+        | Node::OwnedRowDocumentPath(_)
         | Node::SourceField { .. }
         | Node::SourceDocumentPath
         | Node::SourceRootXmlTypeEquals { .. }

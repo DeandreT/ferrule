@@ -432,6 +432,7 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
+        | Node::OwnedRowDocumentPath(_)
         | Node::SourceField { .. }
         | Node::SourceDocumentPath
         | Node::SourceRootXmlTypeEquals { .. }

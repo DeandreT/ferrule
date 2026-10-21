@@ -83,6 +83,7 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
     match node {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
+        | Node::OwnedRowDocumentPath(_)
         | Node::SourceField { .. }
         | Node::SourceDocumentPath
         | Node::SourceRootXmlTypeEquals { .. }
@@ -163,6 +164,10 @@ fn node_title(node: &Node) -> String {
         Node::OwnedPosition(position) => format!(
             "owned position {:?}; collection {:?}; unavailable",
             position.owner, position.collection
+        ),
+        Node::OwnedRowDocumentPath(path) => format!(
+            "owned row document path {:?}; collection {:?}",
+            path.owner, path.collection
         ),
         Node::OwnedLookup(lookup) => format!(
             "owned lookup {:?} {:?}; read-only",

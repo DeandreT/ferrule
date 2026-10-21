@@ -200,6 +200,7 @@ fn evaluate_body_node_inner(
     let result = match node {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
+        | Node::OwnedRowDocumentPath(_)
         | Node::OwnedDynamicSourceField(_)
         | Node::OwnedLookup(_)
         | Node::OwnedCollectionFind(_) => Err(EngineError::UnsupportedSourceOwnership {

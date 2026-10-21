@@ -649,16 +649,23 @@ fn pure_function(
 
 #[test]
 fn closed_operators_and_functions_in_the_predicate_keep_their_refusals() {
-    // A closed reducer beside the owned read closes the whole consumer.
+    // A closed reducer beside the owned read closes the whole consumer. A
+    // pure-producer SequenceAggregate is qualified separately (#474).
     let mut p = project(named("Cfg"));
     p.graph.nodes.insert(93, item());
+    p.graph.nodes.insert(12, string(""));
     p.graph.nodes.insert(
         60,
         Node::SequenceAggregate {
             function: AggregateOp::Count,
-            sequence: SequenceExpr::Tokenize {
-                input: 10,
-                delimiter: 11,
+            sequence: SequenceExpr::RecursiveCollect {
+                collection: path(&["Rows"]),
+                children: vec![],
+                descent_value: path(&["Code"]),
+                values: vec![],
+                value: path(&["Label"]),
+                prefix: 12,
+                separator: 12,
                 item: 93,
             },
             predicate: None,

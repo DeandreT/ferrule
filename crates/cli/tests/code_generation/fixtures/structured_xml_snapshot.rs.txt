@@ -13,7 +13,9 @@ pub fn snapshot(instance: &Instance) -> Json {
                 json!({"kind":"Scalar","tag":"Float","bits_hex":format!("{:016x}",value.to_bits())})
             }
             Value::String(value) => json!({"kind":"Scalar","tag":"String","value":value}),
-            Value::Decimal(value) => json!({"kind":"Scalar","tag":"Decimal","value":value.to_string()}),
+            Value::Decimal(value) => {
+                json!({"kind":"Scalar","tag":"Decimal","value":value.to_string()})
+            }
         },
         Instance::Group(fields) => {
             let origin = match fields.xml_type_origin() {

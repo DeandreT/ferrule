@@ -185,6 +185,15 @@ pub fn lower_with_basic_owned_sequence_exists(project: &Project) -> Result<Progr
     )
 }
 
+/// Lowers the explicit Basic scalar-producer SequenceAggregate profile. It
+/// composes the SequenceExists profile.
+pub fn lower_with_basic_owned_sequence_aggregate(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_sequence_aggregate,
+    )
+}
+
 fn lower_with_validator(
     project: &Project,
     validator: fn(&Program) -> Result<(), ProgramValidationError>,
@@ -1262,6 +1271,7 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
     let expression = match node {
         Node::OwnedSourceField(field) => Expression::OwnedSourceField(field.clone()),
         Node::OwnedPosition(position) => Expression::OwnedPosition(position.clone()),
+        Node::OwnedRowDocumentPath(path) => Expression::OwnedRowDocumentPath(path.clone()),
         Node::OwnedLookup(lookup) => Expression::OwnedLookup(lookup.clone()),
         Node::OwnedCollectionFind(find) => Expression::OwnedCollectionFind(find.clone()),
         Node::SourceField { path, frame } => Expression::SourceField {

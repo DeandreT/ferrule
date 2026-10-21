@@ -1543,5 +1543,6 @@ mod owned_lookup_find;
 mod owned_path_hierarchy;
 mod owned_recursive_collect;
 mod owned_recursive_filter;
+mod owned_sequence_aggregate;
 mod owned_sequence_exists;
 mod owned_sequence_item_at;

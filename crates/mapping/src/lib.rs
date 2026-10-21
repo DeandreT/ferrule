@@ -96,11 +96,11 @@ pub use model::{
     AggregateOp, Binding, DynamicBinding, DynamicChild, DynamicSourcePath, EdiConfigDependency,
     FailureIteration, FailureRule, FailureSelection, FormatOptions, FunctionId, FunctionParameter,
     FunctionParameterId, Graph, IterationOutput, MAX_RUNTIME_PARAMETER_NAME_BYTES, NamedSource,
-    NamedTarget, Node, NodeId, OwnedCollectionFind, OwnedLookup, OwnedPosition, OwnedSourceField,
-    Project, RuntimeValue, Scope, ScopeConstruction, SequenceExpr, SequenceWindow, SortFilterOrder,
-    SortKey, UserFunction, XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord,
-    XlsxGridLayout, XlsxRow, XlsxTableRegion, XlsxWorksheetSetLayout, XmlMixedContentElement,
-    XmlMixedContentReplacement,
+    NamedTarget, Node, NodeId, OwnedCollectionFind, OwnedLookup, OwnedPosition,
+    OwnedRowDocumentPath, OwnedSourceField, Project, RuntimeValue, Scope, ScopeConstruction,
+    SequenceExpr, SequenceWindow, SortFilterOrder, SortKey, UserFunction, XlsxColumn,
+    XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout, XlsxRow, XlsxTableRegion,
+    XlsxWorksheetSetLayout, XmlMixedContentElement, XmlMixedContentReplacement,
 };
 pub use owned_join::{
     OwnedJoinConditions, OwnedJoinKey, OwnedJoinPlan, OwnedJoinPlanError, OwnedJoinSource,
