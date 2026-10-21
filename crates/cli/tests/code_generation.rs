@@ -857,6 +857,7 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "Runtime/FerruleFunctions.cs",
         "Runtime/FerruleGrouping.cs",
         "Runtime/FerruleInstance.cs",
+        "Runtime/FerruleSourceOrigin.cs",
         "Runtime/FerruleJoins.cs",
         "Runtime/FerrulePathHierarchy.cs",
         "Runtime/FerrulePrimaryRoot.cs",

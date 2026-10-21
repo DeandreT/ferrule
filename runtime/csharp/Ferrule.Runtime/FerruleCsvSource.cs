@@ -6,19 +6,24 @@ namespace Ferrule.Runtime;
 /// <summary>A complete physical CSV document with stable occurrence identity.</summary>
 public sealed class FerruleCsvSourceDocument
 {
-    public const int MaximumPathBytes = 4096;
+    public const int MaximumPathBytes = FerruleSourceDocumentOrigin.MaximumPathBytes;
     private readonly IReadOnlyList<FerruleInstance> _rows;
 
     private FerruleCsvSourceDocument(string path, string? resolvedPath, FerruleRepeated rows)
     {
         Path = path;
         ResolvedPath = resolvedPath;
-        _rows = rows.Items;
+        Origin = new FerruleSourceDocumentOrigin(path, resolvedPath);
+        _rows = rows.Items.Select((row, index) => row is FerruleGroup group
+            ? (FerruleInstance)group.WithSourceOrigin(Origin.Row((ulong)index + 1))
+            : throw new InvalidOperationException("CSV parser returned a non-group row.")).ToArray();
     }
 
     public string Path { get; }
     public string? ResolvedPath { get; }
     public string SourcePath => ResolvedPath ?? Path;
+    [System.Text.Json.Serialization.JsonIgnore]
+    public FerruleSourceDocumentOrigin Origin { get; }
 
     /// <summary>
     /// No I/O or normalization. Failed parsing publishes no partial document.

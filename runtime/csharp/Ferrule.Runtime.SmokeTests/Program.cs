@@ -57,6 +57,8 @@ internal static partial class Program
             ("Explicit CSV byte decoding", CsvByteDecodingPolicy),
             ("CSV source exact occurrences", CsvSourceOccurrences),
             ("CSV source reached failures", CsvSourceFailures),
+            ("physical source identity and bounds", SourceOriginIdentityAndBounds),
+            ("physical source copies and rebuilds", SourceOriginCopyAndRebuild),
             ("CSV acquisition order and identity", CsvAcquisitionOrder),
             ("CSV acquisition terminal failures", CsvAcquisitionFailures),
             ("CSV acquisition host failure stages", CsvAcquisitionHostFailures),

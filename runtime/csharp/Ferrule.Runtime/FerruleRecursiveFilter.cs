@@ -383,7 +383,7 @@ public static class FerruleRecursiveFilter
     private static FerruleInstance CloneInstance(FerruleInstance instance) => instance switch
     {
         FerruleScalar scalar => new FerruleScalar(scalar.Value),
-        FerruleGroup group => group.CloneFields(group.Fields.Select(field =>
+        FerruleGroup group => group.ExactCloneFields(group.Fields.Select(field =>
             new FerruleField(field.Name, CloneInstance(field.Value)))),
         FerruleRepeated repeated => new FerruleRepeated(repeated.Items.Select(CloneInstance)),
         FerruleMappedSequence mapped => new FerruleMappedSequence(mapped.Items.Select(CloneInstance)),

@@ -30,6 +30,46 @@ fn text(row: &format_csv::CsvRowOccurrence) -> &str {
 }
 
 #[test]
+fn copied_row_values_keep_provenance_without_the_occurrence_wrapper() {
+    let first = parse("same.csv", b"Value\nA\nA\n");
+    let second = parse("same.csv", b"Value\nA\nA\n");
+    let rows: Vec<_> = first.rows().chain(second.rows()).collect();
+    let copies: Vec<_> = rows.iter().map(|row| row.value().clone()).collect();
+    for (row, copy) in rows.iter().zip(&copies) {
+        let Instance::Group(group) = copy else {
+            panic!("expected group")
+        };
+        let origin = group.source_origin().unwrap();
+        assert!(origin.document().same_document(row.document().origin()));
+        assert_eq!(origin.position(), row.position());
+    }
+    drop(rows);
+    drop(first);
+    drop(second);
+    let origins: Vec<_> = copies
+        .iter()
+        .map(|value| {
+            let Instance::Group(group) = value else {
+                panic!("expected group")
+            };
+            group.source_origin().unwrap()
+        })
+        .collect();
+    assert_eq!(
+        origins
+            .iter()
+            .map(|origin| origin.position())
+            .collect::<Vec<_>>(),
+        [1, 2, 1, 2]
+    );
+    assert!(origins[0].document().same_document(origins[1].document()));
+    assert!(!origins[0].document().same_document(origins[2].document()));
+    assert!(!origins[0].same_occurrence(origins[1]));
+    assert!(!origins[0].same_occurrence(origins[2]));
+    assert!(copies.windows(2).all(|pair| pair[0] == pair[1]));
+}
+
+#[test]
 fn rows_keep_exact_documents_positions_and_whole_parsed_values() {
     let first = parse(" ./same.csv ", b"Value\nA\nA\nB\n");
     let second = parse(" ./same.csv ", b"Value\nA\nA\nB\n");
