@@ -32,20 +32,35 @@ fn rows(rows: &[(Option<i64>, &str)]) -> Instance {
     )
 }
 fn endpoint(header: &str, rows: Instance) -> Instance {
-    group(vec![("Header", group(vec![("code", text(header))])), ("Rows", rows)])
+    group(vec![
+        ("Header", group(vec![("code", text(header))])),
+        ("Rows", rows),
+    ])
 }
 /// Primary ids 1,2,2,null,3 with codes a-e.
 fn primary() -> Instance {
     endpoint(
         "H",
-        rows(&[(Some(1), "a"), (Some(2), "b"), (Some(2), "c"), (None, "d"), (Some(3), "e")]),
+        rows(&[
+            (Some(1), "a"),
+            (Some(2), "b"),
+            (Some(2), "c"),
+            (None, "d"),
+            (Some(3), "e"),
+        ]),
     )
 }
 /// Lookup ids 2,1,2,null,4 with codes x,y,b,z,w and header `b`.
 fn lookup() -> Instance {
     endpoint(
         "b",
-        rows(&[(Some(2), "x"), (Some(1), "y"), (Some(2), "b"), (None, "z"), (Some(4), "w")]),
+        rows(&[
+            (Some(2), "x"),
+            (Some(1), "y"),
+            (Some(2), "b"),
+            (None, "z"),
+            (Some(4), "w"),
+        ]),
     )
 }
 fn inputs(lookup: Instance) -> Vec<(String, Instance)> {
@@ -111,7 +126,10 @@ fn pairs(rows: &[(i64, &str, &str)]) -> Instance {
                 .map(|(position, left, right)| {
                     group(vec![
                         ("tuple", int(*position)),
-                        ("Pair", group(vec![("left", text(left)), ("right", text(right))])),
+                        (
+                            "Pair",
+                            group(vec![("left", text(left)), ("right", text(right))]),
+                        ),
                     ])
                 })
                 .collect(),
@@ -209,7 +227,14 @@ pub fn cases() -> Vec<Case> {
     let order = |id: i64, rows: &[Tuple<'_>]| group(vec![("id", int(id)), ("Row", tuples(rows))]);
     vec![
         // Same-path sources: each owner supplies only its own rows; null ids never match.
-        case("J01-rows", j01, primary(), inputs(lookup()), output(forward), audit(reverse)),
+        case(
+            "J01-rows",
+            j01,
+            primary(),
+            inputs(lookup()),
+            output(forward),
+            audit(reverse),
+        ),
         case(
             "J01-empty-lookup",
             j01,
@@ -272,7 +297,11 @@ pub fn cases() -> Vec<Case> {
             j03,
             primary(),
             inputs(lookup()),
-            output(&[("b", "b", 2, 3, 1), ("a", "y", 1, 2, 2), ("b", "x", 2, 1, 3)]),
+            output(&[
+                ("b", "b", 2, 3, 1),
+                ("a", "y", 1, 2, 2),
+                ("b", "x", 2, 1, 3),
+            ]),
             audit(&[
                 ("a", "y", 1, 2, 1),
                 ("b", "x", 2, 1, 2),
@@ -302,7 +331,11 @@ pub fn cases() -> Vec<Case> {
                     order(9, &[("a", "a", 2, 1, 1)]),
                 ]),
             )])),
-            audit(&[("q", "o5", 1, 1, 1), ("r", "o6", 2, 2, 2), ("s", "o6", 1, 2, 3)]),
+            audit(&[
+                ("q", "o5", 1, 1, 1),
+                ("r", "o6", 2, 2, 2),
+                ("s", "o6", 1, 2, 3),
+            ]),
         ),
         case(
             "J04-missing-lookup-code",
@@ -313,7 +346,11 @@ pub fn cases() -> Vec<Case> {
                 "Order",
                 Instance::Repeated(vec![order(7, &[]), order(9, &[("c", "c", 2, 2, 1)])]),
             )])),
-            audit(&[("q", "o5", 1, 1, 1), ("r", "o6", 2, 2, 2), ("s", "o6", 1, 2, 3)]),
+            audit(&[
+                ("q", "o5", 1, 1, 1),
+                ("r", "o6", 2, 2, 2),
+                ("s", "o6", 1, 2, 3),
+            ]),
         ),
         case(
             "J05-best-and-codes",
