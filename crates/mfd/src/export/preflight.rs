@@ -73,6 +73,26 @@ pub(super) fn validate_source_ownership(project: &Project) -> Result<(), MfdErro
     Ok(())
 }
 
+pub(super) fn validate_invocation_counters(project: &Project) -> Result<(), MfdError> {
+    if project
+        .graph
+        .nodes
+        .values()
+        .chain(
+            project
+                .user_functions
+                .values()
+                .flat_map(|function| function.body.nodes.values()),
+        )
+        .any(|node| matches!(node, mapping::Node::InvocationCounter { .. }))
+    {
+        return Err(MfdError::Unsupported(
+            "explicit invocation counters have no qualified .mfd representation".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     if project.source_options.xml_root_view_read_policy
         || project.target_options.xml_root_view_read_policy

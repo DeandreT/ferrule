@@ -430,6 +430,15 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
     match node {
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .into_iter()
+            .flatten()
+            .collect(),
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)

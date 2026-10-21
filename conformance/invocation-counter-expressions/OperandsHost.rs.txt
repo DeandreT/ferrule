@@ -1,0 +1,101 @@
+use codegen_runtime::{
+    ExecutionContext, InvocationCounterLimits, RuntimeError, Value, field, group, scalar,
+};
+use std::path::Path;
+
+fn source(start: Value, step: Value, restart: Value) -> codegen_runtime::Instance {
+    group([
+        field("start", scalar(start)),
+        field("step", scalar(step)),
+        field("restart", scalar(restart)),
+    ])
+}
+fn hex(text: &str) -> String {
+    text.as_bytes()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+fn main() {
+    let context = ExecutionContext::new(Path::new("counter.ferrule"))
+        .with_invocation_counter_limits(InvocationCounterLimits {
+            max_counters: 8,
+            max_text_bytes: 256,
+        });
+    let integers = [
+        ("missing", Value::Null),
+        ("string", Value::String("1".into())),
+        ("float", Value::Float(1.0)),
+        ("bool", Value::Bool(true)),
+        ("json-null", Value::json_null()),
+        ("xml-nil", Value::xml_nil()),
+    ];
+    let expect = |role: &str, id: &str, value: Value| {
+        let found = value.type_name();
+        let input = match role {
+            "start" => source(value, Value::Bool(false), Value::Int(1)),
+            "step" => source(Value::Int(1), value, Value::Int(1)),
+            _ => source(Value::Int(1), Value::Int(1), value),
+        };
+        match counter_operands::execute_with_context(&input, &context) {
+            Err(RuntimeError::InvocationCounterOperand {
+                node: 1,
+                operand,
+                expected,
+                found: actual,
+            }) => {
+                assert_eq!(operand, role);
+                assert_eq!(actual, found);
+                assert_eq!(
+                    expected,
+                    if role == "restart" {
+                        "string or missing"
+                    } else {
+                        "integer"
+                    }
+                );
+                println!("ERR|{role}|{id}");
+            }
+            other => panic!("Wrong typed outcome: {other:?}"),
+        }
+    };
+    for role in ["start", "step"] {
+        for (id, value) in &integers {
+            expect(role, id, value.clone());
+        }
+    }
+    for (id, value) in [
+        ("integer", Value::Int(1)),
+        ("float", Value::Float(1.0)),
+        ("bool", Value::Bool(true)),
+        ("json-null", Value::json_null()),
+        ("xml-nil", Value::xml_nil()),
+    ] {
+        expect("restart", id, value);
+    }
+    assert!(matches!(
+        counter_operands::execute(&source(
+            Value::String("bad".into()),
+            Value::Null,
+            Value::json_null()
+        )),
+        Err(RuntimeError::MissingInvocationCounters { node: 1 })
+    ));
+    println!("ERR|unconfigured|before-operands");
+    for (id, input) in [
+        ("missing", r#"{"start":1,"step":1}"#),
+        ("empty", r#"{"start":1,"step":1,"restart":""}"#),
+    ] {
+        for repeat in 0..2 {
+            let output =
+                counter_operands::execute_json_outputs_with_context(input, &context).unwrap();
+            println!("DOC|{id}-{repeat}-primary|{}", hex(&output.primary));
+            assert_eq!(output.extras.len(), 1);
+            assert_eq!(output.extras[0].name, "audit");
+            println!(
+                "DOC|{id}-{repeat}-audit|{}",
+                hex(&output.extras[0].document)
+            );
+        }
+    }
+}
