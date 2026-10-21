@@ -1191,6 +1191,7 @@ impl GraphViewer<'_> {
             } => expression.iter().chain(arg).nth(idx).copied(),
             Node::OwnedSourceField(_)
             | Node::OwnedPosition(_)
+            | Node::OwnedRowDocumentPath(_)
             | Node::SourceField { .. }
             | Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
@@ -1396,6 +1397,7 @@ impl GraphViewer<'_> {
         match node {
             Node::OwnedSourceField(_)
             | Node::OwnedPosition(_)
+            | Node::OwnedRowDocumentPath(_)
             | Node::SourceField { .. }
             | Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
@@ -1557,6 +1559,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 let title = match self.graph.nodes.get(id) {
                     Some(Node::OwnedSourceField(_)) => "Owned source field".into(),
                     Some(Node::OwnedPosition(_)) => "Owned position".into(),
+                    Some(Node::OwnedRowDocumentPath(_)) => "Owned row document path".into(),
                     Some(Node::OwnedLookup(lookup)) => {
                         format!("Owned lookup: {}", lookup.collection.path.join("/"))
                     }

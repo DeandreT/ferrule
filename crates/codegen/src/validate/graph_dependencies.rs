@@ -6,6 +6,7 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
     match expression {
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
+        | Expression::OwnedRowDocumentPath(_)
         | Expression::SourceField { .. }
         | Expression::SourceRootXmlTypeEquals { .. }
         | Expression::SourceRootField { .. }

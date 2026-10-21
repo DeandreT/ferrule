@@ -534,6 +534,13 @@ impl<'a> Admission<'a> {
                     Some(id),
                     None,
                 )?,
+                Node::OwnedRowDocumentPath(path) => self.static_owner(
+                    &path.owner,
+                    path.collection.as_deref().unwrap_or_default(),
+                    None,
+                    Some(id),
+                    None,
+                )?,
                 _ => {}
             }
             pending.extend(node.dependencies());
@@ -676,7 +683,12 @@ impl<'a> Admission<'a> {
                     && matches!(node, Node::OwnedSourceField(_));
                 let row_value = primary_row_failure
                     && context == OwnedCapabilityContext::FailureRule
-                    && matches!(node, Node::OwnedSourceField(_) | Node::OwnedPosition(_));
+                    && matches!(
+                        node,
+                        Node::OwnedSourceField(_)
+                            | Node::OwnedPosition(_)
+                            | Node::OwnedRowDocumentPath(_)
+                    );
                 if context != OwnedCapabilityContext::Basic && !root_field && !row_value {
                     return Err(EngineError::UnsupportedOwnedContext {
                         node: Some(id),
@@ -710,6 +722,13 @@ impl<'a> Admission<'a> {
                     Node::OwnedPosition(position) => self.static_owner(
                         &position.owner,
                         position.collection.as_deref().unwrap_or_default(),
+                        None,
+                        Some(id),
+                        None,
+                    )?,
+                    Node::OwnedRowDocumentPath(path) => self.static_owner(
+                        &path.owner,
+                        path.collection.as_deref().unwrap_or_default(),
                         None,
                         Some(id),
                         None,
@@ -889,6 +908,7 @@ fn root_failure_node_is_static(project: &Project, node: &Node) -> bool {
     }
     match node {
         Node::OwnedPosition(_)
+        | Node::OwnedRowDocumentPath(_)
         | Node::Position { .. }
         | Node::OwnedDynamicSourceField(_)
         | Node::OwnedLookup(_)
@@ -927,8 +947,10 @@ fn primary_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
     }
     match node {
         // Owned dynamic reads are qualified only in Basic target contexts.
-        Node::OwnedDynamicSourceField(_) => false,
-        Node::OwnedLookup(_) | Node::OwnedCollectionFind(_) => false,
+        Node::OwnedDynamicSourceField(_)
+        | Node::OwnedLookup(_)
+        | Node::OwnedCollectionFind(_)
+        | Node::OwnedRowDocumentPath(_) => false,
         Node::OwnedPosition(position) => matches!(position.owner, SourceOwner::Primary),
         Node::OwnedSourceField(field) => match &field.source.owner {
             SourceOwner::Primary => true,
@@ -956,7 +978,9 @@ fn owned_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
     }
     match node {
         Node::OwnedPosition(_) | Node::OwnedSourceField(_) => true,
-        Node::OwnedLookup(_) | Node::OwnedCollectionFind(_) => false,
+        Node::OwnedLookup(_) | Node::OwnedCollectionFind(_) | Node::OwnedRowDocumentPath(_) => {
+            false
+        }
         Node::UserFunctionCall { .. } | Node::OwnedDynamicSourceField(_) => false,
         Node::SourceField { path, frame } => ![Some(path.as_slice()), frame.as_deref()]
             .into_iter()

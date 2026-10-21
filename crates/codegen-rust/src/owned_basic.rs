@@ -361,6 +361,7 @@ fn check_inventory(program: &Program, filter_only: bool) -> Result<(), EmitError
             &node.expression,
             Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
+                | Expression::OwnedRowDocumentPath(_)
                 | Expression::SourceField { .. }
                 | Expression::Position { .. }
                 | Expression::Const { .. }
@@ -437,6 +438,16 @@ pub(super) fn render_owned_access(expression: &Expression) -> Option<String> {
             // constructors. Their 1-based positions fit i64 on 32/64-bit targets.
             Some(format!(
                 "{{ let position = context.owned_position({owner}, {collection})?; Ok(Value::Int(position as i64)) }}"
+            ))
+        }
+        Expression::OwnedRowDocumentPath(path) => {
+            let owner = owner_literal(&path.owner);
+            let collection = path.collection.as_ref().map_or_else(
+                || "None".into(),
+                |path| format!("Some(&[{}][..])", render_string_path(path)),
+            );
+            Some(format!(
+                "context.owned_row_document_path({owner}, {collection})"
             ))
         }
         _ => None,
@@ -758,7 +769,9 @@ fn render_public_basic_owned_source_with_filters(
     let mut source = if program.expressions.iter().any(|node| {
         matches!(
             &node.expression,
-            Expression::OwnedSourceField(_) | Expression::OwnedPosition(_)
+            Expression::OwnedSourceField(_)
+                | Expression::OwnedPosition(_)
+                | Expression::OwnedRowDocumentPath(_)
         )
     }) {
         render_checked_basic_owned_source_with_nodes(program, true, filter_only)?
@@ -1079,6 +1092,7 @@ fn check_sort_inventory(program: &Program) -> Result<(), EmitError> {
             &node.expression,
             Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
+                | Expression::OwnedRowDocumentPath(_)
                 | Expression::SourceField { .. }
                 | Expression::Position { .. }
                 | Expression::Const { .. }
@@ -1202,7 +1216,9 @@ pub(crate) fn render_public_basic_owned_sort_source(
     let owned_leaf_nodes = program.expressions.iter().any(|node| {
         matches!(
             &node.expression,
-            Expression::OwnedSourceField(_) | Expression::OwnedPosition(_)
+            Expression::OwnedSourceField(_)
+                | Expression::OwnedPosition(_)
+                | Expression::OwnedRowDocumentPath(_)
         )
     });
     let mut source = render_checked_basic_owned_sort_source(program, owned_leaf_nodes)?;
