@@ -1,24 +1,17 @@
 //! Explicit owned adjacency-tree row collections. The rows are an exact owned
 //! read in the receiving context; the optional root expression keeps that
-//! parent context. Only the explicit companion admits the construction.
+//! parent context. Only the `constructions.adjacency_tree` capability admits the
+//! construction.
 
 use super::*;
 
-/// Construction permission for owned tree operators: an owned adjacency-tree
-/// row collection, optionally with owned recursive filtering. It is orthogonal
-/// to source controls, consumers and failure policies.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::validate) enum AdjacencyTreePolicy {
-    Closed,
-    Owned,
-    /// Owned adjacency trees plus recursive filters over an owned selector.
-    OwnedWithRecursiveFilter,
-}
-
-impl AdjacencyTreePolicy {
-    pub(super) fn admits(self, scope: &TargetScope) -> bool {
-        self != Self::Closed && owned_rows(scope).is_some()
-            || self == Self::OwnedWithRecursiveFilter
+impl OwnedCapabilities {
+    /// Whether an owned tree construction of `scope` is admitted: owned
+    /// adjacency-tree rows, or recursive filtering of the scope's own owned
+    /// selector. Both are orthogonal to source controls and failure policies.
+    pub(super) fn admits_owned_tree_construction(self, scope: &TargetScope) -> bool {
+        self.constructions.adjacency_tree && owned_rows(scope).is_some()
+            || self.constructions.recursive_filter
                 && super::recursive_filter::owned_predicate(scope).is_some()
     }
 }
@@ -37,20 +30,4 @@ pub(super) fn owned_root(scope: &TargetScope) -> Option<NodeId> {
         TargetConstruction::OwnedAdjacencyTree { root, .. } => *root,
         _ => None,
     }
-}
-
-/// Validate the owned path-hierarchy composition (owned failure sources,
-/// EndingWith, scalar-producer ItemAt and primary-row failures) plus owned
-/// adjacency-tree rows. Legacy trees and other tree operators stay closed.
-pub fn validate_basic_owned_adjacency_tree_emission(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    validate_basic_owned_with_constructions(
-        program,
-        BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter,
-        FailurePolicy::OwnedSources,
-        SequenceItemAtPolicy::BasicScalarProducers,
-        PathHierarchyPolicy::Owned,
-        AdjacencyTreePolicy::Owned,
-    )
 }

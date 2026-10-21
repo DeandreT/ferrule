@@ -1,25 +1,9 @@
 //! Explicitly owned recursive collection producers. Only a Basic parent-context
-//! ItemAt consumes one, under the explicit recursive-collect profile. Scope
-//! iteration, failure iteration and private-item reducers stay closed, so a
-//! generated item never becomes an endpoint-bearing frame.
+//! ItemAt consumes one, under the `sequences.owned_recursive_item_at`
+//! capability. Scope iteration, failure iteration and private-item reducers
+//! stay closed, so a generated item never becomes an endpoint-bearing frame.
 
 use super::*;
-
-/// Validate the owned adjacency-tree composition (owned path hierarchies,
-/// failure sources, EndingWith and scalar-producer ItemAt) plus ItemAt over the
-/// owned recursive collection walk. Every earlier companion keeps refusing it.
-pub fn validate_basic_owned_recursive_collect_emission(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    validate_basic_owned_with_constructions(
-        program,
-        BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter,
-        FailurePolicy::OwnedSources,
-        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-        PathHierarchyPolicy::Owned,
-        AdjacencyTreePolicy::Owned,
-    )
-}
 
 /// The owned root collection of a generated scope iteration.
 pub(super) fn scope_sequence(iteration: &crate::IterationPlan) -> Option<&mapping::OwnedSourceRef> {
@@ -40,7 +24,7 @@ pub(super) fn failure_sequence(rule: &crate::FailureRule) -> Option<&mapping::Ow
 /// The request of an owned producer whose consumer this policy does not admit.
 pub(super) fn closed_consumer(
     expression: &Expression,
-    policy: SequenceItemAtPolicy,
+    consumers: crate::SequenceConsumers,
 ) -> Option<Request> {
     let sequence = match expression {
         Expression::SequenceExists { sequence, .. }
@@ -49,7 +33,7 @@ pub(super) fn closed_consumer(
         _ => return None,
     };
     let source = sequence.owned_source()?;
-    (!policy.permits(expression)).then(|| iteration_request(source))
+    (!consumers.permits(expression)).then(|| iteration_request(source))
 }
 
 /// Refuse an owned producer that drives a failure rule's generated items.

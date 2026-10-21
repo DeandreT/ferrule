@@ -1,51 +1,21 @@
 //! Explicit owned failure-rule iteration. The walk selects exactly one declared
 //! static endpoint; predicate and message keep a closed scalar subset. This is
 //! generation-time classification; both runtimes walk only the selected owner.
+//! Only the `failures.owned_sources` capability admits the walk.
 
 use super::*;
 
-/// Failure permissions are orthogonal to target controls and consumer policies.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::validate) enum FailurePolicy {
-    Closed,
-    PrimaryRows,
-    /// Primary-row legacy rules plus owned endpoint iteration.
-    OwnedSources,
-}
-
-impl FailurePolicy {
-    pub(in crate::validate) fn from_primary_rows(primary_rows: bool) -> Self {
-        if primary_rows {
-            Self::PrimaryRows
-        } else {
-            Self::Closed
-        }
+impl OwnedCapabilities {
+    /// Whether this rule's owned reads are admitted. Failure permissions are
+    /// orthogonal to target controls and consumer policies.
+    pub(super) fn admits_owned_failure_rule(
+        self,
+        program: &Program,
+        rule: &crate::FailureRule,
+    ) -> bool {
+        self.failures.primary_rows && is_basic_owned_primary_row_failure(program, rule)
+            || self.failures.owned_sources && is_owned_failure_source(program, rule)
     }
-
-    /// Whether this rule's owned reads are admitted by this policy.
-    pub(super) fn admits_owned_rule(self, program: &Program, rule: &crate::FailureRule) -> bool {
-        match self {
-            Self::Closed => false,
-            Self::PrimaryRows => is_basic_owned_primary_row_failure(program, rule),
-            Self::OwnedSources => {
-                is_basic_owned_primary_row_failure(program, rule)
-                    || is_owned_failure_source(program, rule)
-            }
-        }
-    }
-}
-
-/// Validate the EndingWith target profile, scalar-producer ItemAt and both
-/// owned failure permissions. Earlier companions keep refusing owned walks.
-pub fn validate_basic_owned_failure_source_emission(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    validate_basic_owned_with_failures(
-        program,
-        BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter,
-        FailurePolicy::OwnedSources,
-        SequenceItemAtPolicy::BasicScalarProducers,
-    )
 }
 
 /// Refuse an owned walk before any of its expressions when the policy, the
@@ -54,7 +24,7 @@ pub(super) fn admit_iteration(
     program: &Program,
     index: usize,
     rule: &crate::FailureRule,
-    failures: FailurePolicy,
+    capabilities: OwnedCapabilities,
 ) -> Result<(), ProgramValidationError> {
     let FailureIteration::OwnedSource(source) = &rule.iteration else {
         return Ok(());
@@ -64,7 +34,7 @@ pub(super) fn admit_iteration(
     if let Some(closed) = dynamic_owner(program, &query) {
         return Err(failure(location, Some(query), closed));
     }
-    if failures != FailurePolicy::OwnedSources || !is_owned_failure_source(program, rule) {
+    if !capabilities.failures.owned_sources || !is_owned_failure_source(program, rule) {
         return Err(failure(
             location,
             Some(query),

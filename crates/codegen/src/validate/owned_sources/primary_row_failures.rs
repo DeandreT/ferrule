@@ -3,14 +3,6 @@
 
 use super::*;
 
-/// Validate window-profile targets and the explicitly bounded primary-row
-/// failure companion. Existing profile validators retain their closed rules.
-pub fn validate_basic_owned_row_failure_emission(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    validate_basic_owned_with_profiles(program, BasicOwnedProfile::WindowsAndSortAndFilter, true)
-}
-
 /// Classify a potentially owned rule for the primary-row runtime boundary.
 /// Callers must still validate the complete Program before emitting code.
 pub fn is_basic_owned_primary_row_failure(program: &Program, rule: &crate::FailureRule) -> bool {
