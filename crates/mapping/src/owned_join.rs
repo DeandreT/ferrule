@@ -3,8 +3,8 @@
 //!
 //! The legacy [`crate::JoinPlan`] identifies a source by collection text
 //! alone, so a primary `Rows` and a named `Rows` are the same source there.
-//! This plan compares the complete owner and collection identity instead.
-//! Execution and emission of owned joins remain closed.
+//! This plan compares the complete owner and collection identity instead;
+//! owned join reads bind tuple members by that identity.
 
 use std::fmt;
 

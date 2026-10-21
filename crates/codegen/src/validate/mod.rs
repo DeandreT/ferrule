@@ -199,6 +199,15 @@ pub fn validate_program_with_basic_owned_collection_aggregates(
     owned_sources::validate_basic_owned_collection_aggregates_emission(program)
 }
 
+/// Validates owned inner joins and their tuple reads, composed with the owned
+/// Lookup and CollectionFind profile. Every older validator keeps refusing
+/// owned joins; owned joined aggregates stay closed.
+pub fn validate_program_with_basic_owned_joins(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_joins_emission(program)
+}
+
 /// Validates static Basic scalar-producer SequenceItemAt, explicitly composing
 /// the qualified By, filter/sort/window and primary-row failure permissions.
 pub fn validate_program_with_basic_owned_sequence_item_at(
@@ -345,6 +354,31 @@ fn validate_program_with_owned_xml(
     dynamic_field: owned_sources::DynamicFieldPolicy,
     xml_serialize: owned_sources::XmlSerializePolicy,
 ) -> Result<(), ProgramValidationError> {
+    validate_program_with_owned_joins(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        dynamic_field,
+        xml_serialize,
+        owned_sources::JoinPolicy::Closed,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_program_with_owned_joins(
+    program: &Program,
+    profile: owned_sources::BasicOwnedProfile,
+    failures: owned_sources::FailurePolicy,
+    sequence_item_at: owned_sources::SequenceItemAtPolicy,
+    path_hierarchy: owned_sources::PathHierarchyPolicy,
+    adjacency_tree: owned_sources::AdjacencyTreePolicy,
+    dynamic_field: owned_sources::DynamicFieldPolicy,
+    xml_serialize: owned_sources::XmlSerializePolicy,
+    join: owned_sources::JoinPolicy,
+) -> Result<(), ProgramValidationError> {
     xml::validate_boundary(program)?;
     validate_schema_metadata("source", &program.source)?;
     for source in &program.extra_sources {
@@ -395,7 +429,7 @@ fn validate_program_with_owned_xml(
     // that no target/failure root reaches in a directly constructed Program.
     sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)?;
     owned_sources::validate_structure(program)?;
-    owned_sources::validate_closed_contexts_with_xml(
+    owned_sources::validate_closed_contexts_with_joins(
         program,
         profile,
         failures,
@@ -404,6 +438,7 @@ fn validate_program_with_owned_xml(
         adjacency_tree,
         dynamic_field,
         xml_serialize,
+        join,
     )
 }
 
@@ -846,6 +881,13 @@ fn validate_scope(
                 scope_source = None;
                 active_source = None;
                 scope_joins.push(joins::ActiveJoin::new(join));
+            }
+            // Plan identities receive their typed structural pass with every
+            // other owned request; capability is a separate profile decision.
+            IterationSource::OwnedInnerJoin(join) => {
+                scope_source = None;
+                active_source = None;
+                scope_joins.push(joins::ActiveJoin::owned(join));
             }
             IterationSource::Concatenate(_) => {
                 unreachable!("concatenated scope validation returns before candidate validation")
@@ -1674,10 +1716,10 @@ pub use owned_sources::{
     validate_basic_owned_filter_emission, validate_basic_owned_group_adjacent_by_emission,
     validate_basic_owned_group_by_emission, validate_basic_owned_group_ending_with_emission,
     validate_basic_owned_group_into_blocks_emission,
-    validate_basic_owned_group_starting_with_emission, validate_basic_owned_lookup_find_emission,
-    validate_basic_owned_recursive_collect_emission, validate_basic_owned_row_failure_emission,
-    validate_basic_owned_sequence_item_at_emission, validate_basic_owned_sort_emission,
-    validate_basic_owned_window_emission,
+    validate_basic_owned_group_starting_with_emission, validate_basic_owned_joins_emission,
+    validate_basic_owned_lookup_find_emission, validate_basic_owned_recursive_collect_emission,
+    validate_basic_owned_row_failure_emission, validate_basic_owned_sequence_item_at_emission,
+    validate_basic_owned_sort_emission, validate_basic_owned_window_emission,
 };
 
 pub use owned_sources::{

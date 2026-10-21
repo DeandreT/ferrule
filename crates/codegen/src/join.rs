@@ -310,3 +310,26 @@ impl InnerJoin {
         &self.plan
     }
 }
+
+/// One owned inner-join candidate source for a target scope. Its sources and
+/// left keys keep full owner and collection identity; the JoinId stays
+/// independent of them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnedInnerJoin {
+    id: JoinId,
+    plan: mapping::OwnedJoinPlan,
+}
+
+impl OwnedInnerJoin {
+    pub fn new(id: JoinId, plan: mapping::OwnedJoinPlan) -> Self {
+        Self { id, plan }
+    }
+
+    pub const fn id(&self) -> JoinId {
+        self.id
+    }
+
+    pub const fn plan(&self) -> &mapping::OwnedJoinPlan {
+        &self.plan
+    }
+}

@@ -312,6 +312,28 @@ impl fmt::Display for ProgramValidationError {
                 join.get(),
                 display_path(collection)
             ),
+            Self::InvalidOwnedJoinMember {
+                node,
+                join,
+                collection,
+            } => write!(
+                formatter,
+                "compiled mapping owned join expression {node} collection {} does not belong to join {}",
+                mapping::describe_owned_collection(collection),
+                join.get()
+            ),
+            Self::InvalidOwnedJoinFieldPath {
+                node,
+                join,
+                collection,
+                path,
+            } => write!(
+                formatter,
+                "compiled mapping owned join field {node} path {} is not a scalar under join {} source {}",
+                display_path(path),
+                join.get(),
+                mapping::describe_owned_collection(collection)
+            ),
             Self::InvalidSourceIteration {
                 target_path,
                 source_path,
