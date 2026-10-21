@@ -125,9 +125,7 @@ fn endpoint(prefix: &str, missing: Option<usize>) -> Instance {
 }
 
 fn lower_refuses(project: &Project, reason: codegen::OwnedSourceCapabilityReason) {
-    let error = codegen::lower(project)
-        .err()
-        .expect("closed metadata route must not lower");
+    let error = codegen::lower(project).expect_err("closed metadata route must not lower");
     assert!(
         error
             .diagnostics()
