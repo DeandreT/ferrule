@@ -72,11 +72,12 @@ println!("PASS 80 scalar observations");
 "#,
     );
     fs::write(root.join("src/main.rs"), source).unwrap();
-    let result = Command::new("cargo")
+    let mut command = Command::new("cargo");
+    command
         .args(["run", "--quiet", "--offline"])
-        .current_dir(&root)
-        .generated_host_output(&root)
-        .unwrap();
+        .current_dir(&root);
+    let result = command.generated_host_output(&root).unwrap();
+    fs::write(root.join("command.txt"), format!("{command:?}\n")).unwrap();
     fs::write(root.join("stdout.txt"), &result.stdout).unwrap();
     fs::write(root.join("stderr.txt"), &result.stderr).unwrap();
     assert!(
