@@ -13,6 +13,7 @@ use mapping::{SourceOwner, SourceScopeLocation, SourceScopeStep, SourceScopeTarg
 #[path = "owned_basic_windows.rs"]
 mod windows;
 pub(crate) use windows::render_public_basic_owned_adjacency_tree_source;
+pub(crate) use windows::render_public_basic_owned_collection_aggregates_source;
 pub(crate) use windows::render_public_basic_owned_dynamic_field_source;
 pub(crate) use windows::render_public_basic_owned_failure_source;
 pub(crate) use windows::render_public_basic_owned_group_adjacent_by_source;
@@ -29,12 +30,15 @@ pub(crate) use windows::render_public_basic_owned_sequence_exists_source;
 pub(crate) use windows::render_public_basic_owned_sequence_item_at_source;
 pub(crate) use windows::render_public_basic_owned_window_source;
 pub(crate) use windows::render_public_basic_owned_xml_serialize_source;
+#[path = "owned_basic_aggregate.rs"]
+mod aggregate;
 #[path = "owned_basic_group_by.rs"]
 mod group_by;
 #[path = "owned_basic_rows.rs"]
 mod rows;
 #[path = "owned_basic_search.rs"]
 mod search;
+pub(super) use aggregate::render_owned_aggregate;
 pub(crate) use group_by::render_public_basic_owned_group_by_source;
 pub(super) use search::{render_owned_collection_find, render_owned_lookup};
 

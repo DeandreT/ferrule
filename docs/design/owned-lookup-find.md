@@ -81,8 +81,10 @@ Every earlier profile, including the path-hierarchy, adjacency-tree, IntoBlocks,
 recursive-collect, SequenceExists and recursive-filter companions, refuses owned
 search with its typed `AggregateLookup` diagnostic, and the ordinary emitters,
 directly constructed Program validation, `.mfd` export and GUI authoring keep
-refusing it; the GUI displays saved owned searches read-only. Owned aggregates,
-joins and legacy Lookup or CollectionFind remain closed in the Basic profiles.
+refusing it; the GUI displays saved owned searches read-only. Joins and legacy
+Lookup or CollectionFind remain closed in the Basic profiles, and owned
+aggregates stay closed in this profile; the
+[owned aggregate companion](owned-collection-aggregates.md) extends it.
 An owned search does not make its endpoint an eager named input. SequenceExists
 stays closed in this profile; the separate SequenceExists companion admits it.
 
