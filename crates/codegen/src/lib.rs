@@ -29,7 +29,9 @@ pub use artifact::{
 pub use csv_document_boundary::{
     CsvDocumentBoundaryError, CsvDocumentBoundaryPolicy, validate_csv_document_boundary,
 };
-pub use csv_input_boundary::{CsvInputBoundaryError, CsvInputField, CsvInputPolicy};
+pub use csv_input_boundary::{
+    CsvInputBoundaryError, CsvInputField, CsvInputPolicy, validate_primary_csv_acquisition,
+};
 pub use csv_json_boundary::{
     CsvJsonBoundaryError, CsvJsonBoundaryOwner, CsvJsonBoundaryPolicy, CsvJsonBoundaryProfile,
     NamedJsonTargetDescriptor, prepare_csv_json_boundary, prepare_csv_json_project_boundary,

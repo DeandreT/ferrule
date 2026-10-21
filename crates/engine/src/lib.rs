@@ -29,6 +29,7 @@ mod owned_search;
 mod owned_source_context;
 mod path_hierarchy;
 mod pipeline;
+mod primary_csv;
 mod primary_filename;
 mod recursive_collect_owned;
 mod recursive_filter;
@@ -67,6 +68,7 @@ pub use pipeline::{
     run_pipeline_retaining, run_pipeline_with_context, run_pipeline_with_stage_contexts,
     validate_pipeline,
 };
+pub use primary_csv::acquire_primary_csv;
 pub use primary_filename::{PrimaryFilenameEvaluationError, evaluate_primary_filename};
 pub use trace::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind,

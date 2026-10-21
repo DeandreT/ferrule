@@ -80,7 +80,7 @@ impl CsvSourceDocument {
     }
 }
 
-fn validate_path(path: &str, field: &'static str) -> Result<(), CsvSourceError> {
+pub(crate) fn validate_path(path: &str, field: &'static str) -> Result<(), CsvSourceError> {
     if path.is_empty() || path.contains('\0') || path.len() > MAX_CSV_SOURCE_PATH_BYTES {
         Err(CsvSourceError::Path { field })
     } else {
