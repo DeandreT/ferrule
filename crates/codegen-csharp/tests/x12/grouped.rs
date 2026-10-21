@@ -576,6 +576,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "Runtime/FerruleXml.InputSet.cs",
         "Runtime/FerruleXml.Output.cs",
         "Runtime/FerruleXml.OutputSet.cs",
+        "Runtime/FerruleXml.Owned.cs",
         "Runtime/FerruleXml.cs",
         "Runtime/FerruleXmlMixedContent.cs",
         "Runtime/FerruleXmlTypeOrigin.cs",

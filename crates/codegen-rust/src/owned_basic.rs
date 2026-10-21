@@ -28,6 +28,7 @@ pub(crate) use windows::render_public_basic_owned_sequence_aggregate_source;
 pub(crate) use windows::render_public_basic_owned_sequence_exists_source;
 pub(crate) use windows::render_public_basic_owned_sequence_item_at_source;
 pub(crate) use windows::render_public_basic_owned_window_source;
+pub(crate) use windows::render_public_basic_owned_xml_serialize_source;
 #[path = "owned_basic_group_by.rs"]
 mod group_by;
 #[path = "owned_basic_rows.rs"]
@@ -474,6 +475,38 @@ pub(super) fn render_owned_dynamic_field(
     format!(
         "let key = {key}?; context.owned_dynamic_field({owner}, &[{object}], {frame}, &key, {root_pin})"
     )
+}
+
+/// Renders one owned XML serializer in a paired Basic context. The element read
+/// and its owned failures are attributed to the node; writer failures keep the
+/// legacy serializer's category and order.
+pub(super) fn render_owned_xml_serialize(
+    id: NodeId,
+    serializer: &mapping::OwnedXmlSerialize,
+) -> Result<String, EmitError> {
+    let schema =
+        serialize_embedded_schema(&serializer.schema, codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES)?;
+    let owner = owner_literal(&serializer.source.owner);
+    let frame = serializer.frame.as_ref().map_or_else(
+        || "None".into(),
+        |frame| format!("Some(&[{}][..])", render_string_path(frame)),
+    );
+    let root_pin = if serializer.frame.as_ref().is_some_and(Vec::is_empty) {
+        format!("basic_declared_root_nonrepeating({owner})")
+    } else {
+        "false".into()
+    };
+    let namespace = serializer.namespace.as_ref().map_or_else(
+        || "None".to_string(),
+        |namespace| format!("Some({})", rust_string(namespace)),
+    );
+    Ok(format!(
+        "{{\n        let instance = context\n            .owned_xml_instance({owner}, &[{}], {frame}, {root_pin})\n            .map_err(|error| error.with_owned_source_node({id}))?;\n        codegen_runtime::serialize_xml({id}, {}, instance, {}, {}, {namespace})\n    }}",
+        render_string_path(&serializer.source.path),
+        rust_string(&schema),
+        serializer.declaration,
+        serializer.indent,
+    ))
 }
 
 fn render_basic_scope(

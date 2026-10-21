@@ -71,6 +71,23 @@ pub(super) fn validate(
             }
             continue;
         }
+        if let Expression::OwnedXmlSerialize(serializer) = expression {
+            validate_serializer_schema(node, &serializer.schema, serializer.namespace.as_deref())?;
+            // Only the exact owner's schema can supply the element. Unknown
+            // owners and unresolved paths are left to the ownership diagnostic.
+            if sources
+                .owned_schema_at(&serializer.source)
+                .and_then(|candidate| candidate.resolved())
+                .is_some_and(|candidate| !schema_matches(candidate.node(), &serializer.schema))
+            {
+                return Err(ProgramValidationError::InvalidXmlSerializeSource {
+                    node,
+                    path: serializer.source.path.clone(),
+                    schema: serializer.schema.name.clone(),
+                });
+            }
+            continue;
+        }
         let Expression::XmlSerialize {
             frame,
             path,
@@ -81,34 +98,16 @@ pub(super) fn validate(
         else {
             continue;
         };
-        if schema.repeating {
-            return Err(ProgramValidationError::RepeatingXmlSerializeSchema {
-                node,
-                schema: schema.name.clone(),
-            });
-        }
-        if namespace.as_ref().is_some_and(String::is_empty) {
-            return Err(ProgramValidationError::EmptyXmlSerializeNamespace { node });
-        }
-        if let Some(feature) = unsupported_schema_feature(schema) {
-            return Err(ProgramValidationError::UnsupportedXmlSerializeSchema {
-                node,
-                schema: schema.name.clone(),
-                feature,
-            });
-        }
+        validate_serializer_schema(node, schema, namespace.as_deref())?;
         let mut absolute = frame.clone().unwrap_or_default();
         absolute.extend(path.iter().cloned());
-        let expected_group = matches!(schema.kind, SchemaKind::Group { .. });
         let matches = sources
             .path_targets(&absolute)
             .into_iter()
             .any(|candidate| {
-                candidate.resolved().is_some_and(|candidate| {
-                    candidate.node().name == schema.name
-                        && matches!(candidate.node().kind, SchemaKind::Group { .. })
-                            == expected_group
-                })
+                candidate
+                    .resolved()
+                    .is_some_and(|candidate| schema_matches(candidate.node(), schema))
             });
         if !matches {
             return Err(ProgramValidationError::InvalidXmlSerializeSource {
@@ -119,6 +118,38 @@ pub(super) fn validate(
         }
     }
     Ok(())
+}
+
+/// Document-level serializer checks shared by the legacy and owned forms.
+fn validate_serializer_schema(
+    node: NodeId,
+    schema: &SchemaNode,
+    namespace: Option<&str>,
+) -> Result<(), ProgramValidationError> {
+    if schema.repeating {
+        return Err(ProgramValidationError::RepeatingXmlSerializeSchema {
+            node,
+            schema: schema.name.clone(),
+        });
+    }
+    if namespace.is_some_and(str::is_empty) {
+        return Err(ProgramValidationError::EmptyXmlSerializeNamespace { node });
+    }
+    if let Some(feature) = unsupported_schema_feature(schema) {
+        return Err(ProgramValidationError::UnsupportedXmlSerializeSchema {
+            node,
+            schema: schema.name.clone(),
+            feature,
+        });
+    }
+    Ok(())
+}
+
+/// The selected source element has the serializer schema's name and kind.
+fn schema_matches(source: &SchemaNode, schema: &SchemaNode) -> bool {
+    source.name == schema.name
+        && matches!(source.kind, SchemaKind::Group { .. })
+            == matches!(schema.kind, SchemaKind::Group { .. })
 }
 
 fn unsupported_schema_feature(schema: &SchemaNode) -> Option<&'static str> {

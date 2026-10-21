@@ -194,6 +194,15 @@ pub fn lower_with_basic_owned_sequence_aggregate(project: &Project) -> Result<Pr
     )
 }
 
+/// Lowers owned XML serialization in Basic target contexts, composing the owned
+/// dynamic source-field companion. Legacy serializers keep their ordinary route.
+pub fn lower_with_basic_owned_xml_serialize(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_xml_serialize,
+    )
+}
+
 fn lower_with_validator(
     project: &Project,
     validator: fn(&Program) -> Result<(), ProgramValidationError>,
@@ -1274,6 +1283,7 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
         Node::OwnedRowDocumentPath(path) => Expression::OwnedRowDocumentPath(path.clone()),
         Node::OwnedLookup(lookup) => Expression::OwnedLookup(lookup.clone()),
         Node::OwnedCollectionFind(find) => Expression::OwnedCollectionFind(find.clone()),
+        Node::OwnedXmlSerialize(serializer) => Expression::OwnedXmlSerialize(serializer.clone()),
         Node::SourceField { path, frame } => Expression::SourceField {
             frame: frame.clone(),
             path: path.clone(),

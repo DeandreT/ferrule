@@ -293,6 +293,27 @@ pub fn emit_with_basic_owned_path_hierarchy(
     .map_err(EmitError::from)
 }
 
+/// Emit owned XML serialization in Basic target contexts, composing the owned
+/// dynamic source-field companion. Legacy serializers keep the ordinary emitter;
+/// every older companion keeps refusing the owned form.
+pub fn emit_with_basic_owned_xml_serialize(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_xml_serialize(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_xml_serialize_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_xml_serialize_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit the qualified Basic By/row-failure profile plus ItemAt over the four
 /// pure scalar producers. Existing emitters and failure-expression gates stay closed.
 pub fn emit_with_basic_owned_sequence_item_at(
@@ -1082,6 +1103,7 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
+        | Expression::OwnedXmlSerialize(_)
         | Expression::SourceField { .. }
         | Expression::SourceRootXmlTypeEquals { .. }
         | Expression::SourceRootField { .. }
@@ -1829,12 +1851,16 @@ fn render_expression_in_context_with_scalar_item_at(
                     &call_expression(find.value, "item_context"),
                 )
             }
+            Expression::OwnedXmlSerialize(serializer) if basic => {
+                owned_basic::render_owned_xml_serialize(id, serializer)?
+            }
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
             | Expression::OwnedDynamicSourceField(_)
             | Expression::OwnedLookup(_)
-            | Expression::OwnedCollectionFind(_) => {
+            | Expression::OwnedCollectionFind(_)
+            | Expression::OwnedXmlSerialize(_) => {
                 let namespace = owner_function.map_or(codegen::OwnedSourceNamespace::Main, |id| {
                     codegen::OwnedSourceNamespace::Function(FunctionId::new(id))
                 });
