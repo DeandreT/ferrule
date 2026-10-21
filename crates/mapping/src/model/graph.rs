@@ -222,6 +222,8 @@ pub enum Node {
     OwnedLookup(OwnedLookup),
     /// First-match predicate search over exactly one owned endpoint collection.
     OwnedCollectionFind(OwnedCollectionFind),
+    /// Serializes one structured element read from exactly its declared owner.
+    OwnedXmlSerialize(crate::OwnedXmlSerialize),
     /// Reads a scalar field at `path`, resolved against the innermost
     /// currently-iterating source item, falling back to enclosing items
     /// (nearest enclosing wins) if not found there. That fallback is what
@@ -489,6 +491,7 @@ impl Node {
             Self::OwnedPosition(_) => Some("owned_position"),
             Self::OwnedRowDocumentPath(_) => Some("owned_row_document_path"),
             Self::OwnedDynamicSourceField(_) => Some("owned_dynamic_source_field"),
+            Self::OwnedXmlSerialize(_) => Some("owned_xml_serialize"),
             Self::SequenceExists { sequence, .. }
             | Self::SequenceItemAt { sequence, .. }
             | Self::SequenceAggregate { sequence, .. }
@@ -509,6 +512,7 @@ impl Node {
             Self::OwnedSourceField(_)
             | Self::OwnedPosition(_)
             | Self::OwnedRowDocumentPath(_)
+            | Self::OwnedXmlSerialize(_)
             | Self::SourceField { .. }
             | Self::SourceRootXmlTypeEquals { .. }
             | Self::SourceRootField { .. }

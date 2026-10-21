@@ -534,16 +534,51 @@ fn prepared(snapshot: &Json, refused: bool) -> FerruleApp {
     }
     app.mark_clean();
     let before = editor_snapshot(&app.project, &app.main_canvas.snarl, &app.mapping_workspace);
-    app.history = SnapshotHistory::new(before.clone(), DocumentOrigin::Saved);
-    app.observed_editor = before;
-    app.pending_history = None;
+    app.reset_history_to(before);
     if refused {
         let before = app.observed_editor.clone();
-        app.history.record(before.clone(), "Retained prior edit");
-        app.history.record(before.clone(), "Retained redo");
-        let _ = app.history.undo(before);
+        app.history.record(
+            HistoryRecord::Snapshot(before.clone()),
+            "Retained prior edit",
+        );
+        app.history
+            .record(HistoryRecord::Snapshot(before.clone()), "Retained redo");
+        let _ = step_snapshot(&mut app.history, before, Step::Undo);
     }
     app
+}
+
+#[derive(Clone, Copy)]
+enum Step {
+    Undo,
+    Redo,
+}
+
+/// Steps retained snapshot history without restoring the editor, returning
+/// the step label and the snapshot it would restore.
+fn step_snapshot(
+    history: &mut EditorHistory,
+    current: EditorSnapshot,
+    step: Step,
+) -> (String, EditorSnapshot) {
+    let mut current = Some(current);
+    let mut restored = None;
+    let mut exchange =
+        |record: &mut HistoryRecord<EditorSnapshot, _>| match (record, current.take()) {
+            (HistoryRecord::Snapshot(snapshot), Some(current)) => {
+                restored = Some(std::mem::replace(snapshot, current));
+                Ok(())
+            }
+            _ => Err(()),
+        };
+    let label = match step {
+        Step::Undo => history.undo(&mut exchange),
+        Step::Redo => history.redo(&mut exchange),
+    };
+    match (label, restored) {
+        (Ok(Some(label)), Some(snapshot)) => (label, snapshot),
+        _ => panic!("a retained snapshot step exists"),
+    }
 }
 
 fn stable_node(value: CanvasNode) -> Json {
@@ -741,7 +776,7 @@ fn retain_state(originals: &Originals, label: &str, app: &FerruleApp) -> Json {
             }
         }
     }
-    let result = json!({"project_key":project_key,"layout":layout_bits(&layout),"mapping_canvases":canvases,"typed_literals":float_values,"history":{"undo":app.history.undo_len(),"redo":app.history.redo_len(),"dirty":app.history.is_dirty(&app.observed_editor),"pending":app.pending_history.as_ref().map(|value| json!({"project_key":value.before.state.serialized_project,"layout":layout_bits(&value.before.state.layout)})),"observed_project_key":app.observed_editor.state.serialized_project,"observed_layout":layout_bits(&app.observed_editor.state.layout)}});
+    let result = json!({"project_key":project_key,"layout":layout_bits(&layout),"mapping_canvases":canvases,"typed_literals":float_values,"history":{"undo":app.history.undo_len(),"redo":app.history.redo_len(),"dirty":app.observed_dirty(),"pending":app.pending_history.as_ref().map(|value| json!({"project_key":value.before.state.serialized_project,"layout":layout_bits(&value.before.state.layout)})),"observed_project_key":app.observed_editor.state.serialized_project,"observed_layout":layout_bits(&app.observed_editor.state.layout)}});
     originals.bytes(
         &format!("{label}.complete-state.original.json"),
         &serde_json::to_vec_pretty(&result).unwrap(),
@@ -1226,7 +1261,7 @@ fn all_ten_complete_literal_copies_edits_history_saved_reopen_and_native_outcome
         assert_eq!(app.history.undo_len(), 1);
         assert_eq!(app.history.redo_len(), 0);
         assert!(app.pending_history.is_none());
-        assert!(app.history.is_dirty(&app.observed_editor));
+        assert!(app.observed_dirty());
         preview(
             &originals,
             &format!("{name}.after_duplicate"),
@@ -1301,7 +1336,7 @@ fn all_ten_complete_literal_copies_edits_history_saved_reopen_and_native_outcome
                 &snapshots[text(expected)],
             );
             if text(expected) == "before" {
-                assert!(!app.history.is_dirty(&app.observed_editor));
+                assert!(!app.observed_dirty());
             }
         }
         for (index, expected) in case["history"]["three_redo_restored_snapshots"]
@@ -1359,7 +1394,7 @@ fn all_ten_complete_literal_copies_edits_history_saved_reopen_and_native_outcome
             &reopened,
             &snapshots["after_independent_copy_edit"],
         );
-        assert!(!reopened.history.is_dirty(&reopened.observed_editor));
+        assert!(!reopened.observed_dirty());
         preview(
             &originals,
             &format!("{name}.reopened"),
@@ -1425,9 +1460,7 @@ fn real_target_binding_keeps_raw_and_transitive_stage_inputs_private() {
             .snarl
             .insert_node(egui::pos2(300.0, 300.0), CanvasNode::Graph(from));
         let setup = editor_snapshot(&app.project, &app.main_canvas.snarl, &app.mapping_workspace);
-        app.history = SnapshotHistory::new(setup.clone(), DocumentOrigin::Saved);
-        app.observed_editor = setup;
-        app.pending_history = None;
+        app.reset_history_to(setup);
         let before = retain_state(&originals, &format!("{name}.before"), &app);
         let result = explicit_binding(&mut app, from, MappingDocument::Main);
         originals.debug(
@@ -1549,45 +1582,45 @@ fn all_eighteen_literal_refusals_preserve_whole_project_canvas_saved_history_and
             &case["snapshots"]["after"],
         );
         let snapshot = app.observed_editor.clone();
-        let redo = app.history.redo(snapshot.clone()).unwrap();
-        originals.bytes(&format!("{name}.retained-redo.original.json"), &serde_json::to_vec_pretty(&json!({"label":redo.label(),"whole_project_debug":format!("{:#?}",redo.snapshot().project),"project_key":crate::project_state::project_snapshot_key(&redo.snapshot().project),"state_project_key":redo.snapshot().state.serialized_project,"layout":layout_bits(&redo.snapshot().state.layout)})).unwrap());
+        let redo = step_snapshot(&mut app.history, snapshot.clone(), Step::Redo);
+        originals.bytes(&format!("{name}.retained-redo.original.json"), &serde_json::to_vec_pretty(&json!({"label":redo.0.as_str(),"whole_project_debug":format!("{:#?}",redo.1.project),"project_key":crate::project_state::project_snapshot_key(&redo.1.project),"state_project_key":redo.1.state.serialized_project,"layout":layout_bits(&redo.1.state.layout)})).unwrap());
         assert_eq!(
-            crate::project_state::project_snapshot_key(&redo.snapshot().project),
+            crate::project_state::project_snapshot_key(&redo.1.project),
             snapshot.state.serialized_project
         );
-        assert_eq!(redo.label(), "Retained redo");
+        assert_eq!(redo.0.as_str(), "Retained redo");
         assert_eq!(
-            redo.snapshot().state.serialized_project,
+            redo.1.state.serialized_project,
             snapshot.state.serialized_project
         );
         assert_eq!(
-            layout_bits(&redo.snapshot().state.layout),
+            layout_bits(&redo.1.state.layout),
             layout_bits(&snapshot.state.layout)
         );
-        let undo = app.history.undo(snapshot.clone()).unwrap();
-        originals.bytes(&format!("{name}.retained-redo-reversal.original.json"), &serde_json::to_vec_pretty(&json!({"label":undo.label(),"whole_project_debug":format!("{:#?}",undo.snapshot().project),"project_key":crate::project_state::project_snapshot_key(&undo.snapshot().project),"state_project_key":undo.snapshot().state.serialized_project,"layout":layout_bits(&undo.snapshot().state.layout)})).unwrap());
+        let undo = step_snapshot(&mut app.history, snapshot.clone(), Step::Undo);
+        originals.bytes(&format!("{name}.retained-redo-reversal.original.json"), &serde_json::to_vec_pretty(&json!({"label":undo.0.as_str(),"whole_project_debug":format!("{:#?}",undo.1.project),"project_key":crate::project_state::project_snapshot_key(&undo.1.project),"state_project_key":undo.1.state.serialized_project,"layout":layout_bits(&undo.1.state.layout)})).unwrap());
         assert_eq!(
-            crate::project_state::project_snapshot_key(&undo.snapshot().project),
+            crate::project_state::project_snapshot_key(&undo.1.project),
             snapshot.state.serialized_project
         );
-        assert_eq!(undo.label(), "Retained redo");
+        assert_eq!(undo.0.as_str(), "Retained redo");
         assert_eq!(
-            layout_bits(&undo.snapshot().state.layout),
+            layout_bits(&undo.1.state.layout),
             layout_bits(&snapshot.state.layout)
         );
-        let undo = app.history.undo(snapshot.clone()).unwrap();
-        originals.bytes(&format!("{name}.retained-prior-undo.original.json"), &serde_json::to_vec_pretty(&json!({"label":undo.label(),"whole_project_debug":format!("{:#?}",undo.snapshot().project),"project_key":crate::project_state::project_snapshot_key(&undo.snapshot().project),"state_project_key":undo.snapshot().state.serialized_project,"layout":layout_bits(&undo.snapshot().state.layout)})).unwrap());
+        let undo = step_snapshot(&mut app.history, snapshot.clone(), Step::Undo);
+        originals.bytes(&format!("{name}.retained-prior-undo.original.json"), &serde_json::to_vec_pretty(&json!({"label":undo.0.as_str(),"whole_project_debug":format!("{:#?}",undo.1.project),"project_key":crate::project_state::project_snapshot_key(&undo.1.project),"state_project_key":undo.1.state.serialized_project,"layout":layout_bits(&undo.1.state.layout)})).unwrap());
         assert_eq!(
-            crate::project_state::project_snapshot_key(&undo.snapshot().project),
+            crate::project_state::project_snapshot_key(&undo.1.project),
             snapshot.state.serialized_project
         );
-        assert_eq!(undo.label(), "Retained prior edit");
+        assert_eq!(undo.0.as_str(), "Retained prior edit");
         assert_eq!(
-            undo.snapshot().state.serialized_project,
+            undo.1.state.serialized_project,
             snapshot.state.serialized_project
         );
         assert_eq!(
-            layout_bits(&undo.snapshot().state.layout),
+            layout_bits(&undo.1.state.layout),
             layout_bits(&snapshot.state.layout)
         );
     }

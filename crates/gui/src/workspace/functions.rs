@@ -390,6 +390,7 @@ impl FerruleApp {
         let mut requested_function = None;
         let mut error = None;
         sequence_consumer_duplication::begin(ui.ctx());
+        crate::graph_viewer::removal_journal::begin(ui.ctx());
         ui.add_enabled_ui(editing_enabled, |ui| {
             let (targets, canvases) = (
                 &mut self.project.extra_targets,
@@ -486,6 +487,7 @@ impl FerruleApp {
             requested_function = viewer.requested_function_open;
             error = viewer.error;
         });
+        self.record_canvas_removals(MappingDocument::Target(target_index), ui.ctx());
         if let Some(node) = sequence_consumer_duplication::take(ui.ctx()) {
             self.apply_sequence_duplication_request(MappingDocument::Target(target_index), node);
         }
@@ -554,6 +556,7 @@ impl FerruleApp {
         let mut root = Scope::default();
         let mut requested = None;
         let mut error = None;
+        crate::graph_viewer::removal_journal::begin(ui.ctx());
         ui.add_enabled_ui(editing_enabled, |ui| {
             let (functions, canvases) = (
                 &mut self.project.user_functions,
@@ -621,6 +624,7 @@ impl FerruleApp {
             requested = viewer.requested_function_open;
             error = viewer.error;
         });
+        self.record_canvas_removals(MappingDocument::Function(function_id), ui.ctx());
         if let Some(error) = error {
             self.status = "function graph edit failed".to_string();
             self.diagnostics.error("Function edit failed", error);

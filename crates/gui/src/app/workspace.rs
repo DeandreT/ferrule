@@ -1104,6 +1104,7 @@ impl FerruleApp {
         let primary_root_authoring = crate::primary_root_authoring::available(&self.project);
         let canvas_id = self.embedded_canvas_id(egui::Id::unique("main_mapping_canvas"));
         sequence_consumer_duplication::begin(ui.ctx());
+        crate::graph_viewer::removal_journal::begin(ui.ctx());
         ui.add_enabled_ui(editing_enabled, |ui| {
             let source_blocks = project_source_blocks(&self.project);
             let target_blocks = target_blocks(&self.project.target);
@@ -1194,6 +1195,7 @@ impl FerruleApp {
             }
             requested_function = viewer.requested_function_open;
         });
+        self.record_canvas_removals(MappingDocument::Main, ui.ctx());
         if let Some(node) = sequence_consumer_duplication::take(ui.ctx()) {
             self.apply_sequence_duplication_request(MappingDocument::Main, node);
         }
@@ -1227,7 +1229,7 @@ impl FerruleApp {
 
     pub(super) fn show_status_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            let (label, color) = if self.is_dirty() {
+            let (label, color) = if self.observed_dirty() {
                 ("Unsaved", self.palette.warning)
             } else {
                 ("Saved", self.palette.success)
