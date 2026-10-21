@@ -232,6 +232,27 @@ fn owned_source_headers_retain_the_complete_read_only_owner_and_frame_metadata()
 }
 
 #[test]
+fn owned_row_path_header_keeps_explicit_root_and_named_owner_read_only() {
+    let node = Node::OwnedRowDocumentPath(mapping::OwnedRowDocumentPath {
+        owner: mapping::SourceOwner::Named {
+            name: "Authored source 資料".into(),
+        },
+        collection: Some(vec![]),
+    });
+    let before = serde_json::to_string(&node).unwrap();
+    let header = header(&node, "Owned row document path", false).unwrap();
+    assert!(header.accessible_label.contains("Authored source 資料"));
+    assert!(header.accessible_label.contains("explicit []"));
+    assert!(
+        header
+            .accessible_label
+            .contains("Read-only; no owner or ancestor fallback")
+    );
+    assert!(!is_inline(&node));
+    assert_eq!(serde_json::to_string(&node).unwrap(), before);
+}
+
+#[test]
 fn conditionals_have_explicit_title_and_unelided_semantic_port_labels() {
     let node = Node::If {
         condition: 31,

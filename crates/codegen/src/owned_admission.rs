@@ -671,7 +671,9 @@ impl<'a> Analysis<'a> {
                 continue;
             };
             match expression {
-                Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => {}
+                Expression::OwnedSourceField(_)
+                | Expression::OwnedPosition(_)
+                | Expression::OwnedRowDocumentPath(_) => {}
                 // The owned walk is demand-driven; the needle stays in the parent.
                 Expression::OwnedLookup(lookup) => self.queue(namespace, context, lookup.matches),
                 Expression::OwnedCollectionFind(find) => {
