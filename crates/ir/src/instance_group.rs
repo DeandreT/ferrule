@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Instance, XmlTypeOrigin, XmlTypeOriginError};
+use crate::{Instance, SourceRowOrigin, XmlTypeOrigin, XmlTypeOriginError};
 
 /// Ordered group data with runtime-only facts owned by this exact occurrence.
 ///
@@ -11,15 +11,21 @@ use crate::{Instance, XmlTypeOrigin, XmlTypeOriginError};
 /// caller can change the data. Serialization keeps the legacy ordered array.
 ///
 /// Use `Instance::Group(fields.into())` for ordinary data construction. A field
-/// named like historical XML metadata remains data. Full equality includes
-/// origin, so a serialized/deserialized known-origin group is data-equivalent
-/// but has unknown origin. Compare its serialized data and origin separately.
-#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
+/// named like historical XML metadata remains data. Equality includes XML type
+/// facts but excludes physical source provenance, which has separate identity
+/// comparisons. Serialization never includes either kind of runtime metadata.
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct InstanceGroup {
     fields: Vec<(String, Instance)>,
     #[serde(skip)]
-    origin: Option<Box<KnownXmlTypeOrigin>>,
+    origins: Option<Box<GroupOrigins>>,
+}
+
+#[derive(Clone, Default)]
+struct GroupOrigins {
+    xml: Option<KnownXmlTypeOrigin>,
+    source: Option<SourceRowOrigin>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -33,6 +39,17 @@ enum KnownXmlTypeOrigin {
 }
 
 impl InstanceGroup {
+    /// Provenance is separate from ordinary value equality and is never saved.
+    pub fn source_origin(&self) -> Option<&SourceRowOrigin> {
+        self.origins.as_deref()?.source.as_ref()
+    }
+
+    /// Attach reader/host provenance without changing the row's ordered data.
+    pub fn with_source_origin(mut self, origin: SourceRowOrigin) -> Self {
+        self.origins.get_or_insert_with(Default::default).source = Some(origin);
+        self
+    }
+
     /// Attach a fact from the owning XML reader or a trusted host boundary.
     /// This is not an attestation mechanism for arbitrary programmatic callers.
     pub fn with_xml_type_origin(
@@ -48,30 +65,41 @@ impl InstanceGroup {
         &mut self,
         origin: XmlTypeOrigin<'_>,
     ) -> Result<(), XmlTypeOriginError> {
-        self.origin = match origin {
+        let known = match origin {
             XmlTypeOrigin::Unknown => None,
-            XmlTypeOrigin::Absent => Some(Box::new(KnownXmlTypeOrigin::Absent)),
+            XmlTypeOrigin::Absent => Some(KnownXmlTypeOrigin::Absent),
             XmlTypeOrigin::Explicit(identity) if !identity.is_empty() => {
-                Some(Box::new(KnownXmlTypeOrigin::Explicit(identity.to_owned())))
+                Some(KnownXmlTypeOrigin::Explicit(identity.to_owned()))
             }
             XmlTypeOrigin::Explicit(_) => return Err(XmlTypeOriginError::InvalidPayload),
             XmlTypeOrigin::ExplicitPadded {
                 literal,
                 resolved_identity,
             } if crate::primary_root_padded_type_origin_is_valid(literal, resolved_identity) => {
-                Some(Box::new(KnownXmlTypeOrigin::ExplicitPadded {
+                Some(KnownXmlTypeOrigin::ExplicitPadded {
                     literal: literal.to_owned(),
                     resolved_identity: resolved_identity.to_owned(),
-                }))
+                })
             }
             XmlTypeOrigin::ExplicitPadded { .. } => return Err(XmlTypeOriginError::InvalidPayload),
         };
+        if known.is_some() || self.origins.is_some() {
+            let origins = self.origins.get_or_insert_with(Default::default);
+            origins.xml = known;
+            if origins.xml.is_none() && origins.source.is_none() {
+                self.origins = None;
+            }
+        }
         Ok(())
     }
 
     /// Inspect this exact occurrence without ancestor or collection fallback.
     pub fn xml_type_origin(&self) -> XmlTypeOrigin<'_> {
-        match self.origin.as_deref() {
+        match self
+            .origins
+            .as_deref()
+            .and_then(|origins| origins.xml.as_ref())
+        {
             None => XmlTypeOrigin::Unknown,
             Some(KnownXmlTypeOrigin::Absent) => XmlTypeOrigin::Absent,
             Some(KnownXmlTypeOrigin::Explicit(identity)) => XmlTypeOrigin::Explicit(identity),
@@ -95,7 +123,7 @@ impl From<Vec<(String, Instance)>> for InstanceGroup {
     fn from(fields: Vec<(String, Instance)>) -> Self {
         Self {
             fields,
-            origin: None,
+            origins: None,
         }
     }
 }
@@ -110,7 +138,7 @@ impl Deref for InstanceGroup {
 
 impl DerefMut for InstanceGroup {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.origin = None;
+        self.origins = None;
         &mut self.fields
     }
 }
@@ -144,7 +172,23 @@ impl<'a> IntoIterator for &'a mut InstanceGroup {
     type IntoIter = std::slice::IterMut<'a, (String, Instance)>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.origin = None;
+        self.origins = None;
         self.fields.iter_mut()
+    }
+}
+
+impl PartialEq for InstanceGroup {
+    fn eq(&self, other: &Self) -> bool {
+        // Keep the pre-existing value/XML-origin equality contract. Physical
+        // row identity has its own explicit same_occurrence comparison.
+        self.fields == other.fields
+            && self
+                .origins
+                .as_deref()
+                .and_then(|origins| origins.xml.as_ref())
+                == other
+                    .origins
+                    .as_deref()
+                    .and_then(|origins| origins.xml.as_ref())
     }
 }

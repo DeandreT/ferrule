@@ -2,12 +2,12 @@
 
 use std::{iter::FusedIterator, sync::Arc};
 
-use ir::{Instance, SchemaNode};
+use ir::{Instance, SchemaNode, SourceDocumentOrigin};
 use thiserror::Error;
 
 use crate::{CsvByteDecodingPolicy, CsvReadError, CsvReadOptions};
 
-pub const MAX_CSV_SOURCE_PATH_BYTES: usize = 4096;
+pub const MAX_CSV_SOURCE_PATH_BYTES: usize = ir::MAX_SOURCE_ORIGIN_PATH_BYTES;
 pub const MAX_CSV_SOURCE_DOCUMENTS: usize = 1_000_000;
 
 #[derive(Debug, Error)]
@@ -22,8 +22,7 @@ pub enum CsvSourceError {
 
 #[derive(Debug)]
 struct Document {
-    path: String,
-    resolved_path: Option<String>,
+    origin: SourceDocumentOrigin,
     rows: Vec<Instance>,
 }
 
@@ -49,19 +48,34 @@ impl CsvSourceDocument {
         }
         let rows =
             crate::from_bytes_with_decoding_policy_bounded(bytes, schema, options, decoding)?;
-        Ok(Self(Arc::new(Document {
-            path: path.into(),
-            resolved_path: resolved_path.map(str::to_owned),
-            rows,
-        })))
+        let origin =
+            SourceDocumentOrigin::new(path, resolved_path).expect("source paths were validated");
+        let rows = rows
+            .into_iter()
+            .enumerate()
+            .map(|(index, row)| {
+                let Instance::Group(group) = row else {
+                    unreachable!("CSV parser returns group rows")
+                };
+                Instance::Group(
+                    group
+                        .with_source_origin(origin.row(index + 1).expect("one-based row position")),
+                )
+            })
+            .collect();
+        Ok(Self(Arc::new(Document { origin, rows })))
     }
 
     pub fn path(&self) -> &str {
-        &self.0.path
+        self.0.origin.path()
     }
 
     pub fn resolved_path(&self) -> Option<&str> {
-        self.0.resolved_path.as_deref()
+        self.0.origin.resolved_path()
+    }
+
+    pub fn origin(&self) -> &SourceDocumentOrigin {
+        &self.0.origin
     }
 
     pub fn source_path(&self) -> &str {
