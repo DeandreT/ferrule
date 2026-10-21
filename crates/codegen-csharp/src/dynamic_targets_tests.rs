@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
@@ -347,12 +348,17 @@ struct TempDir(PathBuf);
 
 impl TempDir {
     fn new(tag: &str) -> Self {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_nanos())
             .unwrap_or_default();
-        let path =
-            std::env::temp_dir().join(format!("ferrule_{tag}_{}_{}", std::process::id(), nonce));
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_{tag}_{}_{}_{}",
+            std::process::id(),
+            nonce,
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
         fs::create_dir_all(&path).expect("temporary directory is created");
         Self(path)
     }

@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ir::{ScalarType, SchemaNode};
@@ -50,10 +51,12 @@ fn generated_random_preserves_float_range_binding_shape_and_arity_errors()
         },
     };
     let program = codegen::lower(&project)?;
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "ferrule_random_host_{}_{}",
+        "ferrule_random_host_{}_{}_{}",
         std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&root)?;
     eprintln!("complete random host evidence: {}", root.display());

@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use format_json::{JsonFormatError, from_str, json_schema, to_string};
@@ -17,10 +18,12 @@ fn evidence() -> TestResult<PathBuf> {
     if !parent.is_absolute() {
         return Err("evidence parent must be absolute".into());
     }
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let path = parent.join(format!(
-        "ferrule-json-bounds-native-{}-{stamp}",
-        std::process::id()
+        "ferrule-json-bounds-native-{}-{stamp}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&path)?;
     std::fs::write(path.join("cases.json"), CASES)?;

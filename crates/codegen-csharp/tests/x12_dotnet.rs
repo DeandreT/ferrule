@@ -5,6 +5,7 @@ use std::{
     fs,
     path::Path,
     process::Command,
+    sync::atomic::{AtomicUsize, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -494,13 +495,15 @@ fn lower(project: &Project) -> Program {
 
 #[test]
 fn synthetic_native_examples_match_independent_full_values_and_bytes() {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let evidence = std::env::temp_dir().join(format!(
-        "ferrule_x12_native_{}_{}",
+        "ferrule_x12_native_{}_{}_{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&evidence).unwrap();
     eprintln!(
@@ -664,13 +667,15 @@ fn retain_command(root: &Path, label: &str, command: &mut Command) -> std::proce
 #[test]
 #[ignore = "explicit freshly generated standalone X12 compiled-host qualification"]
 fn generated_raw_x12_examples_match_complete_oracles_and_error_fixtures() {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "ferrule_x12_cohort_{}_{}",
+        "ferrule_x12_cohort_{}_{}_{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&root).unwrap();
     eprintln!("complete X12 qualification artifacts: {}", root.display());
