@@ -165,6 +165,18 @@ collection misses without consulting another endpoint, Null-like keys never
 match, and the first match in source order wins with a miss as `Null`. See the
 [search contract](owned-lookup-find.md).
 
+## Owned collection aggregates
+
+An owned aggregate qualifies one collection of exactly its declared endpoint
+with the owned search walk, beside the unchanged legacy aggregate. Its value
+path or expression reads each selected item as the latest occurrence of its
+owner, while the `join` separator or `item_at` index evaluates once in the
+parent context after every item value. A grouped or block scope therefore
+reduces only its members, an ordinary owned row anchors same-owner walks at
+that row, and an absent or empty collection reduces as empty without consulting
+another endpoint. Every legacy reducer keeps its empty, null and type policy.
+See the [aggregate contract](owned-collection-aggregates.md).
+
 ## Owned join identity
 
 An owned inner join names each source and each condition's left collection by
@@ -175,8 +187,22 @@ Duplicate, singleton and left-stage checks compare the whole identity: a
 primary `Rows` and a named `Rows` are two sources, while the same owner's `Rows`
 twice is still a duplicate. The scope's `JoinId` stays independent of these
 identities. Validation resolves each source against its own endpoint and each
-key path under the exact collection it names. Execution, generation, `.mfd`
-export and GUI editing refuse owned joins; the GUI shows a saved one read-only.
+key path under the exact collection it names. `.mfd` export and GUI editing
+refuse owned joins; the GUI shows a saved one read-only.
+
+## Owned join tuples
+
+Each owned join source contributes members only from its declared endpoint,
+anchored by the latest active frame of the same owner, so a source equal to an
+active owned row is that row; another endpoint with the same path never
+supplies members. Tuples keep left-major order, duplicates and the legacy
+Null-like key exclusion. Strict `owned_join_field` and
+`owned_join_source_position` reads bind one member by its full identity and
+return a scalar or its raw source position; the flattened tuple position reuses
+`join_position` and follows the legacy filter, sort and compaction phases. A
+tuple context admits only those reads and pure scalar nodes. The interpreter
+and an explicit generation companion execute owned joins; owned joined
+aggregates stay closed. See the [owned join contract](owned-joins.md).
 
 ## Dynamic source-field objects
 

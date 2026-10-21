@@ -23,6 +23,13 @@ a later conversion failure must not replace an earlier overflow. Source/cohort
 construction retains its own existing evaluation contract. Ordinary aggregate
 operations retain their existing eager value collection.
 
+The explicit owned-collection and owned scalar-sequence companion profiles keep
+their previously qualified reducers. They do not admit `DecimalSum`: the owned
+collection interpreter refuses it before reading item values, and generation,
+emission and named-input admission refuse the unqualified operation. Legacy
+collection, generated-sequence and join aggregates retain their independently
+implemented ordered decimal fold.
+
 The incremental collection helper changes its saved total only after a successful
 append. A failed append does not discard or duplicate the previously accumulated
 values. A new invocation starts with independent state.

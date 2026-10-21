@@ -31,11 +31,17 @@ pub(super) struct TargetWriteResult {
 pub(super) fn write_target_outputs(
     targets: &[TargetOutput<'_>],
     protected_output_paths: &[&Path],
+    policy: &engine::ExecutionPolicy,
 ) -> anyhow::Result<Vec<TargetWriteResult>> {
     let planned = targets
         .iter()
         .map(PlannedTarget::build)
         .collect::<anyhow::Result<Vec<_>>>()?;
+    // Every final file, including each dynamic document, is checked before
+    // anything is staged.
+    for file in planned.iter().flat_map(|target| &target.files) {
+        policy.authorize_write(&file.final_path)?;
+    }
     validate_global_paths(&planned)?;
     reject_protected_planned_files(&planned, protected_output_paths)?;
     preflight_planned_targets(&planned)?;
@@ -919,9 +925,13 @@ mod tests {
         };
         let target = json_target(&destination, "primary", &schema, &instance, &options);
 
-        let error = write_target_outputs(&[target], &[protected.as_path()])
-            .err()
-            .expect("the output aliases a protected host input");
+        let error = write_target_outputs(
+            &[target],
+            &[protected.as_path()],
+            &crate::execution_policy::TRUSTED,
+        )
+        .err()
+        .expect("the output aliases a protected host input");
         assert!(error.to_string().contains("reserved by the host"));
         assert_eq!(std::fs::read(&protected)?, original);
         std::fs::remove_dir_all(root)?;
@@ -956,7 +966,7 @@ mod tests {
             json_target(&alias_destination, "alias", &schema, &instance, &options),
         ];
 
-        let error = write_target_outputs(&targets, &[])
+        let error = write_target_outputs(&targets, &[], &crate::execution_policy::TRUSTED)
             .err()
             .expect("both outputs resolve to the same physical path");
         assert!(error.to_string().contains("same path"));
