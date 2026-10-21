@@ -255,7 +255,15 @@ pub fn cases() -> Vec<Case> {
     // Distinct Primary ids 1,2,2,3 coded a,b,c,e beside orders 7 and 9.
     let grouped_orders = group(vec![
         ("Header", group(vec![("code", text("H"))])),
-        ("Rows", rows(&[(Some(1), "a"), (Some(2), "b"), (Some(2), "c"), (Some(3), "e")])),
+        (
+            "Rows",
+            rows(&[
+                (Some(1), "a"),
+                (Some(2), "b"),
+                (Some(2), "c"),
+                (Some(3), "e"),
+            ]),
+        ),
         (
             "Orders",
             orders(&[
@@ -272,10 +280,18 @@ pub fn cases() -> Vec<Case> {
         ])
     };
     let aggregated_order = |id: i64, lines: &str, lookups: i64| {
-        group(vec![("id", int(id)), ("lines", text(lines)), ("lookups", int(lookups))])
+        group(vec![
+            ("id", int(id)),
+            ("lines", text(lines)),
+            ("lookups", int(lookups)),
+        ])
     };
     let member_group = |id: i64, codes: &str, count: i64| {
-        group(vec![("id", int(id)), ("codes", text(codes)), ("count", int(count))])
+        group(vec![
+            ("id", int(id)),
+            ("codes", text(codes)),
+            ("count", int(count)),
+        ])
     };
     let single_primary = || endpoint("H", rows(&[(Some(1), "a")]));
     vec![
@@ -599,7 +615,13 @@ pub fn cases() -> Vec<Case> {
             single_primary(),
             inputs(endpoint(
                 "stop",
-                rows(&[(Some(2), "x"), (Some(1), "y"), (Some(2), "b"), (None, "z"), (Some(4), "w")]),
+                rows(&[
+                    (Some(2), "x"),
+                    (Some(1), "y"),
+                    (Some(2), "b"),
+                    (None, "z"),
+                    (Some(4), "w"),
+                ]),
             )),
             totals(vec![("sum", int(1))]),
             Err(raised(130, "argument")),
