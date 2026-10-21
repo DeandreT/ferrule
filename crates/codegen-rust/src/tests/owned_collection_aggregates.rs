@@ -166,7 +166,7 @@ fn decimal_sum_stays_closed_for_owned_emission() {
     aggregate.function = mapping::AggregateOp::DecimalSum;
     let result = crate::emit_with_basic_owned_collection_aggregates(&program, &options());
     assert!(
-        matches!(&result, Err(crate::EmitError::ProgramValidation(error)) if *error == closed_aggregate()),
+        matches!(&result, Err(crate::EmitError::InvalidProgram(error)) if *error == closed_aggregate()),
         "{result:?}"
     );
 }
