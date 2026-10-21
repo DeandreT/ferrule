@@ -1,0 +1,169 @@
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+internal static class Driver
+{
+    private static JsonNode? Json(object? value) => JsonSerializer.SerializeToNode(value);
+    private static FerruleInstance Decode(JsonNode recipe)
+    {
+        var tag = recipe[0]!.GetValue<string>();
+        if (tag == "Group")
+            return new FerruleGroup(recipe[1]!.AsArray().Select(field => new FerruleField(field![0]!.GetValue<string>(), Decode(field[1]!))));
+        if (tag == "Repeated") return new FerruleRepeated(recipe[1]!.AsArray().Select(item => Decode(item!)));
+        return new FerruleScalar(tag switch {
+            "Null" => FerruleValue.Null,
+            "String" => FerruleValue.FromString(recipe[1]!.GetValue<string>()),
+            "Bool" => FerruleValue.FromBoolean(recipe[1]!.GetValue<bool>()),
+            "Int" => FerruleValue.FromInt64(recipe[1]!.GetValue<long>()),
+            _ => throw new InvalidOperationException("Closed authored scalar tag."),
+        });
+    }
+    private static JsonNode Encode(FerruleInstance instance)
+    {
+        if (instance is FerruleGroup group) return new JsonArray(Json("Group"), Json(group.Fields.Select(field => new JsonArray(Json(field.Name), Encode(field.Value))).ToArray()),
+            Json(new { kind = group.XmlTypeOrigin.Kind.ToString(), identity = group.XmlTypeOrigin.Identity, literal = group.XmlTypeOrigin.Literal }));
+        if (instance is FerruleRepeated repeated) return new JsonArray(Json("Repeated"), Json(repeated.Items.Select(Encode).ToArray()));
+        if (instance is not FerruleScalar scalar) throw new InvalidOperationException("Closed authored tree kind.");
+        var value = scalar.Value;
+        return value.Kind switch {
+            FerruleValueKind.Null => new JsonArray(Json("Null")),
+            FerruleValueKind.String => new JsonArray(Json("String"), Json(value.StringValue)),
+            FerruleValueKind.Bool => new JsonArray(Json("Bool"), Json(value.BooleanValue)),
+            FerruleValueKind.Int64 => new JsonArray(Json("Int"), Json(value.Int64Value)),
+            _ => throw new InvalidOperationException("Closed typed output tag."),
+        };
+    }
+    private static JsonNode Outputs(object output)
+    {
+        var result = new JsonArray();
+        void Add(string? name, FerruleInstance instance) => result.Add(new JsonArray(Json(name), Encode(instance)));
+        switch (output)
+        {
+            case ExecutionOutputs all: Add(null, all.Primary); foreach (var named in all.Extras) Add(named.Name, named.Instance); break;
+            case SelectedTargetOutput.Primary primary: Add(null, primary.Instance); break;
+            case SelectedTargetOutput.Named named: Add(named.Output.Name, named.Output.Instance); break;
+            default: throw new InvalidOperationException("Unexpected public typed outcome.");
+        }
+        return result;
+    }
+    // Typed failure fields are compared; human wording is not a cross-language contract.
+    private static bool ErrorMatches(Exception error, JsonNode recipe)
+    {
+        if (error is not FerruleRuntimeException runtime) return false;
+        string Text(string key) => recipe[key]!.GetValue<string>();
+        return Text("kind") switch {
+            "MappingFailure" => runtime.Error == FerruleRuntimeError.MappingFailure && runtime.Node is null
+                && runtime.FailureRule == recipe["rule"]!.GetValue<int>()
+                && runtime.MappingFailureMessage == recipe["message"]?.GetValue<string>(),
+            "OwnedSource" => runtime.Error == FerruleRuntimeError.OwnedSource
+                && runtime.OwnedSourceFailure is { } owned && ReferenceEquals(owned, runtime.InnerException)
+                && owned.Error == FerruleOwnedSourceErrorKind.SourceUnavailable
+                && owned.Owner?.Name == Text("owner"),
+            "NotABool" => runtime.Error == FerruleRuntimeError.NotABool
+                && runtime.Node == recipe["node"]!.GetValue<uint>()
+                && runtime.FoundKind == Text("found") switch {
+                    "string" => FerruleValueKind.String,
+                    _ => throw new InvalidOperationException("Closed authored found kind."),
+                },
+            "RecursiveFilterRequiresCollection" => runtime.Error == FerruleRuntimeError.RecursiveFilterRequiresCollection
+                && runtime.SourceField == Text("field") && runtime.FoundInstance == Text("found"),
+            "RecursiveFilterRequiresGroup" => runtime.Error == FerruleRuntimeError.RecursiveFilterRequiresGroup
+                && runtime.FoundInstance == Text("found"),
+            "RecursiveFilterDepth" => runtime.Error == FerruleRuntimeError.RecursiveFilterDepth
+                && runtime.MaximumDepth == recipe["limit"]!.GetValue<int>(),
+            _ => throw new InvalidOperationException("Closed authored error recipe."),
+        };
+    }
+    // Deep trees exceed portable JSON nesting limits; deep cases are built and
+    // compared natively.
+    private static FerruleInstance Text(string value) => new FerruleScalar(FerruleValue.FromString(value));
+    private static FerruleInstance Nest(int levels)
+    {
+        FerruleInstance directory = new FerruleGroup(new[] {
+            new FerruleField("name", Text("leaf")),
+            new FerruleField("file", new FerruleRepeated(new FerruleInstance[] { new FerruleGroup(new[] { new FerruleField("name", Text("x.keep")) }) })),
+        });
+        for (var level = 0; level < levels; level++)
+            directory = new FerruleGroup(new[] { new FerruleField("name", Text("n")), new FerruleField("Dir", new FerruleRepeated(new[] { directory })) });
+        return directory;
+    }
+    private static FerruleInstance DeepSource(int levels) => new FerruleGroup(new[] {
+        new FerruleField("Suffix", Text(".keep")), new FerruleField("Dir", new FerruleRepeated(new[] { Nest(levels) })) });
+    private static FerruleInstance DeepOutput(int levels) => new FerruleGroup(new[] {
+        new FerruleField("Dir", new FerruleRepeated(new[] { Nest(levels) })) });
+    private static bool Same(FerruleInstance left, FerruleInstance right) => (left, right) switch
+    {
+        (FerruleScalar l, FerruleScalar r) => l.Value.Kind == r.Value.Kind && l.Value.ToString() == r.Value.ToString(),
+        (FerruleRepeated l, FerruleRepeated r) => l.Items.Count == r.Items.Count && l.Items.Zip(r.Items).All(pair => Same(pair.First, pair.Second)),
+        (FerruleGroup l, FerruleGroup r) => l.Fields.Count == r.Fields.Count && l.Fields.Zip(r.Fields)
+            .All(pair => pair.First.Name == pair.Second.Name && Same(pair.First.Value, pair.Second.Value)),
+        _ => false,
+    };
+    private static IReadOnlyList<(string? Name, FerruleInstance Instance)> Trees(object output) => output switch
+    {
+        ExecutionOutputs all => new[] { ((string?)null, all.Primary) }.Concat(all.Extras.Select(named => ((string?)named.Name, named.Instance))).ToArray(),
+        SelectedTargetOutput.Primary primary => new[] { ((string?)null, primary.Instance) },
+        SelectedTargetOutput.Named named => new[] { ((string?)named.Output.Name, named.Output.Instance) },
+        _ => throw new InvalidOperationException("Unexpected public typed outcome."),
+    };
+    private static bool DeepMatches(object output, JsonNode deep)
+    {
+        var trees = Trees(output);
+        var levels = deep["levels"]!.GetValue<int>();
+        var audit = deep["audit"];
+        return trees.Count == (audit is null ? 1 : 2) && trees[0].Name is null && Same(trees[0].Instance, DeepOutput(levels))
+            && (audit is null || trees[1].Name == "audit" && JsonNode.DeepEquals(Encode(trees[1].Instance), audit));
+    }
+    private static int Main(string[] args)
+    {
+        if (args.Length != 3) throw new InvalidOperationException("Controls, model ordinal and results path required.");
+        var controls = JsonNode.Parse(File.ReadAllText(args[0]))!;
+        var model = int.Parse(args[1], CultureInfo.InvariantCulture);
+        var limits = new FerruleOwnedSourceLimits(16, 32, 200, 16_777_216, 512);
+        var context = new FerruleExecutionContext("recursive464.mapping", "recursive464.mapping", null);
+        var rows = new JsonArray();
+        foreach (var entry in controls["cases"]!.AsArray())
+        {
+            var item = entry!;
+            if (item["model"]!.GetValue<int>() != model) continue;
+            var deepLevels = item["deep"]?.GetValue<int>();
+            var source = deepLevels is int levels ? DeepSource(levels) : Decode(item["source"]!);
+            var inputs = item["inputs"]!.AsArray().Select(input => new NamedInput(input![0]!.GetValue<string>(), Decode(input[1]!))).ToArray();
+            JsonNode Snapshot() => new JsonArray(deepLevels is null ? Encode(source) : Json(Same(source, DeepSource(deepLevels.Value))),
+                Json(inputs.Select(input => Encode(input.Instance)).ToArray()));
+            var before = Snapshot();
+            foreach (var callNode in item["calls"]!.AsArray())
+            {
+                var call = callNode!;
+                var selection = call["selection"]!.GetValue<string>();
+                object actual;
+                try
+                {
+                    actual = selection == "All" ? GeneratedMapping.ExecuteWithBasicOwnedSources(source, inputs, limits, context)
+                        : GeneratedMapping.ExecuteSelectedWithBasicOwnedSources(source,
+                            selection == "Primary" ? FerruleTargetSelection.Primary() : FerruleTargetSelection.Named(selection), inputs, limits, context);
+                }
+                catch (Exception caught) { actual = caught; }
+                var expected = call["expected"]!;
+                var matched = (actual is Exception error
+                    ? expected["Err"] is JsonNode recipe && ErrorMatches(error, recipe)
+                    : expected["OkDeep"] is JsonNode deep ? DeepMatches(actual, deep)
+                    : expected["Ok"] is JsonNode trees && JsonNode.DeepEquals(Outputs(actual), trees))
+                    && JsonNode.DeepEquals(before, Snapshot());
+                string Describe()
+                {
+                    if (actual is Exception failure) return failure.ToString();
+                    try { return Outputs(actual).ToJsonString(); }
+                    catch (Exception unreadable) { return unreadable.GetType().Name; }
+                }
+                rows.Add(Json(new { @case = item["id"]!.GetValue<string>(), selection, matched,
+                    actual = matched ? "matched" : Describe() }));
+            }
+        }
+        File.WriteAllText(args[2], rows.ToJsonString());
+        return rows.Count == @MODEL_CALLS@ && rows.All(row => row!["matched"]!.GetValue<bool>()) ? 0 : 1;
+    }
+}

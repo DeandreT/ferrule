@@ -1,0 +1,137 @@
+use codegen_runtime::{BasicNamedSourceInput, ExecutionContext, Instance,
+    OwnedSourceError, OwnedSourceLimits, RuntimeError, TargetSelection, Value, field, group,
+    repeated, scalar};
+use serde_json::{Value as Json, json};
+use std::path::Path;
+#[allow(dead_code)]
+mod codec;
+
+fn instance_kind(found: &str) -> &'static str {
+    match found {
+        "scalar" => "scalar",
+        "group" => "group",
+        _ => panic!("authored instance kind"),
+    }
+}
+
+fn expected_error(recipe: &Json) -> RuntimeError {
+    let text = |key: &str| recipe[key].as_str().unwrap();
+    match text("kind") {
+        "MappingFailure" => RuntimeError::MappingFailure {
+            rule: recipe["rule"].as_u64().unwrap() as usize,
+            message: recipe["message"].as_str().map(str::to_owned),
+        },
+        "OwnedSource" => RuntimeError::OwnedSource(OwnedSourceError::SourceUnavailable {
+            name: text("owner").into(),
+        }),
+        "NotABool" => {
+            assert_eq!(text("found"), "string");
+            RuntimeError::NotABool {
+                node: recipe["node"].as_u64().unwrap() as u32,
+                found: "string",
+            }
+        }
+        "RecursiveFilterRequiresCollection" => RuntimeError::RecursiveFilterRequiresCollection {
+            field: text("field").into(),
+            found: instance_kind(text("found")),
+        },
+        "RecursiveFilterRequiresGroup" => RuntimeError::RecursiveFilterRequiresGroup {
+            found: instance_kind(text("found")),
+        },
+        "RecursiveFilterDepth" => RuntimeError::RecursiveFilterDepth {
+            limit: recipe["limit"].as_u64().unwrap() as usize,
+        },
+        _ => panic!("authored error recipe"),
+    }
+}
+
+/// The deep Primary input of a `{"deep": levels}` case, built natively.
+fn nest(levels: u64) -> Instance {
+    let text = |value: &str| scalar(Value::String(value.into()));
+    let mut directory = group([
+        field("name", text("leaf")),
+        field("file", repeated([group([field("name", text("x.keep"))])])),
+    ]);
+    for _ in 0..levels {
+        directory = group([field("name", text("n")), field("Dir", repeated([directory]))]);
+    }
+    directory
+}
+fn deep_source(levels: u64) -> Instance {
+    group([field("Suffix", scalar(Value::String(".keep".into()))), field("Dir", repeated([nest(levels)]))])
+}
+fn deep_output(levels: u64) -> Instance {
+    group([field("Dir", repeated([nest(levels)]))])
+}
+
+macro_rules! invoke {
+    ($module:ident, $selection:expr, $source:expr, $inputs:expr, $execution:expr, $limits:expr) => {{
+        if $selection == "All" {
+            $module::execute_with_basic_owned_sources($source, $inputs, Some($execution), $limits)
+                .map(|output| {
+                    let mut trees = vec![(None, output.primary)];
+                    trees.extend(output.extras.into_iter().map(|named| (Some(named.name), named.instance)));
+                    trees
+                })
+        } else {
+            let target = if $selection == "Primary" { TargetSelection::Primary } else { TargetSelection::Named($selection) };
+            $module::execute_selected_with_basic_owned_sources($source, $inputs, Some($execution), $limits, target)
+                .map(|output| match output {
+                    $module::SelectedTargetOutput::Primary(instance) => vec![(None, instance)],
+                    $module::SelectedTargetOutput::Named(named) => vec![(Some(named.name), named.instance)],
+                })
+        }
+    }};
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = std::env::args_os().skip(1).collect::<Vec<_>>();
+    assert_eq!(args.len(), 2, "controls and results paths");
+    let controls: Json = serde_json::from_slice(&std::fs::read(&args[0])?)?;
+    let limits = OwnedSourceLimits { max_roots: 16, max_active_frames: 32, max_path_segments: 200,
+        max_metadata_bytes: 16_777_216, max_walk_contexts: 512 };
+    let execution = ExecutionContext::new(Path::new("recursive464.mapping"));
+    let mut rows = Vec::new();
+    for case in controls["cases"].as_array().unwrap() {
+        let source = match case["deep"].as_u64() {
+            Some(levels) => deep_source(levels),
+            None => codec::decode(&case["source"]),
+        };
+        let named = case["inputs"].as_array().unwrap().iter()
+            .map(|input| (input[0].as_str().unwrap().to_owned(), codec::decode(&input[1])))
+            .collect::<Vec<(String, Instance)>>();
+        let inputs = named.iter().map(|(name, instance)| BasicNamedSourceInput { name, instance }).collect::<Vec<_>>();
+        let before = (source.clone(), named.clone());
+        for call in case["calls"].as_array().unwrap() {
+            let selection = call["selection"].as_str().unwrap();
+            let actual: Result<Vec<(Option<String>, Instance)>, RuntimeError> = match case["model"].as_u64().unwrap() {
+@DISPATCH@
+                _ => panic!("authored model"),
+            };
+            let expected = &call["expected"];
+            let matched = match &actual {
+                Ok(trees) => match expected.get("OkDeep") {
+                    Some(deep) => {
+                        trees.first() == Some(&(None, deep_output(deep["levels"].as_u64().unwrap())))
+                            && match deep["audit"].is_null() {
+                                true => trees.len() == 1,
+                                false => trees.len() == 2
+                                    && json!([trees[1].0, codec::encode(&trees[1].1)]) == json!(["audit", deep["audit"]]),
+                            }
+                    }
+                    None => expected.get("Ok").is_some_and(|expected| json!(trees.iter()
+                        .map(|(name, tree)| json!([name, codec::encode(tree)])).collect::<Vec<_>>()) == *expected),
+                },
+                Err(error) => expected.get("Err").is_some() && *error == expected_error(&expected["Err"]),
+            } && before == (source.clone(), named.clone());
+            rows.push(json!({"case": case["id"], "selection": selection, "matched": matched,
+                "actual": if matched { String::from("matched") } else { format!("{actual:?}") }}));
+        }
+    }
+    std::fs::write(&args[1], serde_json::to_vec_pretty(&rows)?)?;
+    assert_eq!(rows.len(), @CALLS@);
+    if rows.iter().any(|row| row["matched"] != true) {
+        std::process::exit(1);
+    }
+    Ok(())
+}
