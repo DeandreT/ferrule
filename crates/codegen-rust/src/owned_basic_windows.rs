@@ -129,6 +129,18 @@ pub(crate) fn render_public_basic_owned_recursive_filter_source(
     )
 }
 
+/// RecursiveFilter and IntoBlocks composition plus owned Lookup and
+/// CollectionFind.
+pub(crate) fn render_public_basic_owned_lookup_find_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::LookupFind,
+        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
     Closed,
@@ -156,6 +168,8 @@ pub(super) enum Profile {
     /// AdjacencyTree plus recursive filtering of an owned selector.
     RecursiveFilter,
     GroupIntoBlocks,
+    /// The recursive-filter profile and IntoBlocks plus owned Lookup and CollectionFind.
+    LookupFind,
 }
 
 impl Profile {
@@ -171,6 +185,7 @@ impl Profile {
                 | Self::AdjacencyTree
                 | Self::RecursiveFilter
                 | Self::GroupIntoBlocks
+                | Self::LookupFind
         )
     }
 
@@ -181,6 +196,7 @@ impl Profile {
                 | Self::PathHierarchy
                 | Self::AdjacencyTree
                 | Self::RecursiveFilter
+                | Self::LookupFind
         )
     }
 
@@ -197,6 +213,7 @@ impl Profile {
                     | Self::AdjacencyTree
                     | Self::RecursiveFilter
                     | Self::GroupIntoBlocks
+                    | Self::LookupFind
             ),
             Some(GroupingPlan::StartingWith { .. }) => matches!(
                 self,
@@ -207,6 +224,7 @@ impl Profile {
                     | Self::AdjacencyTree
                     | Self::RecursiveFilter
                     | Self::GroupIntoBlocks
+                    | Self::LookupFind
             ),
             Some(GroupingPlan::EndingWith { .. }) => matches!(
                 self,
@@ -216,8 +234,11 @@ impl Profile {
                     | Self::AdjacencyTree
                     | Self::RecursiveFilter
                     | Self::GroupIntoBlocks
+                    | Self::LookupFind
             ),
-            Some(GroupingPlan::IntoBlocks { .. }) => self == Self::GroupIntoBlocks,
+            Some(GroupingPlan::IntoBlocks { .. }) => {
+                matches!(self, Self::GroupIntoBlocks | Self::LookupFind)
+            }
             None => false,
         }
     }
@@ -261,6 +282,9 @@ fn render_public_basic_owned_source_policy(
         }
         (Profile::RecursiveFilter, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::validate_basic_owned_recursive_filter_emission(program)?;
+        }
+        (Profile::LookupFind, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::validate_basic_owned_lookup_find_emission(program)?;
         }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_group_starting_with_emission(program)?;
@@ -541,6 +565,9 @@ fn render_public_basic_owned_source_policy(
         (Profile::RecursiveFilter, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_filter(program)?
         }
+        (Profile::LookupFind, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_lookup_find(program)?
+        }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(
                 program,
@@ -645,7 +672,10 @@ fn local_owned(program: &Program, scope: &TargetScope) -> bool {
     program.expressions.iter().any(|node| {
         retained.contains(&node.id)
             && match &node.expression {
-                Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => true,
+                Expression::OwnedSourceField(_)
+                | Expression::OwnedPosition(_)
+                | Expression::OwnedLookup(_)
+                | Expression::OwnedCollectionFind(_) => true,
                 // An owned producer reads its root through the paired context.
                 Expression::SequenceItemAt { sequence, .. } => sequence.owned_source().is_some(),
                 _ => false,

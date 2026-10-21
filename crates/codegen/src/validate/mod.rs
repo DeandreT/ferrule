@@ -170,6 +170,16 @@ pub fn validate_program_with_basic_owned_recursive_filter(
     owned_sources::validate_basic_owned_recursive_filter_emission(program)
 }
 
+/// Validates explicitly owned Lookup and CollectionFind over one exact Primary
+/// or named endpoint collection, composed with the owned recursive-filter
+/// chain and owned IntoBlocks grouping. Every older validator keeps refusing
+/// owned search.
+pub fn validate_program_with_basic_owned_lookup_find(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_lookup_find_emission(program)
+}
+
 /// Validates static Basic scalar-producer SequenceItemAt, explicitly composing
 /// the qualified By, filter/sort/window and primary-row failure permissions.
 pub fn validate_program_with_basic_owned_sequence_item_at(
@@ -1580,7 +1590,7 @@ pub use owned_sources::{
     validate_basic_owned_group_adjacent_by_emission, validate_basic_owned_group_by_emission,
     validate_basic_owned_group_ending_with_emission,
     validate_basic_owned_group_into_blocks_emission,
-    validate_basic_owned_group_starting_with_emission,
+    validate_basic_owned_group_starting_with_emission, validate_basic_owned_lookup_find_emission,
     validate_basic_owned_recursive_collect_emission, validate_basic_owned_row_failure_emission,
     validate_basic_owned_sequence_item_at_emission, validate_basic_owned_sort_emission,
     validate_basic_owned_window_emission,

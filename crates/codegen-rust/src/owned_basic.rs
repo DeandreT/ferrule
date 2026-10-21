@@ -18,6 +18,7 @@ pub(crate) use windows::render_public_basic_owned_group_adjacent_by_source;
 pub(crate) use windows::render_public_basic_owned_group_ending_with_source;
 pub(crate) use windows::render_public_basic_owned_group_into_blocks_source;
 pub(crate) use windows::render_public_basic_owned_group_starting_with_source;
+pub(crate) use windows::render_public_basic_owned_lookup_find_source;
 pub(crate) use windows::render_public_basic_owned_path_hierarchy_source;
 pub(crate) use windows::render_public_basic_owned_recursive_collect_source;
 pub(crate) use windows::render_public_basic_owned_recursive_filter_source;
@@ -29,7 +30,10 @@ pub(crate) use windows::render_public_basic_owned_window_source;
 mod group_by;
 #[path = "owned_basic_rows.rs"]
 mod rows;
+#[path = "owned_basic_search.rs"]
+mod search;
 pub(crate) use group_by::render_public_basic_owned_group_by_source;
+pub(super) use search::{render_owned_collection_find, render_owned_lookup};
 
 pub(crate) fn render_basic_owned_source(program: &Program) -> Result<String, EmitError> {
     render_basic_owned_source_with_nodes(program, false, false)

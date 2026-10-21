@@ -882,6 +882,12 @@ impl std::error::Error for DelimitedTextFieldError {}
 pub enum Expression {
     OwnedSourceField(mapping::OwnedSourceField),
     OwnedPosition(mapping::OwnedPosition),
+    /// First-match lookup over exactly one owned endpoint collection. The
+    /// needle executes once in the parent; a miss or absent value is Null.
+    OwnedLookup(mapping::OwnedLookup),
+    /// First-match predicate search over exactly one owned endpoint
+    /// collection; predicate and value run in the selected item's context.
+    OwnedCollectionFind(mapping::OwnedCollectionFind),
     SourceField {
         frame: Option<Vec<String>>,
         path: Vec<String>,

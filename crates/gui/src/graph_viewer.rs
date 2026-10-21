@@ -1152,6 +1152,8 @@ impl GraphViewer<'_> {
             } => [*condition, *then, *else_].get(idx).copied(),
             Node::ValueMap { input, .. } => (idx == 0).then_some(*input),
             Node::Lookup { matches, .. } => (idx == 0).then_some(*matches),
+            Node::OwnedLookup(lookup) => (idx == 0).then_some(lookup.matches),
+            Node::OwnedCollectionFind(find) => [find.predicate, find.value].get(idx).copied(),
             Node::DynamicSourceField { key, .. } => (idx == 0).then_some(*key),
             Node::XmlMixedContent { replacements, .. } => replacements
                 .get(idx)
@@ -1411,7 +1413,8 @@ impl GraphViewer<'_> {
             Node::If { .. } => 3,
             Node::ValueMap { .. } | Node::Lookup { .. } | Node::DynamicSourceField { .. } => 1,
             Node::XmlMixedContent { replacements, .. } => replacements.len(),
-            Node::CollectionFind { .. } => 2,
+            Node::CollectionFind { .. } | Node::OwnedCollectionFind(_) => 2,
+            Node::OwnedLookup(_) => 1,
             Node::SequenceExists {
                 sequence,
                 predicate: _,
@@ -1550,6 +1553,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 let title = match self.graph.nodes.get(id) {
                     Some(Node::OwnedSourceField(_)) => "Owned source field".into(),
                     Some(Node::OwnedPosition(_)) => "Owned position".into(),
+                    Some(Node::OwnedLookup(lookup)) => {
+                        format!("Owned lookup: {}", lookup.collection.path.join("/"))
+                    }
+                    Some(Node::OwnedCollectionFind(find)) => {
+                        format!("Owned find: {}", find.collection.path.join("/"))
+                    }
                     Some(Node::SourceField { .. })
                         if self.function_output.is_none()
                             && !graph_references::sequence_item_owners(

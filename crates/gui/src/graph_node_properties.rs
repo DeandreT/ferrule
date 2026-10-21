@@ -79,7 +79,10 @@ impl GraphViewer<'_> {
         };
         if let Some(node) = node {
             match node {
-                node @ (Node::OwnedSourceField(_) | Node::OwnedPosition(_)) => {
+                node @ (Node::OwnedSourceField(_)
+                | Node::OwnedPosition(_)
+                | Node::OwnedLookup(_)
+                | Node::OwnedCollectionFind(_)) => {
                     ui.label(
                         graph_node_presentation::owned_source_title(node).expect("owned title"),
                     );

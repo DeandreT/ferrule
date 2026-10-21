@@ -107,6 +107,30 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
             {
                 validate_owned_sequence(project, sequence, &location, issues)
             }
+            Node::OwnedLookup(lookup) => {
+                super::schema::validate_owned_collection(
+                    project,
+                    &lookup.collection,
+                    &location,
+                    issues,
+                );
+                for (path, label) in [(&lookup.key, "key"), (&lookup.value, "value")] {
+                    super::schema::validate_owned_item_scalar(
+                        project,
+                        &lookup.collection,
+                        path,
+                        label,
+                        &location,
+                        issues,
+                    );
+                }
+            }
+            Node::OwnedCollectionFind(find) => super::schema::validate_owned_collection(
+                project,
+                &find.collection,
+                &location,
+                issues,
+            ),
             Node::SourceRootXmlTypeEquals { .. } | Node::SourceRootField { .. } => {}
             Node::SourceField { .. } if sequence_items.contains(&id) => {}
             Node::SourceField { path, frame } => {
@@ -649,6 +673,17 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
         }
         Node::OwnedPosition(position) => {
             if let mapping::SourceOwner::Named { name } = &position.owner
+                && project
+                    .extra_sources
+                    .iter()
+                    .any(|source| source.name == *name && source.dynamic_path.is_some())
+            {
+                sources.insert(name.as_str());
+            }
+        }
+        Node::OwnedLookup(mapping::OwnedLookup { collection, .. })
+        | Node::OwnedCollectionFind(mapping::OwnedCollectionFind { collection, .. }) => {
+            if let mapping::SourceOwner::Named { name } = &collection.owner
                 && project
                     .extra_sources
                     .iter()
@@ -1259,6 +1294,11 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
             .collect(),
         Node::ValueMap { input, .. } => vec![("input".into(), *input)],
         Node::Lookup { matches, .. } => vec![("matches".into(), *matches)],
+        Node::OwnedLookup(lookup) => vec![("matches".into(), lookup.matches)],
+        Node::OwnedCollectionFind(find) => vec![
+            ("predicate".into(), find.predicate),
+            ("value expression".into(), find.value),
+        ],
         Node::DynamicSourceField { key, .. } => vec![("property name".into(), *key)],
         Node::XmlMixedContent { replacements, .. } => replacements
             .iter()

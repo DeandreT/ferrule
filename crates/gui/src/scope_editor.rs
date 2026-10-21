@@ -936,6 +936,14 @@ fn node_label(node: &mapping::Node) -> String {
             "owned position {:?} {:?} (unavailable)",
             position.owner, position.collection
         ),
+        mapping::Node::OwnedLookup(lookup) => format!(
+            "owned lookup {:?} {:?} (read-only)",
+            lookup.collection.owner, lookup.collection.path
+        ),
+        mapping::Node::OwnedCollectionFind(find) => format!(
+            "owned find {:?} {:?} (read-only)",
+            find.collection.owner, find.collection.path
+        ),
         mapping::Node::SourceField { path, .. } => format!("field {}", display_path(path)),
         mapping::Node::SourceDocumentPath => "source document path".to_string(),
         mapping::Node::SourceRootXmlTypeEquals { .. } => {

@@ -19,8 +19,11 @@ pub use adjacency_tree::validate_basic_owned_adjacency_tree_emission;
 use adjacency_tree::{owned_root, owned_rows};
 mod failure_sources;
 pub(super) use failure_sources::FailurePolicy;
+mod lookup_find;
 pub use failure_sources::validate_basic_owned_failure_source_emission;
 mod recursive_collect;
+pub(super) use lookup_find::SearchPolicy;
+pub use lookup_find::validate_basic_owned_lookup_find_emission;
 pub use recursive_collect::{
     owned_sequence_emission_error, validate_basic_owned_recursive_collect_emission,
 };
@@ -47,6 +50,11 @@ fn request(expression: &Expression) -> Option<Request> {
         | Expression::SequenceItemAt { sequence, .. }
         | Expression::SequenceAggregate { sequence, .. } => {
             sequence.owned_source().map(iteration_request)
+        }
+        // An owned search walks its collection exactly like owned iteration.
+        Expression::OwnedLookup(mapping::OwnedLookup { collection, .. })
+        | Expression::OwnedCollectionFind(mapping::OwnedCollectionFind { collection, .. }) => {
+            Some(iteration_request(collection))
         }
         _ => None,
     }
@@ -276,15 +284,15 @@ pub(super) fn validate_structure(program: &Program) -> Result<(), ProgramValidat
     main.sort_by_key(|node| node.id);
     for node in main {
         if let Some(query) = request(&node.expression) {
-            structure(
-                program,
-                Location::Expression {
-                    namespace: Namespace::Main,
-                    node: node.id,
-                    scope: None,
-                },
-                query,
-            )?;
+            let location = Location::Expression {
+                namespace: Namespace::Main,
+                node: node.id,
+                scope: None,
+            };
+            structure(program, location.clone(), query)?;
+            if let Expression::OwnedLookup(lookup) = &node.expression {
+                lookup_find::lookup_structure(program, location, lookup)?;
+            }
         }
     }
     for function in &program.user_functions {
@@ -292,15 +300,15 @@ pub(super) fn validate_structure(program: &Program) -> Result<(), ProgramValidat
         nodes.sort_by_key(|node| node.id);
         for node in nodes {
             if let Some(query) = request(&node.expression) {
-                structure(
-                    program,
-                    Location::Expression {
-                        namespace: Namespace::Function(function.id),
-                        node: node.id,
-                        scope: None,
-                    },
-                    query,
-                )?;
+                let location = Location::Expression {
+                    namespace: Namespace::Function(function.id),
+                    node: node.id,
+                    scope: None,
+                };
+                structure(program, location.clone(), query)?;
+                if let Expression::OwnedLookup(lookup) = &node.expression {
+                    lookup_find::lookup_structure(program, location, lookup)?;
+                }
             }
         }
     }
@@ -1579,6 +1587,26 @@ fn validate_basic_owned_with_constructions(
     path_hierarchy: PathHierarchyPolicy,
     adjacency_tree: AdjacencyTreePolicy,
 ) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_with_search(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        SearchPolicy::Closed,
+    )
+}
+
+fn validate_basic_owned_with_search(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+    path_hierarchy: PathHierarchyPolicy,
+    adjacency_tree: AdjacencyTreePolicy,
+    search: SearchPolicy,
+) -> Result<(), ProgramValidationError> {
     super::validate_program_with_owned_constructions(
         program,
         profile,
@@ -1645,6 +1673,14 @@ fn validate_basic_owned_with_constructions(
                 if sequence_item_at.permits(&node.expression) =>
             {
                 continue;
+            }
+            Expression::OwnedLookup(_) | Expression::OwnedCollectionFind(_)
+                if search == SearchPolicy::Basic =>
+            {
+                continue;
+            }
+            Expression::OwnedLookup(_) | Expression::OwnedCollectionFind(_) => {
+                Capability::AggregateLookup
             }
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
@@ -1873,12 +1909,15 @@ fn basic_expression_nodes(
         };
         // These are precisely the potential dependency edges of the admitted
         // ordinary scalar subset; If stays conservative and execution stays lazy.
+        // Owned search edges matter only where a search companion admits them.
         if matches!(
             node.expression,
             Expression::Call { .. }
                 | Expression::If { .. }
                 | Expression::RuntimeParameterDefault { .. }
                 | Expression::Raise { .. }
+                | Expression::OwnedLookup(_)
+                | Expression::OwnedCollectionFind(_)
         ) {
             pending.extend(graph_dependencies::of(&node.expression));
         }

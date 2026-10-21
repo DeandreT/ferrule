@@ -16,6 +16,8 @@ use codegen::{
 use std::collections::BTreeSet;
 
 mod row_failures;
+mod search;
+pub(crate) use search::render_owned_search;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
@@ -90,6 +92,8 @@ struct TargetExtension {
     adjacency_tree: bool,
     /// Recursive filtering of an owned selector is an orthogonal permission.
     recursive_filter: bool,
+    /// Explicitly owned Lookup and CollectionFind.
+    owned_search: bool,
 }
 
 impl TargetExtension {
@@ -100,6 +104,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
+        owned_search: false,
     };
     const GROUP_BY: Self = Self {
         controls: TargetControls::By,
@@ -108,6 +113,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
+        owned_search: false,
     };
     const SEQUENCE_ITEM_AT: Self = Self {
         controls: TargetControls::By,
@@ -116,6 +122,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
+        owned_search: false,
     };
 
     const GROUP_ADJACENT_BY: Self = Self {
@@ -125,6 +132,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
+        owned_search: false,
     };
 
     const SEQUENCE_EXISTS: Self = Self {
@@ -134,6 +142,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
+        owned_search: false,
     };
 
     const GROUP_STARTING_WITH: Self = Self {
@@ -143,6 +152,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
+        owned_search: false,
     };
 
     const FAILURE_SOURCES: Self = Self {
@@ -152,6 +162,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
+        owned_search: false,
     };
 
     const GROUP_ENDING_WITH: Self = Self {
@@ -161,6 +172,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
+        owned_search: false,
     };
 
     /// The newest companion: FailureSources plus owned hierarchy construction.
@@ -171,6 +183,7 @@ impl TargetExtension {
         path_hierarchy: true,
         adjacency_tree: false,
         recursive_filter: false,
+        owned_search: false,
     };
 
     /// PATH_HIERARCHY plus owned adjacency-tree construction.
@@ -181,6 +194,7 @@ impl TargetExtension {
         path_hierarchy: true,
         adjacency_tree: true,
         recursive_filter: false,
+        owned_search: false,
     };
 
     /// ADJACENCY_TREE plus ItemAt over owned recursive collection walks.
@@ -191,6 +205,7 @@ impl TargetExtension {
         path_hierarchy: true,
         adjacency_tree: true,
         recursive_filter: false,
+        owned_search: false,
     };
 
     /// RECURSIVE_COLLECT plus recursive filtering of owned selectors.
@@ -201,6 +216,19 @@ impl TargetExtension {
         path_hierarchy: true,
         adjacency_tree: true,
         recursive_filter: true,
+        owned_search: false,
+    };
+
+    /// RECURSIVE_FILTER and IntoBlocks controls plus owned Lookup and
+    /// CollectionFind.
+    const LOOKUP_FIND: Self = Self {
+        controls: TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
+        sequence_item_at: SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+        failure_sources: true,
+        path_hierarchy: true,
+        adjacency_tree: true,
+        recursive_filter: true,
+        owned_search: true,
     };
 
     fn permits_path_hierarchy(self) -> bool {
@@ -214,6 +242,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
+        owned_search: false,
     };
 
     fn permits_into_blocks(self) -> bool {
@@ -289,7 +318,9 @@ fn render_basic_owned_mapping_profile(
 ) -> Result<String, EmitError> {
     let allow_scoped_groups = extension.controls.has_scoped_groups();
     // Select the control/consumer pair before the older ItemAt-only companion.
-    if extension.recursive_filter {
+    if extension.owned_search {
+        codegen::validate_program_with_basic_owned_lookup_find(program)?;
+    } else if extension.recursive_filter {
         codegen::validate_program_with_basic_owned_recursive_filter(program)?;
     } else if extension.permits_sequence_exists() {
         codegen::validate_program_with_basic_owned_sequence_exists(program)?;
@@ -698,6 +729,8 @@ fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
         } => vec![*condition, *then, *else_],
         Expression::Raise { message } => message.iter().copied().collect(),
         Expression::Lookup { matches, .. } => vec![*matches],
+        Expression::OwnedLookup(lookup) => vec![lookup.matches],
+        Expression::OwnedCollectionFind(find) => vec![find.predicate, find.value],
         Expression::CollectionFind {
             predicate, value, ..
         } => vec![*predicate, *value],
@@ -781,7 +814,9 @@ fn validate_private_inventory(
             false,
         )?;
     }
-    if extension.recursive_filter {
+    if extension.owned_search {
+        codegen::validate_basic_owned_lookup_find_emission(program)?;
+    } else if extension.recursive_filter {
         codegen::validate_basic_owned_recursive_filter_emission(program)?;
     } else if extension.permits_sequence_exists() {
         codegen::validate_basic_owned_sequence_exists_emission(program)?;
@@ -849,6 +884,11 @@ fn validate_private_inventory(
             {
                 continue;
             }
+            Expression::OwnedLookup(_) | Expression::OwnedCollectionFind(_)
+                if extension.owned_search =>
+            {
+                continue;
+            }
             Expression::SequenceExists { sequence, .. }
                 if extension.permits_sequence_exists() && extension.item_at_sequence(sequence) =>
             {
@@ -874,6 +914,8 @@ fn validate_private_inventory(
             Expression::JoinField { .. } | Expression::JoinPosition { .. } => Reason::Join,
             Expression::Lookup { .. }
             | Expression::CollectionFind { .. }
+            | Expression::OwnedLookup(_)
+            | Expression::OwnedCollectionFind(_)
             | Expression::Aggregate { .. }
             | Expression::JoinAggregate { .. } => Reason::AggregateLookup,
             Expression::SequenceExists { .. }
@@ -1187,7 +1229,9 @@ fn render_checked_basic_owned_mapping_profile(
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = if extension.recursive_filter {
+    let plan = if extension.owned_search {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_lookup_find(program)?
+    } else if extension.recursive_filter {
         codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_filter(program)?
     } else if extension.permits_sequence_exists() {
         codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_exists(program)?
@@ -1438,7 +1482,10 @@ fn expression_needs_owned_sources(program: &Program, root: NodeId) -> bool {
         }
         if let Some(node) = program.expressions.iter().find(|node| node.id == id) {
             if match &node.expression {
-                Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => true,
+                Expression::OwnedSourceField(_)
+                | Expression::OwnedPosition(_)
+                | Expression::OwnedLookup(_)
+                | Expression::OwnedCollectionFind(_) => true,
                 // An owned producer reads its root through the paired context.
                 Expression::SequenceItemAt { sequence, .. } => sequence.owned_source().is_some(),
                 _ => false,
@@ -1740,6 +1787,22 @@ pub(crate) fn render_public_basic_owned_recursive_filter_mapping(
         true,
         true,
         TargetExtension::RECURSIVE_FILTER,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_lookup_find_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::LOOKUP_FIND,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)

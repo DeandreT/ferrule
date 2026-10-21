@@ -278,7 +278,12 @@ pub(super) fn validate_expression(
             }
             Expression::CollectionFind {
                 predicate, value, ..
-            } => {
+            }
+            | Expression::OwnedCollectionFind(mapping::OwnedCollectionFind {
+                predicate,
+                value,
+                ..
+            }) => {
                 validate_expression(*predicate, expressions, sources, None, active_joins, false)?;
                 validate_expression(*value, expressions, sources, None, active_joins, false)?;
             }

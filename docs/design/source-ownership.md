@@ -143,6 +143,18 @@ owner and a same-shape collection identity, so the predicate's owned reads and
 positions resolve the current item and innermost group without falling back.
 See the [recursive filter contract](owned-recursive-filter.md).
 
+## Owned search
+
+Owned Lookup and CollectionFind walk one collection of exactly their declared
+endpoint, beside the unchanged legacy nodes. A lookup needle executes once in
+the parent context; key, value, predicate and find value read only the selected
+item, which is the latest occurrence of its owner. The latest active frame of
+the same owner anchors the walk, so a search inside an owned row, group or block
+sees only that row's, group's or block's items. An absent or empty selected
+collection misses without consulting another endpoint, Null-like keys never
+match, and the first match in source order wins with a miss as `Null`. See the
+[search contract](owned-lookup-find.md).
+
 ## Existing coordinated issues
 
 Reuse these existing scopes; the capability column concerns **explicit ownership**.

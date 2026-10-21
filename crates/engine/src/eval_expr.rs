@@ -239,6 +239,22 @@ fn eval_expr_inner(
                 kind: "owned_position",
             }),
         },
+        Node::OwnedLookup(lookup) => crate::owned_search::eval_owned_lookup(
+            program,
+            node_id,
+            lookup,
+            context,
+            positions,
+            in_progress,
+        ),
+        Node::OwnedCollectionFind(find) => crate::owned_search::eval_owned_collection_find(
+            program,
+            node_id,
+            find,
+            context,
+            positions,
+            in_progress,
+        ),
         Node::SourceRootXmlTypeEquals {
             canonical_expanded_type,
         } => ir::primary_root_xml_type_equals(program.primary_source, canonical_expanded_type)

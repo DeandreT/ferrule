@@ -494,6 +494,26 @@ pub fn emit_with_basic_owned_recursive_filter(
     .map_err(EmitError::from)
 }
 
+/// Emit owned-recursive-filter-profile targets with explicitly owned Lookup and
+/// CollectionFind over one exact endpoint. Older emitters keep refusing them.
+pub fn emit_with_basic_owned_lookup_find(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_lookup_find(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_lookup_find_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_lookup_find_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.
 /// Flat row/schema and literal dialect eligibility are checked before artifacts
 /// exist. The ordinary mapper, JSON/XML adapters, and manifest remain intact.
@@ -985,6 +1005,8 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
         } => vec![*condition, *then, *else_],
         Expression::Raise { message } => message.iter().copied().collect(),
         Expression::Lookup { matches, .. } => vec![*matches],
+        Expression::OwnedLookup(lookup) => vec![lookup.matches],
+        Expression::OwnedCollectionFind(find) => vec![find.predicate, find.value],
         Expression::CollectionFind {
             predicate, value, ..
         } => vec![*predicate, *value],
@@ -1746,7 +1768,23 @@ fn render_expression_in_context_with_scalar_item_at(
         }
     } else {
         match expression {
-            Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => {
+            Expression::OwnedLookup(lookup) if basic => owned_basic::render_owned_lookup(
+                id,
+                lookup,
+                &call_expression(lookup.matches, "context"),
+            ),
+            Expression::OwnedCollectionFind(find) if basic => {
+                owned_basic::render_owned_collection_find(
+                    id,
+                    find,
+                    &call_expression(find.predicate, "item_context"),
+                    &call_expression(find.value, "item_context"),
+                )
+            }
+            Expression::OwnedSourceField(_)
+            | Expression::OwnedPosition(_)
+            | Expression::OwnedLookup(_)
+            | Expression::OwnedCollectionFind(_) => {
                 let namespace = owner_function.map_or(codegen::OwnedSourceNamespace::Main, |id| {
                     codegen::OwnedSourceNamespace::Function(FunctionId::new(id))
                 });
