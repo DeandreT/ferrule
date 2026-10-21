@@ -1,5 +1,5 @@
 use super::*;
-use mapping::{Graph, Scope};
+use mapping::Graph;
 
 type Bindings = Vec<(TargetLeaf, u32, u32)>;
 
@@ -159,10 +159,7 @@ fn with_design_world(
             })
         })
         .collect::<Bindings>();
-    let mut scopes = ScopeBuilder {
-        root: Scope::default(),
-        anchors: BTreeMap::new(),
-    };
+    let mut scopes = ScopeBuilder::new(BTreeMap::new());
     let mut skipped = Vec::new();
     let connected = bindings.iter().map(|(leaf, _, _)| leaf.path()).collect();
     build_one(
@@ -685,8 +682,16 @@ fn total_string_map_late_refusal_retains_all_state_and_ordinary_sibling() {
                     .binding_node_at_anchor(feed, &field, &path(&["Rows"]))
                     .unwrap();
                 assert_eq!(actual, expected);
-                scopes.add_binding(TargetLeaf::from_path(&field).unwrap(), actual);
-                control_scopes.add_binding(TargetLeaf::from_path(&field).unwrap(), expected);
+                scopes.add_binding(
+                    TargetLeaf::from_path(&field).unwrap(),
+                    actual,
+                    BindingOccurrence::Expression,
+                );
+                control_scopes.add_binding(
+                    TargetLeaf::from_path(&field).unwrap(),
+                    expected,
+                    BindingOccurrence::Expression,
+                );
             }
             assert_eq!(
                 state(builder, scopes, declared, claimed),
