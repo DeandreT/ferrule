@@ -508,9 +508,20 @@ fn filesystem_roots_admit_only_canonical_locations_beneath_them() {
     assert!(outside(write(fixture.0.join("in/a.xml"))));
     assert!(outside(write(fixture.0.join("in/new.xml"))));
     assert!(outside(write(fixture.0.join("out/../outside/new.xml"))));
-    assert!(unresolvable(write(
-        fixture.0.join("out/missing/../../outside/new.xml")
-    )));
+    let missing_parent = write(fixture.0.join("out/missing/../../outside/new.xml"));
+    // Windows absolute paths normalize `..` before the filesystem walk, so
+    // this resolves outside the allowed root. Unix encounters the missing
+    // parent first. Both platforms must refuse, with their exact reason.
+    #[cfg(windows)]
+    assert!(
+        matches!(&missing_parent, Err(PolicyRefusal::PathOutsideRoots { .. })),
+        "{missing_parent:?}"
+    );
+    #[cfg(not(windows))]
+    assert!(
+        matches!(&missing_parent, Err(PolicyRefusal::UnresolvablePath { .. })),
+        "{missing_parent:?}"
+    );
 
     let trusted = ExecutionPolicy::Trusted;
     assert_eq!(
