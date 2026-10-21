@@ -98,10 +98,11 @@ pub use model::{
     FailureIteration, FailureRule, FailureSelection, FormatOptions, FunctionId, FunctionParameter,
     FunctionParameterId, Graph, IterationOutput, MAX_RUNTIME_PARAMETER_NAME_BYTES, NamedSource,
     NamedTarget, Node, NodeId, OwnedAggregate, OwnedAggregateValue, OwnedCollectionFind,
-    OwnedLookup, OwnedPosition, OwnedRowDocumentPath, OwnedSourceField, Project, RuntimeValue,
-    Scope, ScopeConstruction, SequenceExpr, SequenceWindow, SortFilterOrder, SortKey, UserFunction,
-    XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout, XlsxRow,
-    XlsxTableRegion, XlsxWorksheetSetLayout, XmlMixedContentElement, XmlMixedContentReplacement,
+    OwnedJoinField, OwnedJoinSourcePosition, OwnedLookup, OwnedPosition, OwnedRowDocumentPath,
+    OwnedSourceField, Project, RuntimeValue, Scope, ScopeConstruction, SequenceExpr,
+    SequenceWindow, SortFilterOrder, SortKey, UserFunction, XlsxColumn, XlsxCompositeLayout,
+    XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout, XlsxRow, XlsxTableRegion,
+    XlsxWorksheetSetLayout, XmlMixedContentElement, XmlMixedContentReplacement,
 };
 pub use owned_join::{
     OwnedJoinConditions, OwnedJoinKey, OwnedJoinPlan, OwnedJoinPlanError, OwnedJoinSource,
@@ -170,6 +171,9 @@ mod owned_failure_iteration_tests;
 #[cfg(test)]
 #[path = "tests/owned_collection_aggregates.rs"]
 mod owned_collection_aggregates_tests;
+#[cfg(test)]
+#[path = "tests/owned_join_tuple.rs"]
+mod owned_join_tuple_tests;
 #[cfg(test)]
 #[path = "tests/owned_lookup_find.rs"]
 mod owned_lookup_find_tests;

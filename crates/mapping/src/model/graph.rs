@@ -291,6 +291,24 @@ impl OwnedAggregate {
         self.expression().into_iter().chain(self.arg).collect()
     }
 }
+/// Reads a scalar from the member of an active owned join tuple that has the
+/// exact owner and collection identity. `path` is relative to that member.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OwnedJoinField {
+    pub join: JoinId,
+    pub collection: OwnedSourceRef,
+    pub path: Vec<String>,
+}
+
+/// The raw one-based source position of one owned join tuple member, which
+/// never changes when tuples are filtered, sorted or compacted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OwnedJoinSourcePosition {
+    pub join: JoinId,
+    pub collection: OwnedSourceRef,
+}
 
 /// A single node in the mapping graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -310,6 +328,10 @@ pub enum Node {
     OwnedXmlSerialize(crate::OwnedXmlSerialize),
     /// Reduction over exactly one owned endpoint collection.
     OwnedAggregate(OwnedAggregate),
+    /// Scalar read of one exact owned join tuple member.
+    OwnedJoinField(OwnedJoinField),
+    /// Raw source position of one exact owned join tuple member.
+    OwnedJoinSourcePosition(OwnedJoinSourcePosition),
     /// Reads a scalar field at `path`, resolved against the innermost
     /// currently-iterating source item, falling back to enclosing items
     /// (nearest enclosing wins) if not found there. That fallback is what
@@ -588,6 +610,8 @@ impl Node {
             Self::OwnedLookup(_) => Some("owned_lookup"),
             Self::OwnedCollectionFind(_) => Some("owned_collection_find"),
             Self::OwnedAggregate(_) => Some("owned_aggregate"),
+            Self::OwnedJoinField(_) => Some("owned_join_field"),
+            Self::OwnedJoinSourcePosition(_) => Some("owned_join_source_position"),
             _ => None,
         }
     }
@@ -600,6 +624,8 @@ impl Node {
             | Self::OwnedPosition(_)
             | Self::OwnedRowDocumentPath(_)
             | Self::OwnedXmlSerialize(_)
+            | Self::OwnedJoinField(_)
+            | Self::OwnedJoinSourcePosition(_)
             | Self::SourceField { .. }
             | Self::SourceRootXmlTypeEquals { .. }
             | Self::SourceRootField { .. }

@@ -68,3 +68,50 @@ fn owned_nodes_preserve_identity_zero_inputs_and_full_unavailable_details() {
             .contains("explicit []")
     );
 }
+
+#[test]
+fn owned_join_reads_display_their_identity_read_only_with_zero_inputs() {
+    let rows = OwnedSourceRef {
+        owner: SourceOwner::Named {
+            name: "Lookup".into(),
+        },
+        path: vec!["Rows".into()],
+    };
+    let nodes = [
+        Node::OwnedJoinField(mapping::OwnedJoinField {
+            join: mapping::JoinId::new(7),
+            collection: rows.clone(),
+            path: vec!["code".into()],
+        }),
+        Node::OwnedJoinSourcePosition(mapping::OwnedJoinSourcePosition {
+            join: mapping::JoinId::new(7),
+            collection: rows,
+        }),
+    ];
+    let mut fx = fixture();
+    fx.graph = Graph {
+        nodes: nodes
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(index, node)| (index as u32 + 9, node))
+            .collect(),
+    };
+    for (index, node) in nodes.iter().enumerate() {
+        assert_eq!(GraphViewer::input_count(node), 0);
+        assert_eq!(fx.viewer().input_at(index as u32 + 9, 0), None);
+        assert!(graph_references::node_inputs(node).is_empty());
+        let title = graph_node_presentation::owned_source_title(node).unwrap();
+        assert!(title.contains("Owned join 7"), "{title}");
+        assert!(title.contains(r#""Lookup""#), "{title}");
+        assert!(
+            title.contains("Read-only; owned join authoring is unavailable"),
+            "{title}"
+        );
+    }
+    assert!(
+        graph_node_presentation::owned_source_title(&nodes[0])
+            .unwrap()
+            .contains(r#"Path: ["code"]"#)
+    );
+}

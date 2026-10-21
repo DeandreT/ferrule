@@ -103,6 +103,8 @@ struct TargetExtension {
     dynamic_field: bool,
     /// Owned XML serialization is an orthogonal explicit expression permission.
     xml_serialize: bool,
+    /// Owned inner joins and their tuple reads.
+    owned_joins: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -124,6 +126,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
+        owned_joins: false,
     };
     const GROUP_BY: Self = Self {
         controls: TargetControls::By,
@@ -135,6 +138,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
+        owned_joins: false,
     };
     const SEQUENCE_ITEM_AT: Self = Self {
         controls: TargetControls::By,
@@ -146,6 +150,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
+        owned_joins: false,
     };
 
     const GROUP_ADJACENT_BY: Self = Self {
@@ -158,6 +163,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
+        owned_joins: false,
     };
 
     const SEQUENCE_EXISTS: Self = Self {
@@ -170,6 +176,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
+        owned_joins: false,
     };
 
     const SEQUENCE_AGGREGATE: Self = Self {
@@ -182,6 +189,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
+        owned_joins: false,
     };
 
     const GROUP_STARTING_WITH: Self = Self {
@@ -194,6 +202,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
+        owned_joins: false,
     };
 
     const FAILURE_SOURCES: Self = Self {
@@ -206,6 +215,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
+        owned_joins: false,
     };
 
     const GROUP_ENDING_WITH: Self = Self {
@@ -218,6 +228,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
+        owned_joins: false,
     };
 
     /// The newest companion: FailureSources plus owned hierarchy construction.
@@ -231,6 +242,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
+        owned_joins: false,
     };
 
     /// PATH_HIERARCHY plus owned adjacency-tree construction.
@@ -244,6 +256,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
+        owned_joins: false,
     };
 
     /// ADJACENCY_TREE plus ItemAt over owned recursive collection walks.
@@ -257,6 +270,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
+        owned_joins: false,
     };
 
     /// RECURSIVE_COLLECT plus recursive filtering of owned selectors.
@@ -270,6 +284,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
+        owned_joins: false,
     };
 
     /// RECURSIVE_FILTER and IntoBlocks controls plus owned Lookup and
@@ -284,6 +299,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::LookupFind,
         dynamic_field: false,
         xml_serialize: false,
+        owned_joins: false,
     };
 
     /// LOOKUP_FIND plus owned dynamic source-field reads.
@@ -297,6 +313,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::LookupFind,
         dynamic_field: true,
         xml_serialize: false,
+        owned_joins: false,
     };
 
     /// DYNAMIC_FIELD plus owned XML serialization.
@@ -310,6 +327,21 @@ impl TargetExtension {
         owned_search: OwnedSearch::LookupFind,
         dynamic_field: true,
         xml_serialize: true,
+        owned_joins: false,
+    };
+
+    /// LOOKUP_FIND plus owned inner joins and their tuple reads.
+    const JOINS: Self = Self {
+        controls: TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
+        sequence_item_at: SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+        failure_sources: true,
+        path_hierarchy: true,
+        adjacency_tree: true,
+        recursive_filter: true,
+        owned_search: OwnedSearch::LookupFind,
+        dynamic_field: false,
+        xml_serialize: false,
+        owned_joins: true,
     };
 
     /// LOOKUP_FIND plus owned collection aggregates.
@@ -332,6 +364,7 @@ impl TargetExtension {
         owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
+        owned_joins: false,
     };
 
     fn permits_xml_serialize(self) -> bool {
@@ -425,6 +458,8 @@ fn render_basic_owned_mapping_profile(
         codegen::validate_program_with_basic_owned_dynamic_field(program)?;
     } else if extension.owned_search == OwnedSearch::CollectionAggregates {
         codegen::validate_program_with_basic_owned_collection_aggregates(program)?;
+    } else if extension.owned_joins {
+        codegen::validate_program_with_basic_owned_joins(program)?;
     } else if extension.owned_search == OwnedSearch::LookupFind {
         codegen::validate_program_with_basic_owned_lookup_find(program)?;
     } else if extension.recursive_filter {
@@ -653,6 +688,7 @@ fn scope_error(scope: &TargetScope, route: SourceScopeLocation, reason: Reason) 
 
 #[derive(Clone, Copy)]
 struct ScopeControls {
+    owned_joins: bool,
     filters: bool,
     sort: bool,
     windows: bool,
@@ -671,10 +707,16 @@ fn check_scope(
 ) -> Result<(), EmitError> {
     let paired = inherited_owned || scope_needs_owned_sources(program, scope);
     if let Some(iteration) = &scope.iteration {
+        // Codegen admission validated the complete owned join subtree.
+        if controls.owned_joins && iteration.owned_inner_join().is_some() {
+            return Ok(());
+        }
         let reason = match iteration.input() {
             IterationSource::OwnedSource(_) | IterationSource::Source(_) => None,
             IterationSource::Generated(_) => Some(Reason::GeneratedItem),
-            IterationSource::InnerJoin(_) => Some(Reason::Join),
+            IterationSource::InnerJoin(_) | IterationSource::OwnedInnerJoin(_) => {
+                Some(Reason::Join)
+            }
             IterationSource::Concatenate(_) => Some(Reason::Concatenate),
             IterationSource::DynamicDocuments(_) => Some(Reason::Document),
         };
@@ -893,6 +935,8 @@ fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
         | Expression::OwnedXmlSerialize(_)
+        | Expression::OwnedJoinField(_)
+        | Expression::OwnedJoinSourcePosition(_)
         | Expression::SourceField { .. }
         | Expression::SourceRootXmlTypeEquals { .. }
         | Expression::SourceRootField { .. }
@@ -919,6 +963,7 @@ fn validate_private_inventory(
 ) -> Result<(), EmitError> {
     // General schema/structure and existing validation precedence already ran.
     let controls = ScopeControls {
+        owned_joins: extension.owned_joins,
         filters: allow_filters,
         sort: allow_sort,
         windows: allow_windows,
@@ -952,6 +997,8 @@ fn validate_private_inventory(
         codegen::validate_basic_owned_dynamic_field_emission(program)?;
     } else if extension.owned_search == OwnedSearch::CollectionAggregates {
         codegen::validate_basic_owned_collection_aggregates_emission(program)?;
+    } else if extension.owned_joins {
+        codegen::validate_basic_owned_joins_emission(program)?;
     } else if extension.owned_search == OwnedSearch::LookupFind {
         codegen::validate_basic_owned_lookup_find_emission(program)?;
     } else if extension.recursive_filter {
@@ -1034,6 +1081,14 @@ fn validate_private_inventory(
             {
                 continue;
             }
+            // Codegen bound each read to its dominating owned join tuple.
+            Expression::OwnedJoinField(_)
+            | Expression::OwnedJoinSourcePosition(_)
+            | Expression::JoinPosition { .. }
+                if extension.owned_joins =>
+            {
+                continue;
+            }
             Expression::SequenceExists { sequence, .. }
                 if extension.permits_sequence_exists() && extension.item_at_sequence(sequence) =>
             {
@@ -1066,7 +1121,10 @@ fn validate_private_inventory(
             | Expression::XmlMixedContent { .. } => Reason::XmlOperator,
             Expression::SourceDocumentPath => Reason::Document,
             Expression::DynamicSourceField { .. } => Reason::DynamicLoader,
-            Expression::JoinField { .. } | Expression::JoinPosition { .. } => Reason::Join,
+            Expression::JoinField { .. }
+            | Expression::JoinPosition { .. }
+            | Expression::OwnedJoinField(_)
+            | Expression::OwnedJoinSourcePosition(_) => Reason::Join,
             Expression::Lookup { .. }
             | Expression::CollectionFind { .. }
             | Expression::OwnedLookup(_)
@@ -1246,6 +1304,28 @@ pub(super) fn render_owned_leaf(
                     .as_deref()
                     .map_or_else(|| "null".to_string(), literal::string),
             ));
+        }
+        Expression::OwnedJoinField(field) => {
+            output.push_str(&format!(
+                " =>\n        context.OwnedJoinField({}UL, ",
+                field.join.get()
+            ));
+            render_owner(&field.collection.owner, output);
+            output.push_str(", ");
+            mapping::basic_path(&field.collection.path, output);
+            output.push_str(", ");
+            mapping::basic_path(&field.path, output);
+            output.push_str(");\n");
+        }
+        Expression::OwnedJoinSourcePosition(position) => {
+            output.push_str(&format!(
+                " =>\n        global::Ferrule.Runtime.FerruleValue.FromInt64(checked((long)context.OwnedJoinSourcePosition({}UL, ",
+                position.join.get()
+            ));
+            render_owner(&position.collection.owner, output);
+            output.push_str(", ");
+            mapping::basic_path(&position.collection.path, output);
+            output.push_str(")));\n");
         }
         _ => unreachable!("shared expression mode dispatches only owned leaves"),
     }
@@ -1452,6 +1532,8 @@ fn render_checked_basic_owned_mapping_profile(
         codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_field(program)?
     } else if extension.owned_search == OwnedSearch::CollectionAggregates {
         codegen::legacy_named_input_admission_plan_with_basic_owned_collection_aggregates(program)?
+    } else if extension.owned_joins {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_joins(program)?
     } else if extension.owned_search == OwnedSearch::LookupFind {
         codegen::legacy_named_input_admission_plan_with_basic_owned_lookup_find(program)?
     } else if extension.recursive_filter {
@@ -1714,7 +1796,10 @@ fn expression_needs_owned_sources(program: &Program, root: NodeId) -> bool {
                 | Expression::OwnedCollectionFind(_)
                 | Expression::OwnedDynamicSourceField(_)
                 | Expression::OwnedXmlSerialize(_)
-                | Expression::OwnedAggregate(_) => true,
+                | Expression::OwnedAggregate(_)
+                | Expression::OwnedJoinField(_)
+                | Expression::OwnedJoinSourcePosition(_)
+                | Expression::JoinPosition { .. } => true,
                 // An owned producer reads its root through the paired context.
                 Expression::SequenceItemAt { sequence, .. } => sequence.owned_source().is_some(),
                 _ => false,
@@ -1732,11 +1817,12 @@ pub(super) fn scope_needs_owned_sources(program: &Program, scope: &TargetScope) 
         scope.construction,
         TargetConstruction::OwnedPathHierarchy { .. }
             | TargetConstruction::OwnedAdjacencyTree { .. }
-    ) || scope
-        .iteration
-        .as_ref()
-        .is_some_and(|iteration| matches!(iteration.input(), IterationSource::OwnedSource(_)))
-    {
+    ) || scope.iteration.as_ref().is_some_and(|iteration| {
+        matches!(
+            iteration.input(),
+            IterationSource::OwnedSource(_) | IterationSource::OwnedInnerJoin(_)
+        )
+    }) {
         return true;
     }
     let mut roots = scope
@@ -2096,6 +2182,22 @@ pub(crate) fn render_public_basic_owned_collection_aggregates_mapping(
         true,
         true,
         TargetExtension::COLLECTION_AGGREGATES,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_joins_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::JOINS,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)
