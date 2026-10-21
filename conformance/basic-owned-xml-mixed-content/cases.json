@@ -1,0 +1,248 @@
+{
+  "cases": [
+    {
+      "id": "E01-colliding-endpoints",
+      "model": "M01-endpoints",
+      "source": {
+        "Title": "P",
+        "Para": {
+          "b": ["x", "y"],
+          "i": [{"n": "1", "#text": "it"}],
+          "~": ["One ", {"b": "x"}, " two ", {"i": "it"}, " ", {"b": "y"}, "."]
+        }
+      },
+      "inputs": [
+        ["notes", {
+          "Title": "N",
+          "Para": {
+            "b": ["z"],
+            "i": [{"n": "7", "#text": "ni"}],
+            "~": ["Note ", {"i": "ni"}, {"b": "z"}, "  end"]
+          }
+        }],
+        ["Para", {
+          "Title": "A",
+          "Para": {
+            "b": ["w"],
+            "u": "under",
+            "~": ["alias ", {"b": "w"}, " ", {"u": "under"}]
+          }
+        }]
+      ],
+      "calls": [
+        {"selection": "All", "expected": {"Ok": [
+          [null, {"Primary": "One [1:x] two P [2:y].", "Alias": "alias w under"}],
+          ["noted", {"Notes": "Note 7[1:z]  end"}]
+        ]}},
+        {"selection": "Primary", "expected": {"Ok": [
+          [null, {"Primary": "One [1:x] two P [2:y].", "Alias": "alias w under"}]
+        ]}},
+        {"selection": "noted", "expected": {"Ok": [
+          ["noted", {"Notes": "Note 7[1:z]  end"}]
+        ]}}
+      ]
+    },
+    {
+      "id": "E02-missing-primary-group-never-borrows-the-alias",
+      "model": "M01-endpoints",
+      "source": {"Title": "P"},
+      "inputs": [
+        ["notes", {"Para": {"b": ["z"], "~": [{"b": "z"}]}}],
+        ["Para", {"Para": {"~": ["alias"], "#text": "alias"}}]
+      ],
+      "calls": [
+        {"selection": "All", "expected": {"Err": {"kind": "MissingElement", "owner": null, "path": ["Para"], "node": 1}}},
+        {"selection": "Primary", "expected": {"Err": {"kind": "MissingElement", "owner": null, "path": ["Para"], "node": 1}}},
+        {"selection": "noted", "expected": {"Ok": [["noted", {"Notes": "[1:z]"}]]}}
+      ]
+    },
+    {
+      "id": "E03-unsupplied-owner",
+      "model": "M01-endpoints",
+      "source": {
+        "Title": "P",
+        "Para": {"b": ["x"], "~": [{"b": "x"}]}
+      },
+      "inputs": [
+        ["Para", {"Para": {"#text": "plain"}}]
+      ],
+      "calls": [
+        {"selection": "All", "expected": {"Err": {"kind": "SourceUnavailable", "owner": "notes", "node": 2}}},
+        {"selection": "Primary", "expected": {"Ok": [[null, {"Primary": "[1:x]", "Alias": "plain"}]]}},
+        {"selection": "noted", "expected": {"Err": {"kind": "SourceUnavailable", "owner": "notes", "node": 2}}}
+      ]
+    },
+    {
+      "id": "E04-text-only-empty-and-whitespace",
+      "model": "M01-endpoints",
+      "source": {"Para": {"#text": "  just text  "}},
+      "inputs": [
+        ["notes", {"Para": {"b": ["q", "r"], "~": [{"b": "q"}, "\n  ", {"b": "r"}]}}],
+        ["Para", {"Para": {}}]
+      ],
+      "calls": [
+        {"selection": "Primary", "expected": {"Ok": [[null, {"Primary": "  just text  ", "Alias": null}]]}},
+        {"selection": "noted", "expected": {"Ok": [["noted", {"Notes": "[1:q]\n  [2:r]"}]]}}
+      ]
+    },
+    {
+      "id": "E05-null-replacement-is-omitted",
+      "model": "M01-endpoints",
+      "source": {
+        "Para": {"i": [{"n": "1", "#text": "it"}], "~": ["<", {"i": "it"}, ">"]}
+      },
+      "inputs": [
+        ["Para", {"Para": {"#text": "p"}}]
+      ],
+      "calls": [
+        {"selection": "Primary", "expected": {"Ok": [[null, {"Primary": "<>", "Alias": "p"}]]}}
+      ]
+    },
+    {
+      "id": "E06-order-unmatched-elements-and-parent-repeats",
+      "model": "M01-endpoints",
+      "source": {
+        "Title": "T",
+        "Para": {
+          "b": ["1"],
+          "i": [{"n": "9", "#text": "x"}, {"n": "8", "#text": "y"}],
+          "u": "U",
+          "~": [" ", {"u": "U"}, {"b": "1"}, {"i": "x"}, {"i": "y"}, " "]
+        }
+      },
+      "inputs": [
+        ["Para", {"Para": {"#text": "p"}}]
+      ],
+      "calls": [
+        {"selection": "Primary", "expected": {"Ok": [[null, {"Primary": " U[1:1]TT ", "Alias": "p"}]]}}
+      ]
+    },
+    {
+      "id": "N01-row-frames-and-occurrence-positions",
+      "model": "M02-nested",
+      "source": {
+        "Docs": {"Doc": [
+          {"id": "a", "Para": {"b": ["p", "q"], "~": ["A", {"b": "p"}, "-", {"b": "q"}]}},
+          {"id": "b", "Para": {
+            "b": ["r"],
+            "i": [{"n": "1", "#text": "t"}],
+            "~": [{"b": "r"}, {"i": "t"}, "B"]
+          }}
+        ]}
+      },
+      "inputs": [["notes", {"Title": "N"}]],
+      "calls": [
+        {"selection": "Primary", "expected": {"Ok": [[null, {"Row": [
+          {"Pinned": "A1.1=p@a-1.2=q@a", "Free": "AN1-N2"},
+          {"Pinned": "2.1=r@btB", "Free": "N1bB"}
+        ]}]]}}
+      ]
+    },
+    {
+      "id": "N02-absent-second-row-group",
+      "model": "M02-nested",
+      "source": {
+        "Docs": {"Doc": [
+          {"id": "a", "Para": {"b": ["p"], "~": [{"b": "p"}]}},
+          {"id": "b"}
+        ]}
+      },
+      "inputs": [["notes", {"Title": "N"}]],
+      "calls": [
+        {"selection": "Primary", "expected": {"Err": {"kind": "MissingElement", "owner": null, "path": ["Docs", "Doc", "Para"], "node": 30}}}
+      ]
+    },
+    {
+      "id": "N03-empty-iteration",
+      "model": "M02-nested",
+      "source": {"Docs": {"Doc": []}},
+      "inputs": [],
+      "calls": [
+        {"selection": "Primary", "expected": {"Ok": [[null, {"Row": []}]]}}
+      ]
+    },
+    {
+      "id": "N04-occurrence-reads-an-unsupplied-owner",
+      "model": "M02-nested",
+      "source": {
+        "Docs": {"Doc": [
+          {"id": "a", "Para": {"b": ["p"], "~": ["A", {"b": "p"}]}}
+        ]}
+      },
+      "inputs": [],
+      "calls": [
+        {"selection": "Primary", "expected": {"Err": {"kind": "SourceUnavailable", "owner": "notes", "node": 42}}}
+      ]
+    },
+    {
+      "id": "N05-unreached-occurrence-stays-lazy",
+      "model": "M02-nested",
+      "source": {
+        "Docs": {"Doc": [
+          {"id": "a", "Para": {"i": [{"n": "1", "#text": "t"}], "~": ["A", {"i": "t"}]}}
+        ]}
+      },
+      "inputs": [],
+      "calls": [
+        {"selection": "Primary", "expected": {"Ok": [[null, {"Row": [{"Pinned": "At", "Free": "Aa"}]}]]}}
+      ]
+    },
+    {
+      "id": "F01-root-pins-inactive-frames-and-foreign-occurrences",
+      "model": "M03-frames",
+      "source": {
+        "Para": {"b": ["r"], "~": ["root ", {"b": "r"}]},
+        "Docs": {"Doc": [
+          {"id": "a", "Para": {"#text": "row a"}},
+          {"id": "b", "Para": {"#text": "row b"}}
+        ]}
+      },
+      "inputs": [
+        ["notes", {"Para": {"b": ["n"], "~": [{"b": "n"}]}}]
+      ],
+      "calls": [
+        {"selection": "Primary", "expected": {"Ok": [[null, {"Row": [{"Root": "root r"}, {"Root": "root r"}]}]]}},
+        {"selection": "inactive", "expected": {"Err": {"kind": "InactiveSourceFrame", "owner": null, "collection": ["Docs", "Doc"], "node": 52}}},
+        {"selection": "uniterated", "expected": {"Err": {"kind": "UniteratedRepetition", "path": ["Docs", "Doc", "Para"], "node": 53}}},
+        {"selection": "foreign", "expected": {"Err": {"kind": "UniteratedRepetition", "path": ["Para", "b"], "node": 55}}},
+        {"selection": "All", "expected": {"Err": {"kind": "InactiveSourceFrame", "owner": null, "collection": ["Docs", "Doc"], "node": 52}}}
+      ]
+    },
+    {
+      "id": "L01-unmatched-rule-is-never-evaluated",
+      "model": "M04-lazy",
+      "source": {"Para": {"b": ["x"], "~": ["a", {"b": "x"}, "c"]}},
+      "inputs": [],
+      "calls": [
+        {"selection": "Primary", "expected": {"Ok": [[null, {"Text": "axc"}]]}}
+      ]
+    },
+    {
+      "id": "L02-second-occurrence-raises",
+      "model": "M04-lazy",
+      "source": {"Para": {"b": ["x", "y"], "~": [{"b": "x"}, {"b": "y"}]}},
+      "inputs": [],
+      "calls": [
+        {"selection": "Primary", "expected": {"Err": {"kind": "MappingException", "node": 65, "message": "second b"}}}
+      ]
+    },
+    {
+      "id": "L03-reached-parent-rule-reads-an-unsupplied-owner",
+      "model": "M04-lazy",
+      "source": {"Para": {"b": ["x"], "u": "U", "~": [{"b": "x"}, {"u": "U"}]}},
+      "inputs": [],
+      "calls": [
+        {"selection": "Primary", "expected": {"Err": {"kind": "SourceUnavailable", "owner": "notes", "node": 66}}}
+      ]
+    },
+    {
+      "id": "L04-reached-parent-rule-reads-its-owner",
+      "model": "M04-lazy",
+      "source": {"Para": {"b": ["x"], "u": "U", "~": [{"b": "x"}, {"u": "U"}]}},
+      "inputs": [["notes", {"Title": "N"}]],
+      "calls": [
+        {"selection": "Primary", "expected": {"Ok": [[null, {"Text": "xN"}]]}}
+      ]
+    }
+  ]
+}
