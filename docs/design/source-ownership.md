@@ -266,6 +266,21 @@ specialized contexts refuse it. Interpreter, generated Rust and generated C#
 share the selection, order, laziness and error categories. Native export and GUI
 authoring remain closed.
 
+## Owned XML mixed-content construction
+
+An `XmlMixedContent` construction on a scope with an owned source selector
+takes its retained text/element order from that selector's exact current
+occurrence, or the immutable endpoint root for an endpoint-root selection. The
+selector is the construction's only owner, so the wire adds no field. Another
+endpoint's frame and the innermost legacy frame never supply the stream, and
+mapped direct children come from the item's own bindings and child scopes.
+Grouped owned selectors stay closed, because one constructed item would combine
+a representative's stream with every member's children; inherited and
+legacy-selected constructions inside owned ancestry stay XML operators.
+Interpreter, generated Rust and generated C# share the selection and the legacy
+construction's ordering, renaming and omission rules. Native export and GUI
+authoring remain closed; the GUI shows the saved scope read-only.
+
 ## Existing coordinated issues
 
 Reuse these existing scopes; the capability column concerns **explicit ownership**.

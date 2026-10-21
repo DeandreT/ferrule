@@ -860,9 +860,44 @@ profile, refuse the expression as an XML operator; failure rules, generated
 items, isolated functions, dynamic owners and other specialized contexts keep
 their typed refusals. The legacy `XmlMixedContent` node, its wire form,
 outward fallback and untyped missing-group error are unchanged and continue to
-use the ordinary emitters. See
+use the ordinary emitters; only the owned mixed-content construction profile
+composes this one. See
 [the ownership design](design/source-ownership.md#owned-xml-mixed-content-atomization)
 and [the corpus](../conformance/basic-owned-xml-mixed-content/README.md).
+
+## Explicit owned XML mixed-content construction
+
+A scope whose iteration is an owned source selector may use the existing
+`XmlMixedContent` construction. Use
+`codegen::lower_with_basic_owned_xml_mixed_construction`, then
+`codegen_rust::emit_with_basic_owned_xml_mixed_construction(&program, &options)`
+or `codegen_csharp::emit_with_basic_owned_xml_mixed_construction(&program)`.
+The matching `validate_program_with_basic_owned_xml_mixed_construction`,
+`validate_basic_owned_xml_mixed_construction_emission` and
+`legacy_named_input_admission_plan_with_basic_owned_xml_mixed_construction`
+APIs select the same profile, which composes the owned mixed-content
+atomization profile. No new wire field exists: the scope's owned selector is
+the construction's only owner.
+
+Each item's retained text/element order comes from that selector's exact
+current occurrence, or from the immutable endpoint root when the selector is
+the endpoint root; another endpoint's frame and the innermost legacy frame are
+never consulted. Bindings and child scopes are evaluated as for any owned item,
+so mapped direct children, renames, filters, cardinality, empty occurrences,
+Null values and lazy errors keep the legacy construction's meaning: element
+occurrences take the mapped target values in order, exhausted occurrences and
+unmapped elements are omitted, and text nodes are kept. A group without a
+retained stream gets no stream.
+
+Grouped or post-group-filtered owned selectors, legacy-selected constructions
+inside owned ancestry and constructions without their own selector keep
+refusing the scope (as grouping or an XML operator); dynamic owners and
+specialized contexts keep their typed refusals. Default validation and every
+earlier profile, including the owned atomization profile, refuse the
+construction as an XML operator. Legacy-selected constructions keep their wire,
+current-frame source and ordinary emitters. See
+[the ownership design](design/source-ownership.md#owned-xml-mixed-content-construction)
+and [the corpus](../conformance/basic-owned-xml-mixed-construction/README.md).
 
 ## C#
 
