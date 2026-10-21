@@ -628,7 +628,7 @@ ordinary user global-tools directory.
 ### Generate the library
 
 ```sh
-cargo +nightly run -p cli -- generate \
+cargo run -p cli -- generate \
   --project project.json \
   --language csharp \
   --out generated-csharp
@@ -656,7 +656,7 @@ for each generated `(sourceName, logicalPath)` request.
 ## Rust
 
 ```sh
-cargo +nightly run -p cli -- generate \
+cargo run -p cli -- generate \
   --project project.json \
   --language rust \
   --out generated-rust \

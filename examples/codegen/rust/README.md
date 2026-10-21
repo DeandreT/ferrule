@@ -7,7 +7,7 @@ bounded `execute_json` API, compares the returned document with
 From the repository root, generate the mapping into a new destination:
 
 ```sh
-cargo +nightly run -p cli -- generate \
+cargo run -p cli -- generate \
   --project examples/codegen/project.json \
   --language rust \
   --out examples/codegen/generated/rust \
@@ -17,7 +17,7 @@ cargo +nightly run -p cli -- generate \
 Then run the host application:
 
 ```sh
-cargo +nightly run --manifest-path examples/codegen/rust/Cargo.toml
+cargo run --manifest-path examples/codegen/rust/Cargo.toml
 ```
 
 Expected output:
