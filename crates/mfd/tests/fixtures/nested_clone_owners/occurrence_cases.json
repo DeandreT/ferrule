@@ -1,0 +1,205 @@
+[
+  {
+    "name": "shared_constant_cells",
+    "design": "shared_constant_cells.mfd",
+    "input_xml": "<Source><Left><Item><Detail><Value>a</Value></Detail><Detail><Value>b</Value></Detail><Value>11</Value></Item><Item><Value>12</Value></Item></Left><Right><Item><Detail><Value>c</Value></Detail><Value>21</Value></Item></Right></Source>",
+    "input_json": {
+      "Left": [
+        {
+          "Item": [
+            {
+              "Detail": [
+                {
+                  "Value": "a"
+                },
+                {
+                  "Value": "b"
+                }
+              ],
+              "Value": "11"
+            },
+            {
+              "Detail": [],
+              "Value": "12"
+            }
+          ]
+        }
+      ],
+      "Right": [
+        {
+          "Item": [
+            {
+              "Detail": [
+                {
+                  "Value": "c"
+                }
+              ],
+              "Value": "21"
+            }
+          ]
+        }
+      ]
+    },
+    "expected_json": {
+      "Group": [
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Label": "11",
+              "Cell": [
+                {
+                  "Value": "a"
+                },
+                {
+                  "Value": "b"
+                },
+                {
+                  "Value": "left-tail"
+                }
+              ]
+            },
+            {
+              "Label": "12",
+              "Cell": [
+                {
+                  "Value": "left-tail"
+                }
+              ]
+            },
+            {
+              "Label": "left-fixed-one",
+              "Cell": [
+                {
+                  "Value": "left-one-cell"
+                },
+                {
+                  "Value": "left-one-cell"
+                }
+              ]
+            },
+            {
+              "Label": "left-fixed-two",
+              "Cell": [
+                {
+                  "Value": "left-two-cell"
+                },
+                {
+                  "Value": "left-two-cell-two"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "Side": "right",
+          "Row": [
+            {
+              "Label": "21",
+              "Cell": [
+                {
+                  "Value": "c"
+                },
+                {
+                  "Value": "right-tail"
+                }
+              ]
+            },
+            {
+              "Label": "right-fixed",
+              "Cell": [
+                {
+                  "Value": "right-fixed-cell"
+                },
+                {
+                  "Value": "right-fixed-cell-two"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "shared_constant_rows",
+    "design": "shared_constant_rows.mfd",
+    "input_xml": "<Source><Left><Item><Value>11</Value></Item><Item><Value>12</Value></Item></Left><Left><Item><Value>13</Value></Item></Left><Right><Item><Value>21</Value></Item></Right></Source>",
+    "input_json": {
+      "Left": [
+        {
+          "Item": [
+            {
+              "Value": "11"
+            },
+            {
+              "Value": "12"
+            }
+          ]
+        },
+        {
+          "Item": [
+            {
+              "Value": "13"
+            }
+          ]
+        }
+      ],
+      "Right": [
+        {
+          "Item": [
+            {
+              "Value": "21"
+            }
+          ]
+        }
+      ]
+    },
+    "expected_json": {
+      "Group": [
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Value": "11"
+            },
+            {
+              "Value": "12"
+            },
+            {
+              "Value": "left-fixed-one"
+            },
+            {
+              "Value": "left-fixed-one"
+            }
+          ]
+        },
+        {
+          "Side": "left",
+          "Row": [
+            {
+              "Value": "13"
+            },
+            {
+              "Value": "left-fixed-one"
+            },
+            {
+              "Value": "left-fixed-one"
+            }
+          ]
+        },
+        {
+          "Side": "right",
+          "Row": [
+            {
+              "Value": "21"
+            },
+            {
+              "Value": "right-fixed"
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

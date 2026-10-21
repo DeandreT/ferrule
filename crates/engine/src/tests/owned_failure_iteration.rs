@@ -657,6 +657,19 @@ fn validation_and_admission_reject_unsupported_owned_iteration() {
             },
             8,
         ),
+        // Generation refuses a generated-item consumer in an owned failure
+        // walk, so the interpreter refuses it too.
+        (
+            Node::SequenceExists {
+                sequence: mapping::SequenceExpr::Generate {
+                    from: None,
+                    to: 9,
+                    item: 10,
+                },
+                predicate: 1,
+            },
+            8,
+        ),
     ] {
         let p = project(
             vec![when_true(

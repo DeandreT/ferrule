@@ -97,7 +97,10 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
         }
 
         match node {
-            Node::OwnedSourceField(_) | Node::OwnedPosition(_) | Node::OwnedRowDocumentPath(_) => {
+            Node::OwnedSourceField(_)
+            | Node::OwnedPosition(_)
+            | Node::OwnedRowDocumentPath(_)
+            | Node::OwnedXmlSerialize(_) => {
                 super::schema::validate_owned_source_node(project, node, &location, issues)
             }
             Node::OwnedDynamicSourceField(field) => {
@@ -715,6 +718,16 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
                 sources.insert(name.as_str());
             }
         }
+        Node::OwnedXmlSerialize(serializer) => {
+            if let mapping::SourceOwner::Named { name } = &serializer.source.owner
+                && project
+                    .extra_sources
+                    .iter()
+                    .any(|source| source.name == *name && source.dynamic_path.is_some())
+            {
+                sources.insert(name.as_str());
+            }
+        }
         Node::SourceField { path, frame }
         | Node::DynamicSourceField {
             object: path,
@@ -1282,6 +1295,7 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedXmlSerialize(_)
         | Node::SourceField { .. }
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }

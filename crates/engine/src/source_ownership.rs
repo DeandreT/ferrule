@@ -789,6 +789,29 @@ impl<'a> Admission<'a> {
                         Some(id),
                         None,
                     )?,
+                    // The structured read has the field's frame rules and
+                    // evaluates no expression of its own.
+                    Node::OwnedXmlSerialize(serializer) => {
+                        self.static_owner(
+                            &serializer.source.owner,
+                            &serializer.source.path,
+                            serializer.frame.as_deref(),
+                            Some(id),
+                            None,
+                        )?;
+                        if let Some(frame) = &serializer.frame
+                            && !serializer.source.path.starts_with(frame)
+                        {
+                            return Err(access_error(
+                                Some(id),
+                                None,
+                                OwnedSourceError::UnsupportedFramePathCombination {
+                                    path: serializer.source.path.clone(),
+                                    frame: frame.clone(),
+                                },
+                            ));
+                        }
+                    }
                     _ => unreachable!("owned kind identifies owned payload"),
                 }
                 self.summary.used_owned = true;
@@ -967,11 +990,13 @@ fn primary_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
 }
 
 /// Owned failure rows add exact row positions and frame pins for every owner to
-/// the static scalar subset. Specialized contexts, including ItemAt, stay closed.
+/// the static scalar subset. Specialized contexts, including the generated-item
+/// consumers ItemAt, Exists and SequenceAggregate, stay closed as generation
+/// refuses them.
 fn owned_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
     if matches!(
         node,
-        Node::SequenceItemAt { .. } | Node::SequenceAggregate { .. }
+        Node::SequenceItemAt { .. } | Node::SequenceExists { .. } | Node::SequenceAggregate { .. }
     ) || node_context(node) != OwnedCapabilityContext::Basic
     {
         return false;
@@ -982,6 +1007,8 @@ fn owned_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
             false
         }
         Node::UserFunctionCall { .. } | Node::OwnedDynamicSourceField(_) => false,
+        // Owned XML serialization is a target-context operator only.
+        Node::OwnedXmlSerialize(_) => false,
         Node::SourceField { path, frame } => ![Some(path.as_slice()), frame.as_deref()]
             .into_iter()
             .flatten()

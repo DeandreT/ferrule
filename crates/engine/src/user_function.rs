@@ -203,7 +203,8 @@ fn evaluate_body_node_inner(
         | Node::OwnedRowDocumentPath(_)
         | Node::OwnedDynamicSourceField(_)
         | Node::OwnedLookup(_)
-        | Node::OwnedCollectionFind(_) => Err(EngineError::UnsupportedSourceOwnership {
+        | Node::OwnedCollectionFind(_)
+        | Node::OwnedXmlSerialize(_) => Err(EngineError::UnsupportedSourceOwnership {
             node: node_id,
             function: Some(function_id),
             kind: node.owned_source_kind().expect("owned node kind"),

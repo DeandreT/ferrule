@@ -369,6 +369,10 @@ pub(crate) const SOURCES: [(&str, &str); 83] = [
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleXml.cs"),
     ),
     (
+        "Runtime/FerruleXml.Owned.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleXml.Owned.cs"),
+    ),
+    (
         "Runtime/FerruleXmlTypeOrigin.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleXmlTypeOrigin.cs"),
     ),

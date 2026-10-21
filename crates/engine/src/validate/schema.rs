@@ -313,11 +313,44 @@ pub(super) fn validate_owned_source_node(
         ),
         Node::OwnedPosition(position) => (&position.owner, None, position.collection.as_deref()),
         Node::OwnedRowDocumentPath(path) => (&path.owner, None, path.collection.as_deref()),
+        Node::OwnedXmlSerialize(serializer) => {
+            // Document-level checks are independent of the owner's schema.
+            if serializer.schema.repeating {
+                issues.push(ValidationIssue::new(
+                    location,
+                    "XML serializer schema must describe one document element",
+                ));
+            }
+            if serializer.namespace.as_ref().is_some_and(String::is_empty) {
+                issues.push(ValidationIssue::new(
+                    location,
+                    "XML serializer namespace cannot be empty",
+                ));
+            }
+            (&serializer.source.owner, None, serializer.frame.as_deref())
+        }
         _ => return,
     };
     let Some(root) = owned_source_root(project, owner, location, issues) else {
         return;
     };
+    if let Node::OwnedXmlSerialize(serializer) = node {
+        // Only the exact owner's schema may supply the serialized element.
+        let expected_group = matches!(serializer.schema.kind, SchemaKind::Group { .. });
+        if follow_schema_resolved(root, &serializer.source.path).is_none_or(|source| {
+            source.name != serializer.schema.name
+                || matches!(source.kind, SchemaKind::Group { .. }) != expected_group
+        }) {
+            issues.push(ValidationIssue::new(
+                location,
+                format!(
+                    "owned XML serializer source `{}` does not match its `{}` schema in its owner",
+                    serializer.source.path.join("/"),
+                    serializer.schema.name
+                ),
+            ));
+        }
+    }
     if let Some(path) = scalar_path
         && follow_schema_resolved(root, path).is_none_or(|field| !field.is_scalar())
     {

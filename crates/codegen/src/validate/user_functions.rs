@@ -105,7 +105,8 @@ fn validate_definition(
             | Expression::OwnedRowDocumentPath(_)
             | Expression::OwnedDynamicSourceField(_)
             | Expression::OwnedLookup(_)
-            | Expression::OwnedCollectionFind(_) => {}
+            | Expression::OwnedCollectionFind(_)
+            | Expression::OwnedXmlSerialize(_) => {}
             Expression::Const { .. }
             | Expression::RuntimeValue { .. }
             | Expression::RuntimeParameter { .. }
