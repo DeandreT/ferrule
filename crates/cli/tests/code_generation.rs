@@ -879,6 +879,7 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "Runtime/FerruleUnicodeCasing.cs",
         "Runtime/FerruleUserFunctions.cs",
         "Runtime/FerruleValue.cs",
+        "Runtime/FerruleDecimal96.cs",
         "Runtime/FerruleValueMaps.cs",
         "Runtime/FerruleXml.Boundary.cs",
         "Runtime/FerruleXml.DocumentOutputs.cs",
