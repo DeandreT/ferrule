@@ -85,15 +85,42 @@
         </p>
 
         <h2>Workspace crates</h2>
+        <!-- BEGIN GENERATED workspace from docs/reference/workspace.toml; edit that file and run `cargo run -p reference-docs` -->
         <table>
-          <thead><tr><th>Area</th><th>Crates</th><th>Role</th></tr></thead>
+          <thead><tr><th>Area</th><th>Component</th><th>Role</th></tr></thead>
           <tbody>
-            <tr><td>Core</td><td><code>ir</code>, <code>mapping</code>, <code>functions</code>, <code>engine</code></td><td>Shared data model, scalar functions, validation, and interpreter execution.</td></tr>
-            <tr><td>Code generation</td><td><code>codegen</code>, <code>codegen-runtime</code>, <code>codegen-rust</code>, <code>codegen-csharp</code></td><td>Portable lowering, runtime primitives, and deterministic Rust/C# emitters.</td></tr>
-            <tr><td>Formats</td><td><code>format-xml</code>, <code>format-json</code>, <code>format-csv</code>, <code>format-xlsx</code>, <code>format-db</code>, <code>format-edi</code>, <code>format-flextext</code>, <code>format-protobuf</code>, <code>format-pdf</code>, <code>format-xbrl</code></td><td>Adapters between external data and the shared instance tree.</td></tr>
-            <tr><td>Interfaces</td><td><code>cli</code>, <code>gui</code>, <code>web-demo</code>, <code>mfd</code></td><td>Headless execution, native editing, browser demo, and <code>.mfd</code> import/export.</td></tr>
+            <tr><td rowspan="4">Core model and execution</td><td><code>ir</code></td><td>Format-independent schema, scalar value, and instance trees</td></tr>
+            <tr><td><code>mapping</code></td><td>Serialized project, graph, scope, join, and format-option model</td></tr>
+            <tr><td><code>functions</code></td><td>Scalar built-in function library</td></tr>
+            <tr><td><code>engine</code></td><td>Project validation and mapping interpreter</td></tr>
+            <tr><td rowspan="5">Code generation</td><td><code>codegen</code></td><td>Backend-neutral lowering, validation, and artifact model</td></tr>
+            <tr><td><code>codegen-schema</code></td><td>Lossless embedded schema descriptors for generated mappings</td></tr>
+            <tr><td><code>codegen-runtime</code></td><td>Runtime primitives linked by generated Rust mappings</td></tr>
+            <tr><td><code>codegen-rust</code></td><td>Deterministic Rust library emitter</td></tr>
+            <tr><td><code>codegen-csharp</code></td><td>Deterministic C# library emitter</td></tr>
+            <tr><td rowspan="12">Format adapters</td><td><code>format-xml</code></td><td>XSD-lite and DTD import and XML instance I/O</td></tr>
+            <tr><td><code>format-json</code></td><td>JSON Schema import and JSON, JSON Lines, and JSON5 instance I/O</td></tr>
+            <tr><td><code>json-pattern</code></td><td>Bounded portable JSON Schema <code>pattern</code> compiler and matcher</td></tr>
+            <tr><td><code>format-csv</code></td><td>Delimited and fixed-width flat file I/O</td></tr>
+            <tr><td><code>format-xlsx</code></td><td>XLSX worksheet I/O</td></tr>
+            <tr><td><code>format-db</code></td><td>SQLite introspection and instance I/O</td></tr>
+            <tr><td><code>format-edi</code></td><td>X12, EDIFACT, HL7 v2, TRADACOMS, SAP IDoc, and SWIFT MT I/O</td></tr>
+            <tr><td><code>format-flextext</code></td><td>Bounded FlexText layout I/O</td></tr>
+            <tr><td><code>format-protobuf</code></td><td>Validated proto2/proto3 layouts and binary I/O</td></tr>
+            <tr><td><code>format-pdf</code></td><td>Bounded visual PDF source extraction</td></tr>
+            <tr><td><code>pdf-worker</code></td><td>Bounded PDF worker wire protocol and opt-in filesystem host</td></tr>
+            <tr><td><code>format-xbrl</code></td><td>Bounded XBRL instance table projection</td></tr>
+            <tr><td rowspan="6">Interfaces and interoperability</td><td><code>mfd</code></td><td><code>.mfd</code> import and export</td></tr>
+            <tr><td><code>cli</code></td><td>Headless validation, execution, schema import, interop, and code generation</td></tr>
+            <tr><td><code>editor-ui</code></td><td>Shared editor presentation and interaction logic</td></tr>
+            <tr><td><code>gui</code></td><td>Native egui mapping editor</td></tr>
+            <tr><td><code>web-demo</code></td><td>WebAssembly playground built around the real mapping engine</td></tr>
+            <tr><td><code>site</code></td><td>Static project site and web-demo deployment shell</td></tr>
+            <tr><td rowspan="2">Project tooling</td><td><code>mfd-conformance</code></td><td>Versioned MFD capability inventory and evidence validation</td></tr>
+            <tr><td><code>reference-docs</code></td><td>Generator and freshness check for shared technical references</td></tr>
           </tbody>
         </table>
+        <!-- END GENERATED workspace -->
 
         <div class="callout">
           <strong>Generated mappings are static programs.</strong>

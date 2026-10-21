@@ -206,41 +206,62 @@ what evidence closes each gate.
 
 ## Workspace Layout
 
+<!-- BEGIN GENERATED workspace from docs/reference/workspace.toml; edit that file and run `cargo run -p reference-docs` -->
 ### Core model and execution
 
-- `crates/ir` - format-independent schema, scalar value, and instance trees
-- `crates/mapping` - serialized project, graph, scope, join, and format-option
+- `crates/ir`: Format-independent schema, scalar value, and instance trees
+- `crates/mapping`: Serialized project, graph, scope, join, and format-option
   model
-- `crates/functions` - scalar built-in function library
-- `crates/engine` - project validation and mapping interpreter
+- `crates/functions`: Scalar built-in function library
+- `crates/engine`: Project validation and mapping interpreter
 
 ### Code generation
 
-- `crates/codegen` - backend-neutral lowering, validation, and artifact model
-- `crates/codegen-runtime` - runtime primitives linked by generated Rust mappings
-- `crates/codegen-rust` - deterministic Rust library emitter
-- `crates/codegen-csharp` - deterministic C# library emitter
+- `crates/codegen`: Backend-neutral lowering, validation, and artifact model
+- `crates/codegen-schema`: Lossless embedded schema descriptors for generated
+  mappings
+- `crates/codegen-runtime`: Runtime primitives linked by generated Rust mappings
+- `crates/codegen-rust`: Deterministic Rust library emitter
+- `crates/codegen-csharp`: Deterministic C# library emitter
 
 ### Format adapters
 
-- `crates/format-xml`, `format-json`, `format-csv`, and `format-xlsx`
-- `crates/format-db`
-- `crates/format-edi` and `format-flextext`
-- `crates/format-protobuf`, `format-pdf`, and `format-xbrl`
-
-See [Supported formats](formats.md) for adapter direction and boundaries.
+- `crates/format-xml`: XSD-lite and DTD import and XML instance I/O
+- `crates/format-json`: JSON Schema import and JSON, JSON Lines, and JSON5
+  instance I/O
+- `crates/json-pattern`: Bounded portable JSON Schema `pattern` compiler and
+  matcher
+- `crates/format-csv`: Delimited and fixed-width flat file I/O
+- `crates/format-xlsx`: XLSX worksheet I/O
+- `crates/format-db`: SQLite introspection and instance I/O
+- `crates/format-edi`: X12, EDIFACT, HL7 v2, TRADACOMS, SAP IDoc, and SWIFT MT
+  I/O
+- `crates/format-flextext`: Bounded FlexText layout I/O
+- `crates/format-protobuf`: Validated proto2/proto3 layouts and binary I/O
+- `crates/format-pdf`: Bounded visual PDF source extraction
+- `crates/pdf-worker`: Bounded PDF worker wire protocol and opt-in filesystem
+  host
+- `crates/format-xbrl`: Bounded XBRL instance table projection
 
 ### Interfaces and interoperability
 
-- `crates/mfd` - `.mfd` import and export
-- `crates/cli` - headless validation, filesystem and raw-payload execution,
-  host run options and ordered artifact reports, schema import, interop, and
-  code generation
-- `crates/editor-ui` - shared editor presentation and interaction logic
-- `crates/gui` - native egui mapping editor
-- `crates/web-demo` - WebAssembly playground built around the real mapping
-  engine
-- `site` - static project site and web-demo deployment shell
+- `crates/mfd`: `.mfd` import and export
+- `crates/cli`: Headless validation, execution, schema import, interop, and code
+  generation
+- `crates/editor-ui`: Shared editor presentation and interaction logic
+- `crates/gui`: Native egui mapping editor
+- `crates/web-demo`: WebAssembly playground built around the real mapping engine
+- `site`: Static project site and web-demo deployment shell
+
+### Project tooling
+
+- `crates/mfd-conformance`: Versioned MFD capability inventory and evidence
+  validation
+- `crates/reference-docs`: Generator and freshness check for shared technical
+  references
+<!-- END GENERATED workspace -->
+
+See [Supported formats](formats.md) for adapter direction and boundaries.
 
 ## Design Principles
 

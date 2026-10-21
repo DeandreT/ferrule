@@ -1,0 +1,136 @@
+# Canonical workspace component reference.
+#
+# Edit this file, then regenerate with `cargo run -p reference-docs`.
+# `cargo test -p reference-docs` requires every root Cargo.toml workspace
+# member to appear exactly once; non-crate directories may also be listed.
+
+[[area]]
+name = "Core model and execution"
+
+[[area.component]]
+path = "crates/ir"
+role = "Format-independent schema, scalar value, and instance trees"
+
+[[area.component]]
+path = "crates/mapping"
+role = "Serialized project, graph, scope, join, and format-option model"
+
+[[area.component]]
+path = "crates/functions"
+role = "Scalar built-in function library"
+
+[[area.component]]
+path = "crates/engine"
+role = "Project validation and mapping interpreter"
+
+[[area]]
+name = "Code generation"
+
+[[area.component]]
+path = "crates/codegen"
+role = "Backend-neutral lowering, validation, and artifact model"
+
+[[area.component]]
+path = "crates/codegen-schema"
+role = "Lossless embedded schema descriptors for generated mappings"
+
+[[area.component]]
+path = "crates/codegen-runtime"
+role = "Runtime primitives linked by generated Rust mappings"
+
+[[area.component]]
+path = "crates/codegen-rust"
+role = "Deterministic Rust library emitter"
+
+[[area.component]]
+path = "crates/codegen-csharp"
+role = "Deterministic C# library emitter"
+
+[[area]]
+name = "Format adapters"
+
+[[area.component]]
+path = "crates/format-xml"
+role = "XSD-lite and DTD import and XML instance I/O"
+
+[[area.component]]
+path = "crates/format-json"
+role = "JSON Schema import and JSON, JSON Lines, and JSON5 instance I/O"
+
+[[area.component]]
+path = "crates/json-pattern"
+role = "Bounded portable JSON Schema `pattern` compiler and matcher"
+
+[[area.component]]
+path = "crates/format-csv"
+role = "Delimited and fixed-width flat file I/O"
+
+[[area.component]]
+path = "crates/format-xlsx"
+role = "XLSX worksheet I/O"
+
+[[area.component]]
+path = "crates/format-db"
+role = "SQLite introspection and instance I/O"
+
+[[area.component]]
+path = "crates/format-edi"
+role = "X12, EDIFACT, HL7 v2, TRADACOMS, SAP IDoc, and SWIFT MT I/O"
+
+[[area.component]]
+path = "crates/format-flextext"
+role = "Bounded FlexText layout I/O"
+
+[[area.component]]
+path = "crates/format-protobuf"
+role = "Validated proto2/proto3 layouts and binary I/O"
+
+[[area.component]]
+path = "crates/format-pdf"
+role = "Bounded visual PDF source extraction"
+
+[[area.component]]
+path = "crates/pdf-worker"
+role = "Bounded PDF worker wire protocol and opt-in filesystem host"
+
+[[area.component]]
+path = "crates/format-xbrl"
+role = "Bounded XBRL instance table projection"
+
+[[area]]
+name = "Interfaces and interoperability"
+
+[[area.component]]
+path = "crates/mfd"
+role = "`.mfd` import and export"
+
+[[area.component]]
+path = "crates/cli"
+role = "Headless validation, execution, schema import, interop, and code generation"
+
+[[area.component]]
+path = "crates/editor-ui"
+role = "Shared editor presentation and interaction logic"
+
+[[area.component]]
+path = "crates/gui"
+role = "Native egui mapping editor"
+
+[[area.component]]
+path = "crates/web-demo"
+role = "WebAssembly playground built around the real mapping engine"
+
+[[area.component]]
+path = "site"
+role = "Static project site and web-demo deployment shell"
+
+[[area]]
+name = "Project tooling"
+
+[[area.component]]
+path = "crates/mfd-conformance"
+role = "Versioned MFD capability inventory and evidence validation"
+
+[[area.component]]
+path = "crates/reference-docs"
+role = "Generator and freshness check for shared technical references"
