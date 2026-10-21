@@ -2,6 +2,7 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use format_json::{JsonFormatError, json_schema, to_string, to_value, write};
@@ -2181,10 +2182,12 @@ fn publication_rejection(
     let owned_directory = if let Some(directory) = evidence {
         directory.join("publication-control")
     } else {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         std::env::temp_dir().join(format!(
-            "ferrule-json-writer184-{}-{}",
+            "ferrule-json-writer184-{}-{}-{}",
             std::process::id(),
             SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ))
     };
     fs::create_dir(&owned_directory)?;

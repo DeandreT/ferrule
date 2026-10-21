@@ -1,5 +1,6 @@
 use std::{
     path::PathBuf,
+    sync::atomic::{AtomicUsize, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -11,10 +12,12 @@ fn standard_guid_formatter_imports_executes_and_round_trips()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/format_guid_string");
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let evidence = std::env::temp_dir().join(format!(
-        "ferrule-guid269-mfd-{}-{stamp}",
-        std::process::id()
+        "ferrule-guid269-mfd-{}-{stamp}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&evidence)?;
     eprintln!("GUID269_MFD_ORIGINALS={}", evidence.display());
@@ -93,10 +96,12 @@ fn canonical_ir_names_in_vendor_libraries_remain_unresolved()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/format_guid_string");
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let evidence = std::env::temp_dir().join(format!(
-        "ferrule-guid269-namespace-{}-{stamp}",
-        std::process::id()
+        "ferrule-guid269-namespace-{}-{stamp}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&evidence)?;
     eprintln!("GUID269_NAMESPACE_ORIGINALS={}", evidence.display());

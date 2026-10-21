@@ -244,6 +244,43 @@ failure rules, generated items, functions and other specialized contexts refuse
 it. Interpreter, generated Rust and generated C# share the selection, writer
 bytes and error categories. Native export and GUI authoring remain closed.
 
+## Owned XML mixed-content atomization
+
+`OwnedXmlMixedContent` pairs an `OwnedSourceRef` mixed group and optional
+endpoint-local frame with ordered replacements. It is a separate
+`owned_xml_mixed_content` graph node beside the unchanged legacy
+`xml_mixed_content`, so older readers reject it. Each replacement names its
+direct child element and an explicit `parent` or `occurrence` context; there is
+no legacy collection path, because an occurrence's collection is always the
+group path plus the element name in the group's own endpoint. Its strict reader
+rejects unknown fields, malformed owners, legacy paths and empty elements.
+
+The group is an owned read with the serializer's frame rules, and its absence
+is a typed failure rather than a fallback. A parent replacement evaluates in the
+receiving context. An occurrence replacement appends one owned occurrence of
+the retained element value at that collection, numbered per element name from
+one; other owners, outer frames and positions are unchanged, so another
+endpoint's read of the same path is never served by it. Only Basic target
+contexts admit the node; failure rules, generated items, functions and other
+specialized contexts refuse it. Interpreter, generated Rust and generated C#
+share the selection, order, laziness and error categories. Native export and GUI
+authoring remain closed.
+
+## Owned XML mixed-content construction
+
+An `XmlMixedContent` construction on a scope with an owned source selector
+takes its retained text/element order from that selector's exact current
+occurrence, or the immutable endpoint root for an endpoint-root selection. The
+selector is the construction's only owner, so the wire adds no field. Another
+endpoint's frame and the innermost legacy frame never supply the stream, and
+mapped direct children come from the item's own bindings and child scopes.
+Grouped owned selectors stay closed, because one constructed item would combine
+a representative's stream with every member's children; inherited and
+legacy-selected constructions inside owned ancestry stay XML operators.
+Interpreter, generated Rust and generated C# share the selection and the legacy
+construction's ordering, renaming and omission rules. Native export and GUI
+authoring remain closed; the GUI shows the saved scope read-only.
+
 ## Existing coordinated issues
 
 Reuse these existing scopes; the capability column concerns **explicit ownership**.

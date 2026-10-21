@@ -141,6 +141,14 @@ fn validate_body(
             Node::OwnedDynamicSourceField(field) => {
                 super::schema::validate_owned_dynamic_field(project, field, &node_location, issues)
             }
+            Node::OwnedXmlMixedContent(mixed) => {
+                super::mixed_content::validate_owned_mixed_content(
+                    project,
+                    mixed,
+                    &node_location,
+                    issues,
+                )
+            }
             Node::Unconnected
             | Node::Const { .. }
             | Node::RuntimeValue { .. }

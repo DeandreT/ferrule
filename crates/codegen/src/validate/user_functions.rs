@@ -107,7 +107,8 @@ fn validate_definition(
             | Expression::OwnedLookup(_)
             | Expression::OwnedCollectionFind(_)
             | Expression::OwnedXmlSerialize(_)
-            | Expression::OwnedAggregate(_) => {}
+            | Expression::OwnedAggregate(_)
+            | Expression::OwnedXmlMixedContent(_) => {}
             Expression::Const { .. }
             | Expression::RuntimeValue { .. }
             | Expression::RuntimeParameter { .. }

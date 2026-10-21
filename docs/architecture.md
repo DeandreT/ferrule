@@ -112,7 +112,14 @@ A ferrule project is plain JSON built from four main concepts:
 
 1. **Schemas** describe source and target trees. Nodes are named scalar or group
    values and may be repeating, attributes, nullable, fixed, or dynamically
-   named where the target format permits it.
+   named where the target format permits it. `SchemaNode::effective_view`
+   derives, without changing the saved schema, one node's cardinality (single
+   with required or optional declared XML presence, or repeated with exact JSON
+   item bounds and value or nested-array items) and the null-like values each
+   layer admits: XML nil, and JSON null for a single occurrence or separately
+   for an array and its items. Absence is never one of those values.
+   Contradictory role metadata has no view. Consumers that combine these facts
+   should use the view rather than re-reading the individual flags.
 2. **Graph nodes** compute scalar values. Nodes read source fields and positions,
    hold constants, call built-in functions, branch lazily, translate value maps,
    perform lookups and joins, reduce collections, and access selected runtime
@@ -132,6 +139,20 @@ bounded typed runtime parameters, and optional tracing. A successful
 primary-then-extra target order. `RunOptions::with_target` can instead evaluate
 one primary or named target; unselected target scopes are not evaluated or
 published, while the default all-target mode keeps its collision checks.
+
+Every host route (`run`, standard streams, `run-pipeline`, payload execution,
+and generation) prepares an immutable request before it acquires anything.
+Preparation resolves the known input and output identities into a
+`cli::RoutePlan`, admits the requested trace and debug observers, applies the
+execution policy to every known location, and refuses an unsupported route
+combination with a typed error such as `cli::RouteRefusal`. No input, standard
+stream, output, trace stage, or directory is touched by a refused request.
+`PreparedFileRun` and `PreparedStreamRun` execute such a request, refusing any
+observer it did not admit; `plan_run`, `plan_pipeline_run`, `plan_payload_run`,
+and `plan_generate` report the plan without executing it.
+`RunOptions::with_cancellation` stops a run at acquisition, interpreter control,
+and publication boundaries without a trace sink or host debug hook. It cannot
+interrupt one synchronous parser or request.
 
 Hosts that own transport and persistence can instead use
 `cli::PayloadRunOptions`. Each input carries bounded bytes plus a logical path

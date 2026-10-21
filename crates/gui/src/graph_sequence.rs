@@ -1,22 +1,23 @@
 use mapping::{Node, NodeId, SequenceExpr};
 
-pub(super) const READ_ONLY_INPUTS_MESSAGE: &str =
-    "Filter/map, owned recursive-collect and owned dynamic-field inputs cannot be edited yet.";
+pub(super) const READ_ONLY_INPUTS_MESSAGE: &str = "Filter/map, owned recursive-collect, owned dynamic-field and owned XML mixed-content inputs cannot be edited yet.";
 
 /// Filter/map compositions, owned producers and owned dynamic reads are
 /// preserved read-only.
 pub(super) fn inputs_are_read_only(node: &Node) -> bool {
-    matches!(node, Node::OwnedDynamicSourceField(_))
-        || matches!(
-            node,
-            Node::SequenceExists { sequence, .. }
-                | Node::SequenceItemAt { sequence, .. }
-                | Node::SequenceAggregate { sequence, .. }
-                if matches!(
-                    sequence,
-                    SequenceExpr::FilterMapV1(_) | SequenceExpr::OwnedRecursiveCollect(_)
-                )
-        )
+    matches!(
+        node,
+        Node::OwnedDynamicSourceField(_) | Node::OwnedXmlMixedContent(_)
+    ) || matches!(
+        node,
+        Node::SequenceExists { sequence, .. }
+            | Node::SequenceItemAt { sequence, .. }
+            | Node::SequenceAggregate { sequence, .. }
+            if matches!(
+                sequence,
+                SequenceExpr::FilterMapV1(_) | SequenceExpr::OwnedRecursiveCollect(_)
+            )
+    )
 }
 
 pub(super) fn input_at(sequence: &SequenceExpr, index: usize) -> Option<NodeId> {

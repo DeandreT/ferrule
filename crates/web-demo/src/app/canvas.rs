@@ -119,6 +119,11 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
             .iter()
             .map(|replacement| Some(replacement.expression))
             .collect(),
+        Node::OwnedXmlMixedContent(mixed) => mixed
+            .replacements
+            .iter()
+            .map(|replacement| Some(replacement.expression))
+            .collect(),
         Node::CollectionFind {
             predicate, value, ..
         } => vec![Some(*predicate), Some(*value)],
@@ -204,6 +209,10 @@ fn node_title(node: &Node) -> String {
             position.join.get(),
             position.collection.owner,
             position.collection.path
+        ),
+        Node::OwnedXmlMixedContent(mixed) => format!(
+            "owned XML mixed content {:?} {:?}; frame {:?}; unavailable",
+            mixed.source.owner, mixed.source.path, mixed.frame
         ),
         Node::SourceField { path, .. } => format!("field · {}", path.join("/")),
         Node::SourceDocumentPath => "source document path".to_string(),

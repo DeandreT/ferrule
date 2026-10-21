@@ -1,0 +1,177 @@
+{
+  "cases": [
+    {
+      "id": "K01-colliding-endpoints",
+      "model": "C01-endpoints",
+      "source": {"Doc": {"Para": [
+        {
+          "#text": "One  two .",
+          "b": ["x"],
+          "i": [{"n": "1", "#text": "it"}],
+          "~": ["One ", {"b": "x"}, " two ", {"i": "it"}, "."]
+        },
+        {
+          "b": ["y", "skip", "z"],
+          "~": [{"b": "y"}, "-", {"b": "skip"}, "-", {"b": "z"}]
+        }
+      ]}},
+      "inputs": [
+        ["notes", {"Doc": {"Para": [
+          {"#text": "Note ", "b": ["n"], "i": [{"#text": "ni"}], "~": ["Note ", {"i": "ni"}, {"b": "n"}]}
+        ]}}],
+        ["Para", {"Doc": {"Para": [{"#text": "alias"}]}}]
+      ],
+      "calls": [
+        {"selection": "All", "expected": {"Ok": [
+          [null, {
+            "P": [
+              {"#text": "One  two .", "Strong": ["X"], "Em": ["1"],
+                "~": ["One ", {"Strong": "X"}, " two ", {"Em": "1"}, "."]},
+              {"#text": null, "Strong": ["Y", "Z"], "Em": [],
+                "~": [{"Strong": "Y"}, "-", {"Strong": "Z"}, "-"]}
+            ],
+            "Q": [
+              {"#text": "Note ", "Strong": ["N"], "Em": [null],
+                "~": ["Note ", {"Em": ""}, {"Strong": "N"}]}
+            ]
+          }],
+          ["aliased", {"R": [{"#text": "alias", "Strong": [], "Em": []}]}]
+        ]}},
+        {"selection": "Primary", "expected": {"Ok": [
+          [null, {
+            "P": [
+              {"#text": "One  two .", "Strong": ["X"], "Em": ["1"],
+                "~": ["One ", {"Strong": "X"}, " two ", {"Em": "1"}, "."]},
+              {"#text": null, "Strong": ["Y", "Z"], "Em": [],
+                "~": [{"Strong": "Y"}, "-", {"Strong": "Z"}, "-"]}
+            ],
+            "Q": [
+              {"#text": "Note ", "Strong": ["N"], "Em": [null],
+                "~": ["Note ", {"Em": ""}, {"Strong": "N"}]}
+            ]
+          }]
+        ]}},
+        {"selection": "aliased", "expected": {"Ok": [
+          ["aliased", {"R": [{"#text": "alias", "Strong": [], "Em": []}]}]
+        ]}}
+      ]
+    },
+    {
+      "id": "K02-absent-primary-paragraphs-and-unsupplied-alias",
+      "model": "C01-endpoints",
+      "source": {},
+      "inputs": [
+        ["notes", {"Doc": {"Para": [{"b": ["q"], "~": [{"b": "q"}]}]}}]
+      ],
+      "calls": [
+        {"selection": "Primary", "expected": {"Ok": [
+          [null, {"P": [], "Q": [{"#text": null, "Strong": ["Q"], "Em": [], "~": [{"Strong": "Q"}]}]}]
+        ]}},
+        {"selection": "aliased", "expected": {"Err": {"kind": "SourceUnavailable", "owner": "Para", "node": null}}},
+        {"selection": "All", "expected": {"Err": {"kind": "SourceUnavailable", "owner": "Para", "node": null}}}
+      ]
+    },
+    {
+      "id": "K03-unsupplied-owner",
+      "model": "C01-endpoints",
+      "source": {"Doc": {"Para": [{"#text": "p"}]}},
+      "inputs": [["Para", {}]],
+      "calls": [
+        {"selection": "Primary", "expected": {"Err": {"kind": "SourceUnavailable", "owner": "notes", "node": null}}}
+      ]
+    },
+    {
+      "id": "N01-row-paragraphs-and-enclosing-frames",
+      "model": "C02-nested",
+      "source": {"Docs": {"Doc": [
+        {"id": "a", "Para": [
+          {"#text": "A", "b": ["p"], "~": ["A", {"b": "p"}]},
+          {"i": [{"n": "9", "#text": "q"}], "~": [{"i": "q"}, "!"]}
+        ]},
+        {"id": "b"}
+      ]}},
+      "inputs": [],
+      "calls": [
+        {"selection": "Primary", "expected": {"Ok": [[null, {"Row": [
+          {"Id": "a", "P": [
+            {"#text": "A", "Doc": "a", "Strong": ["P"], "Em": [], "~": ["A", {"Strong": "P"}]},
+            {"#text": null, "Doc": "a", "Strong": [], "Em": ["9"], "~": [{"Em": "9"}, "!"]}
+          ]},
+          {"Id": "b", "P": []}
+        ]}]]}}
+      ]
+    },
+    {
+      "id": "N02-text-only-paragraph",
+      "model": "C02-nested",
+      "source": {"Docs": {"Doc": [
+        {"id": "c", "Para": [{"#text": "plain"}]}
+      ]}},
+      "inputs": [],
+      "calls": [
+        {"selection": "Primary", "expected": {"Ok": [[null, {"Row": [
+          {"Id": "c", "P": [{"#text": "plain", "Doc": "c", "Strong": [], "Em": []}]}
+        ]}]]}}
+      ]
+    },
+    {
+      "id": "N03-empty-rows",
+      "model": "C02-nested",
+      "source": {"Docs": {"Doc": []}},
+      "inputs": [],
+      "calls": [
+        {"selection": "Primary", "expected": {"Ok": [[null, {"Row": []}]]}}
+      ]
+    },
+    {
+      "id": "R01-endpoint-root-selection-inside-a-paragraph",
+      "model": "C03-root-selection",
+      "source": {"Doc": {"Para": [
+        {"#text": "p ", "b": ["x"], "~": ["p ", {"b": "x"}]}
+      ]}},
+      "inputs": [
+        ["notes", {"Title": "T"}],
+        ["note", {"#text": "n ", "i": [{"n": "5", "#text": "v"}], "~": ["n ", {"i": "v"}]}]
+      ],
+      "calls": [
+        {"selection": "Primary", "expected": {"Ok": [[null, {"P": [
+          {"#text": "p ", "Strong": ["X"], "Em": [],
+            "Note": [{"#text": "n ", "Strong": [], "Em": ["T"], "~": ["n ", {"Em": "T"}]}],
+            "~": ["p ", {"Strong": "X"}]}
+        ]}]]}}
+      ]
+    },
+    {
+      "id": "R02-reached-child-reads-an-unsupplied-owner",
+      "model": "C03-root-selection",
+      "source": {"Doc": {"Para": [{"#text": "p"}]}},
+      "inputs": [
+        ["note", {"#text": "n ", "i": [{"n": "5", "#text": "v"}], "~": ["n ", {"i": "v"}]}]
+      ],
+      "calls": [
+        {"selection": "Primary", "expected": {"Err": {"kind": "SourceUnavailable", "owner": "notes", "node": 79}}}
+      ]
+    },
+    {
+      "id": "R03-unreached-child-stays-lazy",
+      "model": "C03-root-selection",
+      "source": {"Doc": {"Para": [{"#text": "p"}]}},
+      "inputs": [["note", {"#text": "n"}]],
+      "calls": [
+        {"selection": "Primary", "expected": {"Ok": [[null, {"P": [
+          {"#text": "p", "Strong": [], "Em": [],
+            "Note": [{"#text": "n", "Strong": [], "Em": []}]}
+        ]}]]}}
+      ]
+    },
+    {
+      "id": "R04-unsupplied-root-selection",
+      "model": "C03-root-selection",
+      "source": {"Doc": {"Para": [{"#text": "p"}]}},
+      "inputs": [["notes", {"Title": "T"}]],
+      "calls": [
+        {"selection": "Primary", "expected": {"Err": {"kind": "SourceUnavailable", "owner": "note", "node": null}}}
+      ]
+    }
+  ]
+}

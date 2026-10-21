@@ -620,6 +620,8 @@ mod occurrence_tests;
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use mapping::Binding;
 
     use super::*;
@@ -628,13 +630,15 @@ mod tests {
         let parent = std::env::var_os("FERRULE_NESTED_CLONES_EVIDENCE_DIR")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(std::env::temp_dir);
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("clock")
             .as_nanos();
         let path = parent.join(format!(
-            "ferrule_nested_clones239_guard_{label}_{}_{stamp}",
-            std::process::id()
+            "ferrule_nested_clones239_guard_{label}_{}_{stamp}_{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&path).expect("retained guard evidence");
         eprintln!("NESTED_CLONES239_ORIGINALS={}", path.display());
