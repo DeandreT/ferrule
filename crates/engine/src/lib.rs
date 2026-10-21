@@ -1001,6 +1001,9 @@ mod group_blocks_tests;
 #[path = "tests/group_boundaries.rs"]
 mod group_boundaries_tests;
 #[cfg(test)]
+#[path = "tests/group_multihop.rs"]
+mod group_multihop_tests;
+#[cfg(test)]
 #[path = "tests/group_starting.rs"]
 mod group_starting_tests;
 #[cfg(test)]
