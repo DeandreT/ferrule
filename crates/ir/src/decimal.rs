@@ -2,6 +2,9 @@
 
 use std::{cmp::Ordering, error::Error, fmt};
 
+#[path = "decimal_float.rs"]
+mod float;
+
 pub const MAX_DECIMAL_LEXICAL_BYTES: usize = 4096;
 pub const MAX_DECIMAL_SCALE: u8 = 28;
 pub const MAX_DECIMAL_COEFFICIENT: u128 = (1_u128 << 96) - 1;

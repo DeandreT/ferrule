@@ -82,6 +82,13 @@ public readonly struct FerruleDecimal96 : IEquatable<FerruleDecimal96>, ICompara
         catch (FormatException) { throw new FerruleDecimalException(FerruleDecimalError.InvalidLexical); }
     }
 
+    /// <summary>Explicit binary64 conversion using .NET's fifteen-digit decimal policy.</summary>
+    public static FerruleDecimal96 FromDouble(double value)
+    {
+        try { return new((decimal)value); }
+        catch (OverflowException) { throw new FerruleDecimalException(FerruleDecimalError.Overflow); }
+    }
+
     public static FerruleDecimal96 ParseExact(string text)
     {
         var result = ParseRounded(text);
