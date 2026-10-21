@@ -10,6 +10,16 @@ An owner selects immutable primary or one exact named endpoint. Preserve name by
 
 Keep structural validity separate from executable capability. Preserve strict new forms and reject unsupported execution/emission, including directly constructed Program validation. P2 checks new-kind potential branches, called functions and demanded paths without changing legacy laziness. Codegen keeps its reachable lowering/metadata rules; native export needs whole-design checks before writing. Preserve saved GUI owner data/IDs/wires read-only; authoring/conversion stays closed.
 
+## Scalar target construction
+
+A scalar target scope evaluates one expression in its receiving context and
+creates no source frame, so it is a common Basic context rather than a
+specialized construction. Its owned reads resolve exactly as they would in a
+binding of the same scope: an enclosing owned or ordinary iteration supplies
+the active frames, and the scalar target domain applies the ordinary exact
+numeric adaptation. Exact whole-group copies remain a closed special
+construction. See [scalar target generation](../code-generation.md#owned-reads-in-scalar-targets).
+
 ## Group-member occurrence identity
 
 An owned By, AdjacentBy, StartingWith, EndingWith or IntoBlocks group carries a private grouped occurrence at its exact owner and

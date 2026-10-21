@@ -119,6 +119,29 @@ policy and allowance. These bounds cover adapter bookkeeping and the base
 Basic primitives, not document trees, codec allocations or process memory.
 Filter, sort, window and row-failure emitters retain their separate API profiles.
 
+## Owned reads in scalar targets
+
+Scalar target construction belongs to the common Basic owned-source subset, so
+the control-free `emit_with_basic_owned_sources` companion and every later
+owned companion admit owned field and position reads in it. This covers a root
+scalar target, a nested non-repeating scalar field and a repeated scalar field
+driven by an ordinary or owned source iteration, in primary and named targets.
+The scalar expression evaluates once in its receiving context and creates no
+source frame. Owned reads keep their exact owner, frame pins and positions;
+branches stay lazy and call arguments evaluate left to right. The target domain
+applies the ordinary exact numeric adaptation: an integer becomes a float only
+when representable, an integral float becomes an integer, and other values keep
+their runtime tag. An absent field yields Null, while an unsupplied owner fails
+only when the selected target reaches it.
+
+Owned reads must be schema-compatible scalar fields or positions. A generated
+item, a join, document iteration, a user function or an aggregate argument keeps
+its own capability diagnostic beneath a scalar target. Grouped scalar scopes
+remain limited to the grouping companions, and exact whole-group copies remain
+closed special construction. The ordinary emitters keep refusing every owned
+read. The [scalar construction corpus](../conformance/basic-owned-scalar-construction/README.md)
+records the shared expected outcomes, including each explicit limit.
+
 ## Explicit Basic owned-source windows
 
 Library hosts can select the static Basic owned-source window profile with
