@@ -197,6 +197,11 @@ The native editor uses the same project model for primary, named-target, and
 function canvases. Compact glyphs keep closed nodes small; full hover identities,
 pin semantics, and property/details popovers retain the information needed to
 edit them. Layout is adjacent metadata rather than mapping behavior.
+Editor history is one linear sequence of typed commands, which name the node
+and scope identities they change and apply or invert atomically, and
+snapshots of edits that canvases still apply in place. Separate semantic and
+layout revisions track the save point, so a layout-only change never marks
+mapping content as changed.
 
 Imported repair drafts, strict executable projects, native-compatible exports,
 and generated libraries are distinct products of validation. Each has an

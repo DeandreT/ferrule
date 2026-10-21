@@ -210,6 +210,7 @@ fn validate_stage(
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
             | Expression::OwnedDynamicSourceField(_)
+            | Expression::OwnedXmlSerialize(_)
             | Expression::Const { .. }
             | Expression::FunctionParameter { .. }
             | Expression::If { .. }

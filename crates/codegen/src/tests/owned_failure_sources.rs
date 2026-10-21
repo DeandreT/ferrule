@@ -299,3 +299,66 @@ fn owned_failure_profile_keeps_filter_map_failure_refusal() {
         ordinary
     );
 }
+
+#[test]
+fn owned_failure_walk_refuses_generated_item_consumers_like_the_interpreter() {
+    let mut p = project();
+    p.graph.nodes.extend([
+        (
+            6,
+            Node::Const {
+                value: Value::Int(2),
+            },
+        ),
+        (
+            7,
+            Node::SourceField {
+                path: vec![],
+                frame: None,
+            },
+        ),
+        (
+            8,
+            Node::Const {
+                value: Value::Bool(true),
+            },
+        ),
+        (
+            5,
+            Node::SequenceExists {
+                sequence: mapping::SequenceExpr::Generate {
+                    from: None,
+                    to: 6,
+                    item: 7,
+                },
+                predicate: 8,
+            },
+        ),
+    ]);
+    p.failure_rules[1].selection = mapping::FailureSelection::WhenTrue { predicate: 5 };
+    assert!(engine::validate(&p).is_empty());
+    assert!(matches!(
+        engine::run_with_sources(
+            &p,
+            &ir::Instance::Group(vec![].into()),
+            vec![("Ref".into(), ir::Instance::Group(vec![].into()))],
+        ),
+        Err(engine::EngineError::UnsupportedOwnedContext {
+            node: Some(5),
+            context: engine::OwnedCapabilityContext::FailureRule,
+            ..
+        })
+    ));
+    let Err(error) = lower_with_basic_owned_failure_sources(&p) else {
+        panic!("owned Exists in a failure walk was admitted");
+    };
+    let ProgramValidationError::OwnedSource { diagnostic } =
+        closed(1, OwnedSourceCapabilityReason::FailureRule)
+    else {
+        unreachable!();
+    };
+    assert_eq!(
+        error.diagnostics(),
+        &[Diagnostic::OwnedSource { diagnostic }]
+    );
+}

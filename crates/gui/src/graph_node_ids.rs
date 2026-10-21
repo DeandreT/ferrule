@@ -3,11 +3,13 @@ use super::{
     sequence_item_ids,
 };
 use crate::canvas::CanvasNode;
+use crate::project_state::model_key;
+use editor_ui::GraphPatch;
 use egui_snarl::{NodeId as SnarlNodeId, Snarl};
 use mapping::Node;
 use std::collections::BTreeSet;
 
-use mapping::{Graph, NodeId};
+use mapping::{Graph, NodeId, Scope};
 
 /// One complete edit uses one append-only cursor initialized before mutation.
 /// Missing generated-owned IDs remain reserved even if planning removes owners.
@@ -160,6 +162,7 @@ impl GraphViewer<'_> {
         Ok(ids.len())
     }
 
+    #[cfg(test)]
     pub(super) fn remove_graph_node(
         &mut self,
         mapping_id: NodeId,
@@ -214,11 +217,37 @@ impl GraphViewer<'_> {
         Ok(true)
     }
 
+    #[cfg(test)]
     pub fn remove_snarl_nodes(
         &mut self,
         selected: &[SnarlNodeId],
         snarl: &mut Snarl<CanvasNode>,
     ) -> usize {
+        self.remove_snarl_nodes_as_edit(selected, snarl).0
+    }
+
+    /// Canvas removal entry point: removes the selection and posts the
+    /// applied typed edit for the hosting document's history.
+    pub(crate) fn remove_snarl_nodes_from_ui(
+        &mut self,
+        ui: &egui::Ui,
+        selected: &[SnarlNodeId],
+        snarl: &mut Snarl<CanvasNode>,
+    ) {
+        if let (_, Some(removal)) = self.remove_snarl_nodes_as_edit(selected, snarl) {
+            removal_journal::post(ui.ctx(), removal);
+        }
+    }
+
+    /// Removes the selection like [`Self::remove_snarl_nodes`] and returns
+    /// the typed edit that produced the planned state. A planned state that a
+    /// [`GraphPatch`] cannot reproduce exactly is adopted directly and left to
+    /// snapshot history.
+    pub(crate) fn remove_snarl_nodes_as_edit(
+        &mut self,
+        selected: &[SnarlNodeId],
+        snarl: &mut Snarl<CanvasNode>,
+    ) -> (usize, Option<PlannedNodeRemoval>) {
         // Planning clones only on an explicit delete action. A cursor beginning
         // at the original maximum never reuses IDs freed by earlier removals.
         let owned_items = self.owned_item_ids();
@@ -268,7 +297,7 @@ impl GraphViewer<'_> {
                     .map(|mapping| (mapping, node))
             })
             .collect::<std::collections::BTreeMap<_, _>>();
-        let mut removed = 0;
+        let mut removed = BTreeSet::new();
         loop {
             // Earlier orphan cleanup may also remove a selected legacy placeholder.
             pending.retain(|_, node| staged_snarl.get_node(*node).is_some());
@@ -282,11 +311,13 @@ impl GraphViewer<'_> {
                 break;
             };
             match planner.remove_graph_node_reserved(mapping, node, &mut staged_snarl, &mut ids) {
-                Ok(true) => removed += 1,
+                Ok(true) => {
+                    removed.insert(mapping);
+                }
                 Ok(false) => {}
                 Err(error) => {
                     self.error = Some(error);
-                    return 0;
+                    return (0, None);
                 }
             }
             pending.remove(&mapping);
@@ -303,14 +334,77 @@ impl GraphViewer<'_> {
         }
         let error = planner.error.take();
         drop(planner);
-        if removed == 0 {
+        if removed.is_empty() {
             self.error = error;
-            return 0;
+            return (0, None);
+        }
+        let count = removed.len();
+        let removal = self.adopt_planned_removal(removed, graph, scope);
+        *snarl = staged_snarl;
+        self.error = error;
+        (count, removal)
+    }
+
+    /// Applies the planned state through its typed patch, verifying that the
+    /// patch reproduces the plan exactly before reporting it as a command.
+    fn adopt_planned_removal(
+        &mut self,
+        requested: BTreeSet<NodeId>,
+        graph: Graph,
+        scope: Scope,
+    ) -> Option<PlannedNodeRemoval> {
+        let same_node = |left: &Node, right: &Node| model_key(left) == model_key(right);
+        let patch = GraphPatch::between(
+            (&*self.graph, &*self.root_scope),
+            (&graph, &scope),
+            same_node,
+        );
+        if let Ok(patch) = patch
+            && patch
+                .apply_to(self.graph, Some(&mut *self.root_scope))
+                .is_ok()
+            && model_key(&*self.graph) == model_key(&graph)
+            && model_key(&*self.root_scope) == model_key(&scope)
+        {
+            return Some(PlannedNodeRemoval { requested, patch });
         }
         *self.graph = graph;
         *self.root_scope = scope;
-        *snarl = staged_snarl;
-        self.error = error;
-        removed
+        None
+    }
+}
+
+/// A node removal a canvas applied through its typed patch. The hosting
+/// document supplies the graph identity when recording it.
+#[derive(Clone, Debug)]
+pub(crate) struct PlannedNodeRemoval {
+    pub(crate) requested: BTreeSet<NodeId>,
+    pub(crate) patch: GraphPatch,
+}
+
+/// Node removals applied by one canvas during the current frame, awaiting
+/// the host's history record.
+pub(crate) mod removal_journal {
+    use super::PlannedNodeRemoval;
+
+    fn key() -> egui::Id {
+        egui::Id::unique("graph_node_removal_journal")
+    }
+
+    pub(crate) fn post(context: &egui::Context, removal: PlannedNodeRemoval) {
+        context.data_mut(|data| {
+            data.get_temp_mut_or_default::<Vec<PlannedNodeRemoval>>(key())
+                .push(removal)
+        });
+    }
+
+    pub(crate) fn begin(context: &egui::Context) {
+        let _ = take(context);
+    }
+
+    pub(crate) fn take(context: &egui::Context) -> Vec<PlannedNodeRemoval> {
+        context
+            .data_mut(|data| data.remove_temp::<Vec<PlannedNodeRemoval>>(key()))
+            .unwrap_or_default()
     }
 }

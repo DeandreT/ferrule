@@ -252,6 +252,16 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_sequence_aggregate(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plans the explicit owned XML serialization companion. An owned element read
+/// is demand-driven like every exact owned read; the composed dynamic
+/// source-field environments are unchanged.
+pub fn legacy_named_input_admission_plan_with_basic_owned_xml_serialize(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_xml_serialize(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     admission_plan_with_primary_row_failures(program, false)
 }
@@ -674,6 +684,7 @@ impl<'a> Analysis<'a> {
                 Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
                 | Expression::OwnedRowDocumentPath(_) => {}
+                Expression::OwnedXmlSerialize(_) => {}
                 // The owned walk is demand-driven; the needle stays in the parent.
                 Expression::OwnedLookup(lookup) => self.queue(namespace, context, lookup.matches),
                 Expression::OwnedCollectionFind(find) => {

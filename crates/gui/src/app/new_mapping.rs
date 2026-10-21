@@ -514,7 +514,7 @@ impl FerruleApp {
         self.main_canvas = CanvasDocumentState::main(&self.project);
         self.reset_canvas_view();
         self.document = DocumentLocation::untitled("mapping.json");
-        self.history.mark_unsaved();
+        self.mark_unsaved();
         self.selected_scope.clear();
         self.rebase_history();
         self.diagnostics.clear();

@@ -158,6 +158,52 @@ pub(crate) fn eval_expr(
     result
 }
 
+/// Legacy and owned serializers share one writer and its failure category.
+fn serialize_xml(
+    node: NodeId,
+    schema: &ir::SchemaNode,
+    instance: &Instance,
+    declaration: bool,
+    indent: bool,
+    namespace: Option<&str>,
+) -> Result<Value, EngineError> {
+    let options = format_xml::XmlWriteOptions {
+        declaration,
+        indent,
+        default_namespace: namespace.map(str::to_owned),
+        schema_hints: None,
+    };
+    format_xml::to_string_with_options(schema, instance, &options)
+        .map(Value::String)
+        .map_err(|error| EngineError::XmlSerialization {
+            node,
+            message: error.to_string(),
+        })
+}
+
+/// Owned element reads report the same typed categories as owned fields.
+fn owned_access_error(node: NodeId, source: crate::OwnedSourceError) -> EngineError {
+    match source {
+        crate::OwnedSourceError::UnsupportedSourceDomain { found } => {
+            EngineError::UnsupportedOwnedContext {
+                node: Some(node),
+                function: None,
+                scope: None,
+                context: if found == "a document set" {
+                    crate::OwnedCapabilityContext::Document
+                } else {
+                    crate::OwnedCapabilityContext::GeneratedItem
+                },
+            }
+        }
+        source => EngineError::OwnedSourceAccess {
+            node: Some(node),
+            scope: None,
+            source,
+        },
+    }
+}
+
 fn eval_expr_inner(
     program: EvalProgram<'_>,
     node_id: NodeId,
@@ -596,19 +642,43 @@ fn eval_expr_inner(
                 display.extend(path.iter().cloned());
                 EngineError::MissingSourceField(display.join("/"))
             })?;
-            let options = format_xml::XmlWriteOptions {
-                declaration: *declaration,
-                indent: *indent,
-                default_namespace: namespace.clone(),
-                schema_hints: None,
-            };
-            format_xml::to_string_with_options(schema, instance, &options)
-                .map(Value::String)
-                .map_err(|error| EngineError::XmlSerialization {
-                    node: node_id,
-                    message: error.to_string(),
-                })
+            serialize_xml(
+                node_id,
+                schema,
+                instance,
+                *declaration,
+                *indent,
+                namespace.as_deref(),
+            )
         }
+        Node::OwnedXmlSerialize(serializer) => match program.owned_context {
+            Some(owned) => {
+                let access = |source| owned_access_error(node_id, source);
+                // The exact owner's absence is final; no legacy frame repairs it.
+                let instance = owned
+                    .element(&serializer.source, serializer.frame.as_deref())
+                    .map_err(access)?
+                    .ok_or_else(|| {
+                        access(crate::OwnedSourceError::MissingOwnedElement {
+                            owner: serializer.source.owner.clone(),
+                            path: serializer.source.path.clone(),
+                        })
+                    })?;
+                serialize_xml(
+                    node_id,
+                    &serializer.schema,
+                    instance,
+                    serializer.declaration,
+                    serializer.indent,
+                    serializer.namespace.as_deref(),
+                )
+            }
+            None => Err(EngineError::UnsupportedSourceOwnership {
+                node: node_id,
+                function: None,
+                kind: "owned_xml_serialize",
+            }),
+        },
         Node::CollectionFind {
             collection,
             predicate,

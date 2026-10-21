@@ -126,6 +126,13 @@ pub(super) fn owned_source_title(node: &Node) -> Option<String> {
             field.object.path,
             frame(field.frame.as_deref()),
         )),
+        Node::OwnedXmlSerialize(serializer) => Some(format!(
+            "Owned XML serializer: {}\nPath: {:?}\nFrame: {}\nElement: {}\nRead-only; owned serializer authoring is unavailable",
+            owner(&serializer.source.owner),
+            serializer.source.path,
+            frame(serializer.frame.as_deref()),
+            serializer.schema.name,
+        )),
         _ => None,
     }
 }
@@ -314,6 +321,7 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
         ),
         Node::OwnedPosition(_) => (Icon::ListOrdered, "owned".into()),
         Node::OwnedRowDocumentPath(_) => (Icon::ListOrdered, "row path".into()),
+        Node::OwnedXmlSerialize(_) => (Icon::FileCode, "owned serialize".into()),
         Node::Const { value } => {
             let icon = match value {
                 ir::Value::String(_) => Icon::Type,
@@ -682,6 +690,7 @@ pub(super) fn has_properties(node: &Node) -> bool {
         Node::OwnedSourceField(_)
             | Node::OwnedPosition(_)
             | Node::OwnedRowDocumentPath(_)
+            | Node::OwnedXmlSerialize(_)
             | Node::Const { .. }
             | Node::Call { .. }
             | Node::SourceField { .. }

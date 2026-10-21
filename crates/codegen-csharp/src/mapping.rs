@@ -1836,6 +1836,7 @@ fn render_expression(
                     | Expression::OwnedPosition(_)
                     | Expression::OwnedRowDocumentPath(_)
                     | Expression::OwnedDynamicSourceField(_)
+                    | Expression::OwnedXmlSerialize(_)
             )
         {
             output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleValue Node_{node}(\n        {context_type} context)\n    {{\n        ObserveOwnedBasicNode({node}U, context);\n        try {{ return NodeBody_{node}(context); }}\n        catch (global::Ferrule.Runtime.FerruleRuntimeException error)\n        {{\n            error.WithOwnedSourceNode({node}U);\n            throw;\n        }}\n    }}\n"));
@@ -1867,7 +1868,8 @@ fn render_expression(
         | Expression::OwnedRowDocumentPath(_)
         | Expression::OwnedDynamicSourceField(_)
         | Expression::OwnedLookup(_)
-        | Expression::OwnedCollectionFind(_) => {
+        | Expression::OwnedCollectionFind(_)
+        | Expression::OwnedXmlSerialize(_) => {
             if matches!(
                 mode,
                 ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes

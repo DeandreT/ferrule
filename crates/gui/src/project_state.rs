@@ -11,7 +11,25 @@ use mapping::{Pipeline, Project};
 use serde::ser::{self, Serialize};
 
 pub(crate) fn project_snapshot_key(project: &Project) -> String {
+    #[cfg(test)]
+    PROJECT_KEYS.with(|count| count.set(count.get() + 1));
     snapshot_key(project)
+}
+
+/// The same exact comparison key for one part of a project.
+pub(crate) fn model_key<T: Serialize>(model: &T) -> String {
+    snapshot_key(model)
+}
+
+#[cfg(test)]
+thread_local! {
+    static PROJECT_KEYS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Number of whole-project keys computed on this test thread.
+#[cfg(test)]
+pub(crate) fn project_keys_computed() -> usize {
+    PROJECT_KEYS.with(std::cell::Cell::get)
 }
 
 pub(crate) fn pipeline_snapshot_key(pipeline: &Pipeline) -> String {

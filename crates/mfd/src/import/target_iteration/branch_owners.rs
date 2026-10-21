@@ -24,6 +24,44 @@ pub(super) struct DeclaredBranches {
     pub(super) layouts: BTreeMap<Vec<String>, Vec<DeclaredBranch>>,
 }
 
+/// Retained original binding indices, counted per target field.
+type RetainedOrigins = BTreeMap<(Vec<String>, usize), usize>;
+
+/// Import-local occurrence record for distributed nested clones. For each
+/// distributed child path it keeps, per declared parent segment, the declared
+/// child branches placed beneath it in segment order. Scopes carry no
+/// occurrence identity, so this record is what lets a later ancestor proof
+/// attribute an interned binding to the exact clone that produced it.
+#[derive(Default)]
+#[cfg_attr(test, derive(Debug))]
+struct Placements(BTreeMap<Vec<String>, Vec<Vec<usize>>>);
+
+/// One declared occurrence enclosing a scope during a provenance walk.
+#[derive(Clone, Copy)]
+struct Occurrence<'a> {
+    layout: &'a [String],
+    index: usize,
+    branch: &'a DeclaredBranch,
+}
+
+/// The candidate distributions for one concatenated wrapper, each with its
+/// ownership proof, plus diagnostics in emission order. Planning reads only;
+/// [`DeclaredBranches::apply_level`] performs every mutation afterwards.
+#[cfg_attr(test, derive(Debug))]
+struct LevelPlan {
+    distributions: Vec<Distribution>,
+    diagnostics: Vec<String>,
+}
+
+#[cfg_attr(test, derive(Debug))]
+struct Distribution {
+    /// Index of the concatenated child wrapper in the parent wrapper.
+    child: usize,
+    /// Declared child branch indices owned by each parent segment, admitted
+    /// only after every replaced placeholder binding is proved retained once.
+    groups: Vec<Vec<usize>>,
+}
+
 impl DeclaredBranches {
     pub(super) fn record(&mut self, path: &[String], branches: Vec<DeclaredBranch>) {
         if !branches.is_empty()
@@ -60,183 +98,222 @@ impl DeclaredBranches {
     }
 
     pub(super) fn distribute(&self, root: &mut Scope, warnings: &mut Vec<String>) {
-        self.distribute_at(root, &mut Vec::new(), warnings);
+        self.distribute_at(root, &mut Vec::new(), warnings, &mut Placements::default());
     }
 
-    fn distribute_at(&self, scope: &mut Scope, path: &mut Vec<String>, warnings: &mut Vec<String>) {
+    fn distribute_at(
+        &self,
+        scope: &mut Scope,
+        path: &mut Vec<String>,
+        warnings: &mut Vec<String>,
+        placements: &mut Placements,
+    ) {
         // Resolve deeper owners first, before their wrapper is partitioned.
         for child in &mut scope.children {
             path.push(child.target_field.clone());
-            self.distribute_at(child, path, warnings);
+            self.distribute_at(child, path, warnings, placements);
             path.pop();
         }
         if let Some(segments) = scope.concatenated_mut() {
             for segment in segments.iter_mut() {
-                self.distribute_at(segment, path, warnings);
+                self.distribute_at(segment, path, warnings, placements);
             }
         }
-        let Some(parents) = self.layouts.get(path) else {
-            return;
-        };
-        if scope
-            .concatenated()
-            .is_none_or(|segments| segments.len() != parents.len())
-        {
-            return;
-        }
-        let ScopeIteration::Concatenate(parent_segments) = &scope.iteration else {
-            return;
-        };
-        let mut distributions = Vec::new();
-        scope.children.retain(|child| {
-            let Some(segments) = child.concatenated() else {
-                return true;
-            };
-            let mut child_path = path.clone();
-            child_path.push(child.target_field.clone());
-            let Some(children) = self.layouts.get(&child_path) else {
-                return true;
-            };
-            let grouped = plain_wrapper(child)
-                .then(|| partition(parents, children, segments))
-                .flatten();
-            if let Some(grouped) = grouped {
-                if self.preserves_placeholders(
-                    parents, parent_segments, children, segments, &grouped, &child_path,
-                ) {
-                    let grouped = grouped.into_iter().map(|indices| {
-                        indices.into_iter().map(|index| segments.iter().nth(index).expect("partition index").clone()).collect()
-                    }).collect::<Vec<Vec<Scope>>>();
-                    distributions.push((child.target_field.clone(), child.iteration_output, grouped));
-                    false
-                } else {
-                    warnings.push(format!(
-                        "nested cloned target `{}` cannot prove complete placeholder binding preservation; its scope remains unsupported",
-                        child_path.join("/")
-                    ));
-                    true
-                }
-            } else {
-                warnings.push(format!(
-                    "nested cloned target `{}` has no complete, unique declared ancestor ownership; its scope remains unsupported",
-                    child_path.join("/")
-                ));
-                true
-            }
-        });
-        let Some(parent_segments) = scope.concatenated_mut() else {
-            return;
-        };
-        for (target_field, output, groups) in distributions {
-            for (parent, group) in parent_segments.iter_mut().zip(groups) {
-                let mut group = group.into_iter();
-                let Some(mut first) = group.next() else {
-                    continue;
-                };
-                let rest = group.collect::<Vec<_>>();
-                let child = if rest.is_empty() {
-                    first.target_field.clone_from(&target_field);
-                    first
-                } else {
-                    Scope {
-                        target_field: target_field.clone(),
-                        iteration: ScopeIteration::Concatenate(ScopeSequence::new(first, rest)),
-                        iteration_output: output,
-                        ..Scope::default()
-                    }
-                };
-                if let Some(existing) = parent
-                    .children
-                    .iter_mut()
-                    .find(|child| child.target_field == target_field)
-                {
-                    *existing = child;
-                } else {
-                    parent.children.push(child);
-                }
-            }
+        if let Some(plan) = self.plan_level(scope, path, placements) {
+            apply_level(scope, path, plan, warnings, placements);
         }
     }
 
+    /// Proves every distributable nested clone of one concatenated wrapper
+    /// without mutating the scope, warnings, or occurrence record.
+    fn plan_level(
+        &self,
+        scope: &Scope,
+        path: &[String],
+        placements: &Placements,
+    ) -> Option<LevelPlan> {
+        let parents = self.layouts.get(path)?;
+        let ScopeIteration::Concatenate(parent_segments) = &scope.iteration else {
+            return None;
+        };
+        if parent_segments.len() != parents.len() {
+            return None;
+        }
+        let mut plan = LevelPlan {
+            distributions: Vec::new(),
+            diagnostics: Vec::new(),
+        };
+        for (index, child) in scope.children.iter().enumerate() {
+            let Some(segments) = child.concatenated() else {
+                continue;
+            };
+            let mut child_path = path.to_vec();
+            child_path.push(child.target_field.clone());
+            let Some(children) = self.layouts.get(&child_path) else {
+                continue;
+            };
+            let Some(groups) = plain_wrapper(child)
+                .then(|| partition(parents, children, segments))
+                .flatten()
+            else {
+                plan.diagnostics.push(format!(
+                    "nested cloned target `{}` has no complete, unique declared ancestor ownership; its scope remains unsupported",
+                    child_path.join("/")
+                ));
+                continue;
+            };
+            match self.preserves_placeholders(
+                parents,
+                parent_segments,
+                segments,
+                &groups,
+                &child_path,
+                placements,
+            ) {
+                Some(_) => plan.distributions.push(Distribution {
+                    child: index,
+                    groups,
+                }),
+                None => plan.diagnostics.push(format!(
+                    "nested cloned target `{}` cannot prove complete placeholder binding preservation; its scope remains unsupported",
+                    child_path.join("/")
+                )),
+            }
+        }
+        Some(plan)
+    }
+
+    /// Returns, per parent segment, each retained original binding index and
+    /// how many retained bindings it accounts for, when every replaced
+    /// placeholder binding is retained exactly once.
     fn preserves_placeholders(
         &self,
         parents: &[DeclaredBranch],
         parent_segments: &ScopeSequence,
-        children: &[DeclaredBranch],
         child_segments: &ScopeSequence,
         groups: &[Vec<usize>],
         child_path: &[String],
-    ) -> bool {
-        let target_field = child_path.last().expect("child path");
-        parents
-            .iter()
-            .zip(parent_segments.iter())
-            .zip(groups)
-            .all(|((parent, segment), group)| {
-                let placeholders = segment
-                    .children
-                    .iter()
-                    .filter(|child| child.target_field == *target_field)
-                    .collect::<Vec<_>>();
-                if placeholders.len() > 1 {
-                    return false;
-                }
-                let Some(placeholder) = placeholders.first() else {
-                    return true;
-                };
+        placements: &Placements,
+    ) -> Option<Vec<RetainedOrigins>> {
+        let target_field = child_path.last()?;
+        let children = self.layouts.get(child_path)?;
+        let mut witness = Vec::with_capacity(groups.len());
+        for ((parent, segment), group) in parents.iter().zip(parent_segments.iter()).zip(groups) {
+            let placeholders = segment
+                .children
+                .iter()
+                .filter(|child| child.target_field == *target_field)
+                .collect::<Vec<_>>();
+            if placeholders.len() > 1 {
+                return None;
+            }
+            let mut retained = RetainedOrigins::new();
+            if let Some(placeholder) = placeholders.first() {
                 if !replaceable_placeholder(placeholder) {
-                    return false;
+                    return None;
                 }
-                let mut retained = BTreeMap::new();
                 for index in group {
-                    if !self.collect_retained(
-                        &children[*index],
-                        child_segments.iter().nth(*index).expect("partition index"),
-                        child_path,
+                    let occurrence = Occurrence {
+                        layout: child_path,
+                        index: *index,
+                        branch: children.get(*index)?,
+                    };
+                    if !self.collect_retained_within(
+                        occurrence,
+                        child_segments.iter().nth(*index)?,
                         &mut child_path.to_vec(),
                         &mut retained,
+                        placements,
+                        &mut vec![occurrence],
                     ) {
-                        return false;
+                        return None;
                     }
                 }
-                placeholder_bindings_preserved(
+                if !placeholder_bindings_preserved(
                     placeholder,
                     &mut child_path.to_vec(),
                     &parent.bindings,
                     &retained,
-                )
-            })
+                ) {
+                    return None;
+                }
+            }
+            witness.push(retained);
+        }
+        Some(witness)
     }
 
+    /// Counts retained original binding indices without an occurrence
+    /// record: every identical `(field, node)` origin under `owner` competes.
+    #[cfg(test)]
     fn collect_retained(
         &self,
         owner: &DeclaredBranch,
         scope: &Scope,
         owner_path: &[String],
         path: &mut Vec<String>,
-        retained: &mut BTreeMap<(Vec<String>, usize), usize>,
+        retained: &mut RetainedOrigins,
+    ) -> bool {
+        let occurrence = Occurrence {
+            layout: owner_path,
+            index: 0,
+            branch: owner,
+        };
+        self.collect_retained_within(
+            occurrence,
+            scope,
+            path,
+            retained,
+            &Placements::default(),
+            &mut Vec::new(),
+        )
+    }
+
+    fn collect_retained_within<'a>(
+        &'a self,
+        owner: Occurrence<'a>,
+        scope: &Scope,
+        path: &mut Vec<String>,
+        retained: &mut RetainedOrigins,
+        placements: &Placements,
+        occurrences: &mut Vec<Occurrence<'a>>,
     ) -> bool {
         for binding in &scope.bindings {
             let mut field = path.clone();
             field.push(binding.target_field.clone());
             // A deeper replacement may use a different anchored node. Its exact
             // original binding index still belongs to this declared branch.
-            let origins = std::iter::once(owner)
+            let mut origins = std::iter::once(owner.branch)
                 .chain(
                     self.layouts
                         .iter()
                         .filter(|(descendant, _)| {
-                            descendant.len() > owner_path.len()
-                                && descendant.starts_with(owner_path)
+                            descendant.len() > owner.layout.len()
+                                && descendant.starts_with(owner.layout)
                         })
                         .flat_map(|(_, branches)| branches)
-                        .filter(|branch| branch.lineage.starts_with(&owner.lineage)),
+                        .filter(|branch| branch.lineage.starts_with(&owner.branch.lineage)),
                 )
                 .filter_map(|branch| branch.bindings.get(&(field.clone(), binding.node)))
                 .flatten()
                 .copied()
                 .collect::<BTreeSet<_>>();
-            // ScopeBuilder canonicalizes identical (target, node) bindings.
+            // ScopeBuilder canonicalizes identical (target, node) bindings, so
+            // sibling clones fed by one interned expression share a key. The
+            // innermost recorded occurrence that holds this binding decides
+            // which of those origins it is; it never adds an origin.
+            if origins.len() > 1
+                && let Some(exact) = occurrences.iter().rev().find_map(|occurrence| {
+                    occurrence
+                        .branch
+                        .bindings
+                        .get(&(field.clone(), binding.node))
+                })
+                && exact.len() == 1
+                && exact.is_subset(&origins)
+            {
+                origins.clone_from(exact);
+            }
             // One retained binding cannot prove that multiple original edges
             // survived separately, even when their cached node is identical.
             if origins.len() > 1 {
@@ -248,7 +325,29 @@ impl DeclaredBranches {
         }
         for child in &scope.children {
             path.push(child.target_field.clone());
-            let preserved = self.collect_retained(owner, child, owner_path, path, retained);
+            let preserved = match self.placed_occurrences(child, path, placements, occurrences) {
+                Some(placed) => placed.into_iter().all(|(occurrence, segment)| {
+                    occurrences.push(occurrence);
+                    let preserved = self.collect_retained_within(
+                        owner,
+                        segment,
+                        path,
+                        retained,
+                        placements,
+                        occurrences,
+                    );
+                    occurrences.pop();
+                    preserved
+                }),
+                None => self.collect_retained_within(
+                    owner,
+                    child,
+                    path,
+                    retained,
+                    placements,
+                    occurrences,
+                ),
+            };
             path.pop();
             if !preserved {
                 return false;
@@ -256,12 +355,129 @@ impl DeclaredBranches {
         }
         if let Some(segments) = scope.concatenated() {
             for segment in segments.iter() {
-                if !self.collect_retained(owner, segment, owner_path, path, retained) {
+                if !self.collect_retained_within(
+                    owner,
+                    segment,
+                    path,
+                    retained,
+                    placements,
+                    occurrences,
+                ) {
                     return false;
                 }
             }
         }
         true
+    }
+
+    /// Pairs the scopes of a previously distributed child with the declared
+    /// child occurrences recorded for the enclosing occurrence, when that
+    /// correspondence is exact.
+    fn placed_occurrences<'a, 's>(
+        &'a self,
+        child: &'s Scope,
+        path: &[String],
+        placements: &Placements,
+        occurrences: &[Occurrence<'a>],
+    ) -> Option<Vec<(Occurrence<'a>, &'s Scope)>> {
+        let (layout, branches) = self.layouts.get_key_value(path)?;
+        let enclosing = occurrences.last()?;
+        if path.split_last().map(|(_, parent)| parent) != Some(enclosing.layout) {
+            return None;
+        }
+        let placed = placements.0.get(path)?.get(enclosing.index)?;
+        let scopes = match child.concatenated() {
+            Some(segments) => segments.iter().collect::<Vec<_>>(),
+            None => vec![child],
+        };
+        if scopes.len() != placed.len() {
+            return None;
+        }
+        placed
+            .iter()
+            .zip(scopes)
+            .map(|(index, scope)| {
+                Some((
+                    Occurrence {
+                        layout,
+                        index: *index,
+                        branch: branches.get(*index)?,
+                    },
+                    scope,
+                ))
+            })
+            .collect()
+    }
+}
+
+/// Moves every proved nested clone into its owning parent segments and records
+/// the resulting occurrence placement for ancestor proofs.
+fn apply_level(
+    scope: &mut Scope,
+    path: &[String],
+    plan: LevelPlan,
+    warnings: &mut Vec<String>,
+    placements: &mut Placements,
+) {
+    warnings.extend(plan.diagnostics);
+    let mut removed = BTreeMap::new();
+    for distribution in plan.distributions.iter().rev() {
+        removed.insert(
+            distribution.child,
+            scope.children.remove(distribution.child),
+        );
+    }
+    let Some(parent_segments) = scope.concatenated_mut() else {
+        return;
+    };
+    for distribution in plan.distributions {
+        let Some(mut child) = removed.remove(&distribution.child) else {
+            continue;
+        };
+        let target_field = std::mem::take(&mut child.target_field);
+        let output = child.iteration_output;
+        // The proved partition assigns every child segment exactly once.
+        let mut segments = child
+            .concatenated_mut()
+            .map(|segments| {
+                segments
+                    .iter_mut()
+                    .map(|segment| Some(std::mem::take(segment)))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        for (parent, group) in parent_segments.iter_mut().zip(&distribution.groups) {
+            let mut group = group
+                .iter()
+                .filter_map(|index| segments.get_mut(*index).and_then(Option::take));
+            let Some(mut first) = group.next() else {
+                continue;
+            };
+            let rest = group.collect::<Vec<_>>();
+            let child = if rest.is_empty() {
+                first.target_field.clone_from(&target_field);
+                first
+            } else {
+                Scope {
+                    target_field: target_field.clone(),
+                    iteration: ScopeIteration::Concatenate(ScopeSequence::new(first, rest)),
+                    iteration_output: output,
+                    ..Scope::default()
+                }
+            };
+            if let Some(existing) = parent
+                .children
+                .iter_mut()
+                .find(|child| child.target_field == target_field)
+            {
+                *existing = child;
+            } else {
+                parent.children.push(child);
+            }
+        }
+        let mut child_path = path.to_vec();
+        child_path.push(target_field);
+        placements.0.insert(child_path, distribution.groups);
     }
 }
 
@@ -379,6 +595,9 @@ pub(super) fn lineage(target: &SchemaComponent, marker: u32) -> Option<Vec<u32>>
     }
     selected
 }
+
+#[cfg(test)]
+mod occurrence_tests;
 
 #[cfg(test)]
 mod tests {
