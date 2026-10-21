@@ -214,4 +214,33 @@ internal static partial class Program
             $"{tuple.OwnedJoinSourcePosition(5, lines.Owner, lines.Collection)}:{tuple.OwnedJoinSourcePosition(5, order.Owner, order.Collection)}")));
         Throws<ArgumentException>(() => new FerruleOwnedJoinStage(lines, Array.Empty<FerruleOwnedJoinKey>()));
     }
+
+    // A joined aggregate reduces the tuples of one owned join planned in its
+    // receiving context with the shared reducers. An active owned row
+    // correlates only same-owner sources; a same-path named source keeps its
+    // root walk.
+    private static void OwnedJoinedAggregates()
+    {
+        FerruleGroup Order(long id) => Group(Field("id", Scalar(FerruleValue.FromInt64(id))));
+        var primary = Group(Field("Orders", Repeated(Order(7), Order(9))));
+        var lookup = Group(Field("Orders", Repeated(Order(9), Order(7), Order(9))));
+        var primaryOrders = new FerruleOwnedJoinSource(FerruleOwnedSourceOwner.Primary, new[] { "Orders" });
+        var lookupOrders = new FerruleOwnedJoinSource(FerruleOwnedSourceOwner.Named("Lookup"), new[] { "Orders" });
+        var stages = new[] { new FerruleOwnedJoinStage(lookupOrders, JoinById) };
+        FerruleValue Reduce(FerruleBasicScopeContext context, FerruleAggregateOperation operation) =>
+            FerruleAggregates.Apply(operation, context.OwnedInnerJoin(8, primaryOrders, stages)
+                .Select(tuple => FerruleValue.FromInt64(checked((long)tuple.OwnedJoinSourcePosition(8, lookupOrders.Owner, lookupOrders.Collection))))
+                .ToArray(), Text(","));
+        var root = BasicRoot(primary, new FerruleDeclaredNamedSourceRoot("Lookup", lookup));
+        var perOrder = root.WalkOwnedSourceCohort(primaryOrders.Owner, primaryOrders.Collection).Select(row =>
+            $"{Reduce(row.Context, FerruleAggregateOperation.Count).Int64Value}:{Reduce(row.Context, FerruleAggregateOperation.Join).StringValue}");
+        Equal("1:2|2:1,3", string.Join("|", perOrder));
+        Equal(Text("2,1,3"), Reduce(root, FerruleAggregateOperation.Join));
+
+        // Empty sides reduce under the legacy empty policy.
+        var empty = BasicRoot(primary, new FerruleDeclaredNamedSourceRoot("Lookup", Group(Field("Orders", Repeated()))));
+        Equal(FerruleValue.FromInt64(0), Reduce(empty, FerruleAggregateOperation.Sum));
+        Equal(FerruleValue.Null, Reduce(empty, FerruleAggregateOperation.Avg));
+        Equal(Text(""), Reduce(empty, FerruleAggregateOperation.Join));
+    }
 }
