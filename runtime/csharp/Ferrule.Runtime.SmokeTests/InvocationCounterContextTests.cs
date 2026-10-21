@@ -63,5 +63,22 @@ internal static partial class Program
             Equal<uint?>(8, error.Node);
             Equal("start", error.Detail);
         }
+        foreach (var operand in new[] { "start", "step", "restart" })
+        {
+            try
+            {
+                var value = FerruleValue.FromDecimal(FerruleDecimal96.ParseExact("1"));
+                if (operand == "restart") FerruleInvocationCounterOperands.RequireRestart(8, value);
+                else FerruleInvocationCounterOperands.RequireInteger(8, operand, value);
+                throw new InvalidOperationException("Expected decimal operand refusal.");
+            }
+            catch (FerruleRuntimeException error)
+            {
+                Equal(FerruleRuntimeError.InvocationCounterOperand, error.Error);
+                Equal<uint?>(8, error.Node);
+                Equal(operand, error.Detail);
+                Equal<FerruleValueKind?>(FerruleValueKind.Decimal, error.FoundKind);
+            }
+        }
     }
 }

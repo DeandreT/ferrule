@@ -29,6 +29,7 @@ fn strict_counter_start_types_precede_later_operand_failure() {
         Value::Null,
         Value::String("1".into()),
         Value::Float(1.0),
+        Value::decimal(ir::Decimal96::parse_exact("1").unwrap()),
         Value::Bool(true),
         Value::json_null(),
         Value::xml_nil(),
@@ -55,6 +56,7 @@ fn strict_counter_step_types_precede_restart_failure() {
         Value::Null,
         Value::String("1".into()),
         Value::Float(1.0),
+        Value::decimal(ir::Decimal96::parse_exact("1").unwrap()),
         Value::Bool(true),
         Value::json_null(),
         Value::xml_nil(),
@@ -83,6 +85,7 @@ fn strict_counter_restart_rejects_nontext_present_values() {
     for bad in [
         Value::Int(1),
         Value::Float(1.0),
+        Value::decimal(ir::Decimal96::parse_exact("1").unwrap()),
         Value::Bool(true),
         Value::json_null(),
         Value::xml_nil(),
