@@ -233,9 +233,21 @@ pub fn base() -> Project {
         },
     };
     for (offset, name) in [(0, "Primary"), (10, REF)] {
-        insert(&mut project, offset + 1, field(name, &["Rows", "Code"], None));
-        insert(&mut project, offset + 2, field(name, &["Rows", "Name"], None));
-        insert(&mut project, offset + 3, field(name, &["Rows", "Rank"], Some(&["Rows"])));
+        insert(
+            &mut project,
+            offset + 1,
+            field(name, &["Rows", "Code"], None),
+        );
+        insert(
+            &mut project,
+            offset + 2,
+            field(name, &["Rows", "Name"], None),
+        );
+        insert(
+            &mut project,
+            offset + 3,
+            field(name, &["Rows", "Rank"], Some(&["Rows"])),
+        );
         insert(&mut project, offset + 4, position(name, &["Rows"]));
     }
     insert(&mut project, 21, field("Primary", &["Note"], None));
@@ -274,21 +286,43 @@ fn every_reducer(project: &mut Project, name: &str, audit: bool) {
             _ => None,
         };
         let node = bind_reducer(project, field, audit);
-        insert(project, node, aggregate(*function, name, &["Rows"], value, arg));
+        insert(
+            project,
+            node,
+            aggregate(*function, name, &["Rows"], value, arg),
+        );
     }
 }
 
 /// Count (`60`), named count (`61`), line quantities (`62`) and names (`63`)
 /// of the active Primary context, joined by `/` in node 64.
 fn context_summary(project: &mut Project) {
-    insert(project, 60, aggregate(AggregateOp::Count, "Primary", &["Rows"], &[], None));
-    insert(project, 61, aggregate(AggregateOp::Count, REF, &["Rows"], &[], None));
+    insert(
+        project,
+        60,
+        aggregate(AggregateOp::Count, "Primary", &["Rows"], &[], None),
+    );
+    insert(
+        project,
+        61,
+        aggregate(AggregateOp::Count, REF, &["Rows"], &[], None),
+    );
     insert(
         project,
         62,
-        aggregate(AggregateOp::Sum, "Primary", &["Rows", "Lines"], &["Qty"], None),
+        aggregate(
+            AggregateOp::Sum,
+            "Primary",
+            &["Rows", "Lines"],
+            &["Qty"],
+            None,
+        ),
     );
-    insert(project, 63, aggregate(AggregateOp::Join, "Primary", &["Rows"], &["Name"], Some(41)));
+    insert(
+        project,
+        63,
+        aggregate(AggregateOp::Join, "Primary", &["Rows"], &["Name"], Some(41)),
+    );
     call(project, 64, "concat", &[60, 42, 61, 42, 62, 42, 63]);
 }
 
@@ -299,36 +333,90 @@ pub fn project(profile: &str) -> Project {
         "C01-every-operator-root" => {
             every_reducer(&mut p, "Primary", false);
             every_reducer(&mut p, REF, true);
-            insert(&mut p, 90, aggregate(AggregateOp::Sum, "Primary", &["Rows"], &["Price"], None));
-            insert(&mut p, 91, aggregate(AggregateOp::Sum, REF, &["Rows"], &["Price"], None));
+            insert(
+                &mut p,
+                90,
+                aggregate(AggregateOp::Sum, "Primary", &["Rows"], &["Price"], None),
+            );
+            insert(
+                &mut p,
+                91,
+                aggregate(AggregateOp::Sum, REF, &["Rows"], &["Price"], None),
+            );
         }
         // Nested walks flatten every crossed row; scalar items read themselves.
         "C02-nested-and-scalar-collections" => {
             for (name, audit) in [("Primary", false), (REF, true)] {
                 let count = bind_reducer(&mut p, "Count", audit);
-                insert(&mut p, count, aggregate(AggregateOp::Count, name, &["Rows", "Lines"], &[], None));
+                insert(
+                    &mut p,
+                    count,
+                    aggregate(AggregateOp::Count, name, &["Rows", "Lines"], &[], None),
+                );
                 let sum = bind_reducer(&mut p, "Sum", audit);
-                insert(&mut p, sum, aggregate(AggregateOp::Sum, name, &["Rows", "Lines"], &["Qty"], None));
+                insert(
+                    &mut p,
+                    sum,
+                    aggregate(AggregateOp::Sum, name, &["Rows", "Lines"], &["Qty"], None),
+                );
                 let join = bind_reducer(&mut p, "Join", audit);
-                insert(&mut p, join, aggregate(AggregateOp::Join, name, &["Rows", "Tags"], &[], Some(41)));
+                insert(
+                    &mut p,
+                    join,
+                    aggregate(AggregateOp::Join, name, &["Rows", "Tags"], &[], Some(41)),
+                );
             }
-            insert(&mut p, 90, aggregate(AggregateOp::Count, "Primary", &["Rows", "Tags"], &[], None));
-            insert(&mut p, 91, aggregate(AggregateOp::Count, REF, &["Rows", "Tags"], &[], None));
+            insert(
+                &mut p,
+                90,
+                aggregate(AggregateOp::Count, "Primary", &["Rows", "Tags"], &[], None),
+            );
+            insert(
+                &mut p,
+                91,
+                aggregate(AggregateOp::Count, REF, &["Rows", "Tags"], &[], None),
+            );
         }
         // Item values read each Ref item (and the pinned Primary parent);
         // the index and separators are Primary parent values.
         "C03-computed-values-and-parent-arguments" => {
-            insert(&mut p, 50, aggregate(AggregateOp::ItemAt, REF, &["Rows"], &["Name"], Some(3)));
-            insert(&mut p, 51, aggregate(AggregateOp::Join, REF, &["Rows"], &["Code"], Some(1)));
-            insert(&mut p, 52, computed(AggregateOp::Join, REF, &["Rows"], 53, Some(40)));
+            insert(
+                &mut p,
+                50,
+                aggregate(AggregateOp::ItemAt, REF, &["Rows"], &["Name"], Some(3)),
+            );
+            insert(
+                &mut p,
+                51,
+                aggregate(AggregateOp::Join, REF, &["Rows"], &["Code"], Some(1)),
+            );
+            insert(
+                &mut p,
+                52,
+                computed(AggregateOp::Join, REF, &["Rows"], 53, Some(40)),
+            );
             call(&mut p, 53, "concat", &[11, 54, 14, 32]);
-            insert(&mut p, 54, field("Primary", &["Rows", "Code"], Some(&["Rows"])));
+            insert(
+                &mut p,
+                54,
+                field("Primary", &["Rows", "Code"], Some(&["Rows"])),
+            );
             call(&mut p, 55, "concat", &[50, 43, 51, 43, 52]);
-            p.root.children.push(items(vec![bind("Code", 1), bind("Value", 55)]));
+            p.root
+                .children
+                .push(items(vec![bind("Code", 1), bind("Value", 55)]));
             call(&mut p, 56, "multiply", &[3, 47]);
             call(&mut p, 57, "multiply", &[13, 47]);
-            insert(&mut p, 90, computed(AggregateOp::Sum, "Primary", &["Rows"], 56, None));
-            insert(&mut p, 91, computed(AggregateOp::Sum, REF, &["Rows"], 57, None));
+            insert(
+                &mut p,
+                90,
+                computed(AggregateOp::Sum, "Primary", &["Rows"], 56, None),
+            );
+            insert(
+                &mut p,
+                91,
+                computed(AggregateOp::Sum, REF, &["Rows"], 57, None),
+            );
         }
         // An owned group exposes only its members to same-owner walks.
         "C04-grouped-subset" => {
@@ -336,19 +424,39 @@ pub fn project(profile: &str) -> Project {
             let mut grouped = items(vec![bind("Code", 1), bind("Value", 64)]);
             grouped.group_by = Some(1);
             p.root.children.push(grouped);
-            insert(&mut p, 90, aggregate(AggregateOp::Count, "Primary", &["Rows"], &[], None));
-            insert(&mut p, 91, aggregate(AggregateOp::Count, REF, &["Rows", "Lines"], &[], None));
+            insert(
+                &mut p,
+                90,
+                aggregate(AggregateOp::Count, "Primary", &["Rows"], &[], None),
+            );
+            insert(
+                &mut p,
+                91,
+                aggregate(AggregateOp::Count, REF, &["Rows", "Lines"], &[], None),
+            );
         }
         // An ordinary owned row anchors same-owner walks at that row.
         "C05-row-anchored-walks" => {
             context_summary(&mut p);
-            p.root.children.push(items(vec![bind("Code", 1), bind("Value", 64)]));
+            p.root
+                .children
+                .push(items(vec![bind("Code", 1), bind("Value", 64)]));
             insert(
                 &mut p,
                 90,
-                aggregate(AggregateOp::Sum, "Primary", &["Rows", "Lines"], &["Qty"], None),
+                aggregate(
+                    AggregateOp::Sum,
+                    "Primary",
+                    &["Rows", "Lines"],
+                    &["Qty"],
+                    None,
+                ),
             );
-            insert(&mut p, 91, aggregate(AggregateOp::Sum, REF, &["Rows", "Lines"], &["Qty"], None));
+            insert(
+                &mut p,
+                91,
+                aggregate(AggregateOp::Sum, REF, &["Rows", "Lines"], &["Qty"], None),
+            );
         }
         // An owned fixed block exposes only its members.
         "C06-block-members" => {
@@ -356,28 +464,82 @@ pub fn project(profile: &str) -> Project {
             let mut blocks = items(vec![bind("Code", 1), bind("Value", 64)]);
             blocks.group_into_blocks = Some(44);
             p.root.children.push(blocks);
-            insert(&mut p, 90, aggregate(AggregateOp::ItemAt, "Primary", &["Rows"], &["Name"], Some(44)));
-            insert(&mut p, 91, aggregate(AggregateOp::ItemAt, REF, &["Rows"], &["Name"], Some(44)));
+            insert(
+                &mut p,
+                90,
+                aggregate(
+                    AggregateOp::ItemAt,
+                    "Primary",
+                    &["Rows"],
+                    &["Name"],
+                    Some(44),
+                ),
+            );
+            insert(
+                &mut p,
+                91,
+                aggregate(AggregateOp::ItemAt, REF, &["Rows"], &["Name"], Some(44)),
+            );
         }
         // A repeated named root reduces its items through the empty path.
         "C07-repeated-named-root" => {
-            insert(&mut p, 90, aggregate(AggregateOp::Join, BATCH, &[], &["Name"], Some(40)));
-            insert(&mut p, 91, aggregate(AggregateOp::ItemAt, BATCH, &[], &["Name"], Some(44)));
+            insert(
+                &mut p,
+                90,
+                aggregate(AggregateOp::Join, BATCH, &[], &["Name"], Some(40)),
+            );
+            insert(
+                &mut p,
+                91,
+                aggregate(AggregateOp::ItemAt, BATCH, &[], &["Name"], Some(44)),
+            );
             let count = bind_reducer(&mut p, "Count", false);
-            insert(&mut p, count, aggregate(AggregateOp::Count, BATCH, &[], &[], None));
+            insert(
+                &mut p,
+                count,
+                aggregate(AggregateOp::Count, BATCH, &[], &[], None),
+            );
         }
         // The walk precedes item values, which precede the parent argument.
         "C08-evaluation-order-and-failures" => {
             call(&mut p, 60, "equal", &[11, 48]);
             insert(&mut p, 61, Node::Raise { message: Some(12) });
-            insert(&mut p, 62, Node::If { condition: 60, then: 61, else_: 12 });
+            insert(
+                &mut p,
+                62,
+                Node::If {
+                    condition: 60,
+                    then: 61,
+                    else_: 12,
+                },
+            );
             call(&mut p, 63, "equal", &[21, 49]);
             insert(&mut p, 64, Node::Raise { message: Some(21) });
-            insert(&mut p, 65, Node::If { condition: 63, then: 64, else_: 40 });
-            insert(&mut p, 90, computed(AggregateOp::Join, REF, &["Rows"], 62, Some(65)));
-            insert(&mut p, 91, aggregate(AggregateOp::Sum, REF, &["Rows"], &["Rank"], None));
+            insert(
+                &mut p,
+                65,
+                Node::If {
+                    condition: 63,
+                    then: 64,
+                    else_: 40,
+                },
+            );
+            insert(
+                &mut p,
+                90,
+                computed(AggregateOp::Join, REF, &["Rows"], 62, Some(65)),
+            );
+            insert(
+                &mut p,
+                91,
+                aggregate(AggregateOp::Sum, REF, &["Rows"], &["Rank"], None),
+            );
             let sum = bind_reducer(&mut p, "Sum", true);
-            insert(&mut p, sum, aggregate(AggregateOp::Sum, REF, &["Rows"], &["Price"], None));
+            insert(
+                &mut p,
+                sum,
+                aggregate(AggregateOp::Sum, REF, &["Rows"], &["Price"], None),
+            );
         }
         // Ref reducers in the Primary target: absent, empty and Null-valued
         // items keep every legacy reducer policy, and Primary never leaks in.
@@ -391,10 +553,22 @@ pub fn project(profile: &str) -> Project {
                     AggregateOp::ItemAt => (&["Code"], Some(45)),
                 };
                 let node = bind_reducer(&mut p, field, false);
-                insert(&mut p, node, aggregate(*function, REF, &["Rows"], value, arg));
+                insert(
+                    &mut p,
+                    node,
+                    aggregate(*function, REF, &["Rows"], value, arg),
+                );
             }
-            insert(&mut p, 90, aggregate(AggregateOp::Avg, "Primary", &["Rows"], &["Price"], None));
-            insert(&mut p, 91, aggregate(AggregateOp::Count, "Primary", &["Rows"], &[], None));
+            insert(
+                &mut p,
+                90,
+                aggregate(AggregateOp::Avg, "Primary", &["Rows"], &["Price"], None),
+            );
+            insert(
+                &mut p,
+                91,
+                aggregate(AggregateOp::Count, "Primary", &["Rows"], &[], None),
+            );
         }
         _ => panic!("authored profile {profile}"),
     }
