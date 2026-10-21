@@ -58,9 +58,12 @@ pub fn item_count(node: u32, value: Value) -> Result<usize, RuntimeError> {
         Value::Int(value) => Some(*value),
         Value::Float(value) if value.is_finite() => Some(value.trunc() as i64),
         Value::String(value) => value.trim().parse::<i64>().ok(),
-        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Bool(_) | Value::Float(_) => {
-            None
-        }
+        Value::Null
+        | Value::JsonNull(_)
+        | Value::XmlNil(_)
+        | Value::Bool(_)
+        | Value::Float(_)
+        | Value::Decimal(_) => None,
     };
     count
         .map(|count| count.max(0) as usize)
@@ -115,6 +118,7 @@ pub(crate) fn sort_value_ordering(left: &Value, right: &Value) -> Ordering {
         (Value::Int(left), Value::Float(right)) => compare_int_float(*left, *right),
         (Value::Float(left), Value::Int(right)) => compare_int_float(*right, *left).reverse(),
         (Value::String(left), Value::String(right)) => left.cmp(right),
+        (Value::Decimal(left), Value::Decimal(right)) => left.cmp(right),
         (Value::XmlNil(_), Value::XmlNil(_)) => Ordering::Equal,
         _ => sort_value_rank(left).cmp(&sort_value_rank(right)),
     }
@@ -127,6 +131,7 @@ fn sort_value_rank(value: &Value) -> u8 {
         Value::Int(_) | Value::Float(_) => 2,
         Value::String(_) => 3,
         Value::XmlNil(_) => 4,
+        Value::Decimal(_) => 5,
     }
 }
 

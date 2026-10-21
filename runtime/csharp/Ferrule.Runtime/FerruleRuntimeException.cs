@@ -71,6 +71,7 @@ public enum FerruleRuntimeError
     OwnedSource,
     BasicSourceBridge,
     PrimaryFilenameType,
+    AggregateUnsupportedScalar,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>

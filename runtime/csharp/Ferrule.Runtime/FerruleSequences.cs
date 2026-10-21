@@ -641,6 +641,8 @@ public static class FerruleSequences
                 -CompareIntegerAndDouble(right.Int64Value, left.DoubleValue),
             (FerruleValueKind.String, FerruleValueKind.String) =>
                 CompareUnicodeScalars(left.StringValue, right.StringValue),
+            (FerruleValueKind.Decimal, FerruleValueKind.Decimal) =>
+                left.DecimalValue.CompareTo(right.DecimalValue),
             (FerruleValueKind.Bool, FerruleValueKind.Bool) =>
                 left.BooleanValue.CompareTo(right.BooleanValue),
             _ => null,
@@ -755,6 +757,8 @@ public static class FerruleSequences
             (FerruleValueKind.String, FerruleValueKind.String) =>
                 CompareUnicodeScalars(left.StringValue, right.StringValue),
             (FerruleValueKind.XmlNil, FerruleValueKind.XmlNil) => 0,
+            (FerruleValueKind.Decimal, FerruleValueKind.Decimal) =>
+                left.DecimalValue.CompareTo(right.DecimalValue),
             _ => SortValueRank(left.Kind).CompareTo(SortValueRank(right.Kind)),
         };
     }
@@ -775,6 +779,7 @@ public static class FerruleSequences
         FerruleValueKind.Int64 or FerruleValueKind.Double => 2,
         FerruleValueKind.String => 3,
         FerruleValueKind.XmlNil => 4,
+        FerruleValueKind.Decimal => 5,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -956,6 +961,7 @@ public static class FerruleSequences
         FerruleValueKind.Int64 => "int",
         FerruleValueKind.Double => "float",
         FerruleValueKind.String => "string",
+        FerruleValueKind.Decimal => "decimal",
         _ => "unknown",
     };
 

@@ -633,6 +633,7 @@ fn value_original(value: &Value) -> Json {
         Value::XmlNil(_) => json!({"type":"XmlNil"}),
         Value::Bool(value) => json!({"type":"Bool","value":value}),
         Value::Int(value) => json!({"type":"Int","value":value}),
+        Value::Decimal(value) => json!({"type":"Decimal","value":value.to_string()}),
         Value::String(value) => json!({"type":"String","value":value}),
         Value::Float(value) => {
             json!({"type":"Float","binary64_bits_hex":format!("{:016x}",value.to_bits())})
