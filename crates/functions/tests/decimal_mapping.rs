@@ -2,6 +2,20 @@ use functions::{FunctionError, call};
 use ir::{Decimal96, DecimalError, Value};
 
 #[test]
+fn nullable_decimal_conversion_has_an_explicit_internal_signature() {
+    let definition = functions::builtin("decimal_from_nullable_text").unwrap();
+    assert_eq!(definition.exposure, functions::BuiltinExposure::Internal);
+    assert_eq!(definition.return_domain, functions::ScalarDomain::Decimal);
+    assert!(definition.accepts_arity(1));
+    assert!(!definition.accepts_arity(0));
+    assert!(!definition.accepts_arity(2));
+    assert_eq!(
+        functions::builtin("to_number").unwrap().return_domain,
+        functions::ScalarDomain::Numeric
+    );
+}
+
+#[test]
 fn nullable_text_conversion_keeps_exact_plain_and_explicit_exponent_policies() {
     for (text, expected) in [
         ("  0.1\t", "0.1"),
