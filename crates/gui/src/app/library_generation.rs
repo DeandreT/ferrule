@@ -1,10 +1,11 @@
 //! Saved-project library generation through the public atomic writer.
 
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::mpsc::{self, Receiver};
 
 use anyhow::{Context, bail};
 
+use super::owned_worker::{OwnedWorker, WorkerExit};
 use super::{DialogKind, FerruleApp, SaveContinuation};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -174,8 +175,10 @@ impl LibraryGenerationRequest {
     }
 }
 
+/// A generation worker owned by its exact thread handle. Dropping it waits
+/// for that thread, so a staged library tree is never abandoned mid-publication.
 pub(super) struct PendingLibraryGeneration {
-    receiver: Receiver<Result<cli::GenerateOutcome, String>>,
+    worker: OwnedWorker<Result<cli::GenerateOutcome, String>>,
     language: LibraryLanguage,
 }
 
@@ -288,18 +291,18 @@ impl FerruleApp {
             draft.pending_settings = None;
         }
         let language = request.language;
-        let (sender, receiver) = mpsc::channel();
-        let spawned = std::thread::Builder::new()
-            .name("ferrule-library-generation".into())
-            .spawn(move || {
-                let result = request.generate().map_err(|error| format!("{error:#}"));
-                let _ = sender.send(result);
-            });
-        if let Err(error) = spawned {
-            self.library_generation_failed(format!("Could not start library generation: {error}"));
-            return;
-        }
-        self.pending_library_generation = Some(PendingLibraryGeneration { receiver, language });
+        let worker = match OwnedWorker::spawn("ferrule-library-generation", move || {
+            request.generate().map_err(|error| format!("{error:#}"))
+        }) {
+            Ok(worker) => worker,
+            Err(error) => {
+                self.library_generation_failed(format!(
+                    "Could not start library generation: {error}"
+                ));
+                return;
+            }
+        };
+        self.pending_library_generation = Some(PendingLibraryGeneration { worker, language });
         self.status = format!("generating {} library", language.label());
     }
 
@@ -329,19 +332,20 @@ impl FerruleApp {
     }
 
     pub(super) fn poll_library_generation(&mut self, context: &egui::Context) {
-        let Some(pending) = &self.pending_library_generation else {
+        let Some(pending) = &mut self.pending_library_generation else {
             return;
         };
         let language = pending.language;
-        let result = match pending.receiver.try_recv() {
-            Ok(result) => result,
-            Err(TryRecvError::Empty) => {
+        // Completion is the joined worker thread, not its result message.
+        let result = match pending.worker.poll() {
+            Some(WorkerExit::Reported(result)) => result,
+            Some(WorkerExit::Unreported | WorkerExit::Panicked) => Err(
+                "Library generation stopped before reporting a result. Check the destination before retrying.".into(),
+            ),
+            None => {
                 context.request_repaint_after(std::time::Duration::from_millis(100));
                 return;
             }
-            Err(TryRecvError::Disconnected) => Err(
-                "Library generation stopped before reporting a result. Check the destination before retrying.".into(),
-            ),
         };
         self.pending_library_generation = None;
         match result {

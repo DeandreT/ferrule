@@ -32,6 +32,7 @@ mod owned_join_tuple;
 mod owned_search;
 #[cfg(test)]
 mod owned_source_context;
+mod owned_xml_mixed_content;
 mod path_hierarchy;
 mod pipeline;
 mod policy;
@@ -580,6 +581,11 @@ pub enum EngineError {
     AggregateIntegerOverflow { function: mapping::AggregateOp },
     #[error("{function:?} aggregate encountered or produced a non-finite number")]
     AggregateNonFinite { function: mapping::AggregateOp },
+    #[error("{function:?} aggregate cannot accept a {found} value")]
+    AggregateUnsupportedScalar {
+        function: mapping::AggregateOp,
+        found: &'static str,
+    },
     #[error(transparent)]
     Function(#[from] functions::FunctionError),
 }
@@ -1113,6 +1119,12 @@ mod owned_join_tuple_tests;
 #[cfg(test)]
 #[path = "tests/owned_path_hierarchy.rs"]
 mod owned_path_hierarchy_tests;
+#[cfg(test)]
+#[path = "tests/owned_xml_mixed_construction.rs"]
+mod owned_xml_mixed_construction_tests;
+#[cfg(test)]
+#[path = "tests/owned_xml_mixed_content.rs"]
+mod owned_xml_mixed_content_tests;
 #[cfg(test)]
 #[path = "tests/owned_xml_serialize.rs"]
 mod owned_xml_serialize_tests;

@@ -1,6 +1,7 @@
 //! Independently specified physical-option oracles, including all parsed null slots.
 use super::*;
 use mapping::{EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind, X12Autocomplete};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const INPUT: &str = include_str!("profile-input.x12");
 const SOURCE: &str = include_str!("profile-source-expected.json");
@@ -166,13 +167,15 @@ fn constrained_completion() -> X12BoundaryOptions {
     selected
 }
 fn evidence(label: &str) -> std::path::PathBuf {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "ferrule_x12_profile_{label}_{}_{}",
+        "ferrule_x12_profile_{label}_{}_{}_{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&root).unwrap();
     eprintln!("complete authored X12 profile evidence: {}", root.display());
@@ -192,6 +195,9 @@ fn all_values(instance: &ir::Instance) -> serde_json::Value {
         }
         Instance::Scalar(Value::String(value)) => value.clone().into(),
         Instance::Scalar(Value::Float(value)) => serde_json::json!(value),
+        Instance::Scalar(Value::Decimal(_)) => {
+            panic!("decimal is outside this X12 fixture profile")
+        }
         Instance::Scalar(Value::Int(value)) => serde_json::json!(value),
         Instance::Scalar(Value::Bool(value)) => (*value).into(),
         Instance::Scalar(Value::Null | Value::JsonNull(_) | Value::XmlNil(_)) => {
@@ -220,6 +226,7 @@ fn all_kinds(instance: &ir::Instance) -> serde_json::Value {
             Value::Null => "Null",
             Value::JsonNull(_) => "JsonNull",
             Value::XmlNil(_) => "XmlNil",
+            Value::Decimal(_) => "Decimal",
         }
         .into(),
         Instance::DocumentSet(_) => panic!("authored one-document fixture"),

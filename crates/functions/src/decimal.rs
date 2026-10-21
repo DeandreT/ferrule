@@ -40,6 +40,7 @@ impl ExactDecimal {
             | Value::JsonNull(_)
             | Value::XmlNil(_)
             | Value::Bool(_)
+            | Value::Decimal(_)
             | Value::Float(_) => return None,
         };
         Self::parse(&lexical)

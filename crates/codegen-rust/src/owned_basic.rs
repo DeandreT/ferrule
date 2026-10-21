@@ -30,6 +30,8 @@ pub(crate) use windows::render_public_basic_owned_sequence_aggregate_source;
 pub(crate) use windows::render_public_basic_owned_sequence_exists_source;
 pub(crate) use windows::render_public_basic_owned_sequence_item_at_source;
 pub(crate) use windows::render_public_basic_owned_window_source;
+pub(crate) use windows::render_public_basic_owned_xml_mixed_construction_source;
+pub(crate) use windows::render_public_basic_owned_xml_mixed_content_source;
 pub(crate) use windows::render_public_basic_owned_xml_serialize_source;
 #[path = "owned_basic_aggregate.rs"]
 mod aggregate;
@@ -527,6 +529,42 @@ pub(super) fn render_owned_xml_serialize(
         serializer.declaration,
         serializer.indent,
     ))
+}
+
+/// Renders owned mixed-content atomization in a paired Basic context. The
+/// replacement expressions are ordinary node functions of the same profile.
+pub(super) fn render_owned_xml_mixed_content(
+    id: NodeId,
+    mixed: &mapping::OwnedXmlMixedContent,
+    prefix: &str,
+) -> String {
+    let owner = owner_literal(&mixed.source.owner);
+    let frame = mixed.frame.as_ref().map_or_else(
+        || "None".into(),
+        |frame| format!("Some(&[{}][..])", render_string_path(frame)),
+    );
+    let root_pin = if mixed.frame.as_ref().is_some_and(Vec::is_empty) {
+        format!("basic_declared_root_nonrepeating({owner})")
+    } else {
+        "false".into()
+    };
+    let replacements = mixed
+        .replacements
+        .iter()
+        .map(|replacement| {
+            format!(
+                "codegen_runtime::OwnedXmlMixedContentReplacement {{ element: {}, occurrence: {}, expression: {prefix}{} }}",
+                rust_string(&replacement.element),
+                replacement.context == mapping::OwnedXmlMixedContentContext::Occurrence,
+                replacement.expression,
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",\n            ");
+    format!(
+        "context.owned_xml_mixed_content(\n        {id},\n        {owner},\n        &[{}],\n        {frame},\n        {root_pin},\n        &[\n            {replacements}\n        ],\n    )",
+        render_string_path(&mixed.source.path),
+    )
 }
 
 fn render_basic_scope(

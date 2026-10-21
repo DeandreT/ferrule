@@ -1,5 +1,6 @@
 use std::fs;
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 include!("../../codegen/tests/fixtures/raise_project.rs");
@@ -8,13 +9,15 @@ include!("../../codegen/tests/fixtures/raise_project.rs");
 fn generated_raise_preserves_lazy_messages_and_item_error_order() {
     let program = codegen::lower(&raise_project()).expect("Raise project lowers");
     let artifacts = crate::emit(&program).expect("static C# Raise mapping emits");
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
     let directory = std::env::temp_dir().join(format!(
-        "ferrule_csharp_lazy_raise_{}_{nonce}",
-        std::process::id()
+        "ferrule_csharp_lazy_raise_{}_{nonce}_{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&directory).unwrap();
     for file in artifacts.files() {

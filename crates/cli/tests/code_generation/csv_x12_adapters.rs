@@ -115,10 +115,12 @@ const FIXTURES: &[(&str, &[u8])] = &[
 struct Evidence(PathBuf);
 impl Evidence {
     fn new() -> TestResult<Self> {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let path = std::env::temp_dir().join(format!(
-            "ferrule-csv-x12-275-compiled-{}-{stamp}",
-            std::process::id()
+            "ferrule-csv-x12-275-compiled-{}-{stamp}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&path)?;
         eprintln!("CSV_X12_275_ORIGINALS={}", path.display());

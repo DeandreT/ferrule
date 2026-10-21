@@ -101,10 +101,12 @@ const FIXTURES: &[(&str, &[u8])] = &[
 struct Evidence(PathBuf);
 impl Evidence {
     fn new(label: &str) -> TestResult<Self> {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let path = std::env::temp_dir().join(format!(
-            "ferrule-static-documents274-{label}-{}-{stamp}",
-            std::process::id()
+            "ferrule-static-documents274-{label}-{}-{stamp}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&path)?;
         eprintln!("STATIC_DOCUMENTS274_ORIGINALS={}", path.display());

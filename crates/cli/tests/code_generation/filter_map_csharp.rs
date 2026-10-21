@@ -16,10 +16,12 @@ impl Evidence {
             return Err("evidence parent must be absolute".into());
         }
         fs::create_dir_all(&parent)?;
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let path = parent.join(format!(
-            "ferrule-filter-map193-{}-{stamp}",
-            std::process::id()
+            "ferrule-filter-map193-{}-{stamp}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir(&path)?;
         eprintln!("FILTER_MAP193_ORIGINALS={}", path.display());

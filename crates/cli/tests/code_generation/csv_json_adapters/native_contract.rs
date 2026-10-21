@@ -22,7 +22,8 @@ fn tree(value: &Instance) -> Json {
             Value::Null=>json!({"kind":"Null"}),Value::JsonNull(_)=>json!({"kind":"JsonNull"}),
             Value::XmlNil(_)=>json!({"kind":"XmlNil"}),Value::String(v)=>json!({"kind":"String","value":v}),
             Value::Int(v)=>json!({"kind":"Int","value":v}),Value::Bool(v)=>json!({"kind":"Bool","value":v}),
-            Value::Float(v)=>json!({"kind":"Float","bits":format!("{:016x}",v.to_bits())})}}),
+            Value::Float(v)=>json!({"kind":"Float","bits":format!("{:016x}",v.to_bits())}),
+            Value::Decimal(v)=>json!({"kind":"Decimal","value":v.to_string()})}}),
         Instance::Group(group) => json!({"kind":"Group","origin":match group.xml_type_origin() {
             ir::XmlTypeOrigin::Unknown=>json!({"kind":"Unknown"}),
             ir::XmlTypeOrigin::Absent=>json!({"kind":"Absent"}),

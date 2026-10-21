@@ -14,10 +14,12 @@ impl Evidence {
             return Err("evidence parent must be absolute".into());
         }
         std::fs::create_dir_all(&parent)?;
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let path = parent.join(format!(
-            "ferrule_scalar_root339_compiled_{}_{stamp}",
-            std::process::id()
+            "ferrule_scalar_root339_compiled_{}_{stamp}_{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&path)?;
         eprintln!("SCALAR_ROOT339_COMPILED_ORIGINALS={}", path.display());

@@ -217,7 +217,8 @@ fn evaluate_body_node_inner(
         | Node::OwnedXmlSerialize(_)
         | Node::OwnedAggregate(_)
         | Node::OwnedJoinField(_)
-        | Node::OwnedJoinSourcePosition(_) => Err(EngineError::UnsupportedSourceOwnership {
+        | Node::OwnedJoinSourcePosition(_)
+        | Node::OwnedXmlMixedContent(_) => Err(EngineError::UnsupportedSourceOwnership {
             node: node_id,
             function: Some(function_id),
             kind: node.owned_source_kind().expect("owned node kind"),
@@ -499,6 +500,7 @@ fn evaluate_body_input(
 
 fn adapt_scalar(value: Value, expected: ScalarType) -> Option<Value> {
     match (expected, value) {
+        (_, Value::Decimal(_)) => None,
         (_, value @ (Value::Null | Value::JsonNull(_) | Value::XmlNil(_))) => Some(value),
         (ScalarType::String, value @ Value::String(_))
         | (ScalarType::Int, value @ Value::Int(_))

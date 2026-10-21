@@ -21,13 +21,17 @@ fn join_scope() -> SourceScopeLocation {
 pub fn join_closed() -> ProgramValidationError {
     ProgramValidationError::OwnedSource {
         diagnostic: Box::new(Diagnostic::Capability {
-            location: Location::Iteration { scope: join_scope() },
+            location: Location::Iteration {
+                scope: join_scope(),
+            },
             request: Some(Request::Iteration {
                 owner: Owner::Primary,
                 path: path(&["Rows"]),
             }),
             reason: Reason::Join,
-            origin: Origin::Scope { scope: join_scope() },
+            origin: Origin::Scope {
+                scope: join_scope(),
+            },
         }),
     }
 }
@@ -61,7 +65,9 @@ pub fn projects() -> Vec<(&'static str, Project, Refusal)> {
     let mut result = Vec::new();
     // A read naming the other owner's same collection text is not a member.
     let mut p = j01();
-    p.graph.nodes.insert(1, projects::join_field(1, LOOKUP, &["Orders"], &["code"]));
+    p.graph
+        .nodes
+        .insert(1, projects::join_field(1, LOOKUP, &["Orders"], &["code"]));
     result.push((
         "R01-wrong-owner-collection",
         p,
@@ -72,7 +78,9 @@ pub fn projects() -> Vec<(&'static str, Project, Refusal)> {
     ));
     // A read of another join's tuple is inactive here.
     let mut p = j01();
-    p.graph.nodes.insert(1, projects::join_field(2, "Primary", &["Rows"], &["code"]));
+    p.graph
+        .nodes
+        .insert(1, projects::join_field(2, "Primary", &["Rows"], &["code"]));
     result.push((
         "R02-inactive-join",
         p,
@@ -101,7 +109,10 @@ pub fn projects() -> Vec<(&'static str, Project, Refusal)> {
     ));
     // A field below a member must be one of its scalars.
     let mut p = j01();
-    p.graph.nodes.insert(1, projects::join_field(1, "Primary", &["Rows"], &["missing"]));
+    p.graph.nodes.insert(
+        1,
+        projects::join_field(1, "Primary", &["Rows"], &["missing"]),
+    );
     result.push((
         "R04-missing-member-field",
         p,
@@ -119,17 +130,18 @@ pub fn projects() -> Vec<(&'static str, Project, Refusal)> {
             frame: None,
         }),
     );
-    result.push(("R05-owned-read-in-tuple", p, Refusal::Capability(Reason::Join)));
+    result.push((
+        "R05-owned-read-in-tuple",
+        p,
+        Refusal::Capability(Reason::Join),
+    ));
     // An iterating descendant of a tuple stays closed.
     let mut p = j01();
     p.target = SchemaNode::group(
         "Output",
         vec![
-            SchemaNode::group(
-                "Row",
-                vec![SchemaNode::group("Lines", vec![]).repeating()],
-            )
-            .repeating(),
+            SchemaNode::group("Row", vec![SchemaNode::group("Lines", vec![]).repeating()])
+                .repeating(),
         ],
     );
     p.root.children[0].bindings.clear();
@@ -183,7 +195,9 @@ pub fn projects() -> Vec<(&'static str, Project, Refusal)> {
 }
 
 /// Programs constructed directly from the lowered J01 Program.
-pub fn programs(base: &codegen::Program) -> Vec<(&'static str, codegen::Program, ProgramValidationError)> {
+pub fn programs(
+    base: &codegen::Program,
+) -> Vec<(&'static str, codegen::Program, ProgramValidationError)> {
     let replace = |id: u32, expression: codegen::Expression| {
         let mut program = base.clone();
         for node in &mut program.expressions {
@@ -206,7 +220,12 @@ pub fn programs(base: &codegen::Program) -> Vec<(&'static str, codegen::Program,
         let plan = mapping::OwnedJoinPlan::new(
             mapping::OwnedJoinSource::new(projects::source("Primary", &["Rows"])),
             mapping::OwnedJoinSource::new(projects::source(LOOKUP, &["Rows"])),
-            mapping::OwnedJoinConditions::new(projects::key("Primary", &["Rows"], &["id"], &["missing"])),
+            mapping::OwnedJoinConditions::new(projects::key(
+                "Primary",
+                &["Rows"],
+                &["id"],
+                &["missing"],
+            )),
         )
         .expect("authored owned plan");
         *iteration = codegen::IterationPlan::new(
@@ -250,9 +269,13 @@ pub fn programs(base: &codegen::Program) -> Vec<(&'static str, codegen::Program,
             missing_key,
             ProgramValidationError::OwnedSource {
                 diagnostic: Box::new(Diagnostic::Structure {
-                    location: Location::Iteration { scope: join_scope() },
+                    location: Location::Iteration {
+                        scope: join_scope(),
+                    },
                     request: Request::Field {
-                        owner: Owner::Named { name: LOOKUP.into() },
+                        owner: Owner::Named {
+                            name: LOOKUP.into(),
+                        },
                         path: path(&["Rows", "missing"]),
                         frame: Some(path(&["Rows"])),
                     },
@@ -278,7 +301,9 @@ pub fn programs(base: &codegen::Program) -> Vec<(&'static str, codegen::Program,
                     },
                     request: None,
                     reason: Reason::Join,
-                    origin: Origin::Scope { scope: join_scope() },
+                    origin: Origin::Scope {
+                        scope: join_scope(),
+                    },
                 }),
             },
         ),
@@ -371,7 +396,8 @@ pub fn old_catalogues(p: &codegen::Program) -> Vec<Result<(), ProgramValidationE
         codegen::legacy_named_input_admission_plan_with_basic_owned_group_by(p).map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_item_at(p).map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_group_adjacent_by(p).map(drop),
-        codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(p).map(drop),
+        codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(p)
+            .map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_group_ending_with(p).map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_failure_sources(p).map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy(p).map(drop),
@@ -384,7 +410,8 @@ pub fn old_catalogues(p: &codegen::Program) -> Vec<Result<(), ProgramValidationE
         codegen::legacy_named_input_admission_plan_with_basic_owned_lookup_find(p).map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_field(p).map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_xml_serialize(p).map(drop),
-        codegen::legacy_named_input_admission_plan_with_basic_owned_collection_aggregates(p).map(drop),
+        codegen::legacy_named_input_admission_plan_with_basic_owned_collection_aggregates(p)
+            .map(drop),
     ]
     .into()
 }
@@ -417,7 +444,9 @@ pub fn old_rust(
         codegen_rust::emit_with_basic_owned_collection_aggregates(p, options),
     ]
 }
-pub fn old_csharp(p: &codegen::Program) -> Vec<Result<codegen::ArtifactSet, codegen_csharp::EmitError>> {
+pub fn old_csharp(
+    p: &codegen::Program,
+) -> Vec<Result<codegen::ArtifactSet, codegen_csharp::EmitError>> {
     vec![
         codegen_csharp::emit_with_basic_owned_sources(p),
         codegen_csharp::emit_with_basic_owned_filters(p),

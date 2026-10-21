@@ -1,19 +1,22 @@
 use codegen_schema::{CodecError, V3_PREFIX, decode, encode};
 use ir::{ScalarType, SchemaNode};
 use serde_json::Value;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const CASES: &str =
     include_str!("../../format-json/tests/fixtures/nested_array_wrappers/cases.json");
 
 #[test]
 fn nested_array_wrapper_descriptors_preserve_every_level_and_reject_unknown_versions() {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let evidence = std::env::temp_dir().join(format!(
-        "ferrule-nested-array-descriptors-{}-{}",
+        "ferrule-nested-array-descriptors-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&evidence).unwrap();
     std::fs::write(evidence.join("cases.json"), CASES).unwrap();

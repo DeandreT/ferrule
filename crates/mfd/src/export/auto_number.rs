@@ -188,6 +188,11 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
             .iter()
             .map(|replacement| replacement.expression)
             .collect(),
+        Node::OwnedXmlMixedContent(mixed) => mixed
+            .replacements
+            .iter()
+            .map(|replacement| replacement.expression)
+            .collect(),
         Node::CollectionFind {
             predicate, value, ..
         } => vec![*predicate, *value],
