@@ -149,7 +149,14 @@ duplicate host names fail before any file is read. Input paths follow the
 process working directory; computed dynamic source paths resolve from the
 pipeline file's directory.
 
-Every stage runs in dependency order with intermediate results held in memory.
+Every stage runs sequentially in dependency order with intermediate results
+held in memory. Before execution, the host computes the last stage that reads
+each host input and each stage target. A value that is not selected for output
+is dropped once that stage finishes, and a named-source binding that is a
+value's final read takes it without a copy. Targets that no stage reads and no
+output selects are dropped as soon as they are produced. Releasing values does
+not change stage order, failures, traces, or dynamic-source requests.
+`engine::run_pipeline_retaining` exposes this behavior to in-memory callers.
 Only targets named by `--output` or `--named-output` are written. Dynamic
 document targets interpret their selected path as a base directory. All
 selected targets are rendered and published as one batch after every stage
@@ -181,6 +188,8 @@ typed instances directly, so an intermediate result does not need a temporary
 file or a serialization round trip. The outcome contains every stage's primary
 and named artifacts in execution order, with each artifact identified by its
 stage, optional target name, and logical path. No output files are written.
+Because every target is rendered, preview keeps all intermediate results in
+memory until rendering completes.
 
 ```rust
 let hosts = [cli::PipelineHostPayload::new(

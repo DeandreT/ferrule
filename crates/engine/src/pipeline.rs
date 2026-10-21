@@ -1,11 +1,19 @@
 //! In-memory execution of typed, ordered mapping stages.
 
+mod lifetimes;
+mod live_values;
+#[cfg(test)]
+mod release_tests;
+
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{Instance, SchemaNode};
 use mapping::{Pipeline, PipelineInput};
 use thiserror::Error;
 
+use self::lifetimes::{PipelineValue, ReleaseSchedule, Retention, Transfer, ValueLifetimes};
+use self::live_values::{LiveValues, StageSlots};
 use crate::{
     EngineError, ExecutionContext, ExecutionOutputs, run_outputs_with_sources_and_context,
 };
@@ -48,6 +56,28 @@ impl PipelineOutputs {
     }
 }
 
+/// One stage target kept by [`run_pipeline_retaining`]. `None` selects the
+/// primary target; `Some(name)` selects a named target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PipelineTargetRef<'a> {
+    pub stage: &'a str,
+    pub target: Option<&'a str>,
+}
+
+/// The complete execution order and only the stage targets a caller retained.
+#[derive(Debug, Clone)]
+pub struct PipelineRetainedOutputs {
+    pub stages_executed: Vec<String>,
+    retained: BTreeMap<(String, Option<String>), Instance>,
+}
+
+impl PipelineRetainedOutputs {
+    pub fn get(&self, stage: &str, target: Option<&str>) -> Option<&Instance> {
+        self.retained
+            .get(&(stage.to_owned(), target.map(str::to_owned)))
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum PipelineError {
     #[error("pipeline validation failed: {0:?}")]
@@ -56,6 +86,11 @@ pub enum PipelineError {
     MissingHostInput { name: String },
     #[error("host input `{name}` is not used by the pipeline")]
     UnexpectedHostInput { name: String },
+    #[error("cannot retain stage `{stage}` target {}: no such target", target.as_deref().unwrap_or("primary"))]
+    UnknownRetainedTarget {
+        stage: String,
+        target: Option<String>,
+    },
     #[error("stage `{stage}` failed: {source}")]
     StageExecution {
         stage: String,
@@ -145,48 +180,188 @@ fn check_plan_source_ownership_capability(
 pub fn run_pipeline_with_stage_contexts<'a>(
     pipeline: &Pipeline,
     hosts: &BTreeMap<String, Instance>,
-    mut context_for_stage: impl FnMut(&str) -> ExecutionContext<'a>,
+    context_for_stage: impl FnMut(&str) -> ExecutionContext<'a>,
 ) -> Result<PipelineOutputs, PipelineError> {
+    run_retaining_all(pipeline, hosts, context_for_stage).map(|(outputs, _)| outputs)
+}
+
+/// Like [`run_pipeline_with_stage_contexts`], but takes ownership of the host
+/// inputs and keeps only the `retain` targets. Every other host or stage value
+/// is dropped as soon as its last reader in the deterministic sequential order
+/// has run, and a named-source binding that is a value's final reader takes it
+/// without a copy. Execution order, context calls, failures, and the retained
+/// values are identical to the retain-all run.
+pub fn run_pipeline_retaining<'a>(
+    pipeline: &Pipeline,
+    hosts: BTreeMap<String, Instance>,
+    retain: &[PipelineTargetRef<'_>],
+    context_for_stage: impl FnMut(&str) -> ExecutionContext<'a>,
+) -> Result<PipelineRetainedOutputs, PipelineError> {
+    run_retaining_selected(pipeline, hosts, retain, context_for_stage).map(|(outputs, _)| outputs)
+}
+
+/// Retains every value; returns the outputs and the peak number of live values.
+fn run_retaining_all<'a>(
+    pipeline: &Pipeline,
+    hosts: &BTreeMap<String, Instance>,
+    context_for_stage: impl FnMut(&str) -> ExecutionContext<'a>,
+) -> Result<(PipelineOutputs, usize), PipelineError> {
     let plan = plan_pipeline(pipeline).map_err(PipelineError::Invalid)?;
     validate_hosts(&plan, hosts)?;
-
-    let mut completed = BTreeMap::new();
-    for &index in &plan.order {
-        let stage = &pipeline.stages[index];
-        let execution = context_for_stage(&stage.id);
-        let source = input_value(&stage.source, hosts, &completed);
-        let extras = stage
-            .extra_sources
+    let lifetimes = ValueLifetimes::analyze(pipeline, &plan.order);
+    let schedule = lifetimes.schedule(Retention::All);
+    let mut live = LiveValues::new(
+        hosts
             .iter()
-            .map(|binding| {
-                (
-                    binding.name.clone(),
-                    input_value(&binding.from, hosts, &completed).clone(),
-                )
-            })
-            .collect();
-        let outputs =
-            run_outputs_with_sources_and_context(&stage.project, source, extras, &execution)
-                .map_err(|source| PipelineError::StageExecution {
-                    stage: stage.id.clone(),
-                    source,
-                })?;
-        completed.insert(stage.id.as_str(), outputs);
-    }
+            .map(|(name, instance)| (name.clone(), Cow::Borrowed(instance))),
+    );
+    execute(
+        pipeline,
+        &plan,
+        &lifetimes,
+        &schedule,
+        &mut live,
+        context_for_stage,
+    )?;
     let stages = plan
         .order
-        .into_iter()
-        .map(|index| {
-            let id = pipeline.stages[index].id.clone();
-            PipelineStageOutput {
-                outputs: completed
-                    .remove(id.as_str())
-                    .expect("completed pipeline stage"),
-                id,
-            }
+        .iter()
+        .map(|&index| PipelineStageOutput {
+            id: pipeline.stages[index].id.clone(),
+            outputs: live
+                .stages
+                .remove(&index)
+                .and_then(StageSlots::into_outputs)
+                .expect("a retain-all run keeps every stage output"),
         })
         .collect();
-    Ok(PipelineOutputs { stages })
+    Ok((PipelineOutputs { stages }, live.peak))
+}
+
+/// Retains only `retain`; returns the outputs and the peak number of live values.
+fn run_retaining_selected<'a>(
+    pipeline: &Pipeline,
+    hosts: BTreeMap<String, Instance>,
+    retain: &[PipelineTargetRef<'_>],
+    context_for_stage: impl FnMut(&str) -> ExecutionContext<'a>,
+) -> Result<(PipelineRetainedOutputs, usize), PipelineError> {
+    let plan = plan_pipeline(pipeline).map_err(PipelineError::Invalid)?;
+    validate_hosts(&plan, &hosts)?;
+    let requests = retain
+        .iter()
+        .map(|request| {
+            let key = (request.stage.to_owned(), request.target.map(str::to_owned));
+            Ok((retained_value(pipeline, request)?, key))
+        })
+        .collect::<Result<BTreeMap<_, _>, PipelineError>>()?;
+    let retained = requests.keys().copied().collect();
+    let lifetimes = ValueLifetimes::analyze(pipeline, &plan.order);
+    let schedule = lifetimes.schedule(Retention::Selected(&retained));
+    let mut live = LiveValues::new(
+        hosts
+            .into_iter()
+            .map(|(name, instance)| (name, Cow::Owned(instance))),
+    );
+    execute(
+        pipeline,
+        &plan,
+        &lifetimes,
+        &schedule,
+        &mut live,
+        context_for_stage,
+    )?;
+    let retained = requests
+        .into_iter()
+        .map(|(value, key)| (key, live.take(value)))
+        .collect();
+    Ok((
+        PipelineRetainedOutputs {
+            stages_executed: plan
+                .order
+                .iter()
+                .map(|&index| pipeline.stages[index].id.clone())
+                .collect(),
+            retained,
+        },
+        live.peak,
+    ))
+}
+
+fn retained_value<'p>(
+    pipeline: &'p Pipeline,
+    request: &PipelineTargetRef<'_>,
+) -> Result<PipelineValue<'p>, PipelineError> {
+    let unknown = || PipelineError::UnknownRetainedTarget {
+        stage: request.stage.to_owned(),
+        target: request.target.map(str::to_owned),
+    };
+    let (index, stage) = pipeline
+        .stages
+        .iter()
+        .enumerate()
+        .find(|(_, stage)| stage.id == request.stage)
+        .ok_or_else(unknown)?;
+    let target = match request.target {
+        None => None,
+        Some(name) => Some(
+            stage
+                .project
+                .extra_targets
+                .iter()
+                .find(|target| target.name == name)
+                .ok_or_else(unknown)?
+                .name
+                .as_str(),
+        ),
+    };
+    Ok(PipelineValue::Stage {
+        stage: index,
+        target,
+    })
+}
+
+/// Runs every stage in plan order, applying one release schedule.
+fn execute<'a>(
+    pipeline: &Pipeline,
+    plan: &Plan,
+    lifetimes: &ValueLifetimes<'_>,
+    schedule: &ReleaseSchedule<'_>,
+    live: &mut LiveValues<'_>,
+    mut context_for_stage: impl FnMut(&str) -> ExecutionContext<'a>,
+) -> Result<(), PipelineError> {
+    for (step, &index) in plan.order.iter().enumerate() {
+        let stage = &pipeline.stages[index];
+        let execution = context_for_stage(&stage.id);
+        let reads = lifetimes.reads(step);
+        let release = &schedule.steps[step];
+        let extras = reads
+            .extras
+            .iter()
+            .zip(&release.transfers)
+            .map(|((name, value), transfer)| {
+                let instance = match transfer {
+                    Transfer::Clone => live.get(*value).clone(),
+                    Transfer::Move => live.take(*value),
+                };
+                ((*name).to_owned(), instance)
+            })
+            .collect();
+        let outputs = run_outputs_with_sources_and_context(
+            &stage.project,
+            live.get(reads.source),
+            extras,
+            &execution,
+        )
+        .map_err(|source| PipelineError::StageExecution {
+            stage: stage.id.clone(),
+            source,
+        })?;
+        live.insert(index, outputs);
+        for value in &release.release {
+            live.release(*value);
+        }
+    }
+    Ok(())
 }
 
 fn validate_hosts(plan: &Plan, hosts: &BTreeMap<String, Instance>) -> Result<(), PipelineError> {
@@ -214,30 +389,6 @@ pub fn run_pipeline(
         hosts,
         &ExecutionContext::new(std::path::Path::new(".")),
     )
-}
-
-fn input_value<'a>(
-    input: &PipelineInput,
-    hosts: &'a BTreeMap<String, Instance>,
-    completed: &'a BTreeMap<&str, ExecutionOutputs>,
-) -> &'a Instance {
-    match input {
-        PipelineInput::Host { name } => &hosts[name],
-        PipelineInput::StageTarget { stage, target } => {
-            let outputs = &completed[stage.as_str()];
-            match target {
-                None => &outputs.primary,
-                Some(name) => {
-                    &outputs
-                        .extras
-                        .iter()
-                        .find(|output| output.name == *name)
-                        .expect("pipeline plan resolved named target")
-                        .instance
-                }
-            }
-        }
-    }
 }
 
 fn plan_pipeline(pipeline: &Pipeline) -> Result<Plan, Vec<PipelineValidationIssue>> {
