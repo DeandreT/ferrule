@@ -4,17 +4,22 @@
 
 use super::*;
 
-/// Construction permission for an owned adjacency-tree row collection. It is
-/// orthogonal to source controls, consumers and failure policies.
+/// Construction permission for owned tree operators: an owned adjacency-tree
+/// row collection, optionally with owned recursive filtering. It is orthogonal
+/// to source controls, consumers and failure policies.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::validate) enum AdjacencyTreePolicy {
     Closed,
     Owned,
+    /// Owned adjacency trees plus recursive filters over an owned selector.
+    OwnedWithRecursiveFilter,
 }
 
 impl AdjacencyTreePolicy {
     pub(super) fn admits(self, scope: &TargetScope) -> bool {
-        self == Self::Owned && owned_rows(scope).is_some()
+        self != Self::Closed && owned_rows(scope).is_some()
+            || self == Self::OwnedWithRecursiveFilter
+                && super::recursive_filter::owned_predicate(scope).is_some()
     }
 }
 

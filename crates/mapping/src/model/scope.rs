@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AdjacencyTreePlan, Binding, DynamicBinding, DynamicChild, JoinId, JoinPlan, NodeId,
-    OwnedAdjacencyTreePlan, OwnedPathHierarchyPlan, OwnedSourceAccess, PathHierarchyPlan,
-    RecursiveFilterPlan, ScopeIteration, ScopeSequence, SequenceExpr, SourceSelector,
-    SourceSelectorMut, SourceSelectorRef,
+    OwnedAdjacencyTreePlan, OwnedPathHierarchyPlan, OwnedSourceAccess, OwnedSourceRef,
+    PathHierarchyPlan, RecursiveFilterPlan, ScopeIteration, ScopeSequence, SequenceExpr,
+    SourceSelector, SourceSelectorMut, SourceSelectorRef,
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,6 +37,7 @@ pub enum ScopeConstruction {
         elements: Vec<XmlMixedContentElement>,
     },
     /// Clone one group shape while recursively filtering one item collection.
+    /// With an owned source selector, that selector is the filter's only owner.
     RecursiveFilter { plan: RecursiveFilterPlan },
     /// Group scalar path strings into one bounded recursive directory tree.
     PathHierarchy { plan: PathHierarchyPlan },
@@ -226,6 +227,19 @@ impl Scope {
 
     pub fn has_sort(&self) -> bool {
         self.sort_by.is_some() || !self.sort_then_by.is_empty()
+    }
+
+    /// A recursive filter whose current group comes from this scope's owned
+    /// source selector. That selector is the filter's only owner; the plan's
+    /// children and items stay relative to each visited group.
+    pub fn owned_recursive_filter(&self) -> Option<(&OwnedSourceRef, &RecursiveFilterPlan)> {
+        match (&self.iteration, &self.construction) {
+            (
+                ScopeIteration::OwnedSource { source, .. },
+                ScopeConstruction::RecursiveFilter { plan },
+            ) => Some((source, plan)),
+            _ => None,
+        }
     }
 
     pub fn source_selector(&self) -> Option<SourceSelectorRef<'_>> {

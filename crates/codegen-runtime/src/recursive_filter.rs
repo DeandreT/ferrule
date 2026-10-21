@@ -1,9 +1,165 @@
+use crate::context::OwnedOwnerKey;
 use crate::{
-    Instance, MAX_RECURSIVE_SEQUENCE_DEPTH, RuntimeError, ScopeContext, Value, require_bool,
+    BasicScopeContext, Instance, MAX_RECURSIVE_SEQUENCE_DEPTH, RuntimeError, ScopeContext,
+    SourceOwnerRef, Value, require_bool,
 };
 use ir::{XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD};
 
 pub type RecursiveFilterPredicate = for<'a> fn(&ScopeContext<'a>) -> Result<Value, RuntimeError>;
+
+/// A predicate evaluated in the paired owned context of each item.
+pub type OwnedRecursiveFilterPredicate =
+    for<'a> fn(&BasicScopeContext<'a>) -> Result<Value, RuntimeError>;
+
+/// Filters the current group of a scope that iterates `collection` of one
+/// explicitly owned endpoint. That selector is the only owner: every visited
+/// group keeps its collection identity and every item that collection plus the
+/// item field, so owned predicate reads and positions never fall back to
+/// another endpoint. Traversal, limits and errors match [`recursive_filter`].
+pub fn owned_recursive_filter<'ctx>(
+    context: &BasicScopeContext<'ctx>,
+    owner: SourceOwnerRef<'_>,
+    collection: &[&str],
+    children: &str,
+    items: &str,
+    predicate_node: u32,
+    predicate: OwnedRecursiveFilterPredicate,
+) -> Result<Instance, RuntimeError> {
+    let (key, current) = context.owned_recursive_filter_root(owner, collection)?;
+    let group = collection
+        .iter()
+        .map(|segment| (*segment).to_owned())
+        .collect::<Vec<_>>();
+    let mut item_path = group.clone();
+    item_path.push(items.to_owned());
+    let walk = OwnedWalk {
+        retain: context.owned_frame_count(),
+        key,
+        group,
+        item_path,
+        children,
+        items,
+        predicate_node,
+        predicate,
+    };
+    walk.group(context, current, 0)
+}
+
+struct OwnedWalk<'p> {
+    /// The scope's own owned frames, kept beneath every recursive occurrence.
+    retain: usize,
+    key: OwnedOwnerKey,
+    group: Vec<String>,
+    item_path: Vec<String>,
+    children: &'p str,
+    items: &'p str,
+    predicate_node: u32,
+    predicate: OwnedRecursiveFilterPredicate,
+}
+
+impl OwnedWalk<'_> {
+    fn group<'ctx>(
+        &self,
+        context: &BasicScopeContext<'ctx>,
+        current: &'ctx Instance,
+        depth: usize,
+    ) -> Result<Instance, RuntimeError> {
+        if depth >= MAX_RECURSIVE_SEQUENCE_DEPTH {
+            return Err(RuntimeError::RecursiveFilterDepth {
+                limit: MAX_RECURSIVE_SEQUENCE_DEPTH,
+            });
+        }
+        let Instance::Group(fields) = current else {
+            return Err(RuntimeError::RecursiveFilterRequiresGroup {
+                found: instance_kind(current),
+            });
+        };
+        let mut output = Vec::with_capacity(fields.len());
+        let mut kept_items = None;
+        let mut filtered_children = false;
+        for (name, value) in fields {
+            let value = if name == self.items {
+                let (filtered, kept) = self.items(context, value)?;
+                kept_items = Some(kept);
+                filtered
+            } else if name == self.children {
+                filtered_children = true;
+                self.children(context, value, depth)?
+            } else {
+                value.clone()
+            };
+            output.push((name.clone(), value));
+        }
+        if kept_items.is_some() || filtered_children {
+            rebuild_ordered_xml(
+                fields,
+                &mut output,
+                self.items,
+                self.children,
+                kept_items.as_deref().unwrap_or(&[]),
+            );
+        }
+        Ok(Instance::Group((output).into()))
+    }
+
+    fn items<'ctx>(
+        &self,
+        context: &BasicScopeContext<'ctx>,
+        collection: &'ctx Instance,
+    ) -> Result<(Instance, Vec<bool>), RuntimeError> {
+        let Instance::Repeated(values) = collection else {
+            return Err(RuntimeError::RecursiveFilterRequiresCollection {
+                field: self.items.to_string(),
+                found: instance_kind(collection),
+            });
+        };
+        let mut output = Vec::with_capacity(values.len());
+        let mut kept = Vec::with_capacity(values.len());
+        for (index, item) in values.iter().enumerate() {
+            let item_context = context.with_owned_recursive_frame(
+                context.owned_frame_count(),
+                self.key,
+                &self.item_path,
+                item,
+                self.items,
+                index + 1,
+            )?;
+            let keep = require_bool(self.predicate_node, (self.predicate)(&item_context)?)?;
+            kept.push(keep);
+            if keep {
+                output.push(item.clone());
+            }
+        }
+        Ok((Instance::Repeated(output), kept))
+    }
+
+    fn children<'ctx>(
+        &self,
+        context: &BasicScopeContext<'ctx>,
+        collection: &'ctx Instance,
+        depth: usize,
+    ) -> Result<Instance, RuntimeError> {
+        let Instance::Repeated(values) = collection else {
+            return Err(RuntimeError::RecursiveFilterRequiresCollection {
+                field: self.children.to_string(),
+                found: instance_kind(collection),
+            });
+        };
+        let mut output = Vec::with_capacity(values.len());
+        for (index, child) in values.iter().enumerate() {
+            let child_context = context.with_owned_recursive_frame(
+                self.retain,
+                self.key,
+                &self.group,
+                child,
+                self.children,
+                index + 1,
+            )?;
+            output.push(self.group(&child_context, child, depth + 1)?);
+        }
+        Ok(Instance::Repeated(output))
+    }
+}
 
 /// Clones the current group while recursively filtering one repeated item
 /// field at every level of a repeated recursive child field.
@@ -220,6 +376,10 @@ const fn instance_kind(instance: &Instance) -> &'static str {
         Instance::DocumentSet(_) => "document set",
     }
 }
+
+#[cfg(test)]
+#[path = "owned_recursive_filter_tests.rs"]
+mod owned_tests;
 
 #[cfg(test)]
 mod tests {

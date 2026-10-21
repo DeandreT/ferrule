@@ -134,6 +134,15 @@ predicate, and an empty sequence never evaluates it. RecursiveCollect, FilterMap
 and closed operators inside the predicate remain closed. See
 [the Exists contract](owned-sequence-exists.md).
 
+## Owned recursive filtering
+
+A recursive-filter scope with an owned source selector filters groups from
+exactly that endpoint; the selector is its only owner and the plan's children
+and items stay relative to each visited group. Visited groups and items keep the
+owner and a same-shape collection identity, so the predicate's owned reads and
+positions resolve the current item and innermost group without falling back.
+See the [recursive filter contract](owned-recursive-filter.md).
+
 ## Existing coordinated issues
 
 Reuse these existing scopes; the capability column concerns **explicit ownership**.

@@ -212,6 +212,16 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_sequence_exists(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plans the explicit owned recursive-filter profile. The owned selector, like
+/// every exact owned read, is demand-driven; the composed recursive-collect
+/// environment is unchanged.
+pub fn legacy_named_input_admission_plan_with_basic_owned_recursive_filter(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_recursive_filter(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     admission_plan_with_primary_row_failures(program, false)
 }
