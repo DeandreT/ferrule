@@ -241,24 +241,40 @@ fn owned_row_paths_match_interpreter_and_generated_backends() -> TestResult<()> 
         );
     }
     let lowered = codegen::lower(&project)?;
+    let options = codegen_rust::Options {
+        package_name: "owned_row_paths_fixture".into(),
+        runtime_dependency: codegen_rust::RuntimeDependency::Path(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../codegen-runtime")
+                .display()
+                .to_string(),
+        ),
+    };
+    let ordinary_rust = match codegen_rust::emit(&lowered, &options) {
+        Err(codegen_rust::EmitError::InvalidProgram(error)) => error,
+        _ => panic!("ordinary Rust emission must retain its owned-source refusal"),
+    };
+    let ordinary_csharp = match codegen_csharp::emit(&lowered) {
+        Err(codegen_csharp::EmitError::ProgramValidation(error)) => error,
+        _ => panic!("ordinary C# emission must retain its owned-source refusal"),
+    };
+    for error in [ordinary_rust, ordinary_csharp] {
+        assert!(
+            matches!(error, codegen::ProgramValidationError::OwnedSource { diagnostic }
+            if matches!(diagnostic.as_ref(), codegen::OwnedSourceDiagnostic::Capability {
+                reason: codegen::OwnedSourceCapabilityReason::UnsupportedBasicContext,
+                location: codegen::OwnedSourceDiagnosticLocation::Expression { node: 1, .. },
+                ..
+            }))
+        );
+    }
     let directory = TempDir::new("owned_row_paths")?;
     for language in ["rust", "csharp"] {
         let output = directory.0.join(language);
         let artifacts = if language == "rust" {
-            codegen_rust::emit(
-                &lowered,
-                &codegen_rust::Options {
-                    package_name: "owned_row_paths_fixture".into(),
-                    runtime_dependency: codegen_rust::RuntimeDependency::Path(
-                        Path::new(env!("CARGO_MANIFEST_DIR"))
-                            .join("../codegen-runtime")
-                            .display()
-                            .to_string(),
-                    ),
-                },
-            )?
+            codegen_rust::emit_with_basic_owned_sources(&lowered, &options)?
         } else {
-            codegen_csharp::emit(&lowered)?
+            codegen_csharp::emit_with_basic_owned_sources(&lowered)?
         };
         for file in artifacts.files() {
             let path = output.join(file.path.as_str());
