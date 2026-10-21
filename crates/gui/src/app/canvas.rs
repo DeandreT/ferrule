@@ -40,7 +40,9 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
             else_,
         } => vec![*condition, *then, *else_],
         Node::ValueMap { input, .. } | Node::Lookup { matches: input, .. } => vec![*input],
-        Node::OwnedLookup(_) | Node::OwnedCollectionFind(_) => node.dependencies(),
+        Node::OwnedLookup(_) | Node::OwnedCollectionFind(_) | Node::OwnedAggregate(_) => {
+            node.dependencies()
+        }
         Node::DynamicSourceField { key, .. } => vec![*key],
         Node::OwnedDynamicSourceField(field) => vec![field.key],
         Node::XmlMixedContent { replacements, .. } => replacements

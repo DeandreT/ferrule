@@ -10,6 +10,18 @@ use super::*;
 pub(in crate::validate) enum SearchPolicy {
     Closed,
     Basic,
+    /// Owned search plus owned collection aggregates.
+    BasicWithAggregates,
+}
+
+impl SearchPolicy {
+    pub(in crate::validate) fn permits_search(self) -> bool {
+        self != Self::Closed
+    }
+
+    pub(in crate::validate) fn permits_aggregates(self) -> bool {
+        self == Self::BasicWithAggregates
+    }
 }
 
 /// Validate the owned recursive-filter chain (owned recursive filters, ItemAt
@@ -38,24 +50,36 @@ pub(super) fn lookup_structure(
     lookup: &mapping::OwnedLookup,
 ) -> Result<(), ProgramValidationError> {
     for relative in [&lookup.key, &lookup.value] {
-        let mut path = lookup.collection.path.clone();
-        path.extend(relative.iter().cloned());
-        let query = Request::Field {
-            owner: (&lookup.collection.owner).into(),
-            path,
-            frame: Some(lookup.collection.path.clone()),
-        };
-        structure(program, location.clone(), query.clone())?;
-        if let Some(found) = repeated_below(program, lookup, relative) {
-            return Err(ProgramValidationError::OwnedSource {
-                diagnostic: Diagnostic::Structure {
-                    location,
-                    request: query,
-                    reason: Structure::InvalidOwnedField { found },
-                }
-                .into(),
-            });
-        }
+        item_scalar_structure(program, location.clone(), &lookup.collection, relative)?;
+    }
+    Ok(())
+}
+
+/// An item-relative read names a scalar inside each selected item of
+/// `collection` without crossing another repetition below that item.
+pub(super) fn item_scalar_structure(
+    program: &Program,
+    location: Location,
+    collection: &mapping::OwnedSourceRef,
+    relative: &[String],
+) -> Result<(), ProgramValidationError> {
+    let mut path = collection.path.clone();
+    path.extend(relative.iter().cloned());
+    let query = Request::Field {
+        owner: (&collection.owner).into(),
+        path,
+        frame: Some(collection.path.clone()),
+    };
+    structure(program, location.clone(), query.clone())?;
+    if let Some(found) = repeated_below(program, collection, relative) {
+        return Err(ProgramValidationError::OwnedSource {
+            diagnostic: Diagnostic::Structure {
+                location,
+                request: query,
+                reason: Structure::InvalidOwnedField { found },
+            }
+            .into(),
+        });
     }
     Ok(())
 }
@@ -63,11 +87,11 @@ pub(super) fn lookup_structure(
 /// The first repeating occurrence strictly below the selected item, if any.
 fn repeated_below(
     program: &Program,
-    lookup: &mapping::OwnedLookup,
+    collection: &mapping::OwnedSourceRef,
     relative: &[String],
 ) -> Option<Shape> {
-    let root = endpoint(program, &(&lookup.collection.owner).into()).ok()?;
-    let mut occurrence = follow(root, &lookup.collection.path).ok()?;
+    let root = endpoint(program, &(&collection.owner).into()).ok()?;
+    let mut occurrence = follow(root, &collection.path).ok()?;
     for name in relative {
         occurrence = resolved(root, occurrence).ok()?.child(name)?;
         if occurrence.repeating {

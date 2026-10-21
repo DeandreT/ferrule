@@ -2,6 +2,8 @@ use super::*;
 use engine::DynamicSourceLoader;
 use ir::{ScalarType, Value};
 use mapping::{DynamicSourcePath, NamedSource};
+use std::cell::RefCell;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 struct TestDir(PathBuf);

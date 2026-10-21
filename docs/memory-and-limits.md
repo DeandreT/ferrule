@@ -62,6 +62,13 @@ error ordering, and additional schema/format limits.
 | Literal, fixed-length, regex, and integer-range generated sequences | At most 1,000,000 generated items; regex has additional pattern and compiled-program bounds |
 | PDF extraction input | 8 MiB before reading; event/node/value/depth caps apply later, and do not isolate upstream decompression or recursive content traversal |
 
+These per-feature bounds are not universal execution limits. A host that runs
+mappings it does not trust can opt into a
+[restricted execution profile](design/execution-profiles.md). That profile adds
+deny-by-default filesystem roots and HTTP origins, plus explicit work,
+evaluation-depth and join-row budgets. It enforces a policy inside the process
+and is not a sandbox.
+
 The [PDF worker contract](pdf-worker-contract.md) is a proposed filesystem host
 route for #104. Its Linux child, transport limits, deadline, cancellation and
 owned cleanup require implementation and qualification. Current PDF library and

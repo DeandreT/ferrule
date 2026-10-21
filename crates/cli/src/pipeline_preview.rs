@@ -81,6 +81,13 @@ impl<'a> PipelinePreviewOptions<'a> {
         self
     }
 
+    /// Applies a restricted policy's budgets to every previewed stage. Preview
+    /// payloads are host-owned bytes, so no location is acquired.
+    pub fn with_execution_policy(mut self, policy: &'a engine::ExecutionPolicy) -> Self {
+        self.callbacks.execution_policy = Some(policy);
+        self
+    }
+
     pub fn with_runtime_parameters(mut self, parameters: &'a engine::RuntimeParameters) -> Self {
         self.callbacks.runtime_parameters = Some(parameters);
         self
@@ -468,7 +475,8 @@ fn execute_preview(
         let mut context =
             ExecutionContext::with_main_mapping_file_path(&mapping_paths[stage], &main_path)
                 .with_purpose(ExecutionPurpose::Preview)
-                .with_current_datetime(&current_datetime);
+                .with_current_datetime(&current_datetime)
+                .with_policy(callbacks.policy());
         if let Some(debug) = &debug {
             debug.inner.stage.replace(stage.to_owned());
             context = context.with_debug_hook(debug);

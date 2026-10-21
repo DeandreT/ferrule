@@ -812,12 +812,34 @@ pub(super) fn validate_owned_item_scalar(
         issues.push(ValidationIssue::new(
             location,
             format!(
-                "owned lookup {label} `{}` is not a nonrepeating scalar under owned collection `{}`",
+                "{label} `{}` is not a nonrepeating scalar under owned collection `{}`",
                 path.join("/"),
                 collection.path.join("/")
             ),
         ));
     }
+}
+
+/// An owned aggregate value path names one scalar inside each selected item.
+/// Count never reads it, so its empty path also counts group items.
+pub(super) fn validate_owned_aggregate_value(
+    project: &Project,
+    aggregate: &mapping::OwnedAggregate,
+    value: &[String],
+    location: &str,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    if aggregate.function == mapping::AggregateOp::Count && value.is_empty() {
+        return;
+    }
+    validate_owned_item_scalar(
+        project,
+        &aggregate.collection,
+        value,
+        "owned aggregate value",
+        location,
+        issues,
+    );
 }
 
 pub(super) fn validate_owned_collection(
