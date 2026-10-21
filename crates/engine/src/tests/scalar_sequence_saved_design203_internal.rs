@@ -35,6 +35,7 @@ fn literal(value: &Value) -> Json {
         Value::Null => json!({"Null":null}),
         Value::JsonNull(origin) => json!({"JsonNull":format!("{origin:?}")}),
         Value::XmlNil(origin) => json!({"XmlNil":format!("{origin:?}")}),
+        Value::Decimal(value) => json!({"Decimal":value.to_string()}),
         Value::Bool(value) => json!({"Bool":value}),
         Value::Int(value) => json!({"Int":value}),
         Value::Float(value) => json!({"Float":value}),

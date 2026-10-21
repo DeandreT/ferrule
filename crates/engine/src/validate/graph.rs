@@ -106,6 +106,11 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
             Node::OwnedDynamicSourceField(field) => {
                 super::schema::validate_owned_dynamic_field(project, field, &location, issues)
             }
+            Node::OwnedXmlMixedContent(mixed) => {
+                super::mixed_content::validate_owned_mixed_content(
+                    project, mixed, &location, issues,
+                )
+            }
             Node::SequenceExists { sequence, .. }
             | Node::SequenceItemAt { sequence, .. }
             | Node::SequenceAggregate { sequence, .. }
@@ -740,8 +745,9 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
                 sources.insert(name.as_str());
             }
         }
-        Node::OwnedXmlSerialize(serializer) => {
-            if let mapping::SourceOwner::Named { name } = &serializer.source.owner
+        Node::OwnedXmlSerialize(mapping::OwnedXmlSerialize { source, .. })
+        | Node::OwnedXmlMixedContent(mapping::OwnedXmlMixedContent { source, .. }) => {
+            if let mapping::SourceOwner::Named { name } = &source.owner
                 && project
                     .extra_sources
                     .iter()
@@ -1381,6 +1387,16 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
         Node::DynamicSourceField { key, .. } => vec![("property name".into(), *key)],
         Node::OwnedDynamicSourceField(field) => vec![("property name".into(), field.key)],
         Node::XmlMixedContent { replacements, .. } => replacements
+            .iter()
+            .map(|replacement| {
+                (
+                    format!("replacement for `{}`", replacement.element),
+                    replacement.expression,
+                )
+            })
+            .collect(),
+        Node::OwnedXmlMixedContent(mixed) => mixed
+            .replacements
             .iter()
             .map(|replacement| {
                 (

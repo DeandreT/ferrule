@@ -155,6 +155,31 @@ pub(super) fn owned_source_title(node: &Node) -> Option<String> {
             owner(&position.collection.owner),
             position.collection.path,
         )),
+        Node::OwnedXmlMixedContent(mixed) => Some(format!(
+            "Owned XML mixed content: {}\nPath: {:?}\nFrame: {}\nReplacements: {}\nRead-only; owned mixed-content authoring is unavailable",
+            owner(&mixed.source.owner),
+            mixed.source.path,
+            frame(mixed.frame.as_deref()),
+            if mixed.replacements.is_empty() {
+                "none".to_owned()
+            } else {
+                mixed
+                    .replacements
+                    .iter()
+                    .map(|replacement| {
+                        format!(
+                            "{} ({})",
+                            replacement.element,
+                            match replacement.context {
+                                mapping::OwnedXmlMixedContentContext::Parent => "parent",
+                                mapping::OwnedXmlMixedContentContext::Occurrence => "occurrence",
+                            }
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            },
+        )),
         _ => None,
     }
 }
@@ -344,11 +369,18 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
         Node::OwnedPosition(_) => (Icon::ListOrdered, "owned".into()),
         Node::OwnedRowDocumentPath(_) => (Icon::ListOrdered, "row path".into()),
         Node::OwnedXmlSerialize(_) => (Icon::FileCode, "owned serialize".into()),
+        Node::OwnedXmlMixedContent(mixed) => (
+            Icon::FileCode,
+            format!(
+                "owned mixed {}",
+                mixed.source.path.last().map_or("root", String::as_str)
+            ),
+        ),
         Node::Const { value } => {
             let icon = match value {
                 ir::Value::String(_) => Icon::Type,
                 ir::Value::Int(_) => Icon::Hash,
-                ir::Value::Float(_) => Icon::Calculator,
+                ir::Value::Float(_) | ir::Value::Decimal(_) => Icon::Calculator,
                 ir::Value::Bool(_) => Icon::Binary,
                 ir::Value::Null | ir::Value::JsonNull(_) | ir::Value::XmlNil(_) => Icon::CircleHelp,
             };
@@ -714,6 +746,7 @@ pub(super) fn has_properties(node: &Node) -> bool {
             | Node::OwnedPosition(_)
             | Node::OwnedRowDocumentPath(_)
             | Node::OwnedXmlSerialize(_)
+            | Node::OwnedXmlMixedContent(_)
             | Node::Const { .. }
             | Node::Call { .. }
             | Node::SourceField { .. }
@@ -810,6 +843,20 @@ pub(super) fn hint(node: &Node, full_title: &str) -> String {
 }
 
 pub(super) fn input_pin_hint(node: Option<&Node>, index: usize) -> Option<String> {
+    if let Node::OwnedXmlMixedContent(mixed) = node? {
+        let replacement = mixed.replacements.get(index)?;
+        let context = match replacement.context {
+            mapping::OwnedXmlMixedContentContext::Parent => "parent context".to_owned(),
+            mapping::OwnedXmlMixedContentContext::Occurrence => format!(
+                "owned occurrence {}",
+                mixed.occurrence_collection(&replacement.element).join("/")
+            ),
+        };
+        return Some(format!(
+            "Input {index}: {}\nContext: {context}\nExpression: #{}",
+            replacement.element, replacement.expression,
+        ));
+    }
     let Node::XmlMixedContent { replacements, .. } = node? else {
         return None;
     };

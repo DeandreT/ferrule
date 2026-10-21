@@ -22,6 +22,7 @@ pub(super) fn constant_parts(value: &Value) -> (String, &'static str) {
         Value::Bool(value) => (value.to_string(), "boolean"),
         Value::Int(value) => (value.to_string(), "integer"),
         Value::Float(value) => (value.to_string(), "decimal"),
+        Value::Decimal(value) => (value.to_string(), "decimal"),
         Value::String(value) => (value.clone(), "string"),
         Value::XmlNil(_) => (String::new(), "string"),
     }
@@ -42,7 +43,7 @@ pub(super) fn scalar_type_name(ty: ScalarType) -> &'static str {
 
 pub(super) fn value_scalar_type(value: &Value) -> Option<ScalarType> {
     match value {
-        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => None,
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Decimal(_) => None,
         Value::Bool(_) => Some(ScalarType::Bool),
         Value::Int(_) => Some(ScalarType::Int),
         Value::Float(_) => Some(ScalarType::Float),

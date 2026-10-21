@@ -38,6 +38,11 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
             .iter()
             .map(|replacement| replacement.expression)
             .collect(),
+        Expression::OwnedXmlMixedContent(mixed) => mixed
+            .replacements
+            .iter()
+            .map(|replacement| replacement.expression)
+            .collect(),
         Expression::Call { args, .. } | Expression::UserFunctionCall { args, .. } => args.clone(),
         Expression::DelimitedTextField { input, .. } => vec![*input],
         Expression::If {

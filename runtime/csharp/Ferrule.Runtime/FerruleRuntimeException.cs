@@ -71,6 +71,7 @@ public enum FerruleRuntimeError
     OwnedSource,
     BasicSourceBridge,
     PrimaryFilenameType,
+    AggregateUnsupportedScalar,
     MissingInvocationCounters,
     InvocationCounterOperand,
     InvocationCounter,

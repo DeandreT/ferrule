@@ -88,7 +88,8 @@ impl GraphViewer<'_> {
                 | Node::OwnedXmlSerialize(_)
                 | Node::OwnedAggregate(_)
                 | Node::OwnedJoinField(_)
-                | Node::OwnedJoinSourcePosition(_)) => {
+                | Node::OwnedJoinSourcePosition(_)
+                | Node::OwnedXmlMixedContent(_)) => {
                     ui.label(
                         graph_node_presentation::owned_source_title(node).expect("owned title"),
                     );

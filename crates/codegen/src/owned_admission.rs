@@ -280,6 +280,25 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_joins(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plans the explicit owned XML mixed-content companion. The group read and
+/// each occurrence are demand-driven exact owned reads; parent replacements
+/// keep the receiving context's environments.
+pub fn legacy_named_input_admission_plan_with_basic_owned_xml_mixed_content(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_xml_mixed_content(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
+/// Plans the explicit owned mixed-content construction companion. The owned
+/// selector is demand-driven like every owned iteration.
+pub fn legacy_named_input_admission_plan_with_basic_owned_xml_mixed_construction(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_xml_mixed_construction(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     admission_plan_with_primary_row_failures(program, false)
 }
@@ -709,6 +728,23 @@ impl<'a> Analysis<'a> {
                 | Expression::OwnedJoinField(_)
                 | Expression::OwnedJoinSourcePosition(_) => {}
                 Expression::OwnedXmlSerialize(_) => {}
+                // The group read is demand-driven; an occurrence replacement
+                // reads its own owned occurrence of the same endpoint.
+                Expression::OwnedXmlMixedContent(mixed) => {
+                    for replacement in &mixed.replacements {
+                        let item = match replacement.context {
+                            mapping::OwnedXmlMixedContentContext::Parent => context,
+                            mapping::OwnedXmlMixedContentContext::Occurrence => self.child(
+                                context,
+                                Step::OwnedSource(mapping::OwnedSourceRef {
+                                    owner: mixed.source.owner.clone(),
+                                    path: mixed.occurrence_collection(&replacement.element),
+                                }),
+                            ),
+                        };
+                        self.queue(namespace, item, replacement.expression);
+                    }
+                }
                 // The owned walk is demand-driven; the needle stays in the parent.
                 Expression::OwnedLookup(lookup) => self.queue(namespace, context, lookup.matches),
                 Expression::OwnedCollectionFind(find) => {

@@ -1,16 +1,23 @@
 use format_json::{JsonFormatError, json_schema};
 use ir::{Instance, SchemaKind, SchemaNode, Value, XmlTypeOrigin};
 use serde_json::{Value as Json, json};
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 fn evidence() -> PathBuf {
+    // Windows clock readings can repeat across concurrently running tests.
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "ferrule-nested-array-native-{}-{}",
+        "ferrule-nested-array-native-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&root).unwrap();
     fs::write(
@@ -77,6 +84,7 @@ fn full(value: &Instance) -> Json {
             Value::Null => json!({"kind":"Null"}),
             Value::JsonNull(_) => json!({"kind":"JsonNull"}),
             Value::XmlNil(_) => json!({"kind":"XmlNil"}),
+            Value::Decimal(value) => json!({"kind":"Decimal","value":value.to_string()}),
         }}),
         Instance::Repeated(items) => {
             json!({"kind":"Repeated","items":items.iter().map(full).collect::<Vec<_>>()})

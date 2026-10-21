@@ -243,6 +243,7 @@ fn wire(instance: &Instance) -> serde_json::Value {
             Value::Int(value) => json!({"kind":"int", "value":value}),
             Value::String(value) => json!({"kind":"string", "value":value}),
             Value::Float(_) => panic!("frontier fixture has no float"),
+            Value::Decimal(_) => panic!("frontier fixture has no decimal"),
         },
         Instance::Group(fields) => {
             json!({"kind":"group", "fields": fields.iter().map(|(name,value)|

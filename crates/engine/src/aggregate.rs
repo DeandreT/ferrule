@@ -69,6 +69,12 @@ pub(crate) fn aggregate(
             ))
         }
         AggregateOp::ItemAt => {
+            if matches!(arg, Some(Value::Decimal(_))) {
+                return Err(EngineError::AggregateUnsupportedScalar {
+                    function,
+                    found: "decimal",
+                });
+            }
             // 1-based, XPath style; anything out of range is Null.
             let index = arg.as_ref().and_then(|value| match value {
                 Value::Int(value) => Some(*value),
@@ -150,11 +156,21 @@ fn numeric_values(
     function: mapping::AggregateOp,
     values: &[Value],
 ) -> Result<Vec<NumericValue>, EngineError> {
-    values
-        .iter()
-        .filter_map(|value| numeric_value(value).transpose())
-        .collect::<Result<_, _>>()
-        .map_err(|()| EngineError::AggregateNonFinite { function })
+    let mut numbers = Vec::new();
+    for value in values {
+        if matches!(value, Value::Decimal(_)) {
+            return Err(EngineError::AggregateUnsupportedScalar {
+                function,
+                found: "decimal",
+            });
+        }
+        if let Some(number) =
+            numeric_value(value).map_err(|()| EngineError::AggregateNonFinite { function })?
+        {
+            numbers.push(number);
+        }
+    }
+    Ok(numbers)
 }
 
 fn finite_float(function: mapping::AggregateOp, value: f64) -> Result<f64, EngineError> {
@@ -295,6 +311,7 @@ pub(crate) fn sort_value_ordering(left: &Value, right: &Value) -> std::cmp::Orde
         (Value::Int(left), Value::Float(right)) => compare_int_float(*left, *right),
         (Value::Float(left), Value::Int(right)) => compare_int_float(*right, *left).reverse(),
         (Value::String(left), Value::String(right)) => left.cmp(right),
+        (Value::Decimal(left), Value::Decimal(right)) => left.cmp(right),
         (Value::XmlNil(_), Value::XmlNil(_)) => Ordering::Equal,
         _ => sort_value_rank(left).cmp(&sort_value_rank(right)),
     }
@@ -307,6 +324,7 @@ fn sort_value_rank(value: &Value) -> u8 {
         Value::Int(_) | Value::Float(_) => 2,
         Value::String(_) => 3,
         Value::XmlNil(_) => 4,
+        Value::Decimal(_) => 5,
     }
 }
 
@@ -316,6 +334,86 @@ fn value_text(value: &Value) -> String {
         Value::Bool(value) => value.to_string(),
         Value::Int(value) => value.to_string(),
         Value::Float(value) => value.to_string(),
+        Value::Decimal(value) => value.to_string(),
         Value::String(value) => value.clone(),
+    }
+}
+
+#[cfg(test)]
+mod decimal_tests {
+    use super::*;
+
+    #[test]
+    fn decimal_numeric_aggregates_fail_without_dropping_any_position() {
+        for function in [
+            mapping::AggregateOp::Sum,
+            mapping::AggregateOp::Avg,
+            mapping::AggregateOp::Min,
+            mapping::AggregateOp::Max,
+        ] {
+            for index in 0..3 {
+                let mut values = vec![Value::Int(1), Value::Int(2), Value::Int(3)];
+                values[index] = Value::decimal(ir::Decimal96::parse_exact("0.1").unwrap());
+                assert!(matches!(
+                    aggregate(function, 3, &values, None),
+                    Err(EngineError::AggregateUnsupportedScalar {
+                        found: "decimal",
+                        ..
+                    })
+                ));
+            }
+        }
+        let decimal = Value::decimal(ir::Decimal96::parse_exact("9007199254740993").unwrap());
+        assert_eq!(
+            aggregate(
+                mapping::AggregateOp::Count,
+                1,
+                std::slice::from_ref(&decimal),
+                None
+            )
+            .unwrap(),
+            Value::Int(1)
+        );
+        assert_eq!(
+            aggregate(
+                mapping::AggregateOp::ItemAt,
+                1,
+                std::slice::from_ref(&decimal),
+                Some(Value::Int(1))
+            )
+            .unwrap(),
+            decimal
+        );
+        assert_eq!(
+            aggregate(
+                mapping::AggregateOp::Join,
+                1,
+                std::slice::from_ref(&decimal),
+                None
+            )
+            .unwrap(),
+            Value::String("9007199254740993".into())
+        );
+        assert!(matches!(
+            aggregate(
+                mapping::AggregateOp::ItemAt,
+                1,
+                &[Value::Int(1)],
+                Some(decimal)
+            ),
+            Err(EngineError::AggregateUnsupportedScalar { .. })
+        ));
+    }
+
+    #[test]
+    fn decimal_sorting_keeps_a_separate_exact_domain() {
+        let a = Value::decimal(ir::Decimal96::parse_exact("9007199254740992").unwrap());
+        let b = Value::decimal(ir::Decimal96::parse_exact("9007199254740993").unwrap());
+        assert_eq!(sort_value_ordering(&a, &b), std::cmp::Ordering::Less);
+        assert_eq!(
+            sort_value_ordering(&a, &Value::Int(9007199254740992)),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(sort_value_ordering(&a, &a), std::cmp::Ordering::Equal);
     }
 }

@@ -126,11 +126,25 @@ pub fn rows_plan(lookup_first: bool) -> OwnedJoinPlan {
 /// Tuple reads for `join`: Primary and Lookup row codes at `base + 1/2`, their
 /// raw positions at `base + 3/4` and the flattened position at `base + 5`.
 fn tuple_nodes(project: &mut Project, join: u64, base: u32) {
-    insert(project, base + 1, join_field(join, "Primary", &["Rows"], &["code"]));
-    insert(project, base + 2, join_field(join, LOOKUP, &["Rows"], &["code"]));
+    insert(
+        project,
+        base + 1,
+        join_field(join, "Primary", &["Rows"], &["code"]),
+    );
+    insert(
+        project,
+        base + 2,
+        join_field(join, LOOKUP, &["Rows"], &["code"]),
+    );
     insert(project, base + 3, join_position(join, "Primary", &["Rows"]));
     insert(project, base + 4, join_position(join, LOOKUP, &["Rows"]));
-    insert(project, base + 5, Node::JoinPosition { join: JoinId::new(join) });
+    insert(
+        project,
+        base + 5,
+        Node::JoinPosition {
+            join: JoinId::new(join),
+        },
+    );
 }
 /// A `Row` scope binding the five tuple reads starting at `base + 1`.
 fn rows(join: u64, plan: OwnedJoinPlan, base: u32) -> Scope {
@@ -159,7 +173,10 @@ pub fn base() -> Project {
             SchemaNode::group("Row", tuple_fields()).repeating(),
             SchemaNode::group(
                 "Order",
-                vec![int("id"), SchemaNode::group("Row", tuple_fields()).repeating()],
+                vec![
+                    int("id"),
+                    SchemaNode::group("Row", tuple_fields()).repeating(),
+                ],
             )
             .repeating(),
             SchemaNode::group("Best", tuple_fields()),
@@ -168,7 +185,10 @@ pub fn base() -> Project {
     );
     let audit = SchemaNode::group(
         "Audit",
-        vec![SchemaNode::group("Row", tuple_fields()).repeating(), string("Value")],
+        vec![
+            SchemaNode::group("Row", tuple_fields()).repeating(),
+            string("Value"),
+        ],
     );
     let mut project = Project {
         source: endpoint_schema("Input"),
@@ -230,8 +250,12 @@ pub fn project(profile: &str) -> Project {
             let plan = OwnedJoinPlan::new(
                 OwnedJoinSource::new(source("Primary", &["Rows"])),
                 OwnedJoinSource::new(source(LOOKUP, &["Rows"])),
-                OwnedJoinConditions::new(key("Primary", &["Rows"], &["id"], &["id"]))
-                    .and(key("Primary", &["Rows"], &["code"], &["code"])),
+                OwnedJoinConditions::new(key("Primary", &["Rows"], &["id"], &["id"])).and(key(
+                    "Primary",
+                    &["Rows"],
+                    &["code"],
+                    &["code"],
+                )),
             )
             .and_then(|plan| {
                 plan.then(
@@ -247,7 +271,11 @@ pub fn project(profile: &str) -> Project {
                 OwnedJoinConditions::new(key("Primary", &["Header", "code"], &[], &["code"])),
             )
             .expect("authored owned plan");
-            insert(&mut p, 11, join_field(2, "Primary", &["Header", "code"], &[]));
+            insert(
+                &mut p,
+                11,
+                join_field(2, "Primary", &["Header", "code"], &[]),
+            );
             insert(&mut p, 13, join_position(2, "Primary", &["Header", "code"]));
             p.extra_targets[0].root.children = vec![rows(2, audit, 10)];
         }
@@ -291,7 +319,11 @@ pub fn project(profile: &str) -> Project {
                 )
             })
             .expect("authored owned plan");
-            insert(&mut p, 1, join_field(1, "Primary", &["Orders", "Lines"], &["sku"]));
+            insert(
+                &mut p,
+                1,
+                join_field(1, "Primary", &["Orders", "Lines"], &["sku"]),
+            );
             insert(&mut p, 3, join_position(1, "Primary", &["Orders"]));
             insert(&mut p, 4, join_position(1, "Primary", &["Orders", "Lines"]));
             insert(
@@ -318,7 +350,11 @@ pub fn project(profile: &str) -> Project {
                 OwnedJoinConditions::new(key(LOOKUP, &["Orders", "Lines"], &["order"], &["id"])),
             )
             .expect("authored owned plan");
-            insert(&mut p, 11, join_field(2, LOOKUP, &["Orders", "Lines"], &["sku"]));
+            insert(
+                &mut p,
+                11,
+                join_field(2, LOOKUP, &["Orders", "Lines"], &["sku"]),
+            );
             insert(&mut p, 12, join_field(2, LOOKUP, &["Orders"], &["code"]));
             insert(&mut p, 13, join_position(2, LOOKUP, &["Orders", "Lines"]));
             insert(&mut p, 14, join_position(2, LOOKUP, &["Orders"]));
@@ -369,8 +405,10 @@ pub fn project(profile: &str) -> Project {
                 SequenceWindow::SkipFirst { count: 41 },
                 SequenceWindow::Last { count: 42 },
             ];
-            p.extra_targets[0].root.children[0].windows =
-                vec![SequenceWindow::FromTo { first: 42, last: 43 }];
+            p.extra_targets[0].root.children[0].windows = vec![SequenceWindow::FromTo {
+                first: 42,
+                last: 43,
+            }];
         }
         // An ordinary Boolean filter keeps two tuples; the audit filter's
         // string result at tuple 2 is a typed Boolean failure.
@@ -378,7 +416,15 @@ pub fn project(profile: &str) -> Project {
             call(&mut p, 50, "equal", &[1, 44]);
             p.root.children[0].filter = Some(50);
             call(&mut p, 51, "equal", &[15, 42]);
-            insert(&mut p, 52, Node::If { condition: 51, then: 46, else_: 45 });
+            insert(
+                &mut p,
+                52,
+                Node::If {
+                    condition: 51,
+                    then: 46,
+                    else_: 45,
+                },
+            );
             p.extra_targets[0].root.children[0].filter = Some(52);
         }
         _ => panic!("authored profile {profile}"),

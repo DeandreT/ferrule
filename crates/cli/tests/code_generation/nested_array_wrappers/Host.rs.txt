@@ -83,6 +83,7 @@ fn full(instance: &Instance) -> Json {
             Value::Bool(value) => json!({"kind":"Bool","value":value}),
             Value::String(value) => json!({"kind":"String","value":value}),
             Value::Float(value) => json!({"kind":"Float","bits":format!("{:016x}",value.to_bits())}),
+            Value::Decimal(value) => json!({"kind":"Decimal","value":value.to_string()}),
         }}),
         Instance::Repeated(items) => {
             json!({"kind":"Repeated","items":items.iter().map(full).collect::<Vec<_>>()})

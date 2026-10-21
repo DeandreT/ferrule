@@ -612,7 +612,7 @@ fn lexical<'a>(value: &'a Value, name: &str) -> Result<Option<Cow<'a, str>>, Edi
                 element: name.into(),
             });
         }
-        Value::XmlNil(_) => {
+        Value::XmlNil(_) | Value::Decimal(_) => {
             return Err(EdiFormatError::ValueType {
                 element: name.into(),
                 expected: ScalarType::String,

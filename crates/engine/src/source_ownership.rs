@@ -949,6 +949,29 @@ impl<'a> Admission<'a> {
                             ));
                         }
                     }
+                    // The group read has the field's frame rules; replacement
+                    // expressions stay Basic demands of this same context.
+                    Node::OwnedXmlMixedContent(mixed) => {
+                        self.static_owner(
+                            &mixed.source.owner,
+                            &mixed.source.path,
+                            mixed.frame.as_deref(),
+                            Some(id),
+                            None,
+                        )?;
+                        if let Some(frame) = &mixed.frame
+                            && !mixed.source.path.starts_with(frame)
+                        {
+                            return Err(access_error(
+                                Some(id),
+                                None,
+                                OwnedSourceError::UnsupportedFramePathCombination {
+                                    path: mixed.source.path.clone(),
+                                    frame: frame.clone(),
+                                },
+                            ));
+                        }
+                    }
                     _ => unreachable!("owned kind identifies owned payload"),
                 }
                 self.summary.used_owned = true;
@@ -1147,8 +1170,8 @@ fn owned_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
         | Node::OwnedAggregate(_)
         | Node::OwnedRowDocumentPath(_) => false,
         Node::UserFunctionCall { .. } | Node::OwnedDynamicSourceField(_) => false,
-        // Owned XML serialization is a target-context operator only.
-        Node::OwnedXmlSerialize(_) => false,
+        // Owned XML operators are target-context operators only.
+        Node::OwnedXmlSerialize(_) | Node::OwnedXmlMixedContent(_) => false,
         Node::SourceField { path, frame } => ![Some(path.as_slice()), frame.as_deref()]
             .into_iter()
             .flatten()
@@ -1269,6 +1292,11 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
         | ScopeConstruction::Scalar { .. }
         | ScopeConstruction::OwnedPathHierarchy { .. }
         | ScopeConstruction::OwnedAdjacencyTree { .. } => OwnedCapabilityContext::Basic,
+        // Only the scope's own owned selector qualifies a mixed-content
+        // construction; grouped and legacy-selected forms stay closed.
+        ScopeConstruction::XmlMixedContent { .. } if owned_mixed_construction(scope) => {
+            OwnedCapabilityContext::Basic
+        }
         ScopeConstruction::XmlMixedContent { .. } => OwnedCapabilityContext::XmlOperator,
         // Only the scope's own owned selector qualifies a recursive filter.
         ScopeConstruction::RecursiveFilter { .. } if scope.owned_recursive_filter().is_some() => {
@@ -1279,6 +1307,17 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
         | ScopeConstruction::AdjacencyTree { .. } => OwnedCapabilityContext::TreeOperator,
         ScopeConstruction::CopyCurrentSource => OwnedCapabilityContext::SpecialConstruction,
     }
+}
+
+/// An ungrouped scope whose own owned selector supplies the constructed
+/// mixed-content item.
+pub(crate) fn owned_mixed_construction(scope: &Scope) -> bool {
+    matches!(
+        scope.construction,
+        ScopeConstruction::XmlMixedContent { .. }
+    ) && matches!(scope.source_selector(), Some(SourceSelectorRef::Owned(_)))
+        && !scope.has_grouping()
+        && scope.post_group_filter.is_none()
 }
 
 /// Parent-context ItemAt producers. The owned recursive walk is qualified

@@ -112,7 +112,8 @@ pub(in crate::export) fn selector_context_warnings(
                 | Node::OwnedXmlSerialize(_)
                 | Node::OwnedAggregate(_)
                 | Node::OwnedJoinField(_)
-                | Node::OwnedJoinSourcePosition(_) => {
+                | Node::OwnedJoinSourcePosition(_)
+                | Node::OwnedXmlMixedContent(_) => {
                     self.warnings
                         .insert(format!("owned source node {id} has no export capability"));
                 }
