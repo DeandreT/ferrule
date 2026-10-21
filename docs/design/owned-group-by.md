@@ -77,6 +77,27 @@ runtimes. They remain representation-specific; the group companion does not
 change old factory, walk or phase ceilings. Arithmetic and buffer representability
 are checked before allocation.
 
+A retained phase keeps the original cohort, the current phase and the new output
+alive together, so both ceilings size the walk term as `K = 3W`:
+
+```text
+K = 3W                         original, current-phase and output sets
+V = K + 1
+G = F + P + 1                  recursion depth
+D = 2P + 2                     diagnostic slots
+C = 2R + 1 + (K + 2)F Q + 2(F + 1) + K + D
+X = V(L + F)(P + 2) + 5R + 2G(L + F + 2)(P + 2) + 2V
+E_R = C + X + D + W + 5                     Rust retained_phase_bounds
+E_C = C + 2K + F Q + 2(F + 1) + 3X + D + 2W + 5 + K + 4V + G + 5
+                                            C# BasicSourceAccounting.Maximum(limits, true)
+```
+
+`C` is the owned core envelope and `X` the paired legacy/owned bridge cells, both
+evaluated at `K`. Every term is checked; an overflow reports
+`PairedMetadataArithmeticOverflow` for `MetadataSlots` before any phase copy. The
+runtime tests pin `E_R` = 53 and 2042 and `E_C` = 143 and 5957 for limits
+`(R, F, P, W)` = `(1, 0, 0, 0)` and `(2, 2, 3, 3)`.
+
 For actual candidate count `n <= W`, sort-key count `k`, evaluated-window count
 `h` (including implicit First), and `s = 1` when sorting is present:
 
