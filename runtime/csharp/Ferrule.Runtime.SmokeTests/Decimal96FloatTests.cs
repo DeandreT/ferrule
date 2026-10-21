@@ -19,6 +19,8 @@ internal static partial class Program
             Equal(actual.Negated(), FerruleDecimal96.FromDouble(-input));
         }
         Equal("79228162514264300000000000000", FerruleDecimal96.FromDouble(BitConverter.UInt64BitsToDouble(0x45ef_ffff_ffff_ffff)).ToString());
+        Equal("0", FerruleDecimal96.FromDouble(BitConverter.UInt64BitsToDouble(0x3a0f_b0f6_be50_601aUL)).ToString());
+        Equal("0.0000000000000000000000000001", FerruleDecimal96.FromDouble(BitConverter.UInt64BitsToDouble(0x3a0f_b0f6_be50_601bUL)).ToString());
         foreach (var input in new[] { double.NaN, double.PositiveInfinity, double.NegativeInfinity,
             double.MaxValue, -double.MaxValue, BitConverter.UInt64BitsToDouble(0x45f0_0000_0000_0000) })
         {

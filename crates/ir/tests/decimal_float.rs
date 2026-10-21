@@ -25,7 +25,13 @@ fn explicit_binary64_conversion_has_canonical_fifteen_digit_results() {
 
 #[test]
 fn underflow_overflow_and_nonfinite_values_have_explicit_boundaries() {
-    for bits in [0, 1, 0x000f_ffff_ffff_ffff, (5e-29_f64).to_bits() - 1] {
+    for bits in [
+        0,
+        1,
+        0x000f_ffff_ffff_ffff,
+        (5e-29_f64).to_bits() - 1,
+        (5e-29_f64).to_bits() + 1,
+    ] {
         assert_eq!(
             Decimal96::from_f64(f64::from_bits(bits)),
             Ok(Decimal96::ZERO)
@@ -35,7 +41,8 @@ fn underflow_overflow_and_nonfinite_values_have_explicit_boundaries() {
             Ok(Decimal96::ZERO)
         );
     }
-    let above_half = f64::from_bits((5e-29_f64).to_bits() + 1);
+    // The first adjacent value still scales to the exact binary64 half-unit.
+    let above_half = f64::from_bits((5e-29_f64).to_bits() + 2);
     assert_eq!(
         Decimal96::from_f64(above_half).unwrap().to_string(),
         "0.0000000000000000000000000001"
