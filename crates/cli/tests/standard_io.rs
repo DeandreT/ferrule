@@ -38,11 +38,17 @@ fn run_with_stdin(args: &[&str], input: &[u8]) -> anyhow::Result<std::process::O
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
-    child
+    let written = child
         .stdin
         .take()
         .context("child stdin was unavailable")?
-        .write_all(input)?;
+        .write_all(input);
+    // A refusal can exit before reading stdin; its status and streams still
+    // carry the result under test.
+    match written {
+        Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => {}
+        written => written?,
+    }
     Ok(child.wait_with_output()?)
 }
 
