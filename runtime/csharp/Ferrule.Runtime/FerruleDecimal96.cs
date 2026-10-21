@@ -10,6 +10,7 @@ public enum FerruleDecimalError
     InvalidScale,
     Overflow,
     PrecisionLoss,
+    InvalidNumberLexical,
 }
 
 public sealed class FerruleDecimalException : Exception
@@ -21,6 +22,7 @@ public sealed class FerruleDecimalException : Exception
         FerruleDecimalError.InvalidScale => "decimal scale must not exceed 28",
         FerruleDecimalError.Overflow => "decimal coefficient exceeds the 96-bit range",
         FerruleDecimalError.PrecisionLoss => "decimal cannot be represented without rounding",
+        FerruleDecimalError.InvalidNumberLexical => "expected an ASCII decimal number with an optional exponent",
         _ => throw new ArgumentOutOfRangeException(nameof(error)),
     }) => Error = error;
 
@@ -82,6 +84,13 @@ public readonly struct FerruleDecimal96 : IEquatable<FerruleDecimal96>, ICompara
         catch (FormatException) { throw new FerruleDecimalException(FerruleDecimalError.InvalidLexical); }
     }
 
+    /// <summary>Explicit binary64 conversion using .NET's fifteen-digit decimal policy.</summary>
+    public static FerruleDecimal96 FromDouble(double value)
+    {
+        try { return new((decimal)value); }
+        catch (OverflowException) { throw new FerruleDecimalException(FerruleDecimalError.Overflow); }
+    }
+
     public static FerruleDecimal96 ParseExact(string text)
     {
         var result = ParseRounded(text);
@@ -97,13 +106,62 @@ public readonly struct FerruleDecimal96 : IEquatable<FerruleDecimal96>, ICompara
         return result;
     }
 
-    private static void ValidateLexical(string text)
+    /// <summary>Trims numeric text; exponent forms explicitly pass through binary64.</summary>
+    public static FerruleDecimal96 ParseNumber(string text)
     {
-        if (text is null) throw new FerruleDecimalException(FerruleDecimalError.InvalidLexical);
+        ValidateTextSize(text, FerruleDecimalError.InvalidNumberLexical);
+        text = text.Trim();
+        if (text is "NaN" or "INF" or "-INF") throw new FerruleDecimalException(FerruleDecimalError.Overflow);
+        if (!HasExponent(text)) return ParseRounded(text);
+        try
+        {
+            return FromDouble(double.Parse(text,
+                NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent,
+                CultureInfo.InvariantCulture));
+        }
+        catch (FormatException) { throw new FerruleDecimalException(FerruleDecimalError.InvalidNumberLexical); }
+        catch (OverflowException) { throw new FerruleDecimalException(FerruleDecimalError.Overflow); }
+    }
+
+    private static bool HasExponent(string text)
+    {
+        int index = text.Length > 0 && text[0] is '+' or '-' ? 1 : 0;
+        int start = index;
+        while (index < text.Length && text[index] is >= '0' and <= '9') index++;
+        int digits = index - start;
+        if (index < text.Length && text[index] == '.')
+        {
+            index++;
+            start = index;
+            while (index < text.Length && text[index] is >= '0' and <= '9') index++;
+            digits += index - start;
+        }
+        if (digits == 0) throw new FerruleDecimalException(FerruleDecimalError.InvalidNumberLexical);
+        bool exponent = index < text.Length && text[index] is 'e' or 'E';
+        if (exponent)
+        {
+            index++;
+            if (index < text.Length && text[index] is '+' or '-') index++;
+            start = index;
+            while (index < text.Length && text[index] is >= '0' and <= '9') index++;
+            if (index == start) throw new FerruleDecimalException(FerruleDecimalError.InvalidNumberLexical);
+        }
+        if (index != text.Length) throw new FerruleDecimalException(FerruleDecimalError.InvalidNumberLexical);
+        return exponent;
+    }
+
+    private static void ValidateTextSize(string text, FerruleDecimalError invalid = FerruleDecimalError.InvalidLexical)
+    {
+        if (text is null) throw new FerruleDecimalException(invalid);
         int bytes;
         try { bytes = StrictUtf8.GetByteCount(text); }
-        catch (EncoderFallbackException) { throw new FerruleDecimalException(FerruleDecimalError.InvalidLexical); }
+        catch (EncoderFallbackException) { throw new FerruleDecimalException(invalid); }
         if (bytes > MaximumLexicalBytes) throw new FerruleDecimalException(FerruleDecimalError.InputTooLong);
+    }
+
+    private static void ValidateLexical(string text)
+    {
+        ValidateTextSize(text);
         int start = text.Length > 0 && text[0] is '+' or '-' ? 1 : 0;
         bool dot = false, digit = false;
         for (int index = start; index < text.Length; index++)

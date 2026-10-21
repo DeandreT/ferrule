@@ -4,7 +4,8 @@ use ir::{SchemaKind, SchemaNode, XML_TYPE_FIELD};
 use mapping::{IterationOutput, JoinId, Node, Project, Scope, ScopeConstruction, ScopeIteration};
 
 use super::join::{
-    is_root_context, validate_plan as validate_join_plan, validate_root_singletons,
+    is_root_context, validate_owned_plan as validate_owned_join_plan,
+    validate_plan as validate_join_plan, validate_root_singletons,
     validate_roots as validate_join_roots, validate_scope_nodes as validate_scope_join_nodes,
 };
 use super::schema::{
@@ -281,10 +282,12 @@ pub(super) fn validate_scope(
                 &location,
                 "copy-current-source construction cannot iterate a generated sequence",
             )),
-            ScopeIteration::InnerJoin { .. } => issues.push(ValidationIssue::new(
-                &location,
-                "copy-current-source construction cannot iterate an inner join",
-            )),
+            ScopeIteration::InnerJoin { .. } | ScopeIteration::OwnedInnerJoin { .. } => {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    "copy-current-source construction cannot iterate an inner join",
+                ));
+            }
             ScopeIteration::Concatenate(_) => unreachable!("handled above"),
             ScopeIteration::None
             | ScopeIteration::Source(_)
@@ -378,10 +381,12 @@ pub(super) fn validate_scope(
                 &location,
                 "recursive-filter construction cannot iterate a generated sequence",
             )),
-            ScopeIteration::InnerJoin { .. } => issues.push(ValidationIssue::new(
-                &location,
-                "recursive-filter construction cannot iterate an inner join",
-            )),
+            ScopeIteration::InnerJoin { .. } | ScopeIteration::OwnedInnerJoin { .. } => {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    "recursive-filter construction cannot iterate an inner join",
+                ));
+            }
             ScopeIteration::Concatenate(_) => unreachable!("handled above"),
             ScopeIteration::None
             | ScopeIteration::Source(_)
@@ -582,6 +587,26 @@ pub(super) fn validate_scope(
                 .map(|source| source.collection().to_vec())
                 .collect(),
         ));
+        if scope.has_grouping() {
+            issues.push(ValidationIssue::new(
+                &location,
+                "inner join iteration cannot be combined with grouping controls",
+            ));
+        }
+    }
+    // Owned join identities are validated here but never become active joins:
+    // join fields and execution stay closed for them.
+    if let Some((join, plan)) = scope.iteration.owned_join() {
+        validate_owned_join_plan(project, join, plan, &location, issues);
+        if let Some(first) = join_owners.insert(join, location.clone()) {
+            issues.push(ValidationIssue::new(
+                &location,
+                format!(
+                    "join id {} is already owned by {first}; each join scope requires a unique id",
+                    join.get()
+                ),
+            ));
+        }
         if scope.has_grouping() {
             issues.push(ValidationIssue::new(
                 &location,

@@ -192,8 +192,9 @@ fn lower_with_validator(
         ));
     }
 
-    // Owned document outputs remain closed at their complete original route.
-    // All static Basic selectors continue through unchanged lowering reachability.
+    // Owned document outputs and owned joins remain closed at their complete
+    // original route. All static Basic selectors continue through unchanged
+    // lowering reachability.
     if let Some(diagnostic) = owned_document_diagnostic(project) {
         return Err(LowerError::new(vec![diagnostic]));
     }
@@ -943,6 +944,7 @@ fn lower_iteration(scope: &Scope) -> Result<Option<IterationPlan>, Diagnostic> {
         ScopeIteration::InnerJoin { id, plan } => {
             InnerJoin::new(JoinId::from(*id), JoinPlan::from_mapping(plan)).into()
         }
+        ScopeIteration::OwnedInnerJoin { .. } => unreachable!("owned join preflight"),
         ScopeIteration::None | ScopeIteration::Concatenate(_) => return Ok(None),
     };
     let grouping = if let Some(key) = scope.group_by {
@@ -1511,6 +1513,23 @@ fn owned_document_diagnostic(project: &Project) -> Option<Diagnostic> {
                         namespace: crate::OwnedSourceNamespace::Main,
                         node: *node,
                     },
+                }
+                .into(),
+            });
+        }
+        if let Some((_, plan)) = scope.iteration.owned_join() {
+            let first = plan.sources().next().map(|source| source.collection());
+            return Some(Diagnostic::OwnedSource {
+                diagnostic: crate::OwnedSourceDiagnostic::Capability {
+                    location: crate::OwnedSourceDiagnosticLocation::Iteration {
+                        scope: route.clone(),
+                    },
+                    request: first.map(|source| crate::OwnedSourceDiagnosticRequest::Iteration {
+                        owner: (&source.owner).into(),
+                        path: source.path.clone(),
+                    }),
+                    reason: crate::OwnedSourceCapabilityReason::Join,
+                    origin: crate::OwnedSourceCapabilityOrigin::Scope { scope: route },
                 }
                 .into(),
             });

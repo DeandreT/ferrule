@@ -772,7 +772,7 @@ fn collect_nested_targets(
             ));
         }
         let driver = match &scope.iteration {
-            ScopeIteration::OwnedSource { .. } => {
+            ScopeIteration::OwnedSource { .. } | ScopeIteration::OwnedInnerJoin { .. } => {
                 return Err(dynamic_target_error(
                     "owned source iteration requires unavailable ownership support",
                 ));
