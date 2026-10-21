@@ -632,6 +632,37 @@ aggregates, joins and legacy Lookup or CollectionFind stay closed. The
 [owned search contract](design/owned-lookup-find.md) defines the wire form,
 selection rules and qualification.
 
+## Explicit owned dynamic source fields
+
+Use `codegen::lower_with_basic_owned_dynamic_field`, then
+`codegen_rust::emit_with_basic_owned_dynamic_field(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_dynamic_field(&program)`. Direct Program
+hosts use `validate_program_with_basic_owned_dynamic_field` and
+`validate_basic_owned_dynamic_field_emission`; named-input discovery uses
+`legacy_named_input_admission_plan_with_basic_owned_dynamic_field`.
+
+The profile composes the owned lookup/find profile with
+`owned_dynamic_source_field` reads. The key is evaluated first in the receiving
+context; a non-string key reads nothing. The open object belongs to exactly one
+Primary or named endpoint and is selected through that owner's latest active
+frame, an explicit frame or the explicit root pin, never through another
+endpoint or frame. Absent and structural properties are Null and a present JSON
+null stays distinct; crossing an uniterated repetition, an inactive explicit
+frame and an unsupplied owner are typed owned-source failures at the read's
+node. The generated Rust and C# runtimes expose the read as
+`BasicScopeContext::owned_dynamic_field` and
+`FerruleBasicScopeContext.ResolveOwnedDynamicField`. Owned objects keep their
+endpoint optional in the named-input catalogue.
+
+Failure-rule expressions, function bodies and closed contexts keep refusing
+the owned read, as do every other profile (including the lookup/find,
+recursive-filter, recursive-collect and SequenceExists companions) and the
+ordinary emitters.
+Legacy `dynamic_source_field` reads keep their wire and ordinary emission and
+stay closed in Basic owned profiles. The
+[owned dynamic-field contract](design/owned-dynamic-field.md) defines the wire
+form, order and qualification.
+
 ## C#
 
 ### Build and test environment

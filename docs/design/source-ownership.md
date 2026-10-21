@@ -178,6 +178,15 @@ identities. Validation resolves each source against its own endpoint and each
 key path under the exact collection it names. Execution, generation, `.mfd`
 export and GUI editing refuse owned joins; the GUI shows a saved one read-only.
 
+## Dynamic source-field objects
+
+An owned dynamic source-field read selects its open object from exactly its
+declared endpoint and frame, beside the unchanged legacy `dynamic_source_field`
+node. The key is a parent-context scalar evaluated before any source access;
+a missing chosen property is Null and never borrowed from another owner or
+frame. Root paths, absent frames and explicit root pins keep their distinct
+owned-field meanings. See the [dynamic source-field contract](owned-dynamic-field.md).
+
 ## Existing coordinated issues
 
 Reuse these existing scopes; the capability column concerns **explicit ownership**.
