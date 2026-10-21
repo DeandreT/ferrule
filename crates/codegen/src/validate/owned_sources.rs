@@ -907,16 +907,10 @@ impl<'a> Admission<'a> {
             | TargetConstruction::OwnedPathHierarchy { .. }
             | TargetConstruction::AdjacencyTree { .. }
             | TargetConstruction::OwnedAdjacencyTree { .. } => Some(Capability::TreeOperator),
-            TargetConstruction::Scalar { .. }
-                if self.profile.permits_sort(scope)
-                    || self.profile.permits_windows(scope)
-                    || self.profile.supports_groups() =>
-            {
-                None
-            }
-            TargetConstruction::CopyCurrentSource | TargetConstruction::Scalar { .. } => {
-                Some(Capability::SpecialConstruction)
-            }
+            // A scalar target evaluates one expression in the receiving context
+            // and creates no frame, so every Basic profile admits it.
+            TargetConstruction::Scalar { .. } => None,
+            TargetConstruction::CopyCurrentSource => Some(Capability::SpecialConstruction),
         };
         if closed.is_none() {
             closed = construction_reason.map(|reason| Closed {
