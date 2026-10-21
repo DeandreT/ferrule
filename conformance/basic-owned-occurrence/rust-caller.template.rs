@@ -22,7 +22,7 @@ fn inputs(program: &str, case: &str) -> (Instance, Instance) {
 fn tree(instance: &Instance) -> Json {
     match instance {
         Instance::Scalar(value) => {
-            let kind = match value { Value::Null => "Null", Value::JsonNull(_) => "JsonNull", Value::Bool(_) => "Bool", Value::Int(_) => "Int", Value::Float(_) => "Float", Value::String(_) => "String", Value::XmlNil(_) => "XmlNil" };
+            let kind = match value { Value::Null => "Null", Value::JsonNull(_) => "JsonNull", Value::Bool(_) => "Bool", Value::Int(_) => "Int", Value::Float(_) => "Float", Value::Decimal(_) => "Decimal", Value::String(_) => "String", Value::XmlNil(_) => "XmlNil" };
             json!({"kind":"Scalar","type":kind,"value":value})
         }
         Instance::Group(items) => json!({"kind":"Group","fields":items.iter().map(|(name,value)|json!({"name":name,"value":tree(value)})).collect::<Vec<_>>()}),

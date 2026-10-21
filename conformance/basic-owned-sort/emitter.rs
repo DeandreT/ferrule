@@ -145,7 +145,7 @@ fn project(input: &Json) -> Project {
 fn tree(instance: &Instance) -> Json {
     match instance {
         Instance::Scalar(value) => {
-            let kind = match value { Value::Null => "Null", Value::JsonNull(_) => "JsonNull", Value::Bool(_) => "Bool", Value::Int(_) => "Int", Value::Float(_) => "Float", Value::String(_) => "String", Value::XmlNil(_) => "XmlNil" };
+            let kind = match value { Value::Null => "Null", Value::JsonNull(_) => "JsonNull", Value::Bool(_) => "Bool", Value::Int(_) => "Int", Value::Float(_) => "Float", Value::Decimal(_) => "Decimal", Value::String(_) => "String", Value::XmlNil(_) => "XmlNil" };
             let payload = match value { Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => Json::Null, Value::Float(value) => Json::String(format!("{:016x}",value.to_bits())), _ => serde_json::to_value(value).unwrap() };
             json!({"kind":"Scalar","type":kind,"value":payload})
         }
