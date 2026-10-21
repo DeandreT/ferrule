@@ -124,6 +124,72 @@ fn endpoint(prefix: &str, missing: Option<usize>) -> Instance {
     )
 }
 
+fn lower_refuses(project: &Project, reason: codegen::OwnedSourceCapabilityReason) {
+    let error = codegen::lower(project)
+        .err()
+        .expect("closed metadata route must not lower");
+    assert!(
+        error
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| matches!(diagnostic,
+        codegen::Diagnostic::OwnedSource { diagnostic } if matches!(diagnostic.as_ref(),
+            codegen::OwnedSourceDiagnostic::Capability { reason: found, .. } if *found == reason))),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn row_metadata_keeps_dynamic_owner_and_failure_rule_admission_closed() {
+    let mut dynamic = project();
+    dynamic.graph.nodes.insert(
+        5,
+        Node::Const {
+            value: Value::String("not-loaded.json".into()),
+        },
+    );
+    dynamic.extra_sources[0].dynamic_path = Some(5);
+    let actual = engine::run_with_sources(
+        &dynamic,
+        &endpoint("p", None),
+        vec![("Ref".into(), endpoint("n", None))],
+    );
+    assert!(
+        matches!(
+            actual,
+            Err(engine::EngineError::UnsupportedOwnedContext {
+                context: engine::OwnedCapabilityContext::DynamicOwner,
+                ..
+            })
+        ),
+        "{actual:?}"
+    );
+    lower_refuses(&dynamic, codegen::OwnedSourceCapabilityReason::DynamicOwner);
+
+    let mut failure = project();
+    failure.failure_rules.push(mapping::FailureRule {
+        iteration: mapping::FailureIteration::Source { collection: vec![] },
+        selection: mapping::FailureSelection::All,
+        message: Some(1),
+    });
+    let actual = engine::run_with_sources(
+        &failure,
+        &endpoint("p", None),
+        vec![("Ref".into(), endpoint("n", None))],
+    );
+    assert!(
+        matches!(
+            actual,
+            Err(engine::EngineError::UnsupportedOwnedContext {
+                context: engine::OwnedCapabilityContext::FailureRule,
+                ..
+            })
+        ),
+        "{actual:?}"
+    );
+    lower_refuses(&failure, codegen::OwnedSourceCapabilityReason::FailureRule);
+}
+
 #[test]
 fn owned_row_paths_match_interpreter_and_generated_backends() -> TestResult<()> {
     let project = project();
