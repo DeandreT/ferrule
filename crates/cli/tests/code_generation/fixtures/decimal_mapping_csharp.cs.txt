@@ -16,6 +16,7 @@ foreach (var item in cases.RootElement.EnumerateArray())
         {
             var expected = kind.GetString() == "conversion" ? FerruleRuntimeError.DecimalConversion : FerruleRuntimeError.AggregateDecimal;
             if (error.Error != expected) throw new InvalidOperationException($"{id}: wrong error {error.Error}", error);
+            Console.WriteLine("OBSERVATION " + JsonSerializer.Serialize(new { id, error = error.Error.ToString(), detail = error.Message }));
         }
     }
     else
@@ -25,6 +26,7 @@ foreach (var item in cases.RootElement.EnumerateArray())
         var expected = item.GetProperty("expected");
         if (actual.RootElement.ValueKind != JsonValueKind.Object || actual.RootElement.EnumerateObject().Count() != 1 || actual.RootElement.GetProperty("Total").ValueKind != JsonValueKind.String || actual.RootElement.GetProperty("Total").GetString() != expected.GetProperty("Total").GetString())
             throw new InvalidOperationException($"{id}: wrong document {text}");
+        Console.WriteLine("OBSERVATION " + JsonSerializer.Serialize(new { id, output = actual.RootElement }));
     }
     Console.WriteLine($"PASS {id}");
 }
