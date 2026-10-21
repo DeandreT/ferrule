@@ -753,6 +753,19 @@ impl<'ctx> BasicScopeContext<'ctx> {
             .owned_position(owner, collection)
             .map_err(Into::into)
     }
+
+    /// Physical row metadata from the exact owner, never a representative or
+    /// another endpoint's legacy document-path frame.
+    pub fn owned_row_document_path(
+        &self,
+        owner: SourceOwnerRef<'_>,
+        collection: Option<&[&str]>,
+    ) -> Result<Value, RuntimeError> {
+        self.budget(owner, &[], collection, false)?;
+        self.owned
+            .owned_row_document_path(owner, collection)
+            .map_err(Into::into)
+    }
     pub fn legacy_field(
         &self,
         path: &[&str],

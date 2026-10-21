@@ -1247,6 +1247,7 @@ public enum FerruleOwnedSourceErrorKind
     InactiveSourceFrame, IncompatibleFramePath, UniteratedRepetition,
     UnsupportedSourceKind, Traversal, InvalidPosition, MetadataLimit,
     MetadataArithmeticOverflow,
+    MissingRowDocumentPath,
 }
 public enum FerruleOwnedSourceLimitKind
 {
@@ -1810,6 +1811,28 @@ public sealed partial class FerruleOwnedScopeContext
         var key = Roots.Resolve(owner, q); var selected = Match(key, collection, true);
         if (selected < 0) throw q.Error(FerruleOwnedSourceErrorKind.InactiveSourceFrame, collection: collection);
         return _frames[selected].Index;
+    }
+
+    /// <summary>Reads exact-owner physical row metadata without ancestor or member fallback.</summary>
+    public FerruleValue RowDocumentPath(FerruleOwnedSourceOwner owner, IReadOnlyList<string>? collection = null) =>
+        RowDocumentPathCore(owner, collection, null);
+
+    internal FerruleValue BasicRowDocumentPath(FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string>? collection, OwnedQuery admittedQuery) =>
+        RowDocumentPathCore(owner, collection, admittedQuery);
+
+    private FerruleValue RowDocumentPathCore(FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string>? collection, OwnedQuery? admittedQuery)
+    {
+        var query = admittedQuery ?? new OwnedQuery(this, owner, collection ?? Array.Empty<string>(), null);
+        var key = Roots.Resolve(owner, query);
+        var selected = collection is { Count: 0 } ? -1 : Match(key, collection, true);
+        if (collection is { Count: > 0 } && selected < 0)
+            throw query.Error(FerruleOwnedSourceErrorKind.InactiveSourceFrame, collection: collection);
+        var current = selected < 0 ? Roots.Instance(key) : _frames[selected].Item;
+        if (current is not FerruleGroup group || group.SourceOrigin is null)
+            throw query.Error(FerruleOwnedSourceErrorKind.MissingRowDocumentPath, collection: collection);
+        return FerruleValue.FromString(group.SourceOrigin.Document.SourcePath);
     }
     public FerruleOwnedScopeContext WithPosition(FerruleOwnedSourceOwner owner,
         IReadOnlyList<string>? collection, nuint index)
@@ -2627,6 +2650,18 @@ public sealed partial class FerruleBasicScopeContext
             Query(b, owner, collection ?? Array.Empty<string>())); }
         catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
         catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+
+    public FerruleValue OwnedRowDocumentPath(FerruleOwnedSourceOwner owner, IReadOnlyList<string>? collection = null)
+    {
+        try
+        {
+            var budget = Begin();
+            return _owned.BasicRowDocumentPath(owner, collection,
+                Query(budget, owner, collection ?? Array.Empty<string>()));
+        }
+        catch (FerruleOwnedSourceException error) { throw FerruleRuntimeException.FromOwnedSource(error); }
+        catch (FerruleBasicSourceBridgeException error) { throw FerruleRuntimeException.FromBasicSourceBridge(error); }
     }
     public FerruleValue ResolveLegacyField(IReadOnlyList<string> path, IReadOnlyList<string>? frame = null)
     {
