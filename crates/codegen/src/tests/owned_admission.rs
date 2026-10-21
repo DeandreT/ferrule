@@ -1857,15 +1857,14 @@ mod sort_admission {
                 vec![],
                 crate::IterationOutput::Repeated,
             ));
-            let error = scope_error(&p, Reason::SpecialConstruction);
-            assert_eq!(
-                observed("N667-A03 unsorted scalar still closed", &p),
-                Err(error.clone())
-            );
-            assert_eq!(legacy_named_input_admission_plan(&p), Err(error.clone()));
+            // Scalar construction is common Basic, so every profile now agrees;
+            // without the sort key only the scalar body's Guard read is eager.
+            let actual = observed("N667-A03 unsorted scalar is Basic", &p);
+            assert_eq!(actual, Ok(expected(&p, &[3], &[3], &[])));
+            assert_eq!(legacy_named_input_admission_plan(&p), actual);
             assert_eq!(
                 legacy_named_input_admission_plan_with_basic_owned_filters(&p),
-                Err(error)
+                actual
             );
         }
     }

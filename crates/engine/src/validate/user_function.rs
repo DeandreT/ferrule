@@ -135,6 +135,9 @@ fn validate_body(
             Node::OwnedSourceField(_) | Node::OwnedPosition(_) => {
                 super::schema::validate_owned_source_node(project, node, &node_location, issues)
             }
+            Node::OwnedDynamicSourceField(field) => {
+                super::schema::validate_owned_dynamic_field(project, field, &node_location, issues)
+            }
             Node::Unconnected
             | Node::Const { .. }
             | Node::RuntimeValue { .. }

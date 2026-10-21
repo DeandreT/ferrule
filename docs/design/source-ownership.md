@@ -10,6 +10,16 @@ An owner selects immutable primary or one exact named endpoint. Preserve name by
 
 Keep structural validity separate from executable capability. Preserve strict new forms and reject unsupported execution/emission, including directly constructed Program validation. P2 checks new-kind potential branches, called functions and demanded paths without changing legacy laziness. Codegen keeps its reachable lowering/metadata rules; native export needs whole-design checks before writing. Preserve saved GUI owner data/IDs/wires read-only; authoring/conversion stays closed.
 
+## Scalar target construction
+
+A scalar target scope evaluates one expression in its receiving context and
+creates no source frame, so it is a common Basic context rather than a
+specialized construction. Its owned reads resolve exactly as they would in a
+binding of the same scope: an enclosing owned or ordinary iteration supplies
+the active frames, and the scalar target domain applies the ordinary exact
+numeric adaptation. Exact whole-group copies remain a closed special
+construction. See [scalar target generation](../code-generation.md#owned-reads-in-scalar-targets).
+
 ## Group-member occurrence identity
 
 An owned By, AdjacentBy, StartingWith, EndingWith or IntoBlocks group carries a private grouped occurrence at its exact owner and
@@ -167,6 +177,15 @@ twice is still a duplicate. The scope's `JoinId` stays independent of these
 identities. Validation resolves each source against its own endpoint and each
 key path under the exact collection it names. Execution, generation, `.mfd`
 export and GUI editing refuse owned joins; the GUI shows a saved one read-only.
+
+## Dynamic source-field objects
+
+An owned dynamic source-field read selects its open object from exactly its
+declared endpoint and frame, beside the unchanged legacy `dynamic_source_field`
+node. The key is a parent-context scalar evaluated before any source access;
+a missing chosen property is Null and never borrowed from another owner or
+frame. Root paths, absent frames and explicit root pins keep their distinct
+owned-field meanings. See the [dynamic source-field contract](owned-dynamic-field.md).
 
 ## Existing coordinated issues
 

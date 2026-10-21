@@ -146,6 +146,16 @@ pub fn lower_with_basic_owned_lookup_find(project: &Project) -> Result<Program, 
     )
 }
 
+/// Lowers explicitly owned dynamic source-field reads with the owned
+/// recursive-filter profile. Older companions keep refusing the owned read;
+/// lowering itself is unchanged.
+pub fn lower_with_basic_owned_dynamic_field(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_dynamic_field,
+    )
+}
+
 /// Lowers the explicit Basic scalar-producer SequenceItemAt profile, composing
 /// qualified By controls and primary-row failures without changing their gates.
 pub fn lower_with_basic_owned_sequence_item_at(project: &Project) -> Result<Program, LowerError> {
@@ -1272,6 +1282,7 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
             frame: frame.clone(),
             key: *key,
         },
+        Node::OwnedDynamicSourceField(field) => Expression::OwnedDynamicSourceField(field.clone()),
         Node::XmlSerialize {
             path,
             frame,

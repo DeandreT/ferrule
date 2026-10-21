@@ -19,6 +19,9 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
+#[path = "basic_dynamic_field.rs"]
+mod dynamic_field;
+
 #[path = "basic_failures.rs"]
 mod failure_rows;
 
