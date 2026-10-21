@@ -90,7 +90,9 @@ pub use format_json::source_document::{
     MAX_JSON_SOURCE_BYTES, MAX_JSON_SOURCE_DEPTH, MAX_JSON_SOURCE_IDENTITY_BYTES,
     MAX_JSON_SOURCE_VALUES,
 };
-pub use functions::FunctionError;
+pub use functions::{
+    FunctionError, InvocationCounterError, InvocationCounterLimits, InvocationCounters,
+};
 pub use generated_sequence::{
     MAX_GENERATED_SEQUENCE_ITEMS, MAX_RECURSIVE_SEQUENCE_DEPTH, RecursiveCollectPaths,
     generate_sequence, owned_recursive_collect, recursive_collect, recursive_sequence_parameter,
