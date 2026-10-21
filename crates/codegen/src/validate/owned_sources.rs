@@ -48,6 +48,10 @@ fn request(expression: &Expression) -> Option<Request> {
             owner: (&position.owner).into(),
             collection: position.collection.clone(),
         }),
+        Expression::OwnedRowDocumentPath(path) => Some(Request::RowDocumentPath {
+            owner: (&path.owner).into(),
+            collection: path.collection.clone(),
+        }),
         Expression::OwnedDynamicSourceField(field) => Some(dynamic_field::request(field)),
         // A consumer of an owned producer requests that root collection.
         Expression::SequenceExists { sequence, .. }
@@ -159,6 +163,10 @@ fn check_request(program: &Program, query: &Request) -> Result<(), Structure> {
             }
         }
         Request::Position {
+            owner,
+            collection: path,
+        }
+        | Request::RowDocumentPath {
             owner,
             collection: path,
         } => {
@@ -423,6 +431,7 @@ fn dynamic_owner(program: &Program, query: &Request) -> Option<Closed> {
     let owner = match query {
         Request::Field { owner, .. }
         | Request::Position { owner, .. }
+        | Request::RowDocumentPath { owner, .. }
         | Request::Iteration { owner, .. }
         | Request::DynamicField { owner, .. } => owner,
     };
@@ -476,14 +485,23 @@ pub(super) enum SequenceItemAtPolicy {
     /// Also admits SequenceExists over the same producers. Its predicate reads
     /// a private generated item beside the unchanged receiving source context.
     BasicScalarProducersWithExists,
+    /// Also admits SequenceAggregate over the same producers. Its predicate
+    /// and expression read the private item; its argument keeps the receiving
+    /// source context.
+    BasicScalarProducersWithExistsAndAggregate,
 }
 
 impl SequenceItemAtPolicy {
     fn permits(self, expression: &Expression) -> bool {
+        let with_exists = matches!(
+            self,
+            Self::BasicScalarProducersWithExists | Self::BasicScalarProducersWithExistsAndAggregate
+        );
         let Some(sequence) = (match expression {
             Expression::SequenceItemAt { sequence, .. } => Some(sequence),
-            Expression::SequenceExists { sequence, .. }
-                if self == Self::BasicScalarProducersWithExists =>
+            Expression::SequenceExists { sequence, .. } if with_exists => Some(sequence),
+            Expression::SequenceAggregate { sequence, .. }
+                if self == Self::BasicScalarProducersWithExistsAndAggregate =>
             {
                 Some(sequence)
             }
@@ -500,7 +518,9 @@ impl SequenceItemAtPolicy {
         );
         match self {
             Self::Closed => false,
-            Self::BasicScalarProducers | Self::BasicScalarProducersWithExists => scalar,
+            Self::BasicScalarProducers
+            | Self::BasicScalarProducersWithExists
+            | Self::BasicScalarProducersWithExistsAndAggregate => scalar,
             Self::BasicScalarAndOwnedRecursiveProducers => {
                 scalar
                     || matches!(
@@ -778,7 +798,9 @@ impl<'a> Admission<'a> {
                 }
             }
             let reason = match expression {
-                Expression::SequenceItemAt { .. } | Expression::SequenceExists { .. }
+                Expression::SequenceItemAt { .. }
+                | Expression::SequenceExists { .. }
+                | Expression::SequenceAggregate { .. }
                     if self.sequence_item_at.permits(expression) =>
                 {
                     None
@@ -1552,6 +1574,22 @@ pub fn validate_basic_owned_sequence_exists_emission(
     )
 }
 
+/// Explicitly admits SequenceAggregate over the same four scalar producers
+/// beside the SequenceExists composition. Producer arguments and the reducer
+/// argument keep the receiving context; the predicate and expression add only
+/// the private generated item. Older profiles and failure scalar subsets
+/// retain their permissions.
+pub fn validate_basic_owned_sequence_aggregate_emission(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_with_policies(
+        program,
+        BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter,
+        true,
+        SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate,
+    )
+}
+
 fn validate_basic_owned_with_profile(
     program: &Program,
     profile: BasicOwnedProfile,
@@ -1732,7 +1770,9 @@ fn validate_basic_owned_with_dynamic_fields(
             ));
         }
         let reason = match &node.expression {
-            Expression::SequenceItemAt { .. } | Expression::SequenceExists { .. }
+            Expression::SequenceItemAt { .. }
+            | Expression::SequenceExists { .. }
+            | Expression::SequenceAggregate { .. }
                 if sequence_item_at.permits(&node.expression) =>
             {
                 continue;
@@ -1750,6 +1790,7 @@ fn validate_basic_owned_with_dynamic_fields(
             }
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
+            | Expression::OwnedRowDocumentPath(_)
             | Expression::SourceField { .. }
             | Expression::Position { .. }
             | Expression::Const { .. }
@@ -2064,9 +2105,10 @@ fn basic_target_expressions(
         let dependencies = match &node.expression {
             Expression::ValueMap { input, .. } => vec![*input],
             expression if sequence_item_at.permits(expression) => {
-                // Producer scalar inputs and an ItemAt index are parent demands;
-                // an Exists predicate adds only its private generated item.
-                // Item declarations grant no endpoint permission.
+                // Producer scalar inputs, an ItemAt index and an aggregate
+                // argument are parent demands; an Exists predicate and an
+                // aggregate predicate/expression add only their private
+                // generated item. Item declarations grant no endpoint permission.
                 graph_dependencies::of(expression)
             }
             // The key is a receiving-context scalar demand of the owned read.

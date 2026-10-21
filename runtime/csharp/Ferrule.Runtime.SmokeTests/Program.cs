@@ -63,6 +63,8 @@ internal static partial class Program
             ("CSV source reached failures", CsvSourceFailures),
             ("physical source identity and bounds", SourceOriginIdentityAndBounds),
             ("physical source copies and rebuilds", SourceOriginCopyAndRebuild),
+            ("exact-owner physical row document paths", OwnedRowDocumentPaths),
+            ("grouped physical row document paths", GroupedRowDocumentPaths),
             ("CSV acquisition order and identity", CsvAcquisitionOrder),
             ("CSV acquisition terminal failures", CsvAcquisitionFailures),
             ("CSV acquisition host failure stages", CsvAcquisitionHostFailures),
