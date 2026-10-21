@@ -248,6 +248,59 @@ mechanics; it does not qualify JSON mapping behavior. Before changing a cell to
 causes. Native export and vendor-backend support require separate release-bound
 execution records, not a source test or a successfully emitted library.
 
+## Portable Basic cohorts
+
+A portable Basic cohort separates three contracts:
+
+- **Cases and oracle.** The cohort directory holds self-authored data only:
+  `projects.rs` builds genuine `mapping::Project` models, `cases.json` or
+  `cases.rs` lists each case's model, typed source, supplied named inputs and
+  the complete expected outcome of every call, and `closed.rs` (where present)
+  lists Projects and Programs the profile must refuse. Expected values are
+  written independently, never derived from an executor's return, and are
+  shared by every executor.
+- **Execution bindings.** The test-only
+  [`execution_bindings.rs`](../crates/cli/tests/code_generation/execution_bindings.rs)
+  module launches the interpreter, one generated Rust host covering every
+  model and one generated C# host per model. It owns their build cache (a
+  per-run temporary directory, or the dedicated
+  `FERRULE_CODEGEN_HOST_TARGET_DIR`), isolated .NET CLI/package/temporary
+  directories, `DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=false`, warnings denied for
+  the Rust host, and retention: a run directory with its per-call host
+  evidence is removed unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`. Failure
+  messages quote a bounded tail of host output. A cohort chooses only its
+  generation profile's lowering and emitters.
+- **Results.** Plain tests in `crates/cli/tests/code_generation/` compare every
+  call of every executor with the oracle and fail on any mismatch or missing
+  call. They need no preparation step, success receipt, source fingerprint or
+  earlier campaign. A missing `cargo` or .NET SDK fails the ignored host test;
+  it is never reported as a pass, and the harnesses compile only with the
+  `codegen-tests` feature.
+
+`cases.json` trees use the lossless recipe codec shared by the hosts:
+`["Null"]`, `["JsonNull"]`, `["XmlNil"]`, `["Bool", b]`, `["Int", n]`,
+`["String", s]`, `["Float", "<16 hex digits of the IEEE-754 bits>"]`,
+`["Repeated", [items]]` and `["Group", [[name, tree], ...], origin]`, where
+`origin` is the XML type origin (`{"kind": "Unknown", ...}` for ordinary
+groups). An expected outcome is `{"Ok": [[target, tree], ...]}`, with `null`
+naming the primary target, or `{"Err": recipe}` with a typed error recipe that
+each executor converts to its own error value before comparing. Human error
+wording is not part of that typed comparison; a recipe may list the exact C#
+exception messages separately.
+
+[`basic-owned-occurrence/`](basic-owned-occurrence/) follows this layout with a
+JSON oracle; the SequenceExists and SequenceAggregate cohorts share the same
+bindings with `cases.rs`. Run one cohort, including its generated hosts, with
+its harness filter, for example:
+
+```sh
+cargo test -p cli --test code_generation --features codegen-tests occurrence640 -- --include-ignored
+```
+
+The filter, nested-alias, sort and windows cohorts still use `prepare.py`
+command plans bound to earlier qualification records, as described for windows
+below.
+
 ## Ordinary Basic owned windows
 
 [`basic-owned-windows/`](basic-owned-windows/) is a portable, self-authored finite
