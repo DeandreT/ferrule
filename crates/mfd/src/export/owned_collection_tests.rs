@@ -132,3 +132,43 @@ fn owned_adjacency_tree_rows_are_refused_before_artifact_io() {
     }
     assert!(!path.exists());
 }
+#[test]
+fn every_export_profile_rejects_owned_join_before_artifact_io() {
+    let rows = |owner| OwnedSourceRef {
+        owner,
+        path: vec!["Rows".into()],
+    };
+    let named = || SourceOwner::Named {
+        name: "lookup".into(),
+    };
+    let plan = mapping::OwnedJoinPlan::new(
+        mapping::OwnedJoinSource::new(rows(SourceOwner::Primary)),
+        mapping::OwnedJoinSource::new(rows(named())),
+        mapping::OwnedJoinConditions::new(mapping::OwnedJoinKey::new(
+            rows(SourceOwner::Primary),
+            vec!["id".into()],
+            vec!["id".into()],
+        )),
+    )
+    .unwrap();
+    let mut p = project();
+    p.root.iteration = ScopeIteration::None;
+    p.root.children = vec![Scope {
+        target_field: "Row".into(),
+        iteration: ScopeIteration::OwnedInnerJoin {
+            id: mapping::JoinId::new(4),
+            plan,
+        },
+        ..Scope::default()
+    }];
+    let path = Path::new("nonexistent-owned-join-export-parent/output.mfd");
+    let route = vec![SourceScopeStep::Child(0)];
+    check(preflight_export(&p, path).unwrap_err(), route.clone());
+    for profile in [ExportProfile::default(), ExportProfile::NativeMfd] {
+        check(
+            export_with_profile(&p, path, profile).unwrap_err(),
+            route.clone(),
+        );
+    }
+    assert!(!path.exists());
+}

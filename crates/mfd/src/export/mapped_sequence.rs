@@ -485,7 +485,8 @@ fn validate_first_outputs(
             ));
         }
         match &scope.iteration {
-            mapping::ScopeIteration::OwnedSource { .. } => {
+            mapping::ScopeIteration::OwnedSource { .. }
+            | mapping::ScopeIteration::OwnedInnerJoin { .. } => {
                 return Err(
                     "owned source iteration requires unavailable ownership support".to_string(),
                 );

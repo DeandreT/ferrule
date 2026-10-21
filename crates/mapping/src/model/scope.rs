@@ -371,6 +371,7 @@ impl Scope {
             | ScopeIteration::OwnedSource { .. }
             | ScopeIteration::DynamicDocuments { .. }
             | ScopeIteration::InnerJoin { .. }
+            | ScopeIteration::OwnedInnerJoin { .. }
             | ScopeIteration::Concatenate(_) => None,
         }
     }

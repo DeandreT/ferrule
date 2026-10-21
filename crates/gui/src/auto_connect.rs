@@ -123,7 +123,8 @@ fn contains_owned_iteration(scope: &Scope) -> bool {
     matches!(
         scope.source_selector(),
         Some(mapping::SourceSelectorRef::Owned(_))
-    ) || scope.children.iter().any(contains_owned_iteration)
+    ) || scope.iteration.owned_join().is_some()
+        || scope.children.iter().any(contains_owned_iteration)
         || scope
             .dynamic_children
             .iter()

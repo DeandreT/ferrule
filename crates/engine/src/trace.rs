@@ -143,7 +143,9 @@ pub(crate) fn scope_iteration(
     iteration: &ScopeIteration,
 ) -> Result<TraceIteration, mapping::OwnedSourceAccess> {
     Ok(match iteration {
-        ScopeIteration::OwnedSource { .. } => return Err(mapping::OwnedSourceAccess),
+        ScopeIteration::OwnedSource { .. } | ScopeIteration::OwnedInnerJoin { .. } => {
+            return Err(mapping::OwnedSourceAccess);
+        }
         ScopeIteration::None => TraceIteration::Once,
         ScopeIteration::Source(path) => TraceIteration::Source { path: path.clone() },
         ScopeIteration::DynamicDocuments { source, .. } => TraceIteration::DynamicDocuments {

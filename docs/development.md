@@ -88,6 +88,11 @@ The CLI generated integration target is explicitly enabled with
 `cargo test -p cli --features codegen-tests --test code_generation`;
 read that suite's backend prerequisites before running it.
 
+Format capability tables and workspace component lists in the guides and site
+are generated from [shared technical references](reference/README.md). Edit
+their TOML source and run `cargo run -p reference-docs`;
+`cargo test -p reference-docs` fails while a generated region is stale.
+
 ### Reuse generated CLI host builds
 
 The `extra_targets`, `failure_rules` and `static_sources` regressions honor
