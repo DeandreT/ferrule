@@ -94,7 +94,7 @@ public static partial class FerruleJson
             RequireUtf8Limit(schemaJson, MaximumSchemaBytes, "embedded JSON schema");
             RequireUtf8Limit(document, MaximumDocumentBytes, "JSON input");
         }
-        var schema = ParseSchema(schemaJson, embedded);
+        var schema = PreparedSchema(schemaJson, embedded);
         try
         {
             var input = document.Length > 0 && document[0] == '\uFEFF'
@@ -183,7 +183,7 @@ public static partial class FerruleJson
         ArgumentNullException.ThrowIfNull(schemaJson);
         ArgumentNullException.ThrowIfNull(instance);
         RequireUtf8Limit(schemaJson, MaximumSchemaBytes, "embedded JSON schema");
-        var schema = ParseSchema(schemaJson, embedded);
+        var schema = PreparedSchema(schemaJson, embedded);
         try
         {
             var buffer = new ArrayBufferWriter<byte>();

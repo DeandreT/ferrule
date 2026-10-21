@@ -5,12 +5,12 @@ use json_pattern::{DEFAULT_MATCH_WORK_LIMIT, PortableJsonPattern};
 
 use crate::JsonFormatError;
 
-pub(super) struct PatternRuntime {
+/// Immutable compiled pattern programs for one validated schema.
+pub(super) struct PatternPrograms {
     programs: BTreeMap<String, PortableJsonPattern>,
-    remaining_work: u64,
 }
 
-impl PatternRuntime {
+impl PatternPrograms {
     pub(super) fn new(schema: &SchemaNode) -> Result<Self, JsonFormatError> {
         crate::json_schema::predicate::validate_private_unique_items(schema)?;
         if !schema.json_pattern_budget_is_valid() {
@@ -22,12 +22,26 @@ impl PatternRuntime {
         }
         let mut programs = BTreeMap::new();
         collect_programs(schema, &mut programs)?;
-        Ok(Self {
-            programs,
-            remaining_work: DEFAULT_MATCH_WORK_LIMIT,
-        })
+        Ok(Self { programs })
     }
 
+    /// Starts one document's matching with a fresh work budget.
+    pub(super) fn runtime(&self) -> PatternRuntime<'_> {
+        PatternRuntime {
+            programs: &self.programs,
+            remaining_work: DEFAULT_MATCH_WORK_LIMIT,
+        }
+    }
+}
+
+/// Per-document pattern matching: shared programs plus this document's
+/// remaining work.
+pub(super) struct PatternRuntime<'p> {
+    programs: &'p BTreeMap<String, PortableJsonPattern>,
+    remaining_work: u64,
+}
+
+impl PatternRuntime<'_> {
     pub(super) fn validate_json(
         &mut self,
         schema: &SchemaNode,

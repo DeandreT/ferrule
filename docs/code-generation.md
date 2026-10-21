@@ -1694,6 +1694,16 @@ Ordinary collections within that byte limit have no general instance-node
 count cap. Keyword-specific validation budgets, such as `uniqueItems` and
 pattern matching, retain their own limits.
 
+Both runtimes prepare each embedded JSON schema descriptor once per process and
+share the immutable result across repeated and concurrent calls. Each call keeps
+its own document byte, depth, pattern work and output accounting. Rust's
+descriptor-taking functions use a bounded registry keyed by descriptor text, and
+`PreparedJsonSchema` lets a caller own one preparation. C# keys prepared schemas
+by descriptor string identity. Failed preparations are not retained, so errors
+and their order are unchanged. Prepared schemas stay in memory for the process
+lifetime and are not counted by the document limits; see
+[JSON endpoint preparation](performance/json-endpoint-preparation.md).
+
 JSON text and property names must contain valid Unicode scalar values. Both
 backends reject malformed UTF-8, unpaired escaped surrogates, and numbers
 outside the finite JSON number domain throughout the input document, including

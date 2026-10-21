@@ -10,7 +10,7 @@ use ir::{Instance, SchemaKind, SchemaNode, Value};
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
 
-use crate::{JsonFormatError, PatternRuntime, RecursiveSchemas, json_schema};
+use crate::{JsonFormatError, PatternPrograms, PatternRuntime, RecursiveSchemas, json_schema};
 
 enum Output<'a> {
     String(&'a str),
@@ -72,7 +72,8 @@ pub(super) fn to_string(
 
 fn prepare<'a>(schema: &SchemaNode, instance: &'a Instance) -> Result<Output<'a>, JsonFormatError> {
     let recursive = RecursiveSchemas::new(schema)?;
-    let mut patterns = PatternRuntime::new(schema)?;
+    let programs = PatternPrograms::new(schema)?;
+    let mut patterns = programs.runtime();
     match instance {
         Instance::Repeated(items) if !schema.repeating => {
             let mut values = Vec::with_capacity(items.len());

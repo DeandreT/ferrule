@@ -17,6 +17,7 @@ mod json5_finite;
 mod json5_unique;
 pub mod json_schema;
 mod pattern_runtime;
+mod prepared;
 pub mod source_document;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -29,7 +30,8 @@ use ir::{
 };
 use thiserror::Error;
 
-use pattern_runtime::PatternRuntime;
+use pattern_runtime::{PatternPrograms, PatternRuntime};
+pub use prepared::PreparedSchema;
 
 pub(crate) const MAX_JSON5_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_JSON_RECURSION_DEPTH: usize = 64;
@@ -416,9 +418,18 @@ pub fn from_json5_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonF
 
 fn from_value(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
     let recursive = RecursiveSchemas::new(schema)?;
-    let mut patterns = PatternRuntime::new(schema)?;
+    let programs = PatternPrograms::new(schema)?;
+    from_value_with(value, schema, &recursive, &mut programs.runtime())
+}
+
+fn from_value_with(
+    value: &serde_json::Value,
+    schema: &SchemaNode,
+    recursive: &RecursiveSchemas<'_>,
+    patterns: &mut PatternRuntime,
+) -> Result<Instance, JsonFormatError> {
     if schema.repeating {
-        read_repeated(value, schema, &recursive, 0, &mut patterns)
+        read_repeated(value, schema, recursive, 0, patterns)
     } else if let (SchemaKind::Group { .. }, serde_json::Value::Array(rows)) = (&schema.kind, value)
     {
         // Flat-row sources retain a non-repeating row schema while presenting
@@ -426,16 +437,12 @@ fn from_value(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance
         let mut parsed = Vec::with_capacity(rows.len());
         for row in rows {
             parsed.push(read_node_with_patterns(
-                row,
-                schema,
-                &recursive,
-                0,
-                &mut patterns,
+                row, schema, recursive, 0, patterns,
             )?);
         }
         Ok(Instance::Repeated(parsed))
     } else {
-        read_node_with_patterns(value, schema, &recursive, 0, &mut patterns)
+        read_node_with_patterns(value, schema, recursive, 0, patterns)
     }
 }
 
@@ -499,7 +506,8 @@ fn check_json5_nesting(text: &str) -> Result<(), JsonFormatError> {
 pub fn from_lines(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
     reject_nullable_json_lines_container(schema)?;
     let recursive = RecursiveSchemas::new(schema)?;
-    let mut patterns = PatternRuntime::new(schema)?;
+    let programs = PatternPrograms::new(schema)?;
+    let mut patterns = programs.runtime();
     let lines = strip_utf8_bom(text)
         .lines()
         .filter(|line| !line.trim().is_empty())
@@ -576,7 +584,8 @@ fn read_repeated(
 #[cfg(test)]
 fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
     let recursive = RecursiveSchemas::new(schema)?;
-    let mut patterns = PatternRuntime::new(schema)?;
+    let programs = PatternPrograms::new(schema)?;
+    let mut patterns = programs.runtime();
     read_node_with_patterns(value, schema, &recursive, 0, &mut patterns)
 }
 
@@ -902,7 +911,16 @@ pub fn to_value(
     instance: &Instance,
 ) -> Result<serde_json::Value, JsonFormatError> {
     let recursive = RecursiveSchemas::new(schema)?;
-    let mut patterns = PatternRuntime::new(schema)?;
+    let programs = PatternPrograms::new(schema)?;
+    to_value_with(schema, instance, &recursive, &mut programs.runtime())
+}
+
+fn to_value_with(
+    schema: &SchemaNode,
+    instance: &Instance,
+    recursive: &RecursiveSchemas<'_>,
+    patterns: &mut PatternRuntime,
+) -> Result<serde_json::Value, JsonFormatError> {
     // A root scope can produce flat rows even though the row schema itself
     // is not repeating (the same convention used by CSV). Preserve that
     // established JSON-output shape while keeping nested nodes
@@ -912,16 +930,12 @@ pub fn to_value(
             let mut values = Vec::with_capacity(items.len());
             for item in items {
                 values.push(write_single_node_with_patterns(
-                    schema,
-                    item,
-                    &recursive,
-                    0,
-                    &mut patterns,
+                    schema, item, recursive, 0, patterns,
                 )?);
             }
             serde_json::Value::Array(values)
         }
-        _ => write_node_with_patterns(schema, instance, &recursive, 0, &mut patterns)?,
+        _ => write_node_with_patterns(schema, instance, recursive, 0, patterns)?,
     };
     Ok(value)
 }
@@ -944,7 +958,8 @@ pub fn to_json5_string(
 pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, JsonFormatError> {
     reject_nullable_json_lines_container(schema)?;
     let recursive = RecursiveSchemas::new(schema)?;
-    let mut patterns = PatternRuntime::new(schema)?;
+    let programs = PatternPrograms::new(schema)?;
+    let mut patterns = programs.runtime();
     let values = match instance {
         Instance::Repeated(items) => {
             if schema.repeating {
@@ -1002,7 +1017,8 @@ fn write_node(
     instance: &Instance,
 ) -> Result<serde_json::Value, JsonFormatError> {
     let recursive = RecursiveSchemas::new(schema)?;
-    let mut patterns = PatternRuntime::new(schema)?;
+    let programs = PatternPrograms::new(schema)?;
+    let mut patterns = programs.runtime();
     write_node_with_patterns(schema, instance, &recursive, 0, &mut patterns)
 }
 
