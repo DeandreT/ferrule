@@ -239,3 +239,103 @@ fn query_path_limits_are_checked_before_metadata_selection() {
         })
     ));
 }
+
+struct OneGroup;
+impl codegen_runtime::BasicGroupByControls<RuntimeError> for OneGroup {
+    fn metadata(&self) -> codegen_runtime::BasicGroupByMetadata<'_> {
+        codegen_runtime::BasicGroupByMetadata {
+            directions: &[],
+            filter_before_sort: false,
+            explicit_window_count: 0,
+            implicit_first: false,
+            has_filter: false,
+            has_post_filter: false,
+        }
+    }
+    fn filter(&mut self, _: &codegen_runtime::BasicScopeContext<'_>) -> Result<bool, RuntimeError> {
+        unreachable!()
+    }
+    fn sort_key(
+        &mut self,
+        _: usize,
+        _: &codegen_runtime::BasicScopeContext<'_>,
+    ) -> Result<Value, RuntimeError> {
+        unreachable!()
+    }
+    fn window(
+        &mut self,
+        _: usize,
+        _: &codegen_runtime::BasicScopeContext<'_>,
+    ) -> Result<codegen_runtime::SequenceWindow, RuntimeError> {
+        unreachable!()
+    }
+    fn group_key(
+        &mut self,
+        _: &codegen_runtime::BasicScopeContext<'_>,
+    ) -> Result<Value, RuntimeError> {
+        Ok(Value::Int(0))
+    }
+    fn retain_member(
+        &mut self,
+        _: &codegen_runtime::BasicScopeContext<'_>,
+    ) -> Result<bool, RuntimeError> {
+        unreachable!()
+    }
+}
+
+#[test]
+fn grouped_container_has_no_representative_path_but_members_keep_their_own() {
+    let primary = marked(
+        group([field(
+            "Rows",
+            repeated([
+                marked(group([]), "first.csv"),
+                marked(group([]), "second.csv"),
+            ]),
+        )]),
+        "root.csv",
+    );
+    let roots = BasicSourceRoots::try_new(&primary, &[], limits()).unwrap();
+    let root = roots.root_context().unwrap();
+    let cohort = root
+        .walk_owned_source_cohort(SourceOwnerRef::Primary, &["Rows"])
+        .unwrap();
+    let result = root
+        .map_group_by_source_cohort(
+            &cohort,
+            &mut OneGroup,
+            &mut |group: &codegen_runtime::BasicScopeContext<'_>| {
+                assert_eq!(
+                    group.owned_row_document_path(SourceOwnerRef::Primary, None),
+                    Err(RuntimeError::OwnedSource(
+                        OwnedSourceError::MissingRowDocumentPath {
+                            owner: OwnedSourceIdentity::Primary,
+                            collection: None
+                        }
+                    ))
+                );
+                assert_eq!(
+                    group.owned_row_document_path(SourceOwnerRef::Primary, Some(&[])),
+                    Ok(text("root.csv"))
+                );
+                let rows = group.walk_owned_source(SourceOwnerRef::Primary, &["Rows"])?;
+                let paths = rows
+                    .iter()
+                    .map(|row| {
+                        row.context()
+                            .owned_row_document_path(SourceOwnerRef::Primary, None)
+                            .map(Instance::Scalar)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok::<_, RuntimeError>(Instance::Repeated(paths))
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        result,
+        vec![Instance::Repeated(vec![
+            Instance::Scalar(text("first.csv")),
+            Instance::Scalar(text("second.csv"))
+        ])]
+    );
+}
