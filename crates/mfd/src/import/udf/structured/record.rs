@@ -10,7 +10,7 @@ use super::{
 use crate::import::function::read as read_function;
 use crate::import::graph::GraphBuilder;
 use crate::import::schema::{SchemaComponent, schema_node_at};
-use crate::import::scope::{ScopeBuilder, TargetLeaf};
+use crate::import::scope::{BindingOccurrence, ScopeBuilder, TargetLeaf};
 use crate::import::udf::{Definition, OutputExpr};
 
 pub(super) fn is_input_parameter(component: roxmltree::Node<'_, '_>) -> bool {
@@ -214,7 +214,7 @@ pub(super) fn build_target(
         let target = TargetLeaf::from_path(&path)
             .ok_or_else(|| format!("target field `{}` is invalid", path.join("/")))?;
         let node = instantiate(expression, &source, &parameters, None, builder)?;
-        scopes.add_binding(target, node);
+        scopes.add_binding(target, node, BindingOccurrence::Expression);
     }
     Ok(())
 }

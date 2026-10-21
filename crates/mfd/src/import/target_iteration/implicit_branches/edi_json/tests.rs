@@ -1,5 +1,5 @@
 use super::*;
-use mapping::{Graph, Scope};
+use mapping::Graph;
 
 type Bindings = Vec<(TargetLeaf, u32, u32)>;
 
@@ -154,10 +154,7 @@ fn with_world(
             })
         })
         .collect::<Bindings>();
-    let mut scopes = ScopeBuilder {
-        root: Scope::default(),
-        anchors: BTreeMap::new(),
-    };
+    let mut scopes = ScopeBuilder::new(BTreeMap::new());
     let mut skipped = Vec::new();
     let connected = bindings.iter().map(|(leaf, _, _)| leaf.path()).collect();
     for (target_path, feed, target_port) in drivers {
@@ -689,7 +686,7 @@ fn late_frame_or_cached_literal_mismatch_discards_trial_and_legacy_stays_identic
                     super::super::tests::state(builder, scopes, declared, claimed),
                     before
                 );
-                for (binding, feed, _) in bindings {
+                for (binding, feed, input) in bindings {
                     let field = binding.path();
                     let anchor = scopes.enclosing_anchor(&field);
                     let actual = builder
@@ -699,8 +696,16 @@ fn late_frame_or_cached_literal_mismatch_discards_trial_and_legacy_stays_identic
                         .binding_node_at_anchor(*feed, &field, &anchor)
                         .unwrap();
                     assert_eq!(actual, expected);
-                    scopes.add_binding(binding.clone(), actual);
-                    baseline_scopes.add_binding(binding.clone(), expected);
+                    scopes.add_binding(
+                        binding.clone(),
+                        actual,
+                        BindingOccurrence::authored(target, *input),
+                    );
+                    baseline_scopes.add_binding(
+                        binding.clone(),
+                        expected,
+                        BindingOccurrence::authored(target, *input),
+                    );
                 }
                 assert_eq!(
                     super::super::tests::state(builder, scopes, declared, claimed),
@@ -741,7 +746,7 @@ fn assert_refusal_and_complete_legacy_state(
         super::super::tests::state(builder, scopes, declared, claimed),
         before
     );
-    for (binding, feed, _) in bindings {
+    for (binding, feed, input) in bindings {
         let field = binding.path();
         let anchor = scopes.enclosing_anchor(&field);
         let baseline_anchor = baseline_scopes.enclosing_anchor(&field);
@@ -761,8 +766,16 @@ fn assert_refusal_and_complete_legacy_state(
             }) if actual_frame == frame && actual_path == path)
             );
         }
-        scopes.add_binding(binding.clone(), actual);
-        baseline_scopes.add_binding(binding.clone(), expected);
+        scopes.add_binding(
+            binding.clone(),
+            actual,
+            BindingOccurrence::authored(target, *input),
+        );
+        baseline_scopes.add_binding(
+            binding.clone(),
+            expected,
+            BindingOccurrence::authored(target, *input),
+        );
     }
     assert_eq!(
         super::super::tests::state(builder, scopes, declared, claimed),

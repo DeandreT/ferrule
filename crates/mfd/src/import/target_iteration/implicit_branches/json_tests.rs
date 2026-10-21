@@ -1,5 +1,5 @@
 use super::*;
-use mapping::{Graph, Scope};
+use mapping::Graph;
 
 type Bindings = Vec<(TargetLeaf, u32, u32)>;
 
@@ -153,10 +153,7 @@ fn with_world_expecting_frame(
             })
         })
         .collect::<Bindings>();
-    let mut scopes = ScopeBuilder {
-        root: Scope::default(),
-        anchors: BTreeMap::new(),
-    };
+    let mut scopes = ScopeBuilder::new(BTreeMap::new());
     let mut skipped = Vec::new();
     let connected = bindings.iter().map(|(leaf, _, _)| leaf.path()).collect();
     build_one(
@@ -465,8 +462,16 @@ fn json_implicit_late_typed_literal_refusal_preserves_every_cache_membership_and
                     .binding_node_at_anchor(feed, &field, &path(&["Rows"]))
                     .unwrap();
                 assert_eq!(actual, expected);
-                scopes.add_binding(TargetLeaf::from_path(&field).unwrap(), actual);
-                control_scopes.add_binding(TargetLeaf::from_path(&field).unwrap(), expected);
+                scopes.add_binding(
+                    TargetLeaf::from_path(&field).unwrap(),
+                    actual,
+                    BindingOccurrence::Expression,
+                );
+                control_scopes.add_binding(
+                    TargetLeaf::from_path(&field).unwrap(),
+                    expected,
+                    BindingOccurrence::Expression,
+                );
             }
             assert_eq!(
                 super::tests::state(builder, scopes, declared, claimed),
@@ -645,4 +650,21 @@ fn json_implicit_duplicate_assignments_and_competing_producer_declarations_refus
             },
         );
     }
+}
+
+#[test]
+fn sibling_entries_sharing_one_node_need_one_retained_binding_each() {
+    let binding = || mapping::Binding {
+        target_field: "Value".into(),
+        node: 7,
+    };
+    let segment = |count| mapping::Scope {
+        bindings: (0..count).map(|_| binding()).collect(),
+        ..mapping::Scope::default()
+    };
+    let origins = BindingOrigins::from([((path(&["Rows", "Value"]), 7), BTreeSet::from([3, 4]))]);
+    let rows = path(&["Rows"]);
+    let preserved = [1, 2, 3]
+        .map(|count| json_implicit::bindings_preserved(&segment(count), &origins, &rows, &[3, 4]));
+    assert_eq!(preserved, [false, true, false]);
 }
