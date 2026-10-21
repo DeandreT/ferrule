@@ -1,5 +1,6 @@
-//! #449 owned join tuple parity: the interpreter, generated Rust and generated
-//! C# run the same conformance corpus against its expectations.
+//! #449 owned join tuple and #450 owned joined aggregate parity: the
+//! interpreter, generated Rust and generated C# run the same conformance
+//! corpus against its expectations.
 use super::*;
 use serde_json::{Value as Json, json};
 use std::fs;
@@ -16,8 +17,8 @@ mod cases;
 mod closed;
 use super::basic_owned_sequence_item_at::codec;
 
-const MODELS: usize = 7;
-const CASES: usize = 16;
+const MODELS: usize = 11;
+const CASES: usize = 27;
 const CALLS: usize = 3 * CASES;
 
 pub(super) struct Case {
@@ -52,7 +53,7 @@ fn corpus() -> TestResult<(Json, Vec<Project>)> {
             "calls":case.calls}));
     }
     if models.len() != MODELS || used.len() != MODELS || cases.len() != CASES {
-        return Err("7 profiles with 16 cases changed".into());
+        return Err("11 profiles with 27 cases changed".into());
     }
     Ok((json!({"version":1,"cases":records}), models))
 }
@@ -96,6 +97,15 @@ fn join_reads(project: &Project) -> usize {
         .count()
 }
 
+/// Joined aggregates reachable from a target, each rendered once.
+fn joined_aggregates(program: &codegen::Program) -> usize {
+    program
+        .expressions
+        .iter()
+        .filter(|node| matches!(node.expression, codegen::Expression::OwnedJoinAggregate(_)))
+        .count()
+}
+
 #[test]
 fn owned_joins449_profiles_lower_validate_and_emit() -> TestResult<()> {
     let (_, models) = corpus()?;
@@ -113,6 +123,16 @@ fn owned_joins449_profiles_lower_validate_and_emit() -> TestResult<()> {
             wire.matches("\"owned_join_field\"").count()
                 + wire.matches("\"owned_join_source_position\"").count(),
             join_reads(project),
+            "{profile}"
+        );
+        assert_eq!(
+            wire.matches("\"owned_join_aggregate\"").count(),
+            project
+                .graph
+                .nodes
+                .values()
+                .filter(|node| matches!(node, Node::OwnedJoinAggregate(_)))
+                .count(),
             "{profile}"
         );
         let decoded = mapping::project_file::decode_str(&wire)?;
@@ -150,11 +170,12 @@ fn owned_joins449_profiles_lower_validate_and_emit() -> TestResult<()> {
                 .map(|file| String::from_utf8_lossy(&file.contents).into_owned())
                 .collect::<String>()
         };
-        // Each owned join scope renders exactly one owned join.
+        // Each owned join scope and joined aggregate renders exactly one owned join.
         let scopes = std::iter::once(&project.root)
             .chain(project.extra_targets.iter().map(|target| &target.root))
             .map(join_scopes)
-            .sum::<usize>();
+            .sum::<usize>()
+            + joined_aggregates(&program);
         assert_eq!(
             text(&rust, "lib.rs")
                 .matches("context.owned_inner_join(")
@@ -186,15 +207,42 @@ fn engine_error_matches(error: &engine::EngineError, recipe: &Json) -> bool {
                     },
                 }
         }
-        // Scope-level walk failures carry no node.
-        Some("OwnedSource") => matches!(
-            error,
-            engine::EngineError::OwnedSourceAccess {
-                node: None,
-                scope: Some(_),
-                source: engine::OwnedSourceError::SourceUnavailable { owner },
-            } if *owner == projects::owner(recipe["owner"].as_str().unwrap_or_default())
-        ),
+        // Scope-level walk failures carry no node; a joined aggregate's carry its own.
+        Some("OwnedSource") => match recipe["node"].as_u64() {
+            None => matches!(
+                error,
+                engine::EngineError::OwnedSourceAccess {
+                    node: None,
+                    scope: Some(_),
+                    source: engine::OwnedSourceError::SourceUnavailable { owner },
+                } if *owner == projects::owner(recipe["owner"].as_str().unwrap_or_default())
+            ),
+            Some(node) => matches!(
+                error,
+                engine::EngineError::OwnedSourceAccess {
+                    node: Some(found),
+                    scope: None,
+                    source: engine::OwnedSourceError::SourceUnavailable { owner },
+                } if u64::from(*found) == node
+                    && *owner == projects::owner(recipe["owner"].as_str().unwrap_or_default())
+            ),
+        },
+        Some("AggregateNonFinite") => {
+            *error
+                == engine::EngineError::AggregateNonFinite {
+                    function: match recipe["function"].as_str() {
+                        Some("Sum") => mapping::AggregateOp::Sum,
+                        _ => panic!("authored aggregate function"),
+                    },
+                }
+        }
+        Some("MappingException") => {
+            *error
+                == engine::EngineError::MappingException {
+                    node: recipe["node"].as_u64().unwrap_or_default() as u32,
+                    message: recipe["message"].as_str().map(str::to_owned),
+                }
+        }
         _ => panic!("authored error recipe"),
     }
 }
@@ -369,6 +417,180 @@ fn owned_joins449_older_profiles_and_closed_controls_refuse() -> TestResult<()> 
 }
 
 #[test]
+fn owned_joins450_older_profiles_and_closed_aggregates_refuse() -> TestResult<()> {
+    // Every earlier generation profile refuses owned joined aggregates.
+    let project = projects::project("J08-joined-reducers");
+    let program = codegen::lower_with_basic_owned_joins(&project)?;
+    let expected = closed::aggregate_closed();
+    let codegen::ProgramValidationError::OwnedSource { diagnostic } = &expected else {
+        unreachable!("authored owned refusal");
+    };
+    let diagnostic = codegen::Diagnostic::OwnedSource {
+        diagnostic: diagnostic.clone(),
+    };
+    for result in closed::old_lower(&project) {
+        assert!(
+            matches!(&result, Err(error) if error.diagnostics() == std::slice::from_ref(&diagnostic)),
+            "{result:?}"
+        );
+    }
+    for result in closed::old_validators(&program)
+        .into_iter()
+        .chain(closed::old_catalogues(&program))
+    {
+        assert_eq!(result, Err(expected.clone()));
+    }
+    let options = rust_options("joins450-old", &runtime_path()?);
+    for result in closed::old_rust(&program, &options) {
+        assert!(
+            matches!(&result, Err(codegen_rust::EmitError::InvalidProgram(error)) if *error == expected),
+            "{result:?}"
+        );
+    }
+    for result in closed::old_csharp(&program) {
+        assert!(
+            matches!(&result, Err(codegen_csharp::EmitError::ProgramValidation(error)) if *error == expected),
+            "{result:?}"
+        );
+    }
+    assert!(
+        closed::ordinary_refusals(&program, &options)
+            .iter()
+            .all(|refused| *refused)
+    );
+
+    // Unsupported joined aggregate Projects refuse before artifacts exist.
+    for (id, project, refusal) in closed::aggregate_projects() {
+        let actual = codegen::lower_with_basic_owned_joins(&project);
+        let matched = match (&actual, &refusal) {
+            (Err(error), closed::Refusal::Capability(reason)) => {
+                closed::reason(error.diagnostics()) == Some(*reason)
+            }
+            (Err(error), closed::Refusal::Validation(expected)) => {
+                error.diagnostics() == expected.as_slice()
+            }
+            _ => false,
+        };
+        assert!(matched, "{id}: {actual:?}");
+    }
+
+    // Directly constructed Programs are refused by every new-profile entry.
+    for (id, program, expected) in closed::aggregate_programs(&program) {
+        assert_eq!(
+            codegen::validate_program_with_basic_owned_joins(&program),
+            Err(expected.clone()),
+            "{id}"
+        );
+        assert_eq!(
+            codegen::validate_basic_owned_joins_emission(&program),
+            Err(expected.clone()),
+            "{id}"
+        );
+        assert_eq!(
+            codegen::legacy_named_input_admission_plan_with_basic_owned_joins(&program).map(drop),
+            Err(expected.clone()),
+            "{id}"
+        );
+        assert!(
+            matches!(codegen_rust::emit_with_basic_owned_joins(&program, &options),
+                Err(codegen_rust::EmitError::InvalidProgram(error)) if error == expected),
+            "{id} Rust"
+        );
+        assert!(
+            matches!(codegen_csharp::emit_with_basic_owned_joins(&program),
+                Err(codegen_csharp::EmitError::ProgramValidation(error)) if error == expected),
+            "{id} C#"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn owned_joins450_legacy_joined_aggregates_keep_wire_and_generation() -> TestResult<()> {
+    // A legacy joined aggregate over the same schema names collections by
+    // path alone and keeps its wire, ordinary generation and interpreter
+    // behavior, including correlation by collection path.
+    let mut project = projects::base();
+    project.extra_targets.clear();
+    project.target = SchemaNode::group(
+        "Output",
+        vec![SchemaNode::scalar("Codes", ScalarType::String)],
+    );
+    let plan = mapping::JoinPlan::new(
+        mapping::JoinSource::new(projects::path(&["Rows"])),
+        mapping::JoinSource::new(projects::path(&["Lookup", "Rows"])),
+        mapping::JoinConditions::new(mapping::JoinKey::new(
+            projects::path(&["Rows"]),
+            projects::path(&["id"]),
+            projects::path(&["id"]),
+        )),
+    )?;
+    project.graph.nodes.clear();
+    project.graph.nodes.insert(
+        1,
+        Node::JoinAggregate {
+            function: mapping::AggregateOp::Join,
+            join: mapping::JoinId::new(1),
+            plan,
+            expression: Some(2),
+            arg: Some(3),
+        },
+    );
+    project.graph.nodes.insert(
+        2,
+        Node::JoinField {
+            join: mapping::JoinId::new(1),
+            collection: projects::path(&["Lookup", "Rows"]),
+            path: projects::path(&["code"]),
+        },
+    );
+    project.graph.nodes.insert(
+        3,
+        Node::Const {
+            value: Value::String("-".into()),
+        },
+    );
+    project.root = Scope {
+        bindings: vec![Binding {
+            target_field: "Codes".into(),
+            node: 1,
+        }],
+        ..Scope::default()
+    };
+    let wire = mapping::project_file::encode_pretty(&project)?;
+    assert!(!wire.contains("owned_"));
+    assert!(wire.contains("\"kind\": \"join_aggregate\""));
+    let options = rust_options("joins450-legacy", &runtime_path()?);
+    let program = codegen::lower(&project)?;
+    codegen_rust::emit(&program, &options)?;
+    codegen_csharp::emit(&program)?;
+    let row = |id: i64, code: &str| {
+        group_with(vec![
+            ("id", Instance::Scalar(Value::Int(id))),
+            ("code", Instance::Scalar(Value::String(code.into()))),
+        ])
+    };
+    let source = group_with(vec![(
+        "Rows",
+        Instance::Repeated(vec![row(1, "a"), row(2, "b")]),
+    )]);
+    let lookup = group_with(vec![(
+        "Rows",
+        Instance::Repeated(vec![row(2, "x"), row(1, "y"), row(2, "z")]),
+    )]);
+    let output = engine::run_with_sources(&project, &source, vec![("Lookup".into(), lookup)])?;
+    assert_eq!(
+        codec::encode(&output),
+        codec::encode(&group_with(vec![(
+            "Codes",
+            Instance::Scalar(Value::String("y-x-z".into()))
+        )]))
+    );
+    assert_eq!(mapping::project_file::encode_pretty(&project)?, wire);
+    Ok(())
+}
+
+#[test]
 fn owned_joins449_legacy_joins_keep_wire_and_generation() -> TestResult<()> {
     // A legacy join over the same schema names collections by path alone and
     // keeps its wire, ordinary generation and interpreter behavior.
@@ -519,7 +741,7 @@ fn host_result(results: &Path, calls: usize, run: &Output) -> Result<(), String>
 }
 
 #[test]
-#[ignore = "builds and runs one generated Rust host and 7 generated C# hosts; requires cargo and the .NET 10 SDK"]
+#[ignore = "builds and runs one generated Rust host and 11 generated C# hosts; requires cargo and the .NET 10 SDK"]
 fn owned_joins449_generated_rust_and_csharp_match_expected() -> TestResult<()> {
     let (controls, models) = corpus()?;
     let runtime = runtime_path()?;

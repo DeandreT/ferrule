@@ -18,6 +18,7 @@ internal static class Driver
             "String" => FerruleValue.FromString(recipe[1]!.GetValue<string>()),
             "Bool" => FerruleValue.FromBoolean(recipe[1]!.GetValue<bool>()),
             "Int" => FerruleValue.FromInt64(recipe[1]!.GetValue<long>()),
+            "Float" => FerruleValue.FromDouble(BitConverter.Int64BitsToDouble(unchecked((long)ulong.Parse(recipe[1]!.GetValue<string>(), NumberStyles.HexNumber, CultureInfo.InvariantCulture)))),
             _ => throw new InvalidOperationException("Closed authored scalar tag."),
         });
     }
@@ -33,6 +34,7 @@ internal static class Driver
             FerruleValueKind.String => new JsonArray(Json("String"), Json(value.StringValue)),
             FerruleValueKind.Bool => new JsonArray(Json("Bool"), Json(value.BooleanValue)),
             FerruleValueKind.Int64 => new JsonArray(Json("Int"), Json(value.Int64Value)),
+            FerruleValueKind.Double => new JsonArray(Json("Float"), Json(unchecked((ulong)BitConverter.DoubleToInt64Bits(value.DoubleValue)).ToString("x16", CultureInfo.InvariantCulture))),
             _ => throw new InvalidOperationException("Closed typed output tag."),
         };
     }
@@ -59,8 +61,16 @@ internal static class Driver
                     "string" => FerruleValueKind.String,
                     _ => throw new InvalidOperationException("Closed authored found kind."),
                 },
-            // Scope-level walk failures carry no node.
-            "OwnedSource" => runtime.Error == FerruleRuntimeError.OwnedSource && runtime.Node is null
+            "AggregateNonFinite" => runtime.Error == FerruleRuntimeError.AggregateNonFinite && runtime.Node is null
+                && runtime.AggregateOperation == recipe["function"]!.GetValue<string>() switch {
+                    "Sum" => FerruleAggregateOperation.Sum,
+                    _ => throw new InvalidOperationException("Closed authored aggregate function."),
+                },
+            "MappingException" => runtime.Error == FerruleRuntimeError.MappingException && runtime.Node == recipe["node"]!.GetValue<uint>()
+                && runtime.MappingExceptionMessage == recipe["message"]?.GetValue<string>(),
+            // Scope-level walk failures carry no node; a joined aggregate's carry its own.
+            "OwnedSource" => runtime.Error == FerruleRuntimeError.OwnedSource
+                && runtime.Node == recipe["node"]?.GetValue<uint>()
                 && runtime.OwnedSourceFailure is { } owned && ReferenceEquals(owned, runtime.InnerException)
                 && owned.Error == FerruleOwnedSourceErrorKind.SourceUnavailable
                 && owned.Owner?.Name == recipe["owner"]!.GetValue<string>(),
