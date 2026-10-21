@@ -10,6 +10,7 @@ fn value_original192(value: &Value, path: &str, text: &mut String) {
         Value::JsonNull(_) => writeln!(text, "path={path:?};tag=JsonNull").unwrap(),
         Value::XmlNil(_) => writeln!(text, "path={path:?};tag=XmlNil").unwrap(),
         Value::Int(value) => writeln!(text, "path={path:?};tag=Int;value={value}").unwrap(),
+        Value::Decimal(value) => writeln!(text, "path={path:?};tag=Decimal;value={value}").unwrap(),
         Value::Float(value) => writeln!(
             text,
             "path={path:?};tag=Float;value={value:?};ieee754_binary64_hex={:016x}",

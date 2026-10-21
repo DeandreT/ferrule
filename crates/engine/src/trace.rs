@@ -224,6 +224,7 @@ impl TraceValue {
                     Value::Null => "null".to_string(),
                     Value::JsonNull(_) => "json-null".to_string(),
                     Value::XmlNil(_) => "xml-nil".to_string(),
+                    Value::Decimal(value) => value.to_string(),
                     Value::Bool(value) => value.to_string(),
                     Value::Int(value) => value.to_string(),
                     Value::Float(value) => value.to_string(),

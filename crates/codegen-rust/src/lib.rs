@@ -57,6 +57,7 @@ pub struct Options {
 /// Failure to render a complete Rust project.
 #[derive(Debug)]
 pub enum EmitError {
+    UnsupportedDecimalValue { node: NodeId },
     UnsupportedFilterMapV1 { item: NodeId },
     CsvOutput(CsvOutputError),
     InvalidProgram(ProgramValidationError),
@@ -70,6 +71,10 @@ pub enum EmitError {
 impl fmt::Display for EmitError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedDecimalValue { node } => write!(
+                formatter,
+                "decimal literal at node {node} has no admitted generated Rust profile"
+            ),
             Self::UnsupportedFilterMapV1 { item } => write!(
                 formatter,
                 "generated Rust filter_map_v1 item {item} is not implemented"
@@ -97,7 +102,8 @@ impl std::error::Error for EmitError {
             Self::EmbeddedSchema(error) => Some(error),
             Self::ArtifactPath(error) => Some(error),
             Self::ArtifactSet(error) => Some(error),
-            Self::UnsupportedFilterMapV1 { .. }
+            Self::UnsupportedDecimalValue { .. }
+            | Self::UnsupportedFilterMapV1 { .. }
             | Self::InvalidPackageName(_)
             | Self::SchemaSerialization(_) => None,
         }
@@ -3322,7 +3328,7 @@ fn render_target_adaptation(value: &str, domain: ScalarTargetDomain) -> String {
     }
 }
 
-fn rust_value(_node: NodeId, value: &Value) -> Result<String, EmitError> {
+fn rust_value(node: NodeId, value: &Value) -> Result<String, EmitError> {
     Ok(match value {
         Value::Null => "Value::Null".to_string(),
         Value::JsonNull(_) => "Value::json_null()".to_string(),
@@ -3335,6 +3341,7 @@ fn rust_value(_node: NodeId, value: &Value) -> Result<String, EmitError> {
             value.to_bits()
         ),
         Value::String(value) => format!("Value::String({}.to_string())", rust_string(value)),
+        Value::Decimal(_) => return Err(EmitError::UnsupportedDecimalValue { node }),
     })
 }
 

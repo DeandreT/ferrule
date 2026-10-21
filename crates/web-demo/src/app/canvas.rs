@@ -646,6 +646,10 @@ impl SnarlViewer<CanvasNode> for DemoViewer<'_> {
             && let Some(Node::Const { value }) = self.graph.nodes.get_mut(&id)
         {
             // The one live edit on the canvas: constants.
+            if let Value::Decimal(decimal) = &*value {
+                ui.label(format!("decimal {decimal} (read-only)"));
+                return PinInfo::circle();
+            }
             let mut text = match &*value {
                 Value::String(s) => s.clone(),
                 other => format!("{other:?}"),

@@ -12,6 +12,7 @@ pub fn snapshot(instance: &Instance) -> Json {
                 Value::Int(v) => json!({"kind":"Int64","value":v.to_string()}),
                 Value::Float(v) => json!({"kind":"Double","bits":format!("{:016x}",v.to_bits())}),
                 Value::String(v) => json!({"kind":"String","value":v}),
+                Value::Decimal(v) => json!({"kind":"Decimal","value":v.to_string()}),
             };
             json!({"kind":"Scalar","value":payload})
         }

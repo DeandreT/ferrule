@@ -50,6 +50,7 @@ pub fn value_map_user_function(
 
 pub(crate) fn coerce_input(value: &Value, target: ScalarType) -> Option<Value> {
     match (target, value) {
+        (_, Value::Decimal(_)) => None,
         (_, Value::Null) => Some(Value::Null),
         (_, Value::JsonNull(value)) => Some(Value::JsonNull(*value)),
         (_, Value::XmlNil(value)) => Some(Value::XmlNil(*value)),

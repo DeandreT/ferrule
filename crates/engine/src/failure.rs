@@ -312,6 +312,7 @@ pub(super) fn scalar_text(value: Value) -> String {
         Value::Bool(value) => value.to_string(),
         Value::Int(value) => value.to_string(),
         Value::Float(value) => value.to_string(),
+        Value::Decimal(value) => value.to_string(),
         Value::String(value) => value,
     }
 }

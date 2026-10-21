@@ -176,6 +176,13 @@ fn validate_at(
             result
         }
         Instance::Scalar(value) if remaining.is_empty() => {
+            if matches!(value, Value::Decimal(_)) {
+                return Err(EdiFormatError::ValueType {
+                    element: full_path.join("/"),
+                    expected: ir::ScalarType::String,
+                    got: "decimal",
+                });
+            }
             let Some(lexical) = lexical_value(value) else {
                 return Ok(());
             };
@@ -233,6 +240,7 @@ fn lexical_value(value: &Value) -> Option<std::borrow::Cow<'_, str>> {
         Value::Bool(value) => Some(std::borrow::Cow::Owned(value.to_string())),
         Value::Int(value) => Some(std::borrow::Cow::Owned(value.to_string())),
         Value::Float(value) => Some(std::borrow::Cow::Owned(value.to_string())),
+        Value::Decimal(value) => Some(std::borrow::Cow::Owned(value.to_string())),
     }
 }
 
