@@ -674,9 +674,9 @@ endpoint optional in the named-input catalogue.
 Earlier profiles, including the path-hierarchy, adjacency-tree, IntoBlocks,
 recursive-collect, SequenceExists and recursive-filter companions, refuse
 owned search
-with `AggregateLookup`, and joins and legacy Lookup or CollectionFind stay
-closed. Owned aggregates stay closed in this profile and open in its explicit
-aggregate companion below. The
+with `AggregateLookup`, and owned joins (admitted by the join companion below)
+and legacy Lookup or CollectionFind stay closed. Owned aggregates stay closed in
+this profile and open in its explicit aggregate companion below. The
 [owned search contract](design/owned-lookup-find.md) defines the wire form,
 selection rules and qualification.
 
@@ -783,6 +783,35 @@ dynamic source fields and XML serializers, joins, the legacy aggregate, Lookup
 and CollectionFind, generated-item contexts and SequenceExists stay closed. The
 [owned aggregate contract](design/owned-collection-aggregates.md) defines the
 wire form, evaluation order and qualification.
+
+## Explicit owned inner joins
+
+Use `codegen::lower_with_basic_owned_joins`, then
+`codegen_rust::emit_with_basic_owned_joins(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_joins(&program)`. Direct Program hosts
+use `validate_program_with_basic_owned_joins` and
+`validate_basic_owned_joins_emission`; named-input discovery uses
+`legacy_named_input_admission_plan_with_basic_owned_joins`.
+
+The profile composes the owned Lookup and CollectionFind profile with owned
+inner-join scopes. Each source walks exactly its declared endpoint, anchored by
+the latest active frame of that owner, and tuples keep left-major order and
+duplicates. `owned_join_field` and `owned_join_source_position` read one member
+by its owner and collection; `join_position` reads the flattened position, which
+filters, sorts and windows treat like the legacy join while raw member
+positions never change. Join scopes admit Group or Scalar construction,
+Repeated or First output, filters, sorts, windows and static descendant groups.
+Generated Rust calls `BasicScopeContext::owned_inner_join` and generated C#
+calls `FerruleBasicScopeContext.OwnedInnerJoin`. Join sources keep their
+endpoints optional in the named-input catalogue.
+
+Earlier profiles, the ordinary emitters and directly constructed Program
+validation refuse owned joins with the `Join` capability, as do tuple contexts
+for every read other than owned join reads, the join position and pure scalar
+nodes. Owned joined aggregates and legacy joins stay closed in the Basic
+profiles, and owned dynamic source-field reads, owned XML serialization and
+owned collection aggregates keep their separate sibling companions. The [owned join contract](design/owned-joins.md) defines the wire
+form, members, positions and qualification.
 
 ## C#
 

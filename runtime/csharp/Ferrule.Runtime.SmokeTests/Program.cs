@@ -82,6 +82,7 @@ internal static partial class Program
             ("dynamic target construction", DynamicTargetConstruction),
             ("collection-find contexts", CollectionFindContexts),
             ("inner join contexts", InnerJoinContexts),
+            ("owned inner join tuples", OwnedInnerJoinContexts),
             ("grouping contexts", GroupingContexts),
             ("owned By representatives complete members and exact owners", BasicOwnedByRepresentativesAndMembers),
             ("owned By sort filter bounds and error order", BasicOwnedByPhasesAndErrorOrder),
