@@ -967,11 +967,13 @@ fn primary_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
 }
 
 /// Owned failure rows add exact row positions and frame pins for every owner to
-/// the static scalar subset. Specialized contexts, including ItemAt, stay closed.
+/// the static scalar subset. Specialized contexts, including the generated-item
+/// consumers ItemAt, Exists and SequenceAggregate, stay closed as generation
+/// refuses them.
 fn owned_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
     if matches!(
         node,
-        Node::SequenceItemAt { .. } | Node::SequenceAggregate { .. }
+        Node::SequenceItemAt { .. } | Node::SequenceExists { .. } | Node::SequenceAggregate { .. }
     ) || node_context(node) != OwnedCapabilityContext::Basic
     {
         return false;
