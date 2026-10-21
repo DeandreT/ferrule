@@ -15,6 +15,7 @@ mod adjacency_tree;
 mod aggregate;
 mod context;
 mod debug;
+mod dynamic_field_owned;
 mod dynamic_target;
 mod eval_expr;
 mod eval_scope;
@@ -1116,6 +1117,9 @@ mod owned_group_starting_with_tests;
 #[path = "tests/owned_sequence_item_at.rs"]
 mod owned_sequence_item_at_tests;
 
+#[cfg(test)]
+#[path = "tests/owned_dynamic_field.rs"]
+mod owned_dynamic_field_tests;
 #[cfg(test)]
 #[path = "tests/owned_failure_iteration.rs"]
 mod owned_failure_iteration_tests;

@@ -47,8 +47,6 @@ fn scalar_scope(expression: u32) -> TargetScope {
 
 fn scalar_program() -> Program {
     // The minimum-policy case has a scalar primary, not a scalar target scope.
-    // Control-free owned leaves are admitted in Group construction; Scalar
-    // construction requires a separately permitted sort/window operation.
     Program {
         xml_boundary: None,
         source: SchemaNode::scalar("Input", ScalarType::String),
@@ -258,46 +256,22 @@ fn owned_json_companion_is_appended_only_to_control_free_emission() {
 }
 
 #[test]
-fn owned_json_base_profile_keeps_owned_scalar_target_construction_closed() {
-    use codegen::{
-        OwnedSourceCapabilityOrigin as Origin, OwnedSourceCapabilityReason as Capability,
-        OwnedSourceDiagnostic as Diagnostic, OwnedSourceDiagnosticLocation as Location,
-        OwnedSourceDiagnosticOwner as Owner, OwnedSourceDiagnosticRequest as Request,
-        OwnedSourceNamespace as Namespace,
-    };
-    use mapping::{SourceScopeLocation, SourceScopeTarget};
-
-    // Retain the original invalid fixture as a negative profile guard rather
-    // than relaxing the production gate to make a JSON adapter test pass.
+fn owned_json_base_profile_admits_owned_scalar_target_construction() {
+    // Scalar construction is common Basic: the scalar primary read reaches a
+    // scalar target scope and the JSON adapters append to the same typed source.
     let mut program = scalar_program();
     program.target = SchemaNode::scalar("Output", ScalarType::String);
     program.root = scalar_scope(1);
-    let scope = SourceScopeLocation::root(SourceScopeTarget::Primary);
-    let expected = ProgramValidationError::OwnedSource {
-        diagnostic: Box::new(Diagnostic::Capability {
-            location: Location::Expression {
-                namespace: Namespace::Main,
-                node: 1,
-                scope: Some(scope.clone()),
-            },
-            request: Some(Request::Field {
-                owner: Owner::Primary,
-                path: Vec::new(),
-                frame: None,
-            }),
-            reason: Capability::SpecialConstruction,
-            origin: Origin::Scope { scope },
-        }),
-    };
-    for result in [
-        emit_with_basic_owned_sources(&program, &options()).map(|_| ()),
-        emitter::render_public_basic_owned_source(&program).map(|_| ()),
-    ] {
-        match result {
-            Err(EmitError::InvalidProgram(actual)) => assert_eq!(actual, expected),
-            other => panic!("owned scalar target construction must remain closed: {other:?}"),
-        }
-    }
+    let typed = emitter::render_public_basic_owned_source(&program).unwrap();
+    let artifacts = emit_with_basic_owned_sources(&program, &options()).unwrap();
+    let appended = source(&artifacts)
+        .strip_prefix(&typed)
+        .expect("typed source unchanged");
+    assert_eq!(
+        appended,
+        super::super::owned_json_api::render(&program).unwrap()
+    );
+    assert!(typed.contains("SourceOwnerRef::Primary"));
 }
 
 #[test]

@@ -47,6 +47,10 @@ pub(crate) const SOURCES: [(&str, &str); 83] = [
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleBasicGroupBy.cs"),
     ),
     (
+        "Runtime/FerruleOwnedDynamicField.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleOwnedDynamicField.cs"),
+    ),
+    (
         "Runtime/FerruleXml.DynamicInputDocumentSet.cs",
         include_str!(
             "../../../runtime/csharp/Ferrule.Runtime/FerruleXml.DynamicInputDocumentSet.cs"
