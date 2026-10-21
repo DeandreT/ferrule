@@ -20,9 +20,12 @@ use adjacency_tree::{owned_root, owned_rows};
 mod failure_sources;
 pub(super) use failure_sources::FailurePolicy;
 mod collection_aggregates;
+mod joins;
 mod lookup_find;
 pub use collection_aggregates::validate_basic_owned_collection_aggregates_emission;
 pub use failure_sources::validate_basic_owned_failure_source_emission;
+pub(super) use joins::JoinPolicy;
+pub use joins::validate_basic_owned_joins_emission;
 mod recursive_collect;
 pub(super) use lookup_find::SearchPolicy;
 pub use lookup_find::validate_basic_owned_lookup_find_emission;
@@ -232,6 +235,7 @@ fn scope_has_owned(scope: &TargetScope) -> bool {
         || owned_rows(scope).is_some()
         || scope.iteration.as_ref().is_some_and(|iteration| {
             iteration.owned_source_iteration().is_some()
+                || iteration.owned_inner_join().is_some()
                 || recursive_collect::scope_sequence(iteration).is_some()
                 || iteration
                     .concatenated()
@@ -244,12 +248,11 @@ fn has_owned(program: &Program) -> bool {
     program
         .expressions
         .iter()
-        .any(|node| request(&node.expression).is_some())
+        .any(|node| request(&node.expression).is_some() || joins::is_join_read(&node.expression))
         || program.user_functions.iter().any(|function| {
-            function
-                .expressions
-                .iter()
-                .any(|node| request(&node.expression).is_some())
+            function.expressions.iter().any(|node| {
+                request(&node.expression).is_some() || joins::is_join_read(&node.expression)
+            })
         })
         || scope_has_owned(&program.root)
         || program
@@ -365,6 +368,13 @@ pub(super) fn validate_structure(program: &Program) -> Result<(), ProgramValidat
         }
     }
     for (scope, route) in all_scopes(program) {
+        if let Some(join) = scope
+            .iteration
+            .as_ref()
+            .and_then(|iteration| iteration.owned_inner_join())
+        {
+            joins::plan_structure(program, &route, join)?;
+        }
         if let Some(source) = scope
             .iteration
             .as_ref()
@@ -441,6 +451,8 @@ struct Visit<'a> {
     closed: Option<Closed>,
     scope: Option<SourceScopeLocation>,
     ancestry: Vec<Ancestor<'a>>,
+    /// The admitted owned join scope whose tuple this expression reads.
+    join_tuple: Option<SourceScopeLocation>,
     node: NodeId,
 }
 fn owns(ancestry: &[Ancestor<'_>]) -> bool {
@@ -724,6 +736,9 @@ struct Admission<'a> {
     adjacency_tree: AdjacencyTreePolicy,
     dynamic_field: DynamicFieldPolicy,
     xml_serialize: XmlSerializePolicy,
+    join: JoinPolicy,
+    /// Expressions admitted inside an owned join tuple.
+    tuple_nodes: std::collections::BTreeSet<NodeId>,
     visited: Vec<Visit<'a>>,
 }
 impl<'a> Admission<'a> {
@@ -762,6 +777,44 @@ impl<'a> Admission<'a> {
                 node: visit.node,
                 scope: visit.scope.clone(),
             };
+            if let Some(join_scope) = &visit.join_tuple {
+                if !joins::admitted_in_tuple(expression) {
+                    return Err(failure(
+                        location,
+                        request(expression),
+                        Closed {
+                            reason: Capability::Join,
+                            origin: Origin::Scope {
+                                scope: join_scope.clone(),
+                            },
+                        },
+                    ));
+                }
+                self.tuple_nodes.insert(visit.node);
+                for dependency in graph_dependencies::of(expression).into_iter().rev() {
+                    let mut child = visit.clone();
+                    child.node = dependency;
+                    pending.push(child);
+                }
+                continue;
+            }
+            // Owned join reads exist only inside their admitted tuple.
+            if joins::is_join_read(expression) {
+                if visit.namespace == Namespace::Main && self.tuple_nodes.contains(&visit.node) {
+                    continue;
+                }
+                return Err(failure(
+                    location,
+                    None,
+                    visit.closed.clone().unwrap_or(Closed {
+                        reason: Capability::Join,
+                        origin: Origin::Expression {
+                            namespace: visit.namespace,
+                            node: visit.node,
+                        },
+                    }),
+                ));
+            }
             if let Some(query) = request(expression)
                 && let Some(closed) = visit
                     .closed
@@ -839,6 +892,7 @@ impl<'a> Admission<'a> {
                         }),
                         scope: None,
                         ancestry: Vec::new(),
+                        join_tuple: None,
                         node: definition.output,
                     });
                 }
@@ -894,6 +948,13 @@ impl<'a> Admission<'a> {
         mut ancestry: Vec<Ancestor<'a>>,
         inherited: Option<Closed>,
     ) -> Result<(), ProgramValidationError> {
+        if let Some(join) = scope
+            .iteration
+            .as_ref()
+            .and_then(|iteration| iteration.owned_inner_join())
+        {
+            return self.owned_join_scope(scope, route, ancestry, inherited, join);
+        }
         // Bounds use the incoming parent, before this scope introduces an item.
         // Keep the complete Visit key when a bound is also a key or target root.
         // An admitted fixed-block size is such a parent expression as well.
@@ -1067,6 +1128,7 @@ impl<'a> Admission<'a> {
                         closed: parent_closed.clone(),
                         scope: Some(route.clone()),
                         ancestry: parent_ancestry.clone(),
+                        join_tuple: None,
                         node,
                     })?;
                 }
@@ -1092,6 +1154,7 @@ impl<'a> Admission<'a> {
                     closed: closed.clone(),
                     scope: Some(route.clone()),
                     ancestry: ancestry.clone(),
+                    join_tuple: None,
                     node,
                 })?;
             }
@@ -1125,6 +1188,7 @@ impl<'a> Admission<'a> {
                         closed: parent_closed.clone(),
                         scope: Some(route.clone()),
                         ancestry: parent_ancestry.clone(),
+                        join_tuple: None,
                         node,
                     })?;
                 }
@@ -1168,6 +1232,7 @@ impl<'a> Admission<'a> {
                 closed: closed.clone(),
                 scope: Some(route.clone()),
                 ancestry: ancestry.clone(),
+                join_tuple: None,
                 node,
             })?;
         }
@@ -1327,6 +1392,31 @@ pub(super) fn validate_closed_contexts_with_xml(
     dynamic_field: DynamicFieldPolicy,
     xml_serialize: XmlSerializePolicy,
 ) -> Result<(), ProgramValidationError> {
+    validate_closed_contexts_with_joins(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        dynamic_field,
+        xml_serialize,
+        JoinPolicy::Closed,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn validate_closed_contexts_with_joins(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+    path_hierarchy: PathHierarchyPolicy,
+    adjacency_tree: AdjacencyTreePolicy,
+    dynamic_field: DynamicFieldPolicy,
+    xml_serialize: XmlSerializePolicy,
+    join: JoinPolicy,
+) -> Result<(), ProgramValidationError> {
     if !has_owned(program) {
         return Ok(());
     }
@@ -1338,6 +1428,8 @@ pub(super) fn validate_closed_contexts_with_xml(
         adjacency_tree,
         dynamic_field,
         xml_serialize,
+        join,
+        tuple_nodes: std::collections::BTreeSet::new(),
         visited: Vec::new(),
     };
     admission.scope(
@@ -1378,6 +1470,7 @@ pub(super) fn validate_closed_contexts_with_xml(
                 }),
                 scope: None,
                 ancestry: Vec::new(),
+                join_tuple: None,
                 node,
             })?;
         }
@@ -1396,6 +1489,7 @@ pub(super) fn validate_closed_contexts_with_xml(
                 }),
                 scope: None,
                 ancestry: Vec::new(),
+                join_tuple: None,
                 node: dynamic.path,
             })?;
         }
@@ -1412,6 +1506,7 @@ pub(super) fn validate_closed_contexts_with_xml(
                 }),
                 scope: None,
                 ancestry: Vec::new(),
+                join_tuple: None,
                 node: node.id,
             })?;
         }
@@ -1423,6 +1518,7 @@ pub(super) fn validate_closed_contexts_with_xml(
             closed: None,
             scope: None,
             ancestry: Vec::new(),
+            join_tuple: None,
             node: node.id,
         })?;
     }
@@ -1804,7 +1900,34 @@ fn validate_basic_owned_with_xml(
     dynamic_field: DynamicFieldPolicy,
     xml_serialize: XmlSerializePolicy,
 ) -> Result<(), ProgramValidationError> {
-    super::validate_program_with_owned_xml(
+    validate_basic_owned_with_joins(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        search,
+        dynamic_field,
+        xml_serialize,
+        JoinPolicy::Closed,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_basic_owned_with_joins(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+    path_hierarchy: PathHierarchyPolicy,
+    adjacency_tree: AdjacencyTreePolicy,
+    search: SearchPolicy,
+    dynamic_field: DynamicFieldPolicy,
+    xml_serialize: XmlSerializePolicy,
+    join: JoinPolicy,
+) -> Result<(), ProgramValidationError> {
+    super::validate_program_with_owned_joins(
         program,
         profile,
         failures,
@@ -1813,11 +1936,13 @@ fn validate_basic_owned_with_xml(
         adjacency_tree,
         dynamic_field,
         xml_serialize,
+        join,
     )?;
     let policy = BasicScopePolicy {
         profile,
         path_hierarchy,
         adjacency_tree,
+        join,
     };
     basic_scope(
         program,
@@ -1891,6 +2016,18 @@ fn validate_basic_owned_with_xml(
             Expression::OwnedLookup(_)
             | Expression::OwnedCollectionFind(_)
             | Expression::OwnedAggregate(_) => Capability::AggregateLookup,
+            // Validation binds each read to its dominating owned join, whose
+            // tuple admission checked the closed scalar subset.
+            Expression::OwnedJoinField(_)
+            | Expression::OwnedJoinSourcePosition(_)
+            | Expression::JoinPosition { .. }
+                if join == JoinPolicy::Owned =>
+            {
+                continue;
+            }
+            Expression::OwnedJoinField(_) | Expression::OwnedJoinSourcePosition(_) => {
+                Capability::Join
+            }
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
@@ -1970,6 +2107,7 @@ struct BasicScopePolicy {
     profile: BasicOwnedProfile,
     path_hierarchy: PathHierarchyPolicy,
     adjacency_tree: AdjacencyTreePolicy,
+    join: JoinPolicy,
 }
 
 fn basic_scope(
@@ -1982,9 +2120,15 @@ fn basic_scope(
     let profile = policy.profile;
     if let Some(iteration) = &scope.iteration {
         let reason = match iteration.input() {
+            // Closed-context admission validated the whole tuple subtree.
+            IterationSource::OwnedInnerJoin(_) if policy.join == JoinPolicy::Owned => {
+                return Ok(());
+            }
             IterationSource::OwnedSource(_) | IterationSource::Source(_) => None,
             IterationSource::Generated(_) => Some(Capability::GeneratedItem),
-            IterationSource::InnerJoin(_) => Some(Capability::Join),
+            IterationSource::InnerJoin(_) | IterationSource::OwnedInnerJoin(_) => {
+                Some(Capability::Join)
+            }
             IterationSource::Concatenate(_) => Some(Capability::Concatenate),
             IterationSource::DynamicDocuments(_) => Some(Capability::Document),
         };
@@ -2058,10 +2202,9 @@ fn basic_scope(
 fn basic_scope_needs_owned(program: &Program, scope: &TargetScope) -> bool {
     if owned_path_hierarchy(scope).is_some()
         || owned_rows(scope).is_some()
-        || scope
-            .iteration
-            .as_ref()
-            .is_some_and(|iteration| iteration.owned_source_iteration().is_some())
+        || scope.iteration.as_ref().is_some_and(|iteration| {
+            iteration.owned_source_iteration().is_some() || iteration.owned_inner_join().is_some()
+        })
     {
         return true;
     }

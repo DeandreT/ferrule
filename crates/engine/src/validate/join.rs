@@ -8,6 +8,38 @@ use mapping::{
 
 use super::ValidationIssue;
 use super::graph::{node_inputs, validate_collection_value};
+
+/// Sources of one join scope that dominates the expressions being validated.
+/// Legacy joins name collections by path alone; owned joins by full identity.
+#[derive(Clone)]
+pub(super) enum ActiveJoinSources {
+    Legacy(Vec<Vec<String>>),
+    Owned(Vec<(OwnedSourceRef, JoinSourceCardinality)>),
+}
+
+pub(super) type ActiveJoin = (JoinId, ActiveJoinSources);
+
+pub(super) fn active_legacy_join(join: JoinId, plan: &JoinPlan) -> ActiveJoin {
+    (
+        join,
+        ActiveJoinSources::Legacy(
+            plan.sources()
+                .map(|source| source.collection().to_vec())
+                .collect(),
+        ),
+    )
+}
+
+pub(super) fn active_owned_join(join: JoinId, plan: &OwnedJoinPlan) -> ActiveJoin {
+    (
+        join,
+        ActiveJoinSources::Owned(
+            plan.sources()
+                .map(|source| (source.collection().clone(), source.cardinality()))
+                .collect(),
+        ),
+    )
+}
 use super::schema::{
     display_path, follow_schema, follow_schema_resolved, owned_source_root,
     root_source_path_direct, source_path_matches, source_path_matches_direct,
@@ -207,7 +239,7 @@ pub(super) fn validate_root_singletons(
 pub(super) fn validate_scope_nodes(
     graph: &Graph,
     scope: &Scope,
-    active_joins: &[(JoinId, Vec<Vec<String>>)],
+    active_joins: &[ActiveJoin],
     root_context: bool,
     location: &str,
     project: &Project,
@@ -245,7 +277,7 @@ pub(super) fn validate_scope_nodes(
 pub(super) fn validate_roots(
     graph: &Graph,
     roots: impl IntoIterator<Item = NodeId>,
-    active_joins: &[(JoinId, Vec<Vec<String>>)],
+    active_joins: &[ActiveJoin],
     root_context: bool,
     location: &str,
     project: &Project,
@@ -266,7 +298,7 @@ pub(super) fn validate_roots(
 fn validate_roots_inner(
     graph: &Graph,
     roots: impl IntoIterator<Item = (NodeId, bool)>,
-    active_joins: &[(JoinId, Vec<Vec<String>>)],
+    active_joins: &[ActiveJoin],
     location: &str,
     project: &Project,
     issues: &mut Vec<ValidationIssue>,
@@ -294,7 +326,16 @@ fn validate_roots_inner(
                         join.get()
                     ),
                 )),
-                Some((_, collections)) if !collections.contains(collection) => {
+                Some((_, ActiveJoinSources::Owned(_))) => issues.push(ValidationIssue::new(
+                    location,
+                    format!(
+                        "join field node {id} references owned join {}; read its members with owned join fields",
+                        join.get()
+                    ),
+                )),
+                Some((_, ActiveJoinSources::Legacy(collections)))
+                    if !collections.contains(collection) =>
+                {
                     issues.push(ValidationIssue::new(
                         location,
                         format!(
@@ -313,6 +354,45 @@ fn validate_roots_inner(
                     issues,
                 ),
             },
+            Node::OwnedJoinField(field) => {
+                if let Some(cardinality) =
+                    owned_member(active_joins, id, field.join, &field.collection, location, issues)
+                {
+                    match cardinality {
+                        JoinSourceCardinality::Singleton if !field.path.is_empty() => {
+                            issues.push(ValidationIssue::new(
+                                location,
+                                format!(
+                                    "owned join field node {id} reads `{}` below singleton collection {}; a singleton member is read with an empty path",
+                                    display_path(&field.path),
+                                    describe_owned_collection(&field.collection)
+                                ),
+                            ));
+                        }
+                        JoinSourceCardinality::Singleton => {}
+                        JoinSourceCardinality::Repeating => {
+                            super::schema::validate_owned_item_scalar(
+                                project,
+                                &field.collection,
+                                &field.path,
+                                "owned join field",
+                                location,
+                                issues,
+                            );
+                        }
+                    }
+                }
+            }
+            Node::OwnedJoinSourcePosition(position) => {
+                owned_member(
+                    active_joins,
+                    id,
+                    position.join,
+                    &position.collection,
+                    location,
+                    issues,
+                );
+            }
             Node::JoinPosition { join }
                 if !active_joins.iter().any(|(active, _)| active == join) =>
             {
@@ -337,12 +417,7 @@ fn validate_roots_inner(
                 pending.extend(arg.map(|arg| (arg, root_context)));
                 if let Some(expression) = expression {
                     let mut local_joins = active_joins.to_vec();
-                    local_joins.push((
-                        *join,
-                        plan.sources()
-                            .map(|source| source.collection().to_vec())
-                            .collect(),
-                    ));
+                    local_joins.push(active_legacy_join(*join, plan));
                     ancestors.insert(id);
                     validate_roots_inner(
                         graph,
@@ -366,6 +441,44 @@ fn validate_roots_inner(
             }
         }
     }
+}
+
+/// The cardinality of the member named by an owned join read, or an issue
+/// when no dominating owned join with that id has a source of that identity.
+fn owned_member(
+    active_joins: &[ActiveJoin],
+    id: NodeId,
+    join: JoinId,
+    collection: &OwnedSourceRef,
+    location: &str,
+    issues: &mut Vec<ValidationIssue>,
+) -> Option<JoinSourceCardinality> {
+    let message = match active_joins
+        .iter()
+        .rev()
+        .find(|(active, _)| *active == join)
+    {
+        None => format!(
+            "owned join node {id} references inactive join {}",
+            join.get()
+        ),
+        Some((_, ActiveJoinSources::Legacy(_))) => format!(
+            "owned join node {id} references join {}, which is not an owned join",
+            join.get()
+        ),
+        Some((_, ActiveJoinSources::Owned(sources))) => {
+            match sources.iter().find(|(source, _)| source == collection) {
+                Some((_, cardinality)) => return Some(*cardinality),
+                None => format!(
+                    "owned join node {id} collection {} does not belong to join {}",
+                    describe_owned_collection(collection),
+                    join.get()
+                ),
+            }
+        }
+    };
+    issues.push(ValidationIssue::new(location, message));
+    None
 }
 
 /// Inputs evaluated in a collection item, generated item, or mixed-content

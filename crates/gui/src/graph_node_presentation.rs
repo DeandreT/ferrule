@@ -142,6 +142,19 @@ pub(super) fn owned_source_title(node: &Node) -> Option<String> {
                 mapping::OwnedAggregateValue::Expression(_) => "computed per item".into(),
             },
         )),
+        Node::OwnedJoinField(field) => Some(format!(
+            "Owned join {} field: {}\nCollection: {:?}\nPath: {:?}\nRead-only; owned join authoring is unavailable",
+            field.join.get(),
+            owner(&field.collection.owner),
+            field.collection.path,
+            field.path,
+        )),
+        Node::OwnedJoinSourcePosition(position) => Some(format!(
+            "Owned join {} source position: {}\nCollection: {:?}\nRead-only; owned join authoring is unavailable",
+            position.join.get(),
+            owner(&position.collection.owner),
+            position.collection.path,
+        )),
         _ => None,
     }
 }

@@ -28,6 +28,10 @@ mod failure_rows;
 #[path = "basic_group_by.rs"]
 mod group_by;
 
+#[path = "basic_owned_join.rs"]
+mod owned_join;
+pub use owned_join::{OwnedJoinKey, OwnedJoinSource, OwnedJoinStage};
+
 #[path = "basic_recursive_filter.rs"]
 mod recursive_filter;
 #[path = "basic_xml.rs"]
@@ -493,6 +497,7 @@ impl<'src> BasicSourceRoots<'src> {
             bindings: &self.declarations,
             projection_bytes: self.projection_bytes,
             identity: Arc::new(()),
+            join: None,
         })
     }
 }
@@ -562,6 +567,8 @@ pub struct BasicScopeContext<'ctx> {
     bindings: &'ctx [usize],
     projection_bytes: usize,
     identity: Arc<()>,
+    /// The active owned join tuple; only owned join reads consult it.
+    join: Option<std::rc::Rc<owned_join::OwnedJoinTuple<'ctx>>>,
 }
 pub struct BasicSourceCandidate<'ctx> {
     context: BasicScopeContext<'ctx>,
@@ -716,6 +723,7 @@ impl<'ctx> BasicScopeContext<'ctx> {
             bindings: self.bindings,
             projection_bytes: self.projection_bytes,
             identity: Arc::new(()),
+            join: self.join.clone(),
         })
     }
     pub fn try_clone_view(&self) -> Result<Self, RuntimeError> {
@@ -1457,6 +1465,7 @@ impl<'ctx> BasicSourceCandidate<'ctx> {
             bindings: self.context.bindings,
             projection_bytes: self.context.projection_bytes,
             identity: Arc::new(()),
+            join: None,
         };
         if let Some(cursor) = self.cursor {
             context.legacy.frames[cursor.legacy]
@@ -2160,6 +2169,7 @@ impl<'ctx> BasicLegacyObserver<'_, 'ctx> {
                 bindings: self.parent.bindings,
                 projection_bytes: self.parent.projection_bytes,
                 identity: Arc::new(()),
+                join: None,
             },
             cohort: Arc::clone(&self.cohort),
             ordinal,
@@ -2350,6 +2360,7 @@ impl<'ctx> OwnedWalkObserver<'ctx> for BasicOwnedObserver<'_, 'ctx> {
                 bindings: self.parent.bindings,
                 projection_bytes: self.parent.projection_bytes,
                 identity: Arc::new(()),
+                join: None,
             },
             cohort: Arc::clone(&self.cohort),
             ordinal,

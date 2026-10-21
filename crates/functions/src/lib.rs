@@ -20,12 +20,16 @@ mod decimal;
 mod filepath;
 mod flextext;
 mod format_number;
+mod invocation_counters;
 mod json;
 mod scalar;
 
 pub use catalog::{
     BuiltinArity, BuiltinCategory, BuiltinDefinition, BuiltinExposure, BuiltinNames,
     BuiltinParameter, ScalarDomain, catalog as builtin_catalog, find as builtin,
+};
+pub use invocation_counters::{
+    InvocationCounterError, InvocationCounterLimits, InvocationCounters,
 };
 
 #[derive(Debug, Error, PartialEq)]

@@ -27,8 +27,10 @@ pub(super) fn mark_basic_scopes(
     // not. Older profiles retain their original iteration-only propagation.
     let inherited = inherited_paired_frame
         || scope.iteration.as_ref().is_some_and(|iteration| {
-            matches!(iteration.input(), IterationSource::OwnedSource(_))
-                || current && profile.permits_grouping(iteration.grouping())
+            matches!(
+                iteration.input(),
+                IterationSource::OwnedSource(_) | IterationSource::OwnedInnerJoin(_)
+            ) || current && profile.permits_grouping(iteration.grouping())
         });
     for (index, child) in scope.children.iter().enumerate() {
         mark_basic_scopes(

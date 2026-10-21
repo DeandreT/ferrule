@@ -228,6 +228,10 @@ impl<'a> Admission<'a> {
             .map(|(scope, location)| (scope, location, OwnedCapabilityContext::Basic, false))
             .collect();
         while let Some((scope, location, inherited, inherited_owned)) = pending.pop() {
+            if let Some((_, plan)) = scope.iteration.owned_join() {
+                self.owned_join(scope, &location, inherited, inherited_owned, plan)?;
+                continue;
+            }
             let own = matches!(scope.source_selector(), Some(SourceSelectorRef::Owned(_)))
                 || matches!(
                     scope.construction,
@@ -263,15 +267,6 @@ impl<'a> Admission<'a> {
                     || scope.group_ending_with.is_some()
                     || scope.group_into_blocks.is_some())
                 && scope_demands_owned(self.project, scope);
-            if scope.iteration.owned_join().is_some() {
-                // Owned join identities are representable but not executable.
-                return Err(EngineError::UnsupportedOwnedContext {
-                    node: None,
-                    function: None,
-                    scope: Some(location),
-                    context: OwnedCapabilityContext::Join,
-                });
-            }
             match scope.source_selector() {
                 Some(SourceSelectorRef::Legacy(path)) => self.path(path),
                 Some(SourceSelectorRef::Owned(source)) => {
@@ -404,6 +399,140 @@ impl<'a> Admission<'a> {
                     ancestry,
                 ));
             }
+        }
+        Ok(())
+    }
+    /// Admit one owned join scope. Its sources name static endpoints and its
+    /// window bounds stay receiving-context Basic expressions. Every tuple
+    /// expression, including those of its static descendants, reads members
+    /// only through owned join reads and the flattened join position.
+    fn owned_join(
+        &mut self,
+        scope: &'a Scope,
+        location: &SourceScopeLocation,
+        inherited: OwnedCapabilityContext,
+        inherited_owned: bool,
+        plan: &mapping::OwnedJoinPlan,
+    ) -> Result<(), EngineError> {
+        let closed = if inherited != OwnedCapabilityContext::Basic {
+            inherited
+        } else if !matches!(
+            scope.construction,
+            ScopeConstruction::Constructed | ScopeConstruction::Scalar { .. }
+        ) {
+            OwnedCapabilityContext::SpecialConstruction
+        } else {
+            scope_context(scope)
+        };
+        if closed != OwnedCapabilityContext::Join {
+            return Err(EngineError::UnsupportedOwnedContext {
+                node: None,
+                function: None,
+                scope: Some(location.clone()),
+                context: closed,
+            });
+        }
+        for source in plan.sources() {
+            let collection = source.collection();
+            self.static_owner(
+                &collection.owner,
+                &collection.path,
+                None,
+                None,
+                Some(location),
+            )?;
+        }
+        self.summary.used_owned = true;
+        self.push(
+            None,
+            OwnedCapabilityContext::Basic,
+            inherited_owned,
+            scope
+                .windows
+                .iter()
+                .copied()
+                .flat_map(|window| window.nodes()),
+        );
+        self.join_tuple_scope(scope, location)
+    }
+    fn join_tuple_scope(
+        &mut self,
+        scope: &'a Scope,
+        location: &SourceScopeLocation,
+    ) -> Result<(), EngineError> {
+        let mut nodes: Vec<_> = scope
+            .filter
+            .into_iter()
+            .chain(scope.post_group_filter)
+            .chain(scope.grouping_nodes())
+            .chain(scope.sort_keys().map(|key| key.node))
+            .chain(scope.bindings.iter().map(|binding| binding.node))
+            .collect();
+        if let ScopeConstruction::Scalar { value } = scope.construction {
+            nodes.push(value);
+        }
+        self.join_tuple_nodes(nodes)?;
+        for (index, child) in scope.children.iter().enumerate() {
+            let location = location.descendant(SourceScopeStep::Child(index));
+            // Only static descendant projections share a tuple; a nested
+            // iteration or specialized construction stays closed.
+            let context = match scope_context(child) {
+                OwnedCapabilityContext::Basic
+                    if !matches!(child.iteration, mapping::ScopeIteration::None)
+                        || !matches!(child.construction, ScopeConstruction::Constructed) =>
+                {
+                    OwnedCapabilityContext::Join
+                }
+                context => context,
+            };
+            if context != OwnedCapabilityContext::Basic {
+                return Err(EngineError::UnsupportedOwnedContext {
+                    node: None,
+                    function: None,
+                    scope: Some(location),
+                    context,
+                });
+            }
+            self.join_tuple_scope(child, &location)?;
+        }
+        Ok(())
+    }
+    /// The closed scalar subset of an owned join tuple. Ordinary and owned
+    /// source reads, searches, aggregates, sequences and functions stay closed.
+    fn join_tuple_nodes(&mut self, roots: Vec<NodeId>) -> Result<(), EngineError> {
+        let mut pending = roots;
+        let mut visited = BTreeSet::new();
+        while let Some(id) = pending.pop() {
+            if !visited.insert(id) {
+                continue;
+            }
+            let Some(node) = self.project.graph.nodes.get(&id) else {
+                continue;
+            };
+            match node {
+                Node::OwnedJoinField(_) | Node::OwnedJoinSourcePosition(_) => {
+                    self.summary.used_owned = true;
+                }
+                Node::JoinPosition { .. }
+                | Node::Unconnected
+                | Node::Const { .. }
+                | Node::Call { .. }
+                | Node::If { .. }
+                | Node::ValueMap { .. }
+                | Node::RuntimeValue { .. }
+                | Node::RuntimeParameter { .. }
+                | Node::RuntimeParameterDefault { .. }
+                | Node::Raise { .. } => {}
+                _ => {
+                    return Err(EngineError::UnsupportedOwnedContext {
+                        node: Some(id),
+                        function: None,
+                        scope: None,
+                        context: OwnedCapabilityContext::Join,
+                    });
+                }
+            }
+            pending.extend(node.dependencies());
         }
         Ok(())
     }
@@ -671,6 +800,18 @@ impl<'a> Admission<'a> {
                 });
             }
             if let Some(kind) = node.owned_source_kind() {
+                // Owned join reads are admitted only inside their tuple.
+                if matches!(
+                    node,
+                    Node::OwnedJoinField(_) | Node::OwnedJoinSourcePosition(_)
+                ) {
+                    return Err(EngineError::UnsupportedOwnedContext {
+                        node: Some(id),
+                        function,
+                        scope: None,
+                        context: OwnedCapabilityContext::Join,
+                    });
+                }
                 if function.is_some() {
                     return Err(EngineError::UnsupportedSourceOwnership {
                         node: id,
@@ -1229,9 +1370,11 @@ fn node_context(node: &Node) -> OwnedCapabilityContext {
         Node::Aggregate { .. } | Node::Lookup { .. } | Node::CollectionFind { .. } => {
             OwnedCapabilityContext::AggregateLookup
         }
-        Node::JoinField { .. } | Node::JoinPosition { .. } | Node::JoinAggregate { .. } => {
-            OwnedCapabilityContext::Join
-        }
+        Node::JoinField { .. }
+        | Node::JoinPosition { .. }
+        | Node::JoinAggregate { .. }
+        | Node::OwnedJoinField(_)
+        | Node::OwnedJoinSourcePosition(_) => OwnedCapabilityContext::Join,
         Node::SequenceItemAt { sequence, .. } if basic_item_at_producer(sequence) => {
             OwnedCapabilityContext::Basic
         }
