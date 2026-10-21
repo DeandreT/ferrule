@@ -37,7 +37,7 @@ fn lazy_acquisition_retains_each_document_and_local_row_identity() {
     let a = calls.clone();
     let b = calls.clone();
     let c = calls.clone();
-    let mut rows = CsvSourceAcquisition::new(
+    let mut rows = CsvSourceAcquisition::<HostError, HostError>::new(
         move || {
             a.borrow_mut().push("filename".to_string());
             Ok::<_, HostError>(" opaque *.csv ".to_string())
@@ -112,7 +112,7 @@ fn complete_document_parse_failure_is_terminal_before_later_loads() {
     for failure in 0..3 {
         let calls = Rc::new(RefCell::new(Vec::new()));
         let loaded = calls.clone();
-        let mut rows = CsvSourceAcquisition::new(
+        let mut rows = CsvSourceAcquisition::<HostError, HostError>::new(
             || Ok::<_, HostError>("files".into()),
             |_| Ok((0..3).map(|index| Ok(index.to_string()))),
             move |path| {
@@ -145,7 +145,7 @@ fn complete_document_parse_failure_is_terminal_before_later_loads() {
 #[test]
 fn filename_selection_request_and_load_failures_keep_their_stages() {
     let schema = schema();
-    let mut filename = CsvSourceAcquisition::new(
+    let mut filename = CsvSourceAcquisition::<HostError, HostError>::new(
         || Err::<String, _>(HostError("filename")),
         |_| -> Result<std::iter::Empty<Result<String, HostError>>, HostError> {
             panic!("selected after filename failure")
@@ -162,7 +162,7 @@ fn filename_selection_request_and_load_failures_keep_their_stages() {
         Some(Err(CsvAcquisitionError::Filename(HostError("filename"))))
     ));
     assert!(filename.next().is_none());
-    let mut selection = CsvSourceAcquisition::new(
+    let mut selection = CsvSourceAcquisition::<HostError, HostError>::new(
         || Ok::<_, HostError>("files".into()),
         |_| Err::<std::iter::Empty<Result<String, HostError>>, _>(HostError("selection")),
         |_| -> Result<CsvSourceData, HostError> { panic!("loaded after failure") },
@@ -177,7 +177,7 @@ fn filename_selection_request_and_load_failures_keep_their_stages() {
         Some(Err(CsvAcquisitionError::Selection(HostError("selection"))))
     ));
     assert!(selection.next().is_none());
-    let mut request = CsvSourceAcquisition::new(
+    let mut request = CsvSourceAcquisition::<HostError, HostError>::new(
         || Ok::<_, HostError>("files".into()),
         |_| Ok(std::iter::once(Err(HostError("request")))),
         |_| -> Result<CsvSourceData, HostError> { panic!("loaded after failure") },
@@ -192,7 +192,7 @@ fn filename_selection_request_and_load_failures_keep_their_stages() {
         Some(Err(CsvAcquisitionError::Request(HostError("request"))))
     ));
     assert!(request.next().is_none());
-    let mut load = CsvSourceAcquisition::new(
+    let mut load = CsvSourceAcquisition::<HostError, HostError>::new(
         || Ok::<_, HostError>("files".into()),
         |_| Ok(std::iter::once(Ok("first.csv".into()))),
         |_| Err(HostError("load")),
@@ -213,7 +213,7 @@ fn filename_selection_request_and_load_failures_keep_their_stages() {
 #[test]
 fn count_and_path_limits_precede_loading_including_empty_documents() {
     let schema = schema();
-    let invalid = CsvSourceAcquisition::new(
+    let invalid = CsvSourceAcquisition::<HostError, HostError>::new(
         || Ok::<_, HostError>("files".into()),
         |_| Ok(std::iter::empty()),
         |_| Ok(data("")),
@@ -227,7 +227,7 @@ fn count_and_path_limits_precede_loading_including_empty_documents() {
         Err(CsvAcquisitionError::InvalidLimit { .. })
     ));
     for path in ["", "bad\0path"] {
-        let mut invalid = CsvSourceAcquisition::new(
+        let mut invalid = CsvSourceAcquisition::<HostError, HostError>::new(
             || Ok::<_, HostError>("files".into()),
             |_| Ok(std::iter::once(Ok(path.into()))),
             |_| -> Result<CsvSourceData, HostError> { panic!("invalid path loaded") },
@@ -243,7 +243,7 @@ fn count_and_path_limits_precede_loading_including_empty_documents() {
         ));
         assert!(invalid.next().is_none());
     }
-    let mut rows = CsvSourceAcquisition::new(
+    let mut rows = CsvSourceAcquisition::<HostError, HostError>::new(
         || Ok::<_, HostError>("files".into()),
         |_| {
             Ok(["empty.csv", "second.csv"]
@@ -270,7 +270,7 @@ fn count_and_path_limits_precede_loading_including_empty_documents() {
 #[test]
 fn unwinding_from_a_callback_does_not_allow_another_request() {
     let schema = schema();
-    let mut rows = CsvSourceAcquisition::new(
+    let mut rows = CsvSourceAcquisition::<HostError, HostError>::new(
         || Ok::<_, HostError>("files".into()),
         |_| Ok(std::iter::once(Ok("first.csv".into()))),
         |_| -> Result<CsvSourceData, HostError> { panic!("host panic") },
@@ -296,7 +296,7 @@ fn acquisition_uses_the_explicit_decoding_policy() {
         CsvByteDecodingPolicy::BomAwareNonFlushingReplacement,
     ] {
         let payload = bytes.clone();
-        let mut rows = CsvSourceAcquisition::new(
+        let mut rows = CsvSourceAcquisition::<HostError, HostError>::new(
             || Ok::<_, HostError>("files".into()),
             |_| Ok(std::iter::once(Ok("input.csv".into()))),
             move |_| {
