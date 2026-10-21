@@ -48,6 +48,7 @@ internal static partial class Program
             ("standalone decimal arithmetic", Decimal96Arithmetic),
             ("standalone binary64 decimal conversion", Decimal96FloatConversion),
             ("standalone decimal numeric text", DecimalNumberText),
+            ("decimal scalar identity", DecimalValueIdentity),
             ("value maps", ValueMaps),
             ("CSV native scalar lexicals", CsvScalarLexicals),
             ("CSV native scalar refusals", CsvScalarRefusals),
