@@ -84,6 +84,7 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedXmlSerialize(_)
         | Node::SourceField { .. }
         | Node::SourceDocumentPath
         | Node::SourceRootXmlTypeEquals { .. }
@@ -180,6 +181,10 @@ fn node_title(node: &Node) -> String {
         Node::OwnedDynamicSourceField(field) => format!(
             "owned dynamic field {:?} {:?}; frame {:?}",
             field.object.owner, field.object.path, field.frame
+        ),
+        Node::OwnedXmlSerialize(serializer) => format!(
+            "owned XML serializer {:?} {:?}; frame {:?}; unavailable",
+            serializer.source.owner, serializer.source.path, serializer.frame
         ),
         Node::SourceField { path, .. } => format!("field · {}", path.join("/")),
         Node::SourceDocumentPath => "source document path".to_string(),

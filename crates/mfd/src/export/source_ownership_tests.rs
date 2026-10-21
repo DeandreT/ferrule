@@ -403,3 +403,40 @@ fn owned_dynamic_reads_refuse_before_writing_in_every_profile() {
     }
     assert!(!path.exists());
 }
+
+#[test]
+fn owned_xml_serializers_are_refused_before_writing_anything() {
+    let mut project = project();
+    project.graph.nodes.insert(
+        9,
+        Node::OwnedXmlSerialize(mapping::OwnedXmlSerialize {
+            source: mapping::OwnedSourceRef {
+                owner: SourceOwner::Named {
+                    name: "audit".into(),
+                },
+                path: vec!["Header".into()],
+            },
+            frame: None,
+            schema: Box::new(SchemaNode::group("Header", vec![])),
+            declaration: false,
+            indent: true,
+            namespace: None,
+        }),
+    );
+    let path = Path::new("nonexistent-owned-xml-export-parent/output.mfd");
+    let refused = |error: MfdError| {
+        assert!(matches!(
+            error,
+            MfdError::UnsupportedSourceOwnership {
+                node: 9,
+                function: None,
+                kind: "owned_xml_serialize",
+            }
+        ));
+    };
+    refused(preflight_export(&project, path).unwrap_err());
+    for profile in [ExportProfile::default(), ExportProfile::NativeMfd] {
+        refused(export_with_profile(&project, path, profile).unwrap_err());
+    }
+    assert!(!path.exists());
+}

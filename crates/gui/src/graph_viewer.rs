@@ -1192,6 +1192,7 @@ impl GraphViewer<'_> {
             Node::OwnedSourceField(_)
             | Node::OwnedPosition(_)
             | Node::OwnedRowDocumentPath(_)
+            | Node::OwnedXmlSerialize(_)
             | Node::SourceField { .. }
             | Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
@@ -1398,6 +1399,7 @@ impl GraphViewer<'_> {
             Node::OwnedSourceField(_)
             | Node::OwnedPosition(_)
             | Node::OwnedRowDocumentPath(_)
+            | Node::OwnedXmlSerialize(_)
             | Node::SourceField { .. }
             | Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
@@ -1567,6 +1569,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         format!("Owned find: {}", find.collection.path.join("/"))
                     }
                     Some(Node::OwnedDynamicSourceField(_)) => "Owned dynamic field".into(),
+                    Some(Node::OwnedXmlSerialize(_)) => "Owned XML serializer".into(),
                     Some(Node::SourceField { .. })
                         if self.function_output.is_none()
                             && !graph_references::sequence_item_owners(
