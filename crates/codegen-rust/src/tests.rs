@@ -1545,4 +1545,5 @@ mod owned_recursive_filter;
 mod owned_sequence_aggregate;
 mod owned_sequence_exists;
 mod owned_sequence_item_at;
+mod owned_xml_mixed_content;
 mod owned_xml_serialize;

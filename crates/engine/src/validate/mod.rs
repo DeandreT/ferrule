@@ -6,6 +6,7 @@ use mapping::{Project, XbrlBoundaryMode};
 mod adjacency_tree;
 mod graph;
 mod join;
+mod mixed_content;
 mod options;
 mod owner;
 mod primary_root;
