@@ -112,7 +112,14 @@ A ferrule project is plain JSON built from four main concepts:
 
 1. **Schemas** describe source and target trees. Nodes are named scalar or group
    values and may be repeating, attributes, nullable, fixed, or dynamically
-   named where the target format permits it.
+   named where the target format permits it. `SchemaNode::effective_view`
+   derives, without changing the saved schema, one node's cardinality (single
+   with required or optional declared XML presence, or repeated with exact JSON
+   item bounds and value or nested-array items) and the null-like values each
+   layer admits: XML nil, and JSON null for a single occurrence or separately
+   for an array and its items. Absence is never one of those values.
+   Contradictory role metadata has no view. Consumers that combine these facts
+   should use the view rather than re-reading the individual flags.
 2. **Graph nodes** compute scalar values. Nodes read source fields and positions,
    hold constants, call built-in functions, branch lazily, translate value maps,
    perform lookups and joins, reduce collections, and access selected runtime

@@ -1,3 +1,4 @@
+mod effective;
 mod item_count_range;
 mod json_allowed_values;
 mod json_contains_constraints;
@@ -13,6 +14,10 @@ mod numeric_range;
 mod property_count_range;
 mod string_length_range;
 
+pub use effective::{
+    EffectiveCardinality, EffectiveNullability, EffectivePresence, EffectiveSchemaView,
+    EffectiveViewError, JsonNullability, RepeatedItems,
+};
 pub use item_count_range::ItemCountRange;
 pub use json_allowed_values::{
     JsonAllowedValue, JsonAllowedValues, JsonAllowedValuesError,
