@@ -13,7 +13,7 @@ download schemas or read an external EDI configuration.
 ## Select the boundary
 
 ```sh
-cargo +nightly run -p cli -- generate \
+cargo run -p cli -- generate \
   --project project.json \
   --language csharp \
   --out generated-csharp \
@@ -614,7 +614,7 @@ freshly generated saved-profile public-host cohort. It requires `dotnet` on
 PATH with the .NET 10 SDK and targeting pack installed:
 
 ```sh
-cargo +nightly test -p codegen-csharp --test x12_dotnet
+cargo test -p codegen-csharp --test x12_dotnet
 ```
 
 The additional strict source/target/both-side compiled cohort is explicitly
@@ -623,7 +623,7 @@ package-free; their builds clear NuGet package sources and disable runtime-pack
 downloads. Run that additional cohort explicitly:
 
 ```sh
-cargo +nightly test -p codegen-csharp --test x12_dotnet -- --ignored
+cargo test -p codegen-csharp --test x12_dotnet -- --ignored
 ```
 
 The target prints its owned temporary evidence directories for native,

@@ -8,7 +8,7 @@ generated library vendors its runtime and has no NuGet dependencies.
 From the repository root, generate the library into a fresh destination:
 
 ```sh
-cargo +nightly run -p cli -- generate \
+cargo run -p cli -- generate \
   --project examples/codegen/project.json \
   --language csharp \
   --out examples/codegen/generated/csharp

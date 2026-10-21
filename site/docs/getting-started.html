@@ -32,8 +32,9 @@
         </p>
 
         <h2>Install the toolchain</h2>
-        <p>ferrule currently tracks Rust nightly.</p>
-        <pre><code>rustup toolchain install nightly</code></pre>
+        <p>ferrule pins Rust 1.98.1 in <code>rust-toolchain.toml</code>. Install
+          <a href="https://rustup.rs">rustup</a>; it installs the pinned toolchain on
+          the first <code>cargo</code> command in the checkout.</p>
 
         <h2>Run an existing mapping</h2>
         <p>
@@ -41,7 +42,7 @@
           input and output adapters by extension unless the project embeds more
           specific format options.
         </p>
-        <pre><code>cargo +nightly run -p cli -- run \
+        <pre><code>cargo run -p cli -- run \
   --project crates/cli/tests/fixtures/orders/project.json \
   --input crates/cli/tests/fixtures/orders/Orders.xml \
   --output order-lines.csv</code></pre>
@@ -53,7 +54,7 @@
           declaration's string, integer, floating-point, or boolean coercion
           before evaluating the target.
         </p>
-        <pre><code>cargo +nightly run -p cli -- run \
+        <pre><code>cargo run -p cli -- run \
   --project project.json \
   --param correlation_id=txn-42 \
   --param control_number=7001</code></pre>
@@ -70,13 +71,13 @@
           target scopes are not evaluated or written; omitting the option keeps
           all-target execution and its atomic destination-collision checks.
         </p>
-        <pre><code>cargo +nightly run -p cli -- run \
+        <pre><code>cargo run -p cli -- run \
   --project project.json \
   --target audit \
   --output audit.json
 
 # Select the primary target explicitly
-cargo +nightly run -p cli -- run \
+cargo run -p cli -- run \
   --project project.json \
   --target primary</code></pre>
 
@@ -114,7 +115,7 @@ let result = cli::run_project_payloads(
           controls, joins, generated sequences, and format options before any
           input file is read.
         </p>
-        <pre><code>cargo +nightly run -p cli -- validate \
+        <pre><code>cargo run -p cli -- validate \
   --project crates/cli/tests/fixtures/orders/project.json</code></pre>
 
         <h2>Open the editor</h2>
@@ -122,7 +123,7 @@ let result = cli::run_project_payloads(
           The GUI is an egui desktop app. It stores canvas layout data beside
           the project so semantic project JSON stays readable.
         </p>
-        <pre><code>cargo +nightly run -p gui</code></pre>
+        <pre><code>cargo run -p gui</code></pre>
         <p>
           Use <strong>Preview</strong> on the primary or a named target to run
           the current in-memory project against bounded text input. Preview
@@ -135,9 +136,9 @@ let result = cli::run_project_payloads(
           Schema importers are useful when you want to create a project from
           existing contracts before wiring the mapping.
         </p>
-        <pre><code>cargo +nightly run -p cli -- import-xsd --xsd Orders.xsd
-cargo +nightly run -p cli -- import-json-schema --schema customers.schema.json
-cargo +nightly run -p cli -- import-db --db warehouse.db --table orders</code></pre>
+        <pre><code>cargo run -p cli -- import-xsd --xsd Orders.xsd
+cargo run -p cli -- import-json-schema --schema customers.schema.json
+cargo run -p cli -- import-db --db warehouse.db --table orders</code></pre>
 
         <div class="callout warn">
           <strong>Use JSON diagnostics in automation.</strong>

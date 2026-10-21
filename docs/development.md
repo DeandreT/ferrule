@@ -47,21 +47,21 @@ Native and generated-backend CI can use the dedicated OVHcloud build runner.
 See [OVHcloud CI operations](ovh-ci.md) for provisioning, isolation, resource
 limits, and the GitHub-hosted fallback switch.
 
-Install nightly Rust and its formatting/lint components. The repository CI
-uses nightly; dependencies and generated API contracts should be checked
-against the actual toolchain used for the run.
+The checkout pins Rust, the .NET SDK band and trunk; see
+[Toolchain baselines](toolchains.md). rustup installs the pinned Rust
+toolchain, with rustfmt, clippy and the wasm32 target, on the first `cargo`
+command in the checkout, so do not pass a `+toolchain` override.
 
 ```sh
-rustup toolchain install nightly --component rustfmt --component clippy
-cargo +nightly fmt --all --check
-cargo +nightly clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 Start with the affected package or integration target. For example:
 
 ```sh
-cargo +nightly test -p format-csv
-cargo +nightly test -p cli --test csv_row_release
+cargo test -p format-csv
+cargo test -p cli --test csv_row_release
 ```
 
 For a local alternate-display run, use the CI workspace test subset with both
@@ -69,7 +69,7 @@ ambient Wayland handles removed:
 
 ```sh
 xvfb-run -a env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET LIBGL_ALWAYS_SOFTWARE=1 \
-  cargo +nightly test --workspace \
+  cargo test --workspace \
   --exclude codegen --exclude codegen-runtime \
   --exclude codegen-rust --exclude codegen-csharp
 ```
@@ -85,7 +85,7 @@ C# checks and actual compiled-host calls as applicable. See
 [Code generation verification](code-generation.md) for prerequisites and
 opt-in suites; source generation alone does not test an emitted library.
 The CLI generated integration target is explicitly enabled with
-`cargo +nightly test -p cli --features codegen-tests --test code_generation`;
+`cargo test -p cli --features codegen-tests --test code_generation`;
 read that suite's backend prerequisites before running it.
 
 ### Reuse generated CLI host builds

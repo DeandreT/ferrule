@@ -42,8 +42,9 @@ jobs:
       - name: OVH build resources
         if: runner.environment == 'self-hosted'
         run: bash scripts/ci/prepare-ovh-build.sh
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.98.1
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         if: runner.environment == 'github-hosted'
@@ -57,13 +58,13 @@ jobs:
       - name: fmt
         run: cargo fmt --all --check
       - name: clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: test
         env:
           RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
         run: >-
           xvfb-run -a env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET LIBGL_ALWAYS_SOFTWARE=1
-          cargo test --workspace
+          cargo test --workspace --locked
           --exclude codegen
           --exclude codegen-runtime
           --exclude codegen-rust
@@ -112,8 +113,9 @@ jobs:
       - name: OVH build resources
         if: runner.environment == 'self-hosted'
         run: bash scripts/ci/prepare-ovh-build.sh
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.98.1
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
         if: runner.environment == 'github-hosted'

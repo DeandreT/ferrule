@@ -30,7 +30,7 @@
         </p>
 
         <h2>Import a design</h2>
-        <pre><code>cargo +nightly run -p cli -- import-mfd \
+        <pre><code>cargo run -p cli -- import-mfd \
   --mfd design.mfd \
   --out project.json</code></pre>
         <p>
@@ -45,7 +45,7 @@
     {"kind": "json-schema", "root": "resources/json-schema"}
   ]
 }</code></pre>
-        <pre><code>cargo +nightly run -p cli -- import-mfd \
+        <pre><code>cargo run -p cli -- import-mfd \
   --mfd package/maps/design.mfd \
   --package-manifest package/ferrule-package.json \
   --out package/projects/project.json</code></pre>
@@ -100,7 +100,7 @@
         </p>
 
         <h2>Export a design</h2>
-        <pre><code>cargo +nightly run -p cli -- export-mfd \
+        <pre><code>cargo run -p cli -- export-mfd \
   --project project.json \
   --out design.mfd</code></pre>
         <p>

@@ -45,16 +45,13 @@ not a parity percentage.
 
 ## Quick Start
 
-ferrule currently uses the Rust nightly toolchain:
-
-```sh
-rustup toolchain install nightly
-```
+ferrule pins Rust 1.98.1 in `rust-toolchain.toml`; rustup installs it on the
+first `cargo` command in the checkout. See [Toolchain baselines](docs/toolchains.md).
 
 Run the checked-in XML-to-CSV example:
 
 ```sh
-cargo +nightly run -p cli -- run \
+cargo run -p cli -- run \
   --project crates/cli/tests/fixtures/orders/project.json \
   --input crates/cli/tests/fixtures/orders/Orders.xml \
   --output order-lines.csv
@@ -63,24 +60,24 @@ cargo +nightly run -p cli -- run \
 Validate a project without reading its input:
 
 ```sh
-cargo +nightly run -p cli -- validate \
+cargo run -p cli -- validate \
   --project crates/cli/tests/fixtures/orders/project.json
 ```
 
 Launch the native visual editor:
 
 ```sh
-cargo +nightly run -p gui
+cargo run -p gui
 ```
 
-Run `cargo +nightly run -p cli -- --help` for the complete CLI. Input and
+Run `cargo run -p cli -- --help` for the complete CLI. Input and
 output paths may be omitted when the project stores `source_path` and
 `target_path` values.
 
 Mappings with typed host inputs accept repeatable parameters:
 
 ```sh
-cargo +nightly run -p cli -- run \
+cargo run -p cli -- run \
   --project project.json \
   --param correlation_id=txn-42 \
   --param control_number=7001
@@ -97,7 +94,7 @@ is useful when target paths intentionally overlap or a host needs one artifact
 class from a larger mapping:
 
 ```sh
-cargo +nightly run -p cli -- run \
+cargo run -p cli -- run \
   --project project.json \
   --target audit \
   --output audit.json
@@ -176,23 +173,23 @@ document plus ordered named target documents. See
 Bootstrap schemas from existing metadata:
 
 ```sh
-cargo +nightly run -p cli -- import-xsd --xsd Orders.xsd
-cargo +nightly run -p cli -- import-json-schema --schema customers.schema.json
-cargo +nightly run -p cli -- import-db --db warehouse.db --table orders
+cargo run -p cli -- import-xsd --xsd Orders.xsd
+cargo run -p cli -- import-json-schema --schema customers.schema.json
+cargo run -p cli -- import-db --db warehouse.db --table orders
 ```
 
 Import or export a `.mfd` design:
 
 ```sh
-cargo +nightly run -p cli -- import-mfd --mfd design.mfd --out project.json
-cargo +nightly run -p cli -- import-mfd --mfd package/maps/design.mfd --package-root package --out project.json
-cargo +nightly run -p cli -- import-mfd --mfd package/maps/design.mfd --package-manifest package/ferrule-package.json --out package/projects/project.json
-cargo +nightly run -p cli -- import-mfd --mfd design.mfd --edi-catalog-root edi-configs --out project.json
-cargo +nightly run -p cli -- import-mfd --mfd design.mfd --json-schema-root schemas --out project.json
-cargo +nightly run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
-cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd
-cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd --check --report-json
-cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd
+cargo run -p cli -- import-mfd --mfd design.mfd --out project.json
+cargo run -p cli -- import-mfd --mfd package/maps/design.mfd --package-root package --out project.json
+cargo run -p cli -- import-mfd --mfd package/maps/design.mfd --package-manifest package/ferrule-package.json --out package/projects/project.json
+cargo run -p cli -- import-mfd --mfd design.mfd --edi-catalog-root edi-configs --out project.json
+cargo run -p cli -- import-mfd --mfd design.mfd --json-schema-root schemas --out project.json
+cargo run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
+cargo run -p cli -- export-mfd --project project.json --out design.mfd
+cargo run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd --check --report-json
+cargo run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd
 ```
 
 `export-mfd` defaults to `--profile ferrule-extensions`, preserving Ferrule's
@@ -212,21 +209,21 @@ outputs.
 Emit machine-readable validation diagnostics:
 
 ```sh
-cargo +nightly run -p cli -- --diagnostics json validate --project project.json
+cargo run -p cli -- --diagnostics json validate --project project.json
 ```
 
 Capture a deterministic execution trace without changing stdout or diagnostic
 output:
 
 ```sh
-cargo +nightly run -p cli -- run --project project.json --trace-json run.trace.jsonl
+cargo run -p cli -- run --project project.json --trace-json run.trace.jsonl
 ```
 
 Run a [mapping pipeline](docs/mapping-pipelines.md) and publish only selected
 stage targets after the complete graph succeeds:
 
 ```sh
-cargo +nightly run -p cli -- run-pipeline --pipeline flow.json \
+cargo run -p cli -- run-pipeline --pipeline flow.json \
   --input orders orders.json --output invoice invoice.json \
   --named-output prepare audit audit.json
 ```

@@ -24,7 +24,7 @@ refusals; review complete artifacts and outcomes before calling a campaign quali
 
 ## Tools, paths and shared build profile
 
-Use Linux with `/proc`, GNU `time -v`, Python 3, Ferrule's Rust nightly
+Use Linux with `/proc`, GNU `time -v`, Python 3, Ferrule's pinned Rust
 toolchain and a .NET 10 SDK with its `net10.0` reference packs already installed. Offline
 Rust builds also require the locked dependencies in the existing Cargo cache.
 No NuGet package is used by the C# host; offline does not install missing SDK packs.

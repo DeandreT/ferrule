@@ -20,7 +20,7 @@ separate roles. See [Project files](project-files.md) for persistence details.
 Launch the editor from the repository:
 
 ```sh
-cargo +nightly run -p gui
+cargo run -p gui
 ```
 
 - [ ] Choose **File → New** to open the New Mapping window.
