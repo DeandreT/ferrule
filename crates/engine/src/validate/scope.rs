@@ -154,6 +154,7 @@ pub(super) fn validate_scope(
         return;
     }
     let current_source = current_source_schema(project, schemas.parent_source, &scope.iteration);
+    super::presence::validate(project, scope, target, &location, issues);
 
     if matches!(&scope.construction, ScopeConstruction::Constructed)
         && target.is_some_and(|node| !matches!(node.kind, SchemaKind::Group { .. }))
@@ -290,7 +291,9 @@ pub(super) fn validate_scope(
                 ));
             }
             ScopeIteration::Concatenate(_) => unreachable!("handled above"),
-            ScopeIteration::None
+            // Reported once by the optional-presence construction check.
+            ScopeIteration::OptionalPresence { .. }
+            | ScopeIteration::None
             | ScopeIteration::Source(_)
             | ScopeIteration::OwnedSource { .. }
             | ScopeIteration::DynamicDocuments { .. } => {}
@@ -389,7 +392,9 @@ pub(super) fn validate_scope(
                 ));
             }
             ScopeIteration::Concatenate(_) => unreachable!("handled above"),
-            ScopeIteration::None
+            // Reported once by the optional-presence construction check.
+            ScopeIteration::OptionalPresence { .. }
+            | ScopeIteration::None
             | ScopeIteration::Source(_)
             | ScopeIteration::OwnedSource { .. }
             | ScopeIteration::DynamicDocuments { .. } => {}
@@ -557,6 +562,7 @@ pub(super) fn validate_scope(
     if let Some(sequence) = scope.sequence() {
         parent_roots.extend(sequence.inputs());
     }
+    parent_roots.extend(scope.presence());
     let parent_root_context = is_root_context(project, schemas.parent_source);
     validate_join_roots(
         &project.graph,

@@ -767,6 +767,7 @@ fn lower_scope(
         roots.extend(sequence.owned_items());
     }
     roots.extend(scope.output_path());
+    roots.extend(scope.presence());
     let base_construction = match &scope.construction {
         ScopeConstruction::Scalar { value } => {
             roots.push(*value);
@@ -884,7 +885,12 @@ fn lower_scope(
             })
         })
         .collect();
-    let child_root_context = root_context && matches!(scope.iteration, ScopeIteration::None);
+    // Optional presence adds no source frame, so join root context carries through.
+    let child_root_context = root_context
+        && matches!(
+            scope.iteration,
+            ScopeIteration::None | ScopeIteration::OptionalPresence { .. }
+        );
     let children = scope
         .children
         .iter()
@@ -1032,6 +1038,9 @@ fn lower_iteration(scope: &Scope) -> Result<Option<IterationPlan>, Diagnostic> {
         }
         ScopeIteration::OwnedInnerJoin { id, plan } => {
             OwnedInnerJoin::new(JoinId::from(*id), plan.clone()).into()
+        }
+        ScopeIteration::OptionalPresence { condition } => {
+            return Ok(Some(IterationPlan::optional_presence(*condition)));
         }
         ScopeIteration::None | ScopeIteration::Concatenate(_) => return Ok(None),
     };

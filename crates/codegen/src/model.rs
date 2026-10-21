@@ -1391,6 +1391,24 @@ pub enum IterationSource {
     /// Inner join over explicit owner and collection identities.
     OwnedInnerJoin(OwnedInnerJoin),
     Concatenate(ScopeSequence),
+    OptionalPresence(OptionalPresence),
+}
+
+/// Zero or one group selected by one Boolean expression evaluated in the
+/// unchanged parent context; no candidate frame or position is added.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OptionalPresence {
+    condition: NodeId,
+}
+
+impl OptionalPresence {
+    pub const fn new(condition: NodeId) -> Self {
+        Self { condition }
+    }
+
+    pub const fn condition(self) -> NodeId {
+        self.condition
+    }
 }
 
 /// One source-backed root iteration that pairs every produced item with a
@@ -1500,6 +1518,12 @@ impl From<OwnedInnerJoin> for IterationSource {
 impl From<ScopeSequence> for IterationSource {
     fn from(sequence: ScopeSequence) -> Self {
         Self::Concatenate(sequence)
+    }
+}
+
+impl From<OptionalPresence> for IterationSource {
+    fn from(presence: OptionalPresence) -> Self {
+        Self::OptionalPresence(presence)
     }
 }
 
@@ -1744,6 +1768,16 @@ impl IterationPlan {
         Self::new(join, None, None, Vec::new(), IterationOutput::Repeated)
     }
 
+    pub fn optional_presence(condition: NodeId) -> Self {
+        Self::new(
+            OptionalPresence::new(condition),
+            None,
+            None,
+            Vec::new(),
+            IterationOutput::Repeated,
+        )
+    }
+
     pub fn new(
         input: impl Into<IterationSource>,
         filter: Option<NodeId>,
@@ -1799,7 +1833,8 @@ impl IterationPlan {
             IterationSource::Generated(_)
             | IterationSource::InnerJoin(_)
             | IterationSource::OwnedInnerJoin(_)
-            | IterationSource::Concatenate(_) => None,
+            | IterationSource::Concatenate(_)
+            | IterationSource::OptionalPresence(_) => None,
         }
     }
 
@@ -1811,7 +1846,8 @@ impl IterationPlan {
             | IterationSource::Generated(_)
             | IterationSource::InnerJoin(_)
             | IterationSource::OwnedInnerJoin(_)
-            | IterationSource::Concatenate(_) => None,
+            | IterationSource::Concatenate(_)
+            | IterationSource::OptionalPresence(_) => None,
         }
     }
 
@@ -1822,7 +1858,8 @@ impl IterationPlan {
             IterationSource::Generated(sequence) => Some(sequence),
             IterationSource::InnerJoin(_)
             | IterationSource::OwnedInnerJoin(_)
-            | IterationSource::Concatenate(_) => None,
+            | IterationSource::Concatenate(_)
+            | IterationSource::OptionalPresence(_) => None,
         }
     }
 
@@ -1834,7 +1871,8 @@ impl IterationPlan {
             | IterationSource::DynamicDocuments(_)
             | IterationSource::Generated(_)
             | IterationSource::OwnedInnerJoin(_)
-            | IterationSource::Concatenate(_) => None,
+            | IterationSource::Concatenate(_)
+            | IterationSource::OptionalPresence(_) => None,
         }
     }
 
@@ -1846,7 +1884,8 @@ impl IterationPlan {
             | IterationSource::DynamicDocuments(_)
             | IterationSource::Generated(_)
             | IterationSource::InnerJoin(_)
-            | IterationSource::Concatenate(_) => None,
+            | IterationSource::Concatenate(_)
+            | IterationSource::OptionalPresence(_) => None,
         }
     }
 
@@ -1858,7 +1897,15 @@ impl IterationPlan {
             | IterationSource::DynamicDocuments(_)
             | IterationSource::Generated(_)
             | IterationSource::InnerJoin(_)
-            | IterationSource::OwnedInnerJoin(_) => None,
+            | IterationSource::OwnedInnerJoin(_)
+            | IterationSource::OptionalPresence(_) => None,
+        }
+    }
+
+    pub const fn presence(&self) -> Option<OptionalPresence> {
+        match &self.input {
+            IterationSource::OptionalPresence(presence) => Some(*presence),
+            _ => None,
         }
     }
 
@@ -1904,6 +1951,7 @@ impl IterationPlan {
                 self.dynamic_document_iteration()
                     .map(DynamicDocumentIteration::output_path),
             )
+            .chain(self.presence().map(OptionalPresence::condition))
     }
 }
 

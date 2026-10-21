@@ -313,6 +313,7 @@ struct PreparedExport {
 fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdError> {
     preflight::validate_optional_parser_input_provenance(project)?;
     preflight::validate_source_ownership(project)?;
+    preflight::validate_optional_presence(project)?;
     if let Some(composition) = project.filter_map_v1_descriptors().first() {
         return Err(MfdError::UnsupportedSequenceComposition {
             item: composition.item,

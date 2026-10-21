@@ -618,6 +618,11 @@ pub(crate) fn show_scope_editor(
         }
         return None;
     }
+    if let Some(condition) = scope.presence() {
+        ui.label("Optional presence is not editable yet; this saved scope is read-only.");
+        ui.monospace(format!("presence condition node: {condition}"));
+        return None;
+    }
     if let Some((id, plan)) = scope.iteration.owned_join() {
         ui.label("Owned join iteration is unavailable; this saved scope is read-only.");
         ui.monospace(format!("join id: {}", id.get()));
@@ -648,7 +653,9 @@ pub(crate) fn show_scope_editor(
     output_controls::show(ui, scope, output_profile);
 
     match &scope.iteration {
-        ScopeIteration::OwnedSource { .. } | ScopeIteration::OwnedInnerJoin { .. } => return None,
+        ScopeIteration::OwnedSource { .. }
+        | ScopeIteration::OwnedInnerJoin { .. }
+        | ScopeIteration::OptionalPresence { .. } => return None,
         ScopeIteration::Sequence(sequence) => {
             ui.horizontal(|ui| {
                 ui.label("iteration:");
@@ -1619,5 +1626,47 @@ mod tests {
             serde_json::to_value(&original).unwrap()
         );
         assert!(scope_iterates(&scope));
+    }
+
+    #[test]
+    fn optional_presence_renders_read_only_and_stays_unchanged() {
+        use crate::test_ui::ContextExt as _;
+
+        let original = Scope {
+            target_field: "Record".into(),
+            iteration: ScopeIteration::OptionalPresence { condition: 4 },
+            bindings: vec![mapping::Binding {
+                target_field: "Type".into(),
+                node: 2,
+            }],
+            ..Scope::default()
+        };
+        let mut scope = original.clone();
+        let schema = ir::SchemaNode::group("Input", vec![]);
+        let catalog = SourcePathCatalog::new(&schema, &[]);
+        let context = egui::Context::default();
+        let mut action = None;
+        let _ = context.run_test_ui(Default::default(), |ui| {
+            action = show_scope_editor(
+                ui,
+                &mut scope,
+                &Graph::default(),
+                &catalog,
+                &[],
+                ScopeEditorOwner {
+                    nested: true,
+                    primary_root_bindings: false,
+                    target_xml_types: &[],
+                    target_xml_default: None,
+                    target_type_editable: true,
+                },
+                ScopeOutputProfile::XmlElements,
+            );
+        });
+        assert!(action.is_none());
+        assert_eq!(
+            serde_json::to_value(&scope).unwrap(),
+            serde_json::to_value(&original).unwrap()
+        );
     }
 }

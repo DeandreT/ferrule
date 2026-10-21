@@ -750,7 +750,12 @@ fn validate_scope(
     let sequence_owner = schemas.target_owner.sequence_owner(target_path);
     let mut item_context = active_sequence_items.to_vec();
     let mut scope_joins = active_joins.to_vec();
-    let item_root_context = root_context && scope.iteration.is_none();
+    // Optional presence adds no candidate frame, so its item context is the parent.
+    let item_root_context = root_context
+        && scope
+            .iteration
+            .as_ref()
+            .is_none_or(|iteration| iteration.presence().is_some());
     let mut scope_source = schemas.current_source;
     let mut active_source = schemas.active_source;
     let Some(target_node) =
@@ -909,6 +914,38 @@ fn validate_scope(
             }
             IterationSource::Concatenate(_) => {
                 unreachable!("concatenated scope validation returns before candidate validation")
+            }
+            IterationSource::OptionalPresence(presence) => {
+                if !matches!(scope.construction, TargetConstruction::Group)
+                    || !scope.repeating
+                    || !matches!(target_node.kind, SchemaKind::Group { .. })
+                    || iteration.filter().is_some()
+                    || iteration.sort().is_some()
+                    || iteration.grouping().is_some()
+                    || !iteration.windows().is_empty()
+                    || iteration.output() != IterationOutput::Repeated
+                {
+                    return Err(ProgramValidationError::InvalidOptionalPresence {
+                        target_path: target_path.clone(),
+                    });
+                }
+                let expression = presence.condition();
+                if !expressions.contains_key(&expression) {
+                    return Err(ProgramValidationError::MissingOptionalPresenceExpression {
+                        target_path: target_path.clone(),
+                        expression,
+                    });
+                }
+                validate_expression_context(
+                    expression,
+                    expressions,
+                    schemas,
+                    sequence_items,
+                    active_sequence_items,
+                    active_joins,
+                    root_context,
+                    &sequence_owner,
+                )?;
             }
         }
         let candidate_schemas = ScopeSchemas {

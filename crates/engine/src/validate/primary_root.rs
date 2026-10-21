@@ -220,6 +220,7 @@ fn validate_scope(
         .chain(scope.grouping_nodes())
         .chain(scope.sort_keys().map(|key| key.node))
         .chain(scope.output_path())
+        .chain(scope.presence())
         .chain(
             scope
                 .windows

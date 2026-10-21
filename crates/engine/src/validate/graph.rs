@@ -1229,6 +1229,7 @@ fn collect_scope_graph_roots(scope: &Scope, roots: &mut BTreeSet<NodeId>) {
     roots.extend(scope.grouping_nodes());
     roots.extend(scope.sort_keys().map(|key| key.node));
     roots.extend(scope.output_path());
+    roots.extend(scope.presence());
     roots.extend(
         scope
             .windows

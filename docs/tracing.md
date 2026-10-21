@@ -159,6 +159,9 @@ call. Custom sinks own any retained data and its bounds. This observation
 currently belongs to the filesystem CLI loader, not arbitrary host loaders or
 payload execution.
 
+An optional-presence scope reports `iteration.kind: "optional_presence"` with
+its `condition` node, one candidate when the condition holds and none otherwise.
+
 Every scope identity includes its primary or named target, semantic target path,
 and structural index path. Structural paths distinguish concatenate segments
 and repeated sibling names without depending on runtime values.

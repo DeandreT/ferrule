@@ -1,0 +1,325 @@
+[
+  {
+    "design": "nested",
+    "input": "{}",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "design": "nested",
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "design": "nested",
+    "input": "{\"Rows\":[{\"Flag\":true,\"Label\":\"L1\",\"Code\":0,\"Note\":\"n1\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "first",
+              "Note": "n1"
+            },
+            {
+              "Type": "second",
+              "Label": "L1"
+            },
+            {
+              "Type": "third",
+              "Note": "n1"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "nested",
+    "input": "{\"Rows\":[{\"Flag\":false,\"Label\":\"\",\"Code\":5,\"Note\":\"\",\"Other\":\"o\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "second",
+              "Label": ""
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "nested",
+    "input": "{\"Rows\":[{\"Flag\":true,\"Code\":3,\"Note\":\"x\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "third",
+              "Note": "x"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "nested",
+    "input": "{\"Rows\":[{\"Flag\":true,\"Label\":\"\",\"Code\":0,\"Other\":\"z\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "first"
+            },
+            {
+              "Type": "second",
+              "Label": ""
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "nested",
+    "input": "{\"Rows\":[{\"Flag\":false,\"Code\":7,\"Note\":\"\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": []
+        }
+      ]
+    }
+  },
+  {
+    "design": "nested",
+    "input": "{\"Rows\":[{\"Flag\":true,\"Code\":3,\"Note\":\"x\"},{\"Flag\":false,\"Label\":\"\",\"Code\":5,\"Note\":\"\",\"Other\":\"o\"},{\"Flag\":true,\"Label\":\"Ω\\\"\\\\\\n\",\"Code\":0,\"Note\":\"y\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "third",
+              "Note": "x"
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": "second",
+              "Label": ""
+            }
+          ]
+        },
+        {
+          "Record": [
+            {
+              "Type": "first",
+              "Note": "y"
+            },
+            {
+              "Type": "second",
+              "Label": "Ω\"\\\n"
+            },
+            {
+              "Type": "third",
+              "Note": "y"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "nested",
+    "input": "{\"Rows\":[{\"Label\":\"a\",\"Code\":1,\"Note\":\"q\"}]}",
+    "boolean_error": {
+      "node": 7,
+      "found": "null"
+    }
+  },
+  {
+    "design": "nested",
+    "input": "{\"Rows\":[{\"Flag\":\"yes\"}]}",
+    "reject": true
+  },
+  {
+    "design": "nested",
+    "input": "{\"Rows\":[{\"Flag\":true,\"Code\":1.5}]}",
+    "reject": true
+  },
+  {
+    "design": "root",
+    "input": "{}",
+    "boolean_error": {
+      "node": 7,
+      "found": "null"
+    }
+  },
+  {
+    "design": "root",
+    "input": "{\"Flag\":true,\"Label\":\"L\",\"Count\":0}",
+    "expected": {
+      "Record": [
+        {
+          "Type": "flagged",
+          "Label": "L"
+        },
+        {
+          "Type": "literal"
+        }
+      ]
+    }
+  },
+  {
+    "design": "root",
+    "input": "{\"Flag\":false,\"Count\":5}",
+    "expected": {
+      "Record": [
+        {
+          "Type": "literal"
+        },
+        {
+          "Type": "counted"
+        }
+      ]
+    }
+  },
+  {
+    "design": "root",
+    "input": "{\"Flag\":true,\"Label\":\"\"}",
+    "expected": {
+      "Record": [
+        {
+          "Type": "flagged",
+          "Label": ""
+        },
+        {
+          "Type": "literal"
+        }
+      ]
+    }
+  },
+  {
+    "design": "root",
+    "input": "{\"Flag\":true,\"Count\":-3}",
+    "expected": {
+      "Record": [
+        {
+          "Type": "literal"
+        },
+        {
+          "Type": "counted"
+        }
+      ]
+    }
+  },
+  {
+    "design": "root",
+    "input": "{\"Flag\":1}",
+    "reject": true
+  },
+  {
+    "design": "lazy",
+    "input": "{\"Rows\":[]}",
+    "expected": {
+      "Batch": []
+    }
+  },
+  {
+    "design": "lazy",
+    "input": "{\"Rows\":[{}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": []
+        }
+      ]
+    }
+  },
+  {
+    "design": "lazy",
+    "input": "{\"Rows\":[{\"Note\":\"\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": []
+        }
+      ]
+    }
+  },
+  {
+    "design": "lazy",
+    "input": "{\"Rows\":[{\"Note\":\"x\",\"Flag\":true,\"Label\":\"L\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": [
+            {
+              "Type": "lazy",
+              "Note": "x"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "design": "lazy",
+    "input": "{\"Rows\":[{\"Note\":\"x\",\"Flag\":true}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": []
+        }
+      ]
+    }
+  },
+  {
+    "design": "lazy",
+    "input": "{\"Rows\":[{\"Note\":\"x\",\"Flag\":false,\"Label\":\"L\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": []
+        }
+      ]
+    }
+  },
+  {
+    "design": "lazy",
+    "input": "{\"Rows\":[{\"Note\":\"x\"}]}",
+    "boolean_error": {
+      "node": 4,
+      "found": "null"
+    }
+  },
+  {
+    "design": "lazy",
+    "input": "{\"Rows\":[{\"Note\":\"\"},{\"Note\":\"y\",\"Flag\":true,\"Label\":\"\"}]}",
+    "expected": {
+      "Batch": [
+        {
+          "Record": []
+        },
+        {
+          "Record": [
+            {
+              "Type": "lazy",
+              "Note": "y"
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

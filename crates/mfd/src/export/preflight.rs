@@ -73,6 +73,33 @@ pub(super) fn validate_source_ownership(project: &Project) -> Result<(), MfdErro
     Ok(())
 }
 
+/// Optional presence has no qualified .mfd representation yet, so export
+/// refuses it before writing any artifact.
+pub(super) fn validate_optional_presence(project: &Project) -> Result<(), MfdError> {
+    fn contains(scope: &Scope) -> bool {
+        scope.presence().is_some()
+            || scope
+                .concatenated()
+                .is_some_and(|segments| segments.iter().any(contains))
+            || scope.children.iter().any(contains)
+            || scope
+                .dynamic_children
+                .iter()
+                .any(|child| contains(&child.scope))
+    }
+    if contains(&project.root)
+        || project
+            .extra_targets
+            .iter()
+            .any(|target| contains(&target.root))
+    {
+        return Err(MfdError::Unsupported(
+            "optional-presence target scopes have no qualified .mfd export".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     if project.source_options.xml_root_view_read_policy
         || project.target_options.xml_root_view_read_policy

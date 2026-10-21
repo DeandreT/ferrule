@@ -372,7 +372,8 @@ impl Scope {
             | ScopeIteration::DynamicDocuments { .. }
             | ScopeIteration::InnerJoin { .. }
             | ScopeIteration::OwnedInnerJoin { .. }
-            | ScopeIteration::Concatenate(_) => None,
+            | ScopeIteration::Concatenate(_)
+            | ScopeIteration::OptionalPresence { .. } => None,
         }
     }
 
@@ -396,6 +397,10 @@ impl Scope {
 
     pub fn concatenated_mut(&mut self) -> Option<&mut ScopeSequence> {
         self.iteration.concatenated_mut()
+    }
+
+    pub fn presence(&self) -> Option<NodeId> {
+        self.iteration.presence()
     }
 
     pub fn iterates(&self) -> bool {

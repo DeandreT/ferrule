@@ -412,6 +412,19 @@ impl fmt::Display for ProgramValidationError {
                 "target scope {} concatenation requires a group target",
                 display_path(target_path)
             ),
+            Self::InvalidOptionalPresence { target_path } => write!(
+                formatter,
+                "target scope {} optional presence requires a constructed repeating group without item controls",
+                display_path(target_path)
+            ),
+            Self::MissingOptionalPresenceExpression {
+                target_path,
+                expression,
+            } => write!(
+                formatter,
+                "target scope {} optional presence references missing expression {expression}",
+                display_path(target_path)
+            ),
             Self::InvalidScopeSequenceWrapper { target_path } => write!(
                 formatter,
                 "target scope {} concatenation wrapper has unsupported content, controls, or output",

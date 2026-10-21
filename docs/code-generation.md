@@ -2679,6 +2679,9 @@ The current portable model includes:
 - source-backed empty, nested, and multi-hop iteration
 - ordered nonempty scope concatenation, with independently controlled branch
   contexts and repeated or mapped-sequence output flattened in declaration order
+- optional presence, which evaluates one Boolean condition in the parent context
+  and constructs zero or one repeated group without adding an item frame; it
+  admits no item controls and stays closed on owned-source routes
 - exact first-seen key grouping, contiguous starting-marker grouping, and
   positive fixed-size block grouping over source or generated iteration;
   grouped bindings read the first member while aggregates and empty-path child

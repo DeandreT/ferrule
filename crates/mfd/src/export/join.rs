@@ -432,7 +432,8 @@ fn collect_owners(
     }
     let child_anchor = match &scope.iteration {
         ScopeIteration::OwnedSource { .. } | ScopeIteration::OwnedInnerJoin { .. } => None,
-        ScopeIteration::None => source_anchor,
+        // Optional presence adds no frame; export preflight refuses it before this walk.
+        ScopeIteration::None | ScopeIteration::OptionalPresence { .. } => source_anchor,
         ScopeIteration::Source(path) => source_anchor
             .as_deref()
             .map(|anchor| sources.resolve_scope_path(anchor, path).0),

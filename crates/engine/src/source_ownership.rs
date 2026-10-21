@@ -307,6 +307,7 @@ impl<'a> Admission<'a> {
             self.push(None, context, ancestry, scope.grouping_nodes());
             self.push(None, context, ancestry, scope.sort_by);
             self.push(None, context, ancestry, scope.output_path());
+            self.push(None, context, ancestry, scope.presence());
             self.push(
                 None,
                 context,
@@ -1240,6 +1241,7 @@ fn scope_demands_owned(project: &Project, scope: &Scope) -> bool {
         .iter()
         .map(|binding| binding.node)
         .chain(scope.filter)
+        .chain(scope.presence())
         .chain(scope.grouping_nodes())
         .chain(scope.post_group_filter)
         .chain(scope.sort_keys().map(|key| key.node))
@@ -1312,6 +1314,9 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
     }
     if scope.concatenated().is_some() {
         return OwnedCapabilityContext::Concatenate;
+    }
+    if scope.presence().is_some() {
+        return OwnedCapabilityContext::OptionalPresence;
     }
     match scope.construction {
         // Owned hierarchies and trees read their collection through the

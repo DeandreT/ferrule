@@ -1378,6 +1378,9 @@ fn format_trace_iteration(iteration: &cli::TraceIteration) -> String {
         cli::TraceIteration::Concatenate { segments } => {
             format!("concatenate {segments} segments")
         }
+        cli::TraceIteration::OptionalPresence { condition } => {
+            format!("optional presence node {condition}")
+        }
     }
 }
 

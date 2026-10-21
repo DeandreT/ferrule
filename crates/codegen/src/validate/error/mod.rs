@@ -112,6 +112,7 @@ pub enum OwnedSourceCapabilityReason {
     Grouping,
     Join,
     Concatenate,
+    OptionalPresence,
     DynamicOwner,
     DynamicLoader,
     Document,
@@ -437,6 +438,13 @@ pub enum ProgramValidationError {
     },
     InvalidScopeSequenceWrapper {
         target_path: Vec<String>,
+    },
+    InvalidOptionalPresence {
+        target_path: Vec<String>,
+    },
+    MissingOptionalPresenceExpression {
+        target_path: Vec<String>,
+        expression: NodeId,
     },
     InvalidScopeSequenceSegment {
         target_path: Vec<String>,

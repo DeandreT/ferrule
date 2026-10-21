@@ -80,11 +80,11 @@ pub use model::{
     FlexTextFieldProfile, GeneratedFilterMapCapture, GeneratedFilterMapV1, GeneratedRange,
     GeneratedSequence, GroupingPlan, IterationOutput, IterationPlan, IterationSource,
     NamedSourceProgram, NamedTargetProgram, NamedXmlInputPolicy, NamedXmlOutputPolicy,
-    OwnedSourceIteration, Program, RuntimeValue, SUPPORTED_SCALAR_CALLS, ScalarFunction,
-    ScalarTargetDomain, ScopeSequence, SequenceWindow, SortFilterOrder, SortKey, SortPlan,
-    SourceIteration, TargetConstruction, TargetScope, UserFunctionParameter, UserFunctionProgram,
-    XmlBoundaryProgram, XmlInputPolicy, XmlInputProfile, XmlMixedContentElement,
-    XmlMixedContentReplacement, XmlOutputMode, XmlOutputPolicy,
+    OptionalPresence, OwnedSourceIteration, Program, RuntimeValue, SUPPORTED_SCALAR_CALLS,
+    ScalarFunction, ScalarTargetDomain, ScopeSequence, SequenceWindow, SortFilterOrder, SortKey,
+    SortPlan, SourceIteration, TargetConstruction, TargetScope, UserFunctionParameter,
+    UserFunctionProgram, XmlBoundaryProgram, XmlInputPolicy, XmlInputProfile,
+    XmlMixedContentElement, XmlMixedContentReplacement, XmlOutputMode, XmlOutputPolicy,
 };
 pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_adjacency_tree;
 pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy;

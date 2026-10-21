@@ -64,6 +64,8 @@ mod basic_owned_xml_mixed_content;
 mod basic_owned_xml_serialize;
 #[path = "code_generation/collection_find.rs"]
 mod collection_find;
+#[path = "code_generation/conditional_group_presence.rs"]
+mod conditional_group_presence;
 #[path = "code_generation/copy_current_source.rs"]
 mod copy_current_source;
 #[path = "code_generation/csv_byte_decoding.rs"]

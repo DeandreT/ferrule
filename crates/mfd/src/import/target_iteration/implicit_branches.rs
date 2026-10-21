@@ -231,7 +231,7 @@ impl StrictConditionalProof {
     }
 }
 
-fn exact_constant_node(
+pub(super) fn exact_constant_node(
     node: mapping::NodeId,
     expected: &ir::Value,
     builder: &GraphBuilder<'_>,
@@ -247,7 +247,7 @@ fn exact_constant_node(
     }
 }
 
-fn exact_literal(feed: u32, builder: &GraphBuilder<'_>) -> Option<ir::Value> {
+pub(super) fn exact_literal(feed: u32, builder: &GraphBuilder<'_>) -> Option<ir::Value> {
     if !unique_producer(feed, builder) {
         return None;
     }
@@ -273,7 +273,7 @@ fn constant_has_type(value: &ir::Value, expected: ir::ScalarType) -> bool {
     )
 }
 
-fn ordinary_primary_json(builder: &GraphBuilder<'_>) -> bool {
+pub(super) fn ordinary_primary_json(builder: &GraphBuilder<'_>) -> bool {
     builder.sources.first().is_some_and(|primary| {
         primary.format == ComponentFormat::Json
             && primary.is_source
@@ -299,7 +299,11 @@ fn ordinary_primary_json(builder: &GraphBuilder<'_>) -> bool {
     })
 }
 
-fn ordinary_scalar_domain(path: &[String], anchor: &[String], source: &SchemaNode) -> bool {
+pub(super) fn ordinary_scalar_domain(
+    path: &[String],
+    anchor: &[String],
+    source: &SchemaNode,
+) -> bool {
     path.len() <= MAX_DEPTH
         && anchor.len() <= MAX_DEPTH
         && (0..=path.len()).all(|length| {
@@ -430,6 +434,7 @@ pub(super) fn build(
     scopes: &mut ScopeBuilder,
     claimed: &mut BTreeSet<usize>,
     declared: &mut DeclaredBranches,
+    presence_paths: &BTreeSet<Vec<String>>,
 ) {
     csv_x12::build(
         target, bindings, iterations, builder, scopes, claimed, declared,
@@ -458,6 +463,10 @@ pub(super) fn build(
     let mut paths = paths.into_iter().collect::<Vec<_>>();
     paths.sort_by_key(|(path, _)| path.len());
     for (path, markers) in paths {
+        // Conditional presence drivers own their declared clones, lowered or refused.
+        if presence_paths.contains(&path) {
+            continue;
+        }
         // Explicit multi-driver concatenations already carry the qualified
         // declaration ownership contract. Leave them on that existing path.
         if markers.len() < 2
@@ -800,7 +809,7 @@ fn classify_driver(
     }
 }
 
-fn unique_producer(feed: u32, builder: &GraphBuilder<'_>) -> bool {
+pub(super) fn unique_producer(feed: u32, builder: &GraphBuilder<'_>) -> bool {
     let count = builder
         .sources
         .iter()
@@ -865,7 +874,7 @@ fn unique_producer(feed: u32, builder: &GraphBuilder<'_>) -> bool {
         && builder.joins.hierarchical_source(feed).is_none()
 }
 
-fn physical_scalar<'a>(
+pub(super) fn physical_scalar<'a>(
     feed: u32,
     anchor: &[String],
     builder: &'a GraphBuilder<'_>,
@@ -907,7 +916,7 @@ fn guaranteed_scalar(path: &[String], anchor: &[String], source: &SchemaNode) ->
     })
 }
 
-fn actual_json_frame(
+pub(super) fn actual_json_frame(
     path: &[String],
     anchor: &[String],
     target: &SchemaComponent,
@@ -1019,14 +1028,21 @@ fn physical_frame_driver(
     })
 }
 
-fn enclosing_anchor(path: &[String], anchors: &BTreeMap<Vec<String>, Vec<String>>) -> Vec<String> {
+pub(super) fn enclosing_anchor(
+    path: &[String],
+    anchors: &BTreeMap<Vec<String>, Vec<String>>,
+) -> Vec<String> {
     (0..path.len())
         .rev()
         .find_map(|length| anchors.get(&path[..length]).cloned())
         .unwrap_or_default()
 }
 
-fn controlled_input(target: &SchemaComponent, input: u32, builder: &GraphBuilder<'_>) -> bool {
+pub(super) fn controlled_input(
+    target: &SchemaComponent,
+    input: u32,
+    builder: &GraphBuilder<'_>,
+) -> bool {
     builder.xml_condition_ports.contains(&input)
         || target.input_ancestors.get(&input).is_some_and(|ancestors| {
             ancestors
@@ -1035,7 +1051,7 @@ fn controlled_input(target: &SchemaComponent, input: u32, builder: &GraphBuilder
         })
 }
 
-fn plain_parents(path: &[String], scopes: &ScopeBuilder) -> bool {
+pub(super) fn plain_parents(path: &[String], scopes: &ScopeBuilder) -> bool {
     (0..path.len()).all(|length| {
         scopes.scope(&path[..length]).is_none_or(|scope| {
             matches!(
@@ -1057,7 +1073,7 @@ fn plain_parents(path: &[String], scopes: &ScopeBuilder) -> bool {
     })
 }
 
-fn plain_shape(node: &SchemaNode, depth: usize) -> bool {
+pub(super) fn plain_shape(node: &SchemaNode, depth: usize) -> bool {
     depth <= MAX_DEPTH
         && node.recursive_ref.is_none()
         && node.alternatives().is_empty()

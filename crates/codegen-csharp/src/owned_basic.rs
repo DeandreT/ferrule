@@ -761,6 +761,7 @@ fn check_scope(
                 Some(Reason::Join)
             }
             IterationSource::Concatenate(_) => Some(Reason::Concatenate),
+            IterationSource::OptionalPresence(_) => Some(Reason::OptionalPresence),
             IterationSource::DynamicDocuments(_) => Some(Reason::Document),
         };
         if let Some(reason) = reason {

@@ -441,7 +441,8 @@ pub(super) fn current_source_schema<'a>(
     iteration: &ScopeIteration,
 ) -> Option<&'a SchemaNode> {
     match iteration {
-        ScopeIteration::None => parent,
+        // Optional presence adds no frame; its group stays in the parent item.
+        ScopeIteration::None | ScopeIteration::OptionalPresence { .. } => parent,
         ScopeIteration::OwnedSource { source, .. } => {
             let root =
                 owned_source_root(project, &source.owner, "owned collection", &mut Vec::new())?;
