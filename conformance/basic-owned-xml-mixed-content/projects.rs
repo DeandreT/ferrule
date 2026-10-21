@@ -42,8 +42,10 @@ pub fn input_schema() -> SchemaNode {
             para_schema(),
             SchemaNode::group(
                 "Docs",
-                vec![SchemaNode::group("Doc", vec![string("id").attribute(), para_schema()])
-                    .repeating()],
+                vec![
+                    SchemaNode::group("Doc", vec![string("id").attribute(), para_schema()])
+                        .repeating(),
+                ],
             ),
         ],
     )
@@ -80,15 +82,17 @@ pub fn mixed(
         frame: frame.map(path),
         replacements: rules
             .iter()
-            .map(|(element, occurrence, expression)| OwnedXmlMixedContentReplacement {
-                element: (*element).into(),
-                context: if *occurrence {
-                    OwnedXmlMixedContentContext::Occurrence
-                } else {
-                    OwnedXmlMixedContentContext::Parent
+            .map(
+                |(element, occurrence, expression)| OwnedXmlMixedContentReplacement {
+                    element: (*element).into(),
+                    context: if *occurrence {
+                        OwnedXmlMixedContentContext::Occurrence
+                    } else {
+                        OwnedXmlMixedContentContext::Parent
+                    },
+                    expression: *expression,
                 },
-                expression: *expression,
-            })
+            )
             .collect(),
     })
 }
@@ -188,10 +192,18 @@ fn endpoints() -> Project {
             ..Scope::default()
         },
         vec![
-            (1, mixed(None, &para, None, &[("b", true, 10), ("i", false, 15)])),
+            (
+                1,
+                mixed(None, &para, None, &[("b", true, 10), ("i", false, 15)]),
+            ),
             (
                 2,
-                mixed(Some("notes"), &para, None, &[("b", true, 20), ("i", true, 24)]),
+                mixed(
+                    Some("notes"),
+                    &para,
+                    None,
+                    &[("b", true, 20), ("i", true, 24)],
+                ),
             ),
             (3, mixed(Some("Para"), &para, None, &[])),
             (10, concat(&[11, 12, 13, 14, 16])),
@@ -207,7 +219,11 @@ fn endpoints() -> Project {
             (24, field(Some("notes"), &["Para", "i", "n"])),
         ],
     );
-    project.extra_targets = vec![target("noted", strings("Noted", &["Notes"]), &[("Notes", 2)])];
+    project.extra_targets = vec![target(
+        "noted",
+        strings("Noted", &["Notes"]),
+        &[("Notes", 2)],
+    )];
     project
 }
 
@@ -242,7 +258,10 @@ fn nested() -> Project {
             (36, field(None, &b)),
             (37, text("@")),
             (38, field(None, &["Docs", "Doc", "id"])),
-            (40, mixed(None, &para, None, &[("i", false, 38), ("b", true, 41)])),
+            (
+                40,
+                mixed(None, &para, None, &[("i", false, 38), ("b", true, 41)]),
+            ),
             (41, concat(&[42, 34])),
             (42, field(Some("notes"), &["Title"])),
         ],
@@ -293,7 +312,10 @@ fn lazy() -> Project {
             ..Scope::default()
         },
         vec![
-            (60, mixed(None, &["Para"], None, &[("b", true, 61), ("u", false, 66)])),
+            (
+                60,
+                mixed(None, &["Para"], None, &[("b", true, 61), ("u", false, 66)]),
+            ),
             (
                 61,
                 Node::If {
@@ -310,7 +332,12 @@ fn lazy() -> Project {
                 },
             ),
             (63, position(None, &b)),
-            (67, Node::Const { value: Value::Int(2) }),
+            (
+                67,
+                Node::Const {
+                    value: Value::Int(2),
+                },
+            ),
             (64, field(None, &b)),
             (65, Node::Raise { message: Some(68) }),
             (68, text("second b")),

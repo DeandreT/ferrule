@@ -253,6 +253,35 @@ const REDUCERS: [(&str, AggregateOp); 7] = [
     ("item", AggregateOp::ItemAt),
 ];
 
+#[test]
+fn decimal_sum_stays_closed_for_owned_joined_aggregates() {
+    for expression in [None, Some(2)] {
+        let p = root_value(vec![
+            (
+                1,
+                aggregate(AggregateOp::DecimalSum, rows_plan(), expression, Some(3)),
+            ),
+            (2, Node::Raise { message: Some(4) }),
+            (3, Node::Raise { message: Some(5) }),
+            (4, constant(text_value("projection must not run"))),
+            (5, constant(text_value("argument must not run"))),
+        ]);
+        for (primary, named) in [
+            (primary_rows(), lookup_rows()),
+            (document(Instance::Repeated(vec![])), lookup_rows()),
+        ] {
+            assert_eq!(
+                value(&p, primary, named),
+                Err(functions::FunctionError::InvalidArgument {
+                    function: "owned_join_aggregate",
+                    message: "this reducer is not supported for owned joined collections",
+                }
+                .into())
+            );
+        }
+    }
+}
+
 fn reducer_target() -> Vec<SchemaNode> {
     vec![
         int("count"),
