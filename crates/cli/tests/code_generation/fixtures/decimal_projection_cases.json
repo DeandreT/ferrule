@@ -1,0 +1,15 @@
+{
+  "sequence": [
+    {"id":"sequence-tenths","input":{"Numbers":"0.1|0.2"},"expected":{"Total":"0.3"}},
+    {"id":"sequence-overflow-before-parse","input":{"Numbers":"79228162514264337593543950335|1|bad"},"error":"sum"},
+    {"id":"sequence-parse-before-overflow","input":{"Numbers":"bad|79228162514264337593543950335|1"},"error":"conversion"},
+    {"id":"sequence-retry","input":{"Numbers":"2|3"},"expected":{"Total":"5"}}
+  ],
+  "join": [
+    {"id":"join-tenths","input":{"Key":"K","Rows":[{"Key":"K","Amount":"0.1"},{"Key":"K","Amount":"0.2"}]},"expected":{"Total":"0.3"}},
+    {"id":"join-overflow-before-parse","input":{"Key":"K","Rows":[{"Key":"K","Amount":"79228162514264337593543950335"},{"Key":"K","Amount":"1"},{"Key":"K","Amount":"bad"}]},"error":"sum"},
+    {"id":"join-parse-before-overflow","input":{"Key":"K","Rows":[{"Key":"K","Amount":"bad"},{"Key":"K","Amount":"79228162514264337593543950335"},{"Key":"K","Amount":"1"}]},"error":"conversion"},
+    {"id":"join-retry","input":{"Key":"K","Rows":[{"Key":"K","Amount":"2"},{"Key":"K","Amount":"3"}]},"expected":{"Total":"5"}},
+    {"id":"join-empty","input":{"Key":"K","Rows":[]},"expected":{"Total":"0"}}
+  ]
+}
