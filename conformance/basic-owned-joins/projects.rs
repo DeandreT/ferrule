@@ -1,13 +1,15 @@
-//! Genuine public Projects for owned join tuples (#449).
+//! Genuine public Projects for owned join tuples (#449) and owned joined
+//! aggregates (#450).
 //!
 //! Primary and the named `Lookup` endpoint share one schema, so every owned
 //! collection also exists under the other owner. Rows carry an `id` join key
 //! with duplicates and nulls. Expected results live in `cases.rs`.
 use super::*;
 use mapping::{
-    JoinId, NamedSource, NamedTarget, OwnedJoinConditions, OwnedJoinField, OwnedJoinKey,
-    OwnedJoinPlan, OwnedJoinSource, OwnedJoinSourcePosition, OwnedSourceField, OwnedSourceRef,
-    ScopeConstruction, SequenceWindow, SortFilterOrder, SourceOwner,
+    AggregateOp, JoinId, NamedSource, NamedTarget, OwnedJoinAggregate, OwnedJoinConditions,
+    OwnedJoinField, OwnedJoinKey, OwnedJoinPlan, OwnedJoinSource, OwnedJoinSourcePosition,
+    OwnedSourceField, OwnedSourceRef, ScopeConstruction, SequenceWindow, SortFilterOrder,
+    SourceOwner,
 };
 
 pub const LOOKUP: &str = "Lookup";
@@ -21,6 +23,10 @@ pub const PROFILES: &[&str] = &[
     "J05-first-and-scalar-output",
     "J06-static-descendants-and-windows",
     "J07-filter-policy",
+    "J08-joined-reducers",
+    "J09-correlated-and-grouped-aggregates",
+    "J10-parent-arguments-and-stages",
+    "J11-aggregate-failure-policy",
 ];
 
 pub fn path(parts: &[&str]) -> Vec<String> {
@@ -54,6 +60,76 @@ pub fn join_position(join: u64, name: &str, collection: &[&str]) -> Node {
 }
 pub fn key(name: &str, collection: &[&str], left: &[&str], right: &[&str]) -> OwnedJoinKey {
     OwnedJoinKey::new(source(name, collection), path(left), path(right))
+}
+pub fn joined(
+    function: AggregateOp,
+    join: u64,
+    plan: OwnedJoinPlan,
+    expression: Option<u32>,
+    arg: Option<u32>,
+) -> Node {
+    Node::OwnedJoinAggregate(OwnedJoinAggregate {
+        function,
+        join: JoinId::new(join),
+        plan,
+        expression,
+        arg,
+    })
+}
+fn owned_field(name: &str, parts: &[&str]) -> Node {
+    Node::OwnedSourceField(OwnedSourceField {
+        source: source(name, parts),
+        frame: None,
+    })
+}
+/// One field per reducer; joined aggregate models bind the fields they use.
+fn totals() -> SchemaNode {
+    SchemaNode::group(
+        "Totals",
+        vec![
+            int("count"),
+            int("sum"),
+            SchemaNode::scalar("avg", ScalarType::Float),
+            int("min"),
+            int("max"),
+            string("join"),
+            string("item"),
+        ],
+    )
+}
+/// A `Totals` scope binding `(field, node)` pairs.
+fn totals_scope(bindings: &[(&str, u32)]) -> Scope {
+    Scope {
+        target_field: "Totals".into(),
+        bindings: bindings.iter().map(|(field, node)| bind(field, *node)).collect(),
+        ..Scope::default()
+    }
+}
+/// Primary `Orders` joined to their `Lines` by order id, then each line to
+/// the Lookup row whose code is its sku.
+fn order_lines_plan() -> OwnedJoinPlan {
+    OwnedJoinPlan::new(
+        OwnedJoinSource::new(source("Primary", &["Orders"])),
+        OwnedJoinSource::new(source("Primary", &["Orders", "Lines"])),
+        OwnedJoinConditions::new(key("Primary", &["Orders"], &["id"], &["order"])),
+    )
+    .and_then(|plan| {
+        plan.then(
+            OwnedJoinSource::new(source(LOOKUP, &["Rows"])),
+            OwnedJoinConditions::new(key("Primary", &["Orders", "Lines"], &["sku"], &["code"])),
+        )
+    })
+    .expect("authored owned plan")
+}
+/// `rows_plan(false)` followed by the Lookup header code keyed on the Primary
+/// row code.
+fn header_stage_plan() -> OwnedJoinPlan {
+    rows_plan(false)
+        .then(
+            OwnedJoinSource::singleton(source(LOOKUP, &["Header", "code"])),
+            OwnedJoinConditions::new(key("Primary", &["Rows"], &["code"], &[])),
+        )
+        .expect("authored owned plan")
 }
 fn string(name: &str) -> SchemaNode {
     SchemaNode::scalar(name, ScalarType::String)
@@ -426,6 +502,152 @@ pub fn project(profile: &str) -> Project {
                 },
             );
             p.extra_targets[0].root.children[0].filter = Some(52);
+        }
+        // Every reducer over the same-path rows join, with tuple-local values
+        // and parent separators; audit lists raw and flattened positions.
+        "J08-joined-reducers" => {
+            p.target = SchemaNode::group("Output", vec![totals()]);
+            insert(&mut p, 48, Node::Const { value: Value::String(" ".into()) });
+            insert(&mut p, 60, join_field(8, LOOKUP, &["Rows"], &["id"]));
+            insert(&mut p, 61, join_field(8, LOOKUP, &["Rows"], &["code"]));
+            insert(&mut p, 62, join_field(8, "Primary", &["Rows"], &["code"]));
+            for (id, function, expression, arg) in [
+                (70, AggregateOp::Count, None, None),
+                (71, AggregateOp::Sum, Some(60), None),
+                (72, AggregateOp::Avg, Some(60), None),
+                (73, AggregateOp::Min, Some(60), None),
+                (74, AggregateOp::Max, Some(60), None),
+                (75, AggregateOp::Join, Some(61), Some(40)),
+                (76, AggregateOp::ItemAt, Some(62), Some(42)),
+            ] {
+                insert(&mut p, id, joined(function, 8, rows_plan(false), expression, arg));
+            }
+            p.root.children = vec![totals_scope(&[
+                ("count", 70),
+                ("sum", 71),
+                ("avg", 72),
+                ("min", 73),
+                ("max", 74),
+                ("join", 75),
+                ("item", 76),
+            ])];
+            insert(&mut p, 80, joined(AggregateOp::Join, 9, rows_plan(true), Some(81), Some(48)));
+            call(&mut p, 81, "concat", &[83, 40, 84, 40, 85]);
+            insert(&mut p, 83, join_position(9, LOOKUP, &["Rows"]));
+            insert(&mut p, 84, join_position(9, "Primary", &["Rows"]));
+            insert(&mut p, 85, Node::JoinPosition { join: JoinId::new(9) });
+            p.extra_targets[0].root = Scope {
+                bindings: vec![bind("Value", 80)],
+                ..Scope::default()
+            };
+        }
+        // Inside an owned Primary order, Primary `Orders` correlates to that
+        // order while the same-path Lookup `Orders` is walked from its root;
+        // audit joins each Primary id group's members only.
+        "J09-correlated-and-grouped-aggregates" => {
+            p.target = SchemaNode::group(
+                "Output",
+                vec![
+                    SchemaNode::group("Order", vec![int("id"), string("lines"), int("lookups")])
+                        .repeating(),
+                ],
+            );
+            insert(&mut p, 50, owned_field("Primary", &["Orders", "id"]));
+            insert(&mut p, 90, joined(AggregateOp::Join, 10, order_lines_plan(), Some(91), Some(40)));
+            call(&mut p, 91, "concat", &[92, 93, 94]);
+            insert(&mut p, 92, join_field(10, "Primary", &["Orders", "Lines"], &["sku"]));
+            insert(&mut p, 93, join_position(10, "Primary", &["Orders"]));
+            insert(&mut p, 94, join_position(10, "Primary", &["Orders", "Lines"]));
+            let orders = OwnedJoinPlan::new(
+                OwnedJoinSource::new(source("Primary", &["Orders"])),
+                OwnedJoinSource::new(source(LOOKUP, &["Orders"])),
+                OwnedJoinConditions::new(key("Primary", &["Orders"], &["id"], &["id"])),
+            )
+            .expect("authored owned plan");
+            insert(&mut p, 95, joined(AggregateOp::Count, 11, orders, None, None));
+            p.root.children = vec![Scope {
+                target_field: "Order".into(),
+                iteration: ScopeIteration::OwnedSource {
+                    source: source("Primary", &["Orders"]),
+                    output_path: None,
+                },
+                bindings: vec![bind("id", 50), bind("lines", 90), bind("lookups", 95)],
+                ..Scope::default()
+            }];
+            p.extra_targets[0].schema = SchemaNode::group(
+                "Audit",
+                vec![
+                    SchemaNode::group("Group", vec![int("id"), string("codes"), int("count")])
+                        .repeating(),
+                ],
+            );
+            insert(&mut p, 51, owned_field("Primary", &["Rows", "id"]));
+            insert(&mut p, 96, joined(AggregateOp::Join, 12, rows_plan(false), Some(98), Some(40)));
+            call(&mut p, 98, "concat", &[99, 100]);
+            insert(&mut p, 99, join_field(12, "Primary", &["Rows"], &["code"]));
+            insert(&mut p, 100, join_field(12, LOOKUP, &["Rows"], &["code"]));
+            insert(&mut p, 97, joined(AggregateOp::Count, 13, rows_plan(false), None, None));
+            p.extra_targets[0].root = Scope {
+                children: vec![Scope {
+                    target_field: "Group".into(),
+                    iteration: ScopeIteration::OwnedSource {
+                        source: source("Primary", &["Rows"]),
+                        output_path: None,
+                    },
+                    group_by: Some(51),
+                    bindings: vec![bind("id", 51), bind("codes", 96), bind("count", 97)],
+                    ..Scope::default()
+                }],
+                ..Scope::default()
+            };
+        }
+        // A parent-context separator read from the Primary header, a third
+        // singleton stage, and an audit plan starting from a Primary singleton.
+        "J10-parent-arguments-and-stages" => {
+            p.target = SchemaNode::group("Output", vec![totals()]);
+            insert(&mut p, 110, joined(AggregateOp::Join, 14, rows_plan(false), Some(111), Some(112)));
+            insert(&mut p, 111, join_field(14, "Primary", &["Rows"], &["code"]));
+            insert(&mut p, 112, owned_field("Primary", &["Header", "code"]));
+            insert(&mut p, 113, joined(AggregateOp::Count, 15, header_stage_plan(), None, None));
+            insert(&mut p, 114, joined(AggregateOp::ItemAt, 15, header_stage_plan(), Some(115), Some(41)));
+            insert(&mut p, 115, join_field(15, LOOKUP, &["Rows"], &["code"]));
+            p.root.children = vec![totals_scope(&[("count", 113), ("join", 110), ("item", 114)])];
+            let audit = OwnedJoinPlan::new(
+                OwnedJoinSource::singleton(source("Primary", &["Header", "code"])),
+                OwnedJoinSource::new(source(LOOKUP, &["Rows"])),
+                OwnedJoinConditions::new(key("Primary", &["Header", "code"], &[], &["code"])),
+            )
+            .expect("authored owned plan");
+            insert(&mut p, 117, joined(AggregateOp::Join, 16, audit, Some(118), Some(40)));
+            insert(&mut p, 118, join_field(16, LOOKUP, &["Rows"], &["name"]));
+            p.extra_targets[0].root = Scope {
+                bindings: vec![bind("Value", 117)],
+                ..Scope::default()
+            };
+        }
+        // The third tuple's non-finite value fails the Primary sum; the audit
+        // separator raises in the parent context when the Lookup header says so.
+        "J11-aggregate-failure-policy" => {
+            p.target = SchemaNode::group("Output", vec![totals()]);
+            insert(&mut p, 120, joined(AggregateOp::Sum, 17, rows_plan(false), Some(121), None));
+            insert(&mut p, 121, Node::If { condition: 122, then: 125, else_: 124 });
+            call(&mut p, 122, "equal", &[123, 43]);
+            insert(&mut p, 123, Node::JoinPosition { join: JoinId::new(17) });
+            insert(&mut p, 124, join_field(17, LOOKUP, &["Rows"], &["id"]));
+            insert(&mut p, 125, Node::Const { value: Value::String("inf".into()) });
+            p.root.children = vec![totals_scope(&[("sum", 120)])];
+            insert(&mut p, 126, joined(AggregateOp::Join, 18, rows_plan(true), Some(127), Some(128)));
+            insert(&mut p, 127, join_field(18, LOOKUP, &["Rows"], &["code"]));
+            insert(&mut p, 128, Node::If { condition: 129, then: 130, else_: 40 });
+            call(&mut p, 129, "equal", &[131, 132]);
+            insert(&mut p, 130, Node::Raise { message: Some(133) });
+            insert(&mut p, 131, owned_field(LOOKUP, &["Header", "code"]));
+            insert(&mut p, 132, Node::Const { value: Value::String("stop".into()) });
+            insert(&mut p, 133, Node::Const { value: Value::String("argument".into()) });
+            p.extra_targets[0].root = Scope {
+                bindings: vec![bind("Value", 126)],
+                ..Scope::default()
+            };
         }
         _ => panic!("authored profile {profile}"),
     }

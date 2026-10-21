@@ -926,6 +926,35 @@ impl<'a> Admission<'a> {
                     })
                     | Node::OwnedAggregate(mapping::OwnedAggregate { collection, .. }) => self
                         .static_owner(&collection.owner, &collection.path, None, Some(id), None)?,
+                    // Each source names a static endpoint walked in the
+                    // receiving context. The tuple expression has the closed
+                    // scalar subset of a join tuple, while the argument stays
+                    // a Basic receiving-context scalar.
+                    Node::OwnedJoinAggregate(aggregate) => {
+                        for source in aggregate.plan.sources() {
+                            let collection = source.collection();
+                            self.static_owner(
+                                &collection.owner,
+                                &collection.path,
+                                None,
+                                Some(id),
+                                None,
+                            )?;
+                        }
+                        self.join_tuple_nodes(aggregate.expression.into_iter().collect())?;
+                        self.pending.extend(aggregate.arg.map(|arg| {
+                            (
+                                function,
+                                context,
+                                ancestry,
+                                root_failure,
+                                primary_row_failure,
+                                arg,
+                            )
+                        }));
+                        self.summary.used_owned = true;
+                        continue;
+                    }
                     // The structured read has the field's frame rules and
                     // evaluates no expression of its own.
                     Node::OwnedXmlSerialize(serializer) => {
@@ -1413,7 +1442,8 @@ fn node_context(node: &Node) -> OwnedCapabilityContext {
         | Node::JoinPosition { .. }
         | Node::JoinAggregate { .. }
         | Node::OwnedJoinField(_)
-        | Node::OwnedJoinSourcePosition(_) => OwnedCapabilityContext::Join,
+        | Node::OwnedJoinSourcePosition(_)
+        | Node::OwnedJoinAggregate(_) => OwnedCapabilityContext::Join,
         Node::SequenceItemAt { sequence, .. } if basic_item_at_producer(sequence) => {
             OwnedCapabilityContext::Basic
         }
