@@ -158,6 +158,10 @@ enum Command {
         /// parameters; declared mapping types apply during execution.
         #[arg(long = "param", value_name = "NAME=VALUE")]
         parameters: Vec<String>,
+        /// Run under a restricted policy file: allowed roots, HTTP origins and
+        /// explicit budgets. Policy enforcement, not a sandbox. Default: trusted.
+        #[arg(long, value_name = "FILE")]
+        restricted_policy: Option<PathBuf>,
     },
     /// Run a typed graph of complete mapping stages and publish selected outputs.
     RunPipeline {
@@ -175,6 +179,9 @@ enum Command {
         /// Named host scalar in NAME=VALUE form, shared by all stages.
         #[arg(long = "param", value_name = "NAME=VALUE")]
         parameters: Vec<String>,
+        /// Run every stage under a restricted policy file. Default: trusted.
+        #[arg(long, value_name = "FILE")]
+        restricted_policy: Option<PathBuf>,
     },
     /// Check project graph, scope, and schema references without reading data.
     Validate {
@@ -568,10 +575,15 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             parameters,
             pdf_worker,
             keep_pdf_evidence,
+            restricted_policy,
         } => {
             let project = project
                 .or(project_positional)
                 .context("missing project path")?;
+            let execution_policy = restricted_policy
+                .as_deref()
+                .map(cli::load_execution_policy_file)
+                .transpose()?;
             let input = input.or(input_positional);
             let output = output.or(output_positional);
             if pdf_worker
@@ -610,6 +622,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                         runtime_parameters: Some(&parameters),
                         trace_sink: trace.as_ref().map(|trace| trace as &dyn cli::TraceSink),
                         protected_output_paths: &protected_output_paths,
+                        execution_policy: execution_policy.as_ref(),
                     },
                     &mut stdin,
                 )?;
@@ -640,6 +653,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     debug_hook: None,
                     before_publish: None,
                     protected_output_paths: &protected_output_paths,
+                    execution_policy: execution_policy.as_ref(),
                 };
                 let outcome = if pdf_worker {
                     let policy = if keep_pdf_evidence {
@@ -700,7 +714,12 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             outputs,
             named_outputs,
             parameters,
+            restricted_policy,
         } => {
+            let execution_policy = restricted_policy
+                .as_deref()
+                .map(cli::load_execution_policy_file)
+                .transpose()?;
             let inputs = inputs
                 .as_chunks::<2>()
                 .0
@@ -734,6 +753,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                 &publications,
                 &cli::PipelineRunOptions {
                     runtime_parameters: Some(&parameters),
+                    execution_policy: execution_policy.as_ref(),
                     ..cli::PipelineRunOptions::default()
                 },
             )?;

@@ -10,10 +10,8 @@
 //! by its first segment (ISA = X12, UNB = EDIFACT) -- see `format_edi`.
 
 use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, bail};
@@ -30,6 +28,8 @@ const MAX_HTTP_REDIRECTS: u32 = 5;
 
 mod bundle;
 mod code_generation;
+mod dynamic_source_loader;
+mod execution_policy;
 mod filesystem_pdf_reader;
 #[cfg(test)]
 mod filesystem_pdf_reader_tests;
@@ -42,6 +42,13 @@ mod pipeline_preview;
 mod project_paths;
 mod read_set;
 pub use bundle::{BundleCatalog, BundleCatalogKind, BundleOptions, BundleOutcome, bundle_project};
+use dynamic_source_loader::ProjectDynamicSourceLoader;
+pub use engine::{
+    ExecutionBudgetKind, ExecutionBudgets, ExecutionPolicy, PathAccess, PolicyRefusal,
+    RestrictedCapability, RestrictedPolicy, RootAccess,
+};
+use execution_policy::TRUSTED;
+pub use execution_policy::{load_execution_policy_file, parse_execution_policy};
 pub use filesystem_pdf_reader::FilesystemPdfReader;
 pub use pdf_worker_policy::FilesystemRunPolicy;
 mod rest_json;
@@ -172,6 +179,8 @@ pub struct RunOptions<'a> {
     /// run also refuses to publish when one names the design or a consumed
     /// local input, because the host replaces these paths afterwards.
     pub protected_output_paths: &'a [&'a Path],
+    /// Host authority for the run; `None` is the trusted default.
+    pub execution_policy: Option<&'a ExecutionPolicy>,
 }
 
 impl<'a> RunOptions<'a> {
@@ -216,6 +225,11 @@ impl<'a> RunOptions<'a> {
 
     pub fn with_protected_output_paths(mut self, paths: &'a [&'a Path]) -> Self {
         self.protected_output_paths = paths;
+        self
+    }
+
+    pub fn with_execution_policy(mut self, policy: &'a ExecutionPolicy) -> Self {
+        self.execution_policy = Some(policy);
         self
     }
 }
@@ -392,6 +406,7 @@ fn run_project_value_with_pdf_reader(
     reader: Option<&dyn FilesystemPdfReader>,
 ) -> anyhow::Result<RunOutcome> {
     require_valid(project)?;
+    let policy = options.execution_policy.unwrap_or(&TRUSTED);
 
     let input_path = resolve_run_path(
         project_path,
@@ -403,6 +418,9 @@ fn run_project_value_with_pdf_reader(
     )?;
     let targets = plan_project_targets(project, project_path, options.output_path, options.target)?;
     output_documents::reject_protected_static_targets(&targets, options.protected_output_paths)?;
+    for target in &targets {
+        policy.authorize_write(target.destination.path())?;
+    }
     engine::check_source_ownership_capability_with_observers(
         project,
         options.target,
@@ -432,6 +450,7 @@ fn run_project_value_with_pdf_reader(
         &project.source,
         &project.source_options,
         reader,
+        policy,
     )?;
     let mut read_set = read_set::ReadSet::new(project_path);
     read_set.push_source(&input_path, &source_instance);
@@ -450,8 +469,9 @@ fn run_project_value_with_pdf_reader(
         } else {
             project_dir.join(path)
         };
-        let instance = read_instance_with_pdf_reader(&path, &extra.schema, &extra.options, reader)
-            .with_context(|| format!("loading extra source `{}`", extra.name))?;
+        let instance =
+            read_instance_with_pdf_reader(&path, &extra.schema, &extra.options, reader, policy)
+                .with_context(|| format!("loading extra source `{}`", extra.name))?;
         read_set.push_source(&path, &instance);
         extras.push((extra.name.clone(), instance));
     }
@@ -463,10 +483,12 @@ fn run_project_value_with_pdf_reader(
         .to_string();
     let dynamic_loader =
         ProjectDynamicSourceLoader::with_pdf_reader(project_dir, &project.extra_sources, reader)
-            .with_trace_sink(options.trace_sink);
+            .with_trace_sink(options.trace_sink)
+            .with_execution_policy(policy);
     let mut execution = engine::ExecutionContext::new(&runtime_project_path)
         .with_current_datetime(&current_datetime)
-        .with_dynamic_source_loader(&dynamic_loader);
+        .with_dynamic_source_loader(&dynamic_loader)
+        .with_policy(policy);
     if let Some(parameters) = options.runtime_parameters {
         execution = execution.with_parameters(parameters);
     }
@@ -493,6 +515,7 @@ fn run_project_value_with_pdf_reader(
             &output,
             &current_datetime,
             options.protected_output_paths,
+            policy,
         )?
     } else {
         let outputs = engine::run_outputs_with_sources_and_context(
@@ -510,6 +533,7 @@ fn run_project_value_with_pdf_reader(
             &outputs,
             &current_datetime,
             options.protected_output_paths,
+            policy,
         )?
     };
 
@@ -674,6 +698,7 @@ fn write_all_targets(
     outputs: &engine::ExecutionOutputs,
     current_datetime: &str,
     protected_output_paths: &[&Path],
+    policy: &ExecutionPolicy,
 ) -> anyhow::Result<WrittenTargets> {
     if outputs.extras.len() + 1 != targets.len() {
         bail!("engine returned an unexpected number of target values");
@@ -687,7 +712,7 @@ fn write_all_targets(
     for (target, output) in targets.iter().skip(1).zip(&outputs.extras) {
         writes.push(target_write(target, &output.instance, current_datetime));
     }
-    let mut written = write_target_outputs(&writes, protected_output_paths)?.into_iter();
+    let mut written = write_target_outputs(&writes, protected_output_paths, policy)?.into_iter();
     let primary_result = written
         .next()
         .context("output batch did not return a primary target result")?;
@@ -714,6 +739,7 @@ fn write_selected_target(
     output: &engine::SelectedTargetOutput,
     current_datetime: &str,
     protected_output_paths: &[&Path],
+    policy: &ExecutionPolicy,
 ) -> anyhow::Result<WrittenTargets> {
     let instance = match (target.primary, output) {
         (true, engine::SelectedTargetOutput::Primary(instance)) => instance,
@@ -725,6 +751,7 @@ fn write_selected_target(
     let mut written = write_target_outputs(
         &[target_write(target, instance, current_datetime)],
         protected_output_paths,
+        policy,
     )?
     .into_iter();
     let result = written
@@ -776,80 +803,6 @@ fn absolute_mapping_path(project_path: &Path) -> anyhow::Result<Cow<'_, Path>> {
             .context("resolving the current directory for an unsaved project")?
             .join(project_path),
     ))
-}
-
-struct ProjectDynamicSourceLoader<'a> {
-    project_dir: &'a Path,
-    sources: &'a [mapping::NamedSource],
-    cache: RefCell<BTreeMap<(String, String), Arc<Instance>>>,
-    reader: Option<&'a dyn FilesystemPdfReader>,
-    trace_sink: Option<&'a dyn TraceSink>,
-}
-
-impl<'a> ProjectDynamicSourceLoader<'a> {
-    fn new(project_dir: &'a Path, sources: &'a [mapping::NamedSource]) -> Self {
-        Self::with_policy(project_dir, sources, None)
-    }
-
-    fn with_policy(
-        project_dir: &'a Path,
-        sources: &'a [mapping::NamedSource],
-        policy: Option<&'a FilesystemRunPolicy>,
-    ) -> Self {
-        Self::with_pdf_reader(
-            project_dir,
-            sources,
-            policy.map(|policy| policy as &dyn FilesystemPdfReader),
-        )
-    }
-
-    fn with_pdf_reader(
-        project_dir: &'a Path,
-        sources: &'a [mapping::NamedSource],
-        reader: Option<&'a dyn FilesystemPdfReader>,
-    ) -> Self {
-        Self {
-            project_dir,
-            sources,
-            cache: RefCell::new(BTreeMap::new()),
-            reader,
-            trace_sink: None,
-        }
-    }
-
-    fn with_trace_sink(mut self, trace_sink: Option<&'a dyn TraceSink>) -> Self {
-        self.trace_sink = trace_sink;
-        self
-    }
-}
-
-impl engine::DynamicSourceLoader for ProjectDynamicSourceLoader<'_> {
-    fn load(&self, source_name: &str, path: &str) -> Result<Arc<Instance>, String> {
-        if let Some(sink) = self.trace_sink {
-            sink.dynamic_source_load_requested(source_name, path);
-        }
-        let key = (source_name.to_string(), path.to_string());
-        if let Some(instance) = self.cache.borrow().get(&key).cloned() {
-            return Ok(instance);
-        }
-        let source = self
-            .sources
-            .iter()
-            .find(|source| source.name == source_name)
-            .ok_or_else(|| format!("dynamic source `{source_name}` is not declared"))?;
-        let path = PathBuf::from(path);
-        let resolved = if path.is_absolute() || http_url(&path).is_some() {
-            path
-        } else {
-            self.project_dir.join(path)
-        };
-        let instance = Arc::new(
-            read_instance_with_pdf_reader(&resolved, &source.schema, &source.options, self.reader)
-                .map_err(|error| error.to_string())?,
-        );
-        self.cache.borrow_mut().insert(key, Arc::clone(&instance));
-        Ok(instance)
-    }
 }
 
 fn resolve_run_path(
@@ -1443,34 +1396,16 @@ fn formatted_edi_output<'a>(
 /// extension. CSV, fixed-width text, flat/transposed/grid XLSX, and single-table
 /// database inputs arrive wrapped in [`Instance::Repeated`]; composite XLSX,
 /// PDF, and database schemas produce their grouped shapes directly.
-fn read_instance(
-    path: &Path,
-    schema: &SchemaNode,
-    options: &FormatOptions,
-) -> anyhow::Result<Instance> {
-    read_instance_with_policy(path, schema, options, None)
-}
-
-fn read_instance_with_policy(
-    path: &Path,
-    schema: &SchemaNode,
-    options: &FormatOptions,
-    policy: Option<&FilesystemRunPolicy>,
-) -> anyhow::Result<Instance> {
-    read_instance_with_pdf_reader(
-        path,
-        schema,
-        options,
-        policy.map(|policy| policy as &dyn FilesystemPdfReader),
-    )
-}
-
+///
+/// Every filesystem-host read passes the execution policy before acquisition.
 fn read_instance_with_pdf_reader(
     path: &Path,
     schema: &SchemaNode,
     options: &FormatOptions,
     reader: Option<&dyn FilesystemPdfReader>,
+    execution_policy: &ExecutionPolicy,
 ) -> anyhow::Result<Instance> {
+    execution_policy.authorize_read(execution_policy::read_location(path, options))?;
     options
         .validate_xml_schema_hint_options(false)
         .map_err(anyhow::Error::msg)?;
@@ -1576,7 +1511,7 @@ fn read_instance_with_pdf_reader(
             .with_context(|| format!("reading local XML file set {}", path.display()));
         }
         if let Some(url) = http_url(path) {
-            return read_http_xml(url, schema, options);
+            return read_http_xml(url, schema, options, execution_policy);
         }
         if let Some(wsdl) = &options.wsdl {
             return format_xml::read_wsdl_message(path, schema, wsdl.operation())
@@ -1601,7 +1536,7 @@ fn read_instance_with_pdf_reader(
     }
 
     if let Some(url) = http_url(path) {
-        return read_http_xml(url, schema, options);
+        return read_http_xml(url, schema, options, execution_policy);
     }
 
     if let Some(layout) = &options.fixed_width {
@@ -1751,6 +1686,7 @@ fn read_http_xml(
     url: &str,
     schema: &SchemaNode,
     options: &FormatOptions,
+    execution_policy: &ExecutionPolicy,
 ) -> anyhow::Result<Instance> {
     let uri = url
         .parse::<ureq::http::Uri>()
@@ -1777,9 +1713,15 @@ fn read_http_xml(
         .map(|http| u64::from(http.timeout_seconds().get()))
         .unwrap_or(DEFAULT_HTTP_TIMEOUT_SECONDS);
     let display_url = sanitize_uri(&uri);
+    // Restricted runs follow no redirect: its target origin is unchecked.
+    let max_redirects = if execution_policy.is_restricted() {
+        0
+    } else {
+        MAX_HTTP_REDIRECTS
+    };
     let config = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(timeout_seconds)))
-        .max_redirects(MAX_HTTP_REDIRECTS)
+        .max_redirects(max_redirects)
         .max_redirects_will_error(true)
         .max_response_header_size(MAX_HTTP_RESPONSE_HEADER_BYTES)
         .https_only(is_https)
@@ -1790,6 +1732,9 @@ fn read_http_xml(
         .header("User-Agent", concat!("ferrule/", env!("CARGO_PKG_VERSION")))
         .call()
         .map_err(|error| http_request_error(error, &display_url, timeout_seconds))?;
+    if response.status().is_redirection() {
+        execution_policy.authorize_capability(engine::RestrictedCapability::HttpRedirect)?;
+    }
     let bytes = response
         .body_mut()
         .with_config()
