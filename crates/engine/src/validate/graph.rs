@@ -161,6 +161,15 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
             // Membership and the relative path are checked against the active
             // owned join that dominates each read.
             Node::OwnedJoinField(_) | Node::OwnedJoinSourcePosition(_) => {}
+            // Each source resolves against its own endpoint; tuple reads in
+            // the expression are bound to this join where they are reached.
+            Node::OwnedJoinAggregate(aggregate) => super::join::validate_owned_plan(
+                project,
+                aggregate.join,
+                &aggregate.plan,
+                &location,
+                issues,
+            ),
             Node::SourceRootXmlTypeEquals { .. } | Node::SourceRootField { .. } => {}
             Node::SourceField { .. } if sequence_items.contains(&id) => {}
             Node::SourceField { path, frame } => {
@@ -743,6 +752,18 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
                     .any(|source| source.name == *name && source.dynamic_path.is_some())
             {
                 sources.insert(name.as_str());
+            }
+        }
+        Node::OwnedJoinAggregate(aggregate) => {
+            for source in aggregate.plan.sources() {
+                if let mapping::SourceOwner::Named { name } = &source.collection().owner
+                    && project
+                        .extra_sources
+                        .iter()
+                        .any(|source| source.name == *name && source.dynamic_path.is_some())
+                {
+                    sources.insert(name.as_str());
+                }
             }
         }
         Node::OwnedXmlSerialize(mapping::OwnedXmlSerialize { source, .. })
@@ -1449,6 +1470,12 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
             .iter()
             .map(|&id| ("value expression".to_string(), id))
             .chain(arg.iter().map(|&id| ("argument".to_string(), id)))
+            .collect(),
+        Node::OwnedJoinAggregate(aggregate) => aggregate
+            .expression
+            .map(|id| ("value expression".to_string(), id))
+            .into_iter()
+            .chain(aggregate.arg.map(|id| ("argument".to_string(), id)))
             .collect(),
     }
 }

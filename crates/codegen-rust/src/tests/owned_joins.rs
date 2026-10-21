@@ -1,4 +1,5 @@
-//! #449 owned join scopes render one owned join and member reads by identity.
+//! #449 owned join scopes render one owned join and member reads by identity;
+//! #450 joined aggregates render one owned join per aggregate.
 fn path(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).into()).collect()
 }
@@ -160,6 +161,119 @@ fn older_rust_emitters_refuse_owned_joins() {
         crate::emit_with_basic_owned_sources(&program, &options()),
         crate::emit_with_basic_owned_lookup_find(&program, &options()),
         crate::emit_with_basic_owned_recursive_filter(&program, &options()),
+    ] {
+        assert!(
+            matches!(&result, Err(crate::EmitError::InvalidProgram(
+                codegen::ProgramValidationError::OwnedSource { diagnostic }))
+                if matches!(diagnostic.as_ref(), codegen::OwnedSourceDiagnostic::Capability {
+                    reason: codegen::OwnedSourceCapabilityReason::Join, .. })),
+            "{result:?}"
+        );
+    }
+}
+
+/// #450: a root `Codes` binding joins each tuple's named code with a parent
+/// separator, beside a Count without a tuple expression.
+fn joined_aggregate_project() -> mapping::Project {
+    let mut project = owned_join_project();
+    let mapping::ScopeIteration::OwnedInnerJoin { plan, .. } =
+        project.root.children.remove(0).iteration
+    else {
+        unreachable!("authored owned join scope");
+    };
+    let join = mapping::JoinId::new(6);
+    project.target = ir::SchemaNode::group(
+        "Output",
+        vec![
+            ir::SchemaNode::scalar("Codes", ir::ScalarType::String),
+            ir::SchemaNode::scalar("Count", ir::ScalarType::Int),
+        ],
+    );
+    project.graph.nodes = [
+        (
+            1,
+            mapping::Node::OwnedJoinAggregate(mapping::OwnedJoinAggregate {
+                function: mapping::AggregateOp::Join,
+                join,
+                plan: plan.clone(),
+                expression: Some(2),
+                arg: Some(3),
+            }),
+        ),
+        (
+            2,
+            mapping::Node::OwnedJoinField(mapping::OwnedJoinField {
+                join,
+                collection: rows(named()),
+                path: path(&["code"]),
+            }),
+        ),
+        (
+            3,
+            mapping::Node::Const {
+                value: ir::Value::String("-".into()),
+            },
+        ),
+        (
+            4,
+            mapping::Node::OwnedJoinAggregate(mapping::OwnedJoinAggregate {
+                function: mapping::AggregateOp::Count,
+                join: mapping::JoinId::new(7),
+                plan,
+                expression: None,
+                arg: None,
+            }),
+        ),
+    ]
+    .into_iter()
+    .collect();
+    project.root.bindings = vec![
+        mapping::Binding {
+            target_field: "Codes".into(),
+            node: 1,
+        },
+        mapping::Binding {
+            target_field: "Count".into(),
+            node: 4,
+        },
+    ];
+    project
+}
+
+#[test]
+fn joined_aggregates_render_one_owned_join_tuple_values_and_a_parent_argument() {
+    let program = codegen::lower_with_basic_owned_joins(&joined_aggregate_project()).unwrap();
+    let artifacts = crate::emit_with_basic_owned_joins(&program, &options()).unwrap();
+    let source = artifacts
+        .files()
+        .iter()
+        .find(|file| file.path.as_str() == "src/lib.rs")
+        .map(|file| String::from_utf8_lossy(&file.contents).into_owned())
+        .unwrap();
+    for expected in [
+        "let tuples = context.owned_inner_join(6, codegen_runtime::OwnedJoinSource { owner: SourceOwnerRef::Primary, collection: &[\"Rows\"], singleton: false }, &[codegen_runtime::OwnedJoinStage { source: codegen_runtime::OwnedJoinSource { owner: SourceOwnerRef::Named(\"Ref\"), collection: &[\"Rows\"], singleton: false }, keys: &[codegen_runtime::OwnedJoinKey { left: 0, left_path: &[\"id\"], right_path: &[\"id\"] }] }]).map_err(|error| error.with_owned_source_node(1))?;",
+        "values.push(expression_2(tuple)?);",
+        "let arg = Some(expression_3(context)?);",
+        "codegen_runtime::aggregate(codegen_runtime::AggregateFunction::Join, &values, arg)",
+        "let values = vec![Value::Null; tuples.len()];",
+        "codegen_runtime::aggregate(codegen_runtime::AggregateFunction::Count, &values, arg)",
+        "context.owned_join_field(6, SourceOwnerRef::Named(\"Ref\"), &[\"Rows\"], &[\"code\"])",
+    ] {
+        assert!(source.contains(expected), "{expected}\n{source}");
+    }
+    assert_eq!(source.matches("context.owned_inner_join(").count(), 2);
+}
+
+#[test]
+fn older_rust_emitters_refuse_joined_aggregates() {
+    let program = codegen::lower_with_basic_owned_joins(&joined_aggregate_project()).unwrap();
+    for result in [
+        crate::emit(&program, &options()),
+        crate::emit_with_basic_owned_sources(&program, &options()),
+        crate::emit_with_basic_owned_lookup_find(&program, &options()),
+        crate::emit_with_basic_owned_collection_aggregates(&program, &options()),
+        crate::emit_with_basic_owned_xml_mixed_content(&program, &options()),
+        crate::emit_with_basic_owned_xml_mixed_construction(&program, &options()),
     ] {
         assert!(
             matches!(&result, Err(crate::EmitError::InvalidProgram(

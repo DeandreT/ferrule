@@ -181,6 +181,26 @@ pub(super) fn owned_source_title(node: &Node) -> Option<String> {
                     .join(", ")
             },
         )),
+        Node::OwnedJoinAggregate(aggregate) => Some(format!(
+            "Owned join {} aggregate {:?}\nSources: {}\nValue: {}\nRead-only; owned join authoring is unavailable",
+            aggregate.join.get(),
+            aggregate.function,
+            aggregate
+                .plan
+                .sources()
+                .map(|source| format!(
+                    "{} {:?}",
+                    owner(&source.collection().owner),
+                    source.collection().path
+                ))
+                .collect::<Vec<_>>()
+                .join(", "),
+            if aggregate.expression.is_some() {
+                "computed per tuple"
+            } else {
+                "none"
+            },
+        )),
         _ => None,
     }
 }
