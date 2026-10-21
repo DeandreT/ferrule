@@ -210,11 +210,18 @@ fn decimal_sum_stays_closed_for_owned_aggregate_profiles() {
             Err(expected)
         );
         p.graph.nodes.insert(id, Node::OwnedAggregate(aggregate));
-        let error = lower_with_basic_owned_collection_aggregates(&p).unwrap_err();
-        assert_eq!(
-            reason(&error),
-            Some(OwnedSourceCapabilityReason::AggregateLookup)
-        );
+        if id == 99 {
+            // Ordinary lowering prunes unreachable graph nodes. A directly
+            // retained Program node is still refused above, even when unused.
+            let lowered = lower_with_basic_owned_collection_aggregates(&p).unwrap();
+            assert!(lowered.expressions.iter().all(|node| node.id != 99));
+        } else {
+            let error = lower_with_basic_owned_collection_aggregates(&p).unwrap_err();
+            assert_eq!(
+                reason(&error),
+                Some(OwnedSourceCapabilityReason::AggregateLookup)
+            );
+        }
     }
 }
 
