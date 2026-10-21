@@ -785,7 +785,7 @@ and CollectionFind, generated-item contexts and SequenceExists stay closed. The
 [owned aggregate contract](design/owned-collection-aggregates.md) defines the
 wire form, evaluation order and qualification.
 
-## Explicit owned inner joins
+## Explicit owned inner joins and joined aggregates
 
 Use `codegen::lower_with_basic_owned_joins`, then
 `codegen_rust::emit_with_basic_owned_joins(&program, &options)` or
@@ -806,13 +806,25 @@ Generated Rust calls `BasicScopeContext::owned_inner_join` and generated C#
 calls `FerruleBasicScopeContext.OwnedInnerJoin`. Join sources keep their
 endpoints optional in the named-input catalogue.
 
+The same profile admits `owned_join_aggregate` in Basic receiving contexts. It
+plans its join once in that context, so an active owned row correlates only
+sources of its own owner and an owned group or block joins only its members;
+its optional expression reads each tuple with the closed tuple subset and its
+`arg` runs once in the receiving context after every tuple value. Generated
+code calls the same owned join entry point and reduces the tuple values with
+the shared legacy reducers, keeping their empty, null and type policies; a
+failure of the aggregate's own join carries its node.
+
 Earlier profiles, the ordinary emitters and directly constructed Program
-validation refuse owned joins with the `Join` capability, as do tuple contexts
-for every read other than owned join reads, the join position and pure scalar
-nodes. Owned joined aggregates and legacy joins stay closed in the Basic
-profiles, and owned dynamic source-field reads, owned XML serialization and
-owned collection aggregates keep their separate sibling companions. The [owned join contract](design/owned-joins.md) defines the wire
-form, members, positions and qualification.
+validation refuse owned joins and joined aggregates with the `Join`
+capability, as do tuple contexts for every read other than owned join reads,
+the join position and pure scalar nodes, including a nested joined aggregate.
+Legacy joins stay closed in the Basic profiles, and owned dynamic source-field
+reads, owned XML serialization and mixed content and owned collection
+aggregates keep their separate sibling companions, which refuse owned joins and
+joined aggregates in turn. The [owned join contract](design/owned-joins.md)
+defines the wire form, members, positions, joined aggregates and
+qualification.
 
 ## Explicit owned XML mixed content
 
@@ -829,7 +841,7 @@ select the same profile. It composes the owned XML serialization profile and
 everything that profile composes; the execution entries and five-field Basic
 policy are unchanged. The owned collection-aggregate and owned join profiles
 are separate branches built on owned search: they refuse owned mixed content,
-and this profile refuses owned aggregates and owned joins.
+and this profile refuses owned aggregates, owned joins and joined aggregates.
 
 The group is read with the owned element rules of the serializer: an explicit
 frame selects the latest exact same-owner occurrence, an explicit empty frame

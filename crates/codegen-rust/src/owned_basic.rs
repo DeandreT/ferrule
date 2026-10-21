@@ -45,6 +45,7 @@ mod rows;
 mod search;
 pub(super) use aggregate::render_owned_aggregate;
 pub(crate) use group_by::render_public_basic_owned_group_by_source;
+pub(super) use joins::render_owned_join_aggregate;
 pub(super) use search::{render_owned_collection_find, render_owned_lookup};
 
 pub(crate) fn render_basic_owned_source(program: &Program) -> Result<String, EmitError> {

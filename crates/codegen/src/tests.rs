@@ -1896,6 +1896,8 @@ mod owned_collection;
 
 mod owned_join;
 
+mod owned_join_aggregates;
+
 mod owned_basic;
 
 mod basic_owned_emission;

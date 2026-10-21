@@ -431,6 +431,24 @@ fn validate_roots_inner(
                     ancestors.remove(&id);
                 }
             }
+            // Only this join is active in its tuple expression; the argument
+            // keeps the receiving context and its dominating joins.
+            Node::OwnedJoinAggregate(aggregate) => {
+                pending.extend(aggregate.arg.map(|arg| (arg, root_context)));
+                if let Some(expression) = aggregate.expression {
+                    ancestors.insert(id);
+                    validate_roots_inner(
+                        graph,
+                        [(expression, false)],
+                        &[active_owned_join(aggregate.join, &aggregate.plan)],
+                        location,
+                        project,
+                        issues,
+                        ancestors,
+                    );
+                    ancestors.remove(&id);
+                }
+            }
             _ => {
                 let item_inputs = item_context_inputs(node);
                 pending.extend(
