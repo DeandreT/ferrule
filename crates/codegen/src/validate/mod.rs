@@ -180,6 +180,15 @@ pub fn validate_program_with_basic_owned_lookup_find(
     owned_sources::validate_basic_owned_lookup_find_emission(program)
 }
 
+/// Validates explicitly owned dynamic source-field reads, composed with the
+/// owned recursive-filter profile. The object is an exact owned read and the
+/// key a parent-context scalar; older validators keep refusing the read.
+pub fn validate_program_with_basic_owned_dynamic_field(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_dynamic_field_emission(program)
+}
+
 /// Validates static Basic scalar-producer SequenceItemAt, explicitly composing
 /// the qualified By, filter/sort/window and primary-row failure permissions.
 pub fn validate_program_with_basic_owned_sequence_item_at(
@@ -264,6 +273,26 @@ fn validate_program_with_owned_constructions(
     path_hierarchy: owned_sources::PathHierarchyPolicy,
     adjacency_tree: owned_sources::AdjacencyTreePolicy,
 ) -> Result<(), ProgramValidationError> {
+    validate_program_with_owned_dynamic_fields(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        owned_sources::DynamicFieldPolicy::Closed,
+    )
+}
+
+fn validate_program_with_owned_dynamic_fields(
+    program: &Program,
+    profile: owned_sources::BasicOwnedProfile,
+    failures: owned_sources::FailurePolicy,
+    sequence_item_at: owned_sources::SequenceItemAtPolicy,
+    path_hierarchy: owned_sources::PathHierarchyPolicy,
+    adjacency_tree: owned_sources::AdjacencyTreePolicy,
+    dynamic_field: owned_sources::DynamicFieldPolicy,
+) -> Result<(), ProgramValidationError> {
     xml::validate_boundary(program)?;
     validate_schema_metadata("source", &program.source)?;
     for source in &program.extra_sources {
@@ -314,13 +343,14 @@ fn validate_program_with_owned_constructions(
     // that no target/failure root reaches in a directly constructed Program.
     sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)?;
     owned_sources::validate_structure(program)?;
-    owned_sources::validate_closed_contexts_with_constructions(
+    owned_sources::validate_closed_contexts_with_dynamic_fields(
         program,
         profile,
         failures,
         sequence_item_at,
         path_hierarchy,
         adjacency_tree,
+        dynamic_field,
     )
 }
 
@@ -1585,10 +1615,10 @@ pub use owned_sources::validate_basic_owned_adjacency_tree_emission;
 pub use owned_sources::validate_basic_owned_path_hierarchy_emission;
 pub use owned_sources::validate_basic_owned_recursive_filter_emission;
 pub use owned_sources::{
-    is_basic_owned_primary_row_failure, validate_basic_owned_emission,
-    validate_basic_owned_failure_source_emission, validate_basic_owned_filter_emission,
-    validate_basic_owned_group_adjacent_by_emission, validate_basic_owned_group_by_emission,
-    validate_basic_owned_group_ending_with_emission,
+    is_basic_owned_primary_row_failure, validate_basic_owned_dynamic_field_emission,
+    validate_basic_owned_emission, validate_basic_owned_failure_source_emission,
+    validate_basic_owned_filter_emission, validate_basic_owned_group_adjacent_by_emission,
+    validate_basic_owned_group_by_emission, validate_basic_owned_group_ending_with_emission,
     validate_basic_owned_group_into_blocks_emission,
     validate_basic_owned_group_starting_with_emission, validate_basic_owned_lookup_find_emission,
     validate_basic_owned_recursive_collect_emission, validate_basic_owned_row_failure_emission,
