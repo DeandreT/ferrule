@@ -1034,6 +1034,7 @@ fn parse_runtime_parameters(values: &[String]) -> anyhow::Result<engine::Runtime
 #[cfg(test)]
 mod x12_envelope_flag_tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn explicit_envelope_flags_require_the_x12_companion_and_known_values() {
@@ -1138,13 +1139,15 @@ mod x12_envelope_flag_tests {
 
     #[test]
     fn rust_grouped_flag_requires_an_explicit_runtime_path() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-grouped-x12-flag-{}-{}",
+            "ferrule-grouped-x12-flag-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
         let output = root.join("absent-parent/output");
@@ -1175,6 +1178,7 @@ mod x12_envelope_flag_tests {
 #[cfg(test)]
 mod static_document_flag_tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn static_document_flag_conflicts_with_other_optional_profiles() {
@@ -1238,13 +1242,15 @@ mod static_document_flag_tests {
 
     #[test]
     fn static_document_flag_backend_refusal_precedes_project_and_runtime_loading() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-static-document-flag-{}-{}",
+            "ferrule-static-document-flag-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
         let input = root.join("absent-project.json");
@@ -1274,6 +1280,7 @@ mod static_document_flag_tests {
 #[cfg(test)]
 mod csv_x12_flag_tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn csv_x12_target_profile_is_explicit_required_and_value_checked() {
@@ -1353,13 +1360,15 @@ mod csv_x12_flag_tests {
 
     #[test]
     fn csv_x12_grouped_target_flag_keeps_early_backend_refusal() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-csv-x12-explicit-{}-{}",
+            "ferrule-csv-x12-explicit-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
         let output = root.join("absent-parent/output");
@@ -1415,13 +1424,15 @@ mod csv_x12_flag_tests {
 
     #[test]
     fn csv_x12_flag_backend_refusal_precedes_project_and_runtime_loading() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-csv-x12-flag-{}-{}",
+            "ferrule-csv-x12-flag-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
         let output = root.join("absent-parent/output");
@@ -1450,6 +1461,7 @@ mod csv_x12_flag_tests {
 #[cfg(test)]
 mod csv_json_flag_tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn csv_json_flag_conflicts_before_project_loading() {
@@ -1483,13 +1495,15 @@ mod csv_json_flag_tests {
 
     #[test]
     fn csv_json_flag_backend_refusal_precedes_loading() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-csv-json-flag-{}-{}",
+            "ferrule-csv-json-flag-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
         let output = root.join("absent-parent/output");
@@ -1519,6 +1533,7 @@ mod csv_json_flag_tests {
 mod pdf_evidence_flag_tests {
     use super::*;
     use std::io::Write;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn retain(path: &std::path::Path, bytes: &[u8]) {
         let mut file = std::fs::OpenOptions::new()
@@ -1589,13 +1604,15 @@ mod pdf_evidence_flag_tests {
 
     #[test]
     fn retained_worker_standard_stream_refusals_precede_loading_and_publication() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-pdf-evidence-flags-{}-{}",
+            "ferrule-pdf-evidence-flags-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
         for (key, input_stream) in [("stdin", true), ("stdout", false)] {

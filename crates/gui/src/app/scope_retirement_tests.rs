@@ -1,4 +1,5 @@
 use crate::test_ui::ContextExt as _;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::*;
 use ir::{Instance, ScalarType, SchemaNode, Value};
@@ -233,12 +234,14 @@ fn scope_retirement_save_reopen_preserves_removal_and_other_sequence()
     for document in [MappingDocument::Main, MappingDocument::Target(0)] {
         let mut app = app_for(document);
         click_remove(&mut app, true);
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let path = std::env::temp_dir().join(format!(
-            "ferrule-scope-retirement-{}-{}.json",
+            "ferrule-scope-retirement-{}-{}-{}.json",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         let outcome = app.save_document_to(&path)?;
         assert!(outcome.validation_issues.is_empty());

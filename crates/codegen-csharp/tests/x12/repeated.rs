@@ -3,6 +3,7 @@
 use super::*;
 use ir::{Instance, Value};
 use mapping::{EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const CONTRACT: &str = include_str!("repeated/contract.json");
 const HOST: &str = include_str!("repeated/Host.cs");
@@ -68,13 +69,15 @@ const FIXTURES: &[(&str, &str)] = &[
 const VERSIONS: [(&str, &str); 2] = [("00501", "005010"), ("00604", "006040")];
 
 fn evidence(label: &str) -> std::path::PathBuf {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "ferrule_x12_repeated_{label}_{}_{}",
+        "ferrule_x12_repeated_{label}_{}_{}_{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&root).unwrap();
     eprintln!(

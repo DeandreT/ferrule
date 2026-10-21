@@ -3,6 +3,7 @@ mod fixture;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn write_artifacts(root: &Path, artifacts: &codegen::ArtifactSet) {
@@ -61,13 +62,15 @@ impl EvidenceDirectory {
         let provided = std::env::var_os("FERRULE_REQUIRED_ROOT_CODEGEN_EVIDENCE");
         let keep = provided.is_some();
         let path = provided.map(PathBuf::from).unwrap_or_else(|| {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
             let nonce = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
             std::env::temp_dir().join(format!(
-                "ferrule_required_root_{}_{nonce}",
-                std::process::id()
+                "ferrule_required_root_{}_{nonce}_{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
             ))
         });
         std::fs::create_dir(&path).unwrap();

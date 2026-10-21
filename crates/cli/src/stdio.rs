@@ -505,6 +505,7 @@ mod tests {
 #[cfg(test)]
 mod owned_source_stdio_admission_tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn owned_refusal_leaves_stdin_unread() -> anyhow::Result<()> {
@@ -515,12 +516,14 @@ mod owned_source_stdio_admission_tests {
                 panic!("stdin must remain unread")
             }
         }
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let directory = std::env::temp_dir().join(format!(
-            "ferrule-owned-stdio-{}-{}",
+            "ferrule-owned-stdio-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&directory)?;
         let path = directory.join("project.json");
@@ -551,6 +554,7 @@ mod owned_source_stdio_admission_tests {
 #[cfg(test)]
 mod owned_collection_stdio_admission_tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn closed_source_function_refusal_with_owned_iteration_leaves_stdin_unread()
@@ -562,12 +566,14 @@ mod owned_collection_stdio_admission_tests {
                 panic!("stdin must remain unread")
             }
         }
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let directory = std::env::temp_dir().join(format!(
-            "ferrule-owned-collection-stdio-{}-{}",
+            "ferrule-owned-collection-stdio-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&directory)?;
         let path = directory.join("project.json");
