@@ -1,12 +1,13 @@
-//! Owned inner joins. Each source walks exactly its declared static endpoint
-//! like owned iteration, and tuple expressions read members only through
-//! owned join reads and the flattened join position. Only the explicit join
-//! companion admits them; every older profile keeps its Join refusal.
+//! Owned inner joins and joined aggregates. Each source walks exactly its
+//! declared static endpoint like owned iteration, and tuple expressions read
+//! members only through owned join reads and the flattened join position. A
+//! joined aggregate's argument keeps its receiving context. Only the explicit
+//! join companion admits them; every older profile keeps its Join refusal.
 
 use super::*;
 
 /// Join permission is orthogonal to target controls, consumers, searches and
-/// failures. Owned joined aggregates have no admitted form.
+/// failures. It covers owned join scopes and owned joined aggregates alike.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::validate) enum JoinPolicy {
     Closed,
@@ -14,7 +15,8 @@ pub(in crate::validate) enum JoinPolicy {
 }
 
 /// Validate the owned Lookup and CollectionFind profile together with owned
-/// inner joins and their tuple reads. Earlier companions keep refusing them.
+/// inner joins, their tuple reads and owned joined aggregates. Earlier
+/// companions keep refusing them.
 pub fn validate_basic_owned_joins_emission(
     program: &Program,
 ) -> Result<(), ProgramValidationError> {
@@ -64,6 +66,19 @@ pub(super) fn first_request(join: &crate::OwnedInnerJoin) -> Option<Request> {
         .map(|source| iteration_request(source.collection()))
 }
 
+/// A joined aggregate requests its first source: a repeating collection walk
+/// or a singleton scalar read.
+pub(super) fn aggregate_request(aggregate: &mapping::OwnedJoinAggregate) -> Option<Request> {
+    aggregate.plan.sources().next().map(source_request)
+}
+
+fn source_request(source: &mapping::OwnedJoinSource) -> Request {
+    match source.cardinality() {
+        mapping::JoinSourceCardinality::Repeating => iteration_request(source.collection()),
+        mapping::JoinSourceCardinality::Singleton => member_request(source, &[]),
+    }
+}
+
 fn member_request(source: &mapping::OwnedJoinSource, relative: &[String]) -> Request {
     let collection = source.collection();
     let mut path = collection.path.clone();
@@ -89,16 +104,27 @@ pub(super) fn plan_structure(
     route: &SourceScopeLocation,
     join: &crate::OwnedInnerJoin,
 ) -> Result<(), ProgramValidationError> {
-    let location = || Location::Iteration {
+    owned_plan_structure(program, join.plan(), || Location::Iteration {
         scope: route.clone(),
-    };
-    let plan = join.plan();
+    })
+}
+
+/// The same plan checks for a joined aggregate, located at its expression.
+pub(super) fn aggregate_structure(
+    program: &Program,
+    location: Location,
+    aggregate: &mapping::OwnedJoinAggregate,
+) -> Result<(), ProgramValidationError> {
+    owned_plan_structure(program, &aggregate.plan, || location.clone())
+}
+
+fn owned_plan_structure(
+    program: &Program,
+    plan: &mapping::OwnedJoinPlan,
+    location: impl Fn() -> Location,
+) -> Result<(), ProgramValidationError> {
     for source in plan.sources() {
-        let query = match source.cardinality() {
-            mapping::JoinSourceCardinality::Repeating => iteration_request(source.collection()),
-            mapping::JoinSourceCardinality::Singleton => member_request(source, &[]),
-        };
-        structure(program, location(), query)?;
+        structure(program, location(), source_request(source))?;
     }
     for (right, conditions) in plan.stages() {
         for key in conditions.iter() {
@@ -114,6 +140,54 @@ pub(super) fn plan_structure(
 }
 
 impl<'a> Admission<'a> {
+    /// Admit one owned joined aggregate reached in a Basic context. Every
+    /// source names a static endpoint, the expression reads only this join's
+    /// tuple and the argument keeps the receiving visit.
+    pub(super) fn joined_aggregate(
+        &mut self,
+        visit: &Visit<'a>,
+        location: Location,
+        aggregate: &mapping::OwnedJoinAggregate,
+        pending: &mut Vec<Visit<'a>>,
+    ) -> Result<(), ProgramValidationError> {
+        let origin = Origin::Expression {
+            namespace: visit.namespace,
+            node: visit.node,
+        };
+        if self.join == JoinPolicy::Closed {
+            return Err(failure(
+                location,
+                aggregate_request(aggregate),
+                Closed {
+                    reason: Capability::Join,
+                    origin,
+                },
+            ));
+        }
+        for source in aggregate.plan.sources() {
+            let query = iteration_request(source.collection());
+            if let Some(closed) = dynamic_owner(self.program, &query) {
+                return Err(failure(location, Some(query), closed));
+            }
+        }
+        if let Some(arg) = aggregate.arg {
+            let mut parent = visit.clone();
+            parent.node = arg;
+            pending.push(parent);
+        }
+        if let Some(expression) = aggregate.expression {
+            pending.push(Visit {
+                namespace: visit.namespace,
+                closed: None,
+                scope: visit.scope.clone(),
+                ancestry: Vec::new(),
+                join_tuple: Some(origin),
+                node: expression,
+            });
+        }
+        Ok(())
+    }
+
     /// Admit one owned join scope under the explicit join policy. Window bounds
     /// keep the receiving parent; every other root reads the tuple.
     pub(super) fn owned_join_scope(
@@ -237,7 +311,9 @@ impl<'a> Admission<'a> {
                 closed: None,
                 scope: Some(route.clone()),
                 ancestry: Vec::new(),
-                join_tuple: Some(join_route.clone()),
+                join_tuple: Some(Origin::Scope {
+                    scope: join_route.clone(),
+                }),
                 node,
             })?;
         }

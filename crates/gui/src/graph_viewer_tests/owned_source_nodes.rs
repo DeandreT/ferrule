@@ -175,3 +175,49 @@ fn owned_mixed_content_keeps_replacement_wires_read_only_with_contexts() {
     let parent = graph_node_presentation::input_pin_hint(Some(&node), 1).unwrap();
     assert!(parent.contains("Context: parent context"));
 }
+
+#[test]
+fn owned_joined_aggregates_display_their_plan_read_only_and_keep_inputs() {
+    let rows = |owner| OwnedSourceRef {
+        owner,
+        path: vec!["Rows".into()],
+    };
+    let named = || SourceOwner::Named {
+        name: "Lookup".into(),
+    };
+    let plan = mapping::OwnedJoinPlan::new(
+        mapping::OwnedJoinSource::new(rows(SourceOwner::Primary)),
+        mapping::OwnedJoinSource::new(rows(named())),
+        mapping::OwnedJoinConditions::new(mapping::OwnedJoinKey::new(
+            rows(SourceOwner::Primary),
+            vec!["id".into()],
+            vec!["id".into()],
+        )),
+    )
+    .unwrap();
+    let node = Node::OwnedJoinAggregate(mapping::OwnedJoinAggregate {
+        function: mapping::AggregateOp::Join,
+        join: mapping::JoinId::new(8),
+        plan,
+        expression: Some(10),
+        arg: Some(11),
+    });
+    let mut fx = fixture();
+    fx.graph = Graph {
+        nodes: [(9, node.clone())].into_iter().collect(),
+    };
+    // The tuple expression and the parent argument stay wired in order.
+    assert_eq!(GraphViewer::input_count(&node), 2);
+    assert_eq!(fx.viewer().input_at(9, 0), Some(10));
+    assert_eq!(fx.viewer().input_at(9, 1), Some(11));
+    assert_eq!(graph_references::node_inputs(&node), vec![10, 11]);
+    let title = graph_node_presentation::owned_source_title(&node).unwrap();
+    for expected in [
+        "Owned join 8 aggregate Join",
+        r#"primary ["Rows"], named "Lookup" ["Rows"]"#,
+        "Value: computed per tuple",
+        "Read-only; owned join authoring is unavailable",
+    ] {
+        assert!(title.contains(expected), "{title}");
+    }
+}
