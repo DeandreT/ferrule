@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use mapping::NodeId;
 
 use crate::{
-    Expression, InnerJoin, JoinId, JoinKeySide, JoinSourceCardinality, Program, TargetScope,
+    Expression, InnerJoin, JoinId, JoinKeySide, JoinSourceCardinality, OwnedInnerJoin, Program,
+    TargetScope,
 };
 
 use super::{
@@ -12,27 +13,67 @@ use super::{
 };
 
 #[derive(Debug, Clone)]
+enum ActiveSources {
+    Legacy(Vec<(Vec<String>, JoinSourceCardinality)>),
+    Owned(Vec<(mapping::OwnedSourceRef, JoinSourceCardinality)>),
+}
+
+#[derive(Debug, Clone)]
 pub(super) struct ActiveJoin {
     id: JoinId,
-    sources: Vec<(Vec<String>, JoinSourceCardinality)>,
+    sources: ActiveSources,
 }
 
 impl ActiveJoin {
     pub(super) fn new(join: &InnerJoin) -> Self {
         Self {
             id: join.id(),
-            sources: join
-                .plan()
-                .sources()
-                .map(|source| (source.collection().to_vec(), source.cardinality()))
-                .collect(),
+            sources: ActiveSources::Legacy(
+                join.plan()
+                    .sources()
+                    .map(|source| (source.collection().to_vec(), source.cardinality()))
+                    .collect(),
+            ),
+        }
+    }
+
+    pub(super) fn owned(join: &OwnedInnerJoin) -> Self {
+        Self {
+            id: join.id(),
+            sources: ActiveSources::Owned(
+                join.plan()
+                    .sources()
+                    .map(|source| (source.collection().clone(), source.cardinality().into()))
+                    .collect(),
+            ),
         }
     }
 
     fn cardinality(&self, collection: &[String]) -> Option<JoinSourceCardinality> {
-        self.sources
-            .iter()
-            .find_map(|(candidate, cardinality)| (candidate == collection).then_some(*cardinality))
+        match &self.sources {
+            ActiveSources::Legacy(sources) => {
+                sources.iter().find_map(|(candidate, cardinality)| {
+                    (candidate == collection).then_some(*cardinality)
+                })
+            }
+            ActiveSources::Owned(_) => None,
+        }
+    }
+
+    fn owned_cardinality(
+        &self,
+        collection: &mapping::OwnedSourceRef,
+    ) -> Option<JoinSourceCardinality> {
+        match &self.sources {
+            ActiveSources::Owned(sources) => sources.iter().find_map(|(candidate, cardinality)| {
+                (candidate == collection).then_some(*cardinality)
+            }),
+            ActiveSources::Legacy(_) => None,
+        }
+    }
+
+    const fn is_owned(&self) -> bool {
+        matches!(self.sources, ActiveSources::Owned(_))
     }
 }
 
@@ -49,13 +90,14 @@ fn collect_owners(
     scope: &TargetScope,
     owners: &mut BTreeSet<JoinId>,
 ) -> Result<(), ProgramValidationError> {
-    if let Some(join) = scope
-        .iteration
-        .as_ref()
-        .and_then(|iteration| iteration.inner_join())
-        && !owners.insert(join.id())
+    if let Some(join) = scope.iteration.as_ref().and_then(|iteration| {
+        iteration
+            .inner_join()
+            .map(InnerJoin::id)
+            .or_else(|| iteration.owned_inner_join().map(OwnedInnerJoin::id))
+    }) && !owners.insert(join)
     {
-        return Err(ProgramValidationError::DuplicateJoinOwner { join: join.id() });
+        return Err(ProgramValidationError::DuplicateJoinOwner { join });
     }
     if let Some(sequence) = scope
         .iteration
@@ -200,7 +242,11 @@ pub(super) fn validate_expression(
                 collection,
                 path,
             } => {
-                let Some(owner) = active_joins.iter().rev().find(|owner| owner.id == *join) else {
+                let Some(owner) = active_joins
+                    .iter()
+                    .rev()
+                    .find(|owner| owner.id == *join && !owner.is_owned())
+                else {
                     return Err(ProgramValidationError::InactiveJoinExpression {
                         node,
                         join: *join,
@@ -228,6 +274,43 @@ pub(super) fn validate_expression(
                 if !active_joins.iter().any(|owner| owner.id == *join) =>
             {
                 return Err(ProgramValidationError::InactiveJoinExpression { node, join: *join });
+            }
+            Expression::OwnedJoinField(mapping::OwnedJoinField {
+                join, collection, ..
+            })
+            | Expression::OwnedJoinSourcePosition(mapping::OwnedJoinSourcePosition {
+                join,
+                collection,
+            }) => {
+                let join = JoinId::from(*join);
+                let Some(owner) = active_joins
+                    .iter()
+                    .rev()
+                    .find(|owner| owner.id == join && owner.is_owned())
+                else {
+                    return Err(ProgramValidationError::InactiveJoinExpression { node, join });
+                };
+                let Some(cardinality) = owner.owned_cardinality(collection) else {
+                    return Err(ProgramValidationError::InvalidOwnedJoinMember {
+                        node,
+                        join,
+                        collection: collection.clone(),
+                    });
+                };
+                let field_path = match expression {
+                    Expression::OwnedJoinField(field) => Some(&field.path),
+                    _ => None,
+                };
+                if let Some(path) = field_path
+                    && !owned_member_scalar(sources, collection, cardinality, path)
+                {
+                    return Err(ProgramValidationError::InvalidOwnedJoinFieldPath {
+                        node,
+                        join,
+                        collection: collection.clone(),
+                        path: path.clone(),
+                    });
+                }
             }
             Expression::JoinAggregate {
                 join,
@@ -268,6 +351,21 @@ pub(super) fn validate_expression(
                 if let Some(arg) = arg {
                     validate_expression(
                         *arg,
+                        expressions,
+                        sources,
+                        current_source,
+                        active_joins,
+                        root_context,
+                    )?;
+                }
+            }
+            Expression::OwnedAggregate(aggregate) => {
+                if let Some(value) = aggregate.expression() {
+                    validate_expression(value, expressions, sources, None, active_joins, false)?;
+                }
+                if let Some(arg) = aggregate.arg {
+                    validate_expression(
+                        arg,
                         expressions,
                         sources,
                         current_source,
@@ -456,6 +554,38 @@ fn runtime_candidate<'a>(
                 .owns_first(path)
                 .then(|| (is_current, candidate.follow(path)))
         })
+}
+
+/// A singleton member is read with an empty path; a repeating member's field
+/// is a scalar reached without crossing another repetition.
+fn owned_member_scalar(
+    sources: SourceCatalog<'_>,
+    collection: &mapping::OwnedSourceRef,
+    cardinality: JoinSourceCardinality,
+    path: &[String],
+) -> bool {
+    if cardinality == JoinSourceCardinality::Singleton {
+        return path.is_empty();
+    }
+    let Some(mut current) = sources
+        .owned_schema_at(collection)
+        .and_then(SchemaCursor::resolved)
+    else {
+        return false;
+    };
+    for segment in path {
+        let Some(next) = current
+            .follow(std::slice::from_ref(segment))
+            .and_then(SchemaCursor::resolved)
+        else {
+            return false;
+        };
+        if next.node().repeating {
+            return false;
+        }
+        current = next;
+    }
+    current.node().is_scalar()
 }
 
 fn scalar_below(sources: SourceCatalog<'_>, collection: &[String], path: &[String]) -> bool {

@@ -8,6 +8,8 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
         | Expression::OwnedXmlSerialize(_)
+        | Expression::OwnedJoinField(_)
+        | Expression::OwnedJoinSourcePosition(_)
         | Expression::SourceField { .. }
         | Expression::SourceRootXmlTypeEquals { .. }
         | Expression::SourceRootField { .. }
@@ -39,6 +41,7 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
         Expression::Lookup { matches, .. } => vec![*matches],
         Expression::OwnedLookup(lookup) => vec![lookup.matches],
         Expression::OwnedCollectionFind(find) => vec![find.predicate, find.value],
+        Expression::OwnedAggregate(aggregate) => aggregate.inputs(),
         Expression::CollectionFind {
             predicate, value, ..
         } => vec![*predicate, *value],

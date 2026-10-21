@@ -262,6 +262,24 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_xml_serialize(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plans the explicit owned collection-aggregate profile. Owned walks stay
+/// demand-driven; legacy paths and aliases keep their requirements and ordinals.
+pub fn legacy_named_input_admission_plan_with_basic_owned_collection_aggregates(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_collection_aggregates(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
+/// Plans the explicit owned join profile. Owned join sources stay
+/// demand-driven owned walks; legacy paths and aliases keep their requirements.
+pub fn legacy_named_input_admission_plan_with_basic_owned_joins(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_joins(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     admission_plan_with_primary_row_failures(program, false)
 }
@@ -547,6 +565,10 @@ impl<'a> Analysis<'a> {
                 self.sequence(Namespace::Main, parent, sequence)
             }
             IterationSource::InnerJoin(join) => self.join(parent, join),
+            // Owned join sources are demand-driven owned walks.
+            IterationSource::OwnedInnerJoin(join) => {
+                self.child(parent, Step::Join(join.id().get()))
+            }
             IterationSource::Concatenate(segments) => {
                 for (index, segment) in segments.iter().enumerate() {
                     let context = self.child(parent, Step::Segment(index));
@@ -683,7 +705,9 @@ impl<'a> Analysis<'a> {
             match expression {
                 Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
-                | Expression::OwnedRowDocumentPath(_) => {}
+                | Expression::OwnedRowDocumentPath(_)
+                | Expression::OwnedJoinField(_)
+                | Expression::OwnedJoinSourcePosition(_) => {}
                 Expression::OwnedXmlSerialize(_) => {}
                 // The owned walk is demand-driven; the needle stays in the parent.
                 Expression::OwnedLookup(lookup) => self.queue(namespace, context, lookup.matches),
@@ -694,6 +718,12 @@ impl<'a> Analysis<'a> {
                 }
                 Expression::OwnedDynamicSourceField(field) => {
                     self.queue(namespace, context, field.key)
+                }
+                // The item value runs per owned item; the argument stays in the parent.
+                Expression::OwnedAggregate(aggregate) => {
+                    let item = self.child(context, Step::OwnedSource(aggregate.collection.clone()));
+                    self.optional(namespace, item, aggregate.expression());
+                    self.optional(namespace, context, aggregate.arg);
                 }
                 Expression::SourceField { path, frame }
                 | Expression::DynamicSourceField {

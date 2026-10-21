@@ -488,3 +488,47 @@ fn owned_xml_serializers_are_refused_before_writing_anything() {
     }
     assert!(!path.exists());
 }
+
+#[test]
+fn owned_aggregates_refuse_before_writing_anything() {
+    let collection = mapping::OwnedSourceRef {
+        owner: SourceOwner::Named {
+            name: "Rates".into(),
+        },
+        path: vec!["Rate".into()],
+    };
+    for value in [
+        mapping::OwnedAggregateValue::Path(vec!["Value".into()]),
+        mapping::OwnedAggregateValue::Expression(1),
+    ] {
+        let mut project = project();
+        project.graph.nodes.insert(
+            9,
+            Node::OwnedAggregate(mapping::OwnedAggregate {
+                function: mapping::AggregateOp::Sum,
+                collection: collection.clone(),
+                value,
+                arg: None,
+            }),
+        );
+        let path = Path::new("nonexistent-owned-export-parent/output.mfd");
+        for error in [
+            preflight_export(&project, path).unwrap_err(),
+            export(&project, path).unwrap_err(),
+            export_with_profile(&project, path, ExportProfile::NativeMfd).unwrap_err(),
+        ] {
+            assert!(
+                matches!(
+                    error,
+                    MfdError::UnsupportedSourceOwnership {
+                        node: 9,
+                        function: None,
+                        kind: "owned_aggregate"
+                    }
+                ),
+                "{error:?}"
+            );
+        }
+        assert!(!path.exists());
+    }
+}

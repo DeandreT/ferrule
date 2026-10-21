@@ -59,6 +59,7 @@ fn declared_nested_clone_owners_compiled_complete_oracles() -> TestResult<()> {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures/nested_clone_owners");
     let owner_cases = std::fs::read(fixtures.join("cases.json"))?;
     let occurrence_cases = std::fs::read(fixtures.join("occurrence_cases.json"))?;
+    let binding_cases = std::fs::read(fixtures.join("binding_occurrence_cases.json"))?;
     let mut outcomes = Vec::new();
     for (design, cases) in [
         ("equal", &owner_cases),
@@ -71,6 +72,8 @@ fn declared_nested_clone_owners_compiled_complete_oracles() -> TestResult<()> {
         // Identical interned bindings in distinct declared clone occurrences.
         ("shared_constant_cells", &occurrence_cases),
         ("shared_constant_rows", &occurrence_cases),
+        // Repeating scalar entries sharing one expression keep every value.
+        ("shared_repeating_values", &binding_cases),
     ] {
         let package = evidence.0.join(format!("{design}-package"));
         std::fs::create_dir(&package)?;
@@ -79,6 +82,7 @@ fn declared_nested_clone_owners_compiled_complete_oracles() -> TestResult<()> {
             "target.xsd",
             "source-deep.xsd",
             "target-deep.xsd",
+            "target-lines.xsd",
         ] {
             std::fs::copy(fixtures.join(file), package.join(file))?;
         }
@@ -264,7 +268,7 @@ fn declared_nested_clone_owners_compiled_complete_oracles() -> TestResult<()> {
         }
     }
     evidence.record("cohort.original.txt", &outcomes)?;
-    if outcomes.len() != 18
+    if outcomes.len() != 20
         || outcomes
             .iter()
             .any(|(_, outcome, stable)| !stable || !matches!(outcome, Ok(true)))

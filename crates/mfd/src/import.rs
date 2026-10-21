@@ -103,7 +103,7 @@ pub(crate) fn parse_native_pdf_template_text(
 ) -> Result<mapping::PdfLayout, String> {
     schema::parse_native_pdf_template_text(source, expected_root)
 }
-use scope::{ScopeBuilder, TargetLeaf};
+use scope::{BindingOccurrence, ScopeBuilder, TargetLeaf};
 use source::{SourcePath, primary_index, runtime_names};
 use udf::{Call as UdfCall, Registry as UdfRegistry};
 
@@ -2809,10 +2809,7 @@ fn build_target_scope(
 ) -> Scope {
     let edge_from = builder.edge_from;
     builder.rejected_join_paths.clear();
-    let mut scopes = ScopeBuilder {
-        root: Scope::default(),
-        anchors: BTreeMap::new(),
-    };
+    let mut scopes = ScopeBuilder::new(BTreeMap::new());
     let dynamic_document = target
         .ports
         .iter()
@@ -3052,7 +3049,11 @@ fn build_target_scope(
         } else {
             node
         };
-        scopes.add_binding(target_leaf, node);
+        scopes.add_binding(
+            target_leaf,
+            node,
+            BindingOccurrence::authored(target, input),
+        );
     }
     dynamic_json::build_target(dynamic_target, target, builder, &mut scopes);
     compose_csv_target_rows(csv_singleton_bindings, builder, &mut scopes);

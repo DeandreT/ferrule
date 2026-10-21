@@ -7,7 +7,7 @@ use super::super::function::produces_scalar;
 use super::super::graph::GraphBuilder;
 use super::super::group_projection::TargetIteration;
 use super::super::schema::{ComponentFormat, SchemaComponent, schema_node_at};
-use super::super::scope::{ScopeBuilder, TargetLeaf};
+use super::super::scope::{BindingOccurrence, ScopeBuilder, TargetLeaf};
 use super::branch_owners::{
     BindingOrigins, DeclaredBranch, DeclaredBranches, replaceable_placeholder,
 };
@@ -179,10 +179,7 @@ fn prepare<'a>(
         }
     }
     let mut candidate_graph = (*builder).clone();
-    let mut local = ScopeBuilder {
-        root: Scope::default(),
-        anchors: owner.anchors.clone(),
-    };
+    let mut local = ScopeBuilder::new(owner.anchors.clone());
     let connected = indices
         .iter()
         .map(|index| bindings[*index].0.path())
@@ -205,7 +202,7 @@ fn prepare<'a>(
     }
     let mut origins = BindingOrigins::new();
     for index in &indices {
-        let (leaf, feed, _) = &bindings[*index];
+        let (leaf, feed, input) = &bindings[*index];
         let field = leaf.path();
         let active = local.enclosing_anchor(&field);
         let node = candidate_graph.binding_node_at_anchor(*feed, &field, &active)?;
@@ -213,7 +210,11 @@ fn prepare<'a>(
             return None;
         }
         origins.entry((field, node)).or_default().insert(*index);
-        local.add_binding(leaf.clone(), node);
+        local.add_binding(
+            leaf.clone(),
+            node,
+            BindingOccurrence::authored(target, *input),
+        );
     }
     let child = local.scope(path)?.clone();
     let mut actual_membership = BTreeMap::new();

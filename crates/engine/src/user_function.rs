@@ -9,6 +9,7 @@ use crate::debug::{
     DebugHook, after_function_node_failure, after_function_node_input, after_function_node_value,
 };
 use crate::filter_map::FilterMapWork;
+use crate::policy::BudgetMeter;
 use crate::source_iteration::PositionFrame;
 use crate::trace::{TraceSink, record_function_node_input_value, record_function_node_value};
 use crate::{EngineError, ExecutionPurpose};
@@ -23,6 +24,7 @@ struct FunctionTrace<'a> {
     positions: &'a [PositionFrame],
     purpose: ExecutionPurpose,
     work: Option<FilterMapWork<'a>>,
+    budget: Option<&'a BudgetMeter>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -37,6 +39,7 @@ pub(super) fn evaluate(
     positions: &[PositionFrame],
     purpose: ExecutionPurpose,
     work: Option<FilterMapWork<'_>>,
+    budget: Option<&BudgetMeter>,
 ) -> Result<Value, EngineError> {
     evaluate_nested(
         functions,
@@ -50,6 +53,7 @@ pub(super) fn evaluate(
             positions,
             purpose,
             work,
+            budget,
         },
         &mut Vec::new(),
     )
@@ -139,24 +143,30 @@ fn evaluate_body_node(
     let work = trace
         .work
         .map(|work| work.at_node(Some(function_id), node_id));
-    let result = work
-        .map_or(Ok(()), FilterMapWork::charge)
-        .and_then(|()| {
-            evaluate_body_node_inner(
-                functions,
-                function_id,
-                function,
-                node_id,
-                parameters,
-                runtime,
-                trace,
-                call_stack,
-                in_progress,
-            )
-        })
-        .map_err(|error| match work {
-            Some(work) => work.wrap(error),
-            None => error,
+    // Body nodes share the run's restricted work and depth budgets.
+    let result = trace
+        .budget
+        .map(BudgetMeter::enter_node)
+        .transpose()
+        .and_then(|_depth| {
+            work.map_or(Ok(()), FilterMapWork::charge)
+                .and_then(|()| {
+                    evaluate_body_node_inner(
+                        functions,
+                        function_id,
+                        function,
+                        node_id,
+                        parameters,
+                        runtime,
+                        trace,
+                        call_stack,
+                        in_progress,
+                    )
+                })
+                .map_err(|error| match work {
+                    Some(work) => work.wrap(error),
+                    None => error,
+                })
         });
     if let Err(error) = &result {
         after_function_node_failure(
@@ -204,7 +214,10 @@ fn evaluate_body_node_inner(
         | Node::OwnedDynamicSourceField(_)
         | Node::OwnedLookup(_)
         | Node::OwnedCollectionFind(_)
-        | Node::OwnedXmlSerialize(_) => Err(EngineError::UnsupportedSourceOwnership {
+        | Node::OwnedXmlSerialize(_)
+        | Node::OwnedAggregate(_)
+        | Node::OwnedJoinField(_)
+        | Node::OwnedJoinSourcePosition(_) => Err(EngineError::UnsupportedSourceOwnership {
             node: node_id,
             function: Some(function_id),
             kind: node.owned_source_kind().expect("owned node kind"),
