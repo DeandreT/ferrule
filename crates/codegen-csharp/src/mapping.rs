@@ -1586,7 +1586,7 @@ fn render_single_window(
     ));
 }
 
-const fn aggregate_function_name(function: AggregateFunction) -> &'static str {
+pub(crate) const fn aggregate_function_name(function: AggregateFunction) -> &'static str {
     match function {
         AggregateFunction::Count => "Count",
         AggregateFunction::Sum => "Sum",
@@ -1852,13 +1852,23 @@ fn render_expression(
         {
             return crate::owned_basic::render_owned_search(node, expression, output);
         }
+        Expression::OwnedAggregate(aggregate)
+            if matches!(
+                mode,
+                ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes
+            ) =>
+        {
+            crate::owned_basic::render_owned_aggregate(node, aggregate, output);
+            return Ok(());
+        }
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
         | Expression::OwnedDynamicSourceField(_)
         | Expression::OwnedLookup(_)
         | Expression::OwnedCollectionFind(_)
-        | Expression::OwnedXmlSerialize(_) => {
+        | Expression::OwnedXmlSerialize(_)
+        | Expression::OwnedAggregate(_) => {
             if matches!(
                 mode,
                 ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes

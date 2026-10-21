@@ -968,6 +968,10 @@ fn node_label(node: &mapping::Node) -> String {
             "owned XML serializer {:?} {:?}; frame {:?} (unavailable)",
             serializer.source.owner, serializer.source.path, serializer.frame
         ),
+        mapping::Node::OwnedAggregate(aggregate) => format!(
+            "owned aggregate {:?} {:?} {:?} (read-only)",
+            aggregate.function, aggregate.collection.owner, aggregate.collection.path
+        ),
         mapping::Node::SourceField { path, .. } => format!("field {}", display_path(path)),
         mapping::Node::SourceDocumentPath => "source document path".to_string(),
         mapping::Node::SourceRootXmlTypeEquals { .. } => {

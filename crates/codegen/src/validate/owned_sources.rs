@@ -19,7 +19,9 @@ pub use adjacency_tree::validate_basic_owned_adjacency_tree_emission;
 use adjacency_tree::{owned_root, owned_rows};
 mod failure_sources;
 pub(super) use failure_sources::FailurePolicy;
+mod collection_aggregates;
 mod lookup_find;
+pub use collection_aggregates::validate_basic_owned_collection_aggregates_emission;
 pub use failure_sources::validate_basic_owned_failure_source_emission;
 mod recursive_collect;
 pub(super) use lookup_find::SearchPolicy;
@@ -64,7 +66,8 @@ fn request(expression: &Expression) -> Option<Request> {
         }
         // An owned search walks its collection exactly like owned iteration.
         Expression::OwnedLookup(mapping::OwnedLookup { collection, .. })
-        | Expression::OwnedCollectionFind(mapping::OwnedCollectionFind { collection, .. }) => {
+        | Expression::OwnedCollectionFind(mapping::OwnedCollectionFind { collection, .. })
+        | Expression::OwnedAggregate(mapping::OwnedAggregate { collection, .. }) => {
             Some(iteration_request(collection))
         }
         Expression::OwnedXmlSerialize(serializer) => Some(Request::XmlElement {
@@ -327,8 +330,14 @@ pub(super) fn validate_structure(program: &Program) -> Result<(), ProgramValidat
                 scope: None,
             };
             structure(program, location.clone(), query)?;
-            if let Expression::OwnedLookup(lookup) = &node.expression {
-                lookup_find::lookup_structure(program, location, lookup)?;
+            match &node.expression {
+                Expression::OwnedLookup(lookup) => {
+                    lookup_find::lookup_structure(program, location, lookup)?
+                }
+                Expression::OwnedAggregate(aggregate) => {
+                    collection_aggregates::value_structure(program, location, aggregate)?
+                }
+                _ => {}
             }
         }
     }
@@ -343,8 +352,14 @@ pub(super) fn validate_structure(program: &Program) -> Result<(), ProgramValidat
                     scope: None,
                 };
                 structure(program, location.clone(), query)?;
-                if let Expression::OwnedLookup(lookup) = &node.expression {
-                    lookup_find::lookup_structure(program, location, lookup)?;
+                match &node.expression {
+                    Expression::OwnedLookup(lookup) => {
+                        lookup_find::lookup_structure(program, location, lookup)?
+                    }
+                    Expression::OwnedAggregate(aggregate) => {
+                        collection_aggregates::value_structure(program, location, aggregate)?
+                    }
+                    _ => {}
                 }
             }
         }
@@ -1861,12 +1876,9 @@ fn validate_basic_owned_with_xml(
                 continue;
             }
             Expression::OwnedLookup(_) | Expression::OwnedCollectionFind(_)
-                if search == SearchPolicy::Basic =>
+                if search.permits_search() =>
             {
                 continue;
-            }
-            Expression::OwnedLookup(_) | Expression::OwnedCollectionFind(_) => {
-                Capability::AggregateLookup
             }
             Expression::OwnedDynamicSourceField(_) if dynamic_field.permits(&node.expression) => {
                 continue;
@@ -1875,6 +1887,10 @@ fn validate_basic_owned_with_xml(
                 continue;
             }
             Expression::OwnedXmlSerialize(_) => Capability::XmlOperator,
+            Expression::OwnedAggregate(_) if search.permits_aggregates() => continue,
+            Expression::OwnedLookup(_)
+            | Expression::OwnedCollectionFind(_)
+            | Expression::OwnedAggregate(_) => Capability::AggregateLookup,
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
@@ -2103,7 +2119,7 @@ fn basic_expression_nodes(
         };
         // These are precisely the potential dependency edges of the admitted
         // ordinary scalar subset; If stays conservative and execution stays lazy.
-        // Owned search edges matter only where a search companion admits them.
+        // Owned search and aggregate edges matter only where a companion admits them.
         if matches!(
             node.expression,
             Expression::Call { .. }
@@ -2112,6 +2128,7 @@ fn basic_expression_nodes(
                 | Expression::Raise { .. }
                 | Expression::OwnedLookup(_)
                 | Expression::OwnedCollectionFind(_)
+                | Expression::OwnedAggregate(_)
         ) {
             pending.extend(graph_dependencies::of(&node.expression));
         }

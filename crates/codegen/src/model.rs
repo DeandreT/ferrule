@@ -893,6 +893,9 @@ pub enum Expression {
     /// Serializes one structured element read from exactly its declared
     /// owner, with the legacy serializer's schema and document options.
     OwnedXmlSerialize(mapping::OwnedXmlSerialize),
+    /// Reduction over exactly one owned endpoint collection. The value reads
+    /// or computes in each selected item; the argument runs in the parent.
+    OwnedAggregate(mapping::OwnedAggregate),
     SourceField {
         frame: Option<Vec<String>>,
         path: Vec<String>,

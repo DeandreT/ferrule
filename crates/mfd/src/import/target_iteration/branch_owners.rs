@@ -278,7 +278,18 @@ impl DeclaredBranches {
         placements: &Placements,
         occurrences: &mut Vec<Occurrence<'a>>,
     ) -> bool {
+        // Bindings are installed per authored input, so one occurrence may
+        // retain one binding for each of several entries fed by one node.
+        let mut shared = Vec::<(&mapping::Binding, usize)>::new();
         for binding in &scope.bindings {
+            match shared.iter_mut().find(|(seen, _)| {
+                seen.target_field == binding.target_field && seen.node == binding.node
+            }) {
+                Some((_, count)) => *count += 1,
+                None => shared.push((binding, 1)),
+            }
+        }
+        for (binding, count) in shared {
             let mut field = path.clone();
             field.push(binding.target_field.clone());
             // A deeper replacement may use a different anchored node. Its exact
@@ -298,10 +309,10 @@ impl DeclaredBranches {
                 .flatten()
                 .copied()
                 .collect::<BTreeSet<_>>();
-            // ScopeBuilder canonicalizes identical (target, node) bindings, so
-            // sibling clones fed by one interned expression share a key. The
-            // innermost recorded occurrence that holds this binding decides
-            // which of those origins it is; it never adds an origin.
+            // Sibling clones fed by one interned expression share a
+            // `(field, node)` key. The innermost recorded occurrence that
+            // holds this binding decides which of those origins it is; it
+            // never adds an origin.
             if origins.len() > 1
                 && let Some(exact) = occurrences.iter().rev().find_map(|occurrence| {
                     occurrence
@@ -309,18 +320,26 @@ impl DeclaredBranches {
                         .bindings
                         .get(&(field.clone(), binding.node))
                 })
-                && exact.len() == 1
+                && exact.len() == count
                 && exact.is_subset(&origins)
             {
                 origins.clone_from(exact);
             }
-            // One retained binding cannot prove that multiple original edges
-            // survived separately, even when their cached node is identical.
-            if origins.len() > 1 {
-                return false;
-            }
-            if let Some(origin) = origins.first() {
-                *retained.entry((field.clone(), *origin)).or_default() += 1;
+            match origins.len() {
+                0 => {}
+                1 => {
+                    if let Some(origin) = origins.first() {
+                        *retained.entry((field.clone(), *origin)).or_default() += count;
+                    }
+                }
+                // Several original edges survived separately only when each
+                // has its own retained binding, even with one cached node.
+                origins_len if origins_len == count => {
+                    for origin in origins {
+                        *retained.entry((field.clone(), origin)).or_default() += 1;
+                    }
+                }
+                _ => return false,
             }
         }
         for child in &scope.children {

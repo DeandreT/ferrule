@@ -4,13 +4,13 @@ use super::*;
 
 /// Annotate only owned-source failures raised by this node's own walk or
 /// item reads; nested predicate, needle and value nodes keep their own nodes.
-fn owned_call(node: NodeId, target: &str, call: &str) -> String {
+pub(super) fn owned_call(node: NodeId, target: &str, call: &str) -> String {
     format!(
         "try {{ {target}{call}; }}\n        catch (global::Ferrule.Runtime.FerruleRuntimeException error_{node}) {{ error_{node}.WithOwnedSourceNode({node}U); throw; }}"
     )
 }
 
-fn walk_call(node: NodeId, collection: &::mapping::OwnedSourceRef) -> String {
+pub(super) fn walk_call(node: NodeId, collection: &::mapping::OwnedSourceRef) -> String {
     let mut call = String::from("context.WalkOwnedSourceCohort(");
     render_owner(&collection.owner, &mut call);
     call.push_str(", ");
