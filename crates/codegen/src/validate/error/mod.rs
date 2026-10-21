@@ -57,6 +57,12 @@ pub enum OwnedSourceDiagnosticRequest {
         owner: OwnedSourceDiagnosticOwner,
         path: Vec<String>,
     },
+    /// An owned dynamic source-field read of an open object.
+    DynamicField {
+        owner: OwnedSourceDiagnosticOwner,
+        object: Vec<String>,
+        frame: Option<Vec<String>>,
+    },
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnedSourceSchemaShape {
@@ -69,11 +75,23 @@ pub enum OwnedSourceSchemaShape {
 pub enum OwnedSourceStructureReason {
     InvalidNamedOwner,
     UnknownOwner,
-    MissingOwnedPath { segment: usize },
-    UnresolvedRecursiveAnchor { anchor: String },
-    InvalidOwnedField { found: OwnedSourceSchemaShape },
+    MissingOwnedPath {
+        segment: usize,
+    },
+    UnresolvedRecursiveAnchor {
+        anchor: String,
+    },
+    InvalidOwnedField {
+        found: OwnedSourceSchemaShape,
+    },
     IncompatibleFramePath,
-    InvalidOwnedCollection { found: OwnedSourceSchemaShape },
+    InvalidOwnedCollection {
+        found: OwnedSourceSchemaShape,
+    },
+    /// The selected object is not an open object with scalar properties.
+    InvalidOwnedDynamicObject {
+        found: OwnedSourceSchemaShape,
+    },
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnedSourceCapabilityReason {
