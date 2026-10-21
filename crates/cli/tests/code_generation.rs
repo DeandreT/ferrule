@@ -30,6 +30,8 @@ mod basic_owned_group_into_blocks;
 mod basic_owned_group_starting_with;
 #[path = "code_generation/basic_owned_json_adapters.rs"]
 mod basic_owned_json_adapters;
+#[path = "code_generation/basic_owned_lookup_find.rs"]
+mod basic_owned_lookup_find;
 #[path = "code_generation/basic_owned_nested_phases.rs"]
 mod basic_owned_nested_phases;
 #[path = "code_generation/basic_owned_path_hierarchy.rs"]

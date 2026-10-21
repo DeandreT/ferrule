@@ -158,6 +158,7 @@ pub(super) fn node_inputs(node: &Node) -> Vec<NodeId> {
         } => vec![*condition, *then, *else_],
         Node::ValueMap { input, .. } => vec![*input],
         Node::Lookup { matches, .. } => vec![*matches],
+        Node::OwnedLookup(_) | Node::OwnedCollectionFind(_) => node.dependencies(),
         Node::DynamicSourceField { key, .. } => vec![*key],
         Node::XmlMixedContent { replacements, .. } => replacements
             .iter()

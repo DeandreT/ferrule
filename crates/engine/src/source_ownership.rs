@@ -726,6 +726,18 @@ impl<'a> Admission<'a> {
                         };
                         self.static_owner(&source.owner, &source.path, None, Some(id), None)?;
                     }
+                    // The needle, predicate and value remain Basic scalar demands;
+                    // the walk itself names exactly one static endpoint.
+                    Node::OwnedLookup(mapping::OwnedLookup { collection, .. })
+                    | Node::OwnedCollectionFind(mapping::OwnedCollectionFind {
+                        collection, ..
+                    }) => self.static_owner(
+                        &collection.owner,
+                        &collection.path,
+                        None,
+                        Some(id),
+                        None,
+                    )?,
                     _ => unreachable!("owned kind identifies owned payload"),
                 }
                 self.summary.used_owned = true;
@@ -843,7 +855,10 @@ fn root_failure_node_is_static(project: &Project, node: &Node) -> bool {
         return false;
     }
     match node {
-        Node::OwnedPosition(_) | Node::Position { .. } => false,
+        Node::OwnedPosition(_)
+        | Node::Position { .. }
+        | Node::OwnedLookup(_)
+        | Node::OwnedCollectionFind(_) => false,
         Node::OwnedSourceField(field) => field.frame.as_ref().is_none_or(Vec::is_empty),
         Node::SourceField { path, frame } => {
             frame.as_ref().is_none_or(Vec::is_empty)
@@ -877,6 +892,7 @@ fn primary_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
         return false;
     }
     match node {
+        Node::OwnedLookup(_) | Node::OwnedCollectionFind(_) => false,
         Node::OwnedPosition(position) => matches!(position.owner, SourceOwner::Primary),
         Node::OwnedSourceField(field) => match &field.source.owner {
             SourceOwner::Primary => true,
@@ -902,6 +918,7 @@ fn owned_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
     }
     match node {
         Node::OwnedPosition(_) | Node::OwnedSourceField(_) => true,
+        Node::OwnedLookup(_) | Node::OwnedCollectionFind(_) => false,
         Node::UserFunctionCall { .. } => false,
         Node::SourceField { path, frame } => ![Some(path.as_slice()), frame.as_deref()]
             .into_iter()

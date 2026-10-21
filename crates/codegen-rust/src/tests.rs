@@ -1529,6 +1529,7 @@ mod owned_basic_group_starting_with;
 mod owned_failure_sources;
 #[path = "owned_json_api_tests.rs"]
 mod owned_json_api;
+mod owned_lookup_find;
 mod owned_path_hierarchy;
 mod owned_recursive_collect;
 mod owned_recursive_filter;
