@@ -17,7 +17,7 @@ use crate::owned_context::{OwnedContext, WorkBudget};
 use crate::source_iteration::{ObservedExtension, PositionFrame, walk_observed};
 use crate::{EngineError, OwnedSourceError};
 
-fn access(node: NodeId) -> impl Fn(OwnedSourceError) -> EngineError {
+pub(crate) fn access(node: NodeId) -> impl Fn(OwnedSourceError) -> EngineError {
     move |source| match source {
         OwnedSourceError::UnsupportedSourceDomain { found } => {
             EngineError::UnsupportedOwnedContext {
@@ -39,7 +39,7 @@ fn access(node: NodeId) -> impl Fn(OwnedSourceError) -> EngineError {
     }
 }
 
-fn owned_state<'p>(
+pub(crate) fn owned_state<'p>(
     program: EvalProgram<'p>,
     node: NodeId,
     kind: &'static str,
@@ -54,7 +54,7 @@ fn owned_state<'p>(
 }
 
 /// Admit the complete candidate cohort before any item expression runs.
-fn candidates<'a>(
+pub(crate) fn candidates<'a>(
     state: &OwnedContext<'a>,
     source: &OwnedSourceRef,
     position_offset: usize,
@@ -75,7 +75,7 @@ fn candidates<'a>(
 }
 
 /// One candidate's item context: the parent frames plus the walk extension.
-fn item_frames<'c>(
+pub(crate) fn item_frames<'c>(
     context: &[&'c Instance],
     positions: &[PositionFrame],
     extension: &ObservedExtension<'c>,
@@ -109,7 +109,7 @@ fn item_frames<'c>(
 }
 
 /// An item-relative scalar read anchored by the selected candidate's frame.
-fn item_field(collection: &OwnedSourceRef, relative: &[String]) -> OwnedSourceField {
+pub(crate) fn item_field(collection: &OwnedSourceRef, relative: &[String]) -> OwnedSourceField {
     let mut path = collection.path.clone();
     path.extend(relative.iter().cloned());
     OwnedSourceField {

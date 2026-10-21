@@ -15,7 +15,7 @@ use crate::import::schema::{
     ComponentFormat, SchemaComponent, normalize_xml_entry_name, parse_u32,
     read_definition_parameter_component, schema_node_at,
 };
-use crate::import::scope::{IterationNodes, ScopeBuilder, TargetLeaf};
+use crate::import::scope::{BindingOccurrence, IterationNodes, ScopeBuilder, TargetLeaf};
 use crate::import::source::SourcePath;
 use crate::import::udf::{Call, Definition, OutputExpr};
 use crate::resource::ResourceResolver;
@@ -390,7 +390,7 @@ pub(super) fn build_target(
         output,
     );
     for (target, node) in target_bindings {
-        scopes.add_binding(target, node);
+        scopes.add_binding(target, node, BindingOccurrence::Expression);
     }
     Ok(driver)
 }
@@ -426,7 +426,7 @@ pub(super) fn build_projection(
         fields,
     )?;
     for (target, node) in target_bindings {
-        scopes.add_binding(target, node);
+        scopes.add_binding(target, node, BindingOccurrence::Expression);
     }
     Ok(())
 }

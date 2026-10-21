@@ -39,7 +39,8 @@ pub use error::{
     ProgramValidationError,
 };
 pub use owned_sources::{
-    owned_expression_emission_error, owned_sequence_emission_error, validate_owned_emission,
+    owned_expression_emission_error, owned_sequence_emission_error,
+    validate_basic_owned_collection_aggregates_emission, validate_owned_emission,
 };
 use sources::{SchemaCursor, SourceCatalog};
 use targets::TargetOwner;
@@ -187,6 +188,15 @@ pub fn validate_program_with_basic_owned_dynamic_field(
     program: &Program,
 ) -> Result<(), ProgramValidationError> {
     owned_sources::validate_basic_owned_dynamic_field_emission(program)
+}
+
+/// Validates explicitly owned collection aggregates over one exact Primary or
+/// named endpoint collection, composed with the owned search profile. Every
+/// older validator keeps refusing owned aggregates.
+pub fn validate_program_with_basic_owned_collection_aggregates(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_collection_aggregates_emission(program)
 }
 
 /// Validates static Basic scalar-producer SequenceItemAt, explicitly composing

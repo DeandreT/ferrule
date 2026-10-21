@@ -27,10 +27,7 @@ pub(super) fn prepare<'a>(
     for plan in plans {
         let mut anchors = plan.anchors;
         anchors.retain(|candidate, _| !candidate.starts_with(path));
-        let mut local = ScopeBuilder {
-            root: mapping::Scope::default(),
-            anchors,
-        };
+        let mut local = ScopeBuilder::new(anchors);
         let connected = plan
             .bindings
             .iter()
@@ -65,7 +62,7 @@ pub(super) fn prepare<'a>(
         }
         let mut origins = BindingOrigins::new();
         for index in &plan.bindings {
-            let (binding, feed, _) = &bindings[*index];
+            let (binding, feed, input) = &bindings[*index];
             let binding_path = binding.path();
             let anchor = local.enclosing_anchor(&binding_path);
             let node = graph.binding_node_at_anchor(*feed, &binding_path, &anchor)?;
@@ -96,7 +93,11 @@ pub(super) fn prepare<'a>(
                 .entry((binding_path, node))
                 .or_default()
                 .insert(*index);
-            local.add_binding(binding.clone(), node);
+            local.add_binding(
+                binding.clone(),
+                node,
+                BindingOccurrence::authored(target, *input),
+            );
         }
         let mut segment = take_scope(&mut local.root, path)?;
         if (target.format == ComponentFormat::Json || !plan.csv_scalars.is_empty())

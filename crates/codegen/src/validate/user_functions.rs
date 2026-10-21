@@ -106,7 +106,8 @@ fn validate_definition(
             | Expression::OwnedDynamicSourceField(_)
             | Expression::OwnedLookup(_)
             | Expression::OwnedCollectionFind(_)
-            | Expression::OwnedXmlSerialize(_) => {}
+            | Expression::OwnedXmlSerialize(_)
+            | Expression::OwnedAggregate(_) => {}
             Expression::Const { .. }
             | Expression::RuntimeValue { .. }
             | Expression::RuntimeParameter { .. }

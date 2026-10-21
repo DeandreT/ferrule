@@ -373,6 +373,7 @@ fn validate_roots_inner(
 fn item_context_inputs(node: &Node) -> Vec<NodeId> {
     match node {
         Node::Aggregate { expression, .. } => expression.iter().copied().collect(),
+        Node::OwnedAggregate(aggregate) => aggregate.expression().into_iter().collect(),
         Node::CollectionFind {
             predicate, value, ..
         } => vec![*predicate, *value],

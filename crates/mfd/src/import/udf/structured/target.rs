@@ -9,7 +9,7 @@ use mapping::{
 use super::{Expr, FindRecipe, FindSource, Recipe, RecipeSource, record, sequence_record};
 use crate::import::graph::GraphBuilder;
 use crate::import::schema::{ComponentFormat, SchemaComponent, schema_node_at};
-use crate::import::scope::{IterationNodes, ScopeBuilder, TargetLeaf};
+use crate::import::scope::{BindingOccurrence, IterationNodes, ScopeBuilder, TargetLeaf};
 use crate::import::source::SourcePath;
 use crate::import::udf::{Call, OutputExpr};
 
@@ -807,7 +807,7 @@ fn build_catalog_target(
         IterationOutput::MappedSequence,
     );
     for (target, node) in target_bindings {
-        scopes.add_binding(target, node);
+        scopes.add_binding(target, node, BindingOccurrence::Expression);
     }
     Ok(())
 }
@@ -922,7 +922,7 @@ fn build_aggregate_target(
         IterationOutput::Repeated,
     );
     for (target, node) in target_bindings {
-        scopes.add_binding(target, node);
+        scopes.add_binding(target, node, BindingOccurrence::Expression);
     }
     Ok(())
 }

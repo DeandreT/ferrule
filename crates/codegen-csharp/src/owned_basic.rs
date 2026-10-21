@@ -15,8 +15,10 @@ use codegen::{
 };
 use std::collections::BTreeSet;
 
+mod aggregate;
 mod row_failures;
 mod search;
+pub(crate) use aggregate::render_owned_aggregate;
 pub(crate) use search::render_owned_search;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -94,12 +96,21 @@ struct TargetExtension {
     adjacency_tree: bool,
     /// Recursive filtering of an owned selector is an orthogonal permission.
     recursive_filter: bool,
-    /// Explicitly owned Lookup and CollectionFind.
-    owned_search: bool,
+    /// Explicitly owned Lookup and CollectionFind, optionally with owned
+    /// collection aggregates.
+    owned_search: OwnedSearch,
     /// Owned dynamic source-field reads are an orthogonal explicit permission.
     dynamic_field: bool,
     /// Owned XML serialization is an orthogonal explicit expression permission.
     xml_serialize: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OwnedSearch {
+    Closed,
+    LookupFind,
+    /// LookupFind plus owned collection aggregates.
+    CollectionAggregates,
 }
 
 impl TargetExtension {
@@ -110,7 +121,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
-        owned_search: false,
+        owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
     };
@@ -121,7 +132,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
-        owned_search: false,
+        owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
     };
@@ -132,7 +143,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
-        owned_search: false,
+        owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
     };
@@ -144,7 +155,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
-        owned_search: false,
+        owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
     };
@@ -156,7 +167,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
-        owned_search: false,
+        owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
     };
@@ -168,7 +179,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
-        owned_search: false,
+        owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
     };
@@ -180,7 +191,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
-        owned_search: false,
+        owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
     };
@@ -192,7 +203,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
-        owned_search: false,
+        owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
     };
@@ -204,7 +215,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
-        owned_search: false,
+        owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
     };
@@ -217,7 +228,7 @@ impl TargetExtension {
         path_hierarchy: true,
         adjacency_tree: false,
         recursive_filter: false,
-        owned_search: false,
+        owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
     };
@@ -230,7 +241,7 @@ impl TargetExtension {
         path_hierarchy: true,
         adjacency_tree: true,
         recursive_filter: false,
-        owned_search: false,
+        owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
     };
@@ -243,7 +254,7 @@ impl TargetExtension {
         path_hierarchy: true,
         adjacency_tree: true,
         recursive_filter: false,
-        owned_search: false,
+        owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
     };
@@ -256,7 +267,7 @@ impl TargetExtension {
         path_hierarchy: true,
         adjacency_tree: true,
         recursive_filter: true,
-        owned_search: false,
+        owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
     };
@@ -270,7 +281,7 @@ impl TargetExtension {
         path_hierarchy: true,
         adjacency_tree: true,
         recursive_filter: true,
-        owned_search: true,
+        owned_search: OwnedSearch::LookupFind,
         dynamic_field: false,
         xml_serialize: false,
     };
@@ -283,7 +294,7 @@ impl TargetExtension {
         path_hierarchy: true,
         adjacency_tree: true,
         recursive_filter: true,
-        owned_search: true,
+        owned_search: OwnedSearch::LookupFind,
         dynamic_field: true,
         xml_serialize: false,
     };
@@ -296,9 +307,15 @@ impl TargetExtension {
         path_hierarchy: true,
         adjacency_tree: true,
         recursive_filter: true,
-        owned_search: true,
+        owned_search: OwnedSearch::LookupFind,
         dynamic_field: true,
         xml_serialize: true,
+    };
+
+    /// LOOKUP_FIND plus owned collection aggregates.
+    const COLLECTION_AGGREGATES: Self = Self {
+        owned_search: OwnedSearch::CollectionAggregates,
+        ..Self::LOOKUP_FIND
     };
 
     fn permits_path_hierarchy(self) -> bool {
@@ -312,7 +329,7 @@ impl TargetExtension {
         path_hierarchy: false,
         adjacency_tree: false,
         recursive_filter: false,
-        owned_search: false,
+        owned_search: OwnedSearch::Closed,
         dynamic_field: false,
         xml_serialize: false,
     };
@@ -406,7 +423,9 @@ fn render_basic_owned_mapping_profile(
         codegen::validate_program_with_basic_owned_xml_serialize(program)?;
     } else if extension.dynamic_field {
         codegen::validate_program_with_basic_owned_dynamic_field(program)?;
-    } else if extension.owned_search {
+    } else if extension.owned_search == OwnedSearch::CollectionAggregates {
+        codegen::validate_program_with_basic_owned_collection_aggregates(program)?;
+    } else if extension.owned_search == OwnedSearch::LookupFind {
         codegen::validate_program_with_basic_owned_lookup_find(program)?;
     } else if extension.recursive_filter {
         codegen::validate_program_with_basic_owned_recursive_filter(program)?;
@@ -841,6 +860,7 @@ fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
         Expression::Lookup { matches, .. } => vec![*matches],
         Expression::OwnedLookup(lookup) => vec![lookup.matches],
         Expression::OwnedCollectionFind(find) => vec![find.predicate, find.value],
+        Expression::OwnedAggregate(aggregate) => aggregate.inputs(),
         Expression::CollectionFind {
             predicate, value, ..
         } => vec![*predicate, *value],
@@ -930,7 +950,9 @@ fn validate_private_inventory(
         codegen::validate_basic_owned_xml_serialize_emission(program)?;
     } else if extension.dynamic_field {
         codegen::validate_basic_owned_dynamic_field_emission(program)?;
-    } else if extension.owned_search {
+    } else if extension.owned_search == OwnedSearch::CollectionAggregates {
+        codegen::validate_basic_owned_collection_aggregates_emission(program)?;
+    } else if extension.owned_search == OwnedSearch::LookupFind {
         codegen::validate_basic_owned_lookup_find_emission(program)?;
     } else if extension.recursive_filter {
         codegen::validate_basic_owned_recursive_filter_emission(program)?;
@@ -1003,7 +1025,12 @@ fn validate_private_inventory(
                 continue;
             }
             Expression::OwnedLookup(_) | Expression::OwnedCollectionFind(_)
-                if extension.owned_search =>
+                if extension.owned_search != OwnedSearch::Closed =>
+            {
+                continue;
+            }
+            Expression::OwnedAggregate(_)
+                if extension.owned_search == OwnedSearch::CollectionAggregates =>
             {
                 continue;
             }
@@ -1044,6 +1071,7 @@ fn validate_private_inventory(
             | Expression::CollectionFind { .. }
             | Expression::OwnedLookup(_)
             | Expression::OwnedCollectionFind(_)
+            | Expression::OwnedAggregate(_)
             | Expression::Aggregate { .. }
             | Expression::JoinAggregate { .. } => Reason::AggregateLookup,
             Expression::SequenceExists { .. }
@@ -1422,7 +1450,9 @@ fn render_checked_basic_owned_mapping_profile(
         codegen::legacy_named_input_admission_plan_with_basic_owned_xml_serialize(program)?
     } else if extension.dynamic_field {
         codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_field(program)?
-    } else if extension.owned_search {
+    } else if extension.owned_search == OwnedSearch::CollectionAggregates {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_collection_aggregates(program)?
+    } else if extension.owned_search == OwnedSearch::LookupFind {
         codegen::legacy_named_input_admission_plan_with_basic_owned_lookup_find(program)?
     } else if extension.recursive_filter {
         codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_filter(program)?
@@ -1683,7 +1713,8 @@ fn expression_needs_owned_sources(program: &Program, root: NodeId) -> bool {
                 | Expression::OwnedLookup(_)
                 | Expression::OwnedCollectionFind(_)
                 | Expression::OwnedDynamicSourceField(_)
-                | Expression::OwnedXmlSerialize(_) => true,
+                | Expression::OwnedXmlSerialize(_)
+                | Expression::OwnedAggregate(_) => true,
                 // An owned producer reads its root through the paired context.
                 Expression::SequenceItemAt { sequence, .. } => sequence.owned_source().is_some(),
                 _ => false,
@@ -2049,6 +2080,22 @@ pub(crate) fn render_public_basic_owned_xml_serialize_mapping(
         true,
         true,
         TargetExtension::XML_SERIALIZE,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_collection_aggregates_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::COLLECTION_AGGREGATES,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)

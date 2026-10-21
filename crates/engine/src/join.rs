@@ -6,6 +6,7 @@ use mapping::{AggregateOp, JoinConditions, JoinId, JoinPlan, JoinSource, NodeId}
 use super::EngineError;
 use super::aggregate::aggregate;
 use super::eval_expr::{EvalProgram, eval_node_input};
+use super::policy::BudgetMeter;
 use super::resolve::{context_for_position, field_scalar};
 use super::source_iteration::{PositionFrame, WalkExtension, walk};
 
@@ -28,6 +29,7 @@ pub(super) fn execute<'a>(
     positions: &[PositionFrame],
     join: JoinId,
     plan: &JoinPlan,
+    budget: Option<&BudgetMeter>,
 ) -> Result<Vec<JoinedRow<'a>>, EngineError> {
     let mut sources = plan.sources();
     let Some(first) = sources.next() else {
@@ -39,6 +41,10 @@ pub(super) fn execute<'a>(
         let mut joined = Vec::new();
         for left in rows {
             for right in &right_rows {
+                // Every examined pairing is one restricted join-row unit.
+                if let Some(budget) = budget {
+                    budget.charge_join_row()?;
+                }
                 if conditions_match(&left, right, conditions)? {
                     let mut instances = left.instances.clone();
                     instances.extend(right.instances.iter().copied());
@@ -77,7 +83,7 @@ pub(super) fn eval_aggregate(
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
-    let rows = execute(context, positions, input.join, input.plan)?;
+    let rows = execute(context, positions, input.join, input.plan, program.budget)?;
     let extensions = extensions(&rows);
     let mut values = Vec::with_capacity(extensions.len());
     for extension in &extensions {

@@ -120,7 +120,10 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
                     &location,
                     issues,
                 );
-                for (path, label) in [(&lookup.key, "key"), (&lookup.value, "value")] {
+                for (path, label) in [
+                    (&lookup.key, "owned lookup key"),
+                    (&lookup.value, "owned lookup value"),
+                ] {
                     super::schema::validate_owned_item_scalar(
                         project,
                         &lookup.collection,
@@ -137,6 +140,19 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
                 &location,
                 issues,
             ),
+            Node::OwnedAggregate(aggregate) => {
+                super::schema::validate_owned_collection(
+                    project,
+                    &aggregate.collection,
+                    &location,
+                    issues,
+                );
+                if let mapping::OwnedAggregateValue::Path(value) = &aggregate.value {
+                    super::schema::validate_owned_aggregate_value(
+                        project, aggregate, value, &location, issues,
+                    );
+                }
+            }
             Node::SourceRootXmlTypeEquals { .. } | Node::SourceRootField { .. } => {}
             Node::SourceField { .. } if sequence_items.contains(&id) => {}
             Node::SourceField { path, frame } => {
@@ -708,7 +724,8 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
             }
         }
         Node::OwnedLookup(mapping::OwnedLookup { collection, .. })
-        | Node::OwnedCollectionFind(mapping::OwnedCollectionFind { collection, .. }) => {
+        | Node::OwnedCollectionFind(mapping::OwnedCollectionFind { collection, .. })
+        | Node::OwnedAggregate(mapping::OwnedAggregate { collection, .. }) => {
             if let mapping::SourceOwner::Named { name } = &collection.owner
                 && project
                     .extra_sources
@@ -1337,6 +1354,12 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
             ("predicate".into(), find.predicate),
             ("value expression".into(), find.value),
         ],
+        Node::OwnedAggregate(aggregate) => aggregate
+            .expression()
+            .map(|id| ("value expression".to_string(), id))
+            .into_iter()
+            .chain(aggregate.arg.map(|id| ("argument".to_string(), id)))
+            .collect(),
         Node::DynamicSourceField { key, .. } => vec![("property name".into(), *key)],
         Node::OwnedDynamicSourceField(field) => vec![("property name".into(), field.key)],
         Node::XmlMixedContent { replacements, .. } => replacements

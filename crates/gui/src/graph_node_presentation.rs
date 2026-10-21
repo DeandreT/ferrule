@@ -133,6 +133,16 @@ pub(super) fn owned_source_title(node: &Node) -> Option<String> {
             frame(serializer.frame.as_deref()),
             serializer.schema.name,
         )),
+        Node::OwnedAggregate(aggregate) => Some(format!(
+            "Owned aggregate {:?}: {}\nCollection: {:?}\nValue: {}\nRead-only; owned aggregate authoring is unavailable",
+            aggregate.function,
+            owner(&aggregate.collection.owner),
+            aggregate.collection.path,
+            match &aggregate.value {
+                mapping::OwnedAggregateValue::Path(path) => format!("{path:?}"),
+                mapping::OwnedAggregateValue::Expression(_) => "computed per item".into(),
+            },
+        )),
         _ => None,
     }
 }
