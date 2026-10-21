@@ -38,7 +38,7 @@ const CALLS: usize = 27;
 /// nodes (strings) and elements (`{name: text}`). Like the XML readers, each
 /// element retains the next same-named field occurrence as its value, or its
 /// text when the group has no such field, and the stream follows the fields.
-fn expand(value: &Json) -> Json {
+pub(super) fn expand(value: &Json) -> Json {
     match value {
         Json::Array(items) => Json::Array(items.iter().map(expand).collect()),
         Json::Object(fields) => {
@@ -117,7 +117,7 @@ fn controls(corpus: &Json) -> Json {
     controls
 }
 
-fn decode(value: &Json) -> Instance {
+pub(super) fn decode(value: &Json) -> Instance {
     match value {
         Json::Null => Instance::Scalar(Value::Null),
         Json::Bool(value) => Instance::Scalar(Value::Bool(*value)),
@@ -134,7 +134,7 @@ fn decode(value: &Json) -> Instance {
     }
 }
 
-fn encode(instance: &Instance) -> Json {
+pub(super) fn encode(instance: &Instance) -> Json {
     match instance {
         Instance::Scalar(Value::Null) => Json::Null,
         Instance::Scalar(Value::String(value)) => json!(value),
@@ -156,7 +156,7 @@ fn owner_name(owner: &SourceOwner) -> Json {
     }
 }
 
-fn engine_error(error: &engine::EngineError) -> Json {
+pub(super) fn engine_error(error: &engine::EngineError) -> Json {
     use engine::EngineError as E;
     use engine::OwnedSourceError as O;
     match error {
@@ -181,7 +181,7 @@ fn engine_error(error: &engine::EngineError) -> Json {
     }
 }
 
-fn native(project: &Project, case: &Json, selection: &str) -> Json {
+pub(super) fn native(project: &Project, case: &Json, selection: &str) -> Json {
     let source = decode(&case["source"]);
     let inputs = case["inputs"]
         .as_array()
@@ -230,20 +230,20 @@ fn native(project: &Project, case: &Json, selection: &str) -> Json {
     }
 }
 
-fn runtime_path() -> TestResult<PathBuf> {
+pub(super) fn runtime_path() -> TestResult<PathBuf> {
     Ok(Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../codegen-runtime")
         .canonicalize()?)
 }
 
-fn rust_options(package: &str, runtime: &Path) -> codegen_rust::Options {
+pub(super) fn rust_options(package: &str, runtime: &Path) -> codegen_rust::Options {
     codegen_rust::Options {
         package_name: package.into(),
         runtime_dependency: codegen_rust::RuntimeDependency::Path(runtime.display().to_string()),
     }
 }
 
-fn root(index: Option<(usize, &str)>, children: &[usize]) -> SourceScopeLocation {
+pub(super) fn root(index: Option<(usize, &str)>, children: &[usize]) -> SourceScopeLocation {
     SourceScopeLocation {
         target: match index {
             None => SourceScopeTarget::Primary,
@@ -276,7 +276,7 @@ fn group_read(owner: Option<&str>, path: &[&str], frame: Option<&[&str]>) -> Req
 }
 
 /// A closed context refusing one owned atomizer at its reached expression.
-fn refused(
+pub(super) fn refused(
     node: u32,
     scope: Option<SourceScopeLocation>,
     request: Request,
@@ -337,7 +337,7 @@ fn older_refusal(model: &str) -> ProgramValidationError {
     }
 }
 
-fn diagnostic(error: &ProgramValidationError) -> codegen::Diagnostic {
+pub(super) fn diagnostic(error: &ProgramValidationError) -> codegen::Diagnostic {
     let ProgramValidationError::OwnedSource { diagnostic } = error else {
         unreachable!("owned refusal");
     };
@@ -996,7 +996,10 @@ fn basic_xml_mixed468_legacy_mixed_content_and_errors_are_unchanged() -> TestRes
     Ok(())
 }
 
-fn write_artifacts(directory: &Path, artifacts: &codegen::ArtifactSet) -> TestResult<()> {
+pub(super) fn write_artifacts(
+    directory: &Path,
+    artifacts: &codegen::ArtifactSet,
+) -> TestResult<()> {
     for file in artifacts.files() {
         let path = directory.join(file.path.as_str());
         fs::create_dir_all(path.parent().ok_or("artifact parent")?)?;
@@ -1005,7 +1008,7 @@ fn write_artifacts(directory: &Path, artifacts: &codegen::ArtifactSet) -> TestRe
     Ok(())
 }
 
-fn host_rows(output: &Path, expected: usize, run: &Output) -> Result<(), String> {
+pub(super) fn host_rows(output: &Path, expected: usize, run: &Output) -> Result<(), String> {
     let rows: Vec<Json> = fs::read(output.join("ALL-COMPLETE-COMPARISONS.json"))
         .map_err(|error| error.to_string())
         .and_then(|bytes| serde_json::from_slice(&bytes).map_err(|error| error.to_string()))
