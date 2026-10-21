@@ -10,7 +10,6 @@
 //! by its first segment (ISA = X12, UNB = EDIFACT) -- see `format_edi`.
 
 use std::borrow::Cow;
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -27,9 +26,11 @@ const MAX_HTTP_RESPONSE_HEADER_BYTES: usize = 64 * 1024;
 const MAX_HTTP_REDIRECTS: u32 = 5;
 
 mod bundle;
+mod cancellation;
 mod code_generation;
 mod dynamic_source_loader;
 mod execution_policy;
+mod file_run;
 mod filesystem_pdf_reader;
 #[cfg(test)]
 mod filesystem_pdf_reader_tests;
@@ -41,15 +42,26 @@ mod pipeline;
 mod pipeline_preview;
 mod project_paths;
 mod read_set;
+mod route_capability;
 pub use bundle::{BundleCatalog, BundleCatalogKind, BundleOptions, BundleOutcome, bundle_project};
 use dynamic_source_loader::ProjectDynamicSourceLoader;
 pub use engine::{
     ExecutionBudgetKind, ExecutionBudgets, ExecutionPolicy, PathAccess, PolicyRefusal,
     RestrictedCapability, RestrictedPolicy, RootAccess,
 };
-use execution_policy::TRUSTED;
 pub use execution_policy::{load_execution_policy_file, parse_execution_policy};
+#[cfg(test)]
+use file_run::run_project_value_with_filesystem_policy;
+pub use file_run::{
+    PreparedFileRun, RunObservers, RunOptions, RunOutcome, RunRequest, WrittenOutput, run_project,
+    run_project_value_with_options, run_project_value_with_options_and_filesystem_policy,
+    run_project_value_with_options_and_pdf_reader, run_project_value_with_paths,
+    run_project_value_with_paths_and_trace, run_project_with_options,
+    run_project_with_options_and_filesystem_policy, run_project_with_options_and_pdf_reader,
+    run_project_with_paths, run_project_with_paths_and_trace,
+};
 pub use filesystem_pdf_reader::FilesystemPdfReader;
+use output_documents::{OutputDestination, TargetOutput, write_target_outputs};
 pub use pdf_worker_policy::FilesystemRunPolicy;
 mod rest_json;
 mod stdio;
@@ -67,25 +79,24 @@ pub use code_generation::{
     generate_project_with_json5_adapters, generate_project_with_raw_delimited_document_adapters,
     generate_project_with_static_document_adapters,
     generate_project_with_static_document_envelope_profiles, generate_project_with_x12_adapters,
-    generate_project_with_x12_envelope_profiles,
+    generate_project_with_x12_envelope_profiles, plan_generate,
 };
 pub use codegen::X12EnvelopeProfile;
 pub use engine::{
-    RequiredTargetSources, TargetSelection, TraceEvent, TraceFilterPhase, TraceGrouping,
-    TraceIteration, TraceOutputKind, TracePosition, TraceScope, TraceSink, TraceSortKey,
-    TraceSourceField, TraceSourceRow, TraceSourceTree, TraceTarget, TraceTargetFieldBinding,
-    TraceValue, TraceWindow, required_sources_for_target,
+    RequiredTargetSources, SourceOwnershipObservers, TargetSelection, TraceEvent, TraceFilterPhase,
+    TraceGrouping, TraceIteration, TraceOutputKind, TracePosition, TraceScope, TraceSink,
+    TraceSortKey, TraceSourceField, TraceSourceRow, TraceSourceTree, TraceTarget,
+    TraceTargetFieldBinding, TraceValue, TraceWindow, required_sources_for_target,
 };
-use output_documents::{OutputDestination, TargetOutput, write_target_outputs};
 pub use payload::{
     MAX_PAYLOAD_ARTIFACTS, MAX_PAYLOAD_DOCUMENT_BYTES, MAX_PAYLOAD_NAME_BYTES,
     MAX_PAYLOAD_PATH_BYTES, MAX_PAYLOAD_RUN_BYTES, NamedPayloadInput, PayloadArtifact,
-    PayloadDocument, PayloadRunOptions, PayloadRunOutcome, run_project_payloads,
+    PayloadDocument, PayloadRunOptions, PayloadRunOutcome, plan_payload_run, run_project_payloads,
     run_project_value_payloads,
 };
 pub use pipeline::{
     PipelineArtifact, PipelineHostFile, PipelineOutputFile, PipelineRunOptions, PipelineRunOutcome,
-    run_pipeline_file, run_pipeline_file_with_options,
+    plan_pipeline_run, run_pipeline_file, run_pipeline_file_with_options,
     run_pipeline_file_with_options_and_pdf_reader,
 };
 pub use pipeline_preview::{
@@ -103,7 +114,11 @@ pub use rest_json::{
     run_project_rest_json_request_file_payloads, run_project_value_rest_json_payloads,
     run_project_value_rest_json_request_file_payloads,
 };
-pub use stdio::{StandardIoRunOptions, run_project_with_standard_streams};
+pub use route_capability::{
+    HostRoute, InputRole, PlannedAcquisition, PlannedPublication, RoutePlan, RouteRefusal,
+    RunRouteArgs, plan_run, select_run_route,
+};
+pub use stdio::{PreparedStreamRun, StandardIoRunOptions, run_project_with_standard_streams};
 pub use trace_json::JsonTraceFile;
 
 /// Typed CSV failures, including recoverable authoring sample limits.
@@ -138,657 +153,6 @@ pub fn sample_csv_with_dialect(
     has_headers: bool,
 ) -> Result<CsvSample, format_csv::CsvFormatError> {
     format_csv::sample_with_dialect(path, delimiter, quote, quote_disabled, has_headers)
-}
-
-/// Result of running a project after resolving its input and output paths.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RunOutcome {
-    pub records_written: usize,
-    pub input_path: PathBuf,
-    pub output_path: PathBuf,
-    /// Files emitted by a per-document dynamic primary target. Ordinary
-    /// single-file targets leave this empty.
-    pub primary_outputs: Vec<WrittenOutput>,
-    pub extra_outputs: Vec<WrittenOutput>,
-    /// Every published file in deterministic primary-then-extra target order.
-    pub artifacts: Vec<WrittenOutput>,
-}
-
-/// One target file written during a project run.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WrittenOutput {
-    pub name: String,
-    pub records_written: usize,
-    pub path: PathBuf,
-}
-
-/// Host-supplied paths, scalar parameters, and optional tracing for one run.
-#[derive(Default)]
-pub struct RunOptions<'a> {
-    pub input_path: Option<&'a Path>,
-    pub output_path: Option<&'a Path>,
-    pub target: Option<TargetSelection<'a>>,
-    pub runtime_parameters: Option<&'a engine::RuntimeParameters>,
-    pub trace_sink: Option<&'a dyn TraceSink>,
-    /// Optional live control point before ordinary target-field writes.
-    pub debug_hook: Option<&'a dyn engine::DebugHook>,
-    /// Called after evaluation succeeds and before any output staging begins.
-    /// Returning false cancels the run without publishing target files.
-    pub before_publish: Option<&'a dyn Fn() -> bool>,
-    /// Host-owned artifact paths that mapping outputs must not replace. The
-    /// run also refuses to publish when one names the design or a consumed
-    /// local input, because the host replaces these paths afterwards.
-    pub protected_output_paths: &'a [&'a Path],
-    /// Host authority for the run; `None` is the trusted default.
-    pub execution_policy: Option<&'a ExecutionPolicy>,
-}
-
-impl<'a> RunOptions<'a> {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn with_input_path(mut self, path: &'a Path) -> Self {
-        self.input_path = Some(path);
-        self
-    }
-
-    pub fn with_output_path(mut self, path: &'a Path) -> Self {
-        self.output_path = Some(path);
-        self
-    }
-
-    pub fn with_target(mut self, target: TargetSelection<'a>) -> Self {
-        self.target = Some(target);
-        self
-    }
-
-    pub fn with_runtime_parameters(mut self, parameters: &'a engine::RuntimeParameters) -> Self {
-        self.runtime_parameters = Some(parameters);
-        self
-    }
-
-    pub fn with_trace_sink(mut self, trace_sink: &'a dyn TraceSink) -> Self {
-        self.trace_sink = Some(trace_sink);
-        self
-    }
-
-    pub fn with_debug_hook(mut self, debug_hook: &'a dyn engine::DebugHook) -> Self {
-        self.debug_hook = Some(debug_hook);
-        self
-    }
-
-    pub fn with_before_publish(mut self, gate: &'a dyn Fn() -> bool) -> Self {
-        self.before_publish = Some(gate);
-        self
-    }
-
-    pub fn with_protected_output_paths(mut self, paths: &'a [&'a Path]) -> Self {
-        self.protected_output_paths = paths;
-        self
-    }
-
-    pub fn with_execution_policy(mut self, policy: &'a ExecutionPolicy) -> Self {
-        self.execution_policy = Some(policy);
-        self
-    }
-}
-
-/// Loads the project at `project_path`, runs it against `input_path` (plus
-/// any extra sources the project declares), and writes the result to
-/// `output_path`. Returns the number of top-level records written (rows
-/// for a CSV output, 1 for an XML document).
-pub fn run_project(
-    project_path: &Path,
-    input_path: &Path,
-    output_path: &Path,
-) -> anyhow::Result<usize> {
-    Ok(run_project_with_paths(project_path, Some(input_path), Some(output_path))?.records_written)
-}
-
-/// Loads and runs a project, using explicit paths when provided and falling
-/// back to the project's `source_path` and `target_path`. Relative stored
-/// paths are resolved from the project file's directory; explicit paths keep
-/// their normal process-relative semantics.
-pub fn run_project_with_paths(
-    project_path: &Path,
-    input_path: Option<&Path>,
-    output_path: Option<&Path>,
-) -> anyhow::Result<RunOutcome> {
-    run_project_with_options(
-        project_path,
-        &RunOptions {
-            input_path,
-            output_path,
-            ..RunOptions::default()
-        },
-    )
-}
-
-/// Loads and runs a project with one unified host execution contract.
-pub fn run_project_with_options(
-    project_path: &Path,
-    options: &RunOptions<'_>,
-) -> anyhow::Result<RunOutcome> {
-    let project = load_project(project_path)?;
-    run_project_value_with_options(&project, project_path, options)
-}
-
-/// Loads and runs a project while reporting successful graph evaluations to
-/// `trace_sink` in deterministic execution order.
-pub fn run_project_with_paths_and_trace(
-    project_path: &Path,
-    input_path: Option<&Path>,
-    output_path: Option<&Path>,
-    trace_sink: &dyn TraceSink,
-) -> anyhow::Result<RunOutcome> {
-    run_project_with_options(
-        project_path,
-        &RunOptions {
-            input_path,
-            output_path,
-            trace_sink: Some(trace_sink),
-            ..RunOptions::default()
-        },
-    )
-}
-
-/// Runs an in-memory project without requiring it to be saved first.
-///
-/// `project_path` supplies the base directory for relative resources and the
-/// value exposed by mapping-path runtime nodes. The path itself may be a
-/// not-yet-created file, which lets graphical hosts execute an unsaved draft.
-pub fn run_project_value_with_paths(
-    project: &mapping::Project,
-    project_path: &Path,
-    input_path: Option<&Path>,
-    output_path: Option<&Path>,
-) -> anyhow::Result<RunOutcome> {
-    run_project_value_with_options(
-        project,
-        project_path,
-        &RunOptions {
-            input_path,
-            output_path,
-            ..RunOptions::default()
-        },
-    )
-}
-
-/// Runs an in-memory project and reports successful graph evaluations to
-/// `trace_sink` in deterministic execution order.
-pub fn run_project_value_with_paths_and_trace(
-    project: &mapping::Project,
-    project_path: &Path,
-    input_path: Option<&Path>,
-    output_path: Option<&Path>,
-    trace_sink: &dyn TraceSink,
-) -> anyhow::Result<RunOutcome> {
-    run_project_value_with_options(
-        project,
-        project_path,
-        &RunOptions {
-            input_path,
-            output_path,
-            trace_sink: Some(trace_sink),
-            ..RunOptions::default()
-        },
-    )
-}
-
-/// Runs an in-memory project with one unified host execution contract.
-pub fn run_project_value_with_options(
-    project: &mapping::Project,
-    project_path: &Path,
-    options: &RunOptions<'_>,
-) -> anyhow::Result<RunOutcome> {
-    run_project_value_with_filesystem_policy(project, project_path, options, None)
-}
-
-/// Loads a filesystem project with a caller-owned PDF reader.
-pub fn run_project_with_options_and_pdf_reader(
-    project_path: &Path,
-    options: &RunOptions<'_>,
-    reader: &dyn FilesystemPdfReader,
-) -> anyhow::Result<RunOutcome> {
-    let project = load_project(project_path)?;
-    run_project_value_with_options_and_pdf_reader(&project, project_path, options, reader)
-}
-
-/// Runs an in-memory project with a borrowed reader for configured filesystem PDF inputs.
-pub fn run_project_value_with_options_and_pdf_reader(
-    project: &mapping::Project,
-    project_path: &Path,
-    options: &RunOptions<'_>,
-    reader: &dyn FilesystemPdfReader,
-) -> anyhow::Result<RunOutcome> {
-    run_project_value_with_pdf_reader(project, project_path, options, Some(reader))
-}
-
-/// Loads a filesystem project with an explicit owned-PDF policy. Payload and
-/// default pipeline entrypoints retain their existing in-process behavior.
-pub fn run_project_with_options_and_filesystem_policy(
-    project_path: &Path,
-    options: &RunOptions<'_>,
-    policy: &FilesystemRunPolicy,
-) -> anyhow::Result<RunOutcome> {
-    let project = load_project(project_path)?;
-    run_project_value_with_options_and_filesystem_policy(&project, project_path, options, policy)
-}
-
-pub fn run_project_value_with_options_and_filesystem_policy(
-    project: &mapping::Project,
-    project_path: &Path,
-    options: &RunOptions<'_>,
-    policy: &FilesystemRunPolicy,
-) -> anyhow::Result<RunOutcome> {
-    run_project_value_with_filesystem_policy(project, project_path, options, Some(policy))
-}
-
-fn run_project_value_with_filesystem_policy(
-    project: &mapping::Project,
-    project_path: &Path,
-    options: &RunOptions<'_>,
-    policy: Option<&FilesystemRunPolicy>,
-) -> anyhow::Result<RunOutcome> {
-    run_project_value_with_pdf_reader(
-        project,
-        project_path,
-        options,
-        policy.map(|policy| policy as &dyn FilesystemPdfReader),
-    )
-}
-
-fn run_project_value_with_pdf_reader(
-    project: &mapping::Project,
-    project_path: &Path,
-    options: &RunOptions<'_>,
-    reader: Option<&dyn FilesystemPdfReader>,
-) -> anyhow::Result<RunOutcome> {
-    require_valid(project)?;
-    let policy = options.execution_policy.unwrap_or(&TRUSTED);
-
-    let input_path = resolve_run_path(
-        project_path,
-        options.input_path,
-        project.source_path.as_deref(),
-        "input",
-        "source_path",
-        true,
-    )?;
-    let targets = plan_project_targets(project, project_path, options.output_path, options.target)?;
-    output_documents::reject_protected_static_targets(&targets, options.protected_output_paths)?;
-    for target in &targets {
-        policy.authorize_write(target.destination.path())?;
-    }
-    engine::check_source_ownership_capability_with_observers(
-        project,
-        options.target,
-        engine::SourceOwnershipObservers {
-            tracing: options.trace_sink.is_some(),
-            debugging: options.debug_hook.is_some(),
-        },
-    )?;
-    let required_sources = options
-        .target
-        .map(|selection| engine::required_sources_for_target(project, selection))
-        .transpose()?;
-    let required_static_names = required_sources.as_ref().map(|sources| {
-        sources
-            .static_sources
-            .iter()
-            .map(|source| source.name.as_str())
-            .collect::<BTreeSet<_>>()
-    });
-    let output_path = targets
-        .first()
-        .map(|target| target.destination.path().to_path_buf())
-        .context("project run selected no targets")?;
-
-    let source_instance = read_instance_with_pdf_reader(
-        &input_path,
-        &project.source,
-        &project.source_options,
-        reader,
-        policy,
-    )?;
-    let mut read_set = read_set::ReadSet::new(project_path);
-    read_set.push_source(&input_path, &source_instance);
-
-    let project_dir = project_path.parent().unwrap_or_else(|| Path::new("."));
-    let mut extras = Vec::with_capacity(project.extra_sources.len());
-    for extra in project.extra_sources.iter().filter(|extra| {
-        extra.dynamic_path.is_none()
-            && required_static_names
-                .as_ref()
-                .is_none_or(|required| required.contains(extra.name.as_str()))
-    }) {
-        let path = PathBuf::from(&extra.path);
-        let path = if path.is_absolute() || http_url(&path).is_some() {
-            path
-        } else {
-            project_dir.join(path)
-        };
-        let instance =
-            read_instance_with_pdf_reader(&path, &extra.schema, &extra.options, reader, policy)
-                .with_context(|| format!("loading extra source `{}`", extra.name))?;
-        read_set.push_source(&path, &instance);
-        extras.push((extra.name.clone(), instance));
-    }
-    read_set.reject_protected(options.protected_output_paths)?;
-
-    let runtime_project_path = absolute_mapping_path(project_path)?;
-    let current_datetime = jiff::Zoned::now()
-        .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
-        .to_string();
-    let dynamic_loader =
-        ProjectDynamicSourceLoader::with_pdf_reader(project_dir, &project.extra_sources, reader)
-            .with_trace_sink(options.trace_sink)
-            .with_execution_policy(policy);
-    let mut execution = engine::ExecutionContext::new(&runtime_project_path)
-        .with_current_datetime(&current_datetime)
-        .with_dynamic_source_loader(&dynamic_loader)
-        .with_policy(policy);
-    if let Some(parameters) = options.runtime_parameters {
-        execution = execution.with_parameters(parameters);
-    }
-    if let Some(trace_sink) = options.trace_sink {
-        execution = execution.with_trace_sink(trace_sink);
-    }
-    if let Some(debug_hook) = options.debug_hook {
-        execution = execution.with_debug_hook(debug_hook);
-    }
-    let written = if let Some(selection) = options.target {
-        let output = engine::run_selected_target_with_sources_and_context(
-            project,
-            &source_instance,
-            extras,
-            &execution,
-            selection,
-        )?;
-        allow_output_publication(options, &mut read_set, &dynamic_loader)?;
-        // Target values own their data; inputs are no longer needed during serialization.
-        drop(dynamic_loader);
-        drop(source_instance);
-        write_selected_target(
-            &targets[0],
-            &output,
-            &current_datetime,
-            options.protected_output_paths,
-            policy,
-        )?
-    } else {
-        let outputs = engine::run_outputs_with_sources_and_context(
-            project,
-            &source_instance,
-            extras,
-            &execution,
-        )?;
-        allow_output_publication(options, &mut read_set, &dynamic_loader)?;
-        // Target values own their data; inputs are no longer needed during serialization.
-        drop(dynamic_loader);
-        drop(source_instance);
-        write_all_targets(
-            &targets,
-            &outputs,
-            &current_datetime,
-            options.protected_output_paths,
-            policy,
-        )?
-    };
-
-    Ok(RunOutcome {
-        records_written: written.records,
-        input_path,
-        output_path,
-        primary_outputs: written.primary_outputs,
-        extra_outputs: written.extra_outputs,
-        artifacts: written.artifacts,
-    })
-}
-
-fn allow_output_publication(
-    options: &RunOptions<'_>,
-    read_set: &mut read_set::ReadSet,
-    dynamic_loader: &ProjectDynamicSourceLoader<'_>,
-) -> anyhow::Result<()> {
-    read_set.push_dynamic_loads(dynamic_loader);
-    read_set.reject_protected(options.protected_output_paths)?;
-    if options.before_publish.is_some_and(|gate| !gate()) {
-        return Err(engine::EngineError::DebugCancelled.into());
-    }
-    Ok(())
-}
-
-struct PlannedProjectTarget<'a> {
-    name: &'a str,
-    schema: &'a SchemaNode,
-    options: &'a FormatOptions,
-    destination: OutputDestination,
-    primary: bool,
-}
-
-struct WrittenTargets {
-    records: usize,
-    primary_outputs: Vec<WrittenOutput>,
-    extra_outputs: Vec<WrittenOutput>,
-    artifacts: Vec<WrittenOutput>,
-}
-
-impl OutputDestination {
-    fn path(&self) -> &Path {
-        match self {
-            Self::Static(path) | Self::DynamicBase(path) => path,
-        }
-    }
-}
-
-fn plan_project_targets<'a>(
-    project: &'a mapping::Project,
-    project_path: &Path,
-    output_path: Option<&Path>,
-    selection: Option<TargetSelection<'_>>,
-) -> anyhow::Result<Vec<PlannedProjectTarget<'a>>> {
-    match selection {
-        None => {
-            let mut targets = Vec::with_capacity(1 + project.extra_targets.len());
-            targets.push(plan_primary_target(project, project_path, output_path)?);
-            for target in &project.extra_targets {
-                targets.push(plan_named_target(target, project_path, None)?);
-            }
-            Ok(targets)
-        }
-        Some(TargetSelection::Primary) => Ok(vec![plan_primary_target(
-            project,
-            project_path,
-            output_path,
-        )?]),
-        Some(TargetSelection::Named(name)) => {
-            let mut matches = project
-                .extra_targets
-                .iter()
-                .filter(|target| target.name == name);
-            let target = matches
-                .next()
-                .ok_or_else(|| engine::EngineError::UnknownTarget {
-                    name: name.to_string(),
-                })?;
-            if matches.next().is_some() {
-                return Err(engine::EngineError::AmbiguousTarget {
-                    name: name.to_string(),
-                }
-                .into());
-            }
-            Ok(vec![plan_named_target(target, project_path, output_path)?])
-        }
-    }
-}
-
-fn plan_primary_target<'a>(
-    project: &'a mapping::Project,
-    project_path: &Path,
-    output_path: Option<&Path>,
-) -> anyhow::Result<PlannedProjectTarget<'a>> {
-    let destination = if project.root.output_path().is_some() {
-        OutputDestination::DynamicBase(output_path.map(Path::to_path_buf).unwrap_or_else(|| {
-            project_path
-                .parent()
-                .unwrap_or(Path::new("."))
-                .to_path_buf()
-        }))
-    } else {
-        OutputDestination::Static(resolve_run_path(
-            project_path,
-            output_path,
-            project.target_path.as_deref(),
-            "output",
-            "target_path",
-            false,
-        )?)
-    };
-    Ok(PlannedProjectTarget {
-        name: &project.target.name,
-        schema: &project.target,
-        options: &project.target_options,
-        destination,
-        primary: true,
-    })
-}
-
-fn plan_named_target<'a>(
-    target: &'a mapping::NamedTarget,
-    project_path: &Path,
-    output_path: Option<&Path>,
-) -> anyhow::Result<PlannedProjectTarget<'a>> {
-    let destination = if target.root.output_path().is_some() {
-        OutputDestination::DynamicBase(output_path.map(Path::to_path_buf).unwrap_or_else(|| {
-            project_path
-                .parent()
-                .unwrap_or(Path::new("."))
-                .to_path_buf()
-        }))
-    } else {
-        let path = match output_path {
-            Some(path) => path.to_path_buf(),
-            None => {
-                let stored = target
-                    .path
-                    .as_deref()
-                    .filter(|path| !path.trim().is_empty())
-                    .with_context(|| {
-                        format!("extra target `{}` has no stored output path", target.name)
-                    })?;
-                resolve_stored_path(project_path, stored, false)
-                    .with_context(|| format!("resolving extra target `{}` output", target.name))?
-            }
-        };
-        OutputDestination::Static(path)
-    };
-    Ok(PlannedProjectTarget {
-        name: &target.name,
-        schema: &target.schema,
-        options: &target.options,
-        destination,
-        primary: false,
-    })
-}
-
-fn write_all_targets(
-    targets: &[PlannedProjectTarget<'_>],
-    outputs: &engine::ExecutionOutputs,
-    current_datetime: &str,
-    protected_output_paths: &[&Path],
-    policy: &ExecutionPolicy,
-) -> anyhow::Result<WrittenTargets> {
-    if outputs.extras.len() + 1 != targets.len() {
-        bail!("engine returned an unexpected number of target values");
-    }
-    let mut writes = Vec::with_capacity(targets.len());
-    writes.push(target_write(
-        &targets[0],
-        &outputs.primary,
-        current_datetime,
-    ));
-    for (target, output) in targets.iter().skip(1).zip(&outputs.extras) {
-        writes.push(target_write(target, &output.instance, current_datetime));
-    }
-    let mut written = write_target_outputs(&writes, protected_output_paths, policy)?.into_iter();
-    let primary_result = written
-        .next()
-        .context("output batch did not return a primary target result")?;
-    let row_count = primary_result.records_written;
-    let mut primary_outputs = primary_result.outputs;
-    let mut artifacts = primary_outputs.clone();
-    if matches!(targets[0].destination, OutputDestination::Static(_)) {
-        primary_outputs.clear();
-    }
-    let extra_outputs = written
-        .flat_map(|target| target.outputs)
-        .collect::<Vec<_>>();
-    artifacts.extend(extra_outputs.iter().cloned());
-    Ok(WrittenTargets {
-        records: row_count,
-        primary_outputs,
-        extra_outputs,
-        artifacts,
-    })
-}
-
-fn write_selected_target(
-    target: &PlannedProjectTarget<'_>,
-    output: &engine::SelectedTargetOutput,
-    current_datetime: &str,
-    protected_output_paths: &[&Path],
-    policy: &ExecutionPolicy,
-) -> anyhow::Result<WrittenTargets> {
-    let instance = match (target.primary, output) {
-        (true, engine::SelectedTargetOutput::Primary(instance)) => instance,
-        (false, engine::SelectedTargetOutput::Named(output)) if output.name == target.name => {
-            &output.instance
-        }
-        _ => bail!("engine returned a different target than requested"),
-    };
-    let mut written = write_target_outputs(
-        &[target_write(target, instance, current_datetime)],
-        protected_output_paths,
-        policy,
-    )?
-    .into_iter();
-    let result = written
-        .next()
-        .context("output batch did not return the selected target result")?;
-    let records_written = result.records_written;
-    let artifacts = result.outputs;
-    let (primary_outputs, extra_outputs) = if target.primary {
-        let dynamic = matches!(target.destination, OutputDestination::DynamicBase(_))
-            .then(|| artifacts.clone())
-            .unwrap_or_default();
-        (dynamic, Vec::new())
-    } else {
-        (Vec::new(), artifacts.clone())
-    };
-    Ok(WrittenTargets {
-        records: records_written,
-        primary_outputs,
-        extra_outputs,
-        artifacts,
-    })
-}
-
-fn target_write<'a>(
-    target: &'a PlannedProjectTarget<'_>,
-    instance: &'a Instance,
-    current_datetime: &'a str,
-) -> TargetOutput<'a> {
-    TargetOutput {
-        destination: &target.destination,
-        name: target.name,
-        schema: target.schema,
-        instance,
-        options: target.options,
-        current_datetime,
-        additional: !target.primary,
-    }
 }
 
 fn absolute_mapping_path(project_path: &Path) -> anyhow::Result<Cow<'_, Path>> {
@@ -859,7 +223,8 @@ pub fn validate_project(project_path: &Path) -> anyhow::Result<Vec<engine::Valid
     Ok(validate(&load_project(project_path)?))
 }
 
-fn load_project(project_path: &Path) -> anyhow::Result<mapping::Project> {
+/// Reads and decodes a project file without validating or running it.
+pub fn load_project(project_path: &Path) -> anyhow::Result<mapping::Project> {
     let project_json = std::fs::read_to_string(project_path)
         .with_context(|| format!("reading project file {}", project_path.display()))?;
     mapping::project_file::decode_str(&project_json)
