@@ -27,8 +27,14 @@ grammar and canonical representation using .NET decimal arithmetic. Its separate
 `FerruleDecimalException` exposes the same refusal categories. Neither type has
 implicit conversions to or from the existing runtime value model.
 
+`from_f64` / `FromDouble` explicitly selects the .NET binary64 conversion policy:
+scale toward fifteen significant decimal digits, round nearest with ties to
+even, and cap the decimal scale at 28. Very small values become canonical zero;
+nonfinite and out-of-range values return overflow. This is not an exact recovery
+of a binary64 value's original decimal spelling and does not parse exponent text.
+
 These types do not change `Value`, `ScalarType`, existing Int/Float arithmetic,
 serialization, import admission, generated libraries or format readers/writers.
 Those boundaries require an explicit decimal profile before they can use it.
-Exponent conversion, multiplication, division and external runtime equivalence
+Exponent lexical parsing, multiplication, division and external runtime equivalence
 are not supplied by this type's plain-decimal/addition contract.
