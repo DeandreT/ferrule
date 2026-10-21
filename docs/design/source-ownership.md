@@ -187,6 +187,19 @@ a missing chosen property is Null and never borrowed from another owner or
 frame. Root paths, absent frames and explicit root pins keep their distinct
 owned-field meanings. See the [dynamic source-field contract](owned-dynamic-field.md).
 
+## Generated-item reductions
+
+`SequenceAggregate` over the same four producers evaluates producer arguments in
+the receiving source context, then its predicate and value expression once per
+item in order, and finally its argument once in the receiving context, even for
+an empty sequence. The item phases append only a private scalar item frame with
+the raw item position; owned reads keep the receiving owner, pins and positions,
+and the argument never sees the item. Count, sum, avg, min, max, join and
+item_at keep their empty, numeric and typed-failure rules. RecursiveCollect,
+FilterMap and closed operators in any phase remain closed, and collection and
+joined aggregates keep their own scopes. See
+[the aggregate contract](owned-sequence-aggregate.md).
+
 ## Existing coordinated issues
 
 Reuse these existing scopes; the capability column concerns **explicit ownership**.
