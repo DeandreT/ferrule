@@ -105,6 +105,7 @@ pub(in crate::export) fn selector_context_warnings(
             match node {
                 Node::OwnedSourceField(_)
                 | Node::OwnedPosition(_)
+                | Node::OwnedRowDocumentPath(_)
                 | Node::OwnedDynamicSourceField(_)
                 | Node::OwnedLookup(_)
                 | Node::OwnedCollectionFind(_) => {

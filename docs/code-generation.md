@@ -359,6 +359,53 @@ generation profiles, including ItemAt and EndingWith, continue to reject
 `SequenceExists` in owned contexts. See [the ownership contract](design/owned-sequence-exists.md)
 and [the genuine-Project corpus](../conformance/basic-owned-sequence-exists/README.md).
 
+## Explicit owned sequence aggregate
+
+Use `codegen::lower_with_basic_owned_sequence_aggregate`, followed by
+`codegen_rust::emit_with_basic_owned_sequence_aggregate(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_sequence_aggregate(&program)`. Direct
+Program validation and named-input admission use
+`validate_program_with_basic_owned_sequence_aggregate`,
+`validate_basic_owned_sequence_aggregate_emission` and
+`legacy_named_input_admission_plan_with_basic_owned_sequence_aggregate`.
+
+This profile admits `SequenceAggregate` over Generate, Tokenize, TokenizeByLength
+and TokenizeRegex beside everything the SequenceExists profile admits: the Exists
+and ItemAt consumers and the By, AdjacentBy, StartingWith and EndingWith controls
+with their filter, sort, window and primary-row-failure permissions. Owned
+scalar reads are allowed in the producer arguments, predicate, value expression
+and argument, including nested eligible aggregate, Exists and ItemAt consumers.
+The generated libraries use the two typed Basic execution entries and the
+mandatory five-field policy.
+
+Producer arguments evaluate once in the receiving context and materialize the
+complete sequence. Items are then visited in order: the predicate, then the
+value expression of a selected item; rejected items never evaluate the
+expression. The argument evaluates once afterwards in the receiving context,
+including for an empty or null-suppressed sequence. A producer exception
+prevents every later phase, an item-phase exception prevents later items and the
+argument, and a non-Boolean predicate fails with a typed error naming the
+predicate node. Count, sum, avg, min, max, join and item_at keep their ordinary
+empty results, numeric parsing, integer/float tags and typed overflow and
+non-finite failures.
+
+Each item phase appends the private item to the receiving context as an
+empty-path collection frame. The item declaration, empty-path ordinary reads and
+empty legacy positions see that item, with raw positions that do not compact
+after rejected items. Owned reads ignore it: exact owners, root and collection
+pins, grouped representatives and member positions keep their receiving
+meaning, and an unavailable selected owner fails only when a reached phase reads
+it. The generated Rust and C# contexts copy the paired view for each item and
+admit that copy against the caller's policy.
+
+Legacy and owned RecursiveCollect, FilterMap, collection and joined aggregates,
+closed operators in any phase, owned failure predicates and generated-sequence
+scopes keep their refusals. Every other generation profile, including
+SequenceExists, RecursiveFilter, owned Lookup/CollectionFind and owned dynamic
+source fields, continues to reject `SequenceAggregate` in owned contexts. See
+[the ownership contract](design/owned-sequence-aggregate.md) and
+[the genuine-Project corpus](../conformance/basic-owned-sequence-aggregate/README.md).
+
 ## Explicit owned adjacent grouping
 
 Use `codegen::lower_with_basic_owned_group_adjacent_by`, then

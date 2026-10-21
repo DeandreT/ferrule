@@ -534,6 +534,13 @@ impl<'a> Admission<'a> {
                     Some(id),
                     None,
                 )?,
+                Node::OwnedRowDocumentPath(path) => self.static_owner(
+                    &path.owner,
+                    path.collection.as_deref().unwrap_or_default(),
+                    None,
+                    Some(id),
+                    None,
+                )?,
                 _ => {}
             }
             pending.extend(node.dependencies());
@@ -676,7 +683,12 @@ impl<'a> Admission<'a> {
                     && matches!(node, Node::OwnedSourceField(_));
                 let row_value = primary_row_failure
                     && context == OwnedCapabilityContext::FailureRule
-                    && matches!(node, Node::OwnedSourceField(_) | Node::OwnedPosition(_));
+                    && matches!(
+                        node,
+                        Node::OwnedSourceField(_)
+                            | Node::OwnedPosition(_)
+                            | Node::OwnedRowDocumentPath(_)
+                    );
                 if context != OwnedCapabilityContext::Basic && !root_field && !row_value {
                     return Err(EngineError::UnsupportedOwnedContext {
                         node: Some(id),
@@ -710,6 +722,13 @@ impl<'a> Admission<'a> {
                     Node::OwnedPosition(position) => self.static_owner(
                         &position.owner,
                         position.collection.as_deref().unwrap_or_default(),
+                        None,
+                        Some(id),
+                        None,
+                    )?,
+                    Node::OwnedRowDocumentPath(path) => self.static_owner(
+                        &path.owner,
+                        path.collection.as_deref().unwrap_or_default(),
                         None,
                         Some(id),
                         None,
@@ -777,7 +796,9 @@ impl<'a> Admission<'a> {
             let child_context = if context == OwnedCapabilityContext::Basic {
                 if matches!(
                     node,
-                    Node::SequenceItemAt { .. } | Node::SequenceExists { .. }
+                    Node::SequenceItemAt { .. }
+                        | Node::SequenceExists { .. }
+                        | Node::SequenceAggregate { .. }
                 ) && !basic_consumer_parents(
                     project,
                     graph.expect("node belongs to a graph"),
@@ -834,11 +855,10 @@ impl<'a> Admission<'a> {
                         self.path(&replacement.collection);
                     }
                 }
-                Node::SequenceItemAt { sequence, .. } | Node::SequenceExists { sequence, .. } => {
+                Node::SequenceItemAt { sequence, .. }
+                | Node::SequenceExists { sequence, .. }
+                | Node::SequenceAggregate { sequence, .. } => {
                     self.sequence(sequence, function, child_context, true)
-                }
-                Node::SequenceAggregate { sequence, .. } => {
-                    self.sequence(sequence, function, child_context, false)
                 }
                 Node::JoinAggregate { plan, .. } => {
                     for source in plan.sources() {
@@ -881,13 +901,14 @@ pub(crate) fn failure_rule_uses_owned(graph: &mapping::Graph, rule: &mapping::Fa
 fn root_failure_node_is_static(project: &Project, node: &Node) -> bool {
     if matches!(
         node,
-        Node::SequenceItemAt { .. } | Node::SequenceExists { .. }
+        Node::SequenceItemAt { .. } | Node::SequenceExists { .. } | Node::SequenceAggregate { .. }
     ) || node_context(node) != OwnedCapabilityContext::Basic
     {
         return false;
     }
     match node {
         Node::OwnedPosition(_)
+        | Node::OwnedRowDocumentPath(_)
         | Node::Position { .. }
         | Node::OwnedDynamicSourceField(_)
         | Node::OwnedLookup(_)
@@ -919,15 +940,17 @@ fn primary_row_failure_is_static(project: &Project, collection: &[String]) -> bo
 fn primary_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
     if matches!(
         node,
-        Node::SequenceItemAt { .. } | Node::SequenceExists { .. }
+        Node::SequenceItemAt { .. } | Node::SequenceExists { .. } | Node::SequenceAggregate { .. }
     ) || node_context(node) != OwnedCapabilityContext::Basic
     {
         return false;
     }
     match node {
         // Owned dynamic reads are qualified only in Basic target contexts.
-        Node::OwnedDynamicSourceField(_) => false,
-        Node::OwnedLookup(_) | Node::OwnedCollectionFind(_) => false,
+        Node::OwnedDynamicSourceField(_)
+        | Node::OwnedLookup(_)
+        | Node::OwnedCollectionFind(_)
+        | Node::OwnedRowDocumentPath(_) => false,
         Node::OwnedPosition(position) => matches!(position.owner, SourceOwner::Primary),
         Node::OwnedSourceField(field) => match &field.source.owner {
             SourceOwner::Primary => true,
@@ -946,14 +969,18 @@ fn primary_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
 /// Owned failure rows add exact row positions and frame pins for every owner to
 /// the static scalar subset. Specialized contexts, including ItemAt, stay closed.
 fn owned_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
-    if matches!(node, Node::SequenceItemAt { .. })
-        || node_context(node) != OwnedCapabilityContext::Basic
+    if matches!(
+        node,
+        Node::SequenceItemAt { .. } | Node::SequenceAggregate { .. }
+    ) || node_context(node) != OwnedCapabilityContext::Basic
     {
         return false;
     }
     match node {
         Node::OwnedPosition(_) | Node::OwnedSourceField(_) => true,
-        Node::OwnedLookup(_) | Node::OwnedCollectionFind(_) => false,
+        Node::OwnedLookup(_) | Node::OwnedCollectionFind(_) | Node::OwnedRowDocumentPath(_) => {
+            false
+        }
         Node::UserFunctionCall { .. } | Node::OwnedDynamicSourceField(_) => false,
         Node::SourceField { path, frame } => ![Some(path.as_slice()), frame.as_deref()]
             .into_iter()
@@ -1089,7 +1116,8 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
 
 /// Parent-context ItemAt producers. The owned recursive walk is qualified
 /// here; the legacy recursive walk keeps its specialized tree classification.
-/// Exists predicates are qualified only over the four pure scalar producers.
+/// Exists predicates and SequenceAggregate item phases are qualified only over
+/// the four pure scalar producers.
 fn basic_exists_producer(sequence: &SequenceExpr) -> bool {
     basic_item_at_producer(sequence) && !matches!(sequence, SequenceExpr::OwnedRecursiveCollect(_))
 }
@@ -1105,23 +1133,38 @@ fn basic_item_at_producer(sequence: &SequenceExpr) -> bool {
     )
 }
 
-/// ItemAt producer arguments/index and Exists producer arguments/predicate
-/// remain Basic scalars, including nested eligible consumers. The Exists
-/// predicate adds only its private generated item, which is not an endpoint.
+/// ItemAt producer arguments/index, Exists producer arguments/predicate and
+/// SequenceAggregate producer arguments/predicate/expression/argument remain
+/// Basic scalars, including nested eligible consumers. Item phases add only
+/// their private generated item, which is not an endpoint; an aggregate
+/// argument keeps the receiving context.
 /// A closed operator in one argument cannot gain permission merely because an
 /// owned read is in another. Legacy islands keep their original classification.
 fn basic_consumer_parents(project: &Project, graph: &mapping::Graph, node: &Node) -> bool {
     let (sequence, consumer) = match node {
         Node::SequenceItemAt { sequence, index } if basic_item_at_producer(sequence) => {
-            (sequence, *index)
+            (sequence, vec![*index])
         }
         Node::SequenceExists {
             sequence,
             predicate,
-        } if basic_exists_producer(sequence) => (sequence, *predicate),
+        } if basic_exists_producer(sequence) => (sequence, vec![*predicate]),
+        Node::SequenceAggregate {
+            sequence,
+            predicate,
+            expression,
+            arg,
+            ..
+        } if basic_exists_producer(sequence) => (
+            sequence,
+            [*predicate, *expression, *arg]
+                .into_iter()
+                .flatten()
+                .collect(),
+        ),
         _ => return false,
     };
-    let mut pending: Vec<_> = sequence.inputs().into_iter().chain([consumer]).collect();
+    let mut pending: Vec<_> = sequence.inputs().into_iter().chain(consumer).collect();
     let mut visited = BTreeSet::new();
     while let Some(id) = pending.pop() {
         if !visited.insert(id) {
@@ -1166,7 +1209,9 @@ fn node_context(node: &Node) -> OwnedCapabilityContext {
         Node::SequenceItemAt { sequence, .. } if basic_item_at_producer(sequence) => {
             OwnedCapabilityContext::Basic
         }
-        Node::SequenceExists { sequence, .. } if basic_exists_producer(sequence) => {
+        Node::SequenceExists { sequence, .. } | Node::SequenceAggregate { sequence, .. }
+            if basic_exists_producer(sequence) =>
+        {
             OwnedCapabilityContext::Basic
         }
         Node::SequenceExists { .. }
