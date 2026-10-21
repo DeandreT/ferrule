@@ -167,9 +167,9 @@ pub fn lower_with_basic_owned_collection_aggregates(
     )
 }
 
-/// Lowers owned inner joins and their tuple reads with the owned Lookup and
-/// CollectionFind profile. Every older route keeps refusing owned joins at its
-/// preflight; owned joined aggregates stay closed.
+/// Lowers owned inner joins, their tuple reads and owned joined aggregates with
+/// the owned Lookup and CollectionFind profile. Every older route keeps
+/// refusing owned joins at its preflight and joined aggregates at validation.
 pub fn lower_with_basic_owned_joins(project: &Project) -> Result<Program, LowerError> {
     lower_with_policy(
         project,
@@ -1350,6 +1350,7 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
             Expression::OwnedJoinSourcePosition(position.clone())
         }
         Node::OwnedXmlMixedContent(mixed) => Expression::OwnedXmlMixedContent(mixed.clone()),
+        Node::OwnedJoinAggregate(aggregate) => Expression::OwnedJoinAggregate(aggregate.clone()),
         Node::SourceField { path, frame } => Expression::SourceField {
             frame: frame.clone(),
             path: path.clone(),

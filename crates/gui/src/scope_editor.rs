@@ -992,6 +992,11 @@ fn node_label(node: &mapping::Node) -> String {
             "owned XML mixed content {:?} {:?}; frame {:?} (unavailable)",
             mixed.source.owner, mixed.source.path, mixed.frame
         ),
+        mapping::Node::OwnedJoinAggregate(aggregate) => format!(
+            "owned join {} aggregate {:?} (read-only)",
+            aggregate.join.get(),
+            aggregate.function
+        ),
         mapping::Node::SourceField { path, .. } => format!("field {}", display_path(path)),
         mapping::Node::SourceDocumentPath => "source document path".to_string(),
         mapping::Node::SourceRootXmlTypeEquals { .. } => {

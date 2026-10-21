@@ -307,7 +307,8 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
             | Node::OwnedAggregate(_)
             | Node::OwnedJoinField(_)
             | Node::OwnedJoinSourcePosition(_)
-            | Node::OwnedXmlMixedContent(_) => {
+            | Node::OwnedXmlMixedContent(_)
+            | Node::OwnedJoinAggregate(_) => {
                 return Err(MfdError::UnsupportedSourceOwnership {
                     node: id,
                     function: None,

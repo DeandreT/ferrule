@@ -1179,6 +1179,7 @@ impl GraphViewer<'_> {
             Node::OwnedJoinField(_) | Node::OwnedJoinSourcePosition(_) => None,
             Node::OwnedCollectionFind(find) => [find.predicate, find.value].get(idx).copied(),
             Node::OwnedAggregate(aggregate) => aggregate.inputs().get(idx).copied(),
+            Node::OwnedJoinAggregate(aggregate) => aggregate.inputs().get(idx).copied(),
             Node::DynamicSourceField { key, .. } => (idx == 0).then_some(*key),
             Node::OwnedDynamicSourceField(field) => (idx == 0).then_some(field.key),
             Node::XmlMixedContent { replacements, .. } => replacements
@@ -1463,6 +1464,7 @@ impl GraphViewer<'_> {
             Node::CollectionFind { .. } | Node::OwnedCollectionFind(_) => 2,
             Node::OwnedLookup(_) => 1,
             Node::OwnedAggregate(aggregate) => aggregate.inputs().len(),
+            Node::OwnedJoinAggregate(aggregate) => aggregate.inputs().len(),
             Node::SequenceExists {
                 sequence,
                 predicate: _,
@@ -1629,6 +1631,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     Some(Node::OwnedXmlMixedContent(mixed)) => {
                         format!("Owned XML mixed content: {}", mixed.source.path.join("/"))
                     }
+                    Some(Node::OwnedJoinAggregate(aggregate)) => format!(
+                        "Owned join {} {:?}",
+                        aggregate.join.get(),
+                        aggregate.function
+                    ),
                     Some(Node::SourceField { .. })
                         if self.function_output.is_none()
                             && !graph_references::sequence_item_owners(
@@ -2294,6 +2301,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         "values".to_string()
                     }
                     Some(Node::OwnedAggregate(_)) => "arg".to_string(),
+                    Some(Node::OwnedJoinAggregate(aggregate))
+                        if aggregate.expression.is_some() && idx == 0 =>
+                    {
+                        "values".to_string()
+                    }
+                    Some(Node::OwnedJoinAggregate(_)) => "arg".to_string(),
                     _ => String::new(),
                 })
             }
