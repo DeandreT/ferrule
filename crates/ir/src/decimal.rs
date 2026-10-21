@@ -4,6 +4,8 @@ use std::{cmp::Ordering, error::Error, fmt};
 
 #[path = "decimal_float.rs"]
 mod float;
+#[path = "decimal_number.rs"]
+mod number;
 
 pub const MAX_DECIMAL_LEXICAL_BYTES: usize = 4096;
 pub const MAX_DECIMAL_SCALE: u8 = 28;
@@ -16,6 +18,7 @@ pub enum DecimalError {
     InvalidScale,
     Overflow,
     PrecisionLoss,
+    InvalidNumberLexical,
 }
 
 impl fmt::Display for DecimalError {
@@ -26,6 +29,9 @@ impl fmt::Display for DecimalError {
             Self::InvalidScale => "decimal scale must not exceed 28",
             Self::Overflow => "decimal coefficient exceeds the 96-bit range",
             Self::PrecisionLoss => "decimal cannot be represented without rounding",
+            Self::InvalidNumberLexical => {
+                "expected an ASCII decimal number with an optional exponent"
+            }
         })
     }
 }
