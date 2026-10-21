@@ -351,6 +351,41 @@ impl EndpointHeaderFixture {
         })
     }
 
+    fn viewer(&mut self, x12: bool) -> GraphViewer<'_> {
+        GraphViewer {
+            graph: &mut self.graph,
+            root_scope: &mut self.root,
+            primary_root_authoring: false,
+            extra_targets: &[],
+            inactive_target_scopes: &[],
+            project_references: Default::default(),
+            source_blocks: &self.source_blocks,
+            target_blocks: &self.target_blocks,
+            source_x12: x12,
+            target_x12: x12,
+            source_paths: &self.source_paths,
+            function_names: Default::default(),
+            function_inputs: Default::default(),
+            parameter_names: Default::default(),
+            protected_output: None,
+            function_output: None,
+            requested_function_open: None,
+            colors: crate::appearance::SemanticThemeColors::default(),
+            wire_color_mode: crate::appearance::WireColorMode::Theme,
+            endpoint_scroll: &mut self.scroll,
+            value_map_wheel: None,
+            endpoint_search_match: None,
+            node_sizes: Some(&mut self.sizes),
+            hovered_node: None,
+            hovered_node_this_frame: None,
+            camera_pan: egui::Vec2::ZERO,
+            camera_focus: None,
+            canvas_transform: None,
+            pin_interaction_ids: Vec::new(),
+            error: None,
+        }
+    }
+
     fn frame(
         &mut self,
         snarl: &mut Snarl<CanvasNode>,
@@ -370,41 +405,185 @@ impl EndpointHeaderFixture {
                 ..Default::default()
             },
             |ui| {
-                let mut viewer = GraphViewer {
-                    graph: &mut self.graph,
-                    root_scope: &mut self.root,
-                    primary_root_authoring: false,
-                    extra_targets: &[],
-                    inactive_target_scopes: &[],
-                    project_references: Default::default(),
-                    source_blocks: &self.source_blocks,
-                    target_blocks: &self.target_blocks,
-                    source_x12: x12,
-                    target_x12: x12,
-                    source_paths: &self.source_paths,
-                    function_names: Default::default(),
-                    function_inputs: Default::default(),
-                    parameter_names: Default::default(),
-                    protected_output: None,
-                    function_output: None,
-                    requested_function_open: None,
-                    colors: crate::appearance::SemanticThemeColors::default(),
-                    wire_color_mode: crate::appearance::WireColorMode::Theme,
-                    endpoint_scroll: &mut self.scroll,
-                    value_map_wheel: None,
-                    endpoint_search_match: None,
-                    node_sizes: Some(&mut self.sizes),
-                    hovered_node: None,
-                    hovered_node_this_frame: None,
-                    camera_pan: egui::Vec2::ZERO,
-                    camera_focus: None,
-                    canvas_transform: None,
-                    pin_interaction_ids: Vec::new(),
-                    error: None,
-                };
-                viewer.show_header(node, &[], &[], ui, snarl);
+                self.viewer(x12).show_header(node, &[], &[], ui, snarl);
             },
         )
+    }
+
+    /// Shows both endpoints on a real canvas, including egui-snarl's
+    /// collapse button, and reports the glyphs of `text` the body font lacks.
+    fn canvas_frame(
+        &mut self,
+        snarl: &mut Snarl<CanvasNode>,
+        context: &egui::Context,
+        text: &str,
+    ) -> (egui::FullOutput, Vec<char>) {
+        let mut missing = Vec::new();
+        let output = context.run_test_ui(
+            egui::RawInput {
+                time: Some(context.cumulative_frame_nr() as f64 / 10.0),
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1200.0, 900.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                let mut viewer = self.viewer(false);
+                // Unit scale keeps painted widths comparable to endpoint widths.
+                let mut style = crate::appearance::EditorAppearance::default().to_snarl_style();
+                style.min_scale = Some(1.0);
+                style.max_scale = Some(1.0);
+                egui_snarl::ui::SnarlWidget::new()
+                    .style(style)
+                    .show(snarl, &mut viewer, ui);
+                let font = egui::TextStyle::Body.resolve(ui.style());
+                missing = ui.ctx().fonts_mut(|fonts| {
+                    text.chars()
+                        .filter(|&glyph| !fonts.has_glyph(&font, glyph))
+                        .collect()
+                });
+            },
+        );
+        (output, missing)
+    }
+}
+
+fn flat_shapes(output: &egui::FullOutput) -> Vec<&egui::epaint::Shape> {
+    fn flatten<'a>(shape: &'a egui::epaint::Shape, shapes: &mut Vec<&'a egui::epaint::Shape>) {
+        match shape {
+            egui::epaint::Shape::Vec(nested) => {
+                nested.iter().for_each(|shape| flatten(shape, shapes));
+            }
+            shape => shapes.push(shape),
+        }
+    }
+    let mut shapes = Vec::new();
+    output
+        .shapes
+        .iter()
+        .for_each(|shape| flatten(&shape.shape, &mut shapes));
+    shapes
+}
+
+#[test]
+fn endpoint_headers_clear_collapse_button_and_keep_canvas_geometry_for_unicode_titles() {
+    let long = "受注データ_PurchaseOrder_注文明細_한국어_Ünïcødé_".repeat(8);
+    for width in [110.0, 230.0, 480.0] {
+        let mut geometry = Vec::new();
+        for long_titles in [false, true] {
+            let (mut fixture, mut snarl, _) = EndpointHeaderFixture::new();
+            let name = if long_titles { long.as_str() } else { "Orders" };
+            fixture.source_blocks[0].title = format!("Source: {name}");
+            fixture.target_blocks[0].title = format!("Target: {name}");
+            for endpoint in [CanvasNode::SourceBlock(0), CanvasNode::TargetBlock(0)] {
+                fixture
+                    .scroll
+                    .resize(endpoint, 20, width, egui::vec2(-1000.0, 0.0));
+                fixture
+                    .scroll
+                    .resize(endpoint, 20, width, egui::vec2(width - 110.0, 0.0));
+            }
+            let context = egui::Context::default();
+            crate::fonts::install(&context);
+            crate::icons::install(&context);
+            let mut output = egui::FullOutput::default();
+            let mut missing = Vec::new();
+            for _ in 0..8 {
+                (output, missing) = fixture.canvas_frame(&mut snarl, &context, name);
+            }
+            assert!(missing.is_empty(), "bundled fonts lack {missing:?}");
+            let shapes = flat_shapes(&output);
+            let triangles = shapes
+                .iter()
+                .filter_map(|shape| match shape {
+                    egui::epaint::Shape::Path(path) if path.closed && path.points.len() == 3 => {
+                        Some(egui::Rect::from_points(&path.points))
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            for icon in [
+                lucide_icons::Icon::ArrowRightFromLine,
+                lucide_icons::Icon::ArrowRightToLine,
+            ] {
+                let icon = endpoint_text(&output, &char::from(icon).to_string())
+                    .expect("role icon painted")
+                    .visual_bounding_rect();
+                let title = shapes
+                    .iter()
+                    .filter_map(|shape| match shape {
+                        egui::epaint::Shape::Text(text)
+                            if text.galley.text() == name
+                                && text
+                                    .visual_bounding_rect()
+                                    .y_range()
+                                    .contains(icon.center().y) =>
+                        {
+                            Some(text)
+                        }
+                        _ => None,
+                    })
+                    .min_by(|left, right| {
+                        (left.visual_bounding_rect().left() - icon.right())
+                            .abs()
+                            .total_cmp(&(right.visual_bounding_rect().left() - icon.right()).abs())
+                    })
+                    .expect("endpoint title painted beside its role icon");
+                let collapse = triangles
+                    .iter()
+                    .filter(|triangle| triangle.y_range().contains(icon.center().y))
+                    .min_by(|left, right| {
+                        (left.center().x - icon.center().x)
+                            .abs()
+                            .total_cmp(&(right.center().x - icon.center().x).abs())
+                    })
+                    .expect("collapse button painted in the endpoint header");
+                eprintln!(
+                    "endpoint canvas width={width} long={long_titles}: collapse={collapse:?} icon={icon:?} title={:?}",
+                    title.visual_bounding_rect()
+                );
+                assert!(
+                    collapse.right() <= icon.left(),
+                    "role icon {icon:?} overlaps the collapse button {collapse:?}"
+                );
+                assert!(icon.right() <= title.visual_bounding_rect().left());
+                assert_eq!(title.galley.rows.len(), 1);
+                if long_titles {
+                    assert!(title.galley.elided);
+                }
+                assert!(title.visual_bounding_rect().width() <= width - 32.0 + 1.0);
+            }
+            // The filter below the title keeps the header's full width.
+            let filters = shapes
+                .iter()
+                .filter_map(|shape| match shape {
+                    egui::epaint::Shape::Text(text) if text.galley.text() == "Connected fields" => {
+                        Some(text.galley.rows.len())
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(filters, [1, 1], "width={width}");
+            // Node paint order may change between runs; positions may not.
+            let mut pins = shapes
+                .iter()
+                .filter_map(|shape| match shape {
+                    egui::epaint::Shape::Circle(circle) => Some(circle.center),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            pins.sort_by(|left, right| left.x.total_cmp(&right.x).then(left.y.total_cmp(&right.y)));
+            let mut state = fixture.state(&snarl);
+            if let Some(state) = state.as_object_mut() {
+                // The only intended difference: the titles themselves.
+                state.remove("blocks");
+            }
+            geometry.push(format!("pins={pins:?} state={state}"));
+        }
+        // Truncation must not move pins, wires or the endpoint frame, so
+        // long titles keep the exact geometry of short ones.
+        assert_eq!(geometry[0], geometry[1]);
     }
 }
 
