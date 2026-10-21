@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ir::{Instance, SchemaNode, Value};
@@ -53,10 +54,12 @@ fn redundant_scalar_type_siblings_complete_native_contract()
     if !parent.is_absolute() {
         return Err("evidence parent must be absolute".into());
     }
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let retained = parent.join(format!(
-        "ferrule-json-scalar-types284-{}-{stamp}",
-        std::process::id()
+        "ferrule-json-scalar-types284-{}-{stamp}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&retained)?;
     std::fs::write(retained.join("cases.json"), CORPUS)?;

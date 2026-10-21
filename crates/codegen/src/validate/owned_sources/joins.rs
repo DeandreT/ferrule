@@ -27,7 +27,7 @@ pub fn validate_basic_owned_joins_emission(
         AdjacencyTreePolicy::OwnedWithRecursiveFilter,
         SearchPolicy::Basic,
         DynamicFieldPolicy::Closed,
-        XmlSerializePolicy::Closed,
+        OwnedXmlPolicy::Closed,
         JoinPolicy::Owned,
     )
 }

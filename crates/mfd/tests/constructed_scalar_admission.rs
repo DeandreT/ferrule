@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ir::{Instance, ScalarType, SchemaKind, Value};
@@ -9,10 +10,12 @@ use mapping::ScopeConstruction;
 const EXTRA: &str = r#"<component name="Text" library="json" kind="31"><data><root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="string" inpkey="30"/></entry></entry></entry></root><json schema="text.schema.json"/></data></component>"#;
 
 fn fixture(extra: bool) -> Result<PathBuf, Box<dyn Error>> {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let path = std::env::temp_dir().join(format!(
-        "ferrule_constructed_admission_{}_{}",
+        "ferrule_constructed_admission_{}_{}_{}",
         std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&path)?;
     let design = format!(

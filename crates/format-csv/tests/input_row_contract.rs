@@ -3,6 +3,7 @@ use format_csv::{CsvFormatError, CsvReadOptions, from_str_with_options};
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use serde_json::{Value as Json, json};
 use std::error::Error;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const ORACLES: &str = include_str!("fixtures/input_row_contract.json");
@@ -96,10 +97,12 @@ fn complete_native_rows_match_independent_tags_bits_dialects_and_errors()
             .collect(),
     );
     let cases = document["cases"].as_array().ok_or("authored cases")?;
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "ferrule-csv-input275-native-{}-{}",
+        "ferrule-csv-input275-native-{}-{}-{}",
         std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&root)?;
     std::fs::write(root.join("ORACLES-ORIGINAL.json"), ORACLES)?;

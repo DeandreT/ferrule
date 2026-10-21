@@ -320,6 +320,48 @@ pub fn emit_with_basic_owned_xml_serialize(
     .map_err(EmitError::from)
 }
 
+/// Emit mixed-content construction by an owned selector in Basic target
+/// contexts, composing the owned XML mixed-content companion. Legacy,
+/// inherited and grouped constructions keep refusing.
+pub fn emit_with_basic_owned_xml_mixed_construction(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_xml_mixed_construction(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_xml_mixed_construction_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_xml_mixed_construction_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
+/// Emit owned XML mixed-content atomization in Basic target contexts,
+/// composing the owned XML serialization companion. Legacy mixed-content nodes
+/// keep the ordinary emitter; every older companion keeps refusing the owned form.
+pub fn emit_with_basic_owned_xml_mixed_content(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_xml_mixed_content(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_xml_mixed_content_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_xml_mixed_content_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit the qualified Basic By/row-failure profile plus ItemAt over the four
 /// pure scalar producers. Existing emitters and failure-expression gates stay closed.
 pub fn emit_with_basic_owned_sequence_item_at(
@@ -1101,6 +1143,11 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
         Expression::DynamicSourceField { key, .. } => vec![*key],
         Expression::OwnedDynamicSourceField(field) => vec![field.key],
         Expression::XmlMixedContent { replacements, .. } => replacements
+            .iter()
+            .map(|replacement| replacement.expression)
+            .collect(),
+        Expression::OwnedXmlMixedContent(mixed) => mixed
+            .replacements
             .iter()
             .map(|replacement| replacement.expression)
             .collect(),
@@ -1910,6 +1957,9 @@ fn render_expression_in_context_with_scalar_item_at(
                 "Ok(Value::Int(context.owned_join_position({})? as i64))",
                 join.get()
             ),
+            Expression::OwnedXmlMixedContent(mixed) if basic => {
+                owned_basic::render_owned_xml_mixed_content(id, mixed, prefix)
+            }
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
@@ -1919,7 +1969,8 @@ fn render_expression_in_context_with_scalar_item_at(
             | Expression::OwnedXmlSerialize(_)
             | Expression::OwnedAggregate(_)
             | Expression::OwnedJoinField(_)
-            | Expression::OwnedJoinSourcePosition(_) => {
+            | Expression::OwnedJoinSourcePosition(_)
+            | Expression::OwnedXmlMixedContent(_) => {
                 let namespace = owner_function.map_or(codegen::OwnedSourceNamespace::Main, |id| {
                     codegen::OwnedSourceNamespace::Function(FunctionId::new(id))
                 });
@@ -3480,17 +3531,38 @@ fn render_scope_item(
         }
     }
     if let TargetConstruction::XmlMixedContent { elements } = &scope.construction {
-        output.push_str(&format!(
-            "{indent}let output = preserve_xml_mixed_content(\n{indent}    {context},\n{indent}    output,\n{indent}    &[\n"
-        ));
+        // An owned selector (always a paired Basic context) attaches only its
+        // own exact current occurrence; the legacy form keeps the current frame.
+        let owned = scope
+            .iteration
+            .as_ref()
+            .and_then(|iteration| iteration.owned_source_iteration());
+        match owned {
+            Some(selector) => output.push_str(&format!(
+                "{indent}let output = ({context}).preserve_owned_xml_mixed_content(\n{indent}    {},\n{indent}    &[{}],\n{indent}    output,\n{indent}    &[\n",
+                owned_basic::owner_literal(&selector.source().owner),
+                render_string_path(&selector.source().path),
+            )),
+            None => output.push_str(&format!(
+                "{indent}let output = preserve_xml_mixed_content(\n{indent}    {context},\n{indent}    output,\n{indent}    &[\n"
+            )),
+        }
+        let element_type = if owned.is_some() {
+            "codegen_runtime::XmlMixedContentElement"
+        } else {
+            "XmlMixedContentElement"
+        };
         for element in elements {
             output.push_str(&format!(
-                "{indent}        XmlMixedContentElement {{ source: {}, target: {} }},\n",
+                "{indent}        {element_type} {{ source: {}, target: {} }},\n",
                 rust_string(&element.source),
                 rust_string(&element.target),
             ));
         }
-        output.push_str(&format!("{indent}    ],\n{indent});\n"));
+        output.push_str(&format!(
+            "{indent}    ],\n{indent}){};\n",
+            if owned.is_some() { "?" } else { "" }
+        ));
     }
     output
 }

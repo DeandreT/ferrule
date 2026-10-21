@@ -42,8 +42,11 @@ mod xml_serialize;
 pub use primary_row_failures::{
     is_basic_owned_primary_row_failure, validate_basic_owned_row_failure_emission,
 };
-pub(super) use xml_serialize::XmlSerializePolicy;
-pub use xml_serialize::validate_basic_owned_xml_serialize_emission;
+pub(super) use xml_serialize::OwnedXmlPolicy;
+pub use xml_serialize::{
+    validate_basic_owned_xml_mixed_construction_emission,
+    validate_basic_owned_xml_mixed_content_emission, validate_basic_owned_xml_serialize_emission,
+};
 
 fn request(expression: &Expression) -> Option<Request> {
     match expression {
@@ -77,6 +80,12 @@ fn request(expression: &Expression) -> Option<Request> {
             owner: (&serializer.source.owner).into(),
             path: serializer.source.path.clone(),
             frame: serializer.frame.clone(),
+        }),
+        // Mixed-content atomization reads its group as one owned element.
+        Expression::OwnedXmlMixedContent(mixed) => Some(Request::XmlElement {
+            owner: (&mixed.source.owner).into(),
+            path: mixed.source.path.clone(),
+            frame: mixed.frame.clone(),
         }),
         _ => None,
     }
@@ -773,7 +782,7 @@ struct Admission<'a> {
     path_hierarchy: PathHierarchyPolicy,
     adjacency_tree: AdjacencyTreePolicy,
     dynamic_field: DynamicFieldPolicy,
-    xml_serialize: XmlSerializePolicy,
+    owned_xml: OwnedXmlPolicy,
     join: JoinPolicy,
     /// Expressions admitted inside an owned join tuple.
     tuple_nodes: std::collections::BTreeSet<NodeId>,
@@ -859,7 +868,7 @@ impl<'a> Admission<'a> {
                     .clone()
                     .or_else(|| dynamic_owner(self.program, &query))
                     .or_else(|| {
-                        self.xml_serialize.closes(expression).then_some(Closed {
+                        self.owned_xml.closes(expression).then_some(Closed {
                             reason: Capability::XmlOperator,
                             origin: Origin::Expression {
                                 namespace: visit.namespace,
@@ -1092,6 +1101,11 @@ impl<'a> Admission<'a> {
                 None
             }
             TargetConstruction::DynamicGroup { .. } => Some(Capability::DynamicTarget),
+            TargetConstruction::XmlMixedContent { .. }
+                if self.owned_xml.admits_construction(scope) =>
+            {
+                None
+            }
             TargetConstruction::XmlMixedContent { .. } => Some(Capability::XmlOperator),
             TargetConstruction::RecursiveFilter { .. }
             | TargetConstruction::PathHierarchy { .. }
@@ -1414,7 +1428,7 @@ pub(super) fn validate_closed_contexts_with_dynamic_fields(
         path_hierarchy,
         adjacency_tree,
         dynamic_field,
-        XmlSerializePolicy::Closed,
+        OwnedXmlPolicy::Closed,
     )
 }
 
@@ -1428,7 +1442,7 @@ pub(super) fn validate_closed_contexts_with_xml(
     path_hierarchy: PathHierarchyPolicy,
     adjacency_tree: AdjacencyTreePolicy,
     dynamic_field: DynamicFieldPolicy,
-    xml_serialize: XmlSerializePolicy,
+    owned_xml: OwnedXmlPolicy,
 ) -> Result<(), ProgramValidationError> {
     validate_closed_contexts_with_joins(
         program,
@@ -1438,7 +1452,7 @@ pub(super) fn validate_closed_contexts_with_xml(
         path_hierarchy,
         adjacency_tree,
         dynamic_field,
-        xml_serialize,
+        owned_xml,
         JoinPolicy::Closed,
     )
 }
@@ -1452,7 +1466,7 @@ pub(super) fn validate_closed_contexts_with_joins(
     path_hierarchy: PathHierarchyPolicy,
     adjacency_tree: AdjacencyTreePolicy,
     dynamic_field: DynamicFieldPolicy,
-    xml_serialize: XmlSerializePolicy,
+    owned_xml: OwnedXmlPolicy,
     join: JoinPolicy,
 ) -> Result<(), ProgramValidationError> {
     if !has_owned(program) {
@@ -1465,7 +1479,7 @@ pub(super) fn validate_closed_contexts_with_joins(
         path_hierarchy,
         adjacency_tree,
         dynamic_field,
-        xml_serialize,
+        owned_xml,
         join,
         tuple_nodes: std::collections::BTreeSet::new(),
         visited: Vec::new(),
@@ -1921,7 +1935,7 @@ fn validate_basic_owned_with_dynamic_fields(
         adjacency_tree,
         search,
         dynamic_field,
-        XmlSerializePolicy::Closed,
+        OwnedXmlPolicy::Closed,
     )
 }
 
@@ -1936,7 +1950,7 @@ fn validate_basic_owned_with_xml(
     adjacency_tree: AdjacencyTreePolicy,
     search: SearchPolicy,
     dynamic_field: DynamicFieldPolicy,
-    xml_serialize: XmlSerializePolicy,
+    owned_xml: OwnedXmlPolicy,
 ) -> Result<(), ProgramValidationError> {
     validate_basic_owned_with_joins(
         program,
@@ -1947,7 +1961,7 @@ fn validate_basic_owned_with_xml(
         adjacency_tree,
         search,
         dynamic_field,
-        xml_serialize,
+        owned_xml,
         JoinPolicy::Closed,
     )
 }
@@ -1962,7 +1976,7 @@ fn validate_basic_owned_with_joins(
     adjacency_tree: AdjacencyTreePolicy,
     search: SearchPolicy,
     dynamic_field: DynamicFieldPolicy,
-    xml_serialize: XmlSerializePolicy,
+    owned_xml: OwnedXmlPolicy,
     join: JoinPolicy,
 ) -> Result<(), ProgramValidationError> {
     super::validate_program_with_owned_joins(
@@ -1973,7 +1987,7 @@ fn validate_basic_owned_with_joins(
         path_hierarchy,
         adjacency_tree,
         dynamic_field,
-        xml_serialize,
+        owned_xml,
         join,
     )?;
     let policy = BasicScopePolicy {
@@ -1981,6 +1995,7 @@ fn validate_basic_owned_with_joins(
         path_hierarchy,
         adjacency_tree,
         join,
+        owned_xml,
     };
     basic_scope(
         program,
@@ -2018,7 +2033,8 @@ fn validate_basic_owned_with_joins(
         ));
     }
     basic_failures_with_profile(program, failures)?;
-    let retained = basic_target_expressions(program, profile, sequence_item_at, dynamic_field);
+    let retained =
+        basic_target_expressions(program, profile, sequence_item_at, dynamic_field, owned_xml);
     for node in &program.expressions {
         if let Expression::SourceField { path, frame } = &node.expression
             && retained.contains(&node.id)
@@ -2046,10 +2062,14 @@ fn validate_basic_owned_with_joins(
             Expression::OwnedDynamicSourceField(_) if dynamic_field.permits(&node.expression) => {
                 continue;
             }
-            Expression::OwnedXmlSerialize(_) if !xml_serialize.closes(&node.expression) => {
+            Expression::OwnedXmlSerialize(_) | Expression::OwnedXmlMixedContent(_)
+                if !owned_xml.closes(&node.expression) =>
+            {
                 continue;
             }
-            Expression::OwnedXmlSerialize(_) => Capability::XmlOperator,
+            Expression::OwnedXmlSerialize(_) | Expression::OwnedXmlMixedContent(_) => {
+                Capability::XmlOperator
+            }
             Expression::OwnedAggregate(aggregate)
                 if search.permits_aggregates()
                     && matches!(
@@ -2160,6 +2180,7 @@ struct BasicScopePolicy {
     path_hierarchy: PathHierarchyPolicy,
     adjacency_tree: AdjacencyTreePolicy,
     join: JoinPolicy,
+    owned_xml: OwnedXmlPolicy,
 }
 
 fn basic_scope(
@@ -2209,7 +2230,8 @@ fn basic_scope(
     }
     let admitted_construction = policy.path_hierarchy == PathHierarchyPolicy::Owned
         && owned_path_hierarchy(scope).is_some()
-        || policy.adjacency_tree.admits(scope);
+        || policy.adjacency_tree.admits(scope)
+        || policy.owned_xml.admits_construction(scope);
     if !admitted_construction
         && !matches!(
             scope.construction,
@@ -2336,6 +2358,7 @@ fn basic_target_expressions(
     profile: BasicOwnedProfile,
     sequence_item_at: SequenceItemAtPolicy,
     dynamic_field: DynamicFieldPolicy,
+    owned_xml: OwnedXmlPolicy,
 ) -> std::collections::BTreeSet<NodeId> {
     fn roots(scope: &TargetScope, profile: BasicOwnedProfile, output: &mut Vec<NodeId>) {
         if let TargetConstruction::Scalar { expression, .. } = &scope.construction {
@@ -2412,6 +2435,11 @@ fn basic_target_expressions(
             }
             // The key is a receiving-context scalar demand of the owned read.
             expression if dynamic_field.permits(expression) => graph_dependencies::of(expression),
+            // Parent and occurrence replacements are scalar demands of the
+            // admitted owned group read.
+            expression if owned_xml.permits_inputs(expression) => {
+                graph_dependencies::of(expression)
+            }
             _ => continue,
         };
         // Only target admission gains the explicitly permitted consumer edges.
