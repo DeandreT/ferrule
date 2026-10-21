@@ -1,0 +1,21 @@
+use codegen_runtime::{ExecutionContext, InvocationCounterLimits};
+use std::path::Path;
+fn main() {
+    let context = ExecutionContext::new(Path::new("counter.ferrule"))
+        .with_invocation_counter_limits(InvocationCounterLimits {
+            max_counters: 1,
+            max_text_bytes: 4,
+        });
+    let input = r#"{"Rows":[{"start":10,"step":2},{"start":999,"step":3},{"start":20,"step":9,"restart":""},{"start":999,"step":0,"restart":""},{"start":30,"step":-1},{"start":999,"step":-2}]}"#;
+    for repeat in 0..3 {
+        let output = counter_rows::execute_json_outputs_with_context(input, &context).unwrap();
+        assert!(output.extras.is_empty());
+        let bytes: String = output
+            .primary
+            .as_bytes()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        println!("DOC|rows-{repeat}|{bytes}");
+    }
+}

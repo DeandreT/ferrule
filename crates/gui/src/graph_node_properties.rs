@@ -182,6 +182,13 @@ impl GraphViewer<'_> {
                 Node::RuntimeValue { value } => {
                     ui.label(format!("{value:?}"));
                 }
+                Node::InvocationCounter { key, .. } => {
+                    ui.horizontal(|ui| {
+                        ui.label("counter key");
+                        ui.text_edit_singleline(key);
+                    });
+                    ui.weak("Requires explicit invocation limits. Start and step are integers; restart is optional text.");
+                }
                 Node::RuntimeParameter { name, ty, preview }
                 | Node::RuntimeParameterDefault {
                     name, ty, preview, ..

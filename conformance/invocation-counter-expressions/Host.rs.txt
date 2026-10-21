@@ -1,0 +1,93 @@
+use codegen_runtime::{
+    ExecutionContext, InvocationCounterLimits, RuntimeError, RuntimeParameters, Value, group,
+};
+use std::path::Path;
+
+fn main() {
+    let cases = [
+        (
+            1,
+            1,
+            "{\n  \"A\": 1,\n  \"B\": 2\n}\n",
+            "{\n  \"Value\": 3\n}\n",
+        ),
+        (
+            i64::MAX,
+            1,
+            "{\n  \"A\": 9223372036854775807,\n  \"B\": -9223372036854775808\n}\n",
+            "{\n  \"Value\": -9223372036854775807\n}\n",
+        ),
+        (
+            i64::MIN,
+            -1,
+            "{\n  \"A\": -9223372036854775808,\n  \"B\": 9223372036854775807\n}\n",
+            "{\n  \"Value\": 9223372036854775806\n}\n",
+        ),
+        (
+            5,
+            0,
+            "{\n  \"A\": 5,\n  \"B\": 5\n}\n",
+            "{\n  \"Value\": 5\n}\n",
+        ),
+        (
+            5,
+            3,
+            "{\n  \"A\": 5,\n  \"B\": 8\n}\n",
+            "{\n  \"Value\": 11\n}\n",
+        ),
+    ];
+    for (start, step, primary, audit) in cases {
+        let mut parameters = RuntimeParameters::new();
+        parameters.insert("start", Value::Int(start)).unwrap();
+        parameters.insert("step", Value::Int(step)).unwrap();
+        let execution = ExecutionContext::new(Path::new("counter.ferrule"))
+            .with_parameters(&parameters)
+            .with_invocation_counter_limits(InvocationCounterLimits {
+                max_counters: 1,
+                max_text_bytes: 4,
+            });
+        for _ in 0..2 {
+            let actual =
+                counter_fixture::execute_json_outputs_with_context("{}", &execution).unwrap();
+            assert_eq!(actual.primary, primary);
+            assert_eq!(actual.extras.len(), 1);
+            assert_eq!(actual.extras[0].name, "audit");
+            assert_eq!(actual.extras[0].document, audit);
+            let selected = counter_fixture::execute_json_selected_target_with_host(
+                "{}",
+                &[],
+                Some(&execution),
+                None,
+                counter_fixture::TargetSelection::Named("audit"),
+            )
+            .unwrap();
+            let counter_fixture::SelectedJsonTargetOutput::Named(selected) = selected else {
+                panic!("Expected the named target");
+            };
+            assert_eq!(selected.name, "audit");
+            assert_eq!(selected.document, format!("{{\n  \"Value\": {start}\n}}\n"));
+            let selected = counter_fixture::execute_json_selected_target_with_host(
+                "{}",
+                &[],
+                Some(&execution),
+                None,
+                counter_fixture::TargetSelection::Primary,
+            )
+            .unwrap();
+            let counter_fixture::SelectedJsonTargetOutput::Primary(selected) = selected else {
+                panic!("Expected the primary target");
+            };
+            assert_eq!(selected, primary);
+        }
+    }
+    let no_limits = ExecutionContext::new(Path::new("counter.ferrule"));
+    assert!(matches!(
+        counter_fixture::execute_outputs_with_context(&group([]), &no_limits),
+        Err(RuntimeError::MissingInvocationCounters { node: 1 })
+    ));
+    assert!(matches!(
+        counter_fixture::execute_selected_target(&group([]), counter_fixture::TargetSelection::Named("Audit")),
+        Err(RuntimeError::UnknownTarget { name }) if name == "Audit"
+    ));
+    println!("PASS counter documents");
+}

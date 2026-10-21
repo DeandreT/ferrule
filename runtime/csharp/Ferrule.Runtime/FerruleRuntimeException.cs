@@ -71,6 +71,9 @@ public enum FerruleRuntimeError
     OwnedSource,
     BasicSourceBridge,
     PrimaryFilenameType,
+    MissingInvocationCounters,
+    InvocationCounterOperand,
+    InvocationCounter,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>
