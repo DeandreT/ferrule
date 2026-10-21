@@ -55,6 +55,16 @@ pub(crate) fn render_public_basic_owned_group_ending_with_source(
     )
 }
 
+pub(crate) fn render_public_basic_owned_group_into_blocks_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::GroupIntoBlocks,
+        SequenceItemAtPolicy::BasicScalarProducers,
+    )
+}
+
 pub(crate) fn render_public_basic_owned_failure_source(
     program: &Program,
 ) -> Result<String, EmitError> {
@@ -87,10 +97,35 @@ pub(crate) fn render_public_basic_owned_adjacency_tree_source(
     )
 }
 
+/// The owned adjacency-tree profile plus ItemAt over owned recursive walks.
+pub(crate) fn render_public_basic_owned_recursive_collect_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::AdjacencyTree,
+        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+    )
+}
+
+pub(crate) fn render_public_basic_owned_sequence_exists_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::GroupEndingWith,
+        SequenceItemAtPolicy::BasicScalarProducersWithExists,
+    )
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SequenceItemAtPolicy {
     Closed,
     BasicScalarProducers,
+    /// The four scalar producers plus the owned recursive collection walk.
+    BasicScalarAndOwnedRecursiveProducers,
+    /// Also renders SequenceExists over the same pure producers.
+    BasicScalarProducersWithExists,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -107,6 +142,7 @@ pub(super) enum Profile {
     PathHierarchy,
     /// PathHierarchy plus owned adjacency-tree construction.
     AdjacencyTree,
+    GroupIntoBlocks,
 }
 
 impl Profile {
@@ -120,6 +156,7 @@ impl Profile {
                 | Self::FailureSources
                 | Self::PathHierarchy
                 | Self::AdjacencyTree
+                | Self::GroupIntoBlocks
         )
     }
 
@@ -141,6 +178,7 @@ impl Profile {
                     | Self::FailureSources
                     | Self::PathHierarchy
                     | Self::AdjacencyTree
+                    | Self::GroupIntoBlocks
             ),
             Some(GroupingPlan::StartingWith { .. }) => matches!(
                 self,
@@ -149,6 +187,7 @@ impl Profile {
                     | Self::FailureSources
                     | Self::PathHierarchy
                     | Self::AdjacencyTree
+                    | Self::GroupIntoBlocks
             ),
             Some(GroupingPlan::EndingWith { .. }) => matches!(
                 self,
@@ -156,8 +195,10 @@ impl Profile {
                     | Self::FailureSources
                     | Self::PathHierarchy
                     | Self::AdjacencyTree
+                    | Self::GroupIntoBlocks
             ),
-            _ => false,
+            Some(GroupingPlan::IntoBlocks { .. }) => self == Self::GroupIntoBlocks,
+            None => false,
         }
     }
 }
@@ -177,8 +218,14 @@ fn render_public_basic_owned_source_policy(
     // The common profile closes every scope, retained expression and failure
     // domain to precisely the static Group/Scalar scalar-expression subset.
     match (profile, item_at) {
+        (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducersWithExists) => {
+            codegen::validate_basic_owned_sequence_exists_emission(program)?;
+        }
         (Profile::PathHierarchy, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_path_hierarchy_emission(program)?;
+        }
+        (Profile::GroupIntoBlocks, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::validate_basic_owned_group_into_blocks_emission(program)?;
         }
         (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_group_ending_with_emission(program)?;
@@ -188,6 +235,9 @@ fn render_public_basic_owned_source_policy(
         }
         (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_adjacency_tree_emission(program)?;
+        }
+        (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::validate_basic_owned_recursive_collect_emission(program)?;
         }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::validate_basic_owned_group_starting_with_emission(program)?;
@@ -246,7 +296,7 @@ fn render_public_basic_owned_source_policy(
         .iter()
         .filter_map(|node| match &node.expression {
             Expression::SequenceItemAt { sequence, .. }
-                if item_at == SequenceItemAtPolicy::BasicScalarProducers
+                if item_at != SequenceItemAtPolicy::Closed
                     && (basic_retained.contains(&node.id)
                         || legacy_retained.contains(&node.id)) =>
             {
@@ -254,6 +304,14 @@ fn render_public_basic_owned_source_policy(
             }
             _ => None,
         })
+        .collect::<BTreeSet<_>>();
+    let basic_skipped = unread_exists_items(program, &basic_retained)
+        .into_iter()
+        .chain(item_at_items.iter().copied())
+        .collect::<BTreeSet<_>>();
+    let legacy_skipped = unread_exists_items(program, &legacy_retained)
+        .into_iter()
+        .chain(item_at_items.iter().copied())
         .collect::<BTreeSet<_>>();
     let mut basic_call_targets = BTreeSet::from(["scope_root".to_owned()]);
     basic_call_targets.extend(
@@ -276,18 +334,27 @@ fn render_public_basic_owned_source_policy(
              RuntimeValue, ScalarType, SourceOwnerRef, Value, adapt_target_value,\n\
              adapt_union_target_value, call, field, group, repeated, require_bool, scalar, value_map};\n\n",
     );
-    if item_at == SequenceItemAtPolicy::BasicScalarProducers {
+    if item_at != SequenceItemAtPolicy::Closed {
         // Demand includes both paired functions and ordinary legacy islands.
-        // Add only the pure helpers actually called, without generated contexts.
+        // Add only the pure helpers actually called; only Exists owns items.
         let mut imports = BTreeSet::new();
         for node in &program.expressions {
-            if (basic_retained.contains(&node.id) || legacy_retained.contains(&node.id))
-                && let Expression::SequenceItemAt { sequence, .. } = &node.expression
-            {
-                imports.extend(["aggregate", "AggregateFunction"]);
-                if let Some(helper) = scalar_sequence::runtime_helper(sequence) {
-                    imports.insert(helper);
+            if !(basic_retained.contains(&node.id) || legacy_retained.contains(&node.id)) {
+                continue;
+            }
+            let sequence = match &node.expression {
+                Expression::SequenceItemAt { sequence, .. } => {
+                    imports.extend(["aggregate", "AggregateFunction"]);
+                    sequence
                 }
+                Expression::SequenceExists { sequence, .. } => {
+                    imports.insert("GeneratedItems");
+                    sequence
+                }
+                _ => continue,
+            };
+            if let Some(helper) = scalar_sequence::runtime_helper(sequence) {
+                imports.insert(helper);
             }
         }
         if !imports.is_empty() {
@@ -332,7 +399,7 @@ fn render_public_basic_owned_source_policy(
         );
     source.push_str(&entries);
     for node in &program.expressions {
-        if basic_retained.contains(&node.id) && !item_at_items.contains(&node.id) {
+        if basic_retained.contains(&node.id) && !basic_skipped.contains(&node.id) {
             source.push_str(&render_expression_in_context_with_scalar_item_at(
                 node.id,
                 &node.expression,
@@ -345,7 +412,7 @@ fn render_public_basic_owned_source_policy(
                     basic: true,
                     owned_leaf_nodes: true,
                 },
-                item_at == SequenceItemAtPolicy::BasicScalarProducers,
+                item_at != SequenceItemAtPolicy::Closed,
             )?);
         }
     }
@@ -371,7 +438,7 @@ fn render_public_basic_owned_source_policy(
             source.push_str("use codegen_runtime::GroupedItems;\n");
         }
         for node in &program.expressions {
-            if legacy_retained.contains(&node.id) && !item_at_items.contains(&node.id) {
+            if legacy_retained.contains(&node.id) && !legacy_skipped.contains(&node.id) {
                 source.push_str(&render_expression_in_context_with_scalar_item_at(
                     node.id,
                     &node.expression,
@@ -384,7 +451,7 @@ fn render_public_basic_owned_source_policy(
                         basic: false,
                         owned_leaf_nodes: false,
                     },
-                    item_at == SequenceItemAtPolicy::BasicScalarProducers,
+                    item_at != SequenceItemAtPolicy::Closed,
                 )?);
             }
         }
@@ -427,8 +494,14 @@ fn render_public_basic_owned_source_policy(
         }
     }
     let plan = match (profile, item_at) {
+        (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducersWithExists) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_exists(program)?
+        }
         (Profile::PathHierarchy, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy(program)?
+        }
+        (Profile::GroupIntoBlocks, SequenceItemAtPolicy::BasicScalarProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_group_into_blocks(program)?
         }
         (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_ending_with(program)?
@@ -438,6 +511,9 @@ fn render_public_basic_owned_source_policy(
         }
         (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_adjacency_tree(program)?
+        }
+        (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_collect(program)?
         }
         (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(
@@ -501,6 +577,31 @@ pub fn execute_selected_with_basic_owned_sources<'name, 'src>(
     Ok(source)
 }
 
+/// Exists item declarations that no rendered expression reads. Its owning
+/// consumer retains the declaration but never calls it.
+fn unread_exists_items(program: &Program, retained: &BTreeSet<NodeId>) -> BTreeSet<NodeId> {
+    let mut items = BTreeSet::new();
+    let mut read = BTreeSet::new();
+    for node in &program.expressions {
+        if !retained.contains(&node.id) {
+            continue;
+        }
+        match &node.expression {
+            Expression::SequenceExists {
+                sequence,
+                predicate,
+            } => {
+                // The declaration itself is not a read; the predicate may be one.
+                items.insert(sequence.item());
+                read.extend(sequence.inputs().chain([*predicate]));
+            }
+            expression => read.extend(expression_inputs(expression)),
+        }
+    }
+    items.retain(|item| !read.contains(item));
+    items
+}
+
 fn local_owned(program: &Program, scope: &TargetScope) -> bool {
     if matches!(
         scope.construction,
@@ -517,10 +618,12 @@ fn local_owned(program: &Program, scope: &TargetScope) -> bool {
     let retained = rows::target_expression_usage(program, &one);
     program.expressions.iter().any(|node| {
         retained.contains(&node.id)
-            && matches!(
-                &node.expression,
-                Expression::OwnedSourceField(_) | Expression::OwnedPosition(_)
-            )
+            && match &node.expression {
+                Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => true,
+                // An owned producer reads its root through the paired context.
+                Expression::SequenceItemAt { sequence, .. } => sequence.owned_source().is_some(),
+                _ => false,
+            }
     })
 }
 

@@ -24,6 +24,8 @@ mod basic_owned_group_adjacent_by;
 mod basic_owned_group_by;
 #[path = "code_generation/basic_owned_group_ending_with.rs"]
 mod basic_owned_group_ending_with;
+#[path = "code_generation/basic_owned_group_into_blocks.rs"]
+mod basic_owned_group_into_blocks;
 #[path = "code_generation/basic_owned_group_starting_with.rs"]
 mod basic_owned_group_starting_with;
 #[path = "code_generation/basic_owned_json_adapters.rs"]
@@ -32,8 +34,12 @@ mod basic_owned_json_adapters;
 mod basic_owned_nested_phases;
 #[path = "code_generation/basic_owned_path_hierarchy.rs"]
 mod basic_owned_path_hierarchy;
+#[path = "code_generation/basic_owned_recursive_collect.rs"]
+mod basic_owned_recursive_collect;
 #[path = "code_generation/basic_owned_row_failures.rs"]
 mod basic_owned_row_failures;
+#[path = "code_generation/basic_owned_sequence_exists.rs"]
+mod basic_owned_sequence_exists;
 #[path = "code_generation/basic_owned_sequence_item_at.rs"]
 mod basic_owned_sequence_item_at;
 #[path = "code_generation/collection_find.rs"]
@@ -822,6 +828,7 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "GeneratedTargetBuilder.cs",
         "Runtime/FerruleAdjacencyTree.cs",
         "Runtime/FerruleAggregates.cs",
+        "Runtime/FerruleBasicGeneratedItems.cs",
         "Runtime/FerruleBasicGroupBy.cs",
         "Runtime/FerruleDelimitedText.cs",
         "Runtime/FerruleDynamicDocuments.cs",

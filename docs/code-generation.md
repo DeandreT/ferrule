@@ -297,6 +297,45 @@ export, GUI authoring and observer eligibility are independently gated.
 See [the ownership contract](design/owned-sequence-item-at.md) and
 [the genuine-Project corpus](../conformance/basic-owned-sequence-item-at/README.md).
 
+## Explicit owned sequence Exists
+
+Use `codegen::lower_with_basic_owned_sequence_exists`, followed by
+`codegen_rust::emit_with_basic_owned_sequence_exists(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_sequence_exists(&program)`. Direct Program
+validation and named-input admission use
+`validate_program_with_basic_owned_sequence_exists`,
+`validate_basic_owned_sequence_exists_emission` and
+`legacy_named_input_admission_plan_with_basic_owned_sequence_exists`.
+
+This profile admits `SequenceExists` over Generate, Tokenize, TokenizeByLength
+and TokenizeRegex beside the ItemAt permission and the By, AdjacentBy, StartingWith
+and EndingWith controls with their filter, sort, window and primary-row-failure
+permissions. Owned scalar reads are allowed in the producer arguments and the
+predicate, including nested eligible Exists and ItemAt consumers. The generated
+libraries use the two typed Basic execution entries and the mandatory
+five-field policy.
+
+Producer arguments evaluate once in the receiving context and materialize the
+complete sequence. Items are then visited in order; the first true predicate
+returns true and later items are not evaluated, so their predicate errors are
+not raised. An empty or null-suppressed sequence returns false without
+evaluating the predicate. A producer exception prevents every predicate, and a
+non-Boolean predicate fails with a typed error naming the predicate node.
+
+Each predicate evaluation appends the private item to the receiving context as
+an empty-path collection frame. The item declaration, empty-path ordinary reads
+and empty legacy positions see that item. Owned reads ignore it: exact owners,
+root and collection pins, grouped representatives and member positions keep
+their receiving meaning, and an unavailable selected owner fails only when a
+reached predicate reads it. The generated Rust and C# contexts copy the paired
+view for each reached item and admit that copy against the caller's policy.
+
+Legacy and owned RecursiveCollect, FilterMap, closed operators inside the predicate, owned
+failure predicates and generated-sequence scopes keep their refusals. Existing
+generation profiles, including ItemAt and EndingWith, continue to reject
+`SequenceExists` in owned contexts. See [the ownership contract](design/owned-sequence-exists.md)
+and [the genuine-Project corpus](../conformance/basic-owned-sequence-exists/README.md).
+
 ## Explicit owned adjacent grouping
 
 Use `codegen::lower_with_basic_owned_group_adjacent_by`, then
@@ -356,6 +395,29 @@ The runtimes use Boolean end controls with the unchanged grouping metadata
 shape. An end boundary consumes no grouping-key text credits. The
 [Ending contract](design/owned-group-ending-with.md) defines the full callback,
 authenticated-member, resource and qualification requirements.
+
+## Explicit owned fixed-block grouping
+
+Use `codegen::lower_with_basic_owned_group_into_blocks`, then
+`codegen_rust::emit_with_basic_owned_group_into_blocks(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_group_into_blocks(&program)`. The
+matching validation and named-input companions select the same explicit
+profile, which also admits By, AdjacentBy, StartingWith and EndingWith.
+Existing execution entry names, five-field policy and earlier profile gates,
+including Ending's, remain intact.
+
+The block size is a parent expression evaluated once after the window bounds and
+before candidate controls, even for an empty cohort. It converts like an item
+count; zero after clamping is a typed `InvalidBlockSize` and a non-count is a
+typed `NotAnItemCount`. Selected candidates fill blocks in order and the last
+block may be partial. Retention runs per candidate and keeps whole blocks;
+windows select retained blocks afterward. Only selected blocks evaluate
+bindings and children.
+
+The runtimes use a parent block-size control with the unchanged grouping
+metadata shape and charge no grouping-key text. The
+[IntoBlocks contract](design/owned-group-into-blocks.md) defines the full
+callback, authenticated-member, resource and qualification requirements.
 
 ## Explicit owned failure-rule iteration
 
@@ -454,6 +516,37 @@ owners and other specialized scopes) keep their typed refusals. The legacy
 `AdjacencyTree` plan, its wire form and its errors are unchanged; it continues
 to use the ordinary emitters. See [the ownership design](design/source-ownership.md#owned-adjacency-tree-row-collections)
 and [the corpus](../conformance/basic-owned-adjacency-tree/README.md).
+
+## Explicit owned recursive collection
+
+Use `codegen::lower_with_basic_owned_recursive_collect`, then
+`codegen_rust::emit_with_basic_owned_recursive_collect(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_recursive_collect(&program)`. Direct
+Program hosts use `validate_program_with_basic_owned_recursive_collect` and
+`validate_basic_owned_recursive_collect_emission`; named-input discovery uses
+`legacy_named_input_admission_plan_with_basic_owned_recursive_collect`.
+
+The profile composes the owned adjacency-tree profile (EndingWith controls,
+scalar-producer ItemAt, primary-row failures, owned failure-rule walks, owned
+path hierarchies and owned adjacency trees) with SequenceItemAt over an
+`owned_recursive_collect` producer. The producer's root collection belongs to
+exactly one Primary or named endpoint; child, descent and value paths stay
+relative to each selected group. Prefix, separator and index keep the receiving
+parent context and may read exact owned fields. A same-owner active frame pins
+the root collection's prefix, otherwise the walk starts at the endpoint root;
+another endpoint never supplies roots, and an unsupplied owner fails with the
+typed owned-source error at the consuming ItemAt node. Owned roots keep their
+endpoint optional in the named-input catalogue.
+
+Only ItemAt consumes the owned producer, including in an owned adjacency tree's
+parent-context root expression. Generated scope iteration,
+generated-sequence failure rules, SequenceExists, SequenceAggregate, closed
+parent contexts and function bodies keep refusing it, as do every earlier
+profile (including the adjacency-tree and fixed-block companions) and the
+ordinary emitters. The legacy `recursive_collect` form keeps its
+wire, admission and emission. The
+[owned recursive collection contract](design/owned-recursive-collect.md)
+defines the wire form, phases, limits and qualification.
 
 ## C#
 

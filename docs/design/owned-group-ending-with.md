@@ -21,7 +21,8 @@ still applies; ItemAt remains unavailable in owned failure predicates and
 messages. Earlier generation profiles, including the
 [Starting profile](owned-group-starting-with.md), keep their own capability sets
 and refuse owned EndingWith with their existing typed Grouping diagnostic.
-Fixed-block and specialized owned grouping have separate gates.
+The [IntoBlocks profile](owned-group-into-blocks.md) and specialized owned
+grouping have separate gates.
 
 Generated libraries retain the existing typed Basic execution entries,
 mandatory five-field policy and selected-target validation precedence. For a
@@ -63,7 +64,7 @@ children; global failures retain their earlier precedence.
 ## Owner identity and members
 
 EndingWith uses the same private authenticated GroupMembers occurrence as By,
-AdjacentBy and StartingWith. Scalar reads use the first surviving ordered member;
+AdjacentBy, StartingWith and IntoBlocks. Scalar reads use the first surviving ordered member;
 position reads use the group ordinal. Nested iteration of that collection
 enumerates only the current group's members with their own one-based positions,
 including a nested Ending scope over those members. Other owners remain

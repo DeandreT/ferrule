@@ -26,7 +26,7 @@ mod failure_rows;
 mod group_by;
 pub use group_by::{
     BasicGroupByControls, BasicGroupByMetadata, BasicGroupEndingWithControls,
-    BasicGroupStartingWithControls,
+    BasicGroupIntoBlocksControls, BasicGroupStartingWithControls,
 };
 
 /// Fixed bridge failures; no user text is copied into these diagnostics.
@@ -1372,6 +1372,11 @@ impl<'ctx> BasicSourceCandidate<'ctx> {
     pub fn context(&self) -> &BasicScopeContext<'ctx> {
         &self.context
     }
+    /// The walk's published terminal item, including a fresh named Group root
+    /// whose legacy view keeps the parent frames.
+    pub(crate) fn terminal_instance(&self) -> &'ctx Instance {
+        self.terminal.item
+    }
     pub fn into_context(self) -> BasicScopeContext<'ctx> {
         self.context
     }
@@ -2360,6 +2365,9 @@ pub(super) fn observations() -> (usize, usize, usize) {
         TERMINALS.with(std::cell::Cell::get),
     )
 }
+
+#[path = "basic_generated_items.rs"]
+mod generated_items;
 
 #[cfg(test)]
 #[path = "basic_tests.rs"]

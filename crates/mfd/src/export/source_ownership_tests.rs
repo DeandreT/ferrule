@@ -156,3 +156,64 @@ fn each_serial_stage_refuses_before_pipeline_publication_in_every_profile() {
         assert!(!path.exists());
     }
 }
+
+#[test]
+fn owned_recursive_walks_refuse_before_writing_in_every_placement() {
+    let walk = || {
+        mapping::SequenceExpr::OwnedRecursiveCollect(mapping::OwnedRecursiveCollect {
+            collection: mapping::OwnedSourceRef {
+                owner: SourceOwner::Primary,
+                path: vec!["Dir".into()],
+            },
+            children: vec!["Dir".into()],
+            descent_value: vec!["Note".into()],
+            values: vec!["file".into()],
+            value: vec!["Note".into()],
+            prefix: 1,
+            separator: 1,
+            item: 2,
+        })
+    };
+    let path = Path::new("nonexistent-owned-walk-parent/output.mfd");
+    let mut consumer = project();
+    consumer.graph.nodes = BTreeMap::from([(
+        9,
+        Node::SequenceItemAt {
+            sequence: walk(),
+            index: 1,
+        },
+    )]);
+    assert!(matches!(
+        preflight_export(&consumer, path).unwrap_err(),
+        MfdError::UnsupportedSourceOwnership {
+            node: 9,
+            function: None,
+            kind: "owned_recursive_collect"
+        }
+    ));
+    let mut scope = project();
+    scope.graph.nodes.clear();
+    scope.root.iteration = mapping::ScopeIteration::Sequence(walk());
+    assert!(matches!(
+        preflight_export(&scope, path).unwrap_err(),
+        MfdError::UnsupportedSourceIteration { scope }
+            if scope == mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Primary)
+    ));
+    let mut failure = project();
+    failure.graph.nodes.clear();
+    failure.failure_rules = vec![mapping::FailureRule {
+        iteration: mapping::FailureIteration::Sequence { sequence: walk() },
+        selection: mapping::FailureSelection::All,
+        message: None,
+    }];
+    assert!(matches!(
+        preflight_export(&failure, path).unwrap_err(),
+        MfdError::UnsupportedFailureSourceIteration { rule: 1 }
+    ));
+    for project in [&consumer, &scope, &failure] {
+        for profile in [ExportProfile::default(), ExportProfile::NativeMfd] {
+            assert!(export_with_profile(project, path, profile).is_err());
+        }
+    }
+    assert!(!path.exists());
+}

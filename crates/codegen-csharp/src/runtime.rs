@@ -25,7 +25,11 @@ pub(crate) const DYNAMIC_INPUT_DOCUMENT_OUTPUTS_SOURCE: (&str, &str) = (
     ),
 );
 
-pub(crate) const SOURCES: [(&str, &str); 79] = [
+pub(crate) const SOURCES: [(&str, &str); 80] = [
+    (
+        "Runtime/FerruleBasicGeneratedItems.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleBasicGeneratedItems.cs"),
+    ),
     (
         "Runtime/Json/FerruleJsonSourceOccurrence.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJsonSourceOccurrence.cs"),

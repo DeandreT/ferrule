@@ -31,6 +31,7 @@ pub mod project_file;
 mod protobuf;
 mod reachable;
 mod recursive;
+mod recursive_collect_owned;
 mod runtime_dependency;
 mod scope_serde;
 mod source_owner;
@@ -110,6 +111,7 @@ pub use pdf_repair::{PdfRepairDependency, PdfRuntimeDependency};
 pub use pipeline::{Pipeline, PipelineInput, PipelineNamedInput, PipelineStage};
 pub use protobuf::{ProtobufOptions, ProtobufSchemaFile};
 pub use recursive::RecursiveFilterPlan;
+pub use recursive_collect_owned::OwnedRecursiveCollect;
 pub use runtime_dependency::{RuntimeBoundary, RuntimeDependency};
 pub use source_owner::{
     OwnedSourceAccess, OwnedSourceRef, SourceOwner, SourceSelector, SourceSelectorMut,
@@ -154,3 +156,7 @@ mod owned_collection_tests;
 #[cfg(test)]
 #[path = "tests/owned_failure_iteration.rs"]
 mod owned_failure_iteration_tests;
+
+#[cfg(test)]
+#[path = "tests/owned_recursive_collect.rs"]
+mod owned_recursive_collect_tests;

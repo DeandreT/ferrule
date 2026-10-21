@@ -393,14 +393,11 @@ fn ending_trace_has_no_key_and_records_boundary_then_post() {
 }
 
 #[test]
-fn fixed_blocks_and_conflicting_modes_remain_closed_beside_ending() {
+fn conflicting_modes_remain_closed_beside_ending() {
     for mode in 0..3 {
         let mut p = ending(SourceOwner::Primary);
         match mode {
-            0 => {
-                controls(&mut p).group_ending_with = None;
-                controls(&mut p).group_into_blocks = Some(9);
-            }
+            0 => controls(&mut p).group_into_blocks = Some(9),
             1 => controls(&mut p).group_by = Some(12),
             _ => controls(&mut p).group_starting_with = Some(1),
         }

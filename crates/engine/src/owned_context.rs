@@ -423,8 +423,8 @@ impl<'a> SourceRoots<'a> {
     }
 }
 
-/// Only admitted owned By/AdjacentBy/StartingWith/EndingWith evaluators mint
-/// member containers.
+/// Only admitted owned By/AdjacentBy/StartingWith/EndingWith/IntoBlocks
+/// evaluators mint member containers.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OccurrenceKind {
     Item,

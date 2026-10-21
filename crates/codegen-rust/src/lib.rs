@@ -371,6 +371,27 @@ pub fn emit_with_basic_owned_group_ending_with(
     .map_err(EmitError::from)
 }
 
+/// Emit static Basic By/AdjacentBy/StartingWith/EndingWith/IntoBlocks grouping
+/// with scalar ItemAt over the four pure producers. Prior companions retain
+/// their narrower gates.
+pub fn emit_with_basic_owned_group_into_blocks(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_group_into_blocks(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_group_into_blocks_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_group_into_blocks_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit EndingWith-profile targets with explicitly owned failure-rule walks
 /// over one exact Primary or named endpoint. Older emitters keep refusing them.
 pub fn emit_with_basic_owned_failure_sources(
@@ -405,6 +426,47 @@ pub fn emit_with_basic_owned_adjacency_tree(
     codegen::validate_basic_owned_adjacency_tree_emission(program)?;
     let manifest = render_manifest(options);
     let source = owned_basic::render_public_basic_owned_adjacency_tree_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
+/// Emit the owned adjacency-tree profile plus SequenceItemAt over explicitly
+/// owned recursive collection walks. Every older emitter keeps refusing them.
+pub fn emit_with_basic_owned_recursive_collect(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_recursive_collect(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_recursive_collect_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_recursive_collect_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
+/// Emit SequenceExists over the four pure producers beside ItemAt and the
+/// qualified By/AdjacentBy/StartingWith/EndingWith profile. Each reached predicate item
+/// copies the receiving paired view; existing emitters keep their gates.
+pub fn emit_with_basic_owned_sequence_exists(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_sequence_exists(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_sequence_exists_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_sequence_exists_source(program)?;
     ArtifactSet::new([
         GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
         GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
@@ -2061,7 +2123,44 @@ fn render_expression_in_context_with_scalar_item_at(
             Expression::SequenceExists {
                 sequence,
                 predicate,
+            } if scalar_item_at => {
+                // Producer arguments use the receiving context. Each reached
+                // item copies that view with one appended lexical item frame;
+                // Basic copies are admitted against the caller's policy.
+                let mut body = String::from("{\n");
+                if !scalar_sequence::render_values(sequence, "        ", &mut body, &|node| {
+                    call_expression(node, "context")
+                }) {
+                    return Err(codegen::owned_expression_emission_error(
+                        codegen::OwnedSourceNamespace::Main,
+                        id,
+                        expression,
+                    )
+                    .into());
+                }
+                let reached = if basic {
+                    "            let item_context = item_context?;\n"
+                } else {
+                    ""
+                };
+                let predicate_call = call_expression(*predicate, "&item_context");
+                body.push_str(&format!(
+                "        let generated_items = GeneratedItems::new(sequence_values);\n        for item_context in context.generated_item_contexts(&generated_items) {{\n{reached}            let predicate = {predicate_call}?;\n            if require_bool({predicate}, predicate)? {{\n                return Ok(Value::Bool(true));\n            }}\n        }}\n        Ok(Value::Bool(false))\n    }}"
+            ));
+                body
+            }
+            Expression::SequenceExists {
+                sequence,
+                predicate,
             } => {
+                if basic {
+                    return Err(codegen::owned_expression_emission_error(
+                        codegen::OwnedSourceNamespace::Main,
+                        id,
+                        expression,
+                    )
+                    .into());
+                }
                 let mut body = String::from("{\n");
                 render_generated_values(sequence, "        ", &mut body)?;
                 body.push_str(&format!(
@@ -2074,9 +2173,13 @@ fn render_expression_in_context_with_scalar_item_at(
                 if scalar_item_at {
                     // Both phases use the receiving source context. The item
                     // declaration is lexical metadata, never a generated frame.
-                    if !scalar_sequence::render_values(sequence, "        ", &mut body, &|node| {
-                        call_expression(node, "context")
-                    }) {
+                    let evaluate = |node| call_expression(node, "context");
+                    if !scalar_sequence::render_values(sequence, "        ", &mut body, &evaluate)
+                        && !(basic
+                            && scalar_sequence::render_owned_values(
+                                sequence, id, "        ", &mut body, &evaluate,
+                            ))
+                    {
                         return Err(codegen::owned_expression_emission_error(
                             codegen::OwnedSourceNamespace::Main,
                             id,
@@ -2746,6 +2849,12 @@ fn render_generated_values(
             output.push_str(&format!(
                 "{indent}let sequence_prefix = recursive_sequence_parameter(expression_{prefix}(context)?)?;\n{indent}let sequence_separator = recursive_sequence_parameter(expression_{separator}(context)?)?;\n{indent}let sequence_values = recursive_collect(\n{indent}    context,\n{indent}    RecursiveCollectPaths {{\n{indent}        collection: &[{collection}],\n{indent}        children: &[{children}],\n{indent}        descent_value: &[{descent_value}],\n{indent}        values: &[{values}],\n{indent}        value: &[{value}],\n{indent}    }},\n{indent}    &sequence_prefix,\n{indent}    &sequence_separator,\n{indent})?;\n"
             ));
+        }
+        // Only a paired Basic ItemAt renders an owned producer.
+        GeneratedSequence::OwnedRecursiveCollect {
+            collection, item, ..
+        } => {
+            return Err(codegen::owned_sequence_emission_error(*item, collection).into());
         }
         GeneratedSequence::Range { .. }
         | GeneratedSequence::Tokenize { .. }

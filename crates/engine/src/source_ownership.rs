@@ -24,10 +24,11 @@ fn has_owned_nodes(project: &Project) -> bool {
         )
         .any(|node| node.owned_source_kind().is_some())
         || mapping::first_project_owned_source_scope(project).is_some()
-        || project
-            .failure_rules
-            .iter()
-            .any(|rule| rule.iteration.owned_source().is_some())
+        || project.failure_rules.iter().any(|rule| {
+            rule.iteration.owned_source().is_some()
+                || matches!(&rule.iteration, FailureIteration::Sequence { sequence }
+                    if sequence.owned_source().is_some())
+        })
 }
 
 pub(crate) fn check_project(
@@ -98,6 +99,15 @@ fn admit_roots<'a>(
     for rule in &project.failure_rules {
         match &rule.iteration {
             FailureIteration::Source { collection } => admission.path(collection),
+            // Owned producers are qualified only as parent-context ItemAt.
+            FailureIteration::Sequence { sequence } if sequence.owned_source().is_some() => {
+                return Err(EngineError::UnsupportedOwnedContext {
+                    node: None,
+                    function: None,
+                    scope: None,
+                    context: OwnedCapabilityContext::FailureRule,
+                });
+            }
             FailureIteration::Sequence { sequence } => {
                 admission.sequence(sequence, None, OwnedCapabilityContext::FailureRule, false)
             }
@@ -242,15 +252,16 @@ impl<'a> Admission<'a> {
                     context,
                 });
             }
-            // Only admitted By/AdjacentBy/StartingWith/EndingWith scopes introduce
-            // grouped ancestry. Closed legacy scopes still report their original
-            // owned-node cause, rather than being promoted into an earlier
-            // scope-level refusal.
+            // Only admitted By/AdjacentBy/StartingWith/EndingWith/IntoBlocks scopes
+            // introduce grouped ancestry. Closed legacy scopes still report their
+            // original owned-node cause, rather than being promoted into an
+            // earlier scope-level refusal.
             ancestry |= context == OwnedCapabilityContext::Basic
                 && (scope.group_by.is_some()
                     || scope.group_adjacent_by.is_some()
                     || scope.group_starting_with.is_some()
-                    || scope.group_ending_with.is_some())
+                    || scope.group_ending_with.is_some()
+                    || scope.group_into_blocks.is_some())
                 && scope_demands_owned(self.project, scope);
             match scope.source_selector() {
                 Some(SourceSelectorRef::Legacy(path)) => self.path(path),
@@ -261,6 +272,15 @@ impl<'a> Admission<'a> {
                 None => {}
             }
             if let Some(sequence) = scope.sequence() {
+                // A generated item never becomes an endpoint-bearing frame.
+                if sequence.owned_source().is_some() {
+                    return Err(EngineError::UnsupportedOwnedContext {
+                        node: None,
+                        function: None,
+                        scope: Some(location),
+                        context: OwnedCapabilityContext::GeneratedItem,
+                    });
+                }
                 self.sequence(sequence, None, context, false);
             }
             if let Some((_, join)) = scope.join() {
@@ -549,9 +569,9 @@ impl<'a> Admission<'a> {
         sequence: &SequenceExpr,
         function: Option<FunctionId>,
         inherited: OwnedCapabilityContext,
-        basic_item_at: bool,
+        basic_consumer: bool,
     ) {
-        let context = if basic_item_at
+        let context = if basic_consumer
             && inherited == OwnedCapabilityContext::Basic
             && basic_item_at_producer(sequence)
         {
@@ -679,18 +699,40 @@ impl<'a> Admission<'a> {
                         Some(id),
                         None,
                     )?,
+                    Node::SequenceExists { sequence, .. }
+                    | Node::SequenceItemAt { sequence, .. }
+                    | Node::SequenceAggregate { sequence, .. } => {
+                        // Only a Basic parent-context ItemAt consumes an owned
+                        // producer; reducers with private item phases stay closed.
+                        let qualified = matches!(node, Node::SequenceItemAt { .. })
+                            && basic_consumer_parents(
+                                project,
+                                graph.expect("node belongs to a graph"),
+                                node,
+                            );
+                        let Some(source) = sequence.owned_source().filter(|_| qualified) else {
+                            return Err(EngineError::UnsupportedOwnedContext {
+                                node: Some(id),
+                                function,
+                                scope: None,
+                                context: OwnedCapabilityContext::GeneratedItem,
+                            });
+                        };
+                        self.static_owner(&source.owner, &source.path, None, Some(id), None)?;
+                    }
                     _ => unreachable!("owned kind identifies owned payload"),
                 }
                 self.summary.used_owned = true;
             }
             let child_context = if context == OwnedCapabilityContext::Basic {
-                if matches!(node, Node::SequenceItemAt { .. })
-                    && !basic_item_at_parents(
-                        project,
-                        graph.expect("node belongs to a graph"),
-                        node,
-                    )
-                {
+                if matches!(
+                    node,
+                    Node::SequenceItemAt { .. } | Node::SequenceExists { .. }
+                ) && !basic_consumer_parents(
+                    project,
+                    graph.expect("node belongs to a graph"),
+                    node,
+                ) {
                     OwnedCapabilityContext::GeneratedItem
                 } else {
                     node_context(node)
@@ -742,11 +784,10 @@ impl<'a> Admission<'a> {
                         self.path(&replacement.collection);
                     }
                 }
-                Node::SequenceItemAt { sequence, .. } => {
+                Node::SequenceItemAt { sequence, .. } | Node::SequenceExists { sequence, .. } => {
                     self.sequence(sequence, function, child_context, true)
                 }
-                Node::SequenceExists { sequence, .. }
-                | Node::SequenceAggregate { sequence, .. } => {
+                Node::SequenceAggregate { sequence, .. } => {
                     self.sequence(sequence, function, child_context, false)
                 }
                 Node::JoinAggregate { plan, .. } => {
@@ -788,8 +829,10 @@ pub(crate) fn failure_rule_uses_owned(graph: &mapping::Graph, rule: &mapping::Fa
 }
 
 fn root_failure_node_is_static(project: &Project, node: &Node) -> bool {
-    if matches!(node, Node::SequenceItemAt { .. })
-        || node_context(node) != OwnedCapabilityContext::Basic
+    if matches!(
+        node,
+        Node::SequenceItemAt { .. } | Node::SequenceExists { .. }
+    ) || node_context(node) != OwnedCapabilityContext::Basic
     {
         return false;
     }
@@ -820,8 +863,10 @@ fn primary_row_failure_is_static(project: &Project, collection: &[String]) -> bo
 }
 
 fn primary_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
-    if matches!(node, Node::SequenceItemAt { .. })
-        || node_context(node) != OwnedCapabilityContext::Basic
+    if matches!(
+        node,
+        Node::SequenceItemAt { .. } | Node::SequenceExists { .. }
+    ) || node_context(node) != OwnedCapabilityContext::Basic
     {
         return false;
     }
@@ -932,14 +977,15 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
     if scope.iteration_output == mapping::IterationOutput::MappedSequence {
         return OwnedCapabilityContext::XmlOperator;
     }
-    // Only By, AdjacentBy, StartingWith and EndingWith authenticate owned member
-    // containers. A retention predicate alone, source-free or conflicting modes
-    // and fixed blocks do not.
+    // Only By, AdjacentBy, StartingWith, EndingWith and IntoBlocks authenticate
+    // owned member containers. A retention predicate alone, source-free or
+    // conflicting modes do not.
     if (scope.has_grouping() || scope.post_group_filter.is_some())
         && !((scope.group_by.is_some()
             || scope.group_adjacent_by.is_some()
             || scope.group_starting_with.is_some()
-            || scope.group_ending_with.is_some())
+            || scope.group_ending_with.is_some()
+            || scope.group_into_blocks.is_some())
             && !scope.has_conflicting_grouping()
             && scope.source_selector().is_some())
     {
@@ -979,6 +1025,13 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
     }
 }
 
+/// Parent-context ItemAt producers. The owned recursive walk is qualified
+/// here; the legacy recursive walk keeps its specialized tree classification.
+/// Exists predicates are qualified only over the four pure scalar producers.
+fn basic_exists_producer(sequence: &SequenceExpr) -> bool {
+    basic_item_at_producer(sequence) && !matches!(sequence, SequenceExpr::OwnedRecursiveCollect(_))
+}
+
 fn basic_item_at_producer(sequence: &SequenceExpr) -> bool {
     matches!(
         sequence,
@@ -986,20 +1039,27 @@ fn basic_item_at_producer(sequence: &SequenceExpr) -> bool {
             | SequenceExpr::Tokenize { .. }
             | SequenceExpr::TokenizeByLength { .. }
             | SequenceExpr::TokenizeRegex { .. }
+            | SequenceExpr::OwnedRecursiveCollect(_)
     )
 }
 
-/// ItemAt parent graphs remain Basic scalars (including nested eligible ItemAt).
+/// ItemAt producer arguments/index and Exists producer arguments/predicate
+/// remain Basic scalars, including nested eligible consumers. The Exists
+/// predicate adds only its private generated item, which is not an endpoint.
 /// A closed operator in one argument cannot gain permission merely because an
 /// owned read is in another. Legacy islands keep their original classification.
-fn basic_item_at_parents(project: &Project, graph: &mapping::Graph, node: &Node) -> bool {
-    let Node::SequenceItemAt { sequence, index } = node else {
-        return false;
+fn basic_consumer_parents(project: &Project, graph: &mapping::Graph, node: &Node) -> bool {
+    let (sequence, consumer) = match node {
+        Node::SequenceItemAt { sequence, index } if basic_item_at_producer(sequence) => {
+            (sequence, *index)
+        }
+        Node::SequenceExists {
+            sequence,
+            predicate,
+        } if basic_exists_producer(sequence) => (sequence, *predicate),
+        _ => return false,
     };
-    if !basic_item_at_producer(sequence) {
-        return false;
-    }
-    let mut pending: Vec<_> = sequence.inputs().into_iter().chain([*index]).collect();
+    let mut pending: Vec<_> = sequence.inputs().into_iter().chain([consumer]).collect();
     let mut visited = BTreeSet::new();
     while let Some(id) = pending.pop() {
         if !visited.insert(id) {
@@ -1042,6 +1102,9 @@ fn node_context(node: &Node) -> OwnedCapabilityContext {
             OwnedCapabilityContext::Join
         }
         Node::SequenceItemAt { sequence, .. } if basic_item_at_producer(sequence) => {
+            OwnedCapabilityContext::Basic
+        }
+        Node::SequenceExists { sequence, .. } if basic_exists_producer(sequence) => {
             OwnedCapabilityContext::Basic
         }
         Node::SequenceExists { .. }

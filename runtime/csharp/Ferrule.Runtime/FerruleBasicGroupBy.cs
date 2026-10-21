@@ -2,7 +2,7 @@ using System.Collections.ObjectModel;
 
 namespace Ferrule.Runtime;
 
-/// <summary>Static controls shared by owned By, AdjacentBy, StartingWith and EndingWith.</summary>
+/// <summary>Static controls shared by owned By, AdjacentBy, StartingWith, EndingWith and IntoBlocks.</summary>
 public readonly record struct FerruleBasicGroupByMetadata(
     IReadOnlyList<bool> Descending, bool FilterBeforeSort, int ExplicitWindowCount,
     bool ImplicitFirst, bool HasFilter, bool HasPostFilter);
@@ -40,6 +40,17 @@ public interface IFerruleBasicGroupEndingWithControls
     bool RetainMember(FerruleBasicScopeContext context);
 }
 
+/// <summary>Candidate-phase controls for owned IntoBlocks with a parent-evaluated positive block size.</summary>
+public interface IFerruleBasicGroupIntoBlocksControls
+{
+    FerruleBasicGroupByMetadata Metadata();
+    bool Filter(FerruleBasicScopeContext context);
+    FerruleValue SortKey(int key, FerruleBasicScopeContext context);
+    FerruleSequenceWindow Window(int bound, FerruleBasicScopeContext parent);
+    ulong BlockSize(FerruleBasicScopeContext parent);
+    bool RetainMember(FerruleBasicScopeContext context);
+}
+
 public sealed partial class FerruleBasicScopeContext
 {
     /// <summary>Executes authenticated global, first-seen By grouping under a cumulative metadata reservation.</summary>
@@ -73,6 +84,15 @@ public sealed partial class FerruleBasicScopeContext
     /// last true boundary form a real trailing run. Boolean boundaries consume no key text.</remarks>
     public IReadOnlyList<FerruleInstance> MapGroupEndingWithSourceCohort(
         FerruleRetainedSourceCohort original, IFerruleBasicGroupEndingWithControls controls,
+        Func<FerruleBasicScopeContext, FerruleInstance> target) =>
+        FerruleBasicGroupByOperation.Run(this, original, controls, target);
+
+    /// <summary>Executes authenticated fixed-size IntoBlocks grouping under a cumulative metadata reservation.</summary>
+    /// <remarks>The positive size is evaluated once in this parent after the window bounds,
+    /// even for an empty cohort. Selected members fill each block in order and the last
+    /// block may be partial; dropping a block never refills its neighbors. No key text is consumed.</remarks>
+    public IReadOnlyList<FerruleInstance> MapGroupIntoBlocksSourceCohort(
+        FerruleRetainedSourceCohort original, IFerruleBasicGroupIntoBlocksControls controls,
         Func<FerruleBasicScopeContext, FerruleInstance> target) =>
         FerruleBasicGroupByOperation.Run(this, original, controls, target);
 }
@@ -319,8 +339,8 @@ internal sealed class BasicGroupPrefixTemplate
 }
 
 // This private partition choice grants no new public policy or container kind.
-// Only these four paired operations mint authenticated member containers.
-internal enum BasicGroupPartition { By, AdjacentBy, StartingWith, EndingWith }
+// Only these five paired operations mint authenticated member containers.
+internal enum BasicGroupPartition { By, AdjacentBy, StartingWith, EndingWith, IntoBlocks }
 
 // Borrowed stack-only dispatch over exactly one public controls interface. It is
 // never stored in the operation, boxed or exposed as a key-producing adapter.
@@ -329,21 +349,26 @@ internal readonly struct BasicGroupControls
     private readonly IFerruleBasicGroupByControls? _keyed;
     private readonly IFerruleBasicGroupStartingWithControls? _starting;
     private readonly IFerruleBasicGroupEndingWithControls? _ending;
-    internal BasicGroupControls(IFerruleBasicGroupByControls keyed) { _keyed = keyed; _starting = null; _ending = null; }
-    internal BasicGroupControls(IFerruleBasicGroupStartingWithControls starting) { _keyed = null; _starting = starting; _ending = null; }
-    internal BasicGroupControls(IFerruleBasicGroupEndingWithControls ending) { _keyed = null; _starting = null; _ending = ending; }
+    private readonly IFerruleBasicGroupIntoBlocksControls? _blocks;
+    internal BasicGroupControls(IFerruleBasicGroupByControls keyed) { _keyed = keyed; _starting = null; _ending = null; _blocks = null; }
+    internal BasicGroupControls(IFerruleBasicGroupStartingWithControls starting) { _keyed = null; _starting = starting; _ending = null; _blocks = null; }
+    internal BasicGroupControls(IFerruleBasicGroupEndingWithControls ending) { _keyed = null; _starting = null; _ending = ending; _blocks = null; }
+    internal BasicGroupControls(IFerruleBasicGroupIntoBlocksControls blocks) { _keyed = null; _starting = null; _ending = null; _blocks = blocks; }
     internal FerruleBasicGroupByMetadata Metadata() =>
-        _keyed is not null ? _keyed.Metadata() : _starting is not null ? _starting.Metadata() : _ending!.Metadata();
+        _keyed is not null ? _keyed.Metadata() : _starting is not null ? _starting.Metadata() : _ending is not null ? _ending.Metadata() : _blocks!.Metadata();
     internal bool Filter(FerruleBasicScopeContext c) =>
-        _keyed is not null ? _keyed.Filter(c) : _starting is not null ? _starting.Filter(c) : _ending!.Filter(c);
+        _keyed is not null ? _keyed.Filter(c) : _starting is not null ? _starting.Filter(c) : _ending is not null ? _ending.Filter(c) : _blocks!.Filter(c);
     internal FerruleValue SortKey(int key, FerruleBasicScopeContext c) =>
-        _keyed is not null ? _keyed.SortKey(key, c) : _starting is not null ? _starting.SortKey(key, c) : _ending!.SortKey(key, c);
+        _keyed is not null ? _keyed.SortKey(key, c) : _starting is not null ? _starting.SortKey(key, c) : _ending is not null ? _ending.SortKey(key, c) : _blocks!.SortKey(key, c);
     internal FerruleSequenceWindow Window(int bound, FerruleBasicScopeContext parent) =>
-        _keyed is not null ? _keyed.Window(bound, parent) : _starting is not null ? _starting.Window(bound, parent) : _ending!.Window(bound, parent);
+        _keyed is not null ? _keyed.Window(bound, parent) : _starting is not null ? _starting.Window(bound, parent) : _ending is not null ? _ending.Window(bound, parent) : _blocks!.Window(bound, parent);
     internal FerruleValue GroupKey(FerruleBasicScopeContext c) => _keyed!.GroupKey(c);
     internal bool Boundary(FerruleBasicScopeContext c) => _starting is not null ? _starting.StartsGroup(c) : _ending!.EndsGroup(c);
+    // Generated controls validate positivity with a typed node error; zero is a host contract violation.
+    internal ulong BlockSize(FerruleBasicScopeContext parent) => _blocks!.BlockSize(parent) is var size and not 0 ? size
+        : throw new InvalidOperationException("IntoBlocks controls returned a zero block size.");
     internal bool RetainMember(FerruleBasicScopeContext c) =>
-        _keyed is not null ? _keyed.RetainMember(c) : _starting is not null ? _starting.RetainMember(c) : _ending!.RetainMember(c);
+        _keyed is not null ? _keyed.RetainMember(c) : _starting is not null ? _starting.RetainMember(c) : _ending is not null ? _ending.RetainMember(c) : _blocks!.RetainMember(c);
 }
 
 internal sealed class FerruleBasicGroupByOperation
@@ -413,6 +438,15 @@ internal sealed class FerruleBasicGroupByOperation
         var dispatch = new BasicGroupControls(controls);
         var operation = PrepareOperation(parent, original, dispatch);
         return operation.Execute(parent, dispatch, target, BasicGroupPartition.EndingWith);
+    }
+    internal static IReadOnlyList<FerruleInstance> Run(FerruleBasicScopeContext parent,
+        FerruleRetainedSourceCohort original, IFerruleBasicGroupIntoBlocksControls controls,
+        Func<FerruleBasicScopeContext, FerruleInstance> target)
+    {
+        ArgumentNullException.ThrowIfNull(original); ArgumentNullException.ThrowIfNull(controls); ArgumentNullException.ThrowIfNull(target);
+        var dispatch = new BasicGroupControls(controls);
+        var operation = PrepareOperation(parent, original, dispatch);
+        return operation.Execute(parent, dispatch, target, BasicGroupPartition.IntoBlocks);
     }
     // Borrow exactly one existing controls interface. No retained callbacks or new
     // operation fields are needed to share authentication/storage.
@@ -648,10 +682,13 @@ internal sealed class FerruleBasicGroupByOperation
         for (var i = 0; i < _metadata.ExplicitWindowCount; i++)
             _windows[i] = controls.Window(i, parent);
         if (_metadata.ImplicitFirst) _windows[^1] = FerruleSequenceWindow.First(1);
+        // Blocks: the parent size follows the bounds and precedes candidate controls.
+        var blockSize = partition == BasicGroupPartition.IntoBlocks ? controls.BlockSize(parent) : 0UL;
         var buckets = 0;
         // Ending: whether the previous selected member's true boundary closed its run.
         var endingClosed = true;
         var boundaries = partition is BasicGroupPartition.StartingWith or BasicGroupPartition.EndingWith;
+        var keyed = partition is BasicGroupPartition.By or BasicGroupPartition.AdjacentBy;
         for (var row = 0; row < count; row++)
         {
             var id = _order[row]; var c = sorted ? _selection[id] : _original[id].Context;
@@ -660,7 +697,7 @@ internal sealed class FerruleBasicGroupByOperation
             var boundary = false;
             if (boundaries)
                 boundary = controls.Boundary(c); // including the first and last candidates; before post
-            else
+            else if (keyed)
             {
                 key = controls.GroupKey(c); AdmitKey(key);
             }
@@ -679,6 +716,11 @@ internal sealed class FerruleBasicGroupByOperation
                 if (!endingClosed) bucket = buckets - 1;
                 endingClosed = boundary;
             }
+            else if (partition == BasicGroupPartition.IntoBlocks)
+            {
+                // Selected members fill the last block; the final block may be partial.
+                if (buckets != 0 && (ulong)_buckets[buckets - 1].Count < blockSize) bucket = buckets - 1;
+            }
             else if (partition == BasicGroupPartition.AdjacentBy)
             {
                 // Compare the last CREATED run, including an all-false run. Retention
@@ -693,9 +735,9 @@ internal sealed class FerruleBasicGroupByOperation
             }
             if (bucket == buckets)
             {
-                // Starting and Ending retain the same prepaid n-key backing,
+                // Starting, Ending and IntoBlocks retain the same prepaid n-key backing,
                 // Null-filled and unused: no boundary vector, key comparison or key text.
-                if (!boundaries) _groupKeys[bucket] = key;
+                if (keyed) _groupKeys[bucket] = key;
                 _buckets[bucket] = new() { Head = id, Tail = id, Count = 1, Retained = retain };
                 buckets++;
             }

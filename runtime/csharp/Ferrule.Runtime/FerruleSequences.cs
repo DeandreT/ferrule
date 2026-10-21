@@ -353,6 +353,61 @@ public static class FerruleSequences
         return new ReadOnlyCollection<FerruleValue>(output);
     }
 
+    /// <summary>
+    /// Collects scalar leaves in preorder from one exact owner's root collection.
+    /// A same-owner frame pins its prefix, otherwise the endpoint root is used;
+    /// other owners and legacy frames never supply roots. Child, descent and
+    /// value paths, ordering and limits match <see cref="RecursiveCollect"/>.
+    /// </summary>
+    public static IReadOnlyList<FerruleValue> RecursiveCollectOwned(
+        FerruleBasicScopeContext context,
+        FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> collection,
+        IReadOnlyList<string> children,
+        IReadOnlyList<string> descentValue,
+        IReadOnlyList<string> values,
+        IReadOnlyList<string> value,
+        string prefix,
+        string separator)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(collection);
+        ArgumentNullException.ThrowIfNull(children);
+        ArgumentNullException.ThrowIfNull(descentValue);
+        ArgumentNullException.ThrowIfNull(values);
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(prefix);
+        ArgumentNullException.ThrowIfNull(separator);
+        ValidatePath(collection);
+        ValidatePath(children);
+        ValidatePath(descentValue);
+        ValidatePath(values);
+        ValidatePath(value);
+
+        var cohort = context.WalkOwnedSourceCohort(owner, collection);
+        var output = new List<FerruleValue>();
+        foreach (var candidate in cohort)
+        {
+            // The published terminal includes a fresh named Group root, whose
+            // legacy view keeps the parent frames.
+            if (candidate.GroupTerminal is { } terminal)
+            {
+                CollectRecursiveGroup(
+                    terminal.Item,
+                    children,
+                    descentValue,
+                    values,
+                    value,
+                    prefix,
+                    separator,
+                    0,
+                    output);
+            }
+        }
+        GC.KeepAlive(cohort);
+        return new ReadOnlyCollection<FerruleValue>(output);
+    }
+
     private static void ValidatePath(IReadOnlyList<string> path)
     {
         for (var index = 0; index < path.Count; index++)

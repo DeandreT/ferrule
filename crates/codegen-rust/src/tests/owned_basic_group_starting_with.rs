@@ -8,6 +8,9 @@ use mapping::{Node, OwnedSourceField, OwnedSourceRef, SourceOwner};
 // #444 Ending reuses this module's Starting fixture and refusal.
 #[path = "owned_basic_group_ending_with.rs"]
 mod ending_with;
+// #445 IntoBlocks reuses the same fixture and refusal.
+#[path = "owned_basic_group_into_blocks.rs"]
+mod into_blocks;
 
 fn path(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).into()).collect()

@@ -24,8 +24,10 @@ evaluation and the before-publication check, before serializing selected or all
 targets. Target instances own their data. Earlier parsing and mapping peaks,
 allocator-retained pages, and the target/output buffers can still dominate RSS.
 Joins, sorting, grouping, generated sequences, copies, multiple targets, and
-retained preview or pipeline results may require additional collections or
-clones. A small serialized file can still create many owned strings and tree
+retained preview results may require additional collections or clones. A
+file-host pipeline run drops each host input and unselected stage target after
+its last reading stage, so a linear chain holds about one input and one output
+at a time; see [pipeline intermediate release](performance/pipeline-intermediate-release.md). A small serialized file can still create many owned strings and tree
 nodes. One very wide row has a different allocation pattern from many short rows.
 
 Ordinary CSV filesystem reading uses a buffered CSV reader but retains every

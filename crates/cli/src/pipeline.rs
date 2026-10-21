@@ -481,7 +481,16 @@ fn run_pipeline_value_with_pdf_reader(
         sink,
         source_row_capacity: options.stage_trace_source_row_capacity,
     });
-    let results = engine::run_pipeline_with_stage_contexts(pipeline, &hosts, |stage| {
+    // Only selected targets outlive the run; hosts and other intermediates are
+    // dropped after their last reading stage. Preview keeps every stage value.
+    let retain = selected
+        .iter()
+        .map(|selection| engine::PipelineTargetRef {
+            stage: &selection.request.stage,
+            target: selection.request.target.as_deref(),
+        })
+        .collect::<Vec<_>>();
+    let results = engine::run_pipeline_retaining(pipeline, hosts, &retain, |stage| {
         let mut execution = engine::ExecutionContext::with_main_mapping_file_path(
             &stage_mapping_paths[stage],
             &main_mapping_path,
@@ -508,20 +517,12 @@ fn run_pipeline_value_with_pdf_reader(
     let writes = selected
         .iter()
         .map(|selection| {
-            let stage = results
-                .stage(&selection.request.stage)
-                .expect("selected stage was validated");
-            let instance = match &selection.request.target {
-                None => &stage.primary,
-                Some(name) => {
-                    &stage
-                        .extras
-                        .iter()
-                        .find(|output| output.name == *name)
-                        .expect("selected named target was validated")
-                        .instance
-                }
-            };
+            let instance = results
+                .get(
+                    &selection.request.stage,
+                    selection.request.target.as_deref(),
+                )
+                .expect("selected targets are retained");
             TargetOutput {
                 destination: &selection.destination,
                 name: selection.name,
@@ -554,7 +555,7 @@ fn run_pipeline_value_with_pdf_reader(
         })
         .collect();
     Ok(PipelineRunOutcome {
-        stages_executed: results.stages.into_iter().map(|stage| stage.id).collect(),
+        stages_executed: results.stages_executed,
         artifacts,
     })
 }

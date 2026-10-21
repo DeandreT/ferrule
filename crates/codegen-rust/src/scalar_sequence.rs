@@ -10,7 +10,9 @@ pub(super) fn runtime_helper(sequence: &GeneratedSequence) -> Option<&'static st
         GeneratedSequence::Tokenize { .. } => Some("tokenize"),
         GeneratedSequence::TokenizeByLength { .. } => Some("tokenize_by_length"),
         GeneratedSequence::TokenizeRegex { .. } => Some("tokenize_regex"),
-        GeneratedSequence::RecursiveCollect { .. } | GeneratedSequence::FilterMapV1(_) => None,
+        GeneratedSequence::RecursiveCollect { .. }
+        | GeneratedSequence::OwnedRecursiveCollect { .. }
+        | GeneratedSequence::FilterMapV1(_) => None,
     }
 }
 
@@ -80,9 +82,49 @@ pub(super) fn render_values(
                 "{indent}let sequence_to = {to}?;\n{indent}let sequence_values = if sequence_to == Value::Null || sequence_to.is_json_null() {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    generate_sequence(None, sequence_to)?\n{indent}}};\n"
             ));
         }
-        GeneratedSequence::RecursiveCollect { .. } | GeneratedSequence::FilterMapV1(_) => {
+        GeneratedSequence::RecursiveCollect { .. }
+        | GeneratedSequence::OwnedRecursiveCollect { .. }
+        | GeneratedSequence::FilterMapV1(_) => {
             return false;
         }
     }
+    true
+}
+
+/// Materialize an owned recursive walk in a paired Basic `context`: prefix,
+/// then separator, then the exact-owner root selection. Owned access failures
+/// carry the consuming `node`; returns false for every other producer.
+pub(super) fn render_owned_values(
+    sequence: &GeneratedSequence,
+    node: NodeId,
+    indent: &str,
+    output: &mut String,
+    evaluate: &impl Fn(NodeId) -> String,
+) -> bool {
+    let GeneratedSequence::OwnedRecursiveCollect {
+        collection,
+        children,
+        descent_value,
+        values,
+        value,
+        prefix,
+        separator,
+        ..
+    } = sequence
+    else {
+        return false;
+    };
+    let prefix = evaluate(*prefix);
+    let separator = evaluate(*separator);
+    let owner = super::owned_basic::owner_literal(&collection.owner);
+    let path = super::render_string_path;
+    output.push_str(&format!(
+        "{indent}let sequence_prefix = codegen_runtime::recursive_sequence_parameter({prefix}?)?;\n{indent}let sequence_separator = codegen_runtime::recursive_sequence_parameter({separator}?)?;\n{indent}let sequence_values = codegen_runtime::owned_recursive_collect(\n{indent}    context,\n{indent}    {owner},\n{indent}    codegen_runtime::RecursiveCollectPaths {{\n{indent}        collection: &[{}],\n{indent}        children: &[{}],\n{indent}        descent_value: &[{}],\n{indent}        values: &[{}],\n{indent}        value: &[{}],\n{indent}    }},\n{indent}    &sequence_prefix,\n{indent}    &sequence_separator,\n{indent})\n{indent}.map_err(|error| error.with_owned_source_node({node}))?;\n",
+        path(&collection.path),
+        path(children),
+        path(descent_value),
+        path(values),
+        path(value),
+    ));
     true
 }

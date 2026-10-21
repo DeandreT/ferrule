@@ -1163,14 +1163,15 @@ fn key_only_and_post_only_legacy_scopes_authenticate_primary_and_keep_descendant
             ))
         );
         // No owned selector/binding in this child: grouped ancestry must still
-        // close specialized consumers and keep the original scope location.
+        // close specialized consumers (a retention predicate without grouping)
+        // and keep the original scope location.
         controls(&mut p).children.push(Scope {
             target_field: "Members".into(),
             iteration: ScopeIteration::Source(vec![]),
-            group_into_blocks: Some(21),
+            post_group_filter: Some(21),
             ..Scope::default()
         });
-        p.graph.nodes.insert(21, constant(Value::Int(2)));
+        p.graph.nodes.insert(21, constant(Value::Bool(true)));
         assert_eq!(
             run(&p),
             Err(EngineError::UnsupportedOwnedContext {
@@ -2076,7 +2077,8 @@ fn only_two_keyed_families_are_admitted_and_specialized_consumers_remain_closed(
             );
             continue;
         }
-        if mode == 1 {
+        // Ending boundaries and blocks of two partition this cohort identically.
+        if mode == 1 || mode == 2 {
             assert_eq!(
                 run(&p),
                 Ok(expected(
@@ -2133,13 +2135,7 @@ fn only_two_keyed_families_are_admitted_and_specialized_consumers_remain_closed(
             },
             Domain::AggregateLookup,
         ),
-        (
-            Node::SequenceExists {
-                sequence: sequence.clone(),
-                predicate: 5,
-            },
-            Domain::GeneratedItem,
-        ),
+        // SequenceExists over a pure producer is qualified separately (#472).
         (
             Node::SequenceAggregate {
                 function: mapping::AggregateOp::Count,

@@ -20,6 +20,10 @@ use adjacency_tree::{owned_root, owned_rows};
 mod failure_sources;
 pub(super) use failure_sources::FailurePolicy;
 pub use failure_sources::validate_basic_owned_failure_source_emission;
+mod recursive_collect;
+pub use recursive_collect::{
+    owned_sequence_emission_error, validate_basic_owned_recursive_collect_emission,
+};
 mod primary_row_failures;
 pub use primary_row_failures::{
     is_basic_owned_primary_row_failure, validate_basic_owned_row_failure_emission,
@@ -36,6 +40,12 @@ fn request(expression: &Expression) -> Option<Request> {
             owner: (&position.owner).into(),
             collection: position.collection.clone(),
         }),
+        // A consumer of an owned producer requests that root collection.
+        Expression::SequenceExists { sequence, .. }
+        | Expression::SequenceItemAt { sequence, .. }
+        | Expression::SequenceAggregate { sequence, .. } => {
+            sequence.owned_source().map(iteration_request)
+        }
         _ => None,
     }
 }
@@ -172,6 +182,7 @@ fn scope_has_owned(scope: &TargetScope) -> bool {
         || owned_rows(scope).is_some()
         || scope.iteration.as_ref().is_some_and(|iteration| {
             iteration.owned_source_iteration().is_some()
+                || recursive_collect::scope_sequence(iteration).is_some()
                 || iteration
                     .concatenated()
                     .is_some_and(|segments| segments.iter().any(scope_has_owned))
@@ -180,27 +191,25 @@ fn scope_has_owned(scope: &TargetScope) -> bool {
         || matches!(&scope.construction, TargetConstruction::DynamicGroup { children, .. } if children.iter().any(|child| scope_has_owned(&child.scope)))
 }
 fn has_owned(program: &Program) -> bool {
-    program.expressions.iter().any(|node| {
-        matches!(
-            node.expression,
-            Expression::OwnedSourceField(_) | Expression::OwnedPosition(_)
-        )
-    }) || program.user_functions.iter().any(|function| {
-        function.expressions.iter().any(|node| {
-            matches!(
-                node.expression,
-                Expression::OwnedSourceField(_) | Expression::OwnedPosition(_)
-            )
+    program
+        .expressions
+        .iter()
+        .any(|node| request(&node.expression).is_some())
+        || program.user_functions.iter().any(|function| {
+            function
+                .expressions
+                .iter()
+                .any(|node| request(&node.expression).is_some())
         })
-    }) || scope_has_owned(&program.root)
+        || scope_has_owned(&program.root)
         || program
             .extra_targets
             .iter()
             .any(|target| scope_has_owned(&target.root))
-        || program
-            .failure_rules
-            .iter()
-            .any(|rule| matches!(rule.iteration, FailureIteration::OwnedSource(_)))
+        || program.failure_rules.iter().any(|rule| {
+            matches!(rule.iteration, FailureIteration::OwnedSource(_))
+                || recursive_collect::failure_sequence(rule).is_some()
+        })
 }
 fn visit_scopes<'a>(
     scope: &'a TargetScope,
@@ -307,7 +316,15 @@ pub(super) fn validate_structure(program: &Program) -> Result<(), ProgramValidat
                 iteration_request(source.source()),
             )?;
         }
-        if let Some(collection) = owned_path_hierarchy(scope).or_else(|| owned_rows(scope)) {
+        if let Some(collection) = owned_path_hierarchy(scope)
+            .or_else(|| owned_rows(scope))
+            .or_else(|| {
+                scope
+                    .iteration
+                    .as_ref()
+                    .and_then(recursive_collect::scope_sequence)
+            })
+        {
             structure(
                 program,
                 Location::Iteration { scope: route },
@@ -321,6 +338,13 @@ pub(super) fn validate_structure(program: &Program) -> Result<(), ProgramValidat
                 program,
                 Location::FailureIteration { index },
                 iteration_request(source.source()),
+            )?;
+        }
+        if let Some(source) = recursive_collect::failure_sequence(rule) {
+            structure(
+                program,
+                Location::FailureIteration { index },
+                iteration_request(source),
             )?;
         }
     }
@@ -409,6 +433,7 @@ pub(super) enum BasicOwnedProfile {
     ByAndAdjacentByAndWindowsAndSortAndFilter,
     ByAndAdjacentByAndStartingWithAndWindowsAndSortAndFilter,
     ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter,
+    ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter,
 }
 
 /// Construction permission for an owned path-hierarchy input collection. It is
@@ -426,17 +451,44 @@ pub(super) enum PathHierarchyPolicy {
 pub(super) enum SequenceItemAtPolicy {
     Closed,
     BasicScalarProducers,
+    /// The four scalar producers plus the owned recursive collection walk.
+    BasicScalarAndOwnedRecursiveProducers,
+    /// Also admits SequenceExists over the same producers. Its predicate reads
+    /// a private generated item beside the unchanged receiving source context.
+    BasicScalarProducersWithExists,
 }
 
 impl SequenceItemAtPolicy {
     fn permits(self, expression: &Expression) -> bool {
-        self == Self::BasicScalarProducers
-            && matches!(expression, Expression::SequenceItemAt { sequence, .. }
-                if matches!(sequence,
-                    crate::GeneratedSequence::Range { .. }
-                        | crate::GeneratedSequence::Tokenize { .. }
-                        | crate::GeneratedSequence::TokenizeByLength { .. }
-                        | crate::GeneratedSequence::TokenizeRegex { .. }))
+        let Some(sequence) = (match expression {
+            Expression::SequenceItemAt { sequence, .. } => Some(sequence),
+            Expression::SequenceExists { sequence, .. }
+                if self == Self::BasicScalarProducersWithExists =>
+            {
+                Some(sequence)
+            }
+            _ => None,
+        }) else {
+            return false;
+        };
+        let scalar = matches!(
+            sequence,
+            crate::GeneratedSequence::Range { .. }
+                | crate::GeneratedSequence::Tokenize { .. }
+                | crate::GeneratedSequence::TokenizeByLength { .. }
+                | crate::GeneratedSequence::TokenizeRegex { .. }
+        );
+        match self {
+            Self::Closed => false,
+            Self::BasicScalarProducers | Self::BasicScalarProducersWithExists => scalar,
+            Self::BasicScalarAndOwnedRecursiveProducers => {
+                scalar
+                    || matches!(
+                        sequence,
+                        crate::GeneratedSequence::OwnedRecursiveCollect { .. }
+                    )
+            }
+        }
     }
 }
 
@@ -448,6 +500,7 @@ impl BasicOwnedProfile {
                 | Self::ByAndAdjacentByAndWindowsAndSortAndFilter
                 | Self::ByAndAdjacentByAndStartingWithAndWindowsAndSortAndFilter
                 | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter
+                | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter
         )
     }
 
@@ -561,16 +614,23 @@ impl BasicOwnedProfile {
                         Self::ByAndAdjacentByAndWindowsAndSortAndFilter
                             | Self::ByAndAdjacentByAndStartingWithAndWindowsAndSortAndFilter
                             | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter
+                            | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter
                     ),
                     Some(crate::GroupingPlan::StartingWith { .. }) => matches!(
                         self,
                         Self::ByAndAdjacentByAndStartingWithAndWindowsAndSortAndFilter
                             | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter
+                            | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter
                     ),
-                    Some(crate::GroupingPlan::EndingWith { .. }) => {
-                        self == Self::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter
+                    Some(crate::GroupingPlan::EndingWith { .. }) => matches!(
+                        self,
+                        Self::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter
+                            | Self::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter
+                    ),
+                    Some(crate::GroupingPlan::IntoBlocks { .. }) => {
+                        self == Self::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter
                     }
-                    Some(crate::GroupingPlan::IntoBlocks { .. }) | None => false,
+                    None => false,
                 }) && matches!(
                     iteration.input(),
                     IterationSource::Source(_) | IterationSource::OwnedSource(_)
@@ -632,6 +692,21 @@ impl<'a> Admission<'a> {
             {
                 return Err(failure(location, Some(query), closed));
             }
+            if let Some(query) =
+                recursive_collect::closed_consumer(expression, self.sequence_item_at)
+            {
+                return Err(failure(
+                    location,
+                    Some(query),
+                    Closed {
+                        reason: Capability::GeneratedItem,
+                        origin: Origin::Expression {
+                            namespace: visit.namespace,
+                            node: visit.node,
+                        },
+                    },
+                ));
+            }
             if let Expression::UserFunctionCall { function, .. } = expression {
                 if owns(&visit.ancestry) {
                     return Err(failure(
@@ -669,7 +744,9 @@ impl<'a> Admission<'a> {
                 }
             }
             let reason = match expression {
-                Expression::SequenceItemAt { .. } if self.sequence_item_at.permits(expression) => {
+                Expression::SequenceItemAt { .. } | Expression::SequenceExists { .. }
+                    if self.sequence_item_at.permits(expression) =>
+                {
                     None
                 }
                 Expression::SequenceExists { .. }
@@ -717,10 +794,10 @@ impl<'a> Admission<'a> {
     ) -> Result<(), ProgramValidationError> {
         // Bounds use the incoming parent, before this scope introduces an item.
         // Keep the complete Visit key when a bound is also a key or target root.
-        let window_parent = self
-            .profile
-            .permits_windows(scope)
-            .then(|| (ancestry.clone(), inherited.clone()));
+        // An admitted fixed-block size is such a parent expression as well.
+        let window_parent = (self.profile.permits_windows(scope)
+            || self.profile.permits_group(scope))
+        .then(|| (ancestry.clone(), inherited.clone()));
         let mut closed = inherited;
         if let Some(iteration) = &scope.iteration {
             let reason = if (iteration.grouping().is_some()
@@ -769,6 +846,21 @@ impl<'a> Admission<'a> {
                 },
             };
             ancestry.push(ancestor);
+            // A generated item never becomes an endpoint-bearing frame.
+            if let Some(source) = recursive_collect::scope_sequence(iteration) {
+                return Err(failure(
+                    Location::Iteration {
+                        scope: route.clone(),
+                    },
+                    Some(iteration_request(source)),
+                    closed.clone().unwrap_or(Closed {
+                        reason: Capability::GeneratedItem,
+                        origin: Origin::Scope {
+                            scope: route.clone(),
+                        },
+                    }),
+                ));
+            }
             if let Some(source) = iteration.owned_source_iteration() {
                 let query = iteration_request(source.source());
                 if let Some(closed) = closed
@@ -856,15 +948,20 @@ impl<'a> Admission<'a> {
                 .iteration
                 .as_ref()
                 .expect("admitted grouping iteration");
-            // Bounds run once in the receiving parent; filter, sort, key or
-            // boundary, and retention are candidate expressions. Only target
-            // expressions and descendants inherit the grouped/member view.
+            // Bounds and a block size run once in the receiving parent; filter,
+            // sort, key or boundary, and retention are candidate expressions.
+            // Only target expressions and descendants inherit the grouped view.
             if let Some((parent_ancestry, parent_closed)) = &window_parent {
                 for node in iteration
                     .windows()
                     .iter()
                     .copied()
                     .flat_map(crate::SequenceWindow::nodes)
+                    .chain(
+                        iteration
+                            .grouping()
+                            .and_then(|grouping| grouping.parent_expression()),
+                    )
                 {
                     self.expression(Visit {
                         namespace: Namespace::Main,
@@ -901,8 +998,8 @@ impl<'a> Admission<'a> {
             }
             // A wholly ordinary island must not gain owned ancestry just by
             // using an admitted mode. A demanded paired By/AdjacentBy/StartingWith/
-            // EndingWith operation establishes a member container; no other mode
-            // may mint one.
+            // EndingWith/IntoBlocks operation establishes a member container; no
+            // other mode may mint one.
             if owns(&ancestry) || basic_scope_needs_owned(self.program, scope) {
                 ancestry.push(Ancestor::GroupMembers {
                     scope: route.clone(),
@@ -1125,6 +1222,7 @@ pub(super) fn validate_closed_contexts_with_constructions(
         if let FailureIteration::Generated(sequence) = &rule.iteration {
             roots.extend(sequence.roots());
         }
+        recursive_collect::admit_failure(index, rule)?;
         failure_sources::admit_iteration(program, index, rule, failures)?;
         for node in roots {
             admission.expression(Visit {
@@ -1341,6 +1439,21 @@ pub fn validate_basic_owned_group_ending_with_emission(
     )
 }
 
+/// Explicitly admits static Basic By, AdjacentBy, StartingWith, EndingWith and
+/// IntoBlocks with candidate retention. The block size is a parent expression;
+/// inherited specialized contexts remain closed, and ItemAt and failure
+/// permissions are independent, unchanged policies.
+pub fn validate_basic_owned_group_into_blocks_emission(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_with_policies(
+        program,
+        BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter,
+        true,
+        SequenceItemAtPolicy::BasicScalarProducers,
+    )
+}
+
 /// Explicitly admits SequenceItemAt over the existing four scalar producers.
 /// Producer arguments and index retain the receiving source context. By and
 /// prior controls compose here; all older profiles and failure scalar subsets
@@ -1369,6 +1482,21 @@ pub fn validate_basic_owned_path_hierarchy_emission(
         FailurePolicy::OwnedSources,
         SequenceItemAtPolicy::BasicScalarProducers,
         PathHierarchyPolicy::Owned,
+    )
+}
+
+/// Explicitly admits SequenceExists over the same four scalar producers beside
+/// ItemAt and the By/AdjacentBy/StartingWith/EndingWith controls. Producer
+/// arguments keep the receiving context; the predicate adds only its private
+/// generated item. Older profiles and failure scalar subsets retain their permissions.
+pub fn validate_basic_owned_sequence_exists_emission(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_with_policies(
+        program,
+        BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndEndingWithAndWindowsAndSortAndFilter,
+        true,
+        SequenceItemAtPolicy::BasicScalarProducersWithExists,
     )
 }
 
@@ -1508,7 +1636,9 @@ fn validate_basic_owned_with_constructions(
             ));
         }
         let reason = match &node.expression {
-            Expression::SequenceItemAt { .. } if sequence_item_at.permits(&node.expression) => {
+            Expression::SequenceItemAt { .. } | Expression::SequenceExists { .. }
+                if sequence_item_at.permits(&node.expression) =>
+            {
                 continue;
             }
             Expression::OwnedSourceField(_)
@@ -1821,8 +1951,9 @@ fn basic_target_expressions(
         let dependencies = match &node.expression {
             Expression::ValueMap { input, .. } => vec![*input],
             expression if sequence_item_at.permits(expression) => {
-                // Both producer scalar inputs and index are parent demands;
-                // generated item declarations grant no endpoint permission.
+                // Producer scalar inputs and an ItemAt index are parent demands;
+                // an Exists predicate adds only its private generated item.
+                // Item declarations grant no endpoint permission.
                 graph_dependencies::of(expression)
             }
             _ => continue,

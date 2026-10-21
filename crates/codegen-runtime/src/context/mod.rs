@@ -26,9 +26,9 @@ mod source_field_tests;
 
 pub use basic::{
     BasicGroupByControls, BasicGroupByMetadata, BasicGroupEndingWithControls,
-    BasicGroupStartingWithControls, BasicScopeContext, BasicSourceBridgeError,
-    BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort, PhaseSelection,
-    RetainedSourceCohort,
+    BasicGroupIntoBlocksControls, BasicGroupStartingWithControls, BasicScopeContext,
+    BasicSourceBridgeError, BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort,
+    PhaseSelection, RetainedSourceCohort,
 };
 pub use basic_json_inputs::{
     BasicJsonDocumentRef, BasicJsonInputAdmission, BasicJsonParsedInputs,
@@ -39,6 +39,7 @@ pub use join::{InnerJoinKey, InnerJoinStage};
 pub use named_input_admission::{
     BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode,
 };
+pub(crate) use recursive::collect_from_root as collect_recursive_root;
 pub use resolve::{InstanceKind, SourcePathError, clone_scalar, resolve_scalar};
 pub use resolve::{OwnedSourceError, OwnedSourceIdentity, OwnedSourceLimitKind};
 
@@ -719,7 +720,7 @@ struct OwnedSourceFrame<'a> {
 enum OwnedOccurrenceKind {
     Item,
     // Authenticated member containers minted only by paired By / AdjacentBy /
-    // StartingWith / EndingWith.
+    // StartingWith / EndingWith / IntoBlocks.
     GroupMembers,
 }
 

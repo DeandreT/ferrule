@@ -12,7 +12,7 @@ Keep structural validity separate from executable capability. Preserve strict ne
 
 ## Group-member occurrence identity
 
-An owned By, AdjacentBy, StartingWith or EndingWith group carries a private grouped occurrence at its exact owner and
+An owned By, AdjacentBy, StartingWith, EndingWith or IntoBlocks group carries a private grouped occurrence at its exact owner and
 absolute collection path. It exposes the first surviving ordered member for
 scalar reads, a compact group ordinal for positions, and its complete ordered
 members for nested collection iteration. A nested member creates an ordinary
@@ -51,6 +51,12 @@ candidates after the last true boundary form a trailing group. Boundary
 evaluation precedes member retention, and dropping a group never reopens or
 merges its neighbors. The [Ending contract](owned-group-ending-with.md) uses the
 same member identity, root-pin rules and Boolean-control resource model.
+
+Fixed-block grouping fills consecutive blocks of a positive size evaluated once
+in the receiving parent after window bounds; the last block may be partial.
+Member retention runs per candidate, and dropping a block never refills its
+neighbors. The [IntoBlocks contract](owned-group-into-blocks.md) uses the same
+member identity and root-pin rules and charges no grouping-key text.
 
 ## Parent-context scalar sequence selection
 
@@ -107,6 +113,26 @@ expression keeps the receiving (parent) context and is evaluated after the rows.
 The construction admits only Basic contexts. Interpreter, generated Rust and
 generated C# share the legacy builder's ordering, bounds and error categories.
 Native export and GUI authoring remain closed.
+
+## Recursive collection roots
+
+An owned recursive collection walk selects its root collection from exactly its
+declared endpoint, beside the unchanged legacy `recursive_collect` form. Child,
+descent and value paths stay relative to each selected group and never select
+an endpoint, and the generated item stays a private declaration. Only a Basic
+parent-context ItemAt consumes the owned producer. See the
+[recursive collection contract](owned-recursive-collect.md).
+
+## Generated-item predicates
+
+`SequenceExists` over the same four producers evaluates producer arguments in
+the receiving source context, then evaluates its predicate once per item until
+the first true result. The predicate context appends only a private scalar item
+frame: the item declaration and empty-path ordinary reads see it, while owned
+reads keep the receiving owner, pins and positions. Producer errors precede the
+predicate, and an empty sequence never evaluates it. RecursiveCollect, FilterMap
+and closed operators inside the predicate remain closed. See
+[the Exists contract](owned-sequence-exists.md).
 
 ## Existing coordinated issues
 

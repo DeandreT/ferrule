@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::num::NonZeroUsize;
 
 use crate::{RuntimeError, Value};
 
@@ -67,6 +68,12 @@ pub fn item_count(node: u32, value: Value) -> Result<usize, RuntimeError> {
             node,
             found: value.type_name(),
         })
+}
+
+/// Converts a fixed grouping block size with the item-count rules; a count
+/// that clamps to zero is a typed invalid block size.
+pub fn positive_block_size(node: u32, value: Value) -> Result<NonZeroUsize, RuntimeError> {
+    NonZeroUsize::new(item_count(node, value)?).ok_or(RuntimeError::InvalidBlockSize { node })
 }
 
 /// Applies sequence windows in declaration order.
@@ -236,6 +243,35 @@ mod tests {
             Err(RuntimeError::NotAnItemCount {
                 node: 6,
                 found: "float",
+            })
+        );
+    }
+
+    #[test]
+    fn block_sizes_are_positive_item_counts() {
+        assert_eq!(
+            positive_block_size(1, Value::Float(2.9)).map(NonZeroUsize::get),
+            Ok(2)
+        );
+        assert_eq!(
+            positive_block_size(2, Value::String(" 3 ".into())).map(NonZeroUsize::get),
+            Ok(3)
+        );
+        for (node, value) in [
+            (3, Value::Int(0)),
+            (4, Value::Int(-1)),
+            (5, Value::Float(0.5)),
+        ] {
+            assert_eq!(
+                positive_block_size(node, value),
+                Err(RuntimeError::InvalidBlockSize { node })
+            );
+        }
+        assert_eq!(
+            positive_block_size(6, Value::Null),
+            Err(RuntimeError::NotAnItemCount {
+                node: 6,
+                found: "null",
             })
         );
     }

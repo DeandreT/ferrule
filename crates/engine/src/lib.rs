@@ -29,6 +29,7 @@ mod owned_source_context;
 mod path_hierarchy;
 mod pipeline;
 mod primary_filename;
+mod recursive_collect_owned;
 mod recursive_filter;
 mod required_sources;
 mod resolve;
@@ -59,10 +60,11 @@ pub use filter_map::{
 pub use owned_context::OwnedSourceError;
 
 pub use pipeline::{
-    PipelineError, PipelineOutputs, PipelineStageOutput, PipelineValidationIssue,
-    check_pipeline_source_ownership_capability,
+    PipelineError, PipelineOutputs, PipelineRetainedOutputs, PipelineStageOutput,
+    PipelineTargetRef, PipelineValidationIssue, check_pipeline_source_ownership_capability,
     check_pipeline_source_ownership_capability_with_observers, run_pipeline,
-    run_pipeline_with_context, run_pipeline_with_stage_contexts, validate_pipeline,
+    run_pipeline_retaining, run_pipeline_with_context, run_pipeline_with_stage_contexts,
+    validate_pipeline,
 };
 pub use primary_filename::{PrimaryFilenameEvaluationError, evaluate_primary_filename};
 pub use trace::{
@@ -1098,6 +1100,14 @@ mod owned_sequence_item_at_tests;
 #[cfg(test)]
 #[path = "tests/owned_failure_iteration.rs"]
 mod owned_failure_iteration_tests;
+
+#[cfg(test)]
+#[path = "tests/owned_sequence_exists.rs"]
+mod owned_sequence_exists_tests;
+
+#[cfg(test)]
+#[path = "tests/owned_recursive_collect.rs"]
+mod owned_recursive_collect_tests;
 #[cfg(test)]
 #[path = "tests/owned_source_context.rs"]
 mod owned_source_context_tests;

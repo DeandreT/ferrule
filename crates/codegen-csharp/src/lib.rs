@@ -203,6 +203,19 @@ pub fn emit_with_basic_owned_group_ending_with(
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits static Basic By/AdjacentBy/StartingWith/EndingWith/IntoBlocks grouping
+/// with the qualified scalar ItemAt producers. Prior companions keep their
+/// narrower admission.
+pub fn emit_with_basic_owned_group_into_blocks(
+    program: &Program,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_group_into_blocks(program)?;
+    codegen::validate_basic_owned_group_into_blocks_emission(program)?;
+    let generated_mapping =
+        owned_basic::render_public_basic_owned_group_into_blocks_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 /// Emit EndingWith-profile targets with explicitly owned failure-rule walks
 /// over one exact Primary or named endpoint. Older emitters keep refusing them.
 pub fn emit_with_basic_owned_failure_sources(program: &Program) -> Result<ArtifactSet, EmitError> {
@@ -231,6 +244,30 @@ pub fn emit_with_basic_owned_adjacency_tree(program: &Program) -> Result<Artifac
     codegen::validate_program_with_basic_owned_adjacency_tree(program)?;
     codegen::validate_basic_owned_adjacency_tree_emission(program)?;
     let generated_mapping = owned_basic::render_public_basic_owned_adjacency_tree_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
+/// Emits the owned adjacency-tree profile plus SequenceItemAt over explicitly
+/// owned recursive collection walks. Older emitters keep refusing them.
+pub fn emit_with_basic_owned_recursive_collect(
+    program: &Program,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_recursive_collect(program)?;
+    codegen::validate_basic_owned_recursive_collect_emission(program)?;
+    let generated_mapping =
+        owned_basic::render_public_basic_owned_recursive_collect_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
+/// Emits SequenceExists over the four pure producers beside ItemAt and the
+/// By/AdjacentBy/StartingWith/EndingWith controls. Producer arguments use the receiving
+/// context; each reached predicate item gets a copied paired view with one
+/// lexical item frame. Owned failure predicates and older companions stay closed.
+pub fn emit_with_basic_owned_sequence_exists(program: &Program) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_sequence_exists(program)?;
+    codegen::validate_basic_owned_sequence_exists_emission(program)?;
+    let generated_mapping =
+        owned_basic::render_public_basic_owned_sequence_exists_mapping(program)?;
     emit_mapping_files(generated_mapping, false)
 }
 
@@ -339,6 +376,10 @@ mod tests {
     mod owned_failure_sources;
     #[path = "owned_path_hierarchy.rs"]
     mod owned_path_hierarchy;
+    #[path = "owned_recursive_collect.rs"]
+    mod owned_recursive_collect;
+    #[path = "owned_sequence_exists.rs"]
+    mod owned_sequence_exists;
     use ::mapping::FunctionId;
     use codegen::{
         AggregateFunction, Binding, Expression, ExpressionNode, FailureIteration, FailureRule,

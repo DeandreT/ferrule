@@ -38,7 +38,9 @@ pub use error::{
     OwnedSourceNamespace, OwnedSourceSchemaShape, OwnedSourceStructureReason,
     ProgramValidationError,
 };
-pub use owned_sources::{owned_expression_emission_error, validate_owned_emission};
+pub use owned_sources::{
+    owned_expression_emission_error, owned_sequence_emission_error, validate_owned_emission,
+};
 use sources::{SchemaCursor, SourceCatalog};
 use targets::TargetOwner;
 
@@ -140,12 +142,39 @@ pub fn validate_program_with_basic_owned_adjacency_tree(
     owned_sources::validate_basic_owned_adjacency_tree_emission(program)
 }
 
+/// Validates static Basic By, AdjacentBy, StartingWith, EndingWith and
+/// IntoBlocks, with qualified source controls, independent scalar-producer
+/// ItemAt and primary-row failure policies. All existing structural precedence
+/// and older companion gates are preserved.
+pub fn validate_program_with_basic_owned_group_into_blocks(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_group_into_blocks_emission(program)
+}
+
+/// Validates SequenceItemAt over an explicitly owned recursive collection walk,
+/// composed with the owned adjacency-tree profile. Only the root collection is
+/// owned; older validators and other consumers keep refusing the producer.
+pub fn validate_program_with_basic_owned_recursive_collect(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_recursive_collect_emission(program)
+}
+
 /// Validates static Basic scalar-producer SequenceItemAt, explicitly composing
 /// the qualified By, filter/sort/window and primary-row failure permissions.
 pub fn validate_program_with_basic_owned_sequence_item_at(
     program: &Program,
 ) -> Result<(), ProgramValidationError> {
     owned_sources::validate_basic_owned_sequence_item_at_emission(program)
+}
+
+/// Validates static Basic scalar-producer SequenceExists beside ItemAt and the
+/// qualified By/AdjacentBy/StartingWith/EndingWith, source-control and row-failure policies.
+pub fn validate_program_with_basic_owned_sequence_exists(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_sequence_exists_emission(program)
 }
 
 fn validate_program_with_owned_profile(
@@ -1536,10 +1565,14 @@ pub use owned_sources::{
     validate_basic_owned_failure_source_emission, validate_basic_owned_filter_emission,
     validate_basic_owned_group_adjacent_by_emission, validate_basic_owned_group_by_emission,
     validate_basic_owned_group_ending_with_emission,
-    validate_basic_owned_group_starting_with_emission, validate_basic_owned_row_failure_emission,
+    validate_basic_owned_group_into_blocks_emission,
+    validate_basic_owned_group_starting_with_emission,
+    validate_basic_owned_recursive_collect_emission, validate_basic_owned_row_failure_emission,
     validate_basic_owned_sequence_item_at_emission, validate_basic_owned_sort_emission,
     validate_basic_owned_window_emission,
 };
+
+pub use owned_sources::validate_basic_owned_sequence_exists_emission;
 
 #[cfg(test)]
 mod tests;
