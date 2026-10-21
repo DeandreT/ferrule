@@ -15,6 +15,7 @@ mod instance_group;
 mod primary_root;
 mod scalar_lexical;
 mod schema;
+mod source_origin;
 mod xml_schema_hints;
 mod xml_structured_input;
 mod xml_type_origin;
@@ -47,6 +48,9 @@ pub use xml_structured_input::{
 pub use xml_type_origin::{XmlTypeOrigin, XmlTypeOriginError};
 
 pub use scalar_lexical::parse_exact_decimal_i64;
+pub use source_origin::{
+    MAX_SOURCE_ORIGIN_PATH_BYTES, SourceDocumentOrigin, SourceOriginError, SourceRowOrigin,
+};
 
 pub use schema::{
     IntegerRange, ItemCountRange, JsonAllowedValue, JsonAllowedValues, JsonAllowedValuesError,

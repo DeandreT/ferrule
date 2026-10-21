@@ -43,6 +43,7 @@ public sealed class FerruleGroup : FerruleInstance
     private readonly Dictionary<string, FerruleInstance>? _fieldsByName;
     private readonly bool _schemaDeclarations;
     private readonly FerruleXmlTypeOrigin? _origin;
+    private readonly FerruleSourceRowOrigin? _sourceOrigin;
 
     public FerruleGroup(IEnumerable<FerruleField> fields)
         : this(fields, schemaDeclarations: false)
@@ -60,6 +61,18 @@ public sealed class FerruleGroup : FerruleInstance
     internal FerruleGroup CloneFields(IEnumerable<FerruleField> fields) =>
         new(fields, _schemaDeclarations, _origin);
 
+    internal FerruleGroup ExactCloneFields(IEnumerable<FerruleField> fields) =>
+        new(fields, _schemaDeclarations, _origin, _sourceOrigin);
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public FerruleSourceRowOrigin? SourceOrigin => _sourceOrigin;
+
+    public FerruleGroup WithSourceOrigin(FerruleSourceRowOrigin origin)
+    {
+        ArgumentNullException.ThrowIfNull(origin);
+        return new(_fields, _schemaDeclarations, _origin, origin);
+    }
+
     [System.Text.Json.Serialization.JsonIgnore]
     public FerruleXmlTypeOrigin XmlTypeOrigin => _origin ?? FerruleXmlTypeOrigin.Unknown;
 
@@ -67,16 +80,17 @@ public sealed class FerruleGroup : FerruleInstance
     public FerruleGroup WithXmlTypeOrigin(FerruleXmlTypeOrigin origin)
     {
         ArgumentNullException.ThrowIfNull(origin);
-        return new(_fields, _schemaDeclarations, origin);
+        return new(_fields, _schemaDeclarations, origin, _sourceOrigin);
     }
 
     private FerruleGroup(IEnumerable<FerruleField> fields, bool schemaDeclarations,
-        FerruleXmlTypeOrigin? origin = null)
+        FerruleXmlTypeOrigin? origin = null, FerruleSourceRowOrigin? sourceOrigin = null)
     {
         ArgumentNullException.ThrowIfNull(fields);
         var ordered = new List<FerruleField>();
         _schemaDeclarations = schemaDeclarations;
         _origin = origin?.Kind == FerruleXmlTypeOriginKind.Unknown ? null : origin;
+        _sourceOrigin = sourceOrigin;
         _fieldsByName = new Dictionary<string, FerruleInstance>(StringComparer.Ordinal);
         foreach (var field in fields)
         {
@@ -130,6 +144,7 @@ public sealed class FerruleGroup : FerruleInstance
         _fieldsByName = null;
         _schemaDeclarations = false;
         _origin = null;
+        _sourceOrigin = null;
     }
 
     internal static FerruleGroup FromBasicGroupWrapper(string name, FerruleRepeated members,

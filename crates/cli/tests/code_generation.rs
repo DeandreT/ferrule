@@ -58,6 +58,8 @@ mod csv_document_adapters;
 mod csv_json_adapters;
 #[path = "code_generation/csv_output.rs"]
 mod csv_output;
+#[path = "code_generation/csv_row_provenance.rs"]
+mod csv_row_provenance;
 #[path = "code_generation/csv_x12_adapters.rs"]
 mod csv_x12_adapters;
 #[path = "code_generation/disconnected_inputs.rs"]
@@ -857,6 +859,7 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "Runtime/FerruleFunctions.cs",
         "Runtime/FerruleGrouping.cs",
         "Runtime/FerruleInstance.cs",
+        "Runtime/FerruleSourceOrigin.cs",
         "Runtime/FerruleJoins.cs",
         "Runtime/FerrulePathHierarchy.cs",
         "Runtime/FerrulePrimaryRoot.cs",

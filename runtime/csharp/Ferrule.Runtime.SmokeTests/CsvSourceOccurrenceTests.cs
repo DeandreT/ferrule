@@ -34,10 +34,15 @@ internal static partial class Program
             Equal(i + 1, rows[i].Position);
             Equal(i == 2 ? "B" : "A", CsvRowText(rows[i]));
             Equal(true, rows[i].Document.SameDocument(first));
+            var origin = ((FerruleGroup)rows[i].Value).SourceOrigin!;
+            Equal((ulong)i + 1, origin.Position);
+            Equal(true, origin.Document.SameDocument(first.Origin));
         }
         Equal(true, rows[0].SameOccurrence(first.Rows().First()));
         Equal(false, rows[0].SameOccurrence(rows[1]));
         Equal(false, rows[0].SameOccurrence(second.Rows().First()));
+        Equal(false, ((FerruleGroup)rows[0].Value).SourceOrigin!.SameOccurrence(
+            ((FerruleGroup)second.Rows().First().Value).SourceOrigin));
 
         var typed = FerruleCsvSourceDocument.ParseBytes("original.csv", null,
             Encoding.UTF8.GetBytes("Key,Amount,Flag\n\"Snow,☃\nline\",7,true\n,0,false\ntail\n"),
