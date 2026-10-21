@@ -11,6 +11,7 @@ use crate::aggregate::aggregate;
 use crate::context::{parameter_value, runtime_field};
 use crate::filter_map::{FilterMapRunState, FilterMapWork};
 use crate::join::{AggregateInput as JoinAggregateInput, eval_aggregate as eval_join_aggregate};
+use crate::policy::{BudgetMeter, RestrictedPolicy};
 use crate::resolve::{
     dynamic_scalar, field_scalar, instance_in_active_collection, instance_in_frame, join_scalar,
     scalar_in_active_collection, scalar_in_frame, source_document_path,
@@ -35,6 +36,8 @@ pub(crate) struct EvalProgram<'a> {
     pub(crate) owned_trace_phase: crate::TraceOwnedPhase,
     pub(crate) filter_map_run_state: Option<&'a FilterMapRunState<'a>>,
     pub(crate) filter_map_work: Option<FilterMapWork<'a>>,
+    pub(crate) restricted: Option<&'a RestrictedPolicy>,
+    pub(crate) budget: Option<&'a BudgetMeter>,
 }
 
 impl<'a> EvalProgram<'a> {
@@ -57,7 +60,19 @@ impl<'a> EvalProgram<'a> {
             owned_trace_phase: crate::TraceOwnedPhase::Structural,
             filter_map_run_state: None,
             filter_map_work: None,
+            restricted: None,
+            budget: None,
         }
+    }
+
+    pub(crate) fn with_restricted_policy(
+        mut self,
+        policy: Option<&'a RestrictedPolicy>,
+        budget: Option<&'a BudgetMeter>,
+    ) -> Self {
+        self.restricted = policy;
+        self.budget = budget;
+        self
     }
 
     pub(crate) fn with_debug_hook(mut self, hook: Option<&'a dyn DebugHook>) -> Self {
@@ -138,12 +153,19 @@ pub(crate) fn eval_expr(
     let work = program
         .filter_map_work
         .map(|work| work.at_node(None, node_id));
-    let result = work
-        .map_or(Ok(()), FilterMapWork::charge)
-        .and_then(|()| eval_expr_inner(program, node_id, context, positions, in_progress))
-        .map_err(|error| match work {
-            Some(work) => work.wrap(error),
-            None => error,
+    // Restricted budgets are charged before the node evaluates and before any
+    // filter/map charge, so a refused node has no value or side effects.
+    let result = program
+        .budget
+        .map(BudgetMeter::enter_node)
+        .transpose()
+        .and_then(|_depth| {
+            work.map_or(Ok(()), FilterMapWork::charge)
+                .and_then(|()| eval_expr_inner(program, node_id, context, positions, in_progress))
+                .map_err(|error| match work {
+                    Some(work) => work.wrap(error),
+                    None => error,
+                })
         });
     if let Err(error) = &result {
         crate::debug::after_node_failure(
@@ -465,6 +487,7 @@ fn eval_expr_inner(
                 positions,
                 program.purpose,
                 program.filter_map_work,
+                program.budget,
             )
         }
         Node::If {
