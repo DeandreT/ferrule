@@ -1,5 +1,5 @@
 use std::{cell::RefCell,rc::Rc};
-use codegen_runtime::{CsvAcquisitionError,CsvByteDecodingPolicy,CsvSourceData,ExecutionContext,Instance,RuntimeError,RuntimeParameters,Value};
+use codegen_runtime::{CsvAcquisitionError,CsvByteDecodingPolicy,CsvSourceData,ExecutionContext,GroupedItems,Instance,RuntimeError,RuntimeParameters,ScopeContext,Value};
 use primary_csv_fixture::acquire_primary_csv;
 
 fn load(path:&str)->Result<CsvSourceData,std::io::Error> {
@@ -34,6 +34,29 @@ fn main() {
     assert!(all[0].document().same_document(all[1].document()));
     assert!(!all[0].document().same_document(all[2].document()));
     assert!(!all[0].same_occurrence(&all[2]));
+    let input=Instance::Group(vec![("Rows".into(),Instance::Repeated(all.iter().map(|row|row.value().clone()).collect()))].into());
+    let root=ScopeContext::new(&input);
+    let candidates=root.walk_source(&["Rows"]).into_iter().map(|ctx| {
+        let key=ctx.resolve_scalar(&["Text"]).unwrap(); (ctx,key)
+    }).collect();
+    let groups=GroupedItems::by(candidates,Some("Rows"));
+    let mut copies=Vec::new();
+    for group in groups.contexts() {
+        for member in group.walk_source(&[]) {copies.push(member.copy_current_group().unwrap());}
+    }
+    assert_eq!(copies.len(),4);
+    for (copy,source_index) in copies.iter().zip([0,2,1,3]) {
+        let Instance::Group(group)=copy else {panic!("expected copied group")};
+        let origin=group.source_origin().unwrap();
+        assert_eq!(copy,all[source_index].value());
+        assert!(origin.document().same_document(all[source_index].document().origin()));
+        assert_eq!(origin.position(),all[source_index].position());
+    }
+    drop(all);
+    for copy in copies {
+        let Instance::Group(group)=copy else {unreachable!()};
+        assert_eq!(group.source_origin().unwrap().document().source_path(),"resolved/first.csv");
+    }
     let mut failed=acquire_primary_csv(&context,|_|Ok(["first.csv","broken.csv","never.csv"].into_iter().map(|name|Ok(name.into()))),load,CsvByteDecodingPolicy::StrictUtf8,3).unwrap();
     assert!(failed.next().unwrap().is_ok());assert!(failed.next().unwrap().is_ok());
     assert!(matches!(failed.next(),Some(Err(CsvAcquisitionError::Input {path,..})) if path=="broken.csv"));

@@ -98,7 +98,8 @@ pub use generated_sequence::{
 };
 pub use ir::SchemaNode;
 pub use ir::{
-    DocumentMember, Instance, InstanceGroup, PrimaryRootError, ScalarType, Value, XmlTypeOrigin,
+    DocumentMember, Instance, InstanceGroup, MAX_SOURCE_ORIGIN_PATH_BYTES, PrimaryRootError,
+    ScalarType, SourceDocumentOrigin, SourceOriginError, SourceRowOrigin, Value, XmlTypeOrigin,
     XmlTypeOriginError,
 };
 pub use iteration::{
