@@ -2,6 +2,24 @@ use ir::Value;
 
 use crate::EngineError;
 
+/// Decimal folds advance before another projected operand is evaluated. Other
+/// reductions retain their existing eager value collection.
+pub(crate) fn collect_value(
+    function: mapping::AggregateOp,
+    values: &mut Vec<Value>,
+    value: Value,
+) -> Result<(), EngineError> {
+    if function == mapping::AggregateOp::DecimalSum {
+        let total = aggregate(function, values.len(), values, None)?;
+        let total = aggregate(function, 2, &[total, value], None)?;
+        values.clear();
+        values.push(total);
+    } else {
+        values.push(value);
+    }
+    Ok(())
+}
+
 /// Applies one aggregate over the per-item values of a collection.
 /// `item_count` counts items, not non-null values.
 pub(crate) fn aggregate(
@@ -12,6 +30,28 @@ pub(crate) fn aggregate(
 ) -> Result<Value, EngineError> {
     use mapping::AggregateOp;
     match function {
+        AggregateOp::DecimalSum => {
+            if arg.is_some() {
+                return Err(functions::FunctionError::InvalidArgument {
+                    function: "decimal_sum",
+                    message: "does not accept an argument",
+                }
+                .into());
+            }
+            let mut total = ir::Decimal96::ZERO;
+            for value in values {
+                let Value::Decimal(decimal) = value else {
+                    return Err(EngineError::AggregateUnsupportedScalar {
+                        function,
+                        found: value.type_name(),
+                    });
+                };
+                total = total
+                    .add_rounded(**decimal)
+                    .map_err(|source| EngineError::AggregateDecimal { function, source })?;
+            }
+            Ok(Value::decimal(total))
+        }
         AggregateOp::Count => Ok(Value::Int(item_count as i64)),
         AggregateOp::Sum => {
             let numbers = numeric_values(function, values)?;

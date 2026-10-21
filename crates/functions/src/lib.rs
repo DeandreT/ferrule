@@ -17,6 +17,7 @@ mod catalog;
 mod datetime;
 mod datetime_add;
 mod decimal;
+mod decimal_value;
 mod filepath;
 mod flextext;
 mod format_number;
@@ -47,6 +48,11 @@ pub enum FunctionError {
     DivideByZero,
     #[error("`{function}` integer arithmetic overflowed")]
     IntegerOverflow { function: &'static str },
+    #[error("`{function}`: {source}")]
+    DecimalConversion {
+        function: &'static str,
+        source: ir::DecimalError,
+    },
     #[error("`{function}` {message}")]
     InvalidArgument {
         function: &'static str,

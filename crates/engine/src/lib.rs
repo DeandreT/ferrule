@@ -550,6 +550,11 @@ pub enum EngineError {
         function: mapping::AggregateOp,
         found: &'static str,
     },
+    #[error("{function:?} aggregate: {source}")]
+    AggregateDecimal {
+        function: mapping::AggregateOp,
+        source: ir::DecimalError,
+    },
     #[error(transparent)]
     Function(#[from] functions::FunctionError),
 }
