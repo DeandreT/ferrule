@@ -14,10 +14,12 @@ impl Evidence {
         if !parent.is_absolute() {
             return Err("evidence parent must be absolute".into());
         }
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let path = parent.join(format!(
-            "ferrule-json-lexemes-compiled-{}-{stamp}",
-            std::process::id()
+            "ferrule-json-lexemes-compiled-{}-{stamp}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&path)?;
         std::fs::write(path.join("cases.json"), CASES)?;
@@ -141,13 +143,15 @@ fn lexical_numeric_bounds_compiled_complete_oracles() -> TestResult<()> {
     let dotnet_temp = std::env::var_os("FERRULE_LEXICAL_BOUNDS_DOTNET_TMPDIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
             std::env::temp_dir().join(format!(
-                "flx-{}-{}",
+                "flx-{}-{}-{}",
                 std::process::id(),
                 SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
-                    .as_nanos()
+                    .as_nanos(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
             ))
         });
     if !dotnet_temp.is_absolute() {

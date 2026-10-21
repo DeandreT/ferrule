@@ -15,6 +15,18 @@ pub struct XmlMixedContentReplacement<'a> {
     pub expression: XmlMixedContentExpression,
 }
 
+/// One statically validated replacement of owned mixed-content atomization.
+/// An occurrence replacement evaluates in an owned occurrence of the group's
+/// own owner; otherwise it evaluates in the receiving context.
+pub struct OwnedXmlMixedContentReplacement<'a> {
+    pub element: &'a str,
+    pub occurrence: bool,
+    pub expression: OwnedXmlMixedContentExpression,
+}
+
+pub type OwnedXmlMixedContentExpression =
+    for<'a, 'b> fn(&'b crate::BasicScopeContext<'a>) -> Result<Value, RuntimeError>;
+
 /// One direct-child rename retained in a constructed mixed-content stream.
 pub struct XmlMixedContentElement<'a> {
     pub source: &'a str,
@@ -72,11 +84,20 @@ pub fn xml_mixed_content(
 /// attaching or rebuilding fields invalidates that output's owning origin fact.
 pub fn preserve_xml_mixed_content(
     context: &ScopeContext<'_>,
+    output: Instance,
+    elements: &[XmlMixedContentElement<'_>],
+) -> Instance {
+    preserve_from(context.current_instance(), output, elements)
+}
+
+/// Attaches `source`'s ordered stream to `output`, shared by the legacy
+/// current-frame and the owned exact-occurrence constructions.
+pub(crate) fn preserve_from(
+    source: Option<&Instance>,
     mut output: Instance,
     elements: &[XmlMixedContentElement<'_>],
 ) -> Instance {
-    let Some(source_items) = context
-        .current_instance()
+    let Some(source_items) = source
         .and_then(|source| source.field(XML_MIXED_CONTENT_FIELD))
         .and_then(Instance::as_repeated)
     else {

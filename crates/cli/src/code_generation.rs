@@ -5,6 +5,7 @@ use anyhow::{Context, bail};
 use codegen::ArtifactSet;
 
 use super::{extension_for_dispatch, load_project, validate_tabular_fallback};
+use crate::route_capability::{HostRoute, PlannedPublication, RoutePlan, RouteRefusal};
 
 mod csv_json;
 mod csv_x12;
@@ -209,6 +210,42 @@ enum Adapter {
     CsvJson,
 }
 
+/// Reports what library generation reads and publishes, applying lowering
+/// and then the destination check, in the generating call's order, without
+/// emitting or writing anything. Adapter-specific boundary policies, which
+/// precede lowering, are checked by the generating call.
+pub fn plan_generate(project_path: &Path, output_directory: &Path) -> anyhow::Result<RoutePlan> {
+    let project = load_project(project_path)?;
+    lower(&project)?;
+    reject_existing_output(output_directory)?;
+    let mut plan = RoutePlan::new(HostRoute::Generate, project_path);
+    plan.publish(PlannedPublication::GeneratedTree(
+        output_directory.to_path_buf(),
+    ));
+    Ok(plan)
+}
+
+fn reject_existing_output(output_directory: &Path) -> Result<(), RouteRefusal> {
+    if output_directory.exists() {
+        return Err(RouteRefusal::GeneratedOutputExists {
+            path: output_directory.to_path_buf(),
+        });
+    }
+    Ok(())
+}
+
+fn lower(project: &mapping::Project) -> anyhow::Result<codegen::Program> {
+    codegen::lower(project).map_err(|error| {
+        let details = error
+            .diagnostics()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n  - ");
+        anyhow::anyhow!("{error}:\n  - {details}")
+    })
+}
+
 fn generate_project_impl(
     project_path: &Path,
     output_directory: &Path,
@@ -308,15 +345,7 @@ fn generate_project_impl(
     } else {
         None
     };
-    let program = codegen::lower(&project).map_err(|error| {
-        let details = error
-            .diagnostics()
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n  - ");
-        anyhow::anyhow!("{error}:\n  - {details}")
-    })?;
+    let program = lower(&project)?;
     let artifacts = match target {
         GenerateTarget::Rust { runtime_path } => {
             let runtime_path = fs::canonicalize(&runtime_path).with_context(|| {

@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ir::{Instance, Value};
@@ -15,10 +16,12 @@ fn authored_variadic_logical_mfds_retain_positions_and_complete_boolean_results(
     if !parent.is_absolute() {
         return Err("evidence parent must be absolute".into());
     }
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let evidence = parent.join(format!(
-        "ferrule-logical237-mfd-{}-{}",
+        "ferrule-logical237-mfd-{}-{}-{}",
         std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&evidence)?;
     eprintln!("LOGICAL237_MFD_ORIGINALS={}", evidence.display());
