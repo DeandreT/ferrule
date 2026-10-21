@@ -1,5 +1,6 @@
 //! Owned join tuples in the paired Basic context: exact member identity, raw
-//! and flattened positions, stage order and active-row correlation.
+//! and flattened positions, stage order, active-row correlation and joined
+//! aggregate composition.
 use crate::{
     BasicSourceRoots, DeclaredNamedSourceRoot, Instance, OwnedJoinKey, OwnedJoinSource,
     OwnedJoinStage, OwnedSourceError, OwnedSourceLimits, RuntimeError, SourceOwnerRef, Value,
@@ -358,4 +359,91 @@ fn an_active_owned_row_correlates_and_anchors_its_sources() {
             .collect::<Vec<_>>(),
         [(1, 1), (2, 2), (3, 1), (1, 2), (2, 2)]
     );
+}
+
+/// #450: a joined aggregate reduces the tuples of one owned join, planned in
+/// its receiving context, with the shared reducers. An active owned row
+/// correlates only same-owner sources; a same-path named source keeps its
+/// root walk.
+#[test]
+fn joined_aggregates_reduce_tuples_planned_in_the_receiving_context() {
+    let order = |id: i64| group([field("id", scalar(Value::Int(id)))]);
+    let primary = group([field("Orders", repeated([order(7), order(9)]))]);
+    let named = group([field("Orders", repeated([order(9), order(7), order(9)]))]);
+    let declared = [DeclaredNamedSourceRoot {
+        name: "Lookup",
+        instance: Some(&named),
+    }];
+    let roots = BasicSourceRoots::try_new(&primary, &declared, limits()).unwrap();
+    let primary_orders = OwnedJoinSource {
+        owner: SourceOwnerRef::Primary,
+        collection: &["Orders"],
+        singleton: false,
+    };
+    let lookup_orders = OwnedJoinSource {
+        owner: SourceOwnerRef::Named("Lookup"),
+        collection: &["Orders"],
+        singleton: false,
+    };
+    let stages = [OwnedJoinStage {
+        source: lookup_orders,
+        keys: BY_ID,
+    }];
+    let reduce = |context: &crate::BasicScopeContext<'_>, function| {
+        let tuples = context
+            .owned_inner_join(8, primary_orders, &stages)
+            .unwrap();
+        let values = tuples
+            .iter()
+            .map(|tuple| {
+                tuple
+                    .owned_join_source_position(8, lookup_orders.owner, lookup_orders.collection)
+                    .map(|position| Value::Int(position as i64))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        crate::aggregate(function, &values, Some(text(",")))
+    };
+    let rows = roots
+        .root_context()
+        .unwrap()
+        .walk_owned_source(SourceOwnerRef::Primary, &["Orders"])
+        .unwrap();
+    let per_order = rows
+        .iter()
+        .map(|row| {
+            (
+                reduce(row.context(), crate::AggregateFunction::Count).unwrap(),
+                reduce(row.context(), crate::AggregateFunction::Join).unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+    // Order 7 matches Lookup order 2; order 9 matches Lookup orders 1 and 3.
+    assert_eq!(
+        per_order,
+        [(Value::Int(1), text("2")), (Value::Int(2), text("1,3")),]
+    );
+    // From the root every Primary order joins, in left-major order.
+    let root = roots.root_context().unwrap();
+    assert_eq!(
+        reduce(&root, crate::AggregateFunction::Join),
+        Ok(text("2,1,3"))
+    );
+    // Empty sides reduce under the legacy empty policy.
+    let empty = group([field("Orders", repeated([]))]);
+    let declared = [DeclaredNamedSourceRoot {
+        name: "Lookup",
+        instance: Some(&empty),
+    }];
+    let roots = BasicSourceRoots::try_new(&primary, &declared, limits()).unwrap();
+    let root = roots.root_context().unwrap();
+    assert_eq!(
+        reduce(&root, crate::AggregateFunction::Sum),
+        Ok(Value::Int(0))
+    );
+    assert_eq!(
+        reduce(&root, crate::AggregateFunction::Avg),
+        Ok(Value::Null)
+    );
+    assert_eq!(reduce(&root, crate::AggregateFunction::Join), Ok(text("")));
 }

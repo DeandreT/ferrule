@@ -576,3 +576,56 @@ fn owned_mixed_content_constructions_refuse_before_writing_anything() {
     }
     assert!(!path.exists());
 }
+
+#[test]
+fn owned_joined_aggregates_refuse_before_writing_anything() {
+    let rows = |owner| mapping::OwnedSourceRef {
+        owner,
+        path: vec!["Rows".into()],
+    };
+    let named = || SourceOwner::Named {
+        name: "Rates".into(),
+    };
+    let plan = mapping::OwnedJoinPlan::new(
+        mapping::OwnedJoinSource::new(rows(SourceOwner::Primary)),
+        mapping::OwnedJoinSource::new(rows(named())),
+        mapping::OwnedJoinConditions::new(mapping::OwnedJoinKey::new(
+            rows(SourceOwner::Primary),
+            vec!["id".into()],
+            vec!["id".into()],
+        )),
+    )
+    .unwrap();
+    for expression in [None, Some(1)] {
+        let mut project = project();
+        project.graph.nodes.insert(
+            9,
+            Node::OwnedJoinAggregate(mapping::OwnedJoinAggregate {
+                function: mapping::AggregateOp::Count,
+                join: mapping::JoinId::new(3),
+                plan: plan.clone(),
+                expression,
+                arg: None,
+            }),
+        );
+        let path = Path::new("nonexistent-owned-join-aggregate-export-parent/output.mfd");
+        for error in [
+            preflight_export(&project, path).unwrap_err(),
+            export(&project, path).unwrap_err(),
+            export_with_profile(&project, path, ExportProfile::NativeMfd).unwrap_err(),
+        ] {
+            assert!(
+                matches!(
+                    error,
+                    MfdError::UnsupportedSourceOwnership {
+                        node: 9,
+                        function: None,
+                        kind: "owned_join_aggregate"
+                    }
+                ),
+                "{error:?}"
+            );
+        }
+        assert!(!path.exists());
+    }
+}
