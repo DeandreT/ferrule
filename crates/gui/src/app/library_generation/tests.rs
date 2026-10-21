@@ -542,9 +542,9 @@ fn csv_checkbox_toggles_only_the_generation_draft_and_is_disabled_while_waiting(
             .include_csv_output
     );
     app.pending_dialog = None;
-    let (_worker_sender, worker_receiver) = mpsc::channel();
+    let (worker, _worker_sender) = OwnedWorker::relaying_for_test();
     app.pending_library_generation = Some(PendingLibraryGeneration {
-        receiver: worker_receiver,
+        worker,
         language: LibraryLanguage::Rust,
     });
     let _ = frame(&mut app, Vec::new());
@@ -877,9 +877,9 @@ fn existing_output_and_unsupported_mapping_keep_sentinels_and_publish_no_partial
 #[test]
 fn close_waits_for_generation_then_uses_the_existing_dirty_project_guard() {
     let mut app = FerruleApp::default();
-    let (sender, receiver) = mpsc::channel();
+    let (worker, sender) = OwnedWorker::relaying_for_test();
     app.pending_library_generation = Some(PendingLibraryGeneration {
-        receiver,
+        worker,
         language: LibraryLanguage::CSharp,
     });
     let context = egui::Context::default();
@@ -895,7 +895,12 @@ fn close_waits_for_generation_then_uses_the_existing_dirty_project_guard() {
     sender
         .send(Err("unsupported mapping detail".into()))
         .unwrap();
-    app.poll_library_generation(&context);
+    // The result is handled only once the worker thread itself has exited.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while app.pending_library_generation.is_some() && std::time::Instant::now() < deadline {
+        app.poll_library_generation(&context);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
     assert!(app.pending_library_generation.is_none());
     assert!(!app.close_after_library_generation);
     assert_eq!(

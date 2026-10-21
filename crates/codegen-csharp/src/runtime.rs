@@ -388,6 +388,10 @@ pub(crate) const SOURCES: [(&str, &str); 85] = [
         "Runtime/FerruleXmlMixedContent.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleXmlMixedContent.cs"),
     ),
+    (
+        "Runtime/FerruleXmlMixedContent.Owned.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleXmlMixedContent.Owned.cs"),
+    ),
 ];
 
 pub(crate) const TARGET_BUILDER: &str = r#"namespace Ferrule.Generated;

@@ -113,8 +113,10 @@ it by whole path components, so `/data/in` does not admit `/data/input`.
   apply as well: dynamic documents stay confined beneath their output base,
   and symlinked destinations and components are still refused.
 
-Checks run when the location is resolved, immediately before acquisition. A
-refused location is never opened or created. Because this is policy
+Checks run when the location is resolved, immediately before acquisition.
+Locations known before evaluation are also checked while the route is
+prepared, before the first input is acquired. A refused location is never
+opened or created. Because this is policy
 enforcement rather than isolation, a process that can change the filesystem
 concurrently can still race a check against the later open (TOCTOU). Hosts that
 face such writers must isolate the filesystem itself.
@@ -181,9 +183,10 @@ host always sees the typed budget error.
   no input or value debug callback. The debug failure callback reports the
   budget error at that node, as it does for any other node failure. Nodes that
   ran keep the trace multiplicity they have in a trusted run.
-- Output destinations known before evaluation are checked before any input is
-  read. Each input location is checked immediately before it is read, and each
-  dynamic source is checked per driver item immediately before loading. Dynamic
+- Output destinations and input locations known before evaluation are checked
+  before any input is read, in that order. Each input location is checked again
+  immediately before it is read, and each dynamic source is checked per driver
+  item immediately before loading. Dynamic
   documents are checked before any output is staged. A refused run publishes
   no outputs.
 

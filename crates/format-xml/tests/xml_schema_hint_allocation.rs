@@ -1,5 +1,6 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use format_xml::XmlWriteOptions;
 use ir::{Instance, ScalarType, SchemaNode, Value, XmlNamespace, XmlSchemaHints};
@@ -114,14 +115,16 @@ fn shared_namespace_hint_inspection_has_header_proportional_requested_allocation
     let root = owning_root
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
             let nonce = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
             std::env::temp_dir().join(format!(
-                "ferrule_xml_schema_hint_allocation_{}_{}",
+                "ferrule_xml_schema_hint_allocation_{}_{}_{}",
                 std::process::id(),
-                nonce
+                nonce,
+                NEXT.fetch_add(1, Ordering::Relaxed)
             ))
         });
     std::fs::create_dir_all(&root).unwrap();

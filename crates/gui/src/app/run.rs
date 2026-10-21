@@ -7,10 +7,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use super::*;
-use crate::preview::{
-    DebugExpressionCondition, DebugInputCondition, DebugNodeCondition, DebugPositionCondition,
-    DebugScalarCondition, DebugSourceCondition, PreviewBreakpoint, PreviewTarget,
-};
+use crate::preview::{PreviewBreakpoint, PreviewTarget};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct FileBreakpoint {
@@ -333,490 +330,6 @@ impl Drop for FileRunCore {
     }
 }
 
-struct FileRunDebugHook {
-    events: Sender<FileRunEvent>,
-    commands: Receiver<FileRunCommand>,
-    cancelled: Arc<AtomicBool>,
-    pause_each_write: Cell<bool>,
-    pause_next_node: Cell<bool>,
-    pause_next_input: Cell<bool>,
-    breakpoint: Option<FileBreakpoint>,
-    value_condition: Option<DebugScalarCondition>,
-    position_condition: Option<DebugPositionCondition>,
-    source_condition: Option<DebugSourceCondition>,
-    node_condition: Option<DebugNodeCondition>,
-    expression_condition: Option<DebugExpressionCondition>,
-    input_condition: Option<DebugInputCondition>,
-    pause_on_failure: bool,
-}
-
-impl FileRunDebugHook {
-    fn after_failure(&self, event: FileRunEvent) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(FileRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(
-                    FileRunCommand::Step
-                    | FileRunCommand::Continue
-                    | FileRunCommand::Pause
-                    | FileRunCommand::Publish,
-                ) => {}
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-        if self.events.send(event).is_err() {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(FileRunCommand::Continue) => return engine::DebugDecision::Resume,
-                Ok(FileRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(FileRunCommand::Pause | FileRunCommand::Step | FileRunCommand::Publish)
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-            }
-        }
-    }
-
-    fn before_publish(&self) -> bool {
-        if self.cancelled.load(Ordering::Acquire)
-            || self.events.send(FileRunEvent::ReadyToPublish).is_err()
-        {
-            return false;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return false;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(FileRunCommand::Publish) => {
-                    return !self.cancelled.load(Ordering::Acquire);
-                }
-                Ok(FileRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return false;
-                }
-                Ok(FileRunCommand::Step | FileRunCommand::Continue | FileRunCommand::Pause)
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-pub(super) fn file_run_publication_gate_for_test(
-    events: Sender<FileRunEvent>,
-    commands: Receiver<FileRunCommand>,
-    cancelled: Arc<AtomicBool>,
-) -> bool {
-    FileRunDebugHook {
-        events,
-        commands,
-        cancelled,
-        pause_each_write: Cell::new(false),
-        pause_next_node: Cell::new(false),
-        pause_next_input: Cell::new(false),
-        breakpoint: None,
-        value_condition: None,
-        position_condition: None,
-        source_condition: None,
-        node_condition: None,
-        expression_condition: None,
-        input_condition: None,
-        pause_on_failure: false,
-    }
-    .before_publish()
-}
-
-impl engine::DebugHook for FileRunDebugHook {
-    fn wants_node_values(&self) -> bool {
-        self.expression_condition.is_some()
-            || self.pause_next_node.get()
-            || self.cancelled.load(Ordering::Acquire)
-    }
-
-    fn wants_function_node_values(&self) -> bool {
-        self.expression_condition
-            .as_ref()
-            .is_some_and(DebugExpressionCondition::targets_function)
-            || self.pause_next_node.get()
-            || self.cancelled.load(Ordering::Acquire)
-    }
-
-    fn wants_node_inputs(&self) -> bool {
-        self.input_condition.is_some()
-            || self.pause_next_input.get()
-            || self.cancelled.load(Ordering::Acquire)
-    }
-
-    fn wants_function_node_inputs(&self) -> bool {
-        self.input_condition
-            .as_ref()
-            .is_some_and(DebugInputCondition::targets_function)
-            || self.pause_next_input.get()
-            || self.cancelled.load(Ordering::Acquire)
-    }
-
-    fn wants_node_failures(&self) -> bool {
-        self.pause_on_failure
-    }
-
-    fn wants_function_node_failures(&self) -> bool {
-        self.pause_on_failure
-    }
-
-    fn after_node_failure(&self, failure: &engine::PendingNodeFailure) -> engine::DebugDecision {
-        self.after_failure(FileRunEvent::PausedFailure(Box::new(failure.clone())))
-    }
-
-    fn after_function_node_failure(
-        &self,
-        failure: &engine::PendingFunctionNodeFailure,
-    ) -> engine::DebugDecision {
-        self.after_failure(FileRunEvent::PausedFunctionFailure(Box::new(
-            failure.clone(),
-        )))
-    }
-
-    fn source_field_probe(&self) -> Option<(usize, String)> {
-        self.source_condition
-            .as_ref()
-            .map(DebugSourceCondition::probe)
-    }
-
-    fn before_target_write(&self, write: &engine::PendingTargetWrite) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(FileRunCommand::Pause | FileRunCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(FileRunCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(FileRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(FileRunCommand::Publish) | Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_selection = self
-            .breakpoint
-            .as_ref()
-            .is_none_or(|breakpoint| breakpoint.matches(write));
-        let matches_value = self
-            .value_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let matches_position = self
-            .position_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let matches_source = self
-            .source_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let matches_node = self
-            .node_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let has_breakpoint = self.breakpoint.is_some()
-            || self.value_condition.is_some()
-            || self.position_condition.is_some()
-            || self.source_condition.is_some()
-            || self.node_condition.is_some();
-        if !self.pause_each_write.get()
-            && !(has_breakpoint
-                && matches_selection
-                && matches_value
-                && matches_position
-                && matches_source
-                && matches_node)
-        {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(FileRunEvent::Paused(Box::new(write.clone())))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(FileRunCommand::Step) => {
-                    self.pause_each_write.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(FileRunCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(FileRunCommand::Pause | FileRunCommand::Publish)
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(FileRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_node_value(&self, value: &engine::PendingNodeValue) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(FileRunCommand::Pause | FileRunCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(FileRunCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(FileRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(FileRunCommand::Publish) | Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_expression = self
-            .expression_condition
-            .as_ref()
-            .is_some_and(|condition| condition.matches(value));
-        if !self.pause_next_node.replace(false) && !matches_expression {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(FileRunEvent::PausedNode(Box::new(value.clone())))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(FileRunCommand::Step) => {
-                    self.pause_next_node.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(FileRunCommand::Continue) => {
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(FileRunCommand::Pause | FileRunCommand::Publish)
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(FileRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_function_node_value(
-        &self,
-        value: &engine::PendingFunctionNodeValue,
-    ) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(FileRunCommand::Pause | FileRunCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(FileRunCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(FileRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(FileRunCommand::Publish) | Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_expression = self
-            .expression_condition
-            .as_ref()
-            .is_some_and(|condition| condition.matches_function(value));
-        if !self.pause_next_node.replace(false) && !matches_expression {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(FileRunEvent::PausedFunctionNode(Box::new(value.clone())))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(FileRunCommand::Step) => {
-                    self.pause_next_node.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(FileRunCommand::Continue) => {
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(FileRunCommand::Pause | FileRunCommand::Publish)
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(FileRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_node_input(&self, input: &engine::PendingNodeInput) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(FileRunCommand::Pause | FileRunCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(FileRunCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(FileRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(FileRunCommand::Publish) | Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_pin = self
-            .input_condition
-            .as_ref()
-            .is_some_and(|condition| condition.matches(input));
-        if !self.pause_next_input.replace(false) && !matches_pin {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(FileRunEvent::PausedInput(Box::new(input.clone())))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(FileRunCommand::Step) => {
-                    self.pause_next_input.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(FileRunCommand::Continue) => {
-                    self.pause_next_input.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(FileRunCommand::Pause | FileRunCommand::Publish)
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(FileRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_function_node_input(
-        &self,
-        input: &engine::PendingFunctionNodeInput,
-    ) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(FileRunCommand::Pause | FileRunCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(FileRunCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(FileRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(FileRunCommand::Publish) | Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_pin = self
-            .input_condition
-            .as_ref()
-            .is_some_and(|condition| condition.matches_function(input));
-        if !self.pause_next_input.replace(false) && !matches_pin {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(FileRunEvent::PausedFunctionInput(Box::new(input.clone())))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(FileRunCommand::Step) => {
-                    self.pause_next_input.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(FileRunCommand::Continue) => {
-                    self.pause_next_input.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(FileRunCommand::Pause | FileRunCommand::Publish)
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(FileRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-}
-
 impl FerruleApp {
     pub(super) fn clear_run_report(&mut self) {
         self.run_report = None;
@@ -1014,13 +527,17 @@ impl FerruleApp {
         };
         core.worker = Some(std::thread::spawn(move || {
             let trace = crate::run_report::TraceCollector::new();
-            let hook = FileRunDebugHook {
+            let control = FileRunControl {
                 events: events.clone(),
                 commands: command_receiver,
                 cancelled: worker_cancelled,
+            };
+            // Cancellation and the publication gate use `control` directly;
+            // only Debug Run attaches a debug hook.
+            let hook = debug.then(|| FileRunDebugHook {
+                control: &control,
                 pause_each_write: Cell::new(
-                    debug
-                        && breakpoint.is_none()
+                    breakpoint.is_none()
                         && value_condition.is_none()
                         && position_condition.is_none()
                         && source_condition.is_none()
@@ -1039,13 +556,10 @@ impl FerruleApp {
                 expression_condition,
                 input_condition,
                 pause_on_failure,
-            };
-            let gate = || hook.before_publish();
-            let mut options = cli::RunOptions::new()
-                .with_runtime_parameters(&runtime_parameters)
-                .with_trace_sink(&trace)
-                .with_debug_hook(&hook)
-                .with_before_publish(&gate);
+            });
+            let gate = || control.before_publish();
+            let mut options =
+                control.run_options(&runtime_parameters, &trace, &gate, hook.as_ref());
             if let Some(path) = input_path.as_deref() {
                 options = options.with_input_path(path);
             }
@@ -1461,6 +975,12 @@ impl FerruleApp {
 fn nonempty_path(value: &str) -> Option<PathBuf> {
     (!value.trim().is_empty()).then(|| PathBuf::from(value.trim()))
 }
+
+#[path = "file_run_control.rs"]
+mod file_run_control;
+#[cfg(test)]
+pub(super) use file_run_control::file_run_publication_gate_for_test;
+use file_run_control::{FileRunControl, FileRunDebugHook};
 
 #[cfg(test)]
 #[path = "file_run_ownership_tests.rs"]

@@ -1,4 +1,4 @@
-//! Expression permission for owned XML serialization, orthogonal to source
+//! Expression permission for owned XML operators, orthogonal to source
 //! controls, failure eligibility and construction policies.
 use super::{
     AdjacencyTreePolicy, BasicOwnedProfile, DynamicFieldPolicy, FailurePolicy, PathHierarchyPolicy,
@@ -6,19 +6,49 @@ use super::{
 };
 use crate::{Expression, validate::ProgramValidationError};
 
-/// Only the explicit owned XML serialization companion opts in. Every other
-/// profile refuses an owned serializer as an XML operator; legacy serializers
-/// keep their own unchanged gate in every profile.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum XmlSerializePolicy {
+/// The owned XML companions nest: each one admits every operator of the
+/// companion it composes. Every other profile refuses an owned XML operator;
+/// legacy XML operators keep their own unchanged gate in every profile.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum OwnedXmlPolicy {
     Closed,
-    Owned,
+    /// Owned XML serialization.
+    Serialize,
+    /// Serialization plus owned mixed-content atomization.
+    MixedContent,
+    /// Atomization plus mixed-content construction by an owned selector.
+    MixedConstruction,
 }
 
-impl XmlSerializePolicy {
+impl OwnedXmlPolicy {
     /// Whether this policy refuses `expression` as an owned XML operator.
     pub(super) fn closes(self, expression: &Expression) -> bool {
-        self == Self::Closed && matches!(expression, Expression::OwnedXmlSerialize(_))
+        match expression {
+            Expression::OwnedXmlSerialize(_) => self < Self::Serialize,
+            Expression::OwnedXmlMixedContent(_) => self < Self::MixedContent,
+            _ => false,
+        }
+    }
+
+    /// Whether this policy admits `scope`'s mixed-content construction: only
+    /// an ungrouped scope whose own owned selector supplies the current item.
+    pub(super) fn admits_construction(self, scope: &crate::TargetScope) -> bool {
+        self >= Self::MixedConstruction
+            && matches!(
+                scope.construction,
+                crate::TargetConstruction::XmlMixedContent { .. }
+            )
+            && scope.iteration.as_ref().is_some_and(|iteration| {
+                iteration.owned_source_iteration().is_some()
+                    && iteration.grouping().is_none()
+                    && iteration.post_group_filter().is_none()
+            })
+    }
+
+    /// Whether an admitted owned XML operator contributes the receiving
+    /// context's scalar demands of its replacement expressions.
+    pub(super) fn permits_inputs(self, expression: &Expression) -> bool {
+        matches!(expression, Expression::OwnedXmlMixedContent(_)) && !self.closes(expression)
     }
 }
 
@@ -31,6 +61,14 @@ impl XmlSerializePolicy {
 pub fn validate_basic_owned_xml_serialize_emission(
     program: &crate::Program,
 ) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_xml_with(program, OwnedXmlPolicy::Serialize)
+}
+
+/// The dynamic source-field composition plus one owned XML companion level.
+pub(super) fn validate_basic_owned_xml_with(
+    program: &crate::Program,
+    owned_xml: OwnedXmlPolicy,
+) -> Result<(), ProgramValidationError> {
     validate_basic_owned_with_xml(
         program,
         BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter,
@@ -40,6 +78,27 @@ pub fn validate_basic_owned_xml_serialize_emission(
         AdjacencyTreePolicy::OwnedWithRecursiveFilter,
         SearchPolicy::Basic,
         DynamicFieldPolicy::Owned,
-        XmlSerializePolicy::Owned,
+        owned_xml,
     )
+}
+
+/// Explicitly admits owned XML mixed-content atomization in Basic target
+/// contexts, composing the owned XML serialization companion. Its parent
+/// replacements are Basic receiving-context demands; occurrence replacements
+/// add only an owned occurrence of the group's own endpoint.
+pub fn validate_basic_owned_xml_mixed_content_emission(
+    program: &crate::Program,
+) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_xml_with(program, OwnedXmlPolicy::MixedContent)
+}
+
+/// Explicitly admits mixed-content construction by an ungrouped scope's own
+/// owned selector in Basic target contexts, composing the owned XML
+/// mixed-content atomization companion. The selected occurrence supplies the
+/// retained text/element order; legacy-selected, inherited and grouped
+/// constructions keep refusing.
+pub fn validate_basic_owned_xml_mixed_construction_emission(
+    program: &crate::Program,
+) -> Result<(), ProgramValidationError> {
+    validate_basic_owned_xml_with(program, OwnedXmlPolicy::MixedConstruction)
 }

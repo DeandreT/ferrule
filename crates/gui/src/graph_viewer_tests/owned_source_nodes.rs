@@ -115,3 +115,63 @@ fn owned_join_reads_display_their_identity_read_only_with_zero_inputs() {
             .contains(r#"Path: ["code"]"#)
     );
 }
+
+#[test]
+fn owned_mixed_content_keeps_replacement_wires_read_only_with_contexts() {
+    use mapping::{
+        OwnedXmlMixedContent, OwnedXmlMixedContentContext, OwnedXmlMixedContentReplacement,
+    };
+    let node = Node::OwnedXmlMixedContent(OwnedXmlMixedContent {
+        source: OwnedSourceRef {
+            owner: SourceOwner::Named {
+                name: "notes".into(),
+            },
+            path: vec!["Doc".into(), "Para".into()],
+        },
+        frame: Some(vec!["Doc".into()]),
+        replacements: vec![
+            OwnedXmlMixedContentReplacement {
+                element: "b".into(),
+                context: OwnedXmlMixedContentContext::Occurrence,
+                expression: 3,
+            },
+            OwnedXmlMixedContentReplacement {
+                element: "i".into(),
+                context: OwnedXmlMixedContentContext::Parent,
+                expression: 4,
+            },
+        ],
+    });
+    let mut graph = Graph::default();
+    graph.nodes.insert(9, node.clone());
+    for id in [3, 4] {
+        graph.nodes.insert(
+            id,
+            Node::Const {
+                value: ir::Value::String(id.to_string()),
+            },
+        );
+    }
+    let encoded = serde_json::to_string(&graph).unwrap();
+    let reopened: Graph = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(serde_json::to_string(&reopened).unwrap(), encoded);
+    let mut fx = fixture();
+    fx.graph = reopened;
+    assert_eq!(GraphViewer::input_count(&node), 2);
+    assert_eq!(fx.viewer().input_at(9, 0), Some(3));
+    assert_eq!(fx.viewer().input_at(9, 1), Some(4));
+    assert_eq!(graph_references::node_inputs(&node), vec![3, 4]);
+    // Saved wires cannot be rewired or cleared.
+    assert!(!fx.viewer().set_input(9, 0, 4));
+    assert_eq!(serde_json::to_string(&fx.graph).unwrap(), encoded);
+    assert!(graph_node_presentation::header(&node, "owned", false).is_some());
+    let title = graph_node_presentation::owned_source_title(&node).unwrap();
+    assert!(title.contains("Owned XML mixed content: named \"notes\""));
+    assert!(title.contains("Frame: explicit [\"Doc\"]"));
+    assert!(title.contains("Replacements: b (occurrence), i (parent)"));
+    assert!(title.contains("Read-only; owned mixed-content authoring is unavailable"));
+    let occurrence = graph_node_presentation::input_pin_hint(Some(&node), 0).unwrap();
+    assert!(occurrence.contains("Context: owned occurrence Doc/Para/b"));
+    let parent = graph_node_presentation::input_pin_hint(Some(&node), 1).unwrap();
+    assert!(parent.contains("Context: parent context"));
+}
