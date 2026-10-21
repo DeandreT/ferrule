@@ -30,6 +30,8 @@ mod group_by;
 
 #[path = "basic_recursive_filter.rs"]
 mod recursive_filter;
+#[path = "basic_xml.rs"]
+mod xml;
 pub use group_by::{
     BasicGroupByControls, BasicGroupByMetadata, BasicGroupEndingWithControls,
     BasicGroupIntoBlocksControls, BasicGroupStartingWithControls,

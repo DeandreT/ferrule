@@ -243,7 +243,7 @@ mod tests {
         click_checkbox(&mut app, &context, &dir.0, rect.center());
         assert!(app.mfd_item_ordered_exceptions);
         assert_eq!(state(&app), before);
-        app.history.mark_unsaved();
+        app.mark_unsaved();
         assert!(
             app.request_destructive_action(DestructiveAction::ImportMfd)
                 .is_none()

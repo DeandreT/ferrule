@@ -98,6 +98,8 @@ struct TargetExtension {
     owned_search: bool,
     /// Owned dynamic source-field reads are an orthogonal explicit permission.
     dynamic_field: bool,
+    /// Owned XML serialization is an orthogonal explicit expression permission.
+    xml_serialize: bool,
 }
 
 impl TargetExtension {
@@ -110,6 +112,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: false,
         dynamic_field: false,
+        xml_serialize: false,
     };
     const GROUP_BY: Self = Self {
         controls: TargetControls::By,
@@ -120,6 +123,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: false,
         dynamic_field: false,
+        xml_serialize: false,
     };
     const SEQUENCE_ITEM_AT: Self = Self {
         controls: TargetControls::By,
@@ -130,6 +134,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: false,
         dynamic_field: false,
+        xml_serialize: false,
     };
 
     const GROUP_ADJACENT_BY: Self = Self {
@@ -141,6 +146,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: false,
         dynamic_field: false,
+        xml_serialize: false,
     };
 
     const SEQUENCE_EXISTS: Self = Self {
@@ -152,6 +158,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: false,
         dynamic_field: false,
+        xml_serialize: false,
     };
 
     const SEQUENCE_AGGREGATE: Self = Self {
@@ -163,6 +170,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: false,
         dynamic_field: false,
+        xml_serialize: false,
     };
 
     const GROUP_STARTING_WITH: Self = Self {
@@ -174,6 +182,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: false,
         dynamic_field: false,
+        xml_serialize: false,
     };
 
     const FAILURE_SOURCES: Self = Self {
@@ -185,6 +194,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: false,
         dynamic_field: false,
+        xml_serialize: false,
     };
 
     const GROUP_ENDING_WITH: Self = Self {
@@ -196,6 +206,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: false,
         dynamic_field: false,
+        xml_serialize: false,
     };
 
     /// The newest companion: FailureSources plus owned hierarchy construction.
@@ -208,6 +219,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: false,
         dynamic_field: false,
+        xml_serialize: false,
     };
 
     /// PATH_HIERARCHY plus owned adjacency-tree construction.
@@ -220,6 +232,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: false,
         dynamic_field: false,
+        xml_serialize: false,
     };
 
     /// ADJACENCY_TREE plus ItemAt over owned recursive collection walks.
@@ -232,6 +245,7 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: false,
         dynamic_field: false,
+        xml_serialize: false,
     };
 
     /// RECURSIVE_COLLECT plus recursive filtering of owned selectors.
@@ -244,6 +258,7 @@ impl TargetExtension {
         recursive_filter: true,
         owned_search: false,
         dynamic_field: false,
+        xml_serialize: false,
     };
 
     /// RECURSIVE_FILTER and IntoBlocks controls plus owned Lookup and
@@ -257,6 +272,7 @@ impl TargetExtension {
         recursive_filter: true,
         owned_search: true,
         dynamic_field: false,
+        xml_serialize: false,
     };
 
     /// LOOKUP_FIND plus owned dynamic source-field reads.
@@ -269,6 +285,20 @@ impl TargetExtension {
         recursive_filter: true,
         owned_search: true,
         dynamic_field: true,
+        xml_serialize: false,
+    };
+
+    /// DYNAMIC_FIELD plus owned XML serialization.
+    const XML_SERIALIZE: Self = Self {
+        controls: TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
+        sequence_item_at: SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+        failure_sources: true,
+        path_hierarchy: true,
+        adjacency_tree: true,
+        recursive_filter: true,
+        owned_search: true,
+        dynamic_field: true,
+        xml_serialize: true,
     };
 
     fn permits_path_hierarchy(self) -> bool {
@@ -284,7 +314,12 @@ impl TargetExtension {
         recursive_filter: false,
         owned_search: false,
         dynamic_field: false,
+        xml_serialize: false,
     };
+
+    fn permits_xml_serialize(self) -> bool {
+        self.xml_serialize
+    }
 
     fn permits_into_blocks(self) -> bool {
         matches!(
@@ -367,7 +402,9 @@ fn render_basic_owned_mapping_profile(
 ) -> Result<String, EmitError> {
     let allow_scoped_groups = extension.controls.has_scoped_groups();
     // Select the control/consumer pair before the older ItemAt-only companion.
-    if extension.dynamic_field {
+    if extension.permits_xml_serialize() {
+        codegen::validate_program_with_basic_owned_xml_serialize(program)?;
+    } else if extension.dynamic_field {
         codegen::validate_program_with_basic_owned_dynamic_field(program)?;
     } else if extension.owned_search {
         codegen::validate_program_with_basic_owned_lookup_find(program)?;
@@ -495,6 +532,9 @@ fn render_basic_owned_mapping_profile(
                 Expression::OwnedDynamicSourceField(field) => {
                     field.frame.as_ref().is_some_and(Vec::is_empty)
                 }
+                Expression::OwnedXmlSerialize(serializer) => {
+                    serializer.frame.as_ref().is_some_and(Vec::is_empty)
+                }
                 _ => false,
             }
     }) {
@@ -550,6 +590,11 @@ fn expression_refusal(node: NodeId, expression: &Expression, reason: Reason) -> 
         Expression::OwnedRowDocumentPath(path) => Some(Request::RowDocumentPath {
             owner: (&path.owner).into(),
             collection: path.collection.clone(),
+        }),
+        Expression::OwnedXmlSerialize(serializer) => Some(Request::XmlElement {
+            owner: (&serializer.source.owner).into(),
+            path: serializer.source.path.clone(),
+            frame: serializer.frame.clone(),
         }),
         _ => None,
     };
@@ -827,6 +872,7 @@ fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
+        | Expression::OwnedXmlSerialize(_)
         | Expression::SourceField { .. }
         | Expression::SourceRootXmlTypeEquals { .. }
         | Expression::SourceRootField { .. }
@@ -880,7 +926,9 @@ fn validate_private_inventory(
             false,
         )?;
     }
-    if extension.dynamic_field {
+    if extension.permits_xml_serialize() {
+        codegen::validate_basic_owned_xml_serialize_emission(program)?;
+    } else if extension.dynamic_field {
         codegen::validate_basic_owned_dynamic_field_emission(program)?;
     } else if extension.owned_search {
         codegen::validate_basic_owned_lookup_find_emission(program)?;
@@ -971,6 +1019,8 @@ fn validate_private_inventory(
             {
                 continue;
             }
+            Expression::OwnedXmlSerialize(_) if extension.permits_xml_serialize() => continue,
+            Expression::OwnedXmlSerialize(_) => Reason::XmlOperator,
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
@@ -1075,7 +1125,7 @@ fn render_empty_root_pin_declarations(program: &Program, output: &mut String) {
 }
 
 pub(super) fn render_owned_leaf(
-    _node: NodeId,
+    node: NodeId,
     expression: &Expression,
     output: &mut String,
 ) -> Result<(), EmitError> {
@@ -1135,6 +1185,39 @@ pub(super) fn render_owned_leaf(
                 output.push_str("false");
             }
             output.push_str(");\n    }\n");
+        }
+        Expression::OwnedXmlSerialize(serializer) => {
+            // The element read precedes schema unwrapping and writing, like the
+            // legacy serializer; only the read's owned failures gain the node.
+            let schema = codegen::serialize_embedded_schema(
+                &serializer.schema,
+                codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES,
+            )?;
+            output.push_str(&format!(
+                " =>\n        global::Ferrule.Runtime.FerruleXml.SerializeEmbedded(\n            {node}U,\n            {},\n            context.ResolveOwnedXmlInstance(",
+                literal::string(&schema)
+            ));
+            render_owner(&serializer.source.owner, output);
+            output.push_str(", ");
+            mapping::basic_path(&serializer.source.path, output);
+            output.push_str(", ");
+            mapping::render_optional_path(serializer.frame.as_deref(), output);
+            if serializer.frame.as_ref().is_some_and(Vec::is_empty) {
+                output.push_str(", OwnedRootIsDeclaredNonrepeating(");
+                render_owner(&serializer.source.owner, output);
+                output.push(')');
+            } else {
+                output.push_str(", false");
+            }
+            output.push_str(&format!(
+                "),\n            {},\n            {},\n            {});\n",
+                serializer.declaration,
+                serializer.indent,
+                serializer
+                    .namespace
+                    .as_deref()
+                    .map_or_else(|| "null".to_string(), literal::string),
+            ));
         }
         _ => unreachable!("shared expression mode dispatches only owned leaves"),
     }
@@ -1335,7 +1418,9 @@ fn render_checked_basic_owned_mapping_profile(
     } else {
         render_basic_owned_mapping(program)?
     };
-    let plan = if extension.dynamic_field {
+    let plan = if extension.permits_xml_serialize() {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_xml_serialize(program)?
+    } else if extension.dynamic_field {
         codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_field(program)?
     } else if extension.owned_search {
         codegen::legacy_named_input_admission_plan_with_basic_owned_lookup_find(program)?
@@ -1597,7 +1682,8 @@ fn expression_needs_owned_sources(program: &Program, root: NodeId) -> bool {
                 | Expression::OwnedRowDocumentPath(_)
                 | Expression::OwnedLookup(_)
                 | Expression::OwnedCollectionFind(_)
-                | Expression::OwnedDynamicSourceField(_) => true,
+                | Expression::OwnedDynamicSourceField(_)
+                | Expression::OwnedXmlSerialize(_) => true,
                 // An owned producer reads its root through the paired context.
                 Expression::SequenceItemAt { sequence, .. } => sequence.owned_source().is_some(),
                 _ => false,
@@ -1947,6 +2033,22 @@ pub(crate) fn render_public_basic_owned_sequence_aggregate_mapping(
         true,
         true,
         TargetExtension::SEQUENCE_AGGREGATE,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_xml_serialize_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::XML_SERIALIZE,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)

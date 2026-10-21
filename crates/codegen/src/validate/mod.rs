@@ -244,6 +244,15 @@ pub fn validate_program_with_basic_owned_path_hierarchy(
     owned_sources::validate_basic_owned_path_hierarchy_emission(program)
 }
 
+/// Validates owned XML serialization in Basic target contexts, explicitly
+/// composing the owned dynamic source-field companion. Legacy serializers and
+/// every older companion keep their existing gates.
+pub fn validate_program_with_basic_owned_xml_serialize(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_xml_serialize_emission(program)
+}
+
 fn validate_program_with_owned_policies(
     program: &Program,
     profile: owned_sources::BasicOwnedProfile,
@@ -302,6 +311,30 @@ fn validate_program_with_owned_dynamic_fields(
     adjacency_tree: owned_sources::AdjacencyTreePolicy,
     dynamic_field: owned_sources::DynamicFieldPolicy,
 ) -> Result<(), ProgramValidationError> {
+    validate_program_with_owned_xml(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        dynamic_field,
+        owned_sources::XmlSerializePolicy::Closed,
+    )
+}
+
+// Each argument is one independent, explicitly selected companion permission.
+#[allow(clippy::too_many_arguments)]
+fn validate_program_with_owned_xml(
+    program: &Program,
+    profile: owned_sources::BasicOwnedProfile,
+    failures: owned_sources::FailurePolicy,
+    sequence_item_at: owned_sources::SequenceItemAtPolicy,
+    path_hierarchy: owned_sources::PathHierarchyPolicy,
+    adjacency_tree: owned_sources::AdjacencyTreePolicy,
+    dynamic_field: owned_sources::DynamicFieldPolicy,
+    xml_serialize: owned_sources::XmlSerializePolicy,
+) -> Result<(), ProgramValidationError> {
     xml::validate_boundary(program)?;
     validate_schema_metadata("source", &program.source)?;
     for source in &program.extra_sources {
@@ -352,7 +385,7 @@ fn validate_program_with_owned_dynamic_fields(
     // that no target/failure root reaches in a directly constructed Program.
     sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)?;
     owned_sources::validate_structure(program)?;
-    owned_sources::validate_closed_contexts_with_dynamic_fields(
+    owned_sources::validate_closed_contexts_with_xml(
         program,
         profile,
         failures,
@@ -360,6 +393,7 @@ fn validate_program_with_owned_dynamic_fields(
         path_hierarchy,
         adjacency_tree,
         dynamic_field,
+        xml_serialize,
     )
 }
 
@@ -1623,6 +1657,7 @@ fn validate_scope(
 pub use owned_sources::validate_basic_owned_adjacency_tree_emission;
 pub use owned_sources::validate_basic_owned_path_hierarchy_emission;
 pub use owned_sources::validate_basic_owned_recursive_filter_emission;
+pub use owned_sources::validate_basic_owned_xml_serialize_emission;
 pub use owned_sources::{
     is_basic_owned_primary_row_failure, validate_basic_owned_dynamic_field_emission,
     validate_basic_owned_emission, validate_basic_owned_failure_source_emission,

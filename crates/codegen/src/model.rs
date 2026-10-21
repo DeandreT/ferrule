@@ -890,6 +890,9 @@ pub enum Expression {
     /// First-match predicate search over exactly one owned endpoint
     /// collection; predicate and value run in the selected item's context.
     OwnedCollectionFind(mapping::OwnedCollectionFind),
+    /// Serializes one structured element read from exactly its declared
+    /// owner, with the legacy serializer's schema and document options.
+    OwnedXmlSerialize(mapping::OwnedXmlSerialize),
     SourceField {
         frame: Option<Vec<String>>,
         path: Vec<String>,

@@ -888,7 +888,7 @@ fn closing_dirty_main_cancels_import_and_clean_pipeline_export_before_late_publi
             editor.document.save().unwrap();
             app.pipeline_editor = Some(editor);
         }
-        app.history.mark_unsaved();
+        app.mark_unsaved();
         assert!(app.is_dirty());
         let main = main_state(&app);
         let late = pending_pipeline_dialog(&mut app, kind, &mapping);

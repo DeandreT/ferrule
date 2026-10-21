@@ -229,6 +229,7 @@ impl<'a> Analysis<'a> {
             Node::OwnedDynamicSourceField(field) => self.inspect_owner(&field.object.owner),
             Node::OwnedLookup(lookup) => self.inspect_owner(&lookup.collection.owner),
             Node::OwnedCollectionFind(find) => self.inspect_owner(&find.collection.owner),
+            Node::OwnedXmlSerialize(serializer) => self.inspect_owner(&serializer.source.owner),
             Node::SourceDocumentPath
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }

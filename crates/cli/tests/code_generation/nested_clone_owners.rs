@@ -57,16 +57,20 @@ fn declared_nested_clone_owners_compiled_complete_oracles() -> TestResult<()> {
         .canonicalize()?;
     let fixtures =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures/nested_clone_owners");
-    let cases = std::fs::read(fixtures.join("cases.json"))?;
+    let owner_cases = std::fs::read(fixtures.join("cases.json"))?;
+    let occurrence_cases = std::fs::read(fixtures.join("occurrence_cases.json"))?;
     let mut outcomes = Vec::new();
-    for design in [
-        "equal",
-        "unequal",
-        "parent_condition",
-        "child_condition",
-        "reversed_keys_and_edges",
-        "three_level",
-        "same_source_owners",
+    for (design, cases) in [
+        ("equal", &owner_cases),
+        ("unequal", &owner_cases),
+        ("parent_condition", &owner_cases),
+        ("child_condition", &owner_cases),
+        ("reversed_keys_and_edges", &owner_cases),
+        ("three_level", &owner_cases),
+        ("same_source_owners", &owner_cases),
+        // Identical interned bindings in distinct declared clone occurrences.
+        ("shared_constant_cells", &occurrence_cases),
+        ("shared_constant_rows", &occurrence_cases),
     ] {
         let package = evidence.0.join(format!("{design}-package"));
         std::fs::create_dir(&package)?;
@@ -80,7 +84,7 @@ fn declared_nested_clone_owners_compiled_complete_oracles() -> TestResult<()> {
         }
         let mapping = package.join("mapping.mfd");
         std::fs::copy(fixtures.join(format!("{design}.mfd")), &mapping)?;
-        std::fs::write(package.join("expected-before-run.json"), &cases)?;
+        std::fs::write(package.join("expected-before-run.json"), cases)?;
         if design == "same_source_owners" {
             std::fs::write(
                 package.join("project-expected-before-run.json"),
@@ -161,7 +165,7 @@ fn declared_nested_clone_owners_compiled_complete_oracles() -> TestResult<()> {
             {
                 return Err("generated artifact census differs".into());
             }
-            std::fs::write(directory.join("cases.json"), &cases)?;
+            std::fs::write(directory.join("cases.json"), cases)?;
             if language == "rust" {
                 let manifest = directory.join("Cargo.toml");
                 let text = std::fs::read_to_string(&manifest)?;
@@ -260,7 +264,7 @@ fn declared_nested_clone_owners_compiled_complete_oracles() -> TestResult<()> {
         }
     }
     evidence.record("cohort.original.txt", &outcomes)?;
-    if outcomes.len() != 14
+    if outcomes.len() != 18
         || outcomes
             .iter()
             .any(|(_, outcome, stable)| !stable || !matches!(outcome, Ok(true)))

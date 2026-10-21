@@ -38,6 +38,11 @@ pub enum OwnedSourceError {
     },
     #[error("owned access does not support {found}")]
     UnsupportedSourceDomain { found: &'static str },
+    #[error("source owner {owner:?} has no element at {path:?}")]
+    MissingOwnedElement {
+        owner: SourceOwner,
+        path: Vec<String>,
+    },
     #[error("owned source metadata exceeds {resource} limit {limit}")]
     ResourceLimit {
         resource: &'static str,
@@ -476,6 +481,9 @@ pub(crate) struct SourceOrigin<'a> {
     pub item: &'a Instance,
     pub kind: SourceOriginKind,
 }
+
+#[path = "owned_xml_element.rs"]
+mod xml_element;
 
 pub(crate) struct OwnedContext<'a> {
     pub roots: &'a SourceRoots<'a>,

@@ -1512,7 +1512,7 @@ fn destructive_actions_wait_for_confirmation_when_dirty() {
         Some(DestructiveAction::NewProject)
     );
 
-    app.history.mark_unsaved();
+    app.mark_unsaved();
     assert_eq!(
         app.request_destructive_action(DestructiveAction::OpenProject),
         None
