@@ -5,23 +5,85 @@ writes target instances through a separate adapter. Format selection normally
 comes from the input or output extension; embedded `FormatOptions` provide the
 layout and dialect details that an extension cannot express.
 
-| Format | Source | Target | Current scope |
-| --- | :---: | :---: | --- |
-| XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, namespace-constrained skip wildcards, declaration-aware lax element/attribute wildcards, and closed strict wildcard choices; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
-| JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; confined external and local JSON Schema references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, exact numeric ranges and decimal `multipleOf`, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact closed homogeneous `patternProperties`, exact object-property presence, property dependencies and whole-object dependent-schema predicates, exact single-property-presence conditionals, property-name constraints, and open/closed object semantics, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, scalar-domain-subsumed array `anyOf`, compatible object alternatives and multi-branch nullable compositions, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
-| JSON5 | Yes | Yes | One schema-shaped document using JSON5 instance syntax; selected by `.json5` or `FormatOptions.json5`, with ordinary JSON schemas and the same typed mapping boundary |
-| CSV | Yes | Yes | Delimited flat rows with configurable delimiter, printable quote or disabled quoting, headers, optional present-empty text, and optional UTF-8 BOM output |
-| Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
-| XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
-| SQLite | Yes | Yes | Table introspection, typed reads, imported relational query shapes, validated declared relations, structured XML text columns, and idempotent full-replace writes |
-| X12 / EDIFACT | Yes | Yes | Schema-guided interchange I/O, custom syntax separators, repetitions, qualifier loops, retained field lengths/code lists, and optional lenient parsing |
-| HL7 v2 / TRADACOMS | Yes | Yes | Bounded schema-guided message I/O, retained field lengths/code lists, HL7 escapes/subcomponents, and TRADACOMS release escaping |
-| SAP IDoc | Yes | Yes | Embedded fixed-record layouts with bounded byte-position parsing and deterministic output |
-| SWIFT MT | Yes | No | Input through embedded message and field grammars |
-| FlexText | Yes | Yes | Embedded recursive split/store/switch layouts, including fixed-width and delimited records |
-| Protocol Buffers | Yes | Yes | Bounded proto2/proto3 binary I/O with self-contained local import graphs, public imports, nested messages, enums, repeated fields, and packed scalars |
-| XBRL | Yes | Yes | Typed instance facts, contexts, dimensions, units, and namespace-qualified concepts |
-| PDF | Yes | No | Layout-driven visual extraction from positioned text and painted edges, typed BasicVisual text capture, and visible inherited CropBox/page-rotation normalization |
+<!-- BEGIN GENERATED formats from docs/reference/formats.toml; edit that file and run `cargo run -p reference-docs` -->
+The tables below are generated from
+[`docs/reference/formats.toml`](reference/formats.toml). Each claim belongs to
+one category:
+
+- **Implemented capability**: behavior of the native format adapters and the CLI
+  that uses them, backed by the source and tests cited in the canonical
+  reference.
+- **Qualified route**: a separately named route, such as a generated library
+  adapter or an editor workflow, with its own contract or qualification record.
+  It covers only that route and profile.
+- **Unsupported profile**: a named shape, direction, or behavior outside the
+  implemented scope. The runtime refuses it or, where stated, deliberately does
+  not apply it. The list is not exhaustive.
+
+These references describe finite, tested coverage. They are not a parity claim
+for a complete format standard or another product.
+
+| Format | Source | Target | Selected by | Implemented capability |
+| --- | :---: | :---: | --- | --- |
+| XML | Yes | Yes | `.xml` or `xml_document` | Hierarchical instance I/O with namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, and named model and attribute groups; `xs:any` and `xs:anyAttribute` wildcards with `##any`, `##other`, `##local`, `##targetNamespace`, or listed-namespace constraints under `skip`, declaration-aware `lax`, or closed `strict` processing; bounded DTD import with internal content-model parameter entities; `xsi:nil`, generic elements, and ordered mixed content |
+| JSON | Yes | Yes | `.json`; `.jsonl`, `.ndjson`, or `json_lines` for JSON Lines | Hierarchical instance I/O and JSON Lines; JSON Schema import with traversal-confined local-file and document-local references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, numeric ranges and decimal `multipleOf`, array-count, `contains`, object-property-count, and Unicode string-length intervals, structural `uniqueItems`, bounded portable `pattern` assertions, closed homogeneous `patternProperties`, property dependencies, dependent-schema predicates, single-property-presence conditionals, `propertyNames`, open or closed object contracts, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, selected object alternatives, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| JSON5 | Yes | Yes | `.json5` or `json5` | One schema-shaped document in JSON5 instance syntax with ordinary JSON schemas and the same typed mapping boundary; input accepts comments, trailing commas, and single-quoted strings, and is limited to 64 MiB and 128 nested containers; output omits property-name quotes where JSON5 allows; CLI and browser runtime |
+| CSV | Yes | Yes | `.csv` or `.txt` | Delimited flat rows with a configurable delimiter, printable or disabled quoting, headers, optional present-empty text, and optional UTF-8 BOM output |
+| Fixed-width | Yes | Yes | `fixed_width` layout | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
+| XLSX | Yes | Yes | `.xlsx` | Typed worksheets, flat, transposed, composite, worksheet-set, and grid source shapes, flat and hierarchical targets, and update-existing flat writes |
+| SQLite | Yes | Yes | `.db`, `.sqlite`, or `.sqlite3` | Read-only table introspection, typed reads, imported relational query shapes, validated declared relations, structured XML text columns, and idempotent full-replace writes |
+| X12 / EDIFACT | Yes | Yes | `.edi`, `.x12`, or `.edifact` with a schema dialect, or `edi_kind` | Schema-guided interchange I/O, custom syntax separators, repetitions, qualifier loops, retained field lengths and code lists, optional lenient parsing, and bounded output validation that leaves the destination unchanged on failure |
+| HL7 v2 / TRADACOMS | Yes | Yes | `.hl7` or an EDI schema dialect | Bounded schema-guided message I/O, retained field lengths and code lists, HL7 escapes and subcomponents, and TRADACOMS release escaping |
+| SAP IDoc | Yes | Yes | `idoc` layout | Embedded fixed-record layouts with bounded byte-position parsing and deterministic output |
+| SWIFT MT | Yes | No | `swift_mt` layout | Input through embedded message and field grammars |
+| FlexText | Yes | Yes | `flextext` layout imported from `.mft` | Embedded recursive split, store, and switch layouts, including fixed-width and delimited records |
+| Protocol Buffers | Yes | Yes | `protobuf` schema and root message | Bounded proto2/proto3 binary I/O with self-contained local import graphs, public imports, nested messages, enums, repeated fields, and packed scalars |
+| XBRL | Yes | Yes | `xbrl` options | Typed instance facts, contexts, dimensions, units, and namespace-qualified concepts through table-shaped boundaries |
+| PDF | Yes | No | `pdf` extraction options | Layout-driven visual extraction from positioned text, anchors, painted edges, and table regions, typed BasicVisual text capture, and visible inherited CropBox and page-rotation normalization |
+
+## Qualified Routes
+
+| Format | Route | Scope | Record |
+| --- | --- | --- | --- |
+| XML | Generated Rust and C# XML document APIs | Structured or admitted root-view XML boundaries in the indexed route families | [docs/generated-xml-qualification-index.md](generated-xml-qualification-index.md) |
+| JSON | Ordered JSON source documents in the native and generated C# runtimes | One complete UTF-8 JSON value with ordered and duplicate members, checked against a self-authored corpus | [conformance/json-source/README.md](../conformance/json-source/README.md) |
+| JSON5 | Generated Rust and C# JSON5 companions (`generate --json5-adapters`) | One JSON5 object in and strict JSON out, for closed nonrepeating object schemas with scalar leaves and static target construction | [docs/generated-json5-contract.md](generated-json5-contract.md) |
+| CSV | Generated Rust and C# complete CSV document adapters (`generate --csv-document-adapters`) | One positional CSV document in and out, including header, BOM, and raw-delimited CRLF output modes | [conformance/csv-documents/README.md](../conformance/csv-documents/README.md) |
+| XLSX | Native editor flat-worksheet setup, save, and reopen | One flat-row XLSX source and target configuration on the Linux desktop | [docs/qualification/flat-workbook-desktop-2026-10-08.md](qualification/flat-workbook-desktop-2026-10-08.md) |
+| X12 / EDIFACT | Generated C# X12 companions (`generate --x12-adapters`) | Raw X12 text and bytes with single, grouped, or MapForce-shaped envelope profiles around the ordinary typed mapping | [docs/design/generated-x12-csharp.md](design/generated-x12-csharp.md) |
+
+## Unsupported Profiles
+
+| Format | Profile |
+| --- | --- |
+| XML | XSD 1.1 wildcard exclusions (`notNamespace`, `notQName`) and `xs:any` inside `xs:all` |
+| XML | Strict wildcards whose matching declaration set is not closed, and same-local-name strict declarations with incompatible typed shapes |
+| XML | Element wildcard occurrences other than `1..1`, `0..1`, or `0..unbounded`, and optional single-occurrence `skip` wildcards |
+| XML | Sibling elements or attributes that differ only by namespace, because mapping paths use local field names |
+| XML | External DTD subsets and external entities, which are never loaded |
+| XML | Output to a local XML file set or an HTTP URL (`local_xml_file_set` and HTTP sources are input-only) |
+| JSON | General heterogeneous array composition, heterogeneous or correlated numeric-range scalar unions, and mixed structural unions |
+| JSON | Heterogeneous `prefixItems` or legacy tuple members and active `unevaluatedItems` |
+| JSON | Required-only schemas without an object shape |
+| JSON | External references from in-memory schema import (`json_schema::import_str`) |
+| JSON | Enforcement of other shape-neutral validation keywords, which are accepted only for schema recovery |
+| JSON5 | Combining JSON5 with JSON Lines |
+| JSON5 | Nonfinite numbers such as `Infinity` and `NaN` |
+| JSON5 | Comment preservation; comments are not mapped or written back |
+| JSON5 | JSON5 in ordinary generated Rust and C# entry points, which exchange strict JSON |
+| JSON5 | Native `.mfd` export of JSON5 boundaries |
+| CSV | Unquoted output of field text that requires escaping when quoting is disabled |
+| Fixed-width | Combining a fixed-width layout with CSV dialect options |
+| XLSX | Grid, worksheet-set, composite, and transposed output, which are input-only layouts |
+| XLSX | Update-existing writes for hierarchical output |
+| SQLite | Other database engines, general SQL mutation, and multi-database connections |
+| X12 / EDIFACT | Invisible or whitespace explicit X12 output separators, including LF |
+| SAP IDoc | `.idoc` input without an embedded layout |
+| SWIFT MT | SWIFT MT output |
+| Protocol Buffers | Recursive messages, which the tree-shaped instance model cannot represent |
+| XBRL | Taxonomy formula, presentation, calculation, and linkbase execution |
+| PDF | PDF output |
+<!-- END GENERATED formats -->
 
 ## Important Boundaries
 
@@ -44,9 +106,12 @@ layout and dialect details that an extension cannot express.
   it. JSON5 uses one document, so `json5` and `json_lines` cannot be combined.
   Input is limited to 64 MiB and 128 nested containers; exact `uniqueItems`
   checks retain numeric token values, including hexadecimal numbers. Nonfinite
-  values are rejected. The generated Rust and C# library entry points
-  continue to exchange strict schema-shaped JSON with their hosts; JSON5 file
-  parsing and writing are provided by the CLI and browser runtime. Native
+  values are rejected. JSON5 file parsing and writing are provided by the CLI
+  and browser runtime. Ordinary generated Rust and C# library entry points
+  exchange strict schema-shaped JSON with their hosts; the explicit
+  `--json5-adapters` profile adds singular JSON5-input, strict-JSON-output
+  companions for closed object schemas, as described in the
+  [generated JSON5 companion contract](generated-json5-contract.md). Native
   `.mfd` export rejects JSON5 boundaries until the native component setting is
   represented and verified.
 - PDF targets are not supported.

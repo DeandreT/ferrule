@@ -46,6 +46,8 @@ internal static partial class Program
             ("double domain", DoubleDomain),
             ("standalone decimal lexical domain", Decimal96Domain),
             ("standalone decimal arithmetic", Decimal96Arithmetic),
+            ("standalone binary64 decimal conversion", Decimal96FloatConversion),
+            ("standalone decimal numeric text", DecimalNumberText),
             ("value maps", ValueMaps),
             ("CSV native scalar lexicals", CsvScalarLexicals),
             ("CSV native scalar refusals", CsvScalarRefusals),

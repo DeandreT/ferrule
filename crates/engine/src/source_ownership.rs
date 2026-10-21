@@ -263,6 +263,15 @@ impl<'a> Admission<'a> {
                     || scope.group_ending_with.is_some()
                     || scope.group_into_blocks.is_some())
                 && scope_demands_owned(self.project, scope);
+            if scope.iteration.owned_join().is_some() {
+                // Owned join identities are representable but not executable.
+                return Err(EngineError::UnsupportedOwnedContext {
+                    node: None,
+                    function: None,
+                    scope: Some(location),
+                    context: OwnedCapabilityContext::Join,
+                });
+            }
             match scope.source_selector() {
                 Some(SourceSelectorRef::Legacy(path)) => self.path(path),
                 Some(SourceSelectorRef::Owned(source)) => {
@@ -1050,7 +1059,7 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
     if scope.sequence().is_some() {
         return OwnedCapabilityContext::GeneratedItem;
     }
-    if scope.join().is_some() {
+    if scope.join().is_some() || scope.iteration.owned_join().is_some() {
         return OwnedCapabilityContext::Join;
     }
     if scope.concatenated().is_some() {

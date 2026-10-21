@@ -1,12 +1,16 @@
 use std::collections::BTreeSet;
 
 use ir::SchemaNode;
-use mapping::{Graph, JoinId, JoinPlan, JoinSourceCardinality, Node, NodeId, Project, Scope};
+use mapping::{
+    Graph, JoinId, JoinPlan, JoinSourceCardinality, Node, NodeId, OwnedJoinPlan, OwnedSourceRef,
+    Project, Scope, describe_owned_collection,
+};
 
 use super::ValidationIssue;
 use super::graph::{node_inputs, validate_collection_value};
 use super::schema::{
-    display_path, root_source_path_direct, source_path_matches, source_path_matches_direct,
+    display_path, follow_schema, follow_schema_resolved, owned_source_root,
+    root_source_path_direct, source_path_matches, source_path_matches_direct,
 };
 
 pub(super) fn validate_plan(
@@ -74,6 +78,93 @@ pub(super) fn validate_plan(
             );
         }
     }
+}
+
+/// Checks each owned source against its own endpoint schema and each key
+/// against the exact owned collection it names. Source-ownership admission
+/// refuses owned joins for execution regardless of these results.
+pub(super) fn validate_owned_plan(
+    project: &Project,
+    join: JoinId,
+    plan: &OwnedJoinPlan,
+    location: &str,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let mut collections = Vec::new();
+    for source in plan.sources() {
+        let collection = source.collection();
+        let Some(root) = owned_source_root(project, &collection.owner, location, issues) else {
+            collections.push((collection, None));
+            continue;
+        };
+        let node = follow_schema_resolved(root, &collection.path);
+        let (valid, expected) = match source.cardinality() {
+            JoinSourceCardinality::Repeating => (
+                collection.path.is_empty() || node.is_some_and(|node| node.repeating),
+                "missing or not repeating",
+            ),
+            JoinSourceCardinality::Singleton => (
+                node.is_some_and(|node| !node.repeating && node.is_scalar()),
+                "missing or not a singleton scalar",
+            ),
+        };
+        if !valid {
+            issues.push(ValidationIssue::new(
+                location,
+                format!(
+                    "join {} collection {} is {expected}",
+                    join.get(),
+                    describe_owned_collection(collection)
+                ),
+            ));
+        } else if source.cardinality() == JoinSourceCardinality::Singleton
+            && crosses_repeating(root, &collection.path)
+        {
+            issues.push(ValidationIssue::new(
+                location,
+                format!(
+                    "join {} singleton collection {} crosses a repeating source level; join the repeating collection with a key path instead",
+                    join.get(),
+                    describe_owned_collection(collection)
+                ),
+            ));
+        }
+        collections.push((collection, valid.then_some(node.unwrap_or(root))));
+    }
+    let resolved = |wanted: &OwnedSourceRef| {
+        collections
+            .iter()
+            .find(|(collection, _)| *collection == wanted)
+            .and_then(|(_, node)| *node)
+    };
+    for (right, conditions) in plan.stages() {
+        for key in conditions.iter() {
+            for (collection, path, label) in [
+                (key.left_collection(), key.left_path(), "join left key"),
+                (right.collection(), key.right_path(), "join right key"),
+            ] {
+                // An unresolved collection already has its own issue.
+                let Some(node) = resolved(collection) else {
+                    continue;
+                };
+                if !follow_schema(node, path).is_some_and(SchemaNode::is_scalar) {
+                    issues.push(ValidationIssue::new(
+                        location,
+                        format!(
+                            "{label} `{}` is not a scalar under collection {}",
+                            display_path(path),
+                            describe_owned_collection(collection)
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+}
+
+fn crosses_repeating(root: &SchemaNode, path: &[String]) -> bool {
+    (1..path.len())
+        .any(|end| follow_schema_resolved(root, &path[..end]).is_some_and(|node| node.repeating))
 }
 
 /// Whether `source` is the primary root schema, where expressions see no

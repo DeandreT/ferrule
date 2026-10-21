@@ -371,6 +371,7 @@ pub(super) fn current_source_schema<'a>(
         }
         ScopeIteration::Sequence(_)
         | ScopeIteration::InnerJoin { .. }
+        | ScopeIteration::OwnedInnerJoin { .. }
         | ScopeIteration::Concatenate(_) => None,
     }
 }
@@ -569,7 +570,10 @@ fn any_schema_path_resolved(
     visit(schema, schema, path, predicate)
 }
 
-fn follow_schema_resolved<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
+pub(super) fn follow_schema_resolved<'a>(
+    schema: &'a SchemaNode,
+    path: &[String],
+) -> Option<&'a SchemaNode> {
     let node = follow_schema(schema, path)?;
     node.recursive_ref
         .as_deref()

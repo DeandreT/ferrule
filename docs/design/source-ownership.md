@@ -155,6 +155,19 @@ collection misses without consulting another endpoint, Null-like keys never
 match, and the first match in source order wins with a miss as `Null`. See the
 [search contract](owned-lookup-find.md).
 
+## Owned join identity
+
+An owned inner join names each source and each condition's left collection by
+owner plus endpoint-relative collection. It shares the scope's `join` key with
+the legacy plan, but every collection is an owned object, so a reader that only
+knows collection arrays refuses it, and one plan never mixes the two forms.
+Duplicate, singleton and left-stage checks compare the whole identity: a
+primary `Rows` and a named `Rows` are two sources, while the same owner's `Rows`
+twice is still a duplicate. The scope's `JoinId` stays independent of these
+identities. Validation resolves each source against its own endpoint and each
+key path under the exact collection it names. Execution, generation, `.mfd`
+export and GUI editing refuse owned joins; the GUI shows a saved one read-only.
+
 ## Existing coordinated issues
 
 Reuse these existing scopes; the capability column concerns **explicit ownership**.
