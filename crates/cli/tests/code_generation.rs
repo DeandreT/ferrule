@@ -60,8 +60,6 @@ mod csv_json_adapters;
 mod csv_output;
 #[path = "code_generation/csv_row_provenance.rs"]
 mod csv_row_provenance;
-#[path = "code_generation/owned_row_document_path.rs"]
-mod owned_row_document_path;
 #[path = "code_generation/csv_x12_adapters.rs"]
 mod csv_x12_adapters;
 #[path = "code_generation/disconnected_inputs.rs"]
@@ -100,6 +98,8 @@ mod json_parser_ports;
 mod json_structure_variables;
 #[path = "code_generation/legacy_artifact_policy.rs"]
 mod legacy_artifact_policy;
+#[path = "code_generation/owned_row_document_path.rs"]
+mod owned_row_document_path;
 
 #[path = "code_generation/edi_structure_variables.rs"]
 mod edi_structure_variables;
