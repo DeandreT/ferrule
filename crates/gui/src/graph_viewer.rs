@@ -2842,6 +2842,10 @@ mod tests;
 mod endpoint_tests;
 
 #[cfg(test)]
+#[path = "graph_viewer_node_header_tests.rs"]
+mod node_header_tests;
+
+#[cfg(test)]
 #[path = "graph_viewer_shared_target_tests.rs"]
 mod shared_target_tests;
 

@@ -351,3 +351,49 @@ fn header_edit_trigger_stays_on_one_line_and_remains_keyboard_accessible() {
         assert!(!edit.clicked());
     });
 }
+
+/// Lays out a header the way egui-snarl does: its collapse button and drag
+/// space come first on the same left-to-right row. Returns the cursor after
+/// them and the row's final right edge.
+fn snarl_header_row<R>(ui: &mut Ui, header: impl FnOnce(&mut Ui) -> R) -> (f32, f32, R) {
+    ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+        let icon_width = ui.spacing().icon_width;
+        let _ = ui.allocate_exact_size(Vec2::splat(icon_width), egui::Sense::click());
+        let _ = ui.allocate_exact_size(Vec2::new(24.0, 0.0), egui::Sense::hover());
+        let start = ui.cursor().min.x;
+        let inner = header(ui);
+        (start, ui.min_rect().right(), inner)
+    })
+    .inner
+}
+
+#[test]
+fn headers_start_after_snarls_collapse_button_and_keep_their_widths() {
+    let context = context();
+    let _ = context.run_test_ui(raw_input(), |ui| {
+        CanvasDensity::Compact.apply(ui);
+        let node = string_node("collapse fixture");
+        let header = || header(&node, "Constant", false).unwrap();
+        let edit_space = ui.spacing().interact_size.y.max(18.0) + ui.spacing().item_spacing.x;
+        for manual in [None, Some(200.0)] {
+            let preferred = resolved_header_width(ui, &header(), manual);
+            let (start, right, label) =
+                snarl_header_row(ui, |ui| show_header(ui, header(), "Constant", manual));
+            assert!(start <= label.rect.left(), "{manual:?}: {start} {label:?}");
+            assert_eq!(right, start + preferred, "{manual:?}");
+
+            let preferred = manual.unwrap_or_else(|| header_size(ui, &header()).x + edit_space);
+            let (start, right, (label, edit)) = snarl_header_row(ui, |ui| {
+                show_header_with_edit(ui, header(), "Constant", manual, true, true)
+            });
+            assert!(start <= label.rect.left(), "{manual:?}: {start} {label:?}");
+            // The trigger follows the title; auto width fits both exactly.
+            assert!(label.rect.right() <= edit.rect.left());
+            assert!(edit.rect.right() <= start + preferred + 0.5, "{manual:?}");
+            if manual.is_none() {
+                assert!((edit.rect.right() - (start + preferred)).abs() < 0.5);
+            }
+            assert_eq!(right, start + preferred, "{manual:?}");
+        }
+    });
+}
