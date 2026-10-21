@@ -1,6 +1,7 @@
 //! Independently specified physical-option oracles, including all parsed null slots.
 use super::*;
 use mapping::{EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind, X12Autocomplete};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const INPUT: &str = include_str!("profile-input.x12");
 const SOURCE: &str = include_str!("profile-source-expected.json");
@@ -166,13 +167,15 @@ fn constrained_completion() -> X12BoundaryOptions {
     selected
 }
 fn evidence(label: &str) -> std::path::PathBuf {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
-        "ferrule_x12_profile_{label}_{}_{}",
+        "ferrule_x12_profile_{label}_{}_{}_{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&root).unwrap();
     eprintln!("complete authored X12 profile evidence: {}", root.display());

@@ -580,29 +580,22 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             let project = project
                 .or(project_positional)
                 .context("missing project path")?;
+            let input = input.or(input_positional);
+            let output = output.or(output_positional);
+            // Route arguments are refused before the policy, design, or any
+            // input is read and before the trace stage is created.
+            let route = cli::select_run_route(&cli::RunRouteArgs {
+                input_path: input.as_deref(),
+                output_path: output.as_deref(),
+                pdf_worker,
+                trace_path: trace_json.as_deref(),
+            })?;
             let execution_policy = restricted_policy
                 .as_deref()
                 .map(cli::load_execution_policy_file)
                 .transpose()?;
-            let input = input.or(input_positional);
-            let output = output.or(output_positional);
-            if pdf_worker
-                && (input.as_deref() == Some(std::path::Path::new("-"))
-                    || output.as_deref() == Some(std::path::Path::new("-")))
-            {
-                bail!(
-                    "--pdf-worker requires filesystem input and output; standard-stream payloads remain in-process"
-                );
-            }
             let parameters = parse_runtime_parameters(&parameters)?;
-            let trace = trace_json
-                .as_deref()
-                .map(cli::JsonTraceFile::create)
-                .transpose()?;
-            let protected_output_paths = trace
-                .as_ref()
-                .map(|trace| vec![trace.destination()])
-                .unwrap_or_default();
+            let protected_output_paths = trace_json.as_deref().into_iter().collect::<Vec<_>>();
             let target = target.as_deref().map(|target| {
                 if target == "primary" {
                     cli::TargetSelection::Primary
@@ -610,21 +603,30 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     cli::TargetSelection::Named(target)
                 }
             });
-            if output.as_deref() == Some(std::path::Path::new("-")) {
+            let design = cli::load_project(&project)?;
+            let request = cli::RunRequest {
+                input_path: input.as_deref(),
+                output_path: output.as_deref(),
+                target,
+                runtime_parameters: Some(&parameters),
+                protected_output_paths: &protected_output_paths,
+                execution_policy: execution_policy.as_ref(),
+                observers: cli::SourceOwnershipObservers {
+                    tracing: trace_json.is_some(),
+                    debugging: false,
+                },
+            };
+            if route == cli::HostRoute::StandardStreams {
+                let prepared = cli::PreparedStreamRun::prepare(&design, &project, request)?;
+                let trace = trace_json
+                    .as_deref()
+                    .map(cli::JsonTraceFile::create)
+                    .transpose()?;
                 let mut stdin = BufReader::new(std::io::stdin().lock());
                 let mut stdout = BufWriter::new(std::io::stdout().lock());
-                let outcome = cli::run_project_with_standard_streams(
-                    &project,
-                    &cli::StandardIoRunOptions {
-                        input_path: input.as_deref(),
-                        output_path: output.as_deref(),
-                        target,
-                        runtime_parameters: Some(&parameters),
-                        trace_sink: trace.as_ref().map(|trace| trace as &dyn cli::TraceSink),
-                        protected_output_paths: &protected_output_paths,
-                        execution_policy: execution_policy.as_ref(),
-                    },
+                let outcome = prepared.execute(
                     &mut stdin,
+                    trace.as_ref().map(|trace| trace as &dyn cli::TraceSink),
                 )?;
                 if let Some(trace) = trace {
                     // Streamed artifacts are never published to their logical paths.
@@ -641,19 +643,14 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     .flush()
                     .context("flushing mapping artifact to stdout")?;
             } else {
-                if input.as_deref() == Some(std::path::Path::new("-")) {
-                    bail!("`--input -` requires `--output -`");
-                }
-                let run_options = cli::RunOptions {
-                    input_path: input.as_deref(),
-                    output_path: output.as_deref(),
-                    target,
-                    runtime_parameters: Some(&parameters),
+                let prepared = cli::PreparedFileRun::prepare(&design, &project, request)?;
+                let trace = trace_json
+                    .as_deref()
+                    .map(cli::JsonTraceFile::create)
+                    .transpose()?;
+                let observers = cli::RunObservers {
                     trace_sink: trace.as_ref().map(|trace| trace as &dyn cli::TraceSink),
-                    debug_hook: None,
-                    before_publish: None,
-                    protected_output_paths: &protected_output_paths,
-                    execution_policy: execution_policy.as_ref(),
+                    ..cli::RunObservers::default()
                 };
                 let outcome = if pdf_worker {
                     let policy = if keep_pdf_evidence {
@@ -661,11 +658,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     } else {
                         cli::FilesystemRunPolicy::new()
                     };
-                    let result = cli::run_project_with_options_and_filesystem_policy(
-                        &project,
-                        &run_options,
-                        &policy,
-                    );
+                    let result = prepared.execute_with_pdf_reader(&observers, &policy);
                     for path in policy.retained_pdf_evidence() {
                         diagnostics.emit(
                             "run",
@@ -679,7 +672,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     }
                     result?
                 } else {
-                    cli::run_project_with_options(&project, &run_options)?
+                    prepared.execute(&observers)?
                 };
                 if let Some(trace) = trace {
                     trace.finish(&outcome.artifacts)?;
@@ -1041,6 +1034,7 @@ fn parse_runtime_parameters(values: &[String]) -> anyhow::Result<engine::Runtime
 #[cfg(test)]
 mod x12_envelope_flag_tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn explicit_envelope_flags_require_the_x12_companion_and_known_values() {
@@ -1145,13 +1139,15 @@ mod x12_envelope_flag_tests {
 
     #[test]
     fn rust_grouped_flag_requires_an_explicit_runtime_path() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-grouped-x12-flag-{}-{}",
+            "ferrule-grouped-x12-flag-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
         let output = root.join("absent-parent/output");
@@ -1182,6 +1178,7 @@ mod x12_envelope_flag_tests {
 #[cfg(test)]
 mod static_document_flag_tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn static_document_flag_conflicts_with_other_optional_profiles() {
@@ -1245,13 +1242,15 @@ mod static_document_flag_tests {
 
     #[test]
     fn static_document_flag_backend_refusal_precedes_project_and_runtime_loading() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-static-document-flag-{}-{}",
+            "ferrule-static-document-flag-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
         let input = root.join("absent-project.json");
@@ -1281,6 +1280,7 @@ mod static_document_flag_tests {
 #[cfg(test)]
 mod csv_x12_flag_tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn csv_x12_target_profile_is_explicit_required_and_value_checked() {
@@ -1360,13 +1360,15 @@ mod csv_x12_flag_tests {
 
     #[test]
     fn csv_x12_grouped_target_flag_keeps_early_backend_refusal() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-csv-x12-explicit-{}-{}",
+            "ferrule-csv-x12-explicit-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
         let output = root.join("absent-parent/output");
@@ -1422,13 +1424,15 @@ mod csv_x12_flag_tests {
 
     #[test]
     fn csv_x12_flag_backend_refusal_precedes_project_and_runtime_loading() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-csv-x12-flag-{}-{}",
+            "ferrule-csv-x12-flag-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
         let output = root.join("absent-parent/output");
@@ -1457,6 +1461,7 @@ mod csv_x12_flag_tests {
 #[cfg(test)]
 mod csv_json_flag_tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn csv_json_flag_conflicts_before_project_loading() {
@@ -1490,13 +1495,15 @@ mod csv_json_flag_tests {
 
     #[test]
     fn csv_json_flag_backend_refusal_precedes_loading() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-csv-json-flag-{}-{}",
+            "ferrule-csv-json-flag-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
         let output = root.join("absent-parent/output");
@@ -1526,6 +1533,7 @@ mod csv_json_flag_tests {
 mod pdf_evidence_flag_tests {
     use super::*;
     use std::io::Write;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn retain(path: &std::path::Path, bytes: &[u8]) {
         let mut file = std::fs::OpenOptions::new()
@@ -1596,13 +1604,15 @@ mod pdf_evidence_flag_tests {
 
     #[test]
     fn retained_worker_standard_stream_refusals_precede_loading_and_publication() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "ferrule-pdf-evidence-flags-{}-{}",
+            "ferrule-pdf-evidence-flags-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
         for (key, input_stream) in [("stdin", true), ("stdout", false)] {

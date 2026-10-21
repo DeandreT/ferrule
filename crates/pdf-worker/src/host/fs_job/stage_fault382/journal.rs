@@ -268,17 +268,20 @@ impl Log {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     struct Root(PathBuf);
     impl Root {
         fn new() -> Self {
             let parent = std::env::current_dir().unwrap();
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
             let root = parent.join(format!(
-                ".journal387-{}-{}",
+                ".journal387-{}-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
-                    .as_nanos()
+                    .as_nanos(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
             ));
             std::fs::create_dir(&root).unwrap();
             std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();

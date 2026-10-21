@@ -4,12 +4,12 @@ use serde_json::{Value as Json, json};
 use std::{
     fs,
     path::PathBuf,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 fn evidence() -> PathBuf {
     // Windows clock readings can repeat across concurrently running tests.
-    static NEXT: AtomicU64 = AtomicU64::new(0);
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
         "ferrule-nested-array-native-{}-{}-{}",
         std::process::id(),

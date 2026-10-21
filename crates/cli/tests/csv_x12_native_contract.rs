@@ -4,6 +4,7 @@ use mapping::Project;
 use serde_json::{Value as Json, json};
 use std::error::Error;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const PROJECT: &[u8] = include_bytes!("csv_x12_native/fixtures/project.json");
@@ -117,10 +118,12 @@ fn original(root: &Path, label: &str, value: &impl std::fmt::Debug) -> Result<()
 
 #[test]
 fn complete_csv_rows_feed_one_x12_document_without_dropping_rows() -> Result<(), Box<dyn Error>> {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root: PathBuf = std::env::temp_dir().join(format!(
-        "ferrule-csv-x12-275-native-{}-{}",
+        "ferrule-csv-x12-275-native-{}-{}-{}",
         std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(root.join("fixtures"))?;
     for (name, body) in FIXTURES {

@@ -8,6 +8,7 @@ use serde_json::{Value as Json, json};
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const SHARED_IDS: [&str; 41] = [
     "repair-before-foreign-options-and-delimiter",
@@ -81,12 +82,14 @@ fn write_debug(path: impl AsRef<Path>, value: &impl std::fmt::Debug) -> Result<(
 }
 
 fn evidence() -> Result<PathBuf, Box<dyn Error>> {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let path = std::env::temp_dir().join(format!(
-        "ferrule-csv-json-policy-{}-{}",
+        "ferrule-csv-json-policy-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)?
-            .as_nanos()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&path)?;
     Ok(path)

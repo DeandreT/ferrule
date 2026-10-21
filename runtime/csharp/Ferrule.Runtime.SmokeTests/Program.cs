@@ -80,6 +80,8 @@ internal static partial class Program
             ("adjacency tree legacy collection", AdjacencyTreeLegacyBuild),
             ("adjacency tree exact owned endpoints", AdjacencyTreeOwnedEndpoints),
             ("owned XML element exact endpoints", OwnedXmlExactEndpoints),
+            ("owned XML mixed content exact owners", OwnedXmlMixedContentExactOwners),
+            ("owned XML mixed construction exact items", OwnedXmlMixedConstructionExactItems),
             ("dynamic source contexts", DynamicSourceContexts),
             ("dynamic target construction", DynamicTargetConstruction),
             ("collection-find contexts", CollectionFindContexts),

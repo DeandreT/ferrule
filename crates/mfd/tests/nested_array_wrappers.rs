@@ -4,16 +4,19 @@ use std::{
     error::Error,
     fs,
     path::PathBuf,
+    sync::atomic::{AtomicUsize, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 const PROJECT: &str = include_str!("fixtures/nested_array_wrappers/project.json");
 
 fn evidence() -> Result<PathBuf, Box<dyn Error>> {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let path = std::env::temp_dir().join(format!(
-        "ferrule-nested-array-mfd-{}-{}",
+        "ferrule-nested-array-mfd-{}-{}-{}",
         std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&path)?;
     fs::write(path.join("independent-project.json"), PROJECT)?;

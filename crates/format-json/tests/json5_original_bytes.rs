@@ -4,6 +4,7 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use format_json::JsonFormatError;
@@ -87,10 +88,12 @@ impl Originals {
         } else {
             std::env::temp_dir()
         };
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let root = parent.join(format!(
-            "ferrule-native-json5-bytes163-{label}-{}-{nonce}",
-            std::process::id()
+            "ferrule-native-json5-bytes163-{label}-{}-{nonce}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root)?;
         println!(

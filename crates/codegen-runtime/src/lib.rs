@@ -156,8 +156,8 @@ pub use xml_boundary::{
     preflight_xml_input_sizes_with_budget, serialize_xml_document, xml_input_indices,
 };
 pub use xml_mixed_content::{
-    XmlMixedContentElement, XmlMixedContentReplacement, preserve_xml_mixed_content,
-    xml_mixed_content,
+    OwnedXmlMixedContentExpression, OwnedXmlMixedContentReplacement, XmlMixedContentElement,
+    XmlMixedContentReplacement, preserve_xml_mixed_content, xml_mixed_content,
 };
 
 /// Selects the primary target or one exact declared target name.

@@ -2,6 +2,7 @@ use codegen::{Program, TargetConstruction, TargetScope};
 use ir::SchemaNode;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[test]
 fn generated_object_item_nullability_builds_and_preserves_complete_values()
@@ -99,13 +100,15 @@ fn generated_object_item_nullability_builds_and_preserves_complete_values()
 struct TempDirectory(PathBuf);
 impl TempDirectory {
     fn new() -> std::io::Result<Self> {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
         let path = std::env::temp_dir().join(format!(
-            "ferrule-csharp-object-item-nullability-{}-{stamp}",
-            std::process::id()
+            "ferrule-csharp-object-item-nullability-{}-{stamp}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&path)?;
         Ok(Self(path))
