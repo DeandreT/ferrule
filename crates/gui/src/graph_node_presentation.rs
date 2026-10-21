@@ -102,6 +102,11 @@ pub(super) fn owned_source_title(node: &Node) -> Option<String> {
             owner(&position.owner),
             frame(position.collection.as_deref()),
         )),
+        Node::OwnedRowDocumentPath(path) => Some(format!(
+            "Physical row document path: {}\nCollection: {}\nRead-only; no owner or ancestor fallback",
+            owner(&path.owner),
+            frame(path.collection.as_deref()),
+        )),
         Node::OwnedLookup(lookup) => Some(format!(
             "Owned lookup: {}\nCollection: {:?}\nKey: {:?}\nValue: {:?}\nRead-only; owned lookup authoring is unavailable",
             owner(&lookup.collection.owner),
@@ -301,6 +306,7 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
                 .to_owned(),
         ),
         Node::OwnedPosition(_) => (Icon::ListOrdered, "owned".into()),
+        Node::OwnedRowDocumentPath(_) => (Icon::ListOrdered, "row path".into()),
         Node::Const { value } => {
             let icon = match value {
                 ir::Value::String(_) => Icon::Type,
@@ -668,6 +674,7 @@ pub(super) fn has_properties(node: &Node) -> bool {
         node,
         Node::OwnedSourceField(_)
             | Node::OwnedPosition(_)
+            | Node::OwnedRowDocumentPath(_)
             | Node::Const { .. }
             | Node::Call { .. }
             | Node::SourceField { .. }

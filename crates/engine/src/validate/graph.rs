@@ -97,7 +97,7 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
         }
 
         match node {
-            Node::OwnedSourceField(_) | Node::OwnedPosition(_) => {
+            Node::OwnedSourceField(_) | Node::OwnedPosition(_) | Node::OwnedRowDocumentPath(_) => {
                 super::schema::validate_owned_source_node(project, node, &location, issues)
             }
             Node::SequenceExists { sequence, .. }
@@ -673,6 +673,16 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
         }
         Node::OwnedPosition(position) => {
             if let mapping::SourceOwner::Named { name } = &position.owner
+                && project
+                    .extra_sources
+                    .iter()
+                    .any(|source| source.name == *name && source.dynamic_path.is_some())
+            {
+                sources.insert(name.as_str());
+            }
+        }
+        Node::OwnedRowDocumentPath(path) => {
+            if let mapping::SourceOwner::Named { name } = &path.owner
                 && project
                     .extra_sources
                     .iter()
@@ -1258,6 +1268,7 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
     match node {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
+        | Node::OwnedRowDocumentPath(_)
         | Node::SourceField { .. }
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }

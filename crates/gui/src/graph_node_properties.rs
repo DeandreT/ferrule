@@ -81,6 +81,7 @@ impl GraphViewer<'_> {
             match node {
                 node @ (Node::OwnedSourceField(_)
                 | Node::OwnedPosition(_)
+                | Node::OwnedRowDocumentPath(_)
                 | Node::OwnedLookup(_)
                 | Node::OwnedCollectionFind(_)) => {
                     ui.label(

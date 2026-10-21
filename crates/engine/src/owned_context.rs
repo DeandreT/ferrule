@@ -19,6 +19,11 @@ pub enum OwnedSourceError {
         owner: SourceOwner,
         collection: Option<Vec<String>>,
     },
+    #[error("source owner {owner:?} has no physical row document path for {collection:?}")]
+    MissingRowDocumentPath {
+        owner: SourceOwner,
+        collection: Option<Vec<String>>,
+    },
     #[error("owned field path {path:?} is outside pinned frame {frame:?}")]
     UnsupportedFramePathCombination {
         path: Vec<String>,
@@ -576,6 +581,46 @@ impl<'a> OwnedContext<'a> {
                 owner: owner.clone(),
                 collection: collection.map(<[String]>::to_vec),
             })
+    }
+
+    pub fn row_document_path(
+        &self,
+        owner: &SourceOwner,
+        collection: Option<&[String]>,
+    ) -> Result<Value, OwnedSourceError> {
+        let name = match owner {
+            SourceOwner::Primary => None,
+            SourceOwner::Named { name } => Some(name.as_str()),
+        };
+        self.roots
+            .budget
+            .work(name, &[], collection, &self.frames, &self.origins)?;
+        let key = self.roots.key(owner)?;
+        let root = self.roots.root(key)?;
+        let frame = self.frames.iter().rev().find(|frame| {
+            frame.owner == key && collection.is_none_or(|path| frame.collection == path)
+        });
+        let item = match collection {
+            Some([]) => root,
+            Some(path) => {
+                frame
+                    .ok_or_else(|| OwnedSourceError::InactiveSourceFrame {
+                        owner: owner.clone(),
+                        collection: Some(path.to_vec()),
+                    })?
+                    .item
+            }
+            None => frame.map_or(root, |frame| frame.item),
+        };
+        match item {
+            Instance::Group(group) => group.source_origin(),
+            _ => None,
+        }
+        .map(|origin| Value::String(origin.document().source_path().to_owned()))
+        .ok_or_else(|| OwnedSourceError::MissingRowDocumentPath {
+            owner: owner.clone(),
+            collection: collection.map(<[String]>::to_vec),
+        })
     }
     pub fn select<'b>(
         &'b self,
