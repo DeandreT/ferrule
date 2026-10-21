@@ -165,5 +165,13 @@ pub use validate::{
     validate_program_with_basic_owned_sequence_exists,
 };
 
+// Explicit owned SequenceAggregate generation profile.
+pub use lower::lower_with_basic_owned_sequence_aggregate;
+pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_sequence_aggregate;
+pub use validate::{
+    validate_basic_owned_sequence_aggregate_emission,
+    validate_program_with_basic_owned_sequence_aggregate,
+};
+
 #[cfg(test)]
 mod tests;

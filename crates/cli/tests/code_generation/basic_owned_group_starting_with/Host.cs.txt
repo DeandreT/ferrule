@@ -114,6 +114,14 @@ internal static class Driver
         if (kind == "GeneratedSequenceTooLarge") return Error(new FerruleRuntimeException(FerruleRuntimeError.GeneratedSequenceTooLarge,"frozen",requestedItems:UInt128.Parse(recipe["requested"]!.GetValue<string>(),CultureInfo.InvariantCulture),maximumItems:UInt128.Parse(recipe["maximum"]!.GetValue<string>(),CultureInfo.InvariantCulture)));
         if (kind == "InvalidTokenizeRegexFlags") return Error(new FerruleRuntimeException(FerruleRuntimeError.InvalidTokenizeRegexFlags,"frozen",detail:recipe["flags"]!.GetValue<string>()));
         if (kind == "ZeroWidthTokenizeRegex") return Error(new FerruleRuntimeException(FerruleRuntimeError.ZeroWidthTokenizeRegex,"frozen"));
+        if (kind is "AggregateIntegerOverflow" or "AggregateNonFinite")
+        {
+            var operation = Enum.Parse<FerruleAggregateOperation>(recipe["function"]!.GetValue<string>());
+            // Checked integer arithmetic retains its OverflowException as the inner cause.
+            return Error(kind == "AggregateNonFinite"
+                ? new FerruleRuntimeException(FerruleRuntimeError.AggregateNonFinite, "frozen", aggregateOperation: operation)
+                : new FerruleRuntimeException(FerruleRuntimeError.AggregateIntegerOverflow, "frozen", new OverflowException("frozen"), aggregateOperation: operation));
+        }
         if (kind == "MappingException") return Error(new FerruleRuntimeException(FerruleRuntimeError.MappingException, "frozen", node: node, mappingExceptionMessage: message));
         if (kind == "MappingFailure") return Error(new FerruleRuntimeException(FerruleRuntimeError.MappingFailure, "frozen", failureRule: recipe["rule"]!.GetValue<int>(), mappingFailureMessage: message));
         if (kind == "UnknownTarget") return Error(new FerruleRuntimeException(FerruleRuntimeError.UnknownTarget, "frozen", detail: recipe["name"]!.GetValue<string>()));

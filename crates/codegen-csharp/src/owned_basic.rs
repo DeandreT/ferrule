@@ -27,6 +27,8 @@ enum SequenceItemAtPolicy {
     BasicScalarAndOwnedRecursiveProducers,
     /// Also admits SequenceExists over the same pure producers.
     BasicScalarProducersWithExists,
+    /// Also admits SequenceAggregate over the same pure producers.
+    BasicScalarProducersWithExistsAndAggregate,
 }
 
 #[derive(Clone, Copy)]
@@ -144,6 +146,17 @@ impl TargetExtension {
     const SEQUENCE_EXISTS: Self = Self {
         controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
         sequence_item_at: SequenceItemAtPolicy::BasicScalarProducersWithExists,
+        failure_sources: false,
+        path_hierarchy: false,
+        adjacency_tree: false,
+        recursive_filter: false,
+        owned_search: false,
+        dynamic_field: false,
+    };
+
+    const SEQUENCE_AGGREGATE: Self = Self {
+        controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
+        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate,
         failure_sources: false,
         path_hierarchy: false,
         adjacency_tree: false,
@@ -300,7 +313,15 @@ impl TargetExtension {
     }
 
     fn permits_sequence_exists(self) -> bool {
-        self.sequence_item_at == SequenceItemAtPolicy::BasicScalarProducersWithExists
+        matches!(
+            self.sequence_item_at,
+            SequenceItemAtPolicy::BasicScalarProducersWithExists
+                | SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate
+        )
+    }
+
+    fn permits_sequence_aggregate(self) -> bool {
+        self.sequence_item_at == SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate
     }
 
     fn permits_owned_recursive_collect(self) -> bool {
@@ -352,6 +373,8 @@ fn render_basic_owned_mapping_profile(
         codegen::validate_program_with_basic_owned_lookup_find(program)?;
     } else if extension.recursive_filter {
         codegen::validate_program_with_basic_owned_recursive_filter(program)?;
+    } else if extension.permits_sequence_aggregate() {
+        codegen::validate_program_with_basic_owned_sequence_aggregate(program)?;
     } else if extension.permits_sequence_exists() {
         codegen::validate_program_with_basic_owned_sequence_exists(program)?;
     } else if extension.permits_owned_recursive_collect() {
@@ -858,6 +881,8 @@ fn validate_private_inventory(
         codegen::validate_basic_owned_lookup_find_emission(program)?;
     } else if extension.recursive_filter {
         codegen::validate_basic_owned_recursive_filter_emission(program)?;
+    } else if extension.permits_sequence_aggregate() {
+        codegen::validate_basic_owned_sequence_aggregate_emission(program)?;
     } else if extension.permits_sequence_exists() {
         codegen::validate_basic_owned_sequence_exists_emission(program)?;
     } else if extension.permits_owned_recursive_collect() {
@@ -935,6 +960,12 @@ fn validate_private_inventory(
                 continue;
             }
             Expression::OwnedDynamicSourceField(_) if extension.dynamic_field => continue,
+            Expression::SequenceAggregate { sequence, .. }
+                if extension.permits_sequence_aggregate()
+                    && extension.item_at_sequence(sequence) =>
+            {
+                continue;
+            }
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::SourceField { .. }
@@ -1297,6 +1328,8 @@ fn render_checked_basic_owned_mapping_profile(
         codegen::legacy_named_input_admission_plan_with_basic_owned_lookup_find(program)?
     } else if extension.recursive_filter {
         codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_filter(program)?
+    } else if extension.permits_sequence_aggregate() {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_aggregate(program)?
     } else if extension.permits_sequence_exists() {
         codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_exists(program)?
     } else if extension.permits_owned_recursive_collect() {
@@ -1884,6 +1917,22 @@ pub(crate) fn render_public_basic_owned_dynamic_field_mapping(
         true,
         true,
         TargetExtension::DYNAMIC_FIELD,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_sequence_aggregate_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::SEQUENCE_AGGREGATE,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
     Ok(source)

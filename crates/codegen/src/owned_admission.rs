@@ -241,6 +241,17 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_dynamic_field(
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plans the explicit Basic SequenceAggregate profile. Producer inputs and the
+/// reducer argument keep the receiving environment; the predicate and
+/// expression gain only the generated item. Owned reads remain lazy;
+/// potential legacy aliases remain eager.
+pub fn legacy_named_input_admission_plan_with_basic_owned_sequence_aggregate(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_sequence_aggregate(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     admission_plan_with_primary_row_failures(program, false)
 }

@@ -46,6 +46,8 @@ mod basic_owned_recursive_filter;
 mod basic_owned_row_failures;
 #[path = "code_generation/basic_owned_scalar_construction.rs"]
 mod basic_owned_scalar_construction;
+#[path = "code_generation/basic_owned_sequence_aggregate.rs"]
+mod basic_owned_sequence_aggregate;
 #[path = "code_generation/basic_owned_sequence_exists.rs"]
 mod basic_owned_sequence_exists;
 #[path = "code_generation/basic_owned_sequence_item_at.rs"]

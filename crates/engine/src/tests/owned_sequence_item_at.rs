@@ -5,10 +5,10 @@ use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
-    AggregateOp, Binding, FailureIteration, FailureRule, FailureSelection, FunctionId,
-    FunctionParameter, FunctionParameterId, Graph, NamedSource, NamedTarget, Node, NodeId,
-    OwnedPosition, OwnedSourceField, OwnedSourceRef, Project, Scope, ScopeIteration, SequenceExpr,
-    SourceOwner, UserFunction,
+    Binding, FailureIteration, FailureRule, FailureSelection, FunctionId, FunctionParameter,
+    FunctionParameterId, Graph, NamedSource, NamedTarget, Node, NodeId, OwnedPosition,
+    OwnedSourceField, OwnedSourceRef, Project, Scope, ScopeIteration, SequenceExpr, SourceOwner,
+    UserFunction,
 };
 
 use crate::{EngineError, OwnedCapabilityContext as Domain, OwnedSourceError as Access};
@@ -1006,27 +1006,9 @@ fn inherited_closed_context_and_context_keyed_reuse_are_not_erased() {
 }
 
 #[test]
-fn sequence_aggregate_item_at_reducer_stays_closed() {
-    // SequenceExists over a pure producer is qualified separately (#472).
-    let mut p = project(tokenize(90), ScalarType::String);
-    p.graph.nodes.insert(
-        40,
-        Node::SequenceAggregate {
-            function: AggregateOp::ItemAt,
-            sequence: tokenize(90),
-            predicate: None,
-            expression: None,
-            arg: Some(30),
-        },
-    );
-    assert!(matches!(
-        run(&p),
-        Err(EngineError::UnsupportedOwnedContext {
-            node: Some(30),
-            context: Domain::GeneratedItem,
-            ..
-        })
-    ));
+fn lookup_over_item_at_stays_closed() {
+    // SequenceExists (#472) and SequenceAggregate (#474) over a pure producer
+    // are qualified separately.
     let mut p = project(tokenize(90), ScalarType::String);
     p.graph.nodes.insert(
         60,

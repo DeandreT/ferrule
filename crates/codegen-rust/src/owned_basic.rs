@@ -24,6 +24,7 @@ pub(crate) use windows::render_public_basic_owned_path_hierarchy_source;
 pub(crate) use windows::render_public_basic_owned_recursive_collect_source;
 pub(crate) use windows::render_public_basic_owned_recursive_filter_source;
 pub(crate) use windows::render_public_basic_owned_row_failure_source;
+pub(crate) use windows::render_public_basic_owned_sequence_aggregate_source;
 pub(crate) use windows::render_public_basic_owned_sequence_exists_source;
 pub(crate) use windows::render_public_basic_owned_sequence_item_at_source;
 pub(crate) use windows::render_public_basic_owned_window_source;
