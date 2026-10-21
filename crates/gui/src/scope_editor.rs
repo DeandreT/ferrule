@@ -948,6 +948,10 @@ fn node_label(node: &mapping::Node) -> String {
             "owned position {:?} {:?} (unavailable)",
             position.owner, position.collection
         ),
+        mapping::Node::OwnedRowDocumentPath(path) => format!(
+            "owned row document path {:?} {:?}",
+            path.owner, path.collection
+        ),
         mapping::Node::OwnedLookup(lookup) => format!(
             "owned lookup {:?} {:?} (read-only)",
             lookup.collection.owner, lookup.collection.path

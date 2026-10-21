@@ -1,0 +1,24 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+static void Require(bool ok) {if(!ok)throw new Exception("owned row path assertion");}
+static FerruleGroup Mark(FerruleGroup value,string path,bool enabled)=>enabled?value.WithSourceOrigin(new FerruleSourceDocumentOrigin(path).Row(1)):value;
+static FerruleGroup Endpoint(string prefix,int? missing) {
+    var rows=Enumerable.Range(1,2).Select(i=>Mark(new FerruleGroup([]),$"{prefix}.{i}.csv",missing!=i));
+    return Mark(new FerruleGroup([new FerruleField("Rows",new FerruleRepeated(rows))]),$"{prefix}.root.csv",missing!=0);
+}
+var limits=new FerruleOwnedSourceLimits(8,16,16,1048576,64);
+var output=GeneratedMapping.ExecuteWithBasicOwnedSources(Endpoint("p",null),[new("Ref",Endpoint("n",null))],limits,null).Primary;
+Require(FerruleJson.SerializeEmbeddedCompact(File.ReadAllText("target.schema"),output)==File.ReadAllText("expected.json"));
+foreach(var test in new (int? P,int? N,uint Node,bool Primary,string? Name,bool EmptyPin)[] {
+    (0,null,1,true,null,true),(2,null,3,true,null,false),(null,2,4,false,"Ref",false)
+}) {
+    try {GeneratedMapping.ExecuteWithBasicOwnedSources(Endpoint("p",test.P),[new("Ref",Endpoint("n",test.N))],limits,null);throw new Exception("expected missing metadata");}
+    catch(FerruleRuntimeException error) {
+        Require(error.Error==FerruleRuntimeError.OwnedSource&&error.Node==test.Node);
+        Require(error.InnerException is FerruleOwnedSourceException);
+        var cause=(FerruleOwnedSourceException)error.InnerException!;
+        Require(cause.Error==FerruleOwnedSourceErrorKind.MissingRowDocumentPath&&cause.Owner!.IsPrimary==test.Primary&&cause.Owner.Name==test.Name);
+        Require(test.EmptyPin?cause.Collection is {Count:0}:cause.Collection is null);
+    }
+}
+Console.WriteLine("owned row document path cases passed");

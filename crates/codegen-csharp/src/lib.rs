@@ -301,6 +301,19 @@ pub fn emit_with_basic_owned_dynamic_field(program: &Program) -> Result<Artifact
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits SequenceAggregate over the four pure producers beside the
+/// SequenceExists profile. Each reached item gets a copied paired view for its
+/// predicate and value; the reducer argument keeps the receiving context.
+pub fn emit_with_basic_owned_sequence_aggregate(
+    program: &Program,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_sequence_aggregate(program)?;
+    codegen::validate_basic_owned_sequence_aggregate_emission(program)?;
+    let generated_mapping =
+        owned_basic::render_public_basic_owned_sequence_aggregate_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 fn emit_mapping_artifacts(
     program: &Program,
     generated_mapping: String,
@@ -414,6 +427,8 @@ mod tests {
     mod owned_recursive_collect;
     #[path = "owned_recursive_filter.rs"]
     mod owned_recursive_filter;
+    #[path = "owned_sequence_aggregate.rs"]
+    mod owned_sequence_aggregate;
     #[path = "owned_sequence_exists.rs"]
     mod owned_sequence_exists;
     use ::mapping::FunctionId;

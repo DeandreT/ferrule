@@ -882,6 +882,8 @@ impl std::error::Error for DelimitedTextFieldError {}
 pub enum Expression {
     OwnedSourceField(mapping::OwnedSourceField),
     OwnedPosition(mapping::OwnedPosition),
+    /// Exact-owner physical row metadata, not a schema field or legacy fallback.
+    OwnedRowDocumentPath(mapping::OwnedRowDocumentPath),
     /// First-match lookup over exactly one owned endpoint collection. The
     /// needle executes once in the parent; a miss or absent value is Null.
     OwnedLookup(mapping::OwnedLookup),

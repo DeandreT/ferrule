@@ -53,6 +53,10 @@ pub enum OwnedSourceDiagnosticRequest {
         owner: OwnedSourceDiagnosticOwner,
         collection: Option<Vec<String>>,
     },
+    RowDocumentPath {
+        owner: OwnedSourceDiagnosticOwner,
+        collection: Option<Vec<String>>,
+    },
     Iteration {
         owner: OwnedSourceDiagnosticOwner,
         path: Vec<String>,

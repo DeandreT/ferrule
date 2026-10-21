@@ -51,6 +51,7 @@ pub enum ScopeFeature {
 pub enum UnsupportedNodeKind {
     OwnedSourceField,
     OwnedPosition,
+    OwnedRowDocumentPath,
     CorrelatedJoinAggregate,
 }
 
@@ -153,6 +154,7 @@ impl fmt::Display for UnsupportedNodeKind {
         formatter.write_str(match self {
             Self::OwnedSourceField => "an unsupported owned source field",
             Self::OwnedPosition => "an unsupported owned position",
+            Self::OwnedRowDocumentPath => "an unsupported owned physical row document path",
             Self::CorrelatedJoinAggregate => "an unsupported correlated join aggregate",
         })
     }

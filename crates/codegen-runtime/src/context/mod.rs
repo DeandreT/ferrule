@@ -1108,6 +1108,42 @@ impl<'a> OwnedScopeContext<'a> {
             })
     }
 
+    /// Reads only the selected owner's physical row metadata. An empty pin
+    /// selects its immutable root; no pin selects its latest frame or root.
+    /// Missing metadata never falls back to an ancestor or a group member.
+    pub fn owned_row_document_path(
+        &self,
+        owner: SourceOwnerRef<'_>,
+        collection: Option<&[&str]>,
+    ) -> Result<Value, OwnedSourceError> {
+        self.query_budget(owner, &[], collection)?;
+        let (key, root) = self.resolve_owned_owner(owner)?;
+        let item = match collection {
+            Some([]) => root,
+            Some(path) => {
+                let index = self.owned_frame_index(key, Some(path)).ok_or_else(|| {
+                    OwnedSourceError::InactiveSourceFrame {
+                        owner: self.owned_identity(key),
+                        collection: Some(owned_string_path(path)),
+                    }
+                })?;
+                self.frames[index].instance
+            }
+            None => self
+                .owned_frame_index(key, None)
+                .map_or(root, |index| self.frames[index].instance),
+        };
+        match item {
+            Instance::Group(group) => group.source_origin(),
+            _ => None,
+        }
+        .map(|origin| Value::String(origin.document().source_path().to_owned()))
+        .ok_or_else(|| OwnedSourceError::MissingRowDocumentPath {
+            owner: self.owned_identity(key),
+            collection: collection.map(owned_string_path),
+        })
+    }
+
     /// Returns a bounded view with only the selected owned position replaced.
     pub fn with_owned_position(
         &self,

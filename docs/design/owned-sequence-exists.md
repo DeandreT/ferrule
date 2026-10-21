@@ -46,9 +46,10 @@ rule; each Exists predicate sees only its own item.
 The consumer permission is orthogonal to target-control and failure policies.
 Only the explicit profile admits it; older public generation wrappers keep their
 closed consumer policy. Legacy and owned RecursiveCollect, FilterMap and other producers stay
-closed. A predicate containing a closed operator, such as an aggregate,
-sequence aggregate, lookup or user function call, does not gain permission
-from an owned read beside it. Owned failure predicates and messages retain their
+closed. A predicate containing a closed operator, such as a collection
+aggregate, lookup or user function call, does not gain permission from an owned
+read beside it; a SequenceAggregate qualifies only under the
+[aggregate profile](owned-sequence-aggregate.md). Owned failure predicates and messages retain their
 separate scalar eligibility, and generated-sequence scopes stay closed.
 
 Named admission visits producer arguments in the receiving environment and the

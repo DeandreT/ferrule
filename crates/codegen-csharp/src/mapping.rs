@@ -298,6 +298,7 @@ fn render_user_function_expression(
     match expression {
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
+        | Expression::OwnedRowDocumentPath(_)
         | Expression::OwnedDynamicSourceField(_) => {
             return Err(codegen::owned_expression_emission_error(
                 codegen::OwnedSourceNamespace::Function(function),
@@ -1822,6 +1823,7 @@ fn render_expression(
                 expression,
                 Expression::OwnedSourceField(_)
                     | Expression::OwnedPosition(_)
+                    | Expression::OwnedRowDocumentPath(_)
                     | Expression::OwnedDynamicSourceField(_)
             )
         {
@@ -1851,6 +1853,7 @@ fn render_expression(
         }
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
+        | Expression::OwnedRowDocumentPath(_)
         | Expression::OwnedDynamicSourceField(_)
         | Expression::OwnedLookup(_)
         | Expression::OwnedCollectionFind(_) => {
