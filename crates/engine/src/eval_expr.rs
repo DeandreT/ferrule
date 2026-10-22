@@ -455,11 +455,13 @@ fn eval_expr_inner(
                 node: node_id,
                 name: name.clone(),
             })?;
-            coerce_value_map_input(&value, *ty).ok_or_else(|| EngineError::RuntimeParameterType {
-                node: node_id,
-                name: name.clone(),
-                expected: *ty,
-                found: value.type_name(),
+            crate::resolve_runtime_parameter(&value, *ty).ok_or_else(|| {
+                EngineError::RuntimeParameterType {
+                    node: node_id,
+                    name: name.clone(),
+                    expected: *ty,
+                    found: value.type_name(),
+                }
             })
         }
         Node::RuntimeParameterDefault {
@@ -486,11 +488,13 @@ fn eval_expr_inner(
                     in_progress,
                 )?,
             };
-            coerce_value_map_input(&value, *ty).ok_or_else(|| EngineError::RuntimeParameterType {
-                node: node_id,
-                name: name.clone(),
-                expected: *ty,
-                found: value.type_name(),
+            crate::resolve_runtime_parameter(&value, *ty).ok_or_else(|| {
+                EngineError::RuntimeParameterType {
+                    node: node_id,
+                    name: name.clone(),
+                    expected: *ty,
+                    found: value.type_name(),
+                }
             })
         }
         Node::Call { function, args } => {

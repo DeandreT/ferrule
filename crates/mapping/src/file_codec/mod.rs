@@ -4,11 +4,57 @@ mod tree;
 
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Number, Value};
-use std::{collections::BTreeMap, fmt};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
 
 pub(crate) const MAX_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_DEPTH: usize = 127;
 const MAX_POINTER_BYTES: usize = 4096;
+/// Plain envelopes preserve float bits only.
+const PLAIN_VERSION: u64 = 2;
+/// Capability envelopes also name the features older readers must refuse.
+const CAPABILITY_VERSION: u64 = 3;
+const KNOWN_CAPABILITIES: [&str; 1] = [crate::SQLITE_READ_V1_CAPABILITY];
+
+/// A file document and the capabilities it requires from a reader.
+///
+/// A model that uses a capability is always saved in a version-3 envelope.
+/// Readers that predate the envelope miss the model's required members, and
+/// version-2 readers refuse the unknown version, so neither silently ignores a
+/// capability-bearing option. Unmarked and version-2 files must not use one.
+pub(crate) trait FileModel: Serialize + DeserializeOwned {
+    fn file_capabilities(&self) -> BTreeSet<&'static str> {
+        BTreeSet::new()
+    }
+}
+
+impl FileModel for crate::Project {
+    fn file_capabilities(&self) -> BTreeSet<&'static str> {
+        self.uses_sqlite_read()
+            .then_some(crate::SQLITE_READ_V1_CAPABILITY)
+            .into_iter()
+            .collect()
+    }
+}
+
+impl FileModel for crate::Pipeline {
+    fn file_capabilities(&self) -> BTreeSet<&'static str> {
+        self.stages
+            .iter()
+            .flat_map(|stage| stage.project.file_capabilities())
+            .collect()
+    }
+}
+
+impl FileModel for crate::DocumentProject {
+    fn file_capabilities(&self) -> BTreeSet<&'static str> {
+        self.project().file_capabilities()
+    }
+}
+
+impl FileModel for crate::PdfLayout {}
 
 /// Failure to decode or faithfully encode a project or pipeline file.
 #[derive(Debug)]
@@ -42,6 +88,15 @@ pub enum FileCodecError {
         message: String,
     },
     ModelChanged,
+    /// The document uses a capability but is not in a capability envelope.
+    CapabilityRequiresEnvelope {
+        capability: &'static str,
+    },
+    UnknownCapability {
+        capability: String,
+    },
+    /// The declared capabilities differ from those the document uses.
+    CapabilityMismatch,
 }
 impl fmt::Display for FileCodecError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -71,6 +126,16 @@ impl fmt::Display for FileCodecError {
                 write!(f, "invalid float metadata at {path}: {message}")
             }
             Self::ModelChanged => f.write_str("mapping file serialization would change the model"),
+            Self::CapabilityRequiresEnvelope { capability } => write!(
+                f,
+                "mapping file uses capability `{capability}` and must declare it in a version-{CAPABILITY_VERSION} envelope"
+            ),
+            Self::UnknownCapability { capability } => {
+                write!(f, "unsupported mapping file capability `{capability}`")
+            }
+            Self::CapabilityMismatch => f.write_str(
+                "mapping file capabilities do not exactly match the features its document uses",
+            ),
         }
     }
 }
@@ -89,7 +154,7 @@ impl serde::ser::Error for FileCodecError {
     }
 }
 
-pub(crate) fn decode_bytes<T: DeserializeOwned + Serialize>(
+pub(crate) fn decode_bytes<T: FileModel>(
     bytes: &[u8],
     kind: &'static str,
 ) -> Result<T, FileCodecError> {
@@ -98,23 +163,23 @@ pub(crate) fn decode_bytes<T: DeserializeOwned + Serialize>(
         kind,
     )
 }
-pub(crate) fn decode_str<T: DeserializeOwned + Serialize>(
+pub(crate) fn decode_str<T: FileModel>(
     text: &str,
     kind: &'static str,
 ) -> Result<T, FileCodecError> {
     if !strict::has_marker(text) {
-        return serde_json::from_str(text).map_err(FileCodecError::Deserialization);
+        let model: T = serde_json::from_str(text).map_err(FileCodecError::Deserialization)?;
+        if let Some(capability) = model.file_capabilities().first() {
+            return Err(FileCodecError::CapabilityRequiresEnvelope { capability });
+        }
+        return Ok(model);
     }
     check_bytes(text.len())?;
     let envelope: strict::Envelope =
         serde_json::from_str(text).map_err(|e| FileCodecError::InvalidEnvelope {
             message: e.to_string(),
         })?;
-    if envelope.header.version != 2 {
-        return Err(FileCodecError::UnsupportedVersion {
-            version: envelope.header.version,
-        });
-    }
+    let declared = declared_capabilities(envelope.header.version, envelope.header.capabilities)?;
     if envelope.header.kind != kind {
         return Err(FileCodecError::WrongKind {
             expected: kind,
@@ -168,20 +233,63 @@ pub(crate) fn decode_str<T: DeserializeOwned + Serialize>(
             "float table does not exactly describe the typed model",
         ));
     }
+    if model
+        .file_capabilities()
+        .into_iter()
+        .ne(declared.iter().map(String::as_str))
+    {
+        return Err(FileCodecError::CapabilityMismatch);
+    }
     Ok(model)
 }
 
-pub(crate) fn encode_pretty<T: Serialize + DeserializeOwned>(
+/// Checks the header's version/capability pairing in that order.
+fn declared_capabilities(
+    version: u64,
+    capabilities: Option<Vec<String>>,
+) -> Result<Vec<String>, FileCodecError> {
+    match (version, capabilities) {
+        (PLAIN_VERSION, None) => Ok(Vec::new()),
+        (PLAIN_VERSION, Some(_)) => Err(FileCodecError::InvalidEnvelope {
+            message: format!("version {PLAIN_VERSION} envelopes declare no capabilities"),
+        }),
+        (CAPABILITY_VERSION, None) => Err(FileCodecError::InvalidEnvelope {
+            message: format!("version {CAPABILITY_VERSION} envelopes must declare capabilities"),
+        }),
+        (CAPABILITY_VERSION, Some(capabilities)) => {
+            if let Some(unknown) = capabilities
+                .iter()
+                .find(|capability| !KNOWN_CAPABILITIES.contains(&capability.as_str()))
+            {
+                return Err(FileCodecError::UnknownCapability {
+                    capability: unknown.clone(),
+                });
+            }
+            if capabilities.is_empty() || !capabilities.is_sorted_by(|a, b| a < b) {
+                return Err(FileCodecError::InvalidEnvelope {
+                    message: "capabilities must be a nonempty sorted set".into(),
+                });
+            }
+            Ok(capabilities)
+        }
+        (version, _) => Err(FileCodecError::UnsupportedVersion { version }),
+    }
+}
+
+pub(crate) fn encode_pretty<T: FileModel>(
     model: &T,
     kind: &'static str,
 ) -> Result<String, FileCodecError> {
     let document = tree::to_value(model)?;
     let bits = collect_bits(&document)?;
-    let legacy = pretty(&document)?;
-    if let Ok(decoded) = serde_json::from_str::<T>(&legacy)
-        && same_model(&document, &tree::to_value(&decoded)?)?
-    {
-        return Ok(legacy);
+    let capabilities = model.file_capabilities();
+    if capabilities.is_empty() {
+        let legacy = pretty(&document)?;
+        if let Ok(decoded) = serde_json::from_str::<T>(&legacy)
+            && same_model(&document, &tree::to_value(&decoded)?)?
+        {
+            return Ok(legacy);
+        }
     }
     // The envelope costs one container depth compared with the ordinary model.
     check_depth(&document, 1)?;
@@ -189,7 +297,12 @@ pub(crate) fn encode_pretty<T: Serialize + DeserializeOwned>(
         .into_iter()
         .map(|(path, bits)| (path, Value::String(format!("{bits:016x}"))))
         .collect();
-    let envelope = serde_json::json!({ "__ferrule_file": { "kind": kind, "version": 2, "float_bits": Value::Object(float_bits) }, "document": document });
+    let mut header = serde_json::json!({ "kind": kind, "version": PLAIN_VERSION, "float_bits": Value::Object(float_bits) });
+    if !capabilities.is_empty() {
+        header["version"] = CAPABILITY_VERSION.into();
+        header["capabilities"] = capabilities.into_iter().collect::<Vec<_>>().into();
+    }
+    let envelope = serde_json::json!({ "__ferrule_file": header, "document": document });
     let encoded = pretty(&envelope)?;
     let decoded: T = decode_str(&encoded, kind)?;
     let actual = tree::to_value(&decoded)?;
