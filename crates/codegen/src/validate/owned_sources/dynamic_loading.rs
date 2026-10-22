@@ -2,49 +2,23 @@
 //! owned dynamic endpoint with no enclosing iteration of that owner: it walks
 //! the declared driver collection in its receiving context and evaluates the
 //! path expression in each driver item. Exact field and position reads of the
-//! endpoint read its current loaded document. Only the explicit loading
-//! companion admits them; every earlier companion and default emitter refuses.
+//! endpoint read its current loaded document. Only the `dynamic_loading`
+//! capability admits them; without it, and in the default emitter, they are refused.
 
+use super::admission::{Admission, Ancestor, Visit};
 use super::*;
 
-/// Loading permission is orthogonal to source controls, consumers and failures.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::validate) enum DynamicLoadingPolicy {
-    Closed,
-    Owned,
-}
-
-impl DynamicLoadingPolicy {
-    /// Exact field and position reads may name an owned dynamic owner.
-    pub(super) fn permits_read(self, expression: &Expression) -> bool {
-        self == Self::Owned
+impl OwnedCapabilities {
+    /// Exact field and position reads may name an owned dynamic owner when
+    /// loading is admitted. Loading is orthogonal to source controls,
+    /// consumers and failures.
+    pub(super) fn permits_loaded_read(self, expression: &Expression) -> bool {
+        self.dynamic_loading
             && matches!(
                 expression,
                 Expression::OwnedSourceField(_) | Expression::OwnedPosition(_)
             )
     }
-}
-
-/// Validate the owned dynamic-field composition (owned Lookup and
-/// CollectionFind, recursive filters, adjacency trees, path hierarchies,
-/// failure sources, IntoBlocks controls, ItemAt over scalar and owned recursive
-/// producers and owned dynamic reads) plus owned dynamic driver loading.
-pub fn validate_basic_owned_dynamic_loading_emission(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    validate_basic_owned_with_dynamic_loading(
-        program,
-        BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter,
-        FailurePolicy::OwnedSources,
-        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-        PathHierarchyPolicy::Owned,
-        AdjacencyTreePolicy::OwnedWithRecursiveFilter,
-        SearchPolicy::Basic,
-        DynamicFieldPolicy::Owned,
-        OwnedXmlPolicy::Closed,
-        JoinPolicy::Closed,
-        DynamicLoadingPolicy::Owned,
-    )
 }
 
 /// An owned iteration that loads its endpoint's documents: the declaration,

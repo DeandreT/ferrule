@@ -1446,3 +1446,26 @@ fn basic_adjacent442_qualify_native_and_public_consumers() -> TestResult<()> {
     }
     Ok(())
 }
+
+/// The models, the closed Projects and the directly constructed Programs, for
+/// the owned capability preset record.
+pub(super) fn capability_corpus() -> TestResult<super::owned_capability_presets::Corpus> {
+    use super::owned_capability_presets as presets;
+    let mut corpus = presets::projects(
+        projects::PROFILES
+            .iter()
+            .map(|profile| (*profile, projects::project(profile))),
+    );
+    corpus.extend(presets::projects(
+        closed_projects()
+            .into_iter()
+            .map(|(id, project, _)| (format!("closed/{id}"), project)),
+    ));
+    let base = codegen::lower_with_basic_owned_group_adjacent_by(&projects::base())?;
+    corpus.extend(presets::programs(
+        closed_programs(&base)
+            .into_iter()
+            .map(|(id, program, _)| (format!("direct/{id}"), program)),
+    ));
+    Ok(corpus)
+}

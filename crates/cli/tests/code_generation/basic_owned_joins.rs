@@ -913,3 +913,37 @@ fn run_csharp_host(
     host_result(&results, model_calls(controls, index), &run)
         .map_err(|error| format!("C# model{index}: {error}"))
 }
+
+/// The models, the closed Projects and the directly constructed Programs, for
+/// the owned capability preset record.
+pub(super) fn capability_corpus() -> TestResult<super::owned_capability_presets::Corpus> {
+    use super::owned_capability_presets as presets;
+    let mut corpus = presets::projects(
+        projects::PROFILES
+            .iter()
+            .map(|profile| (*profile, projects::project(profile))),
+    );
+    corpus.extend(presets::projects(
+        closed::projects()
+            .into_iter()
+            .map(|(id, project, _)| (format!("closed/{id}"), project)),
+    ));
+    corpus.extend(presets::projects(
+        closed::aggregate_projects()
+            .into_iter()
+            .map(|(id, project, _)| (format!("closed-aggregate/{id}"), project)),
+    ));
+    let base = codegen::lower_with_basic_owned_joins(&projects::project("J01-same-path-rows"))?;
+    corpus.extend(presets::programs(
+        closed::programs(&base)
+            .into_iter()
+            .map(|(id, program, _)| (format!("direct/{id}"), program)),
+    ));
+    let base = codegen::lower_with_basic_owned_joins(&projects::project("J08-joined-reducers"))?;
+    corpus.extend(presets::programs(
+        closed::aggregate_programs(&base)
+            .into_iter()
+            .map(|(id, program, _)| (format!("direct-aggregate/{id}"), program)),
+    ));
+    Ok(corpus)
+}

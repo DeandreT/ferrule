@@ -1,495 +1,20 @@
-//! Explicit window composition. Older Basic renderers keep their own gates and
+//! The general Basic owned renderer: windows and every capability beyond
+//! them. The narrower control-free, filter and sort renderers keep their own
 //! emitted bytes; legacy-only subtrees retain their ordinary context dispatch.
 
 use super::*;
+use codegen::OwnedCapabilities;
 
-pub(crate) fn render_public_basic_owned_window_source(
+/// Render the Basic owned library for `capabilities`, which admit at least
+/// windows. Every scope, retained expression and failure domain is closed to
+/// precisely what the capability set admits.
+pub(crate) fn render_public_basic_owned_capability_source(
     program: &Program,
+    capabilities: OwnedCapabilities,
 ) -> Result<String, EmitError> {
-    render_public_basic_owned_source_profile(program, Profile::Windows)
-}
-
-pub(crate) fn render_public_basic_owned_row_failure_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_profile(program, Profile::PrimaryRows)
-}
-
-pub(crate) fn render_public_basic_owned_sequence_item_at_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::GroupBy,
-        SequenceItemAtPolicy::BasicScalarProducers,
-    )
-}
-
-pub(crate) fn render_public_basic_owned_group_adjacent_by_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::GroupAdjacentBy,
-        SequenceItemAtPolicy::BasicScalarProducers,
-    )
-}
-
-pub(crate) fn render_public_basic_owned_group_starting_with_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::GroupStartingWith,
-        SequenceItemAtPolicy::BasicScalarProducers,
-    )
-}
-
-pub(crate) fn render_public_basic_owned_group_ending_with_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::GroupEndingWith,
-        SequenceItemAtPolicy::BasicScalarProducers,
-    )
-}
-
-pub(crate) fn render_public_basic_owned_group_into_blocks_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::GroupIntoBlocks,
-        SequenceItemAtPolicy::BasicScalarProducers,
-    )
-}
-
-pub(crate) fn render_public_basic_owned_failure_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::FailureSources,
-        SequenceItemAtPolicy::BasicScalarProducers,
-    )
-}
-
-/// FailureSources composition plus owned path-hierarchy construction.
-pub(crate) fn render_public_basic_owned_path_hierarchy_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::PathHierarchy,
-        SequenceItemAtPolicy::BasicScalarProducers,
-    )
-}
-
-/// Owned path-hierarchy composition plus owned adjacency-tree construction.
-pub(crate) fn render_public_basic_owned_adjacency_tree_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::AdjacencyTree,
-        SequenceItemAtPolicy::BasicScalarProducers,
-    )
-}
-
-/// The owned adjacency-tree profile plus ItemAt over owned recursive walks.
-pub(crate) fn render_public_basic_owned_recursive_collect_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::AdjacencyTree,
-        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-    )
-}
-
-pub(crate) fn render_public_basic_owned_sequence_exists_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::GroupEndingWith,
-        SequenceItemAtPolicy::BasicScalarProducersWithExists,
-    )
-}
-
-/// The recursive-collect profile plus recursive filtering of owned selectors.
-pub(crate) fn render_public_basic_owned_recursive_filter_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::RecursiveFilter,
-        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-    )
-}
-
-/// RecursiveFilter and IntoBlocks composition plus owned Lookup and
-/// CollectionFind.
-pub(crate) fn render_public_basic_owned_lookup_find_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::LookupFind,
-        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-    )
-}
-
-/// The owned lookup/find profile plus owned dynamic source-field reads.
-pub(crate) fn render_public_basic_owned_dynamic_field_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::DynamicField,
-        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-    )
-}
-
-/// The owned dynamic-field profile plus owned dynamic driver loading.
-pub(crate) fn render_public_basic_owned_dynamic_loading_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::DynamicLoading,
-        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-    )
-}
-
-/// The SequenceExists composition plus SequenceAggregate over the same pure producers.
-pub(crate) fn render_public_basic_owned_sequence_aggregate_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::GroupEndingWith,
-        SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate,
-    )
-}
-
-/// The owned mixed-content composition plus owned-selector construction.
-pub(crate) fn render_public_basic_owned_xml_mixed_construction_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::XmlMixedConstruction,
-        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-    )
-}
-
-/// The owned XML serialization composition plus mixed-content atomization.
-pub(crate) fn render_public_basic_owned_xml_mixed_content_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::XmlMixedContent,
-        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-    )
-}
-
-/// The owned dynamic-field composition plus owned XML serialization.
-pub(crate) fn render_public_basic_owned_xml_serialize_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::XmlSerialize,
-        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-    )
-}
-
-/// LookupFind composition plus owned collection aggregates.
-pub(crate) fn render_public_basic_owned_collection_aggregates_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::CollectionAggregates,
-        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-    )
-}
-
-/// The owned Lookup and CollectionFind profile plus owned inner joins.
-pub(crate) fn render_public_basic_owned_joins_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(
-        program,
-        Profile::Joins,
-        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-    )
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum SequenceItemAtPolicy {
-    Closed,
-    BasicScalarProducers,
-    /// The four scalar producers plus the owned recursive collection walk.
-    BasicScalarAndOwnedRecursiveProducers,
-    /// Also renders SequenceExists over the same pure producers.
-    BasicScalarProducersWithExists,
-    /// Also renders SequenceAggregate over the same pure producers.
-    BasicScalarProducersWithExistsAndAggregate,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Profile {
-    Windows,
-    PrimaryRows,
-    GroupBy,
-    GroupAdjacentBy,
-    GroupStartingWith,
-    GroupEndingWith,
-    /// EndingWith targets plus explicitly owned failure-rule iteration.
-    FailureSources,
-    /// FailureSources controls plus owned path-hierarchy construction.
-    PathHierarchy,
-    /// PathHierarchy plus owned adjacency-tree construction.
-    AdjacencyTree,
-    /// AdjacencyTree plus recursive filtering of an owned selector.
-    RecursiveFilter,
-    GroupIntoBlocks,
-    /// The recursive-filter profile and IntoBlocks plus owned Lookup and CollectionFind.
-    LookupFind,
-    /// LookupFind plus owned dynamic source-field reads.
-    DynamicField,
-    /// DynamicField plus owned dynamic driver loading.
-    DynamicLoading,
-    /// DynamicField plus owned XML serialization.
-    XmlSerialize,
-    /// LookupFind plus owned collection aggregates.
-    CollectionAggregates,
-    /// LookupFind plus owned inner joins, their tuple reads and joined aggregates.
-    Joins,
-    /// XmlSerialize plus owned XML mixed-content atomization.
-    XmlMixedContent,
-    /// XmlMixedContent plus mixed-content construction by an owned selector.
-    XmlMixedConstruction,
-}
-
-impl Profile {
-    fn has_scoped_groups(self) -> bool {
-        matches!(
-            self,
-            Self::GroupBy
-                | Self::GroupAdjacentBy
-                | Self::GroupStartingWith
-                | Self::GroupEndingWith
-                | Self::FailureSources
-                | Self::PathHierarchy
-                | Self::AdjacencyTree
-                | Self::RecursiveFilter
-                | Self::DynamicField
-                | Self::DynamicLoading
-                | Self::GroupIntoBlocks
-                | Self::LookupFind
-                | Self::XmlSerialize
-                | Self::CollectionAggregates
-                | Self::Joins
-                | Self::XmlMixedContent
-                | Self::XmlMixedConstruction
-        )
-    }
-
-    fn has_failure_sources(self) -> bool {
-        matches!(
-            self,
-            Self::FailureSources
-                | Self::PathHierarchy
-                | Self::AdjacencyTree
-                | Self::RecursiveFilter
-                | Self::LookupFind
-                | Self::DynamicField
-                | Self::DynamicLoading
-                | Self::XmlSerialize
-                | Self::CollectionAggregates
-                | Self::Joins
-                | Self::XmlMixedContent
-                | Self::XmlMixedConstruction
-        )
-    }
-
-    pub(super) fn permits_grouping(self, grouping: Option<GroupingPlan>) -> bool {
-        match grouping {
-            Some(GroupingPlan::By { .. }) => self.has_scoped_groups(),
-            Some(GroupingPlan::AdjacentBy { .. }) => matches!(
-                self,
-                Self::GroupAdjacentBy
-                    | Self::GroupStartingWith
-                    | Self::GroupEndingWith
-                    | Self::FailureSources
-                    | Self::PathHierarchy
-                    | Self::AdjacencyTree
-                    | Self::RecursiveFilter
-                    | Self::DynamicField
-                    | Self::DynamicLoading
-                    | Self::GroupIntoBlocks
-                    | Self::LookupFind
-                    | Self::XmlSerialize
-                    | Self::CollectionAggregates
-                    | Self::Joins
-                    | Self::XmlMixedContent
-                    | Self::XmlMixedConstruction
-            ),
-            Some(GroupingPlan::StartingWith { .. }) => matches!(
-                self,
-                Self::GroupStartingWith
-                    | Self::GroupEndingWith
-                    | Self::FailureSources
-                    | Self::PathHierarchy
-                    | Self::AdjacencyTree
-                    | Self::RecursiveFilter
-                    | Self::DynamicField
-                    | Self::DynamicLoading
-                    | Self::GroupIntoBlocks
-                    | Self::LookupFind
-                    | Self::XmlSerialize
-                    | Self::CollectionAggregates
-                    | Self::Joins
-                    | Self::XmlMixedContent
-                    | Self::XmlMixedConstruction
-            ),
-            Some(GroupingPlan::EndingWith { .. }) => matches!(
-                self,
-                Self::GroupEndingWith
-                    | Self::FailureSources
-                    | Self::PathHierarchy
-                    | Self::AdjacencyTree
-                    | Self::RecursiveFilter
-                    | Self::DynamicField
-                    | Self::DynamicLoading
-                    | Self::GroupIntoBlocks
-                    | Self::LookupFind
-                    | Self::XmlSerialize
-                    | Self::CollectionAggregates
-                    | Self::Joins
-                    | Self::XmlMixedContent
-                    | Self::XmlMixedConstruction
-            ),
-            Some(GroupingPlan::IntoBlocks { .. }) => {
-                matches!(
-                    self,
-                    Self::GroupIntoBlocks
-                        | Self::LookupFind
-                        | Self::DynamicField
-                        | Self::DynamicLoading
-                        | Self::XmlSerialize
-                        | Self::CollectionAggregates
-                        | Self::Joins
-                        | Self::XmlMixedContent
-                        | Self::XmlMixedConstruction
-                )
-            }
-            None => false,
-        }
-    }
-}
-
-pub(super) fn render_public_basic_owned_source_profile(
-    program: &Program,
-    profile: Profile,
-) -> Result<String, EmitError> {
-    render_public_basic_owned_source_policy(program, profile, SequenceItemAtPolicy::Closed)
-}
-
-fn render_public_basic_owned_source_policy(
-    program: &Program,
-    profile: Profile,
-    item_at: SequenceItemAtPolicy,
-) -> Result<String, EmitError> {
-    // The common profile closes every scope, retained expression and failure
-    // domain to precisely the static Group/Scalar scalar-expression subset.
-    match (profile, item_at) {
-        (
-            Profile::GroupEndingWith,
-            SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate,
-        ) => {
-            codegen::validate_basic_owned_sequence_aggregate_emission(program)?;
-        }
-        (Profile::XmlSerialize, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::validate_basic_owned_xml_serialize_emission(program)?;
-        }
-        (Profile::XmlMixedContent, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::validate_basic_owned_xml_mixed_content_emission(program)?;
-        }
-        (
-            Profile::XmlMixedConstruction,
-            SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-        ) => {
-            codegen::validate_basic_owned_xml_mixed_construction_emission(program)?;
-        }
-        (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducersWithExists) => {
-            codegen::validate_basic_owned_sequence_exists_emission(program)?;
-        }
-        (Profile::PathHierarchy, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::validate_basic_owned_path_hierarchy_emission(program)?;
-        }
-        (Profile::GroupIntoBlocks, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::validate_basic_owned_group_into_blocks_emission(program)?;
-        }
-        (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::validate_basic_owned_group_ending_with_emission(program)?;
-        }
-        (Profile::FailureSources, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::validate_basic_owned_failure_source_emission(program)?;
-        }
-        (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::validate_basic_owned_adjacency_tree_emission(program)?;
-        }
-        (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::validate_basic_owned_recursive_collect_emission(program)?;
-        }
-        (Profile::RecursiveFilter, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::validate_basic_owned_recursive_filter_emission(program)?;
-        }
-        (Profile::LookupFind, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::validate_basic_owned_lookup_find_emission(program)?;
-        }
-        (Profile::DynamicField, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::validate_basic_owned_dynamic_field_emission(program)?;
-        }
-        (Profile::DynamicLoading, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::validate_basic_owned_dynamic_loading_emission(program)?;
-        }
-        (
-            Profile::CollectionAggregates,
-            SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-        ) => {
-            codegen::validate_basic_owned_collection_aggregates_emission(program)?;
-        }
-        (Profile::Joins, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::validate_basic_owned_joins_emission(program)?;
-        }
-        (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::validate_basic_owned_group_starting_with_emission(program)?;
-        }
-        (Profile::GroupAdjacentBy, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::validate_basic_owned_group_adjacent_by_emission(program)?;
-        }
-        (Profile::GroupBy, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::validate_basic_owned_sequence_item_at_emission(program)?;
-        }
-        (Profile::Windows, SequenceItemAtPolicy::Closed) => {
-            codegen::validate_basic_owned_window_emission(program)?;
-        }
-        (Profile::PrimaryRows, SequenceItemAtPolicy::Closed) => {
-            codegen::validate_basic_owned_row_failure_emission(program)?;
-        }
-        (Profile::GroupBy, SequenceItemAtPolicy::Closed) => {
-            codegen::validate_basic_owned_group_by_emission(program)?;
-        }
-        _ => unreachable!("private control/consumer profile pair"),
-    }
-    let primary_row_failures = profile != Profile::Windows;
+    codegen::validate_basic_owned_emission_with_capabilities(program, capabilities)?;
+    let grouping = capabilities.grouping;
+    let sequences = capabilities.sequences.any();
     let mut scopes = Vec::new();
     collect_scopes(&program.root, "scope_root".into(), &mut scopes);
     for (index, target) in program.extra_targets.iter().enumerate() {
@@ -497,8 +22,8 @@ fn render_public_basic_owned_source_policy(
     }
     let mut basic = BTreeSet::new();
     let mut mark = |scope: &TargetScope, name: &str| {
-        if profile.has_scoped_groups() {
-            group_by::mark_basic_scopes(program, scope, name, false, &mut basic, profile);
+        if grouping.any() {
+            group_by::mark_basic_scopes(program, scope, name, false, &mut basic, grouping);
         } else {
             mark_basic_scopes(program, scope, name, false, &mut basic);
         }
@@ -519,7 +44,7 @@ fn render_public_basic_owned_source_policy(
         .collect::<Vec<_>>();
     // Failures execute in the paired context, but legacy-only target nodes do
     // not. Retain each expression only in the contexts that actually call it.
-    let loading = if profile == Profile::DynamicLoading {
+    let loading = if capabilities.dynamic_loading {
         dynamic_loading::loading_scopes(program)
     } else {
         BTreeMap::new()
@@ -535,7 +60,7 @@ fn render_public_basic_owned_source_policy(
         .iter()
         .filter_map(|node| match &node.expression {
             Expression::SequenceItemAt { sequence, .. }
-                if item_at != SequenceItemAtPolicy::Closed
+                if sequences
                     && (basic_retained.contains(&node.id)
                         || legacy_retained.contains(&node.id)) =>
             {
@@ -573,7 +98,7 @@ fn render_public_basic_owned_source_policy(
              RuntimeValue, ScalarType, SourceOwnerRef, Value, adapt_target_value,\n\
              adapt_union_target_value, call, field, group, repeated, require_bool, scalar, value_map};\n\n",
     );
-    if item_at != SequenceItemAtPolicy::Closed {
+    if sequences {
         // Demand includes both paired functions and ordinary legacy islands.
         // Add only the pure helpers actually called; only Exists and
         // SequenceAggregate own items.
@@ -669,14 +194,14 @@ fn render_public_basic_owned_source_policy(
                     basic: true,
                     owned_leaf_nodes: true,
                 },
-                item_at != SequenceItemAtPolicy::Closed,
+                sequences,
             )?);
         }
     }
     if !program.failure_rules.is_empty() {
-        source.push_str(&if profile.has_failure_sources() {
+        source.push_str(&if capabilities.failures.owned_sources {
             failure::render_basic_with_failure_sources(program)?
-        } else if primary_row_failures {
+        } else if capabilities.failures.primary_rows {
             failure::render_basic_with_row_failures(program)?
         } else {
             failure::render_basic(program)?
@@ -684,7 +209,7 @@ fn render_public_basic_owned_source_policy(
     }
     if !legacy_scopes.is_empty() {
         source.push_str("#[allow(unused_imports)]\nuse codegen_runtime::{ScopeContext, sort_candidates, SortDirection, SequenceWindow, item_count, apply_sequence_windows};\n");
-        if profile.has_scoped_groups()
+        if grouping.any()
             && legacy_scopes.iter().any(|(_, scope, _, _)| {
                 scope
                     .iteration
@@ -708,7 +233,7 @@ fn render_public_basic_owned_source_policy(
                         basic: false,
                         owned_leaf_nodes: false,
                     },
-                    item_at != SequenceItemAtPolicy::Closed,
+                    sequences,
                 )?);
             }
         }
@@ -718,7 +243,7 @@ fn render_public_basic_owned_source_policy(
             .iteration
             .as_ref()
             .and_then(IterationPlan::owned_inner_join)
-            .filter(|_| profile == Profile::Joins)
+            .filter(|_| capabilities.joins)
         {
             source.push_str(&joins::render_owned_join_scope(
                 &name, scope, join, &children,
@@ -733,8 +258,8 @@ fn render_public_basic_owned_source_policy(
                 }
                 None => name.clone(),
             };
-            source.push_str(&if profile
-                .permits_grouping(scope.iteration.as_ref().and_then(IterationPlan::grouping))
+            source.push_str(&if grouping
+                .permits(scope.iteration.as_ref().and_then(IterationPlan::grouping))
             {
                 group_by::render_basic_group_by_scope(&body, scope, &children)
             } else {
@@ -746,7 +271,7 @@ fn render_public_basic_owned_source_policy(
                 .iter()
                 .map(|child| format!("legacy_{child}"))
                 .collect::<Vec<_>>();
-            source.push_str(&if profile.has_scoped_groups()
+            source.push_str(&if grouping.any()
                 && scope
                     .iteration
                     .as_ref()
@@ -768,89 +293,8 @@ fn render_public_basic_owned_source_policy(
             }
         }
     }
-    let plan = match (profile, item_at) {
-        (
-            Profile::GroupEndingWith,
-            SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate,
-        ) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_aggregate(program)?
-        }
-        (Profile::XmlSerialize, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_xml_serialize(program)?
-        }
-        (Profile::XmlMixedContent, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_xml_mixed_content(program)?
-        }
-        (
-            Profile::XmlMixedConstruction,
-            SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-        ) => codegen::legacy_named_input_admission_plan_with_basic_owned_xml_mixed_construction(
-            program,
-        )?,
-        (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducersWithExists) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_exists(program)?
-        }
-        (Profile::PathHierarchy, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy(program)?
-        }
-        (Profile::GroupIntoBlocks, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_group_into_blocks(program)?
-        }
-        (Profile::GroupEndingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_group_ending_with(program)?
-        }
-        (Profile::FailureSources, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_failure_sources(program)?
-        }
-        (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_adjacency_tree(program)?
-        }
-        (Profile::AdjacencyTree, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_collect(program)?
-        }
-        (Profile::RecursiveFilter, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_filter(program)?
-        }
-        (Profile::LookupFind, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_lookup_find(program)?
-        }
-        (Profile::DynamicField, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_field(program)?
-        }
-        (Profile::DynamicLoading, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_loading(program)?
-        }
-        (
-            Profile::CollectionAggregates,
-            SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-        ) => codegen::legacy_named_input_admission_plan_with_basic_owned_collection_aggregates(
-            program,
-        )?,
-        (Profile::Joins, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_joins(program)?
-        }
-        (Profile::GroupStartingWith, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(
-                program,
-            )?
-        }
-        (Profile::GroupAdjacentBy, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_group_adjacent_by(program)?
-        }
-        (Profile::GroupBy, SequenceItemAtPolicy::BasicScalarProducers) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_item_at(program)?
-        }
-        (Profile::Windows, SequenceItemAtPolicy::Closed) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_windows(program)?
-        }
-        (Profile::PrimaryRows, SequenceItemAtPolicy::Closed) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_row_failures(program)?
-        }
-        (Profile::GroupBy, SequenceItemAtPolicy::Closed) => {
-            codegen::legacy_named_input_admission_plan_with_basic_owned_group_by(program)?
-        }
-        _ => unreachable!("private control/consumer profile pair"),
-    };
+    let plan =
+        codegen::legacy_named_input_admission_plan_with_owned_capabilities(program, capabilities)?;
     source.push_str(render_checked_catalogue_import(program, false));
     source.push_str(&render_checked_catalogue(
         "PRIVATE_CHECKED_ALL_INPUTS",
@@ -867,7 +311,7 @@ fn render_public_basic_owned_source_policy(
         ));
     }
     source.push_str(PRIVATE_CHECKED_REACH_COUNTERS);
-    if profile == Profile::DynamicLoading {
+    if capabilities.dynamic_loading {
         source.push_str(&dynamic_loading::render_loader_entries(program));
         return Ok(source);
     }

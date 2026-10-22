@@ -59,6 +59,104 @@ directory. To generate directly onto a Windows filesystem, use a Windows build
 of the CLI. The same publication requirement applies to ordinary generation
 and explicitly selected companions.
 
+## Owned generation capabilities and presets
+
+Explicit owned generation admits exactly one `codegen::OwnedCapabilities` set.
+Each field is an independent permission; a closed permission keeps that
+construct's existing typed refusal:
+
+| Field | Admits |
+| --- | --- |
+| `controls.filter`, `controls.sort`, `controls.windows` | Static Basic filtered, sorted, and windowed (or implicit `First`) scope shapes; a sorted shape may filter and a windowed shape may filter and sort |
+| `grouping` (`by`, `adjacent_by`, `starting_with`, `ending_with`, `into_blocks`) | Static grouped scopes in each listed mode, with filters, sorts, windows and member retention |
+| `failures.primary_rows`, `failures.owned_sources` | Owned reads in authenticated primary-row failure rules; failure rules that walk one exact owned endpoint |
+| `sequences` (`item_at`, `exists`, `aggregate`, `owned_recursive_item_at`) | `SequenceItemAt`, `SequenceExists` and `SequenceAggregate` over the four scalar producers; `SequenceItemAt` over an owned recursive collection walk |
+| `constructions` (`path_hierarchy`, `adjacency_tree`, `recursive_filter`) | Owned path-hierarchy collections, owned adjacency-tree rows, and recursive filtering of a scope's own owned selector |
+| `search.lookup_find`, `search.collection_aggregates` | Owned `Lookup`/`CollectionFind`; owned collection aggregates |
+| `dynamic_fields` | Owned dynamic source-field reads |
+| `dynamic_loading` | Owned dynamic driver loading: a loading scope walks its endpoint's exact driver collection, evaluates the path in each driver item, and exact field and position reads see the loaded document |
+| `xml` (`Closed`, `Serialize`, `MixedContent`, `MixedConstruction`) | Nested owned XML operator levels |
+| `joins` | Owned inner join scopes, their tuple reads, and owned joined aggregates |
+
+`OwnedCapabilities` is read by one closed-context validator, one Basic emission
+validator, the named-input planner, lowering (owned join scopes pass the
+lowering preflight only with `joins`), and both emitters. The Rust emitter
+chooses the narrowest renderer covering the set (filter, sort, or the general
+renderer for windows and beyond); the general renderer and the C# emitter read
+grouping modes, failure permissions, sequence consumers, constructions and
+joins from the same set.
+
+Every public explicit entry point is a named `codegen::OwnedPreset`. Its
+capabilities come from one declarative table in `crates/codegen/src/capabilities.rs`:
+
+| Preset | Entry suffix | Controls | Grouping | Failures | Sequences | Constructions | Search | Dynamic fields | Dynamic loading | XML | Joins |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `ControlFree` | `sources` | — | — | — | — | — | — | — | — | — | — |
+| `Filters` | `filters` | filter | — | — | — | — | — | — | — | — | — |
+| `Sort` | `sort` | filter, sort | — | — | — | — | — | — | — | — | — |
+| `Windows` | `windows` | all | — | — | — | — | — | — | — | — | — |
+| `RowFailures` | `row_failures` | all | — | rows | — | — | — | — | — | — | — |
+| `GroupBy` | `group_by` | all | By | rows | — | — | — | — | — | — | — |
+| `SequenceItemAt` | `sequence_item_at` | all | By | rows | ItemAt | — | — | — | — | — | — |
+| `GroupAdjacentBy` | `group_adjacent_by` | all | By–AdjacentBy | rows | ItemAt | — | — | — | — | — | — |
+| `GroupStartingWith` | `group_starting_with` | all | By–StartingWith | rows | ItemAt | — | — | — | — | — | — |
+| `GroupEndingWith` | `group_ending_with` | all | By–EndingWith | rows | ItemAt | — | — | — | — | — | — |
+| `GroupIntoBlocks` | `group_into_blocks` | all | all | rows | ItemAt | — | — | — | — | — | — |
+| `FailureSources` | `failure_sources` | all | By–EndingWith | rows, owned | ItemAt | — | — | — | — | — | — |
+| `PathHierarchy` | `path_hierarchy` | all | By–EndingWith | rows, owned | ItemAt | hierarchy | — | — | — | — | — |
+| `AdjacencyTree` | `adjacency_tree` | all | By–EndingWith | rows, owned | ItemAt | hierarchy, tree | — | — | — | — | — |
+| `RecursiveCollect` | `recursive_collect` | all | By–EndingWith | rows, owned | ItemAt, owned recursive | hierarchy, tree | — | — | — | — | — |
+| `RecursiveFilter` | `recursive_filter` | all | By–EndingWith | rows, owned | ItemAt, owned recursive | all | — | — | — | — | — |
+| `LookupFind` | `lookup_find` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | — | — | — | — |
+| `DynamicField` | `dynamic_field` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | — | — |
+| `DynamicLoading` | `dynamic_loading` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | yes | — | — |
+| `CollectionAggregates` | `collection_aggregates` | all | all | rows, owned | ItemAt, owned recursive | all | all | — | — | — | — |
+| `Joins` | `joins` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | — | — | — | yes |
+| `SequenceExists` | `sequence_exists` | all | By–EndingWith | rows | ItemAt, Exists | — | — | — | — | — | — |
+| `SequenceAggregate` | `sequence_aggregate` | all | By–EndingWith | rows | ItemAt, Exists, Aggregate | — | — | — | — | — | — |
+| `XmlSerialize` | `xml_serialize` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | Serialize | — |
+| `XmlMixedContent` | `xml_mixed_content` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | MixedContent | — |
+| `XmlMixedConstruction` | `xml_mixed_construction` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | MixedConstruction | — |
+
+Each row backs `lower_with_basic_owned_<suffix>`,
+`validate_program_with_basic_owned_<suffix>`, the matching
+`validate_basic_owned_*_emission`, `legacy_named_input_admission_plan_with_basic_owned_<suffix>`
+and `emit_with_basic_owned_<suffix>` in both emitters. `ControlFree` keeps its
+existing `validate_basic_owned_emission` and `emit_with_basic_owned_sources`
+entries, and ordinary `lower`, `validate_program` and
+`legacy_named_input_admission_plan` validate with its capabilities and without
+the Basic gate. `DynamicLoading` libraries also expose loader-taking execution
+entries. Hosts can also call `lower_with_owned_capabilities`,
+`validate_program_with_owned_capabilities`,
+`validate_basic_owned_emission_with_capabilities` and
+`legacy_named_input_admission_plan_with_owned_capabilities` with a preset's
+`capabilities()`.
+
+The `owned_capability_presets` CLI test applies every preset entry point to
+every owned conformance subject and compares accept/refuse results, diagnostic
+digests, plan digests and generated-artifact digests with the record in
+`crates/cli/tests/code_generation/fixtures/owned_capability_presets.txt`. Set
+`FERRULE_UPDATE_OWNED_CAPABILITY_PRESETS=1` to rewrite the record after an
+intended admission change.
+
+To add a capability:
+
+1. Add a field (or a variant of an existing component) to `OwnedCapabilities`
+   in `crates/codegen/src/capabilities.rs`, extend `is_within`, and set it in
+   the preset table rows that grant it. Existing rows keep their value.
+2. Put its validator checks in their own module under
+   `crates/codegen/src/validate/owned_sources/` as `OwnedCapabilities` methods,
+   and consult them at the one closed-context arm (`admission.rs`) and Basic
+   inventory arm (`basic.rs`) for the construct; structural checks belong in
+   `validate_structure`.
+3. Read the field in the Rust general renderer and the C# Basic renderer where
+   the construct is rendered.
+
+To add a preset, add one `OwnedPreset` variant and table row, one
+`owned_presets!` row in `crates/codegen/src/presets.rs`, and one
+`owned_presets!` row in each emitter's `lib.rs`, plus its row in the
+`owned_capability_presets` test and a regenerated record.
+
 ## Explicit Basic owned-source JSON documents
 
 `emit_with_basic_owned_sources` adds compact JSON document adapters to the

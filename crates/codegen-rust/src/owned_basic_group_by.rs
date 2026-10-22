@@ -3,19 +3,13 @@
 
 use super::*;
 
-pub(crate) fn render_public_basic_owned_group_by_source(
-    program: &Program,
-) -> Result<String, EmitError> {
-    windows::render_public_basic_owned_source_profile(program, windows::Profile::GroupBy)
-}
-
 pub(super) fn mark_basic_scopes(
     program: &Program,
     scope: &TargetScope,
     name: &str,
     inherited_paired_frame: bool,
     basic: &mut BTreeSet<String>,
-    profile: windows::Profile,
+    grouping: codegen::GroupingModes,
 ) {
     let current = inherited_paired_frame || windows::subtree_owned(program, scope);
     if current {
@@ -24,13 +18,13 @@ pub(super) fn mark_basic_scopes(
     // A permitted paired operation mints an authenticated grouped occurrence even
     // when its source selector is legacy and only its key/boundary/post demands owned
     // evaluation. Its descendants inherit that grouped ancestry; siblings do
-    // not. Older profiles retain their original iteration-only propagation.
+    // not. Without grouping, scopes keep their original iteration-only propagation.
     let inherited = inherited_paired_frame
         || scope.iteration.as_ref().is_some_and(|iteration| {
             matches!(
                 iteration.input(),
                 IterationSource::OwnedSource(_) | IterationSource::OwnedInnerJoin(_)
-            ) || current && profile.permits_grouping(iteration.grouping())
+            ) || current && grouping.permits(iteration.grouping())
         });
     for (index, child) in scope.children.iter().enumerate() {
         mark_basic_scopes(
@@ -39,7 +33,7 @@ pub(super) fn mark_basic_scopes(
             &format!("{name}_{index}"),
             inherited,
             basic,
-            profile,
+            grouping,
         );
     }
 }

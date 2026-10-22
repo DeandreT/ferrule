@@ -10,30 +10,6 @@ use codegen::{
 };
 use mapping::{SourceOwner, SourceScopeLocation, SourceScopeStep, SourceScopeTarget};
 
-#[path = "owned_basic_windows.rs"]
-mod windows;
-pub(crate) use windows::render_public_basic_owned_adjacency_tree_source;
-pub(crate) use windows::render_public_basic_owned_collection_aggregates_source;
-pub(crate) use windows::render_public_basic_owned_dynamic_field_source;
-pub(crate) use windows::render_public_basic_owned_dynamic_loading_source;
-pub(crate) use windows::render_public_basic_owned_failure_source;
-pub(crate) use windows::render_public_basic_owned_group_adjacent_by_source;
-pub(crate) use windows::render_public_basic_owned_group_ending_with_source;
-pub(crate) use windows::render_public_basic_owned_group_into_blocks_source;
-pub(crate) use windows::render_public_basic_owned_group_starting_with_source;
-pub(crate) use windows::render_public_basic_owned_joins_source;
-pub(crate) use windows::render_public_basic_owned_lookup_find_source;
-pub(crate) use windows::render_public_basic_owned_path_hierarchy_source;
-pub(crate) use windows::render_public_basic_owned_recursive_collect_source;
-pub(crate) use windows::render_public_basic_owned_recursive_filter_source;
-pub(crate) use windows::render_public_basic_owned_row_failure_source;
-pub(crate) use windows::render_public_basic_owned_sequence_aggregate_source;
-pub(crate) use windows::render_public_basic_owned_sequence_exists_source;
-pub(crate) use windows::render_public_basic_owned_sequence_item_at_source;
-pub(crate) use windows::render_public_basic_owned_window_source;
-pub(crate) use windows::render_public_basic_owned_xml_mixed_construction_source;
-pub(crate) use windows::render_public_basic_owned_xml_mixed_content_source;
-pub(crate) use windows::render_public_basic_owned_xml_serialize_source;
 #[path = "owned_basic_aggregate.rs"]
 mod aggregate;
 #[path = "owned_basic_dynamic_loading.rs"]
@@ -46,8 +22,9 @@ mod joins;
 mod rows;
 #[path = "owned_basic_search.rs"]
 mod search;
+#[path = "owned_basic_windows.rs"]
+mod windows;
 pub(super) use aggregate::render_owned_aggregate;
-pub(crate) use group_by::render_public_basic_owned_group_by_source;
 pub(super) use joins::render_owned_join_aggregate;
 pub(super) use search::{render_owned_collection_find, render_owned_lookup};
 
@@ -869,10 +846,21 @@ pub(crate) fn render_public_basic_owned_source(program: &Program) -> Result<Stri
     render_public_basic_owned_source_with_filters(program, false)
 }
 
-pub(crate) fn render_public_basic_owned_filter_source(
+/// Render the public Basic owned library for `capabilities` with the narrowest
+/// renderer that covers them: control-free and filter-only sets keep the
+/// filter renderer's bytes, sort sets the sort renderer's, and every set with
+/// windows or more uses the general renderer.
+pub(crate) fn render_public_basic_owned_capability_source(
     program: &Program,
+    capabilities: codegen::OwnedCapabilities,
 ) -> Result<String, EmitError> {
-    render_public_basic_owned_source_with_filters(program, true)
+    if capabilities.is_within(codegen::OwnedPreset::Filters.capabilities()) {
+        render_public_basic_owned_source_with_filters(program, capabilities.controls.filter)
+    } else if capabilities.is_within(codegen::OwnedPreset::Sort.capabilities()) {
+        render_public_basic_owned_sort_source(program)
+    } else {
+        windows::render_public_basic_owned_capability_source(program, capabilities)
+    }
 }
 
 fn render_public_basic_owned_source_with_filters(
