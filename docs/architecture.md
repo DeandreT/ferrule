@@ -123,10 +123,16 @@ A ferrule project is plain JSON built from four main concepts:
    consults only XML or only JSON is unaffected by the other format's metadata;
    the XSD and JSON Schema exporters write occurrences, attribute use, nil and
    null from these layers, and the JSON range validator admits null from the
-   scalar value layer. `json_property_presence` reports a JSON object
-   property's declared presence from its parent's required list, independent
-   of its null admission. `.mfd` import proofs that need present or non-null
-   source paths derive those facts from the views, keeping object-item null
+   scalar value layer. The JSON instance reader and writers accept and emit
+   object, array-container, object-item and scalar null from the same JSON
+   layers and refuse a schema whose JSON null metadata has no view before any
+   value is read or written. The XML instance readers and writer admit
+   `xsi:nil` from the XML layer, and the structured XML input profile and the
+   primary-root gate read root presence and nil from it.
+   `json_property_presence` reports a JSON object property's declared presence
+   from its parent's required list, independent of its null admission. `.mfd`
+   import proofs that need present or non-null source paths derive those
+   facts from the views, keeping object-item null
    separate from occurrence and array-container null. Consumers that combine
    these facts should use the views rather than re-reading the individual
    flags. `check_json_array_wrapper_frame` is the single exact-shape check
