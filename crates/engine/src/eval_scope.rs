@@ -74,6 +74,38 @@ pub(crate) fn eval_scope(
     source_loader: Option<&dyn DynamicSourceLoader>,
     trace_scope: &TraceScope,
 ) -> Result<Instance, EngineError> {
+    eval_scope_with_document_visitor(
+        program,
+        scope,
+        target,
+        context,
+        positions,
+        extra_sources,
+        source_loader,
+        trace_scope,
+        None,
+    )
+}
+
+/// The visitor is confined to this scope; child scopes retain their ordinary
+/// materialization contract so one complete document is offered at a time.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn eval_scope_with_document_visitor(
+    program: EvalProgram<'_>,
+    scope: &Scope,
+    target: Option<&ir::SchemaNode>,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    extra_sources: &[NamedSource],
+    source_loader: Option<&dyn DynamicSourceLoader>,
+    trace_scope: &TraceScope,
+    mut visitor: Option<&mut dyn FnMut(DocumentMember) -> bool>,
+) -> Result<Instance, EngineError> {
+    if visitor.is_some() && (program.owned_context.is_some() || scope.output_path().is_none()) {
+        return Err(EngineError::DocumentStreamUnsupported {
+            reason: "streaming requires an ordinary document-output scope",
+        });
+    }
     if let Some(owned) = program.owned_context {
         if owned.owned_ancestry || scope_needs_owned(program, scope) {
             return eval_basic_owned_scope(
@@ -496,6 +528,7 @@ pub(crate) fn eval_scope(
         (None, None)
     };
     let mut produced = Vec::new();
+    let mut produced_count = 0;
     let item_evaluator = ItemEvaluator {
         program,
         scope,
@@ -652,7 +685,9 @@ pub(crate) fn eval_scope(
             })
             .collect();
         let owned = apply_sequence_windows(owned, &windows, program.trace_sink, trace_scope);
-        produced.reserve(owned.len());
+        if visitor.is_none() {
+            produced.reserve(owned.len());
+        }
         for group in &owned {
             let (wrapper, members) = match &group.frame {
                 // Only the constructor above creates a group frame, with one field.
@@ -673,13 +708,20 @@ pub(crate) fn eval_scope(
             next_context.push(members);
             let mut output_positions = group.positions.clone();
             if let Some(position) = output_positions.last_mut() {
-                position.index = produced.len() + 1;
+                position.index = produced_count + 1;
                 position.grouped = wrapper.is_some();
             }
             if let Some(instance) =
                 item_evaluator.produce(&next_context, &group.positions, &output_positions, false)?
             {
-                produced.push(instance);
+                produced_count += 1;
+                if let Some(visitor) = visitor.as_mut() {
+                    if !visitor(produced_document(scope, instance)?) {
+                        break;
+                    }
+                } else {
+                    produced.push(instance);
+                }
             }
         }
     } else {
@@ -704,7 +746,9 @@ pub(crate) fn eval_scope(
             extensions = filtered;
         }
         extensions = apply_sequence_windows(extensions, &windows, program.trace_sink, trace_scope);
-        produced.reserve(extensions.len());
+        if visitor.is_none() {
+            produced.reserve(extensions.len());
+        }
         let mut compact_positions: BTreeMap<Vec<usize>, usize> = BTreeMap::new();
         let renumber_output = scope.filter.is_some() || scope.has_sort() || !windows.is_empty();
         for extension in &extensions {
@@ -722,7 +766,7 @@ pub(crate) fn eval_scope(
                 .last()
                 .is_some_and(|position| position.join_position.is_some());
             let next_position = if joined {
-                produced.len() + 1
+                produced_count + 1
             } else if !renumber_output {
                 extension
                     .positions
@@ -744,12 +788,18 @@ pub(crate) fn eval_scope(
                 if !joined && renumber_output && !extension.positions.is_empty() {
                     compact_positions.insert(parent_key, next_position);
                 }
-                produced.push(instance);
+                produced_count += 1;
+                if let Some(visitor) = visitor.as_mut() {
+                    if !visitor(produced_document(scope, instance)?) {
+                        break;
+                    }
+                } else {
+                    produced.push(instance);
+                }
             }
         }
     }
 
-    let produced_count = produced.len();
     let result = if let Some(node) = scope.output_path() {
         let documents = produced
             .into_iter()
@@ -779,6 +829,16 @@ pub(crate) fn eval_scope(
         kind: TraceOutputKind::of(&result),
     });
     Ok(result)
+}
+
+fn produced_document(scope: &Scope, produced: ProducedItem) -> Result<DocumentMember, EngineError> {
+    let node = scope
+        .output_path()
+        .expect("document visitors require an output-path scope");
+    let path = produced
+        .output_path
+        .ok_or(EngineError::EmptyDynamicTargetPath { node })?;
+    DocumentMember::new(path, produced.instance).ok_or(EngineError::EmptyDynamicTargetPath { node })
 }
 
 fn scope_needs_owned(program: EvalProgram<'_>, scope: &Scope) -> bool {
