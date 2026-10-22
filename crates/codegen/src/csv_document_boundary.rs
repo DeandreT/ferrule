@@ -87,3 +87,15 @@ pub fn validate_csv_document_boundary(
     }
     crate::validate_csv_output(program, &policy.target).map_err(CsvDocumentBoundaryError::Target)
 }
+
+/// Admit a flat primary CSV input with explicit document-set output. This does
+/// not acquire paths, select a decoder, or publish documents.
+pub fn validate_csv_document_set_boundary(
+    program: &Program,
+    policy: &CsvDocumentBoundaryPolicy,
+) -> Result<(), CsvDocumentBoundaryError> {
+    crate::validate_primary_csv_acquisition(program, &policy.source)
+        .map_err(CsvDocumentBoundaryError::Source)?;
+    crate::validate_csv_document_set_output(program, &policy.target)
+        .map_err(CsvDocumentBoundaryError::Target)
+}
