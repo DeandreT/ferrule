@@ -1892,7 +1892,9 @@ name = "format-db"
 version = "0.1.0"
 dependencies = [
  "ir",
+ "mapping",
  "rusqlite",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 
