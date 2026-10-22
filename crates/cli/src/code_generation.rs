@@ -8,6 +8,8 @@ use super::{extension_for_dispatch, load_project, validate_tabular_fallback};
 use crate::route_capability::{HostRoute, PlannedPublication, RoutePlan, RouteRefusal};
 
 mod csv_json;
+mod grouped_csv;
+pub use grouped_csv::generate_document_with_csv_document_set_adapters;
 mod csv_x12;
 mod static_documents;
 mod x12;
