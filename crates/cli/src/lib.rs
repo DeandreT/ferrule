@@ -73,7 +73,8 @@ mod dynamic_source_load_tests;
 mod owned_observer_preflight_tests;
 
 pub use code_generation::{
-    GenerateOutcome, GenerateTarget, generate_project, generate_project_with_csv_document_adapters,
+    GenerateOutcome, GenerateTarget, generate_document_with_csv_document_set_adapters,
+    generate_project, generate_project_with_csv_document_adapters,
     generate_project_with_csv_json_adapters, generate_project_with_csv_output,
     generate_project_with_csv_x12_adapters, generate_project_with_csv_x12_envelope_profile,
     generate_project_with_json5_adapters, generate_project_with_raw_delimited_document_adapters,
@@ -350,6 +351,32 @@ fn publish_mfd_import(
     rebase_project_paths(&mut imported.project, &imported.mapping_path, out_path)?;
     let json = mapping::project_file::encode_pretty(&imported.project)?;
     std::fs::write(out_path, json).with_context(|| format!("writing {}", out_path.display()))?;
+    Ok(imported.warnings)
+}
+
+/// Import a bounded grouped CSV plan without changing ordinary MFD admission.
+pub fn import_mfd_grouped_csv(
+    mfd_path: &Path,
+    out_path: &Path,
+    package_root: Option<&Path>,
+    package_manifest: Option<&Path>,
+    edi_catalog_roots: &[PathBuf],
+    json_schema_catalog_roots: &[PathBuf],
+) -> anyhow::Result<Vec<String>> {
+    let options = mfd_import_options(
+        package_root,
+        package_manifest,
+        edi_catalog_roots,
+        json_schema_catalog_roots,
+    )?;
+    let imported = mfd::import_grouped_csv_document_with_options(mfd_path, &options)
+        .with_context(|| format!("importing grouped CSV document {}", mfd_path.display()))?;
+    let mut project = imported.document.project().clone();
+    rebase_project_paths(&mut project, &imported.mapping_path, out_path)?;
+    let document =
+        mapping::DocumentProject::new(project, imported.document.primary_source().clone());
+    let text = mapping::document_project_file::encode_pretty(&document)?;
+    std::fs::write(out_path, text).with_context(|| format!("writing {}", out_path.display()))?;
     Ok(imported.warnings)
 }
 

@@ -724,6 +724,11 @@ fn endpoint(
     let [settings] = settings.as_slice() else {
         return Err(refuse("ambiguous CSV settings"));
     };
+    if !source && settings.attribute("quote") != Some("") {
+        return Err(refuse(
+            "the grouped CSV output profile requires explicitly disabled quotes",
+        ));
+    }
     if !settings.has_tag_name("settings")
         || !attributes(
             *settings,
