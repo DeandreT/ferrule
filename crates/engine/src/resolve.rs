@@ -1,6 +1,7 @@
 use ir::{Instance, Value};
 use mapping::JoinId;
 
+use crate::frame_view::{FrameOrigin, FrameView};
 use crate::source_iteration::PositionFrame;
 
 /// Resolves a repeating collection with the same outward fallback as scalar
@@ -227,6 +228,10 @@ fn dynamic_scalar_in(item: &Instance, object: &[String], key: &str) -> Option<Op
     Some(current.field(key).and_then(Instance::as_scalar).cloned())
 }
 
+/// Reads a joined member from the latest receiving frame `join` contributed
+/// for its exact `collection`. That frame is authoritative: when the context
+/// binds no instance to it, the read finds nothing rather than an earlier
+/// frame or an ordinary outward lookup.
 pub(crate) fn join_scalar(
     context: &[&Instance],
     positions: &[PositionFrame],
@@ -234,11 +239,10 @@ pub(crate) fn join_scalar(
     collection: &[String],
     path: &[String],
 ) -> Option<Value> {
-    let position_index = positions
-        .iter()
-        .rposition(|position| position.join == Some(join) && position.collection == collection)?;
-    let instance = context_for_position(context, positions, position_index)?;
-    field_scalar(instance, path).cloned()
+    let (_, instance) = FrameView::latest_receiving(context, positions, |frame| {
+        frame.origin == FrameOrigin::Joined(join) && frame.collection == collection
+    })?;
+    field_scalar(instance?, path).cloned()
 }
 
 pub(crate) fn context_for_position<'a>(

@@ -421,3 +421,136 @@ fn an_unpositioned_member_shifts_later_frames_to_legacy_index_pairing() {
             .expect("authored detail")
     ));
 }
+
+/// `join_scalar` as it read positions before the frame view.
+fn legacy_join_scalar(
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    join: JoinId,
+    collection: &[String],
+    path: &[String],
+) -> Option<Value> {
+    let position_index = positions
+        .iter()
+        .rposition(|position| position.join == Some(join) && position.collection == collection)?;
+    let instance = context_for_position(context, positions, position_index)?;
+    crate::resolve::field_scalar(instance, path).cloned()
+}
+
+/// Receiving positions mixing group wrappers, two joins, a repeated joined
+/// collection and an ordinary frame, over every prefix and context length,
+/// including contexts too short to bind any frame.
+fn receiving_cases(mut check: impl FnMut(&[&Instance], &[PositionFrame])) {
+    let joined = |collection: &[&str], join: u64, grouped: bool| PositionFrame {
+        join: Some(JoinId::new(join)),
+        ..position(collection, 1, grouped)
+    };
+    let all = [
+        position(&["Rows"], 1, true),
+        joined(&["A"], 1, false),
+        joined(&["B"], 1, true),
+        joined(&["A"], 2, false),
+        position(&["A"], 3, false),
+        joined(&["A"], 1, false),
+    ];
+    let instances: Vec<_> = (0..10)
+        .map(|index| record(vec![("v", text(&format!("instance-{index}")))]))
+        .collect();
+    let instances: Vec<_> = instances.iter().collect();
+    for length in 0..=all.len() {
+        let positions = &all[..length];
+        let wrappers = positions.iter().filter(|position| position.grouped).count();
+        for context in 0..=(length + wrappers + 2) {
+            check(&instances[..context], positions);
+        }
+    }
+}
+
+#[test]
+fn join_scalar_reads_the_frame_legacy_position_lookup_reads() {
+    let mut checked = 0;
+    receiving_cases(|context, positions| {
+        for join in [1, 2, 3].map(JoinId::new) {
+            for collection in [&["A"][..], &["B"], &["Rows"]] {
+                let collection = path(collection);
+                for field in [&["v"][..], &["missing"], &[]] {
+                    let field = path(field);
+                    assert_eq!(
+                        crate::resolve::join_scalar(context, positions, join, &collection, &field),
+                        legacy_join_scalar(context, positions, join, &collection, &field),
+                        "join {join:?} {collection:?}/{field:?} over {} instances and {} positions",
+                        context.len(),
+                        positions.len(),
+                    );
+                    checked += 1;
+                }
+            }
+        }
+    });
+    assert!(checked > 1000, "checked {checked} lookups");
+}
+
+#[test]
+fn the_latest_receiving_frame_matches_the_prepared_view() {
+    receiving_cases(|context, positions| {
+        let view = FrameView::receiving(context, positions);
+        for collection in [&["A"][..], &["B"], &["Rows"], &["C"]] {
+            let collection = path(collection);
+            let select = |frame: &crate::frame_view::Frame<'_>| frame.collection == collection;
+            let prepared = view.latest(select).map(|frame| {
+                (
+                    frame.endpoint,
+                    frame.origin,
+                    frame.kind,
+                    view.instance(frame),
+                )
+            });
+            let direct = FrameView::latest_receiving(context, positions, select)
+                .map(|(frame, instance)| (frame.endpoint, frame.origin, frame.kind, instance));
+            assert_eq!(
+                direct.map(|(endpoint, origin, kind, instance)| (
+                    endpoint,
+                    origin,
+                    kind,
+                    instance.map(std::ptr::from_ref)
+                )),
+                prepared.map(|(endpoint, origin, kind, instance)| (
+                    endpoint,
+                    origin,
+                    kind,
+                    instance.map(std::ptr::from_ref)
+                )),
+            );
+        }
+    });
+}
+
+/// The latest frame of the join's collection is authoritative: when the
+/// context is too short to bind it, the read finds nothing instead of
+/// reading the field outward from a context instance that has it.
+#[test]
+fn an_unbound_joined_frame_does_not_fall_back_to_an_earlier_one() {
+    let earlier = record(vec![("v", text("earlier"))]);
+    let joined = |join| PositionFrame {
+        join: Some(JoinId::new(join)),
+        ..position(&["A"], 1, false)
+    };
+    let positions = [joined(1), joined(1)];
+    let context = [&earlier];
+    let (frame, instance) = FrameView::latest_receiving(&context, &positions, |frame| {
+        frame.origin == FrameOrigin::Joined(JoinId::new(1))
+    })
+    .expect("a joined frame is selected");
+    assert_eq!(frame.endpoint, FrameEndpoint::Unbound);
+    assert!(instance.is_none());
+    assert_eq!(
+        crate::resolve::join_scalar(
+            &context,
+            &positions,
+            JoinId::new(1),
+            &path(&["A"]),
+            &path(&["v"])
+        ),
+        None
+    );
+}
