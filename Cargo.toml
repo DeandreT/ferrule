@@ -95,3 +95,8 @@ zip = { version = "7.2", default-features = false, features = ["deflate-flate2-z
 [patch.crates-io]
 egui-snarl = { path = "vendor/egui-snarl" }
 egui-scale = { path = "vendor/egui-scale" }
+
+# Owned PDF worker jobs hash whole packaged executables and job artifacts;
+# unoptimized SHA-256 would dominate debug builds and tests.
+[profile.dev.package.sha2]
+opt-level = 3
