@@ -11,7 +11,7 @@ use mapping::ValidatedSqliteRead;
 use rusqlite::{Connection, OptionalExtension};
 
 use super::{ForbiddenTable, KeyProblem, QueryPhase, QueryReadError, QueryReadErrorKind};
-use crate::{SqliteAffinity, quote, sqlite_affinity};
+use crate::{SqliteAffinity, column_sql_type, quote, sqlite_affinity};
 
 /// Canonical metadata spellings for an admitted plan.
 #[derive(Debug)]
@@ -183,7 +183,7 @@ pub(super) fn admit(
             return Err(error(QueryReadErrorKind::GeneratedColumn).column(name));
         }
         let affinity = sqlite_affinity(&column.declared);
-        if !affinity_admits(*ty, affinity) {
+        if !affinity_admits(*ty, affinity) && !writer_boolean(*ty, &column.declared) {
             return Err(error(QueryReadErrorKind::ColumnAffinity {
                 expected: *ty,
                 declared: column.declared.clone(),
@@ -222,4 +222,11 @@ fn affinity_admits(ty: ScalarType, affinity: SqliteAffinity) -> bool {
         ScalarType::Int | ScalarType::Bool => affinity == SqliteAffinity::Integer,
         ScalarType::Float => matches!(affinity, SqliteAffinity::Real | SqliteAffinity::Integer),
     }
+}
+
+/// Bool also admits the exact `BOOLEAN` declaration Ferrule's writer creates.
+/// Its NUMERIC affinity is otherwise refused; candidate validation still
+/// requires INTEGER 0/1 storage in every cell.
+fn writer_boolean(ty: ScalarType, declared: &str) -> bool {
+    ty == ScalarType::Bool && declared.trim().eq_ignore_ascii_case(column_sql_type(ty))
 }
