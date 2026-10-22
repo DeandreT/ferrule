@@ -259,8 +259,13 @@ impl PdfWorkerManager {
         scratch: ScratchPolicy,
         _: ExclusiveReaperAdmission,
     ) -> Result<Self, Failure> {
-        super::linux::ordinary_sigchld()
-            .map_err(|e| Failure::io("ordinary exclusive SIGCHLD", e))?;
+        super::linux::ordinary_sigchld().map_err(|e| {
+            Failure::classified_io(
+                FailureKind::UnsupportedHost,
+                "ordinary exclusive SIGCHLD",
+                e,
+            )
+        })?;
         Ok(Self {
             program,
             scratch,
@@ -335,8 +340,13 @@ impl PdfWorkerManager {
                 e,
             ))
         })?;
-        super::linux::ordinary_sigchld()
-            .map_err(|e| BeginFailure::NoChild(Failure::io("fresh SIGCHLD admission", e)))?;
+        super::linux::ordinary_sigchld().map_err(|e| {
+            BeginFailure::NoChild(Failure::classified_io(
+                FailureKind::UnsupportedHost,
+                "fresh SIGCHLD admission",
+                e,
+            ))
+        })?;
         let (dir, id) = self
             .scratch
             .create_job()
