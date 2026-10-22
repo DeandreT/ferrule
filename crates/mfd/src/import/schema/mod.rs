@@ -28,6 +28,8 @@ mod xml_attribute_required;
 mod xml_ports;
 
 pub(super) use xml_attribute_required::validate_xml_attribute_required_metadata;
+#[cfg(test)]
+pub(super) use xml_ports::plain_entry_tree_leaf;
 
 pub use flextext::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
 

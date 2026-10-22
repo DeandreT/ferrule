@@ -7,12 +7,15 @@ use super::branch_owners::{self, BindingOrigins, DeclaredBranch, DeclaredBranche
 use super::{build_one, literal_constant_value, take_scope};
 use crate::import::graph::GraphBuilder;
 use crate::import::group_projection::TargetIteration;
+use crate::import::presence;
 use crate::import::schema::{ComponentFormat, SchemaComponent, schema_node_at};
 use crate::import::scope::{BindingOccurrence, ScopeBuilder, TargetLeaf};
 
 mod csv_x12;
 mod edi_json;
 mod json_implicit;
+#[cfg(test)]
+pub(in crate::import) use json_implicit::plain_schema;
 #[cfg(test)]
 mod json_tests;
 mod lowering;
@@ -138,15 +141,8 @@ fn total_string_value_map(
             }
         )
         || (0..=absolute.len()).any(|length| {
-            schema_node_at(source, &absolute[..length]).is_none_or(|node| {
-                node.nullable
-                    || node.container_nullable
-                    || node.recursive_ref.is_some()
-                    || !node.alternatives().is_empty()
-                    || node.dynamic_fields().is_some()
-                    || node.json_any
-                    || nullable_object_item_frame(source, &absolute[..length])
-            })
+            schema_node_at(source, &absolute[..length])
+                .is_none_or(|node| !value_map_domain_node(node))
         })
     {
         return None;
@@ -299,6 +295,16 @@ pub(super) fn ordinary_primary_json(builder: &GraphBuilder<'_>) -> bool {
     })
 }
 
+/// One node of a total string value-map input path: no JSON null at any
+/// level and no recursive, alternative, dynamic or arbitrary-JSON shape.
+pub(in crate::import) fn value_map_domain_node(node: &SchemaNode) -> bool {
+    presence::json_non_null(node)
+        && node.recursive_ref.is_none()
+        && node.alternatives().is_empty()
+        && node.dynamic_fields().is_none()
+        && !node.json_any
+}
+
 pub(super) fn ordinary_scalar_domain(
     path: &[String],
     anchor: &[String],
@@ -307,17 +313,14 @@ pub(super) fn ordinary_scalar_domain(
     path.len() <= MAX_DEPTH
         && anchor.len() <= MAX_DEPTH
         && (0..=path.len()).all(|length| {
-            schema_node_at(source, &path[..length]).is_some_and(|node| {
-                !node.nullable
-                    && !node.container_nullable
-                    && node.recursive_ref.is_none()
-                    && node.alternatives().is_empty()
-                    && node.dynamic_fields().is_none()
-                    && !node.json_any
-                    && !node.json_array_wrapper
-                    && !nullable_object_item_frame(source, &path[..length])
-            })
+            schema_node_at(source, &path[..length]).is_some_and(ordinary_scalar_domain_node)
         })
+}
+
+/// One node of an ordinary scalar path: [`value_map_domain_node`] outside a
+/// nested-array frame.
+pub(in crate::import) fn ordinary_scalar_domain_node(node: &SchemaNode) -> bool {
+    presence::json_plain_non_null(node) && value_map_domain_node(node)
 }
 
 fn conditional_branch(
@@ -789,7 +792,7 @@ fn classify_driver(
             if !primary.unambiguous_declared_output(*feed)
                 || primary.format != ComponentFormat::Json
                 || !anchor.starts_with(enclosing)
-                || nullable_object_item_frame(&primary.schema, anchor)
+                || !object_items_non_null(&primary.schema, anchor)
                 || !schema_node_at(&primary.schema, anchor).is_some_and(|node| {
                     node.repeating && matches!(node.kind, SchemaKind::Group { .. })
                 })
@@ -884,7 +887,7 @@ pub(super) fn physical_scalar<'a>(
     if primary.format != ComponentFormat::Json
         || !primary.unambiguous_declared_output(feed)
         || !path.starts_with(anchor)
-        || nullable_object_item_frame(&primary.schema, path)
+        || !object_items_non_null(&primary.schema, path)
         || path.first().is_some_and(|first| {
             builder
                 .source_names
@@ -893,9 +896,7 @@ pub(super) fn physical_scalar<'a>(
                 .any(|name| name == first)
         })
         || builder.has_source_node_functions(feed)
-        || !schema_node_at(&primary.schema, path).is_some_and(|node| {
-            node.is_scalar() && !node.repeating && !node.nullable && !node.container_nullable
-        })
+        || !schema_node_at(&primary.schema, path).is_some_and(json_scalar_leaf)
         || (anchor.len() + 1..=path.len()).any(|length| {
             schema_node_at(&primary.schema, &path[..length]).is_none_or(|node| {
                 node.repeating || node.dynamic_fields().is_some() || !node.alternatives().is_empty()
@@ -907,12 +908,20 @@ pub(super) fn physical_scalar<'a>(
     Some(path)
 }
 
+/// A singular JSON scalar whose value is never an explicit null.
+pub(in crate::import) fn json_scalar_leaf(node: &SchemaNode) -> bool {
+    node.is_scalar() && !node.repeating && presence::json_values_non_null(node)
+}
+
+/// Every step below `anchor` is a required property whose occurrence, array
+/// container or scalar value is never null. Object-item null is checked by the
+/// callers that cross object arrays.
 fn guaranteed_scalar(path: &[String], anchor: &[String], source: &SchemaNode) -> bool {
     (anchor.len() + 1..=path.len()).all(|length| {
         let parent = schema_node_at(source, &path[..length - 1]);
         let node = schema_node_at(source, &path[..length]);
-        parent.is_some_and(|parent| parent.required_fields().contains(&path[length - 1]))
-            && node.is_some_and(|node| !node.nullable && !node.container_nullable)
+        parent.is_some_and(|parent| presence::json_property_required(parent, &path[length - 1]))
+            && node.is_some_and(presence::json_values_non_null)
     })
 }
 
@@ -929,7 +938,7 @@ pub(super) fn actual_json_frame(
     primary.format == ComponentFormat::Json
         && !primary.schema.repeating
         && !anchor.is_empty()
-        && !nullable_object_item_frame(&primary.schema, anchor)
+        && object_items_non_null(&primary.schema, anchor)
         && !anchor.first().is_some_and(|first| {
             builder
                 .source_names
@@ -937,12 +946,7 @@ pub(super) fn actual_json_frame(
                 .skip(1)
                 .any(|name| name == first)
         })
-        && schema_node_at(&primary.schema, anchor).is_some_and(|node| {
-            matches!(node.kind, SchemaKind::Group { .. })
-                && !node.container_nullable
-                && node.alternatives().is_empty()
-                && node.dynamic_fields().is_none()
-        })
+        && schema_node_at(&primary.schema, anchor).is_some_and(json_frame_anchor)
         && (0..path.len()).any(|length| {
             scopes
                 .scope(&path[..length])
@@ -974,17 +978,19 @@ pub(super) fn actual_json_frame(
         })
 }
 
-// Item domains are distinct from array-container nullability. Omitted
-// item metadata retains the legacy inherited domain through the model helper.
-fn nullable_object_item_frame(source: &SchemaNode, path: &[String]) -> bool {
-    (0..=path.len()).any(|length| {
-        schema_node_at(source, &path[..length]).is_some_and(|node| {
-            node.repeating
-                && matches!(node.kind, SchemaKind::Group { .. })
-                && !node.json_array_wrapper
-                && !node.json_any
-                && node.json_single_container_nullable()
-        })
+/// An enclosing JSON object frame whose object, or whole array, is never null.
+pub(in crate::import) fn json_frame_anchor(node: &SchemaNode) -> bool {
+    matches!(node.kind, SchemaKind::Group { .. })
+        && presence::json_values_non_null(node)
+        && node.alternatives().is_empty()
+        && node.dynamic_fields().is_none()
+}
+
+// Item domains are distinct from array-container nullability. Omitted item
+// metadata retains the legacy inherited domain through the effective view.
+fn object_items_non_null(source: &SchemaNode, path: &[String]) -> bool {
+    (0..=path.len()).all(|length| {
+        schema_node_at(source, &path[..length]).is_none_or(presence::json_object_items_non_null)
     })
 }
 

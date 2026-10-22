@@ -122,8 +122,14 @@ A ferrule project is plain JSON built from four main concepts:
    `effective_json_nullability` derive one layer alone, so a boundary that
    consults only XML or only JSON is unaffected by the other format's metadata;
    the XSD and JSON Schema exporters write occurrences, attribute use, nil and
-   null from these layers. Consumers that combine these facts should use the
-   views rather than re-reading the individual flags.
+   null from these layers, and the JSON range validator admits null from the
+   scalar value layer. `json_property_presence` reports a JSON object
+   property's declared presence from its parent's required list, independent
+   of its null admission. `.mfd` import proofs that need present or non-null
+   source paths derive those facts from the views, keeping object-item null
+   separate from occurrence and array-container null. Consumers that combine
+   these facts should use the views rather than re-reading the individual
+   flags.
 2. **Graph nodes** compute scalar values. Nodes read source fields and positions,
    hold constants, call built-in functions, branch lazily, translate value maps,
    perform lookups and joins, reduce collections, and access selected runtime
