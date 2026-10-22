@@ -2377,10 +2377,10 @@ fn join_key_edit_exhausted_id_imported_owner_and_unsupported_admission_preserve_
                     json_document: true,
                     ..Default::default()
                 },
-                dynamic_path: Some(mapping::DynamicSourcePath {
-                    node: 99,
-                    iteration: vec!["Orders".into()],
-                }),
+                dynamic_path: Some(mapping::DynamicSourcePath::legacy(
+                    99,
+                    vec!["Orders".into()],
+                )),
             });
         }
         if kind == "correlated" {

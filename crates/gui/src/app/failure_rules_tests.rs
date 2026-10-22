@@ -545,10 +545,7 @@ fn source_failure_rule_static_named_and_flat_collections_use_real_path_choices()
         ("Reference", None),
         (
             "Dynamic",
-            Some(DynamicSourcePath {
-                node: 3,
-                iteration: vec!["Rows".into()],
-            }),
+            Some(DynamicSourcePath::legacy(3, vec!["Rows".into()])),
         ),
     ] {
         app.project.extra_sources.push(NamedSource {

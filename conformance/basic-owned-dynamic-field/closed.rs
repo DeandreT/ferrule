@@ -204,10 +204,7 @@ pub fn projects() -> Vec<(&'static str, Project, Vec<codegen::Diagnostic>)> {
     ));
     // A dynamic named owner stays closed.
     let mut p = projects::project("D02-named-object");
-    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: COLOR,
-        iteration: Vec::new(),
-    });
+    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(COLOR, Vec::new()));
     result.push((
         "C07-dynamic-owner",
         p,
@@ -257,7 +254,7 @@ pub fn programs(
     let mut dynamic = base.clone();
     dynamic.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: COLOR,
-        driver: codegen::SourceIteration::new(path(&["Rows"])),
+        driver: codegen::SourceIteration::new(path(&["Rows"])).into(),
     });
     vec![
         (

@@ -1175,6 +1175,9 @@ mod owned_sequence_item_at_tests;
 #[path = "tests/owned_dynamic_field.rs"]
 mod owned_dynamic_field_tests;
 #[cfg(test)]
+#[path = "tests/owned_dynamic_loading.rs"]
+mod owned_dynamic_loading_tests;
+#[cfg(test)]
 #[path = "tests/owned_failure_iteration.rs"]
 mod owned_failure_iteration_tests;
 

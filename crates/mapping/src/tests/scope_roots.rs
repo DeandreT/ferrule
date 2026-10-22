@@ -246,10 +246,7 @@ fn pruning_keeps_exactly_the_visited_roots() {
             path: String::new(),
             schema: ir::SchemaNode::group("Lookup", Vec::new()),
             options: Default::default(),
-            dynamic_path: Some(crate::DynamicSourcePath {
-                node: 23,
-                iteration: Vec::new(),
-            }),
+            dynamic_path: Some(crate::DynamicSourcePath::legacy(23, Vec::new())),
         }],
         extra_targets: vec![crate::NamedTarget {
             name: "extra".into(),

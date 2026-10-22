@@ -62,10 +62,7 @@ mod tests {
                 path: String::new(),
                 schema: SchemaNode::group("Lookup", Vec::new()),
                 options: Default::default(),
-                dynamic_path: Some(crate::DynamicSourcePath {
-                    node: 3,
-                    iteration: Vec::new(),
-                }),
+                dynamic_path: Some(crate::DynamicSourcePath::legacy(3, Vec::new())),
             }],
             extra_targets: Vec::new(),
             failure_rules: vec![

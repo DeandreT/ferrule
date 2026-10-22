@@ -285,7 +285,7 @@ fn dynamic_physical_sources_and_output_documents_remain_refused() -> TestResult<
     let mut dynamic = program.clone();
     dynamic.extra_sources[0].dynamic = Some(DynamicSourceProgram {
         path: 41,
-        driver: SourceIteration::new(vec!["Items".into()]),
+        driver: SourceIteration::new(vec!["Items".into()]).into(),
     });
     originals.push((
         "dynamic_source",

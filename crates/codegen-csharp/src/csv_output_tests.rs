@@ -309,7 +309,7 @@ fn csv_emission_keeps_typed_dialect_and_named_boundary_refusals() {
     assert!(emit_with_csv_output(&named, &CsvOutputPolicy::default()).is_ok());
     named.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 0,
-        driver: codegen::SourceIteration::new(Vec::new()),
+        driver: codegen::SourceIteration::new(Vec::new()).into(),
     });
     assert!(emit_with_csv_output(&named, &CsvOutputPolicy::default()).is_ok());
     named.extra_sources.clear();
@@ -438,7 +438,7 @@ fn dynamic_csv_companions_delegate_once_and_preserve_complete_existing_api_bodie
         source: SchemaNode::group("Dynamic", Vec::new()),
         dynamic: Some(codegen::DynamicSourceProgram {
             path: 0,
-            driver: codegen::SourceIteration::new(Vec::new()),
+            driver: codegen::SourceIteration::new(Vec::new()).into(),
         }),
     });
     let ordinary = emit(&dynamic).unwrap();

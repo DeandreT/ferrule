@@ -15,6 +15,7 @@ mod windows;
 pub(crate) use windows::render_public_basic_owned_adjacency_tree_source;
 pub(crate) use windows::render_public_basic_owned_collection_aggregates_source;
 pub(crate) use windows::render_public_basic_owned_dynamic_field_source;
+pub(crate) use windows::render_public_basic_owned_dynamic_loading_source;
 pub(crate) use windows::render_public_basic_owned_failure_source;
 pub(crate) use windows::render_public_basic_owned_group_adjacent_by_source;
 pub(crate) use windows::render_public_basic_owned_group_ending_with_source;
@@ -35,6 +36,8 @@ pub(crate) use windows::render_public_basic_owned_xml_mixed_content_source;
 pub(crate) use windows::render_public_basic_owned_xml_serialize_source;
 #[path = "owned_basic_aggregate.rs"]
 mod aggregate;
+#[path = "owned_basic_dynamic_loading.rs"]
+mod dynamic_loading;
 #[path = "owned_basic_group_by.rs"]
 mod group_by;
 #[path = "owned_basic_joins.rs"]
@@ -771,31 +774,47 @@ fn private_checked_input_reached() {
 "#;
 
 fn render_checked_entries(program: &Program) -> String {
-    let mut source = String::from(
+    render_checked_entries_with_loader(program, false)
+}
+
+/// With `loader`, both private entries also take the optional host loader that
+/// owned dynamic loading scopes request documents from.
+pub(super) fn render_checked_entries_with_loader(program: &Program, loader: bool) -> String {
+    let (parameter, context) = if loader {
+        (
+            ",\n    loader: Option<&'src dyn DynamicSourceLoader>",
+            "    let context = match loader {\n        Some(loader) => roots.root_context_with_dynamic_source_loader(execution, loader)?,\n        None => match execution { Some(e) => roots.root_context_with_execution(e)?, None => roots.root_context()? },\n    };\n",
+        )
+    } else {
+        (
+            "",
+            "    let context = match execution { Some(e) => roots.root_context_with_execution(e)?, None => roots.root_context()? };\n",
+        )
+    };
+    let mut source = format!(
         r#"
-enum PrivateCheckedBasicOutput { All(ExecutionOutputs), Selected(SelectedTargetOutput) }
+enum PrivateCheckedBasicOutput {{ All(ExecutionOutputs), Selected(SelectedTargetOutput) }}
 
 pub(crate) fn execute_checked_private_owned_basic<'name, 'src>(
     source: &'src Instance, supplied: &[BasicNamedSourceInput<'name, 'src>],
-    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits,
-) -> Result<ExecutionOutputs, RuntimeError> {
+    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits{parameter},
+) -> Result<ExecutionOutputs, RuntimeError> {{
     private_checked_factory_reached();
     let roots = BasicSourceRoots::try_from_named_inputs(source, PRIVATE_CHECKED_ALL_INPUTS,
-        supplied.iter().copied().map(|input| { private_checked_input_reached(); input }), limits)?;
-    let context = match execution { Some(e) => roots.root_context_with_execution(e)?, None => roots.root_context()? };
-    match execute_private_checked_basic_context(&context, None)? {
+        supplied.iter().copied().map(|input| {{ private_checked_input_reached(); input }}), limits)?;
+{context}    match execute_private_checked_basic_context(&context, None)? {{
         PrivateCheckedBasicOutput::All(output) => Ok(output),
         PrivateCheckedBasicOutput::Selected(_) => unreachable!("checked all-output route"),
-    }
-}
+    }}
+}}
 
 pub(crate) fn execute_selected_checked_private_owned_basic<'name, 'src>(
     source: &'src Instance, supplied: &[BasicNamedSourceInput<'name, 'src>],
-    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits, selection: TargetSelection<'_>,
-) -> Result<SelectedTargetOutput, RuntimeError> {
-    let (selected, catalogue) = match selection {
+    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits, selection: TargetSelection<'_>{parameter},
+) -> Result<SelectedTargetOutput, RuntimeError> {{
+    let (selected, catalogue) = match selection {{
         TargetSelection::Primary => (0, PRIVATE_CHECKED_PRIMARY_INPUTS),
-        TargetSelection::Named(name) => match name {
+        TargetSelection::Named(name) => match name {{
 "#,
     );
     for (index, target) in program.extra_targets.iter().enumerate() {
@@ -805,25 +824,24 @@ pub(crate) fn execute_selected_checked_private_owned_basic<'name, 'src>(
             index + 1
         ));
     }
-    source.push_str(r#"            _ => return Err(RuntimeError::UnknownTarget { name: name.to_string() }),
-        },
-    };
+    source.push_str(&format!(r#"            _ => return Err(RuntimeError::UnknownTarget {{ name: name.to_string() }}),
+        }},
+    }};
     private_checked_factory_reached();
     let roots = BasicSourceRoots::try_from_named_inputs(source, catalogue,
-        supplied.iter().copied().map(|input| { private_checked_input_reached(); input }), limits)?;
-    let context = match execution { Some(e) => roots.root_context_with_execution(e)?, None => roots.root_context()? };
-    match execute_private_checked_basic_context(&context, Some(selected))? {
+        supplied.iter().copied().map(|input| {{ private_checked_input_reached(); input }}), limits)?;
+{context}    match execute_private_checked_basic_context(&context, Some(selected))? {{
         PrivateCheckedBasicOutput::Selected(output) => Ok(output),
         PrivateCheckedBasicOutput::All(_) => unreachable!("checked selected-output route"),
-    }
-}
+    }}
+}}
 
 // This checked-only shared context adopts the normalized roots once.
 // Ordinary global source rules run before any selected or all-target output.
 fn execute_private_checked_basic_context(
     context: &BasicScopeContext<'_>, selected: Option<usize>,
-) -> Result<PrivateCheckedBasicOutput, RuntimeError> {
-"#);
+) -> Result<PrivateCheckedBasicOutput, RuntimeError> {{
+"#));
     if !program.failure_rules.is_empty() {
         source.push_str("    evaluate_basic_failure_rules(context)?;\n");
     }

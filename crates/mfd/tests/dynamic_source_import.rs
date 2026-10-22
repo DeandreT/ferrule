@@ -92,7 +92,7 @@ fn connected_document_input_becomes_a_typed_dynamic_source()
         .dynamic_path
         .as_ref()
         .ok_or("connected source has no dynamic path")?;
-    assert_eq!(dynamic.iteration, ["File"]);
+    assert_eq!(dynamic.legacy_driver(), Some(&["File".to_owned()][..]));
     assert!(imported.project.graph.nodes.contains_key(&dynamic.node));
     assert_eq!(
         imported.project.root.children[0]

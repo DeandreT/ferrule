@@ -478,10 +478,7 @@ fn contiguous_dangling_ids_across_project_owners_are_reserved_once_and_preserved
             json_document: true,
             ..FormatOptions::default()
         },
-        dynamic_path: Some(DynamicSourcePath {
-            node: 35,
-            iteration: vec!["Rows".into()],
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(35, vec!["Rows".into()])),
     }];
     project.extra_targets[0]
         .root

@@ -318,10 +318,7 @@ fn standard_stream_refusal_precedes_stdin_and_trace_staging() -> anyhow::Result<
         path: String::new(),
         schema: project.source.clone(),
         options: FormatOptions::default(),
-        dynamic_path: Some(DynamicSourcePath {
-            node: 0,
-            iteration: Vec::new(),
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(0, Vec::new())),
     });
     let project_path = write_project(&directory.join("mapping.json"), &project)?;
     let trace = directory.join("traces/run.jsonl");

@@ -250,10 +250,7 @@ fn validates_dynamic_extra_source_ownership() {
         path: String::new(),
         schema: SchemaNode::group("records", Vec::new()),
         options: Default::default(),
-        dynamic_path: Some(DynamicSourcePath {
-            node: 99,
-            iteration: vec!["missing".into()],
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(99, vec!["missing".into()])),
     });
 
     let issues = validate(&project);

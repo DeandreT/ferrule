@@ -13,6 +13,7 @@ use crate::{EmitError, literal};
 
 mod failures;
 mod filter_map;
+mod owned_dynamic_loading;
 mod owned_group_by;
 mod owned_join;
 mod owned_json_api;
@@ -1301,7 +1302,10 @@ fn render_source_iteration_candidates(
             "        var dynamic_source_items_{scope} = global::Ferrule.Runtime.FerruleDynamicSourceItems.Load(\n            context,\n            {},\n            ",
             literal::string(&source_program.name),
         ));
-        render_path(dynamic.driver.path(), output);
+        let Some(driver) = dynamic.driver.legacy() else {
+            unreachable!("owned dynamic drivers are refused before legacy emission")
+        };
+        render_path(driver.path(), output);
         output.push_str(",\n            ");
         render_path(&source_path[1..], output);
         output.push_str(&format!(
@@ -2578,11 +2582,43 @@ pub(super) fn render_basic_scopes_with_group_into_blocks<'a>(
     )
 }
 
+/// IntoBlocks controls plus owned dynamic loading scopes.
+pub(super) fn render_basic_scopes_with_owned_dynamic_loading<'a>(
+    program: &'a Program,
+    output: &mut String,
+) -> Result<BasicScopeIndices<'a>, EmitError> {
+    render_basic_scopes_loading(
+        program,
+        output,
+        true,
+        crate::owned_basic::TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
+        &owned_dynamic_loading::loading_scopes(program),
+    )
+}
+
+/// Owned dynamic paths a loading scope calls in each driver item.
+pub(super) fn owned_dynamic_loading_paths(program: &Program) -> Vec<NodeId> {
+    owned_dynamic_loading::loading_scopes(program)
+        .values()
+        .map(|loading| loading.path)
+        .collect()
+}
+
 fn render_basic_scopes_profile<'a>(
     program: &'a Program,
     output: &mut String,
     allow_windows: bool,
     grouping: crate::owned_basic::TargetControls,
+) -> Result<BasicScopeIndices<'a>, EmitError> {
+    render_basic_scopes_loading(program, output, allow_windows, grouping, &BTreeMap::new())
+}
+
+fn render_basic_scopes_loading<'a>(
+    program: &'a Program,
+    output: &mut String,
+    allow_windows: bool,
+    grouping: crate::owned_basic::TargetControls,
+    loading: &BTreeMap<usize, codegen::OwnedDynamicLoading<'_>>,
 ) -> Result<BasicScopeIndices<'a>, EmitError> {
     let mut scopes = Vec::new();
     let primary = add_scope(&program.root, &mut scopes);
@@ -2599,7 +2635,16 @@ fn render_basic_scopes_profile<'a>(
         }
     }
     for (index, scope) in scopes.iter().enumerate() {
-        output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleInstance Scope_{index}(\n        global::Ferrule.Runtime.FerruleBasicScopeContext context)\n    {{\n"));
+        // A loading scope's body walks the loaded owner in the receiving view
+        // its wrapper attaches.
+        let body = match loading.get(&index) {
+            Some(loading) => {
+                owned_dynamic_loading::render_wrapper(index, loading, output);
+                "ScopeLoaded"
+            }
+            None => "Scope",
+        };
+        output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleInstance {body}_{index}(\n        global::Ferrule.Runtime.FerruleBasicScopeContext context)\n    {{\n"));
         if allow_windows && !owned_routes[index] {
             output.push_str(&format!(
                 "        return Scope_{index}(context.LegacyView);\n    }}\n"

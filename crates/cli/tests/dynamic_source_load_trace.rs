@@ -83,10 +83,7 @@ fn project(primary: bool, dynamic: bool) -> Project {
                 },
                 schema: document_schema(),
                 options: Default::default(),
-                dynamic_path: dynamic.then_some(DynamicSourcePath {
-                    node: 0,
-                    iteration: Vec::new(),
-                }),
+                dynamic_path: dynamic.then_some(DynamicSourcePath::legacy(0, Vec::new())),
             }]
         },
         extra_targets: Vec::new(),

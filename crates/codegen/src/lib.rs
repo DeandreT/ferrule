@@ -75,16 +75,17 @@ pub use lower::{
 };
 pub use model::{
     AggregateFunction, AggregateValue, Binding, DelimitedTextField, DelimitedTextFieldError,
-    DynamicDocumentIteration, DynamicSourceProgram, DynamicTargetBinding, DynamicTargetChild,
-    Expression, ExpressionNode, FailureIteration, FailureRule, FailureSelection,
-    FlexTextFieldProfile, GeneratedFilterMapCapture, GeneratedFilterMapV1, GeneratedRange,
-    GeneratedSequence, GroupingPlan, IterationOutput, IterationPlan, IterationSource,
-    NamedSourceProgram, NamedTargetProgram, NamedXmlInputPolicy, NamedXmlOutputPolicy,
-    OptionalPresence, OwnedSourceIteration, Program, RuntimeValue, SUPPORTED_SCALAR_CALLS,
-    ScalarFunction, ScalarTargetDomain, ScopeSequence, SequenceWindow, SortFilterOrder, SortKey,
-    SortPlan, SourceIteration, TargetConstruction, TargetScope, UserFunctionParameter,
-    UserFunctionProgram, XmlBoundaryProgram, XmlInputPolicy, XmlInputProfile,
-    XmlMixedContentElement, XmlMixedContentReplacement, XmlOutputMode, XmlOutputPolicy,
+    DynamicDocumentIteration, DynamicSourceDriver, DynamicSourceProgram, DynamicTargetBinding,
+    DynamicTargetChild, Expression, ExpressionNode, FailureIteration, FailureRule,
+    FailureSelection, FlexTextFieldProfile, GeneratedFilterMapCapture, GeneratedFilterMapV1,
+    GeneratedRange, GeneratedSequence, GroupingPlan, IterationOutput, IterationPlan,
+    IterationSource, NamedSourceProgram, NamedTargetProgram, NamedXmlInputPolicy,
+    NamedXmlOutputPolicy, OptionalPresence, OwnedSourceIteration, Program, RuntimeValue,
+    SUPPORTED_SCALAR_CALLS, ScalarFunction, ScalarTargetDomain, ScopeSequence, SequenceWindow,
+    SortFilterOrder, SortKey, SortPlan, SourceIteration, TargetConstruction, TargetScope,
+    UserFunctionParameter, UserFunctionProgram, XmlBoundaryProgram, XmlInputPolicy,
+    XmlInputProfile, XmlMixedContentElement, XmlMixedContentReplacement, XmlOutputMode,
+    XmlOutputPolicy,
 };
 pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_adjacency_tree;
 pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy;
@@ -179,6 +180,14 @@ pub use validate::validate_basic_owned_collection_aggregates_emission;
 pub use validate::{
     validate_basic_owned_sequence_exists_emission,
     validate_program_with_basic_owned_sequence_exists,
+};
+
+// Explicit owned dynamic driver loading generation profile.
+pub use lower::lower_with_basic_owned_dynamic_loading;
+pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_dynamic_loading;
+pub use validate::{
+    OwnedDynamicLoading, owned_dynamic_loading, validate_basic_owned_dynamic_loading_emission,
+    validate_program_with_basic_owned_dynamic_loading,
 };
 
 // Explicit owned SequenceAggregate generation profile.

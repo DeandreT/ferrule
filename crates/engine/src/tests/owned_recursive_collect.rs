@@ -511,10 +511,8 @@ fn function_bodies_and_dynamic_owners_refuse_owned_producers() {
         })
     );
     let mut dynamic = project(item_at("Lookup", &["Dir"], 3), vec![]);
-    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 1,
-        iteration: path(&["Dir"]),
-    });
+    dynamic.extra_sources[0].dynamic_path =
+        Some(mapping::DynamicSourcePath::legacy(1, path(&["Dir"])));
     assert_eq!(
         run(&dynamic, &primary(), Vec::new()),
         Err(EngineError::UnsupportedOwnedContext {

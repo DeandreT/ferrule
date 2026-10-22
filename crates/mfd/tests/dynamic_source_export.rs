@@ -90,10 +90,7 @@ fn project() -> Project {
             path: String::new(),
             schema: document,
             options: Default::default(),
-            dynamic_path: Some(DynamicSourcePath {
-                node: 0,
-                iteration: vec!["File".into()],
-            }),
+            dynamic_path: Some(DynamicSourcePath::legacy(0, vec!["File".into()])),
         }],
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
@@ -184,7 +181,7 @@ fn dynamic_xml_source_roundtrips_and_executes_in_each_driver_context() -> Result
         .dynamic_path
         .as_ref()
         .ok_or("roundtrip source lost its dynamic path")?;
-    assert_eq!(dynamic_path.iteration, ["File"]);
+    assert_eq!(dynamic_path.legacy_driver(), Some(&["File".to_owned()][..]));
     assert!(
         reimported
             .project

@@ -22,6 +22,8 @@ pub(super) struct ScopeSchemas<'a> {
     pub(super) target: Option<&'a SchemaNode>,
     pub(super) parent_source: Option<&'a SchemaNode>,
     pub(super) owner: &'a ValidationScopeLocation,
+    /// Owned dynamic sources an enclosing iteration already roots.
+    pub(super) rooted: &'a [&'a str],
 }
 
 pub(super) fn validate_scope(
@@ -139,6 +141,7 @@ pub(super) fn validate_scope(
                     owner: &schemas
                         .owner
                         .descendant(ValidationScopeStep::Segment(index)),
+                    rooted: schemas.rooted,
                 },
                 path,
                 active_joins,
@@ -463,6 +466,16 @@ pub(super) fn validate_scope(
         issues,
     );
 
+    super::dynamic_loading::validate_scope(project, scope, schemas.rooted, &location, issues);
+    // Descendants of an owned iteration of an owned dynamic source see its
+    // current document rather than loading again.
+    let mut rooted = schemas.rooted.to_vec();
+    if let Some(mapping::SourceSelectorRef::Owned(source)) = scope.source_selector()
+        && let mapping::SourceOwner::Named { name } = &source.owner
+        && super::dynamic_loading::owned_dynamic(project, name).is_some()
+    {
+        rooted.push(name);
+    }
     match scope.source_selector() {
         Some(mapping::SourceSelectorRef::Owned(source)) => {
             super::schema::validate_owned_collection(project, source, &location, issues);
@@ -900,6 +913,7 @@ pub(super) fn validate_scope(
                 target: child_target,
                 parent_source: current_source,
                 owner: &child_owner,
+                rooted: &rooted,
             },
             path,
             &active_joins,
@@ -973,6 +987,7 @@ pub(super) fn validate_scope(
                 owner: &schemas
                     .owner
                     .descendant(ValidationScopeStep::DynamicChild(index)),
+                rooted: &rooted,
             },
             path,
             &active_joins,

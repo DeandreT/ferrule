@@ -1020,10 +1020,7 @@ fn generated_rule_remaining_cross_canvas_graph_rule_and_dynamic_references_block
                     path: "reference.json".into(),
                     schema: app.project.source.clone(),
                     options: FormatOptions::default(),
-                    dynamic_path: Some(DynamicSourcePath {
-                        node: item,
-                        iteration: Vec::new(),
-                    }),
+                    dynamic_path: Some(DynamicSourcePath::legacy(item, Vec::new())),
                 });
             }
             5 => {
@@ -2689,10 +2686,7 @@ fn generated_regex_remaining_references_block_retirement_and_disconnection_retai
                 path: "reference.json".into(),
                 schema: app.project.source.clone(),
                 options: FormatOptions::default(),
-                dynamic_path: Some(DynamicSourcePath {
-                    node: 14,
-                    iteration: Vec::new(),
-                }),
+                dynamic_path: Some(DynamicSourcePath::legacy(14, Vec::new())),
             }),
             4 => {
                 app.project.graph.nodes.insert(

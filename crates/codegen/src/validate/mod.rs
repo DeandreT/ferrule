@@ -4,8 +4,8 @@ use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::NodeId;
 
 use crate::{
-    Expression, IterationOutput, IterationSource, Program, ScalarTargetDomain, TargetConstruction,
-    TargetScope,
+    DynamicSourceDriver, Expression, IterationOutput, IterationSource, Program, ScalarTargetDomain,
+    TargetConstruction, TargetScope,
 };
 
 mod adjacency_tree;
@@ -197,6 +197,16 @@ pub fn validate_program_with_basic_owned_collection_aggregates(
     program: &Program,
 ) -> Result<(), ProgramValidationError> {
     owned_sources::validate_basic_owned_collection_aggregates_emission(program)
+}
+
+/// Validates owned dynamic driver loading, composed with the owned dynamic
+/// source-field profile. A loading scope's exact driver walk, path expression
+/// and loaded-document field and position reads are admitted; every older
+/// validator keeps refusing owned drivers.
+pub fn validate_program_with_basic_owned_dynamic_loading(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_dynamic_loading_emission(program)
 }
 
 /// Validates owned inner joins, their tuple reads and owned joined aggregates,
@@ -397,6 +407,33 @@ fn validate_program_with_owned_joins(
     owned_xml: owned_sources::OwnedXmlPolicy,
     join: owned_sources::JoinPolicy,
 ) -> Result<(), ProgramValidationError> {
+    validate_program_with_owned_dynamic_loading(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        dynamic_field,
+        owned_xml,
+        join,
+        owned_sources::DynamicLoadingPolicy::Closed,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_program_with_owned_dynamic_loading(
+    program: &Program,
+    profile: owned_sources::BasicOwnedProfile,
+    failures: owned_sources::FailurePolicy,
+    sequence_item_at: owned_sources::SequenceItemAtPolicy,
+    path_hierarchy: owned_sources::PathHierarchyPolicy,
+    adjacency_tree: owned_sources::AdjacencyTreePolicy,
+    dynamic_field: owned_sources::DynamicFieldPolicy,
+    owned_xml: owned_sources::OwnedXmlPolicy,
+    join: owned_sources::JoinPolicy,
+    dynamic_loading: owned_sources::DynamicLoadingPolicy,
+) -> Result<(), ProgramValidationError> {
     xml::validate_boundary(program)?;
     validate_schema_metadata("source", &program.source)?;
     for source in &program.extra_sources {
@@ -447,7 +484,7 @@ fn validate_program_with_owned_joins(
     // that no target/failure root reaches in a directly constructed Program.
     sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)?;
     owned_sources::validate_structure(program)?;
-    owned_sources::validate_closed_contexts_with_joins(
+    owned_sources::validate_closed_contexts_with_dynamic_loading(
         program,
         profile,
         failures,
@@ -457,6 +494,7 @@ fn validate_program_with_owned_joins(
         dynamic_field,
         owned_xml,
         join,
+        dynamic_loading,
     )
 }
 
@@ -515,22 +553,33 @@ fn validate_dynamic_sources(
                 expression: dynamic.path,
             });
         }
-        if dynamic.driver.path().first().is_some_and(|first| {
-            program
-                .extra_sources
-                .iter()
-                .any(|candidate| candidate.name == *first && candidate.dynamic.is_some())
-        }) {
-            return Err(ProgramValidationError::InvalidDynamicSourceDriver {
-                source: source.name.clone(),
-                driver: dynamic.driver.path().to_vec(),
-            });
-        }
-        let Some(driver) = sources.schema_at(None, dynamic.driver.path()) else {
-            return Err(ProgramValidationError::InvalidDynamicSourceDriver {
-                source: source.name.clone(),
-                driver: dynamic.driver.path().to_vec(),
-            });
+        // An owned driver's endpoint and collection are typed owned requests,
+        // checked by the structural pass; only its path expression is checked here.
+        let driver = match &dynamic.driver {
+            DynamicSourceDriver::Owned(driver) => match sources.owned_schema_at(driver.source()) {
+                Some(driver) => driver,
+                None => continue,
+            },
+            DynamicSourceDriver::Legacy(driver) => {
+                if driver.path().first().is_some_and(|first| {
+                    program
+                        .extra_sources
+                        .iter()
+                        .any(|candidate| candidate.name == *first && candidate.dynamic.is_some())
+                }) {
+                    return Err(ProgramValidationError::InvalidDynamicSourceDriver {
+                        source: source.name.clone(),
+                        driver: driver.path().to_vec(),
+                    });
+                }
+                let Some(driver) = sources.schema_at(None, driver.path()) else {
+                    return Err(ProgramValidationError::InvalidDynamicSourceDriver {
+                        source: source.name.clone(),
+                        driver: driver.path().to_vec(),
+                    });
+                };
+                driver
+            }
         };
         joins::validate_expression(dynamic.path, expressions, sources, Some(driver), &[], false)?;
     }
@@ -1764,6 +1813,9 @@ fn validate_scope(
 pub use owned_sources::validate_basic_owned_adjacency_tree_emission;
 pub use owned_sources::validate_basic_owned_path_hierarchy_emission;
 pub use owned_sources::validate_basic_owned_recursive_filter_emission;
+pub use owned_sources::{
+    OwnedDynamicLoading, owned_dynamic_loading, validate_basic_owned_dynamic_loading_emission,
+};
 pub use owned_sources::{
     is_basic_owned_primary_row_failure, validate_basic_owned_dynamic_field_emission,
     validate_basic_owned_emission, validate_basic_owned_failure_source_emission,

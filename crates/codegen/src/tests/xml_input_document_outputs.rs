@@ -359,7 +359,7 @@ fn every_input_and_output_policy_is_validated_without_partial_admission() {
     let mut dynamic = valid;
     dynamic.extra_sources[2].dynamic = Some(DynamicSourceProgram {
         path: 0,
-        driver: SourceIteration::new(vec!["Alpha".into()]),
+        driver: SourceIteration::new(vec!["Alpha".into()]).into(),
     });
     assert_eq!(
         dynamic.xml_output_mode(),

@@ -158,10 +158,7 @@ fn dynamic_non_xml_source_rejects_without_replacing_the_design() -> Result<(), B
     secondary.options.xml_document = false;
     secondary.options.delimiter = Some(',');
     secondary.options.has_header_row = Some(true);
-    secondary.dynamic_path = Some(DynamicSourcePath {
-        node: path_node,
-        iteration: vec!["RowsA".into()],
-    });
+    secondary.dynamic_path = Some(DynamicSourcePath::legacy(path_node, vec!["RowsA".into()]));
 
     let temp = TempDir::new()?;
     let design = temp.0.join("dynamic-csv.mfd");

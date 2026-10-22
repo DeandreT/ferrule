@@ -287,7 +287,10 @@ pub(super) fn prepare(
         .as_ref()
         .ok_or("real dynamic declaration")?;
     assert_eq!(dynamic.path, 0);
-    assert_eq!(dynamic.driver.path(), ["Driver"]);
+    assert_eq!(
+        dynamic.driver.legacy().ok_or("legacy driver")?.path(),
+        ["Driver"]
+    );
     let policy = program
         .xml_boundary
         .as_ref()

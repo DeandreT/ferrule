@@ -871,10 +871,7 @@ fn owned_joined_aggregates_stay_closed_outside_basic_contexts() {
     closed(&project, 3, OwnedCapabilityContext::FailureRule);
     // A dynamic owner is unavailable before evaluation.
     let mut project = root_value(vec![(1, count()), (2, constant(text_value("ref.json")))]);
-    project.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 2,
-        iteration: Vec::new(),
-    });
+    project.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(2, Vec::new()));
     closed(&project, 1, OwnedCapabilityContext::DynamicOwner);
     // Isolated functions refuse the owned kind.
     let function = FunctionId::new(1);

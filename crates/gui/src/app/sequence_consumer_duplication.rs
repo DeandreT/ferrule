@@ -1077,7 +1077,14 @@ fn validate_parent_contexts(
             let context = SourceContext {
                 document: usize::MAX - 1,
                 introducing_scopes: vec![vec![index]],
-                paths: vec![value.iteration.clone()],
+                paths: vec![
+                    value
+                        .legacy_driver()
+                        .ok_or(DuplicationError::UnavailableContext {
+                            context: "Owned dynamic driver",
+                        })?
+                        .to_vec(),
+                ],
             };
             contexts.extend(reached_contexts(
                 &project.graph,

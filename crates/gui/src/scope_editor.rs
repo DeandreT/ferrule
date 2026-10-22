@@ -603,6 +603,23 @@ pub(crate) fn show_scope_editor(
         format!("scope: {}", scope.target_field)
     });
 
+    if let ScopeIteration::OwnedSource { source, .. } = &scope.iteration
+        && let Some(dynamic) = source_paths.ownership().owned_dynamic_driver(&source.owner)
+    {
+        ui.label("This scope loads an owned dynamic input; this saved scope is read-only.");
+        ui.monospace(format!(
+            "loads: {}",
+            mapping::describe_owned_collection(source)
+        ));
+        if let Some(driver) = dynamic.owned_driver() {
+            ui.monospace(format!(
+                "driver: {}",
+                mapping::describe_owned_collection(driver)
+            ));
+        }
+        ui.monospace(format!("document path node: {}", dynamic.node));
+        return None;
+    }
     if let ScopeIteration::OwnedSource {
         source,
         output_path,
@@ -1617,6 +1634,83 @@ mod tests {
             serde_json::to_value(&original).unwrap()
         );
         assert!(scope_iterates(&scope));
+    }
+
+    #[test]
+    fn owned_dynamic_loading_scopes_render_read_only_and_stay_unchanged() {
+        use crate::test_ui::ContextExt as _;
+
+        let docs = mapping::SourceOwner::Named {
+            name: "Docs".into(),
+        };
+        let original = Scope {
+            target_field: "Docs".into(),
+            iteration: ScopeIteration::OwnedSource {
+                source: mapping::OwnedSourceRef {
+                    owner: docs,
+                    path: Vec::new(),
+                },
+                output_path: None,
+            },
+            bindings: vec![mapping::Binding {
+                target_field: "Title".into(),
+                node: 2,
+            }],
+            ..Scope::default()
+        };
+        assert!(source_iteration::owned_editable(&original));
+        let schema = ir::SchemaNode::group(
+            "Input",
+            vec![
+                ir::SchemaNode::group(
+                    "Files",
+                    vec![ir::SchemaNode::scalar("Path", ir::ScalarType::String)],
+                )
+                .repeating(),
+            ],
+        );
+        let sources = [mapping::NamedSource {
+            name: "Docs".into(),
+            path: String::new(),
+            schema: ir::SchemaNode::group(
+                "Doc",
+                vec![ir::SchemaNode::scalar("Title", ir::ScalarType::String)],
+            ),
+            options: Default::default(),
+            dynamic_path: Some(mapping::DynamicSourcePath::owned(
+                1,
+                mapping::OwnedSourceRef {
+                    owner: mapping::SourceOwner::Primary,
+                    path: vec!["Files".into()],
+                },
+            )),
+        }];
+        let catalog = SourcePathCatalog::new(&schema, &sources);
+        let mut scope = original.clone();
+        let context = egui::Context::default();
+        let mut action = None;
+        let _ = context.run_test_ui(Default::default(), |ui| {
+            action = show_scope_editor(
+                ui,
+                &mut scope,
+                &Graph::default(),
+                &catalog,
+                &[],
+                ScopeEditorOwner {
+                    nested: true,
+                    primary_root_bindings: false,
+                    target_xml_types: &[],
+                    target_xml_default: None,
+                    target_type_editable: false,
+                },
+                ScopeOutputProfile::XmlElements,
+            );
+        });
+        assert!(action.is_none());
+        assert_eq!(
+            serde_json::to_value(&scope).unwrap(),
+            serde_json::to_value(&original).unwrap()
+        );
     }
 
     #[test]

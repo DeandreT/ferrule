@@ -34,6 +34,9 @@ enum NamedAccess {
     Shadowed,
     /// Neither form can address this input; the reason names the conflict.
     Unavailable(&'static str),
+    /// Documents load per driver item through an owned dynamic driver; the
+    /// editor does not author reads of them.
+    OwnedDynamic,
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +62,8 @@ pub(crate) struct SourceOwnership {
     primary_aliases: BTreeSet<String>,
     uses_ownership: bool,
     collections: Vec<OwnedCollectionChoice>,
+    /// Saved owned dynamic drivers, shown read-only beside their loading scopes.
+    owned_dynamic: Vec<(String, mapping::DynamicSourcePath)>,
 }
 
 /// Whether the project already holds an owned graph node, scope or failure walk.
@@ -82,7 +87,12 @@ impl SourceOwnership {
             .enumerate()
             .map(|(index, source)| {
                 let static_root = source.dynamic_path.is_none();
+                let owned_dynamic = source
+                    .dynamic_path
+                    .as_ref()
+                    .is_some_and(|dynamic| dynamic.owned_driver().is_some());
                 let access = match crate::canvas::source_alias_conflict(primary, sources, index) {
+                    _ if owned_dynamic => NamedAccess::OwnedDynamic,
                     None => NamedAccess::Unambiguous,
                     Some(conflict) if !static_root || !alias_is_addressable(sources, index) => {
                         NamedAccess::Unavailable(conflict)
@@ -131,12 +141,38 @@ impl SourceOwnership {
             }
             add_repeating(&source.schema, &owner, &mut collections);
         }
+        let owned_dynamic = sources
+            .iter()
+            .filter_map(|source| {
+                let dynamic = source.dynamic_path.as_ref()?;
+                dynamic
+                    .owned_driver()
+                    .is_some()
+                    .then(|| (source.name.clone(), dynamic.clone()))
+            })
+            .collect();
         Self {
             named,
             primary_aliases,
             uses_ownership: false,
             collections,
+            owned_dynamic,
         }
+    }
+
+    /// The saved dynamic path of an owner whose documents load through an
+    /// owned driver.
+    pub(crate) fn owned_dynamic_driver(
+        &self,
+        owner: &SourceOwner,
+    ) -> Option<&mapping::DynamicSourcePath> {
+        let SourceOwner::Named { name } = owner else {
+            return None;
+        };
+        self.owned_dynamic
+            .iter()
+            .find(|(candidate, _)| candidate == name)
+            .map(|(_, dynamic)| dynamic)
     }
 
     pub(crate) fn with_project_usage(mut self, uses_ownership: bool) -> Self {
@@ -172,6 +208,12 @@ impl SourceOwnership {
     /// The reason a named block cannot be wired in either form.
     pub(crate) fn connection_error(&self, block: usize) -> Option<String> {
         let endpoint = self.named.get(block.checked_sub(1)?)?;
+        if endpoint.access == NamedAccess::OwnedDynamic {
+            return Some(format!(
+                "Named input `{}` loads one document per driver item through an owned dynamic driver; its reads are not authorable here. Existing bindings are unchanged.",
+                endpoint.name
+            ));
+        }
         let NamedAccess::Unavailable(conflict) = endpoint.access else {
             return None;
         };
@@ -190,7 +232,7 @@ impl SourceOwnership {
                     && match endpoint.access {
                         NamedAccess::Shadowed => true,
                         NamedAccess::Unambiguous => self.uses_ownership,
-                        NamedAccess::Unavailable(_) => false,
+                        NamedAccess::Unavailable(_) | NamedAccess::OwnedDynamic => false,
                     }
             }),
         }

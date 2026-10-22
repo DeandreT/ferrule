@@ -347,10 +347,7 @@ pub(super) fn projects() -> Vec<Project> {
                         ],
                     ),
                     options: Default::default(),
-                    dynamic_path: Some(mapping::DynamicSourcePath {
-                        node: 5,
-                        iteration: vec!["File".into()],
-                    }),
+                    dynamic_path: Some(mapping::DynamicSourcePath::legacy(5, vec!["File".into()])),
                 },
                 mapping::NamedSource {
                     name: "poison".into(),
@@ -366,10 +363,7 @@ pub(super) fn projects() -> Vec<Project> {
                         ],
                     ),
                     options: Default::default(),
-                    dynamic_path: Some(mapping::DynamicSourcePath {
-                        node: 5,
-                        iteration: vec!["File".into()],
-                    }),
+                    dynamic_path: Some(mapping::DynamicSourcePath::legacy(5, vec!["File".into()])),
                 },
             ],
             extra_targets: vec![

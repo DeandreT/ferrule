@@ -1102,10 +1102,8 @@ fn nested_three_input_dynamic_source_is_a_hard_prepublication_refusal() -> Resul
             value: Value::String("customers.xml".into()),
         },
     );
-    project.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 4,
-        iteration: vec!["Order".into()],
-    });
+    project.extra_sources[0].dynamic_path =
+        Some(mapping::DynamicSourcePath::legacy(4, vec!["Order".into()]));
     write(
         &directory.0.join("dynamic-project.json"),
         &serde_json::to_string_pretty(&project)?,

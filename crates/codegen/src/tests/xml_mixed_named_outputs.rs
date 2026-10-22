@@ -370,10 +370,8 @@ fn old_routes_and_out_of_scope_mixed_shapes_keep_their_modes_or_refusals() {
         dynamic_path: None,
     });
     assert_eq!(lower(&named_input).unwrap().xml_output_mode(), Ok(None));
-    named_input.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 0,
-        iteration: vec!["Row".into()],
-    });
+    named_input.extra_sources[0].dynamic_path =
+        Some(mapping::DynamicSourcePath::legacy(0, vec!["Row".into()]));
     assert_eq!(lower(&named_input).unwrap().xml_output_mode(), Ok(None));
     let mut scalar_driver = project();
     let SchemaKind::Group { children, .. } = &mut scalar_driver.source.kind else {

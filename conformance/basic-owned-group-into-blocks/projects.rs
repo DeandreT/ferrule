@@ -207,12 +207,8 @@ pub fn base() -> Project {
                 path: format!("unused/{name}.json"),
                 schema: endpoint(),
                 options: Default::default(),
-                dynamic_path: (name == "unavailableDynamic").then_some(
-                    mapping::DynamicSourcePath {
-                        node: 900,
-                        iteration: vec![],
-                    },
-                ),
+                dynamic_path: (name == "unavailableDynamic")
+                    .then_some(mapping::DynamicSourcePath::legacy(900, vec![])),
             })
             .collect(),
         extra_targets: [(AUDIT, "Rows", 200), (UNICODE_TARGET, EXACT, 300)]
