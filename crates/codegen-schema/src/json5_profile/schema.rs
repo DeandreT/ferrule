@@ -181,6 +181,7 @@ fn metadata(node: &SchemaNode) -> Result<(), Json5ProfileError> {
         json_object_item_nullable,
         json_array_wrapper,
         json_any,
+        json_undeclared_property,
         fixed,
         json_allowed_values,
         numeric_range,
@@ -249,6 +250,7 @@ fn metadata(node: &SchemaNode) -> Result<(), Json5ProfileError> {
         container_nullable,
         json_array_wrapper,
         json_any,
+        json_undeclared_property,
         json_unique_items,
         xml_type_alternatives
     );

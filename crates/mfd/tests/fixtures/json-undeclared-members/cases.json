@@ -1,0 +1,71 @@
+[
+  {
+    "design": "open",
+    "input": "{\"Value\":7}",
+    "expected": { "code": 7 }
+  },
+  {
+    "design": "open",
+    "input": "{\"Value\":-1,\"Label\":\"x\"}",
+    "expected": { "code": -1 }
+  },
+  {
+    "design": "open",
+    "input": "{}",
+    "reject_output": true,
+    "output_error": "missing_required"
+  },
+  {
+    "design": "open",
+    "input": "{\"Value\":\"7\"}",
+    "reject": true
+  },
+  {
+    "design": "typed",
+    "input": "{\"Value\":7}",
+    "expected": { "code": 7 }
+  },
+  {
+    "design": "typed",
+    "input": "{\"Value\":0}",
+    "expected": { "code": 0 }
+  },
+  {
+    "design": "typed",
+    "input": "{\"Value\":-1}",
+    "reject_output": true,
+    "output_error": "numeric_range"
+  },
+  {
+    "design": "typed",
+    "input": "{\"Label\":\"x\"}",
+    "reject_output": true,
+    "output_error": "missing_required"
+  },
+  {
+    "design": "nested",
+    "input": "{\"Value\":7,\"Label\":\"x\"}",
+    "expected": { "Code": 7, "code": "x", "Item": { "code": 7 } }
+  },
+  {
+    "design": "nested",
+    "input": "{\"Value\":3}",
+    "expected": { "Code": 3, "Item": { "code": 3 } }
+  },
+  {
+    "design": "nested",
+    "input": "{}",
+    "expected": { "Item": {} }
+  },
+  {
+    "design": "matching",
+    "input": "{\"Value\":7}",
+    "expected": { "code": 7 }
+  },
+  {
+    "design": "matching",
+    "input": "{}",
+    "reject_output": true,
+    "output_error": "missing_required"
+  }
+]

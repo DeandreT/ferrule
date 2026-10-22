@@ -188,6 +188,7 @@ fn canonical_metadata(node: &SchemaNode) -> bool {
         json_object_item_nullable,
         json_array_wrapper,
         json_any,
+        json_undeclared_property,
         fixed,
         json_allowed_values,
         numeric_range,
@@ -228,6 +229,7 @@ fn canonical_metadata(node: &SchemaNode) -> bool {
         && json_object_item_nullable.is_none()
         && !json_array_wrapper
         && !json_any
+        && !json_undeclared_property
         && fixed.is_none()
         && json_allowed_values.is_none()
         && numeric_range.is_none()

@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use ir::SchemaNode;
+use ir::{SchemaKind, SchemaNode};
 use serde_json::Value;
 
 use crate::MfdError;
@@ -18,7 +18,7 @@ pub(super) fn render(schema: &SchemaNode, owner: &str) -> Result<String, MfdErro
             "{owner}: generated JSON Schema cannot be reimported ({error})"
         ))
     })?;
-    let before = finite_bits(schema)?;
+    let before = finite_bits(&without_undeclared_properties(schema))?;
     let after = finite_bits(&imported)?;
     if before != after {
         let Some(path) = before
@@ -38,6 +38,26 @@ pub(super) fn render(schema: &SchemaNode, owner: &str) -> Result<String, MfdErro
         )));
     }
     Ok(rendered)
+}
+
+/// The generated sibling omits authored undeclared object members; they are
+/// restored from the design's entries rather than from the schema.
+fn without_undeclared_properties(schema: &SchemaNode) -> SchemaNode {
+    fn strip(node: &mut SchemaNode) {
+        if let SchemaKind::Group {
+            children, dynamic, ..
+        } = &mut node.kind
+        {
+            children.retain(|child| !child.json_undeclared_property);
+            children.iter_mut().for_each(strip);
+            if let Some(dynamic) = dynamic {
+                strip(dynamic);
+            }
+        }
+    }
+    let mut schema = schema.clone();
+    strip(&mut schema);
+    schema
 }
 
 fn finite_bits(schema: &SchemaNode) -> Result<BTreeMap<String, u64>, MfdError> {
@@ -163,6 +183,23 @@ mod tests {
             "{error}"
         );
         assert!(error.to_string().contains("numeric_range"), "{error}");
+    }
+
+    #[test]
+    fn undeclared_members_are_omitted_from_the_compared_metadata() {
+        let mut root = SchemaNode::group("Root", vec![range_leaf("Amount")])
+            .with_dynamic_fields(range_leaf("*"))
+            .unwrap();
+        root.add_json_undeclared_property("amount").unwrap();
+        let rendered = render(&root, "undeclared member").unwrap();
+        let restored = format_json::json_schema::import_str(&rendered).unwrap();
+        assert!(restored.child("amount").is_none());
+        assert_eq!(
+            finite_bits(&restored)
+                .unwrap()
+                .get("/kind/dynamic/numeric_range/bounds/minimum/value"),
+            Some(&LOW)
+        );
     }
 
     #[test]

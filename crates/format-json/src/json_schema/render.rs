@@ -249,7 +249,12 @@ fn render_non_nullable_shape(
                 return Ok(());
             }
             let mut props = serde_json::Map::new();
-            for child in children {
+            // Authored undeclared members are admitted by the dynamic schema
+            // rendered below; listing them would change the authored schema.
+            for child in children
+                .iter()
+                .filter(|child| !child.json_undeclared_property)
+            {
                 let mut prop = serde_json::Map::new();
                 render(child, &mut prop)?;
                 props.insert(child.name.clone(), serde_json::Value::Object(prop));
