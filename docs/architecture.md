@@ -178,10 +178,25 @@ parser or request.
 
 The GUI queries these plans before Run, Debug Run, a pipeline run or preview,
 or Generate saves the project or starts a worker, and shows the refusal
-instead. Preview, pipeline, and library-generation workers are owned by their
+instead. Run JSON request queries `plan_rest_json_run` before its form asks for
+request files or a grant, and again for the exact project snapshot a started
+request owns, before any request file is read or connection opened. Preview,
+pipeline, live-request, and library-generation workers are owned by their
 exact thread handles: an outcome is reported only after the thread has been
 joined, and dropping an unfinished owner cancels it where cancellation exists
 and then waits for the thread to exit.
+
+These host services stay in the `cli` crate, re-exported from its root. Route
+capability is a query over the runners themselves: its plans come from
+`PreparedFileRun`, `PreparedStreamRun`, the pipeline runner, generation
+preparation, and the REST JSON preflight, so a separate crate would either
+carry those runners and their format, code-generation, and HTTP dependencies
+with it or hide them behind traits that only `cli` implements. Neither removes
+a dependency from any consumer: the GUI also executes, previews, traces,
+imports, and generates through `cli`, so it would still depend on the whole
+crate. `OwnedWorker` is a standard-library-only type private to the GUI and
+tested in place. Extract a crate only when a consumer can drop `cli` or a
+heavy dependency as a result.
 
 Hosts that own transport and persistence can instead use
 `cli::PayloadRunOptions`. Each input carries bounded bytes plus a logical path
