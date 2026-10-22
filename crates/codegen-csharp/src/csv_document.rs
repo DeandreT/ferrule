@@ -52,6 +52,16 @@ pub fn emit_with_csv_document_set_boundary(
     emit_document(program, policy, true)
 }
 
+/// Complete document metadata and flat CSV parsing/serialization, with explicit
+/// host-controlled acquisition, clocks and publication.
+pub fn emit_document_with_csv_document_set_boundary(
+    document: &codegen::DocumentProgram,
+    policy: &CsvDocumentBoundaryPolicy,
+) -> Result<ArtifactSet, CsvDocumentEmitError> {
+    let artifacts = emit_with_csv_document_set_boundary(document.program(), policy)?;
+    crate::primary_filename::append(artifacts, document).map_err(CsvDocumentEmitError::Emit)
+}
+
 fn emit_document(
     program: &Program,
     policy: &CsvDocumentBoundaryPolicy,

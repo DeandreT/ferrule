@@ -8,7 +8,14 @@ pub fn emit_with_primary_filename(
     document: &DocumentProgram,
     options: &Options,
 ) -> Result<ArtifactSet, EmitError> {
-    let mut files = crate::emit(document.program(), options)?.into_files();
+    append(crate::emit(document.program(), options)?, document)
+}
+
+pub(crate) fn append(
+    artifacts: ArtifactSet,
+    document: &DocumentProgram,
+) -> Result<ArtifactSet, EmitError> {
+    let mut files = artifacts.into_files();
     let expression = match document.primary_filename() {
         PrimaryFilenamePlan::Literal { text, .. } => {
             format!("Ok({}.to_string())", rust_string(text))
