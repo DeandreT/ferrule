@@ -1370,4 +1370,4 @@ pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

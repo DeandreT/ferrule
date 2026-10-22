@@ -10,7 +10,9 @@ use ir::{Instance, SchemaKind, SchemaNode, Value};
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
 
-use crate::{JsonFormatError, PatternPrograms, PatternRuntime, RecursiveSchemas, json_schema};
+use crate::{
+    JsonFormatError, PatternPrograms, PatternRuntime, RecursiveSchemas, json_schema, null_layers,
+};
 
 enum Output<'a> {
     String(&'a str),
@@ -101,7 +103,9 @@ fn node<'a>(
     } else {
         (schema, recursion_depth)
     };
-    if schema.container_nullable && matches!(instance, Instance::Scalar(Value::JsonNull(_))) {
+    if matches!(instance, Instance::Scalar(Value::JsonNull(_)))
+        && null_layers::instance_null(schema)?.whole
+    {
         return Ok(Output::Value(serde_json::Value::Null));
     }
     if schema.repeating {
@@ -194,8 +198,8 @@ fn single<'a>(
             _ => crate::write_json_any(schema, instance).map(Output::Value),
         };
     }
-    if schema.json_single_container_nullable()
-        && matches!(instance, Instance::Scalar(Value::JsonNull(_)))
+    if matches!(instance, Instance::Scalar(Value::JsonNull(_)))
+        && null_layers::instance_null(schema)?.single
     {
         return Ok(Output::Value(serde_json::Value::Null));
     }
@@ -234,7 +238,7 @@ fn single<'a>(
                             Some(child) => (child, false),
                             None => (dynamic.as_ref(), true),
                         };
-                    if crate::is_boundary_absence(child_schema, child_instance) {
+                    if crate::is_boundary_absence(child_schema, child_instance)? {
                         continue;
                     }
                     if is_dynamic {
@@ -255,7 +259,7 @@ fn single<'a>(
                     if let Some((name, child_instance)) =
                         fields.iter().find(|(name, _)| name == &child_schema.name)
                     {
-                        if crate::is_boundary_absence(child_schema, child_instance) {
+                        if crate::is_boundary_absence(child_schema, child_instance)? {
                             continue;
                         }
                         let value = node(
@@ -350,10 +354,11 @@ fn scalar<'a>(
         }
         return Ok(Output::String(text));
     }
+    let value_null = null_layers::instance_null(schema)?.value;
     let output = match schema.kind {
-        SchemaKind::Scalar { ty } => crate::write_scalar(value, ty, schema.nullable, &schema.name)?,
+        SchemaKind::Scalar { ty } => crate::write_scalar(value, ty, value_null, &schema.name)?,
         SchemaKind::ScalarUnion { types } => {
-            crate::write_scalar_union(value, types, schema.nullable, &schema.name)?
+            crate::write_scalar_union(value, types, value_null, &schema.name)?
         }
         SchemaKind::Group { .. } => unreachable!("scalar called only for a scalar schema"),
     };
@@ -366,13 +371,14 @@ fn validate_scalar(
     output: &serde_json::Value,
     patterns: &mut PatternRuntime,
 ) -> Result<(), JsonFormatError> {
+    let value_null = null_layers::instance_null(schema)?.value;
     let normalized = match schema.kind {
         SchemaKind::Scalar { ty } => {
             json_schema::constraints::validate_json(schema, output)?;
-            crate::read_scalar(output, ty, schema.nullable, &schema.name)?
+            crate::read_scalar(output, ty, value_null, &schema.name)?
         }
         SchemaKind::ScalarUnion { types } => {
-            crate::read_scalar_union(output, types, schema.nullable, &schema.name)?
+            crate::read_scalar_union(output, types, value_null, &schema.name)?
         }
         SchemaKind::Group { .. } => unreachable!("validated only scalar output"),
     };

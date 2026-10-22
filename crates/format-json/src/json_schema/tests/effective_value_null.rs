@@ -13,9 +13,9 @@ use ir::{
     ScalarType, ScalarTypeSet, SchemaKind, SchemaNode,
 };
 
-use super::super::render::layers;
 use super::super::{multiples, ranges, unique_items};
 use super::effective_layers::{walk, workspace_fixture_schemas};
+use crate::null_layers::layers;
 use crate::{JsonFormatError, RecursiveSchemas};
 
 /// The range validator's previous null admission.

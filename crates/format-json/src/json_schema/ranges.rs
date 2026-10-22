@@ -98,7 +98,7 @@ pub(crate) fn validate_json(
         return Ok(());
     };
     // Explicit null is admitted by the scalar value layer, not by the range.
-    if value.is_null() && super::render::layers(schema)?.value_null {
+    if value.is_null() && crate::null_layers::layers(schema)?.value_null {
         return Ok(());
     }
     if value.is_string()

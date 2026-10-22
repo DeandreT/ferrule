@@ -16,6 +16,7 @@ pub mod json5_boundary;
 mod json5_finite;
 mod json5_unique;
 pub mod json_schema;
+mod null_layers;
 mod pattern_runtime;
 mod prepared;
 pub mod source_document;
@@ -224,6 +225,9 @@ impl<'a> RecursiveSchemas<'a> {
                     name: node.name.clone(),
                 });
             }
+            // Every value read or written below derives its null admission
+            // from the effective JSON view; refuse contradictions up front.
+            null_layers::layers(node)?;
             if !node.xml_attribute_required_is_valid() {
                 return Err(JsonFormatError::InvalidXmlAttributeRequired {
                     node: node.name.clone(),
@@ -555,7 +559,7 @@ fn read_repeated(
     } else {
         (schema, recursion_depth)
     };
-    if value.is_null() && schema.container_nullable {
+    if value.is_null() && null_layers::instance_null(schema)?.whole {
         return Ok(Instance::Scalar(Value::json_null()));
     }
     let serde_json::Value::Array(items) = value else {
@@ -613,12 +617,13 @@ fn read_node_with_patterns(
             value,
         )?)));
     }
-    if value.is_null() && schema.json_single_container_nullable() {
+    let null = null_layers::instance_null(schema)?;
+    if value.is_null() && null.single {
         return Ok(Instance::Scalar(Value::json_null()));
     }
     match &schema.kind {
         SchemaKind::Scalar { ty } => {
-            let parsed = read_scalar(value, *ty, schema.nullable, &schema.name)?;
+            let parsed = read_scalar(value, *ty, null.value, &schema.name)?;
             json_schema::constraints::validate_json(schema, value)?;
             json_schema::allowed_values::validate_value(schema, &parsed)?;
             json_schema::ranges::validate_json(schema, value)?;
@@ -628,7 +633,7 @@ fn read_node_with_patterns(
             Ok(Instance::Scalar(parsed))
         }
         SchemaKind::ScalarUnion { types } => {
-            let parsed = read_scalar_union(value, *types, schema.nullable, &schema.name)?;
+            let parsed = read_scalar_union(value, *types, null.value, &schema.name)?;
             json_schema::allowed_values::validate_value(schema, &parsed)?;
             json_schema::ranges::validate_json(schema, value)?;
             json_schema::multiples::validate_json(schema, value)?;
@@ -715,7 +720,7 @@ fn read_node_with_patterns(
                 }
                 for child in children {
                     if !fields.contains_key(&child.name) {
-                        out.push((child.name.clone(), missing_instance(child)));
+                        out.push((child.name.clone(), missing_instance(child)?));
                     }
                 }
                 return Ok(Instance::Group((out).into()));
@@ -747,14 +752,11 @@ fn read_node_with_patterns(
                             )?,
                         ));
                     }
-                    None if child.repeating && !child.container_nullable => {
-                        out.push((child.name.clone(), Instance::Repeated(Vec::new())));
-                    }
                     // Absent properties are normal instance data (JSON
                     // objects routinely omit optional keys), not errors:
-                    // scalars read as Null, objects as empty.
+                    // scalars read as Null, objects and arrays as empty.
                     None => {
-                        out.push((child.name.clone(), missing_instance(child)));
+                        out.push((child.name.clone(), missing_instance(child)?));
                     }
                 }
             }
@@ -763,11 +765,12 @@ fn read_node_with_patterns(
     }
 }
 
-fn missing_instance(schema: &SchemaNode) -> Instance {
-    if schema.container_nullable {
-        return Instance::Scalar(Value::Null);
+fn missing_instance(schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
+    // A missing nullable object or array is absent, not an empty container.
+    if null_layers::instance_null(schema)?.whole {
+        return Ok(Instance::Scalar(Value::Null));
     }
-    if schema.repeating {
+    Ok(if schema.repeating {
         Instance::Repeated(Vec::new())
     } else {
         match schema.kind {
@@ -776,7 +779,7 @@ fn missing_instance(schema: &SchemaNode) -> Instance {
             }
             SchemaKind::Group { .. } => Instance::Group((Vec::new()).into()),
         }
-    }
+    })
 }
 
 fn read_scalar_union(
@@ -1003,7 +1006,7 @@ pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, Json
 }
 
 fn reject_nullable_json_lines_container(schema: &SchemaNode) -> Result<(), JsonFormatError> {
-    if schema.repeating && schema.container_nullable {
+    if schema.repeating && null_layers::instance_null(schema)?.whole {
         return Err(JsonFormatError::NullableJsonLinesContainer {
             name: schema.name.clone(),
         });
@@ -1037,7 +1040,9 @@ fn write_node_with_patterns(
     } else {
         (schema, recursion_depth)
     };
-    if schema.container_nullable && matches!(instance, Instance::Scalar(Value::JsonNull(_))) {
+    if matches!(instance, Instance::Scalar(Value::JsonNull(_)))
+        && null_layers::instance_null(schema)?.whole
+    {
         return Ok(serde_json::Value::Null);
     }
     if schema.repeating {
@@ -1124,16 +1129,15 @@ fn write_single_node_with_patterns(
     if schema.json_any {
         return write_json_any(schema, instance);
     }
-    if schema.json_single_container_nullable()
-        && matches!(instance, Instance::Scalar(Value::JsonNull(_)))
-    {
+    let null = null_layers::instance_null(schema)?;
+    if null.single && matches!(instance, Instance::Scalar(Value::JsonNull(_))) {
         return Ok(serde_json::Value::Null);
     }
     match (&schema.kind, instance) {
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
-            let value = write_scalar(value, *ty, schema.nullable, &schema.name)?;
+            let value = write_scalar(value, *ty, null.value, &schema.name)?;
             json_schema::constraints::validate_json(schema, &value)?;
-            let normalized = read_scalar(&value, *ty, schema.nullable, &schema.name)?;
+            let normalized = read_scalar(&value, *ty, null.value, &schema.name)?;
             json_schema::allowed_values::validate_value(schema, &normalized)?;
             json_schema::ranges::validate_json(schema, &value)?;
             json_schema::multiples::validate_json(schema, &value)?;
@@ -1142,8 +1146,8 @@ fn write_single_node_with_patterns(
             Ok(value)
         }
         (SchemaKind::ScalarUnion { types }, Instance::Scalar(value)) => {
-            let value = write_scalar_union(value, *types, schema.nullable, &schema.name)?;
-            let normalized = read_scalar_union(&value, *types, schema.nullable, &schema.name)?;
+            let value = write_scalar_union(value, *types, null.value, &schema.name)?;
+            let normalized = read_scalar_union(&value, *types, null.value, &schema.name)?;
             json_schema::allowed_values::validate_value(schema, &normalized)?;
             json_schema::ranges::validate_json(schema, &value)?;
             json_schema::multiples::validate_json(schema, &value)?;
@@ -1181,7 +1185,7 @@ fn write_single_node_with_patterns(
                             Some(child) => (child, false),
                             None => (dynamic.as_ref(), true),
                         };
-                    if is_boundary_absence(child_schema, child_instance) {
+                    if is_boundary_absence(child_schema, child_instance)? {
                         continue;
                     }
                     if is_dynamic {
@@ -1225,7 +1229,7 @@ fn write_single_node_with_patterns(
                 {
                     // A non-nullable Null scalar is boundary-level absence.
                     // Nullable scalars retain an explicit JSON null.
-                    if is_boundary_absence(child_schema, child_instance) {
+                    if is_boundary_absence(child_schema, child_instance)? {
                         continue;
                     }
                     out.insert(
@@ -1326,19 +1330,21 @@ fn write_json_any(
     }
 }
 
-fn is_boundary_absence(schema: &SchemaNode, instance: &Instance) -> bool {
+fn is_boundary_absence(schema: &SchemaNode, instance: &Instance) -> Result<bool, JsonFormatError> {
     if let Instance::MappedSequence(items) = instance
         && items.is_empty()
         && !schema.repeating
     {
-        return true;
+        return Ok(true);
     }
-    matches!(instance, Instance::Scalar(Value::Null))
-        && (schema.container_nullable || (!schema.repeating && schema.is_scalar()))
+    // A Null scalar, or a Null nullable object or array, is boundary-level
+    // absence; an explicit JSON null is a value.
+    Ok(matches!(instance, Instance::Scalar(Value::Null))
+        && (null_layers::instance_null(schema)?.whole || (!schema.repeating && schema.is_scalar()))
         || matches!(instance, Instance::Repeated(items) | Instance::MappedSequence(items) if items.is_empty())
             && schema
                 .item_count_range
-                .is_some_and(|range| range.minimum() > 0)
+                .is_some_and(|range| range.minimum() > 0))
 }
 
 fn write_scalar_union(
@@ -1425,23 +1431,28 @@ fn validate_alternative_fields(
     if alternatives.is_empty() {
         return Ok(());
     }
-    let matches = alternatives
-        .iter()
-        .filter(|alternative| {
-            alternative.required.iter().all(|required| {
-                fields.get(required).is_some_and(|value| {
-                    !value.is_null() || schema.child(required).is_some_and(|child| child.nullable)
-                })
-            }) && fields
+    let mut matches = Vec::new();
+    for alternative in alternatives {
+        let mut required_present = true;
+        for required in &alternative.required {
+            if !required_member_present(schema, fields, required)? {
+                required_present = false;
+                break;
+            }
+        }
+        if required_present
+            && fields
                 .keys()
                 .all(|field| alternative.members.iter().any(|member| member == field))
-                && alternative.constraints.iter().all(|constraint| {
-                    fields
-                        .get(&constraint.member)
-                        .is_none_or(|value| constraint_matches(&constraint.value, value))
-                })
-        })
-        .collect::<Vec<_>>();
+            && alternative.constraints.iter().all(|constraint| {
+                fields
+                    .get(&constraint.member)
+                    .is_none_or(|value| constraint_matches(&constraint.value, value))
+            })
+        {
+            matches.push(alternative);
+        }
+    }
     match matches.len() {
         0 => Err(JsonFormatError::NoMatchingAlternative {
             name: schema.name.clone(),
@@ -1457,6 +1468,25 @@ fn validate_alternative_fields(
             }
         }
         _ => Ok(()),
+    }
+}
+
+/// A required alternative member is present: a non-null value, or a null
+/// admitted by the member's scalar value layer.
+fn required_member_present(
+    schema: &SchemaNode,
+    fields: &serde_json::Map<String, serde_json::Value>,
+    required: &str,
+) -> Result<bool, JsonFormatError> {
+    let Some(value) = fields.get(required) else {
+        return Ok(false);
+    };
+    if !value.is_null() {
+        return Ok(true);
+    }
+    match schema.child(required) {
+        Some(child) => Ok(null_layers::instance_null(child)?.value),
+        None => Ok(false),
     }
 }
 

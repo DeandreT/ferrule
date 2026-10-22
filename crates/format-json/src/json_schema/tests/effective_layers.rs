@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 
 use ir::{EffectiveViewError, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
-use super::super::render::{JsonLayers, layers};
 use crate::JsonFormatError;
+use crate::null_layers::{JsonLayers, layers};
 
 /// The hand-derived layer flags replaced by the effective JSON view.
 fn legacy_layers(node: &SchemaNode) -> JsonLayers {
@@ -218,7 +218,7 @@ fn fixtures(directory: &Path, found: &mut Vec<PathBuf>) {
     }
 }
 
-pub(super) fn walk(node: &SchemaNode, visit: &mut impl FnMut(&SchemaNode)) {
+pub(crate) fn walk(node: &SchemaNode, visit: &mut impl FnMut(&SchemaNode)) {
     visit(node);
     if let SchemaKind::Group {
         children, dynamic, ..
@@ -235,7 +235,7 @@ pub(super) fn walk(node: &SchemaNode, visit: &mut impl FnMut(&SchemaNode)) {
 
 /// Every JSON Schema fixture in the workspace, plus the boundary schemas
 /// embedded in saved project fixtures.
-pub(super) fn workspace_fixture_schemas() -> Vec<(PathBuf, SchemaNode)> {
+pub(crate) fn workspace_fixture_schemas() -> Vec<(PathBuf, SchemaNode)> {
     let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let mut paths = Vec::new();
     fixtures(&crates, &mut paths);
