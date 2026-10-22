@@ -4,7 +4,9 @@
 
 mod csv_document;
 mod csv_json;
-pub use csv_document::{CsvDocumentEmitError, emit_with_csv_document_adapters};
+pub use csv_document::{
+    CsvDocumentEmitError, emit_with_csv_document_adapters, emit_with_csv_document_set_boundary,
+};
 mod csv_output;
 mod csv_x12;
 mod document_output_types;

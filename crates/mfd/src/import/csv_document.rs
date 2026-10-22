@@ -14,6 +14,8 @@ use super::{
 };
 use crate::MfdError;
 
+mod grouped;
+
 /// A repair-oriented document import. Warnings still describe omitted or
 /// unsupported behavior; this result does not authorize document execution.
 pub struct ImportedDocument {
@@ -49,6 +51,50 @@ pub fn import_csv_document_with_options(
         warnings: lowered.imported.warnings,
         mapping_path: lowered.imported.mapping_path,
     })
+}
+
+/// Import the bounded flat CSV document-grouping profile. Acquisition and
+/// publication remain explicit host contracts, not ordinary Project execution.
+pub fn import_grouped_csv_document(path: &Path) -> Result<ImportedDocument, MfdError> {
+    import_grouped_csv_document_with_options(path, &ImportOptions::default())
+}
+
+pub fn import_grouped_csv_document_with_options(
+    path: &Path,
+    options: &ImportOptions,
+) -> Result<ImportedDocument, MfdError> {
+    if options.item_ordered_exceptions {
+        return Err(MfdError::UnsupportedImport(
+            "grouped CSV document profile does not admit the separate exception-order profile"
+                .into(),
+        ));
+    }
+    let resources = super::resolved_resources(path, options)?;
+    let result = (|| {
+        let lowered = super::import_resolved(
+            &resources,
+            StageSelection::Ordinary,
+            options.item_ordered_exceptions,
+            true,
+        )?;
+        let filename = lowered
+            .primary_filename
+            .ok_or_else(|| unsupported("missing retained filename"))?;
+        let text = resources.read_design()?;
+        let document = grouped::lower(
+            &text,
+            lowered.imported.project,
+            filename,
+            &lowered.imported.warnings,
+        )?;
+        Ok(ImportedDocument {
+            document,
+            warnings: Vec::new(),
+            mapping_path: lowered.imported.mapping_path,
+        })
+    })();
+    resources.finish_bindings()?;
+    result
 }
 
 fn unsupported(reason: &str) -> MfdError {

@@ -29,6 +29,7 @@ pub use artifact::{
 };
 pub use csv_document_boundary::{
     CsvDocumentBoundaryError, CsvDocumentBoundaryPolicy, validate_csv_document_boundary,
+    validate_csv_document_set_boundary,
 };
 pub use csv_input_boundary::{
     CsvInputBoundaryError, CsvInputField, CsvInputPolicy, validate_primary_csv_acquisition,
