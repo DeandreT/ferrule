@@ -4,7 +4,7 @@ use mapping::ScopeConstruction;
 
 const EXPECTED: &str = r#"{"Groups":[{"Member":[{"Value":"A"},{"Value":"A"},{"Value":"A"},{"Value":"A"},{"Value":"A"}]},{"Member":[{"Value":"B"},{"Value":"B"}]}]}"#;
 
-fn project() -> Project {
+pub(super) fn project() -> Project {
     let row = |name| SchemaNode::group(name, vec![SchemaNode::scalar("Value", ScalarType::String)]);
     Project {
         source: SchemaNode::group("Input", vec![row("Rows").repeating()]),

@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) const FIXTURES: [&str; 10] = [
+pub(crate) const FIXTURES: [&str; 10] = [
     "I",
     "F",
     "S",
@@ -13,7 +13,7 @@ pub(super) const FIXTURES: [&str; 10] = [
     "Context",
 ];
 
-pub(super) fn project(fixture: &str) -> Project {
+pub(crate) fn project(fixture: &str) -> Project {
     let (ty, name) = match fixture {
         "F" | "N" => (ScalarType::Float, "n"),
         "S" => (ScalarType::String, "n"),

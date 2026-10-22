@@ -1,7 +1,7 @@
 use super::*;
 use mapping::{DocumentProject, PrimarySourcePlan};
 
-fn document(literal: bool) -> DocumentProject {
+pub(super) fn document(literal: bool) -> DocumentProject {
     DocumentProject::new(
         Project {
             source: SchemaNode::group(

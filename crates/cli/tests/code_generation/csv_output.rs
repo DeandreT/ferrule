@@ -94,7 +94,7 @@ fn record_native_bytes(
     Ok(())
 }
 
-fn csv_project(options: FormatOptions) -> Project {
+pub(super) fn csv_project(options: FormatOptions) -> Project {
     let columns = [
         (TEXT_COLUMN, ScalarType::String, 1),
         ("Integer", ScalarType::Int, 2),
@@ -716,7 +716,7 @@ fn generated_rust_csv_real_maximum_plus_one_and_failure_precedence() -> TestResu
 }
 
 // Static named CSV uses the ordinary typed mapping API, with no file loading.
-fn named_csv_project(options: FormatOptions) -> Project {
+pub(super) fn named_csv_project(options: FormatOptions) -> Project {
     let mut project = csv_project(options);
     project.extra_sources = vec![
         mapping::NamedSource {
@@ -1350,4 +1350,4 @@ fn generated_csv_dynamic_named_admission_keeps_document_refusal_before_publicati
 }
 
 #[path = "csv_output/dynamic.rs"]
-mod dynamic;
+pub(super) mod dynamic;

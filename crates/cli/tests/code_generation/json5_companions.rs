@@ -4,7 +4,7 @@ use cli::generate_project_with_json5_adapters;
 #[path = "json5_companions/facade.rs"]
 mod facade;
 #[path = "json5_companions/projects.rs"]
-mod projects;
+pub(super) mod projects;
 #[path = "json5_companions/support.rs"]
 mod support;
 
