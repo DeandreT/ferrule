@@ -896,8 +896,8 @@ fn basic_xml_serialize469_profile_composes_earlier_owned_companions() -> TestRes
     Ok(())
 }
 
-#[test]
-fn basic_xml_serialize469_direct_programs_refuse_unsupported_ownership() -> TestResult<()> {
+/// Directly constructed Programs with unsupported ownership and their refusals.
+fn direct_programs() -> TestResult<Vec<(&'static str, codegen::Program, ProgramValidationError)>> {
     let base = codegen::lower_with_basic_owned_xml_serialize(&projects::project("X01-endpoints"))?;
     let with = |change: &dyn Fn(&mut mapping::OwnedXmlSerialize)| {
         let mut program = base.clone();
@@ -993,6 +993,12 @@ fn basic_xml_serialize469_direct_programs_refuse_unsupported_ownership() -> Test
             ProgramValidationError::EmptyXmlSerializeNamespace { node: 1 },
         ),
     ];
+    Ok(cases.into())
+}
+
+#[test]
+fn basic_xml_serialize469_direct_programs_refuse_unsupported_ownership() -> TestResult<()> {
+    let cases = direct_programs()?;
     for (label, program, expected) in &cases {
         assert_new_profile_refuses(program, expected, label)?;
         // The default validator applies the same structural checks first.
@@ -1005,21 +1011,8 @@ fn basic_xml_serialize469_direct_programs_refuse_unsupported_ownership() -> Test
     Ok(())
 }
 
-/// A failure-rule message, generated item and isolated function body never
-/// admit the owned serializer, in the interpreter or in generation.
-#[test]
-fn basic_xml_serialize469_closed_contexts_refuse_before_emission() -> TestResult<()> {
-    let lowered_error = |project: &Project, expected: &ProgramValidationError| {
-        let lowered = codegen::lower_with_basic_owned_xml_serialize(project);
-        assert!(
-            matches!(&lowered, Err(error)
-                if error.diagnostics() == std::slice::from_ref(&diagnostic(expected))),
-            "{lowered:?}"
-        );
-    };
-    let source = decode(&json!({"Header": {"id": "p"}, "Orders": {"Order": [{"Label": "a"}]}}));
-
-    // A dynamic named owner never supplies an exact owned element.
+/// Projects whose owned serializer sits in a closed context.
+fn closed_context_projects() -> [(&'static str, Project); 4] {
     let mut dynamic = projects::project("X01-endpoints");
     dynamic.graph.nodes.insert(
         90,
@@ -1031,21 +1024,6 @@ fn basic_xml_serialize469_closed_contexts_refuse_before_emission() -> TestResult
         90,
         vec!["Orders".into(), "Order".into()],
     ));
-    lowered_error(
-        &dynamic,
-        &refused(
-            2,
-            Some(root(Some((0, "audit")), &[])),
-            element(Some("audit"), &["Header"], None),
-            Capability::DynamicOwner,
-            Origin::DynamicSource {
-                index: 0,
-                name: "audit".into(),
-            },
-        ),
-    );
-
-    // A generated item context closes the owned read inside it.
     let mut generated = projects::project("X01-endpoints");
     generated.extra_targets.clear();
     generated.target = SchemaNode::group(
@@ -1092,56 +1070,8 @@ fn basic_xml_serialize469_closed_contexts_refuse_before_emission() -> TestResult
             },
         ),
     ]);
-    assert!(engine::validate(&generated).is_empty());
-    lowered_error(
-        &generated,
-        &refused(
-            1,
-            Some(root(None, &[0])),
-            element(None, &["Header"], None),
-            Capability::GeneratedItem,
-            Origin::Scope {
-                scope: root(None, &[0]),
-            },
-        ),
-    );
-    assert!(matches!(
-        engine::run_with_sources(&generated, &source, vec![]),
-        Err(engine::EngineError::UnsupportedOwnedContext {
-            context: engine::OwnedCapabilityContext::GeneratedItem,
-            ..
-        })
-    ));
-
-    // An owned failure walk's message stays within its scalar subset.
     let mut failure = projects::project("X05-failure-walk");
     failure.failure_rules[0].message = Some(1);
-    assert!(engine::validate(&failure).is_empty());
-    // Generation refuses the whole owned walk whose message leaves that subset.
-    lowered_error(
-        &failure,
-        &ProgramValidationError::OwnedSource {
-            diagnostic: Box::new(OwnedDiagnostic::Capability {
-                location: Location::FailureIteration { index: 0 },
-                request: Some(Request::Iteration {
-                    owner: diagnostic_owner(Some("audit")),
-                    path: vec!["Orders".into(), "Order".into()],
-                }),
-                reason: Capability::FailureRule,
-                origin: Origin::Failure { index: 0 },
-            }),
-        },
-    );
-    assert!(matches!(
-        engine::run_with_sources(&failure, &source, vec![]),
-        Err(engine::EngineError::UnsupportedOwnedContext {
-            node: Some(1),
-            context: engine::OwnedCapabilityContext::FailureRule,
-            ..
-        })
-    ));
-
-    // An isolated function body never reads an endpoint.
     let mut function = projects::project("X05-failure-walk");
     function.failure_rules.clear();
     let id = FunctionId::new(1);
@@ -1177,6 +1107,93 @@ fn basic_xml_serialize469_closed_contexts_refuse_before_emission() -> TestResult
             args: vec![],
         },
     );
+    [
+        ("closed-context/dynamic", dynamic),
+        ("closed-context/generated", generated),
+        ("closed-context/failure", failure),
+        ("closed-context/function", function),
+    ]
+}
+
+/// A failure-rule message, generated item and isolated function body never
+/// admit the owned serializer, in the interpreter or in generation.
+#[test]
+fn basic_xml_serialize469_closed_contexts_refuse_before_emission() -> TestResult<()> {
+    let [(_, dynamic), (_, generated), (_, failure), (_, function)] = closed_context_projects();
+    let lowered_error = |project: &Project, expected: &ProgramValidationError| {
+        let lowered = codegen::lower_with_basic_owned_xml_serialize(project);
+        assert!(
+            matches!(&lowered, Err(error)
+                if error.diagnostics() == std::slice::from_ref(&diagnostic(expected))),
+            "{lowered:?}"
+        );
+    };
+    let source = decode(&json!({"Header": {"id": "p"}, "Orders": {"Order": [{"Label": "a"}]}}));
+
+    // A dynamic named owner never supplies an exact owned element.
+    lowered_error(
+        &dynamic,
+        &refused(
+            2,
+            Some(root(Some((0, "audit")), &[])),
+            element(Some("audit"), &["Header"], None),
+            Capability::DynamicOwner,
+            Origin::DynamicSource {
+                index: 0,
+                name: "audit".into(),
+            },
+        ),
+    );
+
+    // A generated item context closes the owned read inside it.
+    assert!(engine::validate(&generated).is_empty());
+    lowered_error(
+        &generated,
+        &refused(
+            1,
+            Some(root(None, &[0])),
+            element(None, &["Header"], None),
+            Capability::GeneratedItem,
+            Origin::Scope {
+                scope: root(None, &[0]),
+            },
+        ),
+    );
+    assert!(matches!(
+        engine::run_with_sources(&generated, &source, vec![]),
+        Err(engine::EngineError::UnsupportedOwnedContext {
+            context: engine::OwnedCapabilityContext::GeneratedItem,
+            ..
+        })
+    ));
+
+    // An owned failure walk's message stays within its scalar subset.
+    assert!(engine::validate(&failure).is_empty());
+    // Generation refuses the whole owned walk whose message leaves that subset.
+    lowered_error(
+        &failure,
+        &ProgramValidationError::OwnedSource {
+            diagnostic: Box::new(OwnedDiagnostic::Capability {
+                location: Location::FailureIteration { index: 0 },
+                request: Some(Request::Iteration {
+                    owner: diagnostic_owner(Some("audit")),
+                    path: vec!["Orders".into(), "Order".into()],
+                }),
+                reason: Capability::FailureRule,
+                origin: Origin::Failure { index: 0 },
+            }),
+        },
+    );
+    assert!(matches!(
+        engine::run_with_sources(&failure, &source, vec![]),
+        Err(engine::EngineError::UnsupportedOwnedContext {
+            node: Some(1),
+            context: engine::OwnedCapabilityContext::FailureRule,
+            ..
+        })
+    ));
+
+    // An isolated function body never reads an endpoint.
     assert!(matches!(
         engine::run_with_sources(&function, &source, vec![]),
         Err(engine::EngineError::UnsupportedSourceOwnership {
@@ -1404,4 +1421,23 @@ fn basic_xml_serialize469_generated_rust_and_csharp_match_expected() -> TestResu
         return Err(failures.join("\n\n").into());
     }
     Ok(())
+}
+
+/// The models, the legacy project, the closed-context Projects and the
+/// directly constructed Programs, for the owned capability preset record.
+pub(super) fn capability_corpus() -> TestResult<super::owned_capability_presets::Corpus> {
+    use super::owned_capability_presets as presets;
+    let mut corpus = presets::projects(
+        projects::MODELS
+            .iter()
+            .map(|model| (*model, projects::project(model))),
+    );
+    corpus.extend(presets::projects([("legacy", projects::legacy())]));
+    corpus.extend(presets::projects(closed_context_projects()));
+    corpus.extend(presets::programs(
+        direct_programs()?
+            .into_iter()
+            .map(|(id, program, _)| (format!("direct/{id}"), program)),
+    ));
+    Ok(corpus)
 }

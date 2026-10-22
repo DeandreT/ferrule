@@ -129,13 +129,17 @@ fn basic_owned_json520_companions_are_append_only_and_profile_specific() {
             .count(),
         5
     );
-    for render in [
-        owned_basic::render_public_basic_owned_filter_mapping,
-        owned_basic::render_public_basic_owned_sort_mapping,
-        owned_basic::render_public_basic_owned_window_mapping,
-        owned_basic::render_public_basic_owned_row_failure_mapping,
+    for preset in [
+        codegen::OwnedPreset::Filters,
+        codegen::OwnedPreset::Sort,
+        codegen::OwnedPreset::Windows,
+        codegen::OwnedPreset::RowFailures,
     ] {
-        assert!(!render(&program).unwrap().contains("NamedJsonInput"));
+        let mapping = owned_basic::render_public_basic_owned_capability_mapping(
+            &program,
+            preset.capabilities(),
+        );
+        assert!(!mapping.unwrap().contains("NamedJsonInput"));
     }
     let mut legacy = program;
     legacy.expressions[0].expression = Expression::SourceField {

@@ -389,3 +389,13 @@ fn qualify_basic_owned_row808_prepared_generated_consumers() -> TestResult<()> {
     }
     Ok(())
 }
+
+/// The harness Projects, for the owned capability preset record.
+pub(super) fn capability_corpus() -> TestResult<super::owned_capability_presets::Corpus> {
+    Ok(super::owned_capability_presets::projects(
+        fixtures::projects()
+            .into_iter()
+            .enumerate()
+            .map(|(index, project)| (format!("model-{index}"), project)),
+    ))
+}

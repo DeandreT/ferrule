@@ -171,19 +171,19 @@ pub fn emit_with_basic_owned_sources(
     .map_err(EmitError::from)
 }
 
-/// Emit only static Basic repeated filters under an explicit native policy.
-/// Default, ordinary and private control-free emission keep their existing gates.
-pub fn emit_with_basic_owned_filters(
+/// Emit the Basic owned library for `capabilities` under a mandatory per-run
+/// native policy. Complete Basic admission precedes the package-name check.
+fn emit_with_owned_capabilities(
     program: &Program,
     options: &Options,
+    capabilities: codegen::OwnedCapabilities,
 ) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_filters(program)?;
+    codegen::validate_basic_owned_emission_with_capabilities(program, capabilities)?;
     if !valid_package_name(&options.package_name) {
         return Err(EmitError::InvalidPackageName(options.package_name.clone()));
     }
-    codegen::validate_basic_owned_filter_emission(program)?;
     let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_filter_source(program)?;
+    let source = owned_basic::render_public_basic_owned_capability_source(program, capabilities)?;
     ArtifactSet::new([
         GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
         GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
@@ -191,493 +191,45 @@ pub fn emit_with_basic_owned_filters(
     .map_err(EmitError::from)
 }
 
-/// Emit static Basic repeated sorting with an optional filter under an explicit
-/// native policy. Ordinary, private, default and filter-only routes stay closed.
-pub fn emit_with_basic_owned_sort(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_sort(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_sort_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_sort_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
+macro_rules! owned_presets {
+    ($($preset:ident => $emit:ident;)*) => {$(
+        #[doc = concat!(
+            "Emit the Basic owned library for the [`codegen::OwnedPreset::",
+            stringify!($preset),
+            "`] preset with a mandatory per-run native policy. The ordinary emitter and its closed ownership gate are unchanged."
+        )]
+        pub fn $emit(program: &Program, options: &Options) -> Result<ArtifactSet, EmitError> {
+            emit_with_owned_capabilities(program, options, codegen::OwnedPreset::$preset.capabilities())
+        }
+    )*};
 }
 
-/// Emit explicit static Basic windows, optional filter/sort and Group First.
-/// Ordinary, private, filter-only and sort-only routes retain their own gates.
-pub fn emit_with_basic_owned_windows(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_windows(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_window_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_window_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit window-profile targets with explicitly admitted global primary-row
-/// failures. Older emitters retain their failure gates and emitted contracts.
-pub fn emit_with_basic_owned_row_failures(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_row_failures(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_row_failure_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_row_failure_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit static Basic By grouping, member retention and the qualified controls.
-/// Global primary-row failures compose here; older emitters keep their gates.
-pub fn emit_with_basic_owned_group_by(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_group_by(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_group_by_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_group_by_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit an owned path-hierarchy input collection with the EndingWith controls,
-/// scalar ItemAt producers, primary-row failures and owned failure-source walks.
-/// Legacy hierarchies keep the ordinary emitter; every older companion keeps
-/// refusing owned hierarchies.
-pub fn emit_with_basic_owned_path_hierarchy(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_path_hierarchy(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_path_hierarchy_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_path_hierarchy_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit owned XML serialization in Basic target contexts, composing the owned
-/// dynamic source-field companion. Legacy serializers keep the ordinary emitter;
-/// every older companion keeps refusing the owned form.
-pub fn emit_with_basic_owned_xml_serialize(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_xml_serialize(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_xml_serialize_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_xml_serialize_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit mixed-content construction by an owned selector in Basic target
-/// contexts, composing the owned XML mixed-content companion. Legacy,
-/// inherited and grouped constructions keep refusing.
-pub fn emit_with_basic_owned_xml_mixed_construction(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_xml_mixed_construction(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_xml_mixed_construction_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_xml_mixed_construction_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit owned XML mixed-content atomization in Basic target contexts,
-/// composing the owned XML serialization companion. Legacy mixed-content nodes
-/// keep the ordinary emitter; every older companion keeps refusing the owned form.
-pub fn emit_with_basic_owned_xml_mixed_content(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_xml_mixed_content(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_xml_mixed_content_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_xml_mixed_content_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit the qualified Basic By/row-failure profile plus ItemAt over the four
-/// pure scalar producers. Existing emitters and failure-expression gates stay closed.
-pub fn emit_with_basic_owned_sequence_item_at(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_sequence_item_at(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_sequence_item_at_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_sequence_item_at_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit static Basic By/AdjacentBy grouping and scalar ItemAt over the four pure
-/// producers. Existing companions retain their narrower control/consumer gates.
-pub fn emit_with_basic_owned_group_adjacent_by(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_group_adjacent_by(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_group_adjacent_by_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_group_adjacent_by_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit static Basic By/AdjacentBy/StartingWith grouping with scalar ItemAt over
-/// the four pure producers. Prior companions retain their narrower gates.
-pub fn emit_with_basic_owned_group_starting_with(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_group_starting_with(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_group_starting_with_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_group_starting_with_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit static Basic By/AdjacentBy/StartingWith/EndingWith grouping with scalar
-/// ItemAt over the four pure producers. Prior companions retain their narrower gates.
-pub fn emit_with_basic_owned_group_ending_with(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_group_ending_with(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_group_ending_with_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_group_ending_with_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit static Basic By/AdjacentBy/StartingWith/EndingWith/IntoBlocks grouping
-/// with scalar ItemAt over the four pure producers. Prior companions retain
-/// their narrower gates.
-pub fn emit_with_basic_owned_group_into_blocks(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_group_into_blocks(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_group_into_blocks_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_group_into_blocks_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit EndingWith-profile targets with explicitly owned failure-rule walks
-/// over one exact Primary or named endpoint. Older emitters keep refusing them.
-pub fn emit_with_basic_owned_failure_sources(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_failure_sources(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_failure_source_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_failure_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit an owned adjacency-tree row collection with the owned failure-source,
-/// EndingWith, scalar ItemAt and primary-row failure composition. Legacy trees
-/// keep the ordinary emitter; every older companion keeps refusing owned trees.
-pub fn emit_with_basic_owned_adjacency_tree(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_adjacency_tree(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_adjacency_tree_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_adjacency_tree_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit the owned adjacency-tree profile plus SequenceItemAt over explicitly
-/// owned recursive collection walks. Every older emitter keeps refusing them.
-pub fn emit_with_basic_owned_recursive_collect(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_recursive_collect(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_recursive_collect_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_recursive_collect_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit SequenceExists over the four pure producers beside ItemAt and the
-/// qualified By/AdjacentBy/StartingWith/EndingWith profile. Each reached predicate item
-/// copies the receiving paired view; existing emitters keep their gates.
-pub fn emit_with_basic_owned_sequence_exists(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_sequence_exists(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_sequence_exists_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_sequence_exists_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit the owned recursive-collect profile plus recursive filtering of an
-/// owned scope selector. Every older emitter keeps refusing the owned filter.
-pub fn emit_with_basic_owned_recursive_filter(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_recursive_filter(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_recursive_filter_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_recursive_filter_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit owned-recursive-filter-profile targets with explicitly owned Lookup and
-/// CollectionFind over one exact endpoint. Older emitters keep refusing them.
-pub fn emit_with_basic_owned_lookup_find(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_lookup_find(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_lookup_find_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_lookup_find_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit the owned recursive-filter profile plus explicitly owned dynamic
-/// source-field reads. Every older emitter keeps refusing them.
-pub fn emit_with_basic_owned_dynamic_field(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_dynamic_field(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_dynamic_field_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_dynamic_field_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit the owned dynamic-field profile plus explicit owned dynamic driver
-/// loading. Every older emitter keeps refusing owned drivers.
-pub fn emit_with_basic_owned_dynamic_loading(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_dynamic_loading(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_dynamic_loading_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_dynamic_loading_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit SequenceAggregate over the four pure producers beside the
-/// SequenceExists profile. Each reached item copies the receiving paired view
-/// for its predicate and value; the reducer argument keeps the receiving view.
-pub fn emit_with_basic_owned_sequence_aggregate(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_sequence_aggregate(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_sequence_aggregate_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_sequence_aggregate_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit owned-search-profile targets with explicitly owned collection
-/// aggregates over one exact endpoint. Older emitters keep refusing them.
-pub fn emit_with_basic_owned_collection_aggregates(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_collection_aggregates(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_collection_aggregates_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_collection_aggregates_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit owned-search-profile targets with owned inner joins, their tuple reads
-/// and owned joined aggregates. Older emitters keep refusing both.
-pub fn emit_with_basic_owned_joins(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_joins(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_joins_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_joins_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
+owned_presets! {
+    Filters => emit_with_basic_owned_filters;
+    Sort => emit_with_basic_owned_sort;
+    Windows => emit_with_basic_owned_windows;
+    RowFailures => emit_with_basic_owned_row_failures;
+    GroupBy => emit_with_basic_owned_group_by;
+    SequenceItemAt => emit_with_basic_owned_sequence_item_at;
+    GroupAdjacentBy => emit_with_basic_owned_group_adjacent_by;
+    GroupStartingWith => emit_with_basic_owned_group_starting_with;
+    GroupEndingWith => emit_with_basic_owned_group_ending_with;
+    GroupIntoBlocks => emit_with_basic_owned_group_into_blocks;
+    FailureSources => emit_with_basic_owned_failure_sources;
+    PathHierarchy => emit_with_basic_owned_path_hierarchy;
+    AdjacencyTree => emit_with_basic_owned_adjacency_tree;
+    RecursiveCollect => emit_with_basic_owned_recursive_collect;
+    RecursiveFilter => emit_with_basic_owned_recursive_filter;
+    LookupFind => emit_with_basic_owned_lookup_find;
+    DynamicField => emit_with_basic_owned_dynamic_field;
+    DynamicLoading => emit_with_basic_owned_dynamic_loading;
+    CollectionAggregates => emit_with_basic_owned_collection_aggregates;
+    Joins => emit_with_basic_owned_joins;
+    SequenceExists => emit_with_basic_owned_sequence_exists;
+    SequenceAggregate => emit_with_basic_owned_sequence_aggregate;
+    XmlSerialize => emit_with_basic_owned_xml_serialize;
+    XmlMixedContent => emit_with_basic_owned_xml_mixed_content;
+    XmlMixedConstruction => emit_with_basic_owned_xml_mixed_construction;
 }
 
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.

@@ -18,240 +18,21 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     lower_with_validator(project, validate_program)
 }
 
-/// Lowers the explicit static Basic filter-only profile without changing controls.
-///
-/// Default lowering and existing emitter entry points retain their closed policy.
-pub fn lower_with_basic_owned_filters(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(project, crate::validate_program_with_basic_owned_filters)
-}
-
-/// Lowers the explicit static Basic sort profile through unchanged graph lowering.
-///
-/// Default and filter-only lowering retain their original capability policies.
-pub fn lower_with_basic_owned_sort(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(project, crate::validate_program_with_basic_owned_sort)
-}
-
-/// Lowers explicit static Basic windows through the unchanged graph lowering.
-///
-/// Stored windows and implicit First retain their original order. Default,
-/// filter-only and sort-only lowering preserve their capability policies.
-pub fn lower_with_basic_owned_windows(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(project, crate::validate_program_with_basic_owned_windows)
-}
-
-/// Lower window-profile targets with explicitly admitted owned primary-row
-/// global failures, preserving the original failure iteration representation.
-pub fn lower_with_basic_owned_row_failures(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(project, crate::validate_basic_owned_row_failure_emission)
-}
-
-/// Lowers static Basic By grouping and member retention, composing the qualified
-/// filter, sort, window and primary-row failure permissions without changing IR.
-pub fn lower_with_basic_owned_group_by(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(project, crate::validate_program_with_basic_owned_group_by)
-}
-
-/// Lowers static Basic By and AdjacentBy with qualified source controls,
-/// primary-row failures and scalar-producer SequenceItemAt. Existing companions
-/// retain their separate control and consumer policies; the IR is unchanged.
-pub fn lower_with_basic_owned_group_adjacent_by(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_group_adjacent_by,
-    )
-}
-
-/// Lowers static Basic By, AdjacentBy and StartingWith with the existing source
-/// controls, independent scalar-producer ItemAt and primary-row failure policies.
-/// No older companion opts into StartingWith; graph and wire lowering are unchanged.
-pub fn lower_with_basic_owned_group_starting_with(
+/// Lowers a Project and validates it for Basic owned emission under
+/// `capabilities`. Graph lowering and the IR are unchanged; owned join scopes
+/// pass the lowering preflight only when the capability set admits joins.
+pub fn lower_with_owned_capabilities(
     project: &Project,
+    capabilities: crate::OwnedCapabilities,
 ) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_group_starting_with,
-    )
-}
-
-/// Lowers static Basic By, AdjacentBy, StartingWith and EndingWith with the
-/// existing source controls, independent scalar-producer ItemAt and primary-row
-/// failure policies. No older companion opts into EndingWith; graph and wire
-/// lowering are unchanged.
-pub fn lower_with_basic_owned_group_ending_with(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_group_ending_with,
-    )
-}
-
-/// Lowers explicit owned failure-rule iteration with the EndingWith target
-/// controls, scalar-producer ItemAt and primary-row failures. Every older
-/// companion keeps refusing owned failure walks; lowering itself is unchanged.
-pub fn lower_with_basic_owned_failure_sources(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_failure_sources,
-    )
-}
-
-/// Lowers an owned adjacency-tree row collection with the composed owned
-/// failure-source, EndingWith, scalar-producer ItemAt and primary-row failure
-/// policies. Legacy trees keep their ordinary route; lowering is unchanged.
-pub fn lower_with_basic_owned_adjacency_tree(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_adjacency_tree,
-    )
-}
-
-/// Lowers static Basic By, AdjacentBy, StartingWith, EndingWith and IntoBlocks
-/// with the existing source controls, independent scalar-producer ItemAt and
-/// primary-row failure policies. No older companion opts into IntoBlocks; graph
-/// and wire lowering are unchanged.
-pub fn lower_with_basic_owned_group_into_blocks(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_group_into_blocks,
-    )
-}
-
-/// Lowers SequenceItemAt over explicitly owned recursive collection walks with
-/// the owned adjacency-tree profile. Older companions keep refusing the owned
-/// producer; lowering itself is unchanged.
-pub fn lower_with_basic_owned_recursive_collect(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_recursive_collect,
-    )
-}
-
-/// Lowers recursive filtering of an explicitly owned scope selector with the
-/// owned recursive-collect profile. Older companions keep refusing the owned
-/// filter; lowering itself is unchanged.
-pub fn lower_with_basic_owned_recursive_filter(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_recursive_filter,
-    )
-}
-
-/// Lowers explicitly owned Lookup and CollectionFind with the owned
-/// recursive-filter chain and owned IntoBlocks grouping. Every older companion
-/// keeps refusing owned search.
-pub fn lower_with_basic_owned_lookup_find(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_lookup_find,
-    )
-}
-
-/// Lowers explicitly owned dynamic source-field reads with the owned
-/// recursive-filter profile. Older companions keep refusing the owned read;
-/// lowering itself is unchanged.
-pub fn lower_with_basic_owned_dynamic_field(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_dynamic_field,
-    )
-}
-
-/// Lowers explicitly owned collection aggregates with the owned search
-/// profile. Every older companion keeps refusing owned aggregates.
-pub fn lower_with_basic_owned_collection_aggregates(
-    project: &Project,
-) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_collection_aggregates,
-    )
-}
-
-/// Lowers owned inner joins, their tuple reads and owned joined aggregates with
-/// the owned Lookup and CollectionFind profile. Every older route keeps
-/// refusing owned joins at its preflight and joined aggregates at validation.
-pub fn lower_with_basic_owned_joins(project: &Project) -> Result<Program, LowerError> {
     lower_with_policy(
         project,
-        crate::validate_program_with_basic_owned_joins,
-        OwnedJoinLowering::Open,
-    )
-}
-
-/// Lowers owned dynamic driver loading with the owned dynamic-field profile.
-/// Older companions keep refusing owned drivers; lowering itself is unchanged.
-pub fn lower_with_basic_owned_dynamic_loading(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_dynamic_loading,
-    )
-}
-
-/// Lowers the explicit Basic scalar-producer SequenceItemAt profile, composing
-/// qualified By controls and primary-row failures without changing their gates.
-pub fn lower_with_basic_owned_sequence_item_at(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_sequence_item_at,
-    )
-}
-
-/// Lowers an owned path-hierarchy input collection with the composed EndingWith
-/// controls, scalar-producer ItemAt, primary-row failures and owned failure-source
-/// walks. Legacy hierarchies keep their ordinary route; graph and wire lowering
-/// are unchanged.
-pub fn lower_with_basic_owned_path_hierarchy(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_path_hierarchy,
-    )
-}
-
-/// Lowers the explicit Basic scalar-producer SequenceExists profile. It composes
-/// ItemAt, By/AdjacentBy/StartingWith/EndingWith controls and primary-row failures.
-pub fn lower_with_basic_owned_sequence_exists(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_sequence_exists,
-    )
-}
-
-/// Lowers the explicit Basic scalar-producer SequenceAggregate profile. It
-/// composes the SequenceExists profile.
-pub fn lower_with_basic_owned_sequence_aggregate(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_sequence_aggregate,
-    )
-}
-
-/// Lowers owned XML serialization in Basic target contexts, composing the owned
-/// dynamic source-field companion. Legacy serializers keep their ordinary route.
-pub fn lower_with_basic_owned_xml_serialize(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_xml_serialize,
-    )
-}
-
-/// Lowers mixed-content construction by an owned selector in Basic target
-/// contexts, composing the owned XML mixed-content atomization companion.
-pub fn lower_with_basic_owned_xml_mixed_construction(
-    project: &Project,
-) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_xml_mixed_construction,
-    )
-}
-
-/// Lowers owned XML mixed-content atomization in Basic target contexts,
-/// composing the owned XML serialization companion. Legacy mixed-content nodes
-/// keep their ordinary route.
-pub fn lower_with_basic_owned_xml_mixed_content(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_xml_mixed_content,
+        |program| crate::validate_basic_owned_emission_with_capabilities(program, capabilities),
+        if capabilities.joins {
+            OwnedJoinLowering::Open
+        } else {
+            OwnedJoinLowering::Closed
+        },
     )
 }
 
@@ -271,7 +52,7 @@ pub(crate) fn lower_with_validator(
 
 fn lower_with_policy(
     project: &Project,
-    validator: fn(&Program) -> Result<(), ProgramValidationError>,
+    validator: impl Fn(&Program) -> Result<(), ProgramValidationError>,
     owned_joins: OwnedJoinLowering,
 ) -> Result<Program, LowerError> {
     let validation = engine::validate(project);

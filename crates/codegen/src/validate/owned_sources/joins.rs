@@ -1,38 +1,11 @@
 //! Owned inner joins and joined aggregates. Each source walks exactly its
 //! declared static endpoint like owned iteration, and tuple expressions read
 //! members only through owned join reads and the flattened join position. A
-//! joined aggregate's argument keeps its receiving context. Only the explicit
-//! join companion admits them; every older profile keeps its Join refusal.
+//! joined aggregate's argument keeps its receiving context. Only the `joins`
+//! capability admits them; without it they keep their Join refusal.
 
+use super::admission::{Admission, Ancestor, Visit};
 use super::*;
-
-/// Join permission is orthogonal to target controls, consumers, searches and
-/// failures. It covers owned join scopes and owned joined aggregates alike.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::validate) enum JoinPolicy {
-    Closed,
-    Owned,
-}
-
-/// Validate the owned Lookup and CollectionFind profile together with owned
-/// inner joins, their tuple reads and owned joined aggregates. Earlier
-/// companions keep refusing them.
-pub fn validate_basic_owned_joins_emission(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    validate_basic_owned_with_joins(
-        program,
-        BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter,
-        FailurePolicy::OwnedSources,
-        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-        PathHierarchyPolicy::Owned,
-        AdjacencyTreePolicy::OwnedWithRecursiveFilter,
-        SearchPolicy::Basic,
-        DynamicFieldPolicy::Closed,
-        OwnedXmlPolicy::Closed,
-        JoinPolicy::Owned,
-    )
-}
 
 pub(super) fn is_join_read(expression: &Expression) -> bool {
     matches!(
@@ -154,7 +127,7 @@ impl<'a> Admission<'a> {
             namespace: visit.namespace,
             node: visit.node,
         };
-        if self.join == JoinPolicy::Closed {
+        if !self.capabilities.joins {
             return Err(failure(
                 location,
                 aggregate_request(aggregate),
@@ -222,7 +195,7 @@ impl<'a> Admission<'a> {
                 closed,
             ));
         }
-        if self.join == JoinPolicy::Closed {
+        if !self.capabilities.joins {
             return Err(refusal(Capability::Join));
         }
         for source in join.plan().sources() {
