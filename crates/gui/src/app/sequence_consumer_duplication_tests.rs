@@ -1031,6 +1031,7 @@ fn explicit_binding(
             camera_focus: None,
             canvas_transform: None,
             pin_interaction_ids: Vec::new(),
+            planned_edits: Vec::new(),
             error: None,
         };
         viewer.connect(&from, &to, &mut canvas.snarl);
@@ -1140,6 +1141,7 @@ fn connect_argument(
         camera_focus: None,
         canvas_transform: None,
         pin_interaction_ids: Vec::new(),
+        planned_edits: Vec::new(),
         error: None,
     };
     viewer.connect(&from, &to, &mut canvas.snarl);

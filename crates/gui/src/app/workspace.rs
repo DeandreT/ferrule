@@ -1104,7 +1104,7 @@ impl FerruleApp {
         let primary_root_authoring = crate::primary_root_authoring::available(&self.project);
         let canvas_id = self.embedded_canvas_id(egui::Id::unique("main_mapping_canvas"));
         sequence_consumer_duplication::begin(ui.ctx());
-        crate::graph_viewer::removal_journal::begin(ui.ctx());
+        let mut planned_edits = Vec::new();
         ui.add_enabled_ui(editing_enabled, |ui| {
             let source_blocks = project_source_blocks(&self.project);
             let target_blocks = target_blocks(&self.project.target);
@@ -1158,6 +1158,7 @@ impl FerruleApp {
                 camera_focus: None,
                 canvas_transform: None,
                 pin_interaction_ids: Vec::new(),
+                planned_edits: Vec::new(),
                 error: None,
             };
             let interaction = crate::canvas_keyboard::show(
@@ -1194,8 +1195,9 @@ impl FerruleApp {
                 );
             }
             requested_function = viewer.requested_function_open;
+            planned_edits = viewer.planned_edits;
         });
-        self.record_canvas_removals(MappingDocument::Main, ui.ctx());
+        self.queue_canvas_edits(MappingDocument::Main, planned_edits);
         if let Some(node) = sequence_consumer_duplication::take(ui.ctx()) {
             self.apply_sequence_duplication_request(MappingDocument::Main, node);
         }
