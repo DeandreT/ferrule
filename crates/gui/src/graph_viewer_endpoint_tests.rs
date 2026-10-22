@@ -111,6 +111,7 @@ fn wheel_scrolls_endpoint_under_pointer_and_routes_hidden_wires_to_edge_proxies(
             camera_focus: None,
             canvas_transform: None,
             pin_interaction_ids: Vec::new(),
+            planned_edits: Vec::new(),
             error: None,
         };
         assert!(viewer.scroll_endpoint_at(source_pointer, -90.0, &mut snarl));
@@ -154,6 +155,7 @@ fn wheel_scrolls_endpoint_under_pointer_and_routes_hidden_wires_to_edge_proxies(
             camera_focus: None,
             canvas_transform: None,
             pin_interaction_ids: Vec::new(),
+            planned_edits: Vec::new(),
             error: None,
         };
         assert!(viewer.scroll_endpoint_at(target_pointer, -90.0, &mut snarl));
@@ -382,6 +384,7 @@ impl EndpointHeaderFixture {
             camera_focus: None,
             canvas_transform: None,
             pin_interaction_ids: Vec::new(),
+            planned_edits: Vec::new(),
             error: None,
         }
     }
