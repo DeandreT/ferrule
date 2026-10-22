@@ -79,8 +79,39 @@ impl GraphViewer<'_> {
         };
         if let Some(node) = node {
             match node {
+                Node::OwnedPosition(position) => {
+                    ui.label(
+                        graph_node_presentation::owned_source_title(&Node::OwnedPosition(
+                            position.clone(),
+                        ))
+                        .expect("owned title"),
+                    );
+                    let selected = position.collection.clone().map(|path| OwnedSourceRef {
+                        owner: position.owner.clone(),
+                        path,
+                    });
+                    let current = selected.as_ref().map_or_else(
+                        || {
+                            format!(
+                                "{}: <latest item>",
+                                crate::source_ownership::owner_label(&position.owner)
+                            )
+                        },
+                        |source| {
+                            crate::source_ownership::collection_label(&source.owner, &source.path)
+                        },
+                    );
+                    if let Some(source) = self.source_paths.show_owned_collection_picker(
+                        ui,
+                        ui.scope_id().with("owned_position_collection"),
+                        &current,
+                        selected.as_ref(),
+                    ) {
+                        position.owner = source.owner;
+                        position.collection = Some(source.path);
+                    }
+                }
                 node @ (Node::OwnedSourceField(_)
-                | Node::OwnedPosition(_)
                 | Node::OwnedRowDocumentPath(_)
                 | Node::OwnedDynamicSourceField(_)
                 | Node::OwnedLookup(_)
@@ -154,6 +185,20 @@ impl GraphViewer<'_> {
                         ui.scope_id().with("position_collection"),
                         collection,
                     );
+                    // Ambiguous endpoints count one exact owner's items instead.
+                    if self.source_paths.ownership().active()
+                        && let Some(source) = self.source_paths.show_owned_collection_picker(
+                            ui,
+                            ui.scope_id().with("position_owner"),
+                            "Count one input's items",
+                            None,
+                        )
+                    {
+                        *node = Node::OwnedPosition(mapping::OwnedPosition {
+                            owner: source.owner,
+                            collection: Some(source.path),
+                        });
+                    }
                 }
                 Node::JoinField {
                     join,

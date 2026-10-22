@@ -16,7 +16,8 @@ use egui_snarl::ui::{NodeLayout, PinInfo, SnarlViewer};
 use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, OutPinId, Snarl};
 use ir::{ScalarType, Value};
 use mapping::{
-    AggregateOp, Binding, FunctionId, FunctionParameterId, Graph, NamedTarget, Node, NodeId, Scope,
+    AggregateOp, Binding, FunctionId, FunctionParameterId, Graph, NamedTarget, Node, NodeId,
+    OwnedSourceRef, Scope,
 };
 
 use crate::appearance::{SemanticThemeColors, WireColorMode};
@@ -508,10 +509,35 @@ impl GraphViewer<'_> {
         }
     }
 
+    /// Inserts a palette position node through the recorded canvas path.
+    #[cfg(test)]
+    pub(crate) fn insert_position_for_test(
+        &mut self,
+        snarl: &mut Snarl<CanvasNode>,
+        pos: egui::Pos2,
+    ) -> Result<(NodeId, SnarlNodeId), String> {
+        self.insert_palette_node_recorded(snarl, pos, NodeTemplate::Position)
+    }
+
+    /// Shows a node's property editor exactly as its canvas popover does.
+    #[cfg(test)]
+    pub(crate) fn show_properties_for_test(
+        &mut self,
+        pin: &OutPin,
+        ui: &mut Ui,
+        snarl: &mut Snarl<CanvasNode>,
+    ) {
+        self.show_node_properties(pin, ui, snarl);
+    }
+
     pub(crate) fn source_block_connection_error(&self, block: usize) -> Option<String> {
         let index = block.checked_sub(1)?;
         let source = self.project_references.named_source(index)?;
         let owner = self.project_references.source_alias_conflict(index)?;
+        // An exact owner addresses a shadowed alias; only unresolvable names stay closed.
+        if self.source_paths.ownership().block_reads_owned(block) {
+            return None;
+        }
         Some(format!(
             "Named input `{}` is unavailable: its name/path conflicts with {owner}. Rename the input to use an unambiguous name. Existing bindings are unchanged.",
             source.name
@@ -562,10 +588,16 @@ impl GraphViewer<'_> {
             &section.title,
             context,
         );
-        match self.source_block_connection_error(block) {
-            Some(error) => {
-                Some(hint.map_or_else(|| error.clone(), |hint| format!("{hint}\n{error}")))
-            }
+        let note = self.source_block_connection_error(block).or_else(|| {
+            self.source_paths
+                .ownership()
+                .block_reads_owned(block)
+                .then(|| {
+                    "Wires from this input create owned reads of exactly this input.".to_owned()
+                })
+        });
+        match note {
+            Some(note) => Some(hint.map_or_else(|| note.clone(), |hint| format!("{hint}\n{note}"))),
             None => hint,
         }
     }
@@ -793,13 +825,17 @@ impl GraphViewer<'_> {
                     },
                 )
             }
-            NodeTemplate::Position => self.insert(
-                snarl,
-                pos,
-                Node::Position {
-                    collection: Vec::new(),
-                },
-            ),
+            NodeTemplate::Position => {
+                let node = match self.source_paths.ownership().palette_position() {
+                    Some(position) if self.function_output.is_none() => {
+                        Node::OwnedPosition(position)
+                    }
+                    _ => Node::Position {
+                        collection: Vec::new(),
+                    },
+                };
+                self.insert(snarl, pos, node)
+            }
             NodeTemplate::HostInput => self.insert(
                 snarl,
                 pos,
@@ -1580,8 +1616,20 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 .map_or_else(|| "Target".to_string(), |section| section.title.clone()),
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
                 let title = match self.graph.nodes.get(id) {
-                    Some(Node::OwnedSourceField(_)) => "Owned source field".into(),
-                    Some(Node::OwnedPosition(_)) => "Owned position".into(),
+                    Some(Node::OwnedSourceField(field)) => compact_graph_title(&format!(
+                        "Owned {}: {}",
+                        crate::source_ownership::owner_label(&field.source.owner),
+                        field.source.path.join("/")
+                    )),
+                    Some(Node::OwnedPosition(position)) => format!(
+                        "Owned position: {}{}",
+                        crate::source_ownership::owner_label(&position.owner),
+                        position
+                            .collection
+                            .as_ref()
+                            .map(|collection| format!(" {}", collection.join("/")))
+                            .unwrap_or_default()
+                    ),
                     Some(Node::OwnedRowDocumentPath(_)) => "Owned row document path".into(),
                     Some(Node::OwnedLookup(lookup)) => {
                         format!("Owned lookup: {}", lookup.collection.path.join("/"))
