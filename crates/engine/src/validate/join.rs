@@ -245,7 +245,20 @@ pub(super) fn validate_scope_nodes(
     project: &Project,
     issues: &mut Vec<ValidationIssue>,
 ) {
-    let roots = scope
+    validate_roots(
+        graph,
+        scope_join_roots(scope),
+        active_joins,
+        root_context,
+        location,
+        project,
+        issues,
+    );
+}
+
+/// The roots of one scope whose join references are validated together.
+pub(crate) fn scope_join_roots(scope: &Scope) -> impl Iterator<Item = NodeId> + '_ {
+    scope
         .filter
         .into_iter()
         .chain(scope.post_group_filter)
@@ -260,16 +273,7 @@ pub(super) fn validate_scope_nodes(
                 .iter()
                 .flat_map(|binding| [binding.key, binding.value]),
         )
-        .chain(scope.dynamic_children.iter().map(|child| child.key));
-    validate_roots(
-        graph,
-        roots,
-        active_joins,
-        root_context,
-        location,
-        project,
-        issues,
-    );
+        .chain(scope.dynamic_children.iter().map(|child| child.key))
 }
 
 /// `root_context` says whether `roots` evaluate without an active item frame;

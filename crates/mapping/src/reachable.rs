@@ -15,6 +15,8 @@ impl Project {
         additional_roots: impl IntoIterator<Item = NodeId>,
     ) {
         let mut pending = additional_roots.into_iter().collect::<Vec<_>>();
+        #[cfg(test)]
+        let additional = pending.len();
         collect_scope_roots(&self.root, &mut pending);
         for target in &self.extra_targets {
             collect_scope_roots(&target.root, &mut pending);
@@ -32,6 +34,19 @@ impl Project {
                 pending.extend(sequence.inputs());
                 pending.extend(sequence.owned_items());
             }
+        }
+        // The shared scope-root visitor runs beside this walk until it
+        // replaces it; both must name the same executable roots.
+        #[cfg(test)]
+        {
+            let mut legacy = pending[additional..].to_vec();
+            let mut visited = crate::scope_roots::project_roots(self);
+            legacy.sort_unstable();
+            visited.sort_unstable();
+            assert_eq!(
+                legacy, visited,
+                "scope-root visitor diverged from reachability roots"
+            );
         }
 
         let mut reachable = BTreeSet::new();
