@@ -72,6 +72,7 @@ pub(super) fn call_builtin(
         BuiltinId::String => string(args),
         BuiltinId::IsNumeric => is_numeric(args),
         BuiltinId::ToNumber => to_number(args),
+        BuiltinId::DecimalFromNullableText => crate::decimal_value::from_nullable_text(args),
         BuiltinId::Boolean => effective_boolean(args),
         BuiltinId::Positive => positive(args),
         BuiltinId::Floor => floor(args),
@@ -203,6 +204,7 @@ fn concat(args: &[Value]) -> Value {
             Value::Bool(b) => out.push_str(&b.to_string()),
             Value::Int(i) => out.push_str(&i.to_string()),
             Value::Float(f) => out.push_str(&f.to_string()),
+            Value::Decimal(value) => out.push_str(&value.to_string()),
             Value::String(s) => out.push_str(s),
         }
     }
@@ -369,7 +371,7 @@ fn is_numeric(args: &[Value]) -> Result<Value, FunctionError> {
         });
     };
     let numeric = match value {
-        Value::Int(_) => true,
+        Value::Int(_) | Value::Decimal(_) => true,
         Value::Float(value) => value.is_finite(),
         Value::String(value) => value
             .trim()
@@ -413,6 +415,10 @@ fn to_number(args: &[Value]) -> Result<Value, FunctionError> {
                 message: "requires a finite numeric value",
             })
         }
+        Value::Decimal(_) => Err(FunctionError::TypeMismatch {
+            function: "to_number",
+            got: "decimal",
+        }),
     }
 }
 
@@ -430,6 +436,12 @@ fn effective_boolean(args: &[Value]) -> Result<Value, FunctionError> {
         Value::Int(value) => *value != 0,
         Value::Float(value) => *value != 0.0 && !value.is_nan(),
         Value::String(value) => !value.is_empty(),
+        Value::Decimal(_) => {
+            return Err(FunctionError::TypeMismatch {
+                function: "boolean",
+                got: "decimal",
+            });
+        }
     }))
 }
 
@@ -639,6 +651,12 @@ fn sqlite_multiply(args: &[Value]) -> Result<Value, FunctionError> {
             got: args.len(),
         });
     };
+    if matches!(left, Value::Decimal(_)) || matches!(right, Value::Decimal(_)) {
+        return Err(FunctionError::TypeMismatch {
+            function: FUNCTION,
+            got: "decimal",
+        });
+    }
     if matches!(left, Value::Null | Value::JsonNull(_))
         || matches!(right, Value::Null | Value::JsonNull(_))
     {
@@ -1260,6 +1278,10 @@ fn comparison(
     matches: impl Fn(std::cmp::Ordering) -> bool,
 ) -> Result<Value, FunctionError> {
     match args {
+        [Value::Decimal(_), _] | [_, Value::Decimal(_)] => Err(FunctionError::TypeMismatch {
+            function: name,
+            got: "decimal",
+        }),
         [Value::Null | Value::JsonNull(_) | Value::XmlNil(_), _]
         | [_, Value::Null | Value::JsonNull(_) | Value::XmlNil(_)] => Ok(Value::Bool(false)),
         [a, b] => match value_ordering(a, b) {

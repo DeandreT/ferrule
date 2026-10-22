@@ -16,6 +16,7 @@ impl GraphBuilder<'_> {
         Node::Const {
             value: match aggregate_op(name) {
                 Some(AggregateOp::Count | AggregateOp::Sum) => ir::Value::Int(0),
+                Some(AggregateOp::DecimalSum) => ir::Value::decimal(ir::Decimal96::ZERO),
                 Some(
                     AggregateOp::Avg
                     | AggregateOp::Min

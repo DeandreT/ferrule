@@ -847,7 +847,7 @@ fn eval_expr_inner(
                         .cloned()
                         .unwrap_or(Value::Null)
                 };
-                values.push(item_value);
+                crate::aggregate::collect_value(*function, &mut values, item_value)?;
             }
             let arg_value = match arg {
                 Some(id) => Some(eval_node_input(
@@ -1009,6 +1009,7 @@ fn eval_xml_mixed_content(
             Value::Bool(value) => output.push_str(if value { "true" } else { "false" }),
             Value::Int(value) => output.push_str(&value.to_string()),
             Value::Float(value) => output.push_str(&value.to_string()),
+            Value::Decimal(value) => output.push_str(&value.to_string()),
         }
     }
     Ok(Value::String(output))
@@ -1163,6 +1164,7 @@ fn visit_collection_find<'a>(
 
 pub(super) fn coerce_value_map_input(value: &Value, ty: ScalarType) -> Option<Value> {
     match (ty, value) {
+        (_, Value::Decimal(_)) => None,
         (_, Value::Null) => Some(Value::Null),
         (_, Value::JsonNull(_)) => Some(Value::Null),
         (_, Value::XmlNil(value)) => Some(Value::XmlNil(*value)),

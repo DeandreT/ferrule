@@ -31,6 +31,7 @@ pub enum AggregateFunction {
     Max,
     Join,
     ItemAt,
+    DecimalSum,
 }
 
 impl AggregateFunction {
@@ -42,6 +43,7 @@ impl AggregateFunction {
         Self::Max,
         Self::Join,
         Self::ItemAt,
+        Self::DecimalSum,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -53,6 +55,7 @@ impl AggregateFunction {
             Self::Max => "max",
             Self::Join => "join",
             Self::ItemAt => "item_at",
+            Self::DecimalSum => "decimal_sum",
         }
     }
 }
@@ -67,6 +70,7 @@ impl From<AggregateOp> for AggregateFunction {
             AggregateOp::Max => Self::Max,
             AggregateOp::Join => Self::Join,
             AggregateOp::ItemAt => Self::ItemAt,
+            AggregateOp::DecimalSum => Self::DecimalSum,
         }
     }
 }
@@ -99,6 +103,7 @@ pub enum ScalarFunction {
     String,
     IsNumeric,
     ToNumber,
+    DecimalFromNullableText,
     Boolean,
     Positive,
     Floor,
@@ -183,6 +188,7 @@ impl ScalarFunction {
         Self::String,
         Self::IsNumeric,
         Self::ToNumber,
+        Self::DecimalFromNullableText,
         Self::Boolean,
         Self::Positive,
         Self::Floor,
@@ -267,6 +273,7 @@ impl ScalarFunction {
             Self::String => "string",
             Self::IsNumeric => "is_numeric",
             Self::ToNumber => "to_number",
+            Self::DecimalFromNullableText => "decimal_from_nullable_text",
             Self::Boolean => "boolean",
             Self::Positive => "positive",
             Self::Floor => "floor",
@@ -352,6 +359,7 @@ impl ScalarFunction {
             "string" => Some(Self::String),
             "is_numeric" => Some(Self::IsNumeric),
             "to_number" => Some(Self::ToNumber),
+            "decimal_from_nullable_text" => Some(Self::DecimalFromNullableText),
             "boolean" => Some(Self::Boolean),
             "positive" => Some(Self::Positive),
             "floor" => Some(Self::Floor),

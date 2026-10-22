@@ -69,6 +69,7 @@ fn aggregate_label(function: AggregateOp) -> &'static str {
     match function {
         AggregateOp::Count => "count",
         AggregateOp::Sum => "sum",
+        AggregateOp::DecimalSum => "decimal sum",
         AggregateOp::Avg => "average",
         AggregateOp::Min => "min",
         AggregateOp::Max => "max",
@@ -410,7 +411,7 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
             let icon = match value {
                 ir::Value::String(_) => Icon::Type,
                 ir::Value::Int(_) => Icon::Hash,
-                ir::Value::Float(_) => Icon::Calculator,
+                ir::Value::Float(_) | ir::Value::Decimal(_) => Icon::Calculator,
                 ir::Value::Bool(_) => Icon::Binary,
                 ir::Value::Null | ir::Value::JsonNull(_) | ir::Value::XmlNil(_) => Icon::CircleHelp,
             };
