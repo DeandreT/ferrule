@@ -900,7 +900,7 @@ fn write_simple_content_members(
 /// text content have no particle occurrence; contradictory XML roles are
 /// refused with the declaration's typed error.
 pub(in crate::xsd) fn optional_element(child: &SchemaNode) -> Result<bool, XmlFormatError> {
-    let declared = super::declaration(child)?;
+    let declared = crate::declaration::declaration(child)?;
     Ok(!child.attribute && !declared.repeated && declared.optional)
 }
 

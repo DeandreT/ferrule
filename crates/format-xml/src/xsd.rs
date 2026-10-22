@@ -3279,4 +3279,4 @@ fn map_xsd_type(ty: &str) -> ScalarType {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
