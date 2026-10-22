@@ -1221,6 +1221,17 @@ at reached filename expressions, after the complete document body; body clocks
 retain the fixed execution-context value. Without an override, the ordinary
 visitor keeps its fixed-clock behavior.
 
+For mappings that require separate reached body-clock reads, both emitters offer
+`emit_with_document_clocks`. Its `VisitTargetDocumentsWithClocks` /
+`visit_target_documents_with_clocks` entry point accepts separate body and
+filename providers. The body provider runs at every reached date-time node,
+including repeated references and aggregate-item evaluation. The filename
+provider is installed only after the complete body. Consumer stop and failures
+prevent later work; clock errors retain the reached node and accepted count.
+The ordinary and filename-only APIs keep the stable body timestamp. This
+additional profile refuses owned routes, user functions, failure rules and
+unqualified graph forms before calling either provider.
+
 `SerializeCsvDocumentBytes` / `serialize_csv_document_bytes` serializes one
 complete row document without rerunning the mapping. The visitor reports
 complete delivery, consumer stop or an evaluation failure with the number of

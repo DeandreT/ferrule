@@ -118,6 +118,41 @@ pub fn validate_document_filename_clock(
     Ok(index)
 }
 
+/// Both clocks are explicit and separate. Ordinary entry points keep the
+/// execution timestamp, while this bounded profile samples reached body reads.
+pub fn validate_document_clocks(
+    program: &Program,
+    target: Option<&str>,
+) -> Result<Option<usize>, DocumentVisitorBoundaryError> {
+    let index = validate_document_filename_clock(program, target)?;
+    if !program.user_functions.is_empty() || !program.failure_rules.is_empty() {
+        return Err(DocumentVisitorBoundaryError::Unsupported(
+            "body clocks require a separate profile for user functions and failure rules",
+        ));
+    }
+    for node in &program.expressions {
+        if !matches!(
+            node.expression,
+            Expression::Const { .. }
+                | Expression::RuntimeValue { .. }
+                | Expression::RuntimeParameter { .. }
+                | Expression::RuntimeParameterDefault { .. }
+                | Expression::SourceField { .. }
+                | Expression::SourceDocumentPath
+                | Expression::Position { .. }
+                | Expression::Call { .. }
+                | Expression::If { .. }
+                | Expression::Aggregate { .. }
+                | Expression::InvocationCounter { .. }
+        ) {
+            return Err(DocumentVisitorBoundaryError::Unsupported(
+                "body clock sampling is limited to ordinary scalar graph expressions",
+            ));
+        }
+    }
+    Ok(index)
+}
+
 fn nested_documents(root: &TargetScope) -> bool {
     let mut pending = root.children.iter().collect::<Vec<_>>();
     if let TargetConstruction::DynamicGroup { children, .. } = &root.construction {

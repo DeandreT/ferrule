@@ -67,8 +67,8 @@ pub use debug::{
     PendingTargetWrite,
 };
 pub use documents::{
-    DocumentFilenameClock, DocumentVisit, DocumentVisitError, DocumentVisitOptions,
-    visit_target_documents, visit_target_documents_with_options,
+    DocumentBodyClock, DocumentFilenameClock, DocumentVisit, DocumentVisitError,
+    DocumentVisitOptions, visit_target_documents, visit_target_documents_with_options,
 };
 pub use filter_map::{
     FilterMapBoundary, FilterMapBoundaryKind, FilterMapBudgetKind, FilterMapCancellation,
@@ -288,6 +288,8 @@ pub enum EngineError {
     DocumentRowsConstruction { reason: &'static str },
     #[error("filename clock at node {node} failed: {message}")]
     DocumentFilenameClock { node: NodeId, message: String },
+    #[error("body clock at node {node} failed: {message}")]
+    DocumentBodyClock { node: NodeId, message: String },
     #[error("document streaming is unsupported: {reason}")]
     DocumentStreamUnsupported { reason: &'static str },
     #[error("graph node {node}: invocation counters require explicit host limits")]

@@ -12,7 +12,7 @@ pub struct GroupedItems<'a> {
 
 struct OwnedGroup<'a> {
     invocation_counters: Option<crate::invocation_counter::CounterState>,
-    document_filename_clock: Option<&'a dyn crate::DocumentFilenameClock>,
+    document_filename_clock: Option<crate::dynamic_document::DocumentClock<'a>>,
     primary_source: &'a Instance,
     prefix: Vec<ScopeFrame<'a>>,
     named_inputs: &'a [NamedInput<'a>],

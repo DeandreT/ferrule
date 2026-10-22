@@ -13,6 +13,23 @@ impl<F: Fn() -> Result<String, String>> DocumentFilenameClock for F {
     }
 }
 
+/// Explicit clock sampled by reached body expressions in the document-clock profile.
+pub trait DocumentBodyClock {
+    fn sample_datetime(&self) -> Result<String, String>;
+}
+
+impl<F: Fn() -> Result<String, String>> DocumentBodyClock for F {
+    fn sample_datetime(&self) -> Result<String, String> {
+        self()
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum DocumentClock<'a> {
+    Filename(&'a dyn DocumentFilenameClock),
+    Body(&'a dyn DocumentBodyClock),
+}
+
 /// Pairs one generated target value with its portable output path.
 ///
 /// Resolved filesystem locations are intentionally absent: generated mappings

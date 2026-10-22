@@ -5,6 +5,7 @@ pub(super) fn render(
     scope: usize,
     plan: &ScopePlan<'_>,
     clock: bool,
+    body_clock: bool,
     output: &mut String,
 ) -> Result<(), EmitError> {
     output.push_str(API);
@@ -22,6 +23,9 @@ pub(super) fn render(
     output.push_str("    }\n");
     if clock {
         output.push_str(CLOCK_API);
+    }
+    if body_clock {
+        output.push_str(BODY_CLOCK_API);
     }
     Ok(())
 }
@@ -53,7 +57,7 @@ const API: &str = r#"
         global::Ferrule.Runtime.FerruleExecutionContext? executionContext,
         global::Ferrule.Runtime.IFerruleDynamicSourceLoader? loader,
         global::System.Func<global::Ferrule.Runtime.FerruleDocument, DocumentDecision<B>> consumer)
-        => VisitDocuments(source, inputs, executionContext, loader, null, consumer);
+        => VisitDocuments(source, inputs, executionContext, loader, null, null, consumer);
 
     private static DocumentVisit<B> VisitDocuments<B>(
         global::Ferrule.Runtime.FerruleInstance source,
@@ -61,6 +65,7 @@ const API: &str = r#"
         global::Ferrule.Runtime.FerruleExecutionContext? executionContext,
         global::Ferrule.Runtime.IFerruleDynamicSourceLoader? loader,
         global::System.Func<string>? filenameClock,
+        global::System.Func<string>? bodyClock,
         global::System.Func<global::Ferrule.Runtime.FerruleDocument, DocumentDecision<B>> consumer)
     {
         global::System.ArgumentNullException.ThrowIfNull(consumer);
@@ -70,7 +75,7 @@ const API: &str = r#"
         global::System.Exception? consumerError = null;
         try
         {
-            var context = CreateContext(source, inputs, executionContext, loader);
+            var context = CreateContext(source, inputs, executionContext, loader).WithDocumentBodyClock(bodyClock);
             VisitDocumentScope(context, filenameClock, document =>
             {
                 DocumentDecision<B> decision;
@@ -106,6 +111,23 @@ const CLOCK_API: &str = r#"
         global::System.Func<global::Ferrule.Runtime.FerruleDocument, DocumentDecision<B>> consumer)
     {
         global::System.ArgumentNullException.ThrowIfNull(clock);
-        return VisitDocuments(source, inputs, executionContext, loader, clock, consumer);
+        return VisitDocuments(source, inputs, executionContext, loader, clock, null, consumer);
+    }
+"#;
+
+const BODY_CLOCK_API: &str = r#"
+    /// <summary>Samples body reads at their evaluation points and filenames after complete bodies.</summary>
+    public static DocumentVisit<B> VisitTargetDocumentsWithClocks<B>(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> inputs,
+        global::Ferrule.Runtime.FerruleExecutionContext? executionContext,
+        global::Ferrule.Runtime.IFerruleDynamicSourceLoader? loader,
+        global::System.Func<string> bodyClock,
+        global::System.Func<string> filenameClock,
+        global::System.Func<global::Ferrule.Runtime.FerruleDocument, DocumentDecision<B>> consumer)
+    {
+        global::System.ArgumentNullException.ThrowIfNull(bodyClock);
+        global::System.ArgumentNullException.ThrowIfNull(filenameClock);
+        return VisitDocuments(source, inputs, executionContext, loader, filenameClock, bodyClock, consumer);
     }
 "#;

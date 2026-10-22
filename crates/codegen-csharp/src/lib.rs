@@ -458,6 +458,18 @@ pub fn emit_with_document_filename_clock(
     emit_mapping_artifacts(program, generated).map_err(codegen::DocumentVisitorEmitError::Emit)
 }
 
+/// Add separately supplied body and filename clocks without changing ordinary APIs.
+pub fn emit_with_document_clocks(
+    program: &Program,
+    target: Option<&str>,
+) -> Result<ArtifactSet, codegen::DocumentVisitorEmitError<EmitError>> {
+    let index = codegen::validate_document_clocks(program, target)
+        .map_err(codegen::DocumentVisitorEmitError::Boundary)?;
+    let generated = mapping::render_with_document_clocks(program, index)
+        .map_err(codegen::DocumentVisitorEmitError::Emit)?;
+    emit_mapping_artifacts(program, generated).map_err(codegen::DocumentVisitorEmitError::Emit)
+}
+
 /// Emit an explicit collection of flat CSV documents with their mapped paths.
 /// The existing single-document adapter retains its separate admission policy.
 pub fn emit_with_csv_document_set_output(
