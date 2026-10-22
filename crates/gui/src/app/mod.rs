@@ -552,6 +552,8 @@ pub struct FerruleApp {
     saved_state: Option<EditorState>,
     fingerprints: RevisionKeyed<SemanticRevision, String>,
     pending_history: Option<PendingHistory>,
+    /// Typed edits canvases applied this frame, awaiting the observer.
+    frame_commands: Vec<editor_ui::GraphCommand>,
 }
 
 struct PendingHistory {
@@ -727,6 +729,7 @@ impl Default for FerruleApp {
             saved_state,
             fingerprints,
             pending_history: None,
+            frame_commands: Vec::new(),
         }
     }
 }

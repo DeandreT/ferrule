@@ -137,6 +137,7 @@ impl FerruleApp {
             DocumentOrigin::Unsaved
         };
         self.history.clear();
+        self.discard_frame_commands();
         self.saved_state = (origin == DocumentOrigin::Saved).then(|| snapshot.state.clone());
         self.revisions.rebase(origin);
         self.fingerprints.clear();
@@ -157,7 +158,8 @@ impl FerruleApp {
     /// Observes project and canvas-layout mutations after the frame has rendered. Changes
     /// close together form one user-level undo transaction instead of one
     /// entry per keystroke/frame. Edits that still mutate the project in place
-    /// are detected here, which keys the project once per observation.
+    /// are detected here, which keys the project once per observation; a
+    /// frame's queued command is recorded here as well.
     pub(super) fn observe_editor_history(
         &mut self,
         now: std::time::Instant,
@@ -169,6 +171,12 @@ impl FerruleApp {
                 project: self.project.clone(),
                 state: current_state,
             };
+            // One more project key proves that a queued command alone
+            // explains this frame's change.
+            if let Some(command) = self.take_frame_command(&current.project) {
+                self.record_graph_command(command, current);
+                return None;
+            }
             if coalesce_change {
                 if self.pending_history.as_ref().is_some_and(|pending| {
                     now.saturating_duration_since(pending.last_change) >= HISTORY_COALESCE_DELAY
@@ -194,6 +202,7 @@ impl FerruleApp {
                 return None;
             }
         }
+        self.discard_frame_commands();
 
         let pending = self.pending_history.as_ref()?;
         let elapsed = now.saturating_duration_since(pending.last_change);
@@ -223,6 +232,7 @@ impl FerruleApp {
         self.main_canvas =
             CanvasDocumentState::with_snarl(build_snarl_with_layout(&self.project, Some(layout)));
         self.selected_scope.clear();
+        self.discard_frame_commands();
         // Rebuilding can materialize graph nodes in previously unvisited canvases.
         // That layout change belongs to this restore, not a new undo transaction.
         let restored = self.live_snapshot();

@@ -41,6 +41,15 @@ fn verify(result: Result<String, JsonBoundaryError>, case: &serde_json::Value) {
         ), "{case}: execution error differs");
         return;
     }
+    if let Some(expected) = case.get("xml_error") {
+        assert!(matches!(
+            result,
+            Err(JsonBoundaryError::Execution(codegen_runtime::RuntimeError::XmlSerialization { node, message }))
+                if node == expected["node"].as_u64().unwrap() as u32
+                    && message == expected["message"].as_str().unwrap()
+        ), "{case}: XML serialization error differs");
+        return;
+    }
     if case["reject_output"] == true {
         assert!(matches!(result, Err(JsonBoundaryError::InvalidOutput { .. })), "{case}: {result:?}");
         return;

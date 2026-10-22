@@ -194,6 +194,7 @@ fn raw_frame(
                 camera_focus: None,
                 canvas_transform: None,
                 pin_interaction_ids: Vec::new(),
+                planned_edits: Vec::new(),
                 error: None,
             };
             title = viewer.title(&CanvasNode::Graph(item));
@@ -930,6 +931,7 @@ fn connect_physical_source_attempt(
         camera_focus: None,
         canvas_transform: None,
         pin_interaction_ids: Vec::new(),
+        planned_edits: Vec::new(),
         error: None,
     };
     let to_id = if to_function { call_input } else { target_id };
