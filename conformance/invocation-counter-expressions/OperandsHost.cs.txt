@@ -1,0 +1,48 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+using System.Text;
+
+static FerruleGroup Source(FerruleValue start, FerruleValue step, FerruleValue restart) => new(new[] {
+    new FerruleField("start",new FerruleScalar(start)),
+    new FerruleField("step",new FerruleScalar(step)),
+    new FerruleField("restart",new FerruleScalar(restart)),
+});
+var context=new FerruleExecutionContext("counter.ferrule").WithInvocationCounterLimits(new(8,256));
+var integers=new (string Id,FerruleValue Value)[] {
+    ("missing",FerruleValue.Null),("string",FerruleValue.FromString("1")),
+    ("float",FerruleValue.FromDouble(1)),("bool",FerruleValue.FromBoolean(true)),
+    ("json-null",FerruleValue.JsonNull),("xml-nil",FerruleValue.XmlNil),
+};
+void Expect(string role,string id,FerruleValue value) {
+    var input=role switch {
+        "start"=>Source(value,FerruleValue.FromBoolean(false),FerruleValue.FromInt64(1)),
+        "step"=>Source(FerruleValue.FromInt64(1),value,FerruleValue.FromInt64(1)),
+        _=>Source(FerruleValue.FromInt64(1),FerruleValue.FromInt64(1),value),
+    };
+    try {GeneratedMapping.Execute(input,context);throw new InvalidOperationException("Unexpected success");}
+    catch(FerruleRuntimeException error) when(error.Error==FerruleRuntimeError.InvocationCounterOperand) {
+        if(error.Node!=1 || error.Detail!=role || error.FoundKind!=value.Kind ||
+            error.ExpectedScalarType!=(role=="restart"?FerruleScalarType.String:FerruleScalarType.Int64))
+            throw new InvalidOperationException("Wrong typed operand failure");
+        Console.WriteLine($"ERR|{role}|{id}");
+    }
+}
+foreach(var role in new[]{"start","step"}) foreach(var item in integers) Expect(role,item.Id,item.Value);
+foreach(var item in new (string Id,FerruleValue Value)[] {
+    ("integer",FerruleValue.FromInt64(1)),("float",FerruleValue.FromDouble(1)),
+    ("bool",FerruleValue.FromBoolean(true)),("json-null",FerruleValue.JsonNull),("xml-nil",FerruleValue.XmlNil),
+}) Expect("restart",item.Id,item.Value);
+try {GeneratedMapping.Execute(Source(FerruleValue.FromString("bad"),FerruleValue.Null,FerruleValue.JsonNull));
+    throw new InvalidOperationException("Unconfigured success");}
+catch(FerruleRuntimeException error) when(error.Error==FerruleRuntimeError.MissingInvocationCounters && error.Node==1) {
+    Console.WriteLine("ERR|unconfigured|before-operands");
+}
+foreach(var (id,input) in new[]{("missing","{\"start\":1,\"step\":1}"),
+    ("empty","{\"start\":1,\"step\":1,\"restart\":\"\"}")}) {
+    for(var repeat=0;repeat<2;repeat++) {
+        var output=GeneratedMapping.ExecuteJsonOutputs(input,context);
+        Console.WriteLine($"DOC|{id}-{repeat}-primary|{Convert.ToHexStringLower(Encoding.UTF8.GetBytes(output.Primary))}");
+        if(output.Extras.Count!=1 || output.Extras[0].Name!="audit") throw new InvalidOperationException("Wrong membership");
+        Console.WriteLine($"DOC|{id}-{repeat}-audit|{Convert.ToHexStringLower(Encoding.UTF8.GetBytes(output.Extras[0].Document))}");
+    }
+}

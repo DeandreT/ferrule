@@ -1041,6 +1041,17 @@ impl GraphViewer<'_> {
             }
             Node::Raise { message } => *message = Some(from_id),
             Node::RuntimeParameterDefault { default, .. } => *default = from_id,
+            Node::InvocationCounter {
+                start,
+                step,
+                restart,
+                ..
+            } => match idx {
+                0 => *start = from_id,
+                1 => *step = from_id,
+                2 => *restart = Some(from_id),
+                _ => return false,
+            },
             Node::If {
                 condition,
                 then,
@@ -1190,6 +1201,17 @@ impl GraphViewer<'_> {
             Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.get(idx).copied(),
             Node::Raise { message } => (idx == 0).then_some(*message).flatten(),
             Node::RuntimeParameterDefault { default, .. } => (idx == 0).then_some(*default),
+            Node::InvocationCounter {
+                start,
+                step,
+                restart,
+                ..
+            } => match idx {
+                0 => Some(*start),
+                1 => Some(*step),
+                2 => *restart,
+                _ => None,
+            },
             Node::If {
                 condition,
                 then,
@@ -1377,11 +1399,17 @@ impl GraphViewer<'_> {
             .collect()
     }
 
-    fn clear_raise_message(&mut self, node_id: NodeId, input: usize) -> bool {
+    fn clear_optional_input(&mut self, node_id: NodeId, input: usize) -> bool {
         if input == 0
             && let Some(Node::Raise { message }) = self.graph.nodes.get_mut(&node_id)
         {
             *message = None;
+            true
+        } else if input == 2
+            && let Some(Node::InvocationCounter { restart, .. }) =
+                self.graph.nodes.get_mut(&node_id)
+        {
+            *restart = None;
             true
         } else {
             false
@@ -1396,7 +1424,7 @@ impl GraphViewer<'_> {
     ) {
         let mut replacements = ids.iter();
         for &(owner, input) in consumers {
-            if !self.clear_raise_message(owner, input) {
+            if !self.clear_optional_input(owner, input) {
                 let &unconnected = replacements
                     .next()
                     .expect("one reserved ID per required input");
@@ -1468,6 +1496,7 @@ impl GraphViewer<'_> {
             | Node::RuntimeParameter { .. }
             | Node::XmlSerialize { .. } => 0,
             Node::RuntimeParameterDefault { .. } | Node::Raise { .. } => 1,
+            Node::InvocationCounter { .. } => 3,
             Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.len(),
             Node::If { .. } => 3,
             Node::ValueMap { .. }
@@ -1744,6 +1773,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         )
                     }
                     Some(Node::RuntimeValue { value }) => format!("Runtime: {value:?}"),
+                    Some(Node::InvocationCounter { key, .. }) => {
+                        format!("Invocation counter: {key}")
+                    }
                     Some(Node::RuntimeParameter { name, ty, .. }) => {
                         let name = if name.is_empty() {
                             "<name required>"
@@ -2276,6 +2308,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     Some(Node::If { .. }) => ["condition", "then", "else"][idx].to_string(),
                     Some(Node::Raise { .. }) => "message".to_string(),
                     Some(Node::RuntimeParameterDefault { .. }) => "default".to_string(),
+                    Some(Node::InvocationCounter { .. }) => {
+                        ["start", "step", "restart (optional)"][idx].to_string()
+                    }
                     Some(Node::ValueMap { .. }) => "input".to_string(),
                     Some(Node::Lookup { .. }) => "match/key".to_string(),
                     Some(Node::DynamicSourceField { .. }) => "property name".to_string(),

@@ -458,6 +458,17 @@ pub enum Node {
         )]
         preview: Option<String>,
     },
+    /// Advances one explicitly keyed counter in the current mapping invocation.
+    /// Inputs evaluate in start, step, restart order; the counter advances only
+    /// after all inputs succeed. Each evaluation is a call, not a NodeId cache.
+    /// The host must explicitly configure bounded invocation-counter state.
+    InvocationCounter {
+        key: String,
+        start: NodeId,
+        step: NodeId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        restart: Option<NodeId>,
+    },
     /// Calls a built-in function (see the `functions` crate) with the
     /// evaluated outputs of the given argument nodes.
     Call { function: String, args: Vec<NodeId> },
@@ -674,6 +685,15 @@ impl Node {
             | Self::RuntimeParameter { .. }
             | Self::XmlSerialize { .. } => Vec::new(),
             Self::RuntimeParameterDefault { default, .. } => vec![*default],
+            Self::InvocationCounter {
+                start,
+                step,
+                restart,
+                ..
+            } => [Some(*start), Some(*step), *restart]
+                .into_iter()
+                .flatten()
+                .collect(),
             Self::Raise { message } => message.iter().copied().collect(),
             Self::Call { args, .. } | Self::UserFunctionCall { args, .. } => args.clone(),
             Self::If {

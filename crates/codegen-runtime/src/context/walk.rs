@@ -80,6 +80,7 @@ impl<'a> ScopeContext<'a> {
                     execution: self.execution,
                     dynamic_source_loader: self.dynamic_source_loader,
                     filter_map: self.filter_map.clone(),
+                    invocation_counters: self.invocation_counters.clone(),
                 }
             })
             .collect()
@@ -245,6 +246,7 @@ impl<'a> ScopeContext<'a> {
             execution: self.execution,
             dynamic_source_loader: self.dynamic_source_loader,
             filter_map: self.filter_map.clone(),
+            invocation_counters: self.invocation_counters.clone(),
         }
     }
 }

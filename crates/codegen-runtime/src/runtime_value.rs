@@ -118,6 +118,7 @@ pub struct ExecutionContext<'a> {
     main_mapping_file_path: &'a Path,
     current_datetime: Option<&'a str>,
     parameters: Option<&'a RuntimeParameters>,
+    invocation_counter_limits: Option<crate::InvocationCounterLimits>,
 }
 
 impl<'a> ExecutionContext<'a> {
@@ -128,6 +129,7 @@ impl<'a> ExecutionContext<'a> {
             main_mapping_file_path: mapping_file_path,
             current_datetime: None,
             parameters: None,
+            invocation_counter_limits: None,
         }
     }
 
@@ -141,6 +143,7 @@ impl<'a> ExecutionContext<'a> {
             main_mapping_file_path,
             current_datetime: None,
             parameters: None,
+            invocation_counter_limits: None,
         }
     }
 
@@ -154,6 +157,19 @@ impl<'a> ExecutionContext<'a> {
     pub fn with_parameters(mut self, parameters: &'a RuntimeParameters) -> Self {
         self.parameters = Some(parameters);
         self
+    }
+
+    /// Supplies immutable limits, never a mutable table reused across calls.
+    pub fn with_invocation_counter_limits(
+        mut self,
+        limits: crate::InvocationCounterLimits,
+    ) -> Self {
+        self.invocation_counter_limits = Some(limits);
+        self
+    }
+
+    pub(crate) fn invocation_counter_limits(self) -> Option<crate::InvocationCounterLimits> {
+        self.invocation_counter_limits
     }
 
     /// Resolve a named host scalar before any source instance is acquired.
