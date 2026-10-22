@@ -1,0 +1,42 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+using I = Ferrule.Runtime.FerruleInstance;
+
+I Source(params (bool Fail,int Mode)[] flags) => new FerruleDocumentSet(flags.Select((flag,index)=>new FerruleDocument($"{index}.xml",new FerruleGroup(new FerruleField[]{
+    new("Fail",new FerruleScalar(FerruleValue.FromBoolean(flag.Fail))),new("Mode",new FerruleScalar(FerruleValue.FromInt64(flag.Mode))),
+    new("Samples",new FerruleRepeated(Enumerable.Range(0,2).Select(_=>(I)new FerruleGroup(new FerruleField[]{new("Marker",new FerruleScalar(FerruleValue.FromString("x")))}))))
+}))).ToArray());
+string Text(FerruleDocument document,string name) => ((FerruleScalar)((FerruleGroup)document.Value).Fields.Single(f=>f.Name==name).Value).Value.StringValue;
+void Check(bool value) {if(!value)throw new Exception("body clock check failed");}
+var execution=new FerruleExecutionContext("clock.ferrule","clock.ferrule","stable").WithInvocationCounterLimits(new FerruleInvocationCounterLimits(1,64));
+int bodyCalls=0,fileCalls=0;var events=new List<string>();
+string Body(){string value="B"+(++bodyCalls);events.Add(value);return value;}
+string FileName(){string value="F"+(++fileCalls);events.Add(value);return value+"-";}
+var documents=new List<FerruleDocument>();
+var input=Source((false,1),(false,0),(false,2),(false,3));
+var result=GeneratedMapping.VisitTargetDocumentsWithClocks(input,Array.Empty<NamedInput>(),execution,null,Body,FileName,d=>{documents.Add(d);return GeneratedMapping.DocumentDecision<string>.Continue;});
+Check(result.Completed&&result.Accepted==4&&bodyCalls==16&&fileCalls==5);
+Check(documents.Select(d=>d.Path).SequenceEqual(new[]{"F1-0.xml","fixed-1.xml","F2-F3-2.xml","F5-3.xml"}));
+Check(events.SequenceEqual(new[]{"B1","B2","B3","B4","F1","B5","B6","B7","B8","B9","B10","B11","B12","F2","F3","B13","B14","B15","B16","F4","F5"}));
+for(int i=0;i<documents.Count;i++)Check(Text(documents[i],"Body")==$"B{i*4+1}"&&Text(documents[i],"Repeated")==$"B{i*4+2}"&&Text(documents[i],"Fold")==$"B{i*4+4}"&&((FerruleScalar)((FerruleGroup)documents[i].Value).Fields.Single(f=>f.Name=="Count").Value).Value.Int64Value==i+1);
+var stable=new List<FerruleDocument>();GeneratedMapping.VisitTargetDocuments(input,Array.Empty<NamedInput>(),execution,null,d=>{stable.Add(d);return GeneratedMapping.DocumentDecision<string>.Continue;});
+Check(stable.All(d=>new[]{"Body","Repeated","Fold"}.All(field=>Text(d,field)=="stable"))&&bodyCalls==16&&fileCalls==5);
+Check(stable.Select((d,i)=>((FerruleScalar)((FerruleGroup)d.Value).Fields.Single(f=>f.Name=="Count").Value).Value.Int64Value==i+1).All(value=>value));
+int attempts=0,files=0;
+var bodyCause=new InvalidOperationException("body unavailable");
+string BadBody(){if(++attempts==5)throw bodyCause;return "body";}
+string Filename(){files++;return "file-";}
+try{GeneratedMapping.VisitTargetDocumentsWithClocks(Source((false,1),(false,1),(false,1)),Array.Empty<NamedInput>(),execution,null,BadBody,Filename,_=>GeneratedMapping.DocumentDecision<string>.Continue);throw new Exception("body error missing");}
+catch(GeneratedMapping.DocumentVisitException error){Check(error.Accepted==1&&error.InnerException is FerruleRuntimeException{Error:FerruleRuntimeError.DocumentBodyClock,Node:0} runtime&&ReferenceEquals(runtime.InnerException,bodyCause)&&attempts==5&&files==1);}
+int bodyCount=0,nameCount=0;
+string GoodBody(){bodyCount++;return "body";}
+string BadName(){if(++nameCount==2)throw new Exception("filename unavailable");return "file-";}
+try{GeneratedMapping.VisitTargetDocumentsWithClocks(Source((false,1),(false,1),(false,1)),Array.Empty<NamedInput>(),execution,null,GoodBody,BadName,_=>GeneratedMapping.DocumentDecision<string>.Continue);throw new Exception("filename error missing");}
+catch(GeneratedMapping.DocumentVisitException error){Check(error.Accepted==1&&error.InnerException is FerruleRuntimeException{Error:FerruleRuntimeError.DocumentFilenameClock,Node:0}&&bodyCount==8&&nameCount==2);}
+var stopped=GeneratedMapping.VisitTargetDocumentsWithClocks(Source((false,1),(true,1)),Array.Empty<NamedInput>(),execution,null,GoodBody,FileName,_=>GeneratedMapping.DocumentDecision<string>.Break("stop"));
+Check(!stopped.Completed&&stopped.Accepted==0&&bodyCount==12&&fileCalls==6);
+var empty=GeneratedMapping.VisitTargetDocumentsWithClocks<string>(Source(),Array.Empty<NamedInput>(),execution,null,GoodBody,FileName,_=>throw new Exception("empty document offered"));Check(empty.Completed&&empty.Accepted==0);
+int beforeBody=bodyCount,beforeFile=fileCalls;
+try{GeneratedMapping.VisitTargetDocumentsWithClocks(Source((true,1)),Array.Empty<NamedInput>(),execution,null,GoodBody,FileName,_=>GeneratedMapping.DocumentDecision<string>.Continue);throw new Exception("body evaluation error missing");}
+catch(GeneratedMapping.DocumentVisitException){Check(bodyCount==beforeBody&&fileCalls==beforeFile);}
+Console.WriteLine("PASS document body clocks");

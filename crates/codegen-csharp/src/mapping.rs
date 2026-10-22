@@ -68,20 +68,27 @@ pub(crate) fn render_with_document_visitor(
     program: &Program,
     target: Option<usize>,
 ) -> Result<String, EmitError> {
-    render_with_options(program, true, Some((target, false)))
+    render_with_options(program, true, Some((target, false, false)))
 }
 
 pub(crate) fn render_with_document_filename_clock(
     program: &Program,
     target: Option<usize>,
 ) -> Result<String, EmitError> {
-    render_with_options(program, true, Some((target, true)))
+    render_with_options(program, true, Some((target, true, false)))
+}
+
+pub(crate) fn render_with_document_clocks(
+    program: &Program,
+    target: Option<usize>,
+) -> Result<String, EmitError> {
+    render_with_options(program, true, Some((target, true, true)))
 }
 
 fn render_with_options(
     program: &Program,
     json_boundaries: bool,
-    visitor: Option<(Option<usize>, bool)>,
+    visitor: Option<(Option<usize>, bool, bool)>,
 ) -> Result<String, EmitError> {
     codegen::validate_owned_emission(program)?;
     let has_filter_map = !program.filter_map_v1_sequences().is_empty();
@@ -273,9 +280,16 @@ fn render_with_options(
         render_bound_group(scope_index, scope, &mut output);
     }
     filter_map::add_scoped_node_wrappers(program, &mut output);
-    if let Some((target, clock)) = visitor {
+    if let Some((target, clock, body_clock)) = visitor {
         let scope = target.map_or(primary_scope, |index| extra_scopes[index].1);
-        document_visitor::render(program, scope, &scopes[scope], clock, &mut output)?;
+        document_visitor::render(
+            program,
+            scope,
+            &scopes[scope],
+            clock,
+            body_clock,
+            &mut output,
+        )?;
     }
     output.push_str("}\n");
     Ok(output)

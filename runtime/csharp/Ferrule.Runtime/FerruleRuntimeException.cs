@@ -78,6 +78,7 @@ public enum FerruleRuntimeError
     InvocationCounterOperand,
     InvocationCounter,
     DocumentFilenameClock,
+    DocumentBodyClock,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>

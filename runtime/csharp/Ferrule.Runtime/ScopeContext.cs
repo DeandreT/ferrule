@@ -21,7 +21,8 @@ public sealed partial class ScopeContext
     private readonly FerruleExecutionContext? _executionContext;
     private readonly IFerruleDynamicSourceLoader? _dynamicSourceLoader;
     private readonly FerruleInvocationCounters? _invocationCounters;
-    private readonly Func<string>? _documentFilenameClock;
+    private sealed record DocumentClock(Func<string> Sample, FerruleRuntimeError Error, string NullMessage);
+    private readonly DocumentClock? _documentFilenameClock;
 
     private ScopeContext(
         FerruleInstance primarySource,
@@ -33,7 +34,7 @@ public sealed partial class ScopeContext
         FerruleFilterMapBoundary? filterMapBoundary = null,
         int filterMapCallDepth = 0,
         FerruleInvocationCounters? invocationCounters = null,
-        Func<string>? documentFilenameClock = null)
+        DocumentClock? documentFilenameClock = null)
     {
         _primarySource = primarySource;
         _frames = frames;
@@ -81,7 +82,14 @@ public sealed partial class ScopeContext
     /// <summary>Install only on a cloned filename context after its complete body.</summary>
     public ScopeContext WithDocumentFilenameClock(Func<string>? clock) =>
         new ScopeContext(_primarySource, _frames, _collections, _executionContext, _dynamicSourceLoader,
-            _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, clock);
+            _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters,
+            clock is null ? null : new DocumentClock(clock, FerruleRuntimeError.DocumentFilenameClock, "The filename clock returned null."));
+
+    /// <summary>Used only by the explicit reached body-clock document profile.</summary>
+    public ScopeContext WithDocumentBodyClock(Func<string>? clock) =>
+        new ScopeContext(_primarySource, _frames, _collections, _executionContext, _dynamicSourceLoader,
+            _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters,
+            clock is null ? null : new DocumentClock(clock, FerruleRuntimeError.DocumentBodyClock, "The body clock returned null."));
 
     public static ScopeContext FromSource(
         FerruleInstance source,
@@ -121,15 +129,15 @@ public sealed partial class ScopeContext
         if (value == FerruleRuntimeValue.CurrentDateTime && _documentFilenameClock is { } clock)
         {
             string sample;
-            try { sample = clock(); }
+            try { sample = clock.Sample(); }
             catch (Exception error)
             {
-                throw new FerruleRuntimeException(FerruleRuntimeError.DocumentFilenameClock,
+                throw new FerruleRuntimeException(clock.Error,
                     error.Message, error, node: node);
             }
             if (sample is null)
-                throw new FerruleRuntimeException(FerruleRuntimeError.DocumentFilenameClock,
-                    "The filename clock returned null.", node: node);
+                throw new FerruleRuntimeException(clock.Error,
+                    clock.NullMessage, node: node);
             return FerruleValue.FromString(sample);
         }
         var resolved = _executionContext?.GetValue(value);

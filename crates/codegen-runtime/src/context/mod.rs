@@ -75,7 +75,7 @@ impl GeneratedItems {
 #[derive(Clone)]
 pub struct ScopeContext<'a> {
     pub(crate) invocation_counters: Option<crate::invocation_counter::CounterState>,
-    document_filename_clock: Option<&'a dyn crate::DocumentFilenameClock>,
+    document_filename_clock: Option<crate::dynamic_document::DocumentClock<'a>>,
     primary_source: &'a Instance,
     frames: Vec<ScopeFrame<'a>>,
     named_inputs: &'a [NamedInput<'a>],
@@ -263,7 +263,7 @@ impl<'a> ScopeContext<'a> {
         self.resolve_runtime_value(None, value)
     }
 
-    /// Retains the actual generated node when the filename provider fails.
+    /// Retains the actual generated node when an explicit clock provider fails.
     pub fn runtime_value_at_node(
         &self,
         node: u32,
@@ -277,7 +277,17 @@ impl<'a> ScopeContext<'a> {
         mut self,
         clock: Option<&'a dyn crate::DocumentFilenameClock>,
     ) -> Self {
-        self.document_filename_clock = clock;
+        self.document_filename_clock = clock.map(crate::dynamic_document::DocumentClock::Filename);
+        self
+    }
+
+    /// Used only by the opt-in body-clock document profile. Ordinary execution
+    /// contexts keep their stable timestamp; filename contexts replace this clock.
+    pub fn with_document_body_clock(
+        mut self,
+        clock: Option<&'a dyn crate::DocumentBodyClock>,
+    ) -> Self {
+        self.document_filename_clock = clock.map(crate::dynamic_document::DocumentClock::Body);
         self
     }
 
@@ -289,10 +299,16 @@ impl<'a> ScopeContext<'a> {
         if value == RuntimeValue::CurrentDateTime
             && let Some(clock) = self.document_filename_clock
         {
-            return clock
-                .sample_datetime()
-                .map(Value::String)
-                .map_err(|message| RuntimeError::DocumentFilenameClock { node, message });
+            return match clock {
+                crate::dynamic_document::DocumentClock::Filename(clock) => clock
+                    .sample_datetime()
+                    .map(Value::String)
+                    .map_err(|message| RuntimeError::DocumentFilenameClock { node, message }),
+                crate::dynamic_document::DocumentClock::Body(clock) => clock
+                    .sample_datetime()
+                    .map(Value::String)
+                    .map_err(|message| RuntimeError::DocumentBodyClock { node, message }),
+            };
         }
         self.execution
             .and_then(|execution| execution.value(value))

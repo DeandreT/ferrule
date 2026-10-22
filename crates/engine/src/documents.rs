@@ -25,14 +25,33 @@ impl<F: Fn() -> Result<String, String>> DocumentFilenameClock for F {
     }
 }
 
+/// Reached body-clock reads, selected separately from stable and filename clocks.
+pub trait DocumentBodyClock {
+    fn sample_datetime(&self) -> Result<String, String>;
+}
+
+impl<F: Fn() -> Result<String, String>> DocumentBodyClock for F {
+    fn sample_datetime(&self) -> Result<String, String> {
+        self()
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 pub struct DocumentVisitOptions<'a> {
     filename_clock: Option<&'a dyn DocumentFilenameClock>,
+    body_clock: Option<&'a dyn DocumentBodyClock>,
 }
 
 impl<'a> DocumentVisitOptions<'a> {
     pub fn with_filename_clock(mut self, clock: &'a dyn DocumentFilenameClock) -> Self {
         self.filename_clock = Some(clock);
+        self
+    }
+
+    /// Sample each reached body date-time expression without changing the
+    /// stored execution timestamp or the separately selected filename clock.
+    pub fn with_body_clock(mut self, clock: &'a dyn DocumentBodyClock) -> Self {
+        self.body_clock = Some(clock);
         self
     }
 }
@@ -114,6 +133,35 @@ fn check_clock_path(project: &Project, root: &Scope) -> Result<(), EngineError> 
     Ok(())
 }
 
+fn check_body_clock(project: &Project) -> Result<(), EngineError> {
+    if !project.user_functions.is_empty() || !project.failure_rules.is_empty() {
+        return Err(EngineError::DocumentStreamUnsupported {
+            reason: "body clocks require a separate profile for user functions and failure rules",
+        });
+    }
+    for node in project.graph.nodes.values() {
+        if !matches!(
+            node,
+            Node::Const { .. }
+                | Node::RuntimeValue { .. }
+                | Node::RuntimeParameter { .. }
+                | Node::RuntimeParameterDefault { .. }
+                | Node::SourceField { .. }
+                | Node::SourceDocumentPath
+                | Node::Position { .. }
+                | Node::Call { .. }
+                | Node::If { .. }
+                | Node::Aggregate { .. }
+                | Node::InvocationCounter { .. }
+        ) {
+            return Err(EngineError::DocumentStreamUnsupported {
+                reason: "body clock sampling is limited to ordinary scalar graph expressions",
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Visits complete documents of one selected target in evaluation order.
 ///
 /// A document's body and then its filename are evaluated before the consumer
@@ -143,9 +191,10 @@ pub fn visit_target_documents<B>(
     )
 }
 
-/// Like `visit_target_documents`, with explicit filename-only host services.
-/// A supplied clock is sampled only when a supported filename expression
-/// actually reaches a current-date-time node, after that document's body.
+/// Like `visit_target_documents`, with separately selected body and filename clocks.
+/// A filename clock is reached only after its complete body. A body clock is
+/// called at each reached date-time expression in the admitted ordinary graph;
+/// neither option changes the default stable-clock entry points.
 pub fn visit_target_documents_with_options<B>(
     project: &Project,
     source: &Instance,
@@ -195,6 +244,9 @@ pub fn visit_target_documents_with_options<B>(
     if options.filename_clock.is_some() {
         check_clock_path(project, root).map_err(before)?;
     }
+    if options.body_clock.is_some() {
+        check_body_clock(project).map_err(before)?;
+    }
     let mut accepted = 0;
     let mut stopped = None;
     let result = {
@@ -216,7 +268,9 @@ pub fn visit_target_documents_with_options<B>(
             false,
             |program, context| {
                 crate::eval_scope::eval_scope_with_document_visitor(
-                    program.with_document_filename_clock(options.filename_clock),
+                    program
+                        .with_document_filename_clock(options.filename_clock)
+                        .with_document_body_clock(options.body_clock),
                     root,
                     Some(schema),
                     context,

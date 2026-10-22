@@ -19,7 +19,9 @@ use mapping::{FunctionId, FunctionParameterId, NodeId};
 
 mod csv_api;
 mod document_visitor;
-pub use document_visitor::{emit_with_document_filename_clock, emit_with_document_visitor};
+pub use document_visitor::{
+    emit_with_document_clocks, emit_with_document_filename_clock, emit_with_document_visitor,
+};
 mod csv_document;
 pub use csv_document::{
     CsvDocumentEmitError, emit_document_with_csv_document_set_boundary,
