@@ -64,6 +64,8 @@ mod basic_owned_xml_mixed_construction;
 mod basic_owned_xml_mixed_content;
 #[path = "code_generation/basic_owned_xml_serialize.rs"]
 mod basic_owned_xml_serialize;
+#[path = "code_generation/boundary_emission_plan.rs"]
+mod boundary_emission_plan;
 #[path = "code_generation/collection_find.rs"]
 mod collection_find;
 #[path = "code_generation/conditional_group_presence.rs"]
