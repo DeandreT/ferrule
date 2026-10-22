@@ -34,6 +34,10 @@ the project uses ownership. A legacy scope or position converts only on that
 explicit choice. Wires record as typed connect commands; scope and property
 choices record as snapshots.
 
+Generated admission is one explicit capability set per entry point; each
+generation companion below is a named preset of independent capabilities. See
+[owned generation capabilities and presets](../code-generation.md#owned-generation-capabilities-and-presets).
+
 ## Scalar target construction
 
 A scalar target scope evaluates one expression in its receiving context and

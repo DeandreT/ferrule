@@ -272,10 +272,10 @@ describes target ValueMap, retained-input and failure boundaries.
 
 | Component | Implementation responsibility | Coordination rule |
 | --- | --- | --- |
-| Common admission | `crates/codegen/src/validate/owned_sources.rs` and `crates/codegen/src/tests/basic_owned_emission.rs` | Agree policy changes with both backend owners before modifying a shared gate. |
+| Common admission | `crates/codegen/src/capabilities.rs` (capability set and preset table), `crates/codegen/src/validate/owned_sources/` and `crates/codegen/src/tests/basic_owned_emission.rs` | Add a new capability as its own field, table column and `owned_sources` module; agree changes to a shared gate with both backend owners. |
 | Rust Basic renderer | `crates/codegen-rust/src/owned_basic.rs` and `crates/codegen-rust/src/tests/owned_basic.rs` | Sequence renderer and source-test edits within the Rust lane. |
 | C# Basic renderer | `crates/codegen-csharp/src/owned_basic.rs` and `crates/codegen-csharp/src/tests/owned_basic.rs` | Sequence renderer and source-test edits within the C# lane. |
-| Runtime and public interfaces | Each backend's runtime and emission entry points | Preserve the matching admission profile, generated symbols and caller contracts. |
+| Runtime and public interfaces | Each backend's runtime and emission entry points | Preserve each preset's capability set, generated symbols and caller contracts. |
 | Documentation | Capability contracts and reusable contributor procedures | Describe implemented behavior; keep task progress, result records and handoff state in issues. |
 
 The public Basic path validates common admission before backend rendering.
