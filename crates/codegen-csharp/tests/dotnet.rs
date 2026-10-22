@@ -14,6 +14,13 @@ use mapping::{FunctionId, FunctionParameterId};
 #[test]
 fn generated_library_builds_and_executes_without_packages() {
     let artifacts = codegen_csharp::emit(&fixture()).expect("fixture emits");
+    assert!(
+        artifacts
+            .files()
+            .iter()
+            .any(|file| file.path.as_str() == "Runtime/FerruleDecimal96.cs"),
+        "the shared decimal scalar type requires its implementation in every generated C# package"
+    );
     let directory = TempDirectory::new("dotnet-execution");
     for file in artifacts.files() {
         let path = directory.path().join(file.path.as_str());

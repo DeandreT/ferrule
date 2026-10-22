@@ -420,12 +420,16 @@ fn scalar_text(value: &Value) -> Result<String, EngineError> {
         Value::Int(value) => Ok(value.to_string()),
         Value::Float(value) if value.is_finite() => Ok(value.to_string()),
         Value::String(value) => Ok(value.clone()),
-        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Float(_) => Err(
-            EngineError::Function(functions::FunctionError::TypeMismatch {
+        Value::Null
+        | Value::JsonNull(_)
+        | Value::XmlNil(_)
+        | Value::Float(_)
+        | Value::Decimal(_) => Err(EngineError::Function(
+            functions::FunctionError::TypeMismatch {
                 function: "recursive-collect",
                 got: value.type_name(),
-            }),
-        ),
+            },
+        )),
     }
 }
 
@@ -577,7 +581,7 @@ pub(super) fn eval_sequence_aggregate(
             None => true,
         };
         if keep {
-            values.push(match expression {
+            let value = match expression {
                 Some(expression) => eval_node_input(
                     program,
                     consumer,
@@ -588,7 +592,8 @@ pub(super) fn eval_sequence_aggregate(
                     in_progress,
                 )?,
                 None => value,
-            });
+            };
+            super::aggregate::collect_value(function, &mut values, value)?;
         }
     }
     let arg = arg

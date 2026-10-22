@@ -90,14 +90,29 @@ pub fn projects() -> Vec<(&'static str, Project, Refusal)> {
     let mut result = Vec::new();
     // Owned failure predicates keep their closed scalar subset.
     let mut p = projects::project("C01-every-operator-root");
-    p.graph.nodes.insert(60, projects::aggregate(AggregateOp::Count, REF, &["Rows"], &[], None));
-    p.graph.nodes.insert(61, Node::Call { function: "equal".into(), args: vec![60, 44] });
+    p.graph.nodes.insert(
+        60,
+        projects::aggregate(AggregateOp::Count, REF, &["Rows"], &[], None),
+    );
+    p.graph.nodes.insert(
+        61,
+        Node::Call {
+            function: "equal".into(),
+            args: vec![60, 44],
+        },
+    );
     p.failure_rules.push(mapping::FailureRule {
-        iteration: mapping::FailureIteration::OwnedSource { source: projects::source(REF, &["Rows"]) },
+        iteration: mapping::FailureIteration::OwnedSource {
+            source: projects::source(REF, &["Rows"]),
+        },
         selection: mapping::FailureSelection::WhenTrue { predicate: 61 },
         message: None,
     });
-    result.push(("R01-failure-predicate", p, Refusal::Capability(Reason::FailureRule)));
+    result.push((
+        "R01-failure-predicate",
+        p,
+        Refusal::Capability(Reason::FailureRule),
+    ));
     // A legacy aggregate item expression stays closed to owned aggregates.
     let mut p = projects::project("C01-every-operator-root");
     p.graph.nodes.insert(
@@ -111,7 +126,11 @@ pub fn projects() -> Vec<(&'static str, Project, Refusal)> {
         },
     );
     p.extra_targets[0].root.bindings[0].node = 60;
-    result.push(("R02-legacy-aggregate-item", p, Refusal::Capability(Reason::AggregateLookup)));
+    result.push((
+        "R02-legacy-aggregate-item",
+        p,
+        Refusal::Capability(Reason::AggregateLookup),
+    ));
     // The ordinary legacy aggregate remains closed in every Basic owned profile.
     let mut p = projects::project("C01-every-operator-root");
     p.graph.nodes.insert(
@@ -124,10 +143,23 @@ pub fn projects() -> Vec<(&'static str, Project, Refusal)> {
             arg: None,
         },
     );
-    result.push(("R03-legacy-aggregate", p, Refusal::Capability(Reason::AggregateLookup)));
+    result.push((
+        "R03-legacy-aggregate",
+        p,
+        Refusal::Capability(Reason::AggregateLookup),
+    ));
     // Engine validation owns value paths and collections.
     let mut p = projects::project("C01-every-operator-root");
-    p.graph.nodes.insert(90, projects::aggregate(AggregateOp::Sum, "Primary", &["Rows"], &["Lines", "Qty"], None));
+    p.graph.nodes.insert(
+        90,
+        projects::aggregate(
+            AggregateOp::Sum,
+            "Primary",
+            &["Rows"],
+            &["Lines", "Qty"],
+            None,
+        ),
+    );
     result.push((
         "R04-value-crosses-lines",
         p,
@@ -137,7 +169,10 @@ pub fn projects() -> Vec<(&'static str, Project, Refusal)> {
         )]),
     ));
     let mut p = projects::project("C01-every-operator-root");
-    p.graph.nodes.insert(90, projects::aggregate(AggregateOp::Join, "Primary", &["Rows"], &[], None));
+    p.graph.nodes.insert(
+        90,
+        projects::aggregate(AggregateOp::Join, "Primary", &["Rows"], &[], None),
+    );
     result.push((
         "R05-whole-group-value",
         p,
@@ -147,7 +182,10 @@ pub fn projects() -> Vec<(&'static str, Project, Refusal)> {
         )]),
     ));
     let mut p = projects::project("C01-every-operator-root");
-    p.graph.nodes.insert(90, projects::aggregate(AggregateOp::Count, "Primary", &["Note"], &[], None));
+    p.graph.nodes.insert(
+        90,
+        projects::aggregate(AggregateOp::Count, "Primary", &["Note"], &[], None),
+    );
     result.push((
         "R06-nonrepeating-collection",
         p,
@@ -160,7 +198,9 @@ pub fn projects() -> Vec<(&'static str, Project, Refusal)> {
 }
 
 /// Programs constructed directly from the lowered C01 Program.
-pub fn programs(base: &codegen::Program) -> Vec<(&'static str, codegen::Program, ProgramValidationError)> {
+pub fn programs(
+    base: &codegen::Program,
+) -> Vec<(&'static str, codegen::Program, ProgramValidationError)> {
     let with = |function: AggregateOp, name: &str, collection: &[&str], value: &[&str]| {
         let mut program = base.clone();
         for node in &mut program.expressions {
@@ -204,7 +244,10 @@ pub fn programs(base: &codegen::Program) -> Vec<(&'static str, codegen::Program,
         (
             "D04-missing-value",
             with(AggregateOp::Max, "Primary", &["Rows"], &["Missing"]),
-            structure(item_field(&["Rows", "Missing"]), Structure::MissingOwnedPath { segment: 1 }),
+            structure(
+                item_field(&["Rows", "Missing"]),
+                Structure::MissingOwnedPath { segment: 1 },
+            ),
         ),
         (
             "D05-whole-group-value",
@@ -300,7 +343,8 @@ pub fn old_catalogues(p: &codegen::Program) -> Vec<Result<(), ProgramValidationE
         codegen::legacy_named_input_admission_plan_with_basic_owned_group_by(p).map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_item_at(p).map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_group_adjacent_by(p).map(drop),
-        codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(p).map(drop),
+        codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(p)
+            .map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_group_ending_with(p).map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_failure_sources(p).map(drop),
         codegen::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy(p).map(drop),
@@ -343,7 +387,9 @@ pub fn old_rust(
         codegen_rust::emit_with_basic_owned_sequence_aggregate(p, options),
     ]
 }
-pub fn old_csharp(p: &codegen::Program) -> Vec<Result<codegen::ArtifactSet, codegen_csharp::EmitError>> {
+pub fn old_csharp(
+    p: &codegen::Program,
+) -> Vec<Result<codegen::ArtifactSet, codegen_csharp::EmitError>> {
     vec![
         codegen_csharp::emit_with_basic_owned_filters(p),
         codegen_csharp::emit_with_basic_owned_sort(p),

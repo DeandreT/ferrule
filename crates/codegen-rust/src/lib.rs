@@ -57,6 +57,7 @@ pub struct Options {
 /// Failure to render a complete Rust project.
 #[derive(Debug)]
 pub enum EmitError {
+    UnsupportedDecimalValue { node: NodeId },
     UnsupportedFilterMapV1 { item: NodeId },
     CsvOutput(CsvOutputError),
     InvalidProgram(ProgramValidationError),
@@ -70,6 +71,10 @@ pub enum EmitError {
 impl fmt::Display for EmitError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedDecimalValue { node } => write!(
+                formatter,
+                "decimal literal at node {node} has no admitted generated Rust profile"
+            ),
             Self::UnsupportedFilterMapV1 { item } => write!(
                 formatter,
                 "generated Rust filter_map_v1 item {item} is not implemented"
@@ -97,7 +102,8 @@ impl std::error::Error for EmitError {
             Self::EmbeddedSchema(error) => Some(error),
             Self::ArtifactPath(error) => Some(error),
             Self::ArtifactSet(error) => Some(error),
-            Self::UnsupportedFilterMapV1 { .. }
+            Self::UnsupportedDecimalValue { .. }
+            | Self::UnsupportedFilterMapV1 { .. }
             | Self::InvalidPackageName(_)
             | Self::SchemaSerialization(_) => None,
         }
@@ -2287,11 +2293,21 @@ fn render_expression_in_context_with_scalar_item_at(
                             .collect::<Vec<_>>()
                             .join(", ");
                         body.push_str(&format!(
-                        "            values.push(item_context.aggregate_current_scalar(&[{path}]));\n"
-                    ));
+                            "            {}\n",
+                            aggregate_collect(
+                                *function,
+                                "values",
+                                &format!("item_context.aggregate_current_scalar(&[{path}])")
+                            )
+                        ));
                     }
                     AggregateValue::Expression(expression) => body.push_str(&format!(
-                        "            values.push(expression_{expression}(&item_context)?);\n"
+                        "            {}\n",
+                        aggregate_collect(
+                            *function,
+                            "values",
+                            &format!("expression_{expression}(&item_context)?")
+                        )
                     )),
                 }
                 body.push_str("        }\n");
@@ -2317,7 +2333,7 @@ fn render_expression_in_context_with_scalar_item_at(
                 let mut body = format!("{{\n        let tuple_contexts = {tuples};\n");
                 match expression {
                 Some(expression) => body.push_str(&format!(
-                    "        let mut values = Vec::with_capacity(tuple_contexts.len());\n        for tuple_context in tuple_contexts {{\n            values.push(expression_{expression}(&tuple_context)?);\n        }}\n"
+                    "        let mut values = Vec::with_capacity(tuple_contexts.len());\n        for tuple_context in tuple_contexts {{\n            {}\n        }}\n", aggregate_collect(*function, "values", &format!("expression_{expression}(&tuple_context)?"))
                 )),
                 None => body.push_str(
                     "        let values = vec![Value::Null; tuple_contexts.len()];\n",
@@ -2504,9 +2520,16 @@ fn render_expression_in_context_with_scalar_item_at(
                 ));
                 }
                 body.push_str(&format!(
-                "            aggregate_values.push(expression_{}(&item_context)?);\n        }}\n",
-                value.unwrap_or(sequence.item())
-            ));
+                    "            {}\n        }}\n",
+                    aggregate_collect(
+                        *function,
+                        "aggregate_values",
+                        &format!(
+                            "expression_{}(&item_context)?",
+                            value.unwrap_or(sequence.item())
+                        )
+                    )
+                ));
                 match arg {
                     Some(arg) => body.push_str(&format!(
                         "        let arg = Some(expression_{arg}(context)?);\n"
@@ -2553,10 +2576,21 @@ fn render_string_path(path: &[String]) -> String {
         .join(", ")
 }
 
+fn aggregate_collect(function: AggregateFunction, values: &str, expression: &str) -> String {
+    if function == AggregateFunction::DecimalSum {
+        format!(
+            "codegen_runtime::collect_aggregate_value(AggregateFunction::DecimalSum, &mut {values}, {expression})?;"
+        )
+    } else {
+        format!("{values}.push({expression});")
+    }
+}
+
 const fn aggregate_function_name(function: AggregateFunction) -> &'static str {
     match function {
         AggregateFunction::Count => "Count",
         AggregateFunction::Sum => "Sum",
+        AggregateFunction::DecimalSum => "DecimalSum",
         AggregateFunction::Avg => "Avg",
         AggregateFunction::Min => "Min",
         AggregateFunction::Max => "Max",
@@ -3583,7 +3617,7 @@ fn render_target_adaptation(value: &str, domain: ScalarTargetDomain) -> String {
     }
 }
 
-fn rust_value(_node: NodeId, value: &Value) -> Result<String, EmitError> {
+fn rust_value(node: NodeId, value: &Value) -> Result<String, EmitError> {
     Ok(match value {
         Value::Null => "Value::Null".to_string(),
         Value::JsonNull(_) => "Value::json_null()".to_string(),
@@ -3596,6 +3630,7 @@ fn rust_value(_node: NodeId, value: &Value) -> Result<String, EmitError> {
             value.to_bits()
         ),
         Value::String(value) => format!("Value::String({}.to_string())", rust_string(value)),
+        Value::Decimal(_) => return Err(EmitError::UnsupportedDecimalValue { node }),
     })
 }
 

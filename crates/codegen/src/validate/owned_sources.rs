@@ -565,8 +565,19 @@ impl SequenceItemAtPolicy {
         let Some(sequence) = (match expression {
             Expression::SequenceItemAt { sequence, .. } => Some(sequence),
             Expression::SequenceExists { sequence, .. } if with_exists => Some(sequence),
-            Expression::SequenceAggregate { sequence, .. }
-                if self == Self::BasicScalarProducersWithExistsAndAggregate =>
+            Expression::SequenceAggregate {
+                function, sequence, ..
+            } if self == Self::BasicScalarProducersWithExistsAndAggregate
+                && matches!(
+                    function,
+                    crate::AggregateFunction::Count
+                        | crate::AggregateFunction::Sum
+                        | crate::AggregateFunction::Avg
+                        | crate::AggregateFunction::Min
+                        | crate::AggregateFunction::Max
+                        | crate::AggregateFunction::Join
+                        | crate::AggregateFunction::ItemAt
+                ) =>
             {
                 Some(sequence)
             }
@@ -593,6 +604,33 @@ impl SequenceItemAtPolicy {
                         crate::GeneratedSequence::OwnedRecursiveCollect { .. }
                     )
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod decimal_owned_admission_tests {
+    use super::*;
+
+    #[test]
+    fn owned_sequence_aggregate_profile_keeps_its_qualified_reducers() {
+        for function in crate::AggregateFunction::ALL {
+            let expression = Expression::SequenceAggregate {
+                function: *function,
+                sequence: crate::GeneratedSequence::Tokenize {
+                    input: 1,
+                    delimiter: 2,
+                    item: 3,
+                },
+                predicate: None,
+                expression: Some(3),
+                arg: None,
+            };
+            assert_eq!(
+                SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate
+                    .permits(&expression),
+                *function != crate::AggregateFunction::DecimalSum
+            );
         }
     }
 }
@@ -2043,15 +2081,33 @@ fn validate_basic_owned_with_joins(
             Expression::OwnedXmlSerialize(_) | Expression::OwnedXmlMixedContent(_) => {
                 Capability::XmlOperator
             }
-            Expression::OwnedAggregate(_) if search.permits_aggregates() => continue,
+            Expression::OwnedAggregate(aggregate)
+                if search.permits_aggregates()
+                    && matches!(
+                        aggregate.function,
+                        mapping::AggregateOp::Count
+                            | mapping::AggregateOp::Sum
+                            | mapping::AggregateOp::Avg
+                            | mapping::AggregateOp::Min
+                            | mapping::AggregateOp::Max
+                            | mapping::AggregateOp::Join
+                            | mapping::AggregateOp::ItemAt
+                    ) =>
+            {
+                continue;
+            }
             Expression::OwnedLookup(_)
             | Expression::OwnedCollectionFind(_)
             | Expression::OwnedAggregate(_) => Capability::AggregateLookup,
             // Validation binds each read to its dominating owned join, whose
             // tuple admission checked the closed scalar subset.
+            Expression::OwnedJoinAggregate(aggregate)
+                if join == JoinPolicy::Owned && joins::admitted_reducer(aggregate.function) =>
+            {
+                continue;
+            }
             Expression::OwnedJoinField(_)
             | Expression::OwnedJoinSourcePosition(_)
-            | Expression::OwnedJoinAggregate(_)
             | Expression::JoinPosition { .. }
                 if join == JoinPolicy::Owned =>
             {

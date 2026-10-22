@@ -195,6 +195,9 @@ fn all_values(instance: &ir::Instance) -> serde_json::Value {
         }
         Instance::Scalar(Value::String(value)) => value.clone().into(),
         Instance::Scalar(Value::Float(value)) => serde_json::json!(value),
+        Instance::Scalar(Value::Decimal(_)) => {
+            panic!("decimal is outside this X12 fixture profile")
+        }
         Instance::Scalar(Value::Int(value)) => serde_json::json!(value),
         Instance::Scalar(Value::Bool(value)) => (*value).into(),
         Instance::Scalar(Value::Null | Value::JsonNull(_) | Value::XmlNil(_)) => {
@@ -223,6 +226,7 @@ fn all_kinds(instance: &ir::Instance) -> serde_json::Value {
             Value::Null => "Null",
             Value::JsonNull(_) => "JsonNull",
             Value::XmlNil(_) => "XmlNil",
+            Value::Decimal(_) => "Decimal",
         }
         .into(),
         Instance::DocumentSet(_) => panic!("authored one-document fixture"),

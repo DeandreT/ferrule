@@ -12,6 +12,7 @@ pub(super) fn validate_instance_value(
     let matches = match value {
         Value::Int(value) => constraints.matches_i64(*value),
         Value::Float(value) => constraints.matches_f64(*value),
+        Value::Decimal(_) => false,
         Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Bool(_) | Value::String(_) => {
             true
         }

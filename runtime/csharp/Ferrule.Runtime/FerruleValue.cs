@@ -13,6 +13,7 @@ public enum FerruleValueKind
     Int64,
     Double,
     String,
+    Decimal,
 }
 
 /// <summary>
@@ -45,6 +46,9 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
     public static FerruleValue FromDouble(double value) =>
         new(FerruleValueKind.Double, value);
 
+    public static FerruleValue FromDecimal(FerruleDecimal96 value) =>
+        new(FerruleValueKind.Decimal, value);
+
     public static FerruleValue FromString(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -60,6 +64,8 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
 
     public string StringValue => Payload<string>(FerruleValueKind.String);
 
+    public FerruleDecimal96 DecimalValue => Payload<FerruleDecimal96>(FerruleValueKind.Decimal);
+
     public bool Equals(FerruleValue other) =>
         Kind == other.Kind && Kind switch
         {
@@ -68,6 +74,7 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
             FerruleValueKind.Int64 => Int64Value == other.Int64Value,
             FerruleValueKind.Double => DoubleValue == other.DoubleValue,
             FerruleValueKind.String => string.Equals(StringValue, other.StringValue, StringComparison.Ordinal),
+            FerruleValueKind.Decimal => DecimalValue.Equals(other.DecimalValue),
             _ => false,
         };
 
@@ -86,6 +93,7 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
                     ? 0
                     : Fold64(BitConverter.DoubleToInt64Bits(DoubleValue)),
                 FerruleValueKind.String => StableStringHash(StringValue),
+                FerruleValueKind.Decimal => StableStringHash(DecimalValue.ToString()),
                 _ => 0,
             };
             return ((int)Kind * 397) ^ payloadHash;
@@ -101,6 +109,7 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
         FerruleValueKind.Int64 => Int64Value.ToString(CultureInfo.InvariantCulture),
         FerruleValueKind.Double => DoubleValue.ToString("R", CultureInfo.InvariantCulture),
         FerruleValueKind.String => StringValue,
+        FerruleValueKind.Decimal => DecimalValue.ToString(),
         _ => string.Empty,
     };
 

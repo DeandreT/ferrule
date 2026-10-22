@@ -231,6 +231,7 @@ public static class FerruleXmlMixedContent
             case FerruleValueKind.Int64:
             case FerruleValueKind.Double:
             case FerruleValueKind.String:
+            case FerruleValueKind.Decimal:
                 output.Append(FerruleFunctions.ScalarText(value));
                 return;
             default:

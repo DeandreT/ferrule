@@ -1,4 +1,4 @@
-//! Explicit bounded decimal arithmetic. This is not an ordinary `Value` kind.
+//! Explicit bounded decimal arithmetic backing the boxed decimal scalar.
 
 use std::{cmp::Ordering, error::Error, fmt};
 
@@ -41,8 +41,8 @@ impl Error for DecimalError {}
 /// 96 bits; scale is at most 28. Zero has no negative sign or scale, and nonzero
 /// coefficients have no removable fractional trailing zeroes.
 ///
-/// There are no implicit Int/Float conversions, serialization or mapping
-/// admission. Parsing and rounded arithmetic are explicitly selected operations.
+/// There are no implicit Int/Float conversions. The boxed scalar has a separate
+/// canonical persistence tag; parsing and rounded arithmetic are explicit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Decimal96 {
     negative: bool,
