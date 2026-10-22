@@ -152,6 +152,17 @@ pub(crate) fn render_public_basic_owned_dynamic_field_source(
     )
 }
 
+/// The owned dynamic-field profile plus owned dynamic driver loading.
+pub(crate) fn render_public_basic_owned_dynamic_loading_source(
+    program: &Program,
+) -> Result<String, EmitError> {
+    render_public_basic_owned_source_policy(
+        program,
+        Profile::DynamicLoading,
+        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
+    )
+}
+
 /// The SequenceExists composition plus SequenceAggregate over the same pure producers.
 pub(crate) fn render_public_basic_owned_sequence_aggregate_source(
     program: &Program,
@@ -251,6 +262,8 @@ pub(super) enum Profile {
     LookupFind,
     /// LookupFind plus owned dynamic source-field reads.
     DynamicField,
+    /// DynamicField plus owned dynamic driver loading.
+    DynamicLoading,
     /// DynamicField plus owned XML serialization.
     XmlSerialize,
     /// LookupFind plus owned collection aggregates.
@@ -276,6 +289,7 @@ impl Profile {
                 | Self::AdjacencyTree
                 | Self::RecursiveFilter
                 | Self::DynamicField
+                | Self::DynamicLoading
                 | Self::GroupIntoBlocks
                 | Self::LookupFind
                 | Self::XmlSerialize
@@ -295,6 +309,7 @@ impl Profile {
                 | Self::RecursiveFilter
                 | Self::LookupFind
                 | Self::DynamicField
+                | Self::DynamicLoading
                 | Self::XmlSerialize
                 | Self::CollectionAggregates
                 | Self::Joins
@@ -316,6 +331,7 @@ impl Profile {
                     | Self::AdjacencyTree
                     | Self::RecursiveFilter
                     | Self::DynamicField
+                    | Self::DynamicLoading
                     | Self::GroupIntoBlocks
                     | Self::LookupFind
                     | Self::XmlSerialize
@@ -333,6 +349,7 @@ impl Profile {
                     | Self::AdjacencyTree
                     | Self::RecursiveFilter
                     | Self::DynamicField
+                    | Self::DynamicLoading
                     | Self::GroupIntoBlocks
                     | Self::LookupFind
                     | Self::XmlSerialize
@@ -349,6 +366,7 @@ impl Profile {
                     | Self::AdjacencyTree
                     | Self::RecursiveFilter
                     | Self::DynamicField
+                    | Self::DynamicLoading
                     | Self::GroupIntoBlocks
                     | Self::LookupFind
                     | Self::XmlSerialize
@@ -363,6 +381,7 @@ impl Profile {
                     Self::GroupIntoBlocks
                         | Self::LookupFind
                         | Self::DynamicField
+                        | Self::DynamicLoading
                         | Self::XmlSerialize
                         | Self::CollectionAggregates
                         | Self::Joins
@@ -438,6 +457,9 @@ fn render_public_basic_owned_source_policy(
         (Profile::DynamicField, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::validate_basic_owned_dynamic_field_emission(program)?;
         }
+        (Profile::DynamicLoading, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::validate_basic_owned_dynamic_loading_emission(program)?;
+        }
         (
             Profile::CollectionAggregates,
             SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
@@ -497,7 +519,16 @@ fn render_public_basic_owned_source_policy(
         .collect::<Vec<_>>();
     // Failures execute in the paired context, but legacy-only target nodes do
     // not. Retain each expression only in the contexts that actually call it.
-    let basic_retained = expression_usage(program, &basic_scopes);
+    let loading = if profile == Profile::DynamicLoading {
+        dynamic_loading::loading_scopes(program)
+    } else {
+        BTreeMap::new()
+    };
+    let basic_retained = expression_usage_with_roots(
+        program,
+        &basic_scopes,
+        loading.values().map(|loading| loading.path),
+    );
     let legacy_retained = rows::target_expression_usage(program, &legacy_scopes);
     let item_at_items = program
         .expressions
@@ -693,12 +724,21 @@ fn render_public_basic_owned_source_policy(
                 &name, scope, join, &children,
             ));
         } else if basic.contains(&name) {
+            // A loading scope's body walks the loaded owner in the receiving
+            // view its wrapper attaches.
+            let body = match loading.get(&name) {
+                Some(loading) => {
+                    source.push_str(&dynamic_loading::render_loading_wrapper(&name, loading));
+                    format!("{name}_loaded")
+                }
+                None => name.clone(),
+            };
             source.push_str(&if profile
                 .permits_grouping(scope.iteration.as_ref().and_then(IterationPlan::grouping))
             {
-                group_by::render_basic_group_by_scope(&name, scope, &children)
+                group_by::render_basic_group_by_scope(&body, scope, &children)
             } else {
-                render_window_scope(&name, scope, &children)
+                render_window_scope(&body, scope, &children)
             });
         } else {
             let legacy_name = format!("legacy_{name}");
@@ -777,6 +817,9 @@ fn render_public_basic_owned_source_policy(
         (Profile::DynamicField, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
             codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_field(program)?
         }
+        (Profile::DynamicLoading, SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers) => {
+            codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_loading(program)?
+        }
         (
             Profile::CollectionAggregates,
             SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
@@ -824,6 +867,10 @@ fn render_public_basic_owned_source_policy(
         ));
     }
     source.push_str(PRIVATE_CHECKED_REACH_COUNTERS);
+    if profile == Profile::DynamicLoading {
+        source.push_str(&dynamic_loading::render_loader_entries(program));
+        return Ok(source);
+    }
     source.push_str(&render_checked_entries(program));
     source.push_str(
         r#"

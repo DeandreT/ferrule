@@ -292,6 +292,16 @@ pub fn emit_with_basic_owned_lookup_find(program: &Program) -> Result<ArtifactSe
     emit_mapping_files(generated_mapping, false)
 }
 
+/// Emits the owned dynamic-field profile plus explicit owned dynamic driver
+/// loading. Every older emitter keeps refusing owned drivers.
+pub fn emit_with_basic_owned_dynamic_loading(program: &Program) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_dynamic_loading(program)?;
+    codegen::validate_basic_owned_dynamic_loading_emission(program)?;
+    let generated_mapping =
+        owned_basic::render_public_basic_owned_dynamic_loading_mapping(program)?;
+    emit_mapping_files(generated_mapping, false)
+}
+
 /// Emits the owned recursive-filter profile plus explicitly owned dynamic
 /// source-field reads. Older emitters keep refusing them.
 pub fn emit_with_basic_owned_dynamic_field(program: &Program) -> Result<ArtifactSet, EmitError> {

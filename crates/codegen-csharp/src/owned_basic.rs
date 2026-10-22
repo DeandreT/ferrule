@@ -105,6 +105,8 @@ struct TargetExtension {
     owned_xml: OwnedXml,
     /// Owned inner joins, their tuple reads and owned joined aggregates.
     owned_joins: bool,
+    /// Owned dynamic driver loading scopes, beside owned dynamic reads.
+    dynamic_loading: bool,
 }
 
 /// The owned XML companions nest: each admits the operators it composes.
@@ -136,6 +138,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
     };
     const GROUP_BY: Self = Self {
         controls: TargetControls::By,
@@ -148,6 +151,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
     };
     const SEQUENCE_ITEM_AT: Self = Self {
         controls: TargetControls::By,
@@ -160,6 +164,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
     };
 
     const GROUP_ADJACENT_BY: Self = Self {
@@ -173,6 +178,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
     };
 
     const SEQUENCE_EXISTS: Self = Self {
@@ -186,6 +192,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
     };
 
     const SEQUENCE_AGGREGATE: Self = Self {
@@ -199,6 +206,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
     };
 
     const GROUP_STARTING_WITH: Self = Self {
@@ -212,6 +220,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
     };
 
     const FAILURE_SOURCES: Self = Self {
@@ -225,6 +234,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
     };
 
     const GROUP_ENDING_WITH: Self = Self {
@@ -238,6 +248,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
     };
 
     /// The newest companion: FailureSources plus owned hierarchy construction.
@@ -252,6 +263,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
     };
 
     /// PATH_HIERARCHY plus owned adjacency-tree construction.
@@ -266,6 +278,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
     };
 
     /// ADJACENCY_TREE plus ItemAt over owned recursive collection walks.
@@ -280,6 +293,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
     };
 
     /// RECURSIVE_COLLECT plus recursive filtering of owned selectors.
@@ -294,6 +308,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
     };
 
     /// RECURSIVE_FILTER and IntoBlocks controls plus owned Lookup and
@@ -309,6 +324,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
     };
 
     /// LOOKUP_FIND plus owned dynamic source-field reads.
@@ -323,6 +339,13 @@ impl TargetExtension {
         dynamic_field: true,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
+    };
+
+    /// DYNAMIC_FIELD plus owned dynamic driver loading.
+    const DYNAMIC_LOADING: Self = Self {
+        dynamic_loading: true,
+        ..Self::DYNAMIC_FIELD
     };
 
     /// DYNAMIC_FIELD plus owned XML serialization.
@@ -337,6 +360,7 @@ impl TargetExtension {
         dynamic_field: true,
         owned_xml: OwnedXml::Serialize,
         owned_joins: false,
+        dynamic_loading: false,
     };
 
     /// LOOKUP_FIND plus owned inner joins, their tuple reads and joined aggregates.
@@ -351,6 +375,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: true,
+        dynamic_loading: false,
     };
 
     /// LOOKUP_FIND plus owned collection aggregates.
@@ -374,6 +399,7 @@ impl TargetExtension {
         dynamic_field: false,
         owned_xml: OwnedXml::Closed,
         owned_joins: false,
+        dynamic_loading: false,
     };
 
     /// XML_SERIALIZE plus owned XML mixed-content atomization.
@@ -487,6 +513,8 @@ fn render_basic_owned_mapping_profile(
         codegen::validate_program_with_basic_owned_xml_mixed_content(program)?;
     } else if extension.permits_xml_serialize() {
         codegen::validate_program_with_basic_owned_xml_serialize(program)?;
+    } else if extension.dynamic_loading {
+        codegen::validate_program_with_basic_owned_dynamic_loading(program)?;
     } else if extension.dynamic_field {
         codegen::validate_program_with_basic_owned_dynamic_field(program)?;
     } else if extension.owned_search == OwnedSearch::CollectionAggregates {
@@ -543,7 +571,9 @@ fn render_basic_owned_mapping_profile(
         extension,
     )?;
     let mut body = String::new();
-    let (primary, extras) = if extension.permits_into_blocks() {
+    let (primary, extras) = if extension.dynamic_loading {
+        mapping::render_basic_scopes_with_owned_dynamic_loading(program, &mut body)?
+    } else if extension.permits_into_blocks() {
         mapping::render_basic_scopes_with_group_into_blocks(program, &mut body)?
     } else if extension.permits_ending_with() {
         mapping::render_basic_scopes_with_group_ending_with(program, &mut body)?
@@ -917,6 +947,8 @@ fn retained_expressions(program: &Program) -> BTreeSet<NodeId> {
             pending.extend(sequence.roots());
         }
     }
+    // Older profiles refuse every owned driver before retaining expressions.
+    pending.extend(mapping::owned_dynamic_loading_paths(program));
     // Keep the same stored-call policy as the ordinary Rust inventory.
     pending.extend(program.expressions.iter().filter_map(|node| {
         matches!(&node.expression, Expression::UserFunctionCall { .. }).then_some(node.id)
@@ -1058,6 +1090,8 @@ fn validate_private_inventory(
         codegen::validate_basic_owned_xml_mixed_content_emission(program)?;
     } else if extension.permits_xml_serialize() {
         codegen::validate_basic_owned_xml_serialize_emission(program)?;
+    } else if extension.dynamic_loading {
+        codegen::validate_basic_owned_dynamic_loading_emission(program)?;
     } else if extension.dynamic_field {
         codegen::validate_basic_owned_dynamic_field_emission(program)?;
     } else if extension.owned_search == OwnedSearch::CollectionAggregates {
@@ -1604,6 +1638,8 @@ fn render_checked_basic_owned_mapping_profile(
         codegen::legacy_named_input_admission_plan_with_basic_owned_xml_mixed_content(program)?
     } else if extension.permits_xml_serialize() {
         codegen::legacy_named_input_admission_plan_with_basic_owned_xml_serialize(program)?
+    } else if extension.dynamic_loading {
+        codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_loading(program)?
     } else if extension.dynamic_field {
         codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_field(program)?
     } else if extension.owned_search == OwnedSearch::CollectionAggregates {
@@ -1661,66 +1697,75 @@ fn render_checked_basic_owned_mapping_profile(
             &mut source,
         );
     }
+    // A loading profile threads the optional host loader into its roots.
+    let (loader_parameter, loader_attach) = if extension.dynamic_loading {
+        (
+            ",\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader? loader = null",
+            "        if (loader is not null) roots = roots.WithDynamicSourceLoader(loader);\n",
+        )
+    } else {
+        ("", "")
+    };
     source.push_str(CHECKED_INPUT_ACCESSOR);
-    source.push_str(
+    source.push_str(&format!(
         r#"
     private static ExecutionOutputs ExecuteCheckedOwnedBasic(
         global::Ferrule.Runtime.FerruleInstance source,
         global::System.Collections.Generic.IReadOnlyList<NamedInput> supplied,
         global::Ferrule.Runtime.FerruleOwnedSourceLimits limits,
-        global::Ferrule.Runtime.FerruleExecutionContext? execution = null)
-    {
+        global::Ferrule.Runtime.FerruleExecutionContext? execution = null{loader_parameter})
+    {{
         global::System.ArgumentNullException.ThrowIfNull(source);
         var accessor = new CheckedNamedInputAccessor(supplied);
         ObserveCheckedInputBoundary(true);
         var roots = global::Ferrule.Runtime.FerruleBasicSourceRoots.CreateFromNamedInputs(
             source, CheckedAllInputs, accessor.Supplied, accessor, limits);
-        var context = roots.RootContext(execution);
+{loader_attach}        var context = roots.RootContext(execution);
         var result = (ExecutionOutputs)ExecuteCheckedBasicContext(context, null);
         global::System.GC.KeepAlive(roots);
         return result;
-    }
+    }}
 
     private static SelectedTargetOutput ExecuteSelectedCheckedOwnedBasic(
         global::Ferrule.Runtime.FerruleInstance source,
         global::Ferrule.Runtime.FerruleTargetSelection selection,
         global::System.Collections.Generic.IReadOnlyList<NamedInput> supplied,
         global::Ferrule.Runtime.FerruleOwnedSourceLimits limits,
-        global::Ferrule.Runtime.FerruleExecutionContext? execution = null)
-    {
+        global::Ferrule.Runtime.FerruleExecutionContext? execution = null{loader_parameter})
+    {{
         global::System.ArgumentNullException.ThrowIfNull(source);
         global::System.ArgumentNullException.ThrowIfNull(selection);
         var selected = ResolveOwnedBasicTarget(selection);
         var catalogue = selected switch
-        {
+        {{
             0 => CheckedPrimaryInputs,
-"#,
-    );
+"#
+    ));
     for (index, _) in extras.iter().enumerate() {
         source.push_str(&format!(
             "            {} => CheckedNamedInputs_{index},\n",
             index + 1
         ));
     }
-    source.push_str(r#"            _ => throw new global::System.InvalidOperationException("Resolved checked target is invalid."),
-        };
+    source.push_str(&format!(r#"            _ => throw new global::System.InvalidOperationException("Resolved checked target is invalid."),
+        }};
         var accessor = new CheckedNamedInputAccessor(supplied);
         ObserveCheckedInputBoundary(true);
         var roots = global::Ferrule.Runtime.FerruleBasicSourceRoots.CreateFromNamedInputs(
             source, catalogue, accessor.Supplied, accessor, limits);
-        var context = roots.RootContext(execution);
+{loader_attach}        var context = roots.RootContext(execution);
         var result = (SelectedTargetOutput)ExecuteCheckedBasicContext(context, selected);
         global::System.GC.KeepAlive(roots);
         return result;
-    }
+    }}
 
     // One checked registry context is reused for ordinary global failures and
     // selected/all output. Specialized failure domains remain typed-closed.
     // Both return shapes are existing reference types; no wrapper is allocated.
     private static object ExecuteCheckedBasicContext(
         global::Ferrule.Runtime.FerruleBasicScopeContext context, int? selected)
-    {
-"#);
+    {{
+"#));
     if !program.failure_rules.is_empty() {
         source.push_str("        EvaluateBasicFailureRules(context);\n");
     }
@@ -1851,6 +1896,36 @@ public static partial class GeneratedMapping
         global::Ferrule.Runtime.FerruleOwnedSourceLimits limits,
         global::Ferrule.Runtime.FerruleExecutionContext? execution)
         => ExecuteSelectedCheckedOwnedBasic(source, selection, supplied, limits, execution);
+}
+"#;
+
+// Owned loading scopes request documents from this host loader. Without one, a
+// reached loading scope fails before its driver walk.
+const PUBLIC_BASIC_LOADING_ENTRIES: &str = r#"
+public static partial class GeneratedMapping
+{
+    public static ExecutionOutputs ExecuteWithBasicOwnedSourcesAndDynamicSourceLoader(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> supplied,
+        global::Ferrule.Runtime.FerruleOwnedSourceLimits limits,
+        global::Ferrule.Runtime.FerruleExecutionContext? execution,
+        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)
+    {
+        global::System.ArgumentNullException.ThrowIfNull(loader);
+        return ExecuteCheckedOwnedBasic(source, supplied, limits, execution, loader);
+    }
+
+    public static SelectedTargetOutput ExecuteSelectedWithBasicOwnedSourcesAndDynamicSourceLoader(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::Ferrule.Runtime.FerruleTargetSelection selection,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> supplied,
+        global::Ferrule.Runtime.FerruleOwnedSourceLimits limits,
+        global::Ferrule.Runtime.FerruleExecutionContext? execution,
+        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)
+    {
+        global::System.ArgumentNullException.ThrowIfNull(loader);
+        return ExecuteSelectedCheckedOwnedBasic(source, selection, supplied, limits, execution, loader);
+    }
 }
 "#;
 
@@ -2214,6 +2289,23 @@ pub(crate) fn render_public_basic_owned_dynamic_field_mapping(
         TargetExtension::DYNAMIC_FIELD,
     )?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    Ok(source)
+}
+
+pub(crate) fn render_public_basic_owned_dynamic_loading_mapping(
+    program: &Program,
+) -> Result<String, EmitError> {
+    let mut source = render_checked_basic_owned_mapping_profile(
+        program,
+        true,
+        true,
+        true,
+        true,
+        true,
+        TargetExtension::DYNAMIC_LOADING,
+    )?;
+    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    source.push_str(PUBLIC_BASIC_LOADING_ENTRIES);
     Ok(source)
 }
 

@@ -711,6 +711,30 @@ stay closed in Basic owned profiles. The
 [owned dynamic-field contract](design/owned-dynamic-field.md) defines the wire
 form, order and qualification.
 
+## Explicit owned dynamic driver loading
+
+Use `codegen::lower_with_basic_owned_dynamic_loading`, then
+`codegen_rust::emit_with_basic_owned_dynamic_loading(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_dynamic_loading(&program)`. Direct
+Program hosts use `validate_program_with_basic_owned_dynamic_loading` and
+`validate_basic_owned_dynamic_loading_emission`; named-input discovery uses
+`legacy_named_input_admission_plan_with_basic_owned_dynamic_loading`.
+
+The profile composes the owned dynamic source-field profile with loading
+scopes over owned dynamic drivers. A loading scope requests every document of
+its exact driver collection, in driver order, before walking them under their
+own driver rows; exact owned field and position reads see the current
+document. Generated libraries expose
+`execute_with_basic_owned_sources_and_dynamic_source_loader` and
+`execute_selected_with_basic_owned_sources_and_dynamic_source_loader` in Rust
+and `ExecuteWithBasicOwnedSourcesAndDynamicSourceLoader` and
+`ExecuteSelectedWithBasicOwnedSourcesAndDynamicSourceLoader` in C#; the
+ordinary entry points fail at a reached loading scope with the missing-loader
+error. Generated code makes one loader callback per reached path and never
+caches documents. Every other profile and the ordinary emitters keep refusing
+owned drivers. The [owned dynamic-loading contract](design/owned-dynamic-loading.md)
+defines the wire form, order and qualification.
+
 ## Explicit owned XML serialization
 
 `Node::OwnedXmlSerialize` serializes one schema-known structured element read

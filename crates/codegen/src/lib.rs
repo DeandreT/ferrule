@@ -182,6 +182,14 @@ pub use validate::{
     validate_program_with_basic_owned_sequence_exists,
 };
 
+// Explicit owned dynamic driver loading generation profile.
+pub use lower::lower_with_basic_owned_dynamic_loading;
+pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_dynamic_loading;
+pub use validate::{
+    OwnedDynamicLoading, owned_dynamic_loading, validate_basic_owned_dynamic_loading_emission,
+    validate_program_with_basic_owned_dynamic_loading,
+};
+
 // Explicit owned SequenceAggregate generation profile.
 pub use lower::lower_with_basic_owned_sequence_aggregate;
 pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_sequence_aggregate;

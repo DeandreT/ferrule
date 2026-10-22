@@ -178,6 +178,15 @@ pub fn lower_with_basic_owned_joins(project: &Project) -> Result<Program, LowerE
     )
 }
 
+/// Lowers owned dynamic driver loading with the owned dynamic-field profile.
+/// Older companions keep refusing owned drivers; lowering itself is unchanged.
+pub fn lower_with_basic_owned_dynamic_loading(project: &Project) -> Result<Program, LowerError> {
+    lower_with_validator(
+        project,
+        crate::validate_program_with_basic_owned_dynamic_loading,
+    )
+}
+
 /// Lowers the explicit Basic scalar-producer SequenceItemAt profile, composing
 /// qualified By controls and primary-row failures without changing their gates.
 pub fn lower_with_basic_owned_sequence_item_at(project: &Project) -> Result<Program, LowerError> {

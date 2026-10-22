@@ -599,6 +599,26 @@ pub fn emit_with_basic_owned_dynamic_field(
     .map_err(EmitError::from)
 }
 
+/// Emit the owned dynamic-field profile plus explicit owned dynamic driver
+/// loading. Every older emitter keeps refusing owned drivers.
+pub fn emit_with_basic_owned_dynamic_loading(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_program_with_basic_owned_dynamic_loading(program)?;
+    if !valid_package_name(&options.package_name) {
+        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
+    }
+    codegen::validate_basic_owned_dynamic_loading_emission(program)?;
+    let manifest = render_manifest(options);
+    let source = owned_basic::render_public_basic_owned_dynamic_loading_source(program)?;
+    ArtifactSet::new([
+        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
+        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
+    ])
+    .map_err(EmitError::from)
+}
+
 /// Emit SequenceAggregate over the four pure producers beside the
 /// SequenceExists profile. Each reached item copies the receiving paired view
 /// for its predicate and value; the reducer argument keeps the receiving view.
@@ -1060,7 +1080,16 @@ fn expression_usage(
     program: &Program,
     scopes: &[(String, &TargetScope, Vec<String>, Vec<String>)],
 ) -> BTreeSet<NodeId> {
-    let mut pending = BTreeSet::new();
+    expression_usage_with_roots(program, scopes, [])
+}
+
+/// `expression_usage` plus roots a renderer calls outside scope bodies.
+fn expression_usage_with_roots(
+    program: &Program,
+    scopes: &[(String, &TargetScope, Vec<String>, Vec<String>)],
+    roots: impl IntoIterator<Item = NodeId>,
+) -> BTreeSet<NodeId> {
+    let mut pending = roots.into_iter().collect::<BTreeSet<_>>();
     for (_, scope, _, _) in scopes {
         pending.extend(scope.bindings.iter().map(|binding| binding.expression));
         if let Some(iteration) = &scope.iteration {

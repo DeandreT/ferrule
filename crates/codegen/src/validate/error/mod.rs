@@ -108,6 +108,9 @@ pub enum OwnedSourceStructureReason {
     InvalidOwnedDynamicObject {
         found: OwnedSourceSchemaShape,
     },
+    /// An owned dynamic driver selects its own endpoint, which has no
+    /// document until that driver has loaded one.
+    SelfDrivenDynamicSource,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnedSourceCapabilityReason {

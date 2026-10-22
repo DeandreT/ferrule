@@ -199,6 +199,16 @@ pub fn validate_program_with_basic_owned_collection_aggregates(
     owned_sources::validate_basic_owned_collection_aggregates_emission(program)
 }
 
+/// Validates owned dynamic driver loading, composed with the owned dynamic
+/// source-field profile. A loading scope's exact driver walk, path expression
+/// and loaded-document field and position reads are admitted; every older
+/// validator keeps refusing owned drivers.
+pub fn validate_program_with_basic_owned_dynamic_loading(
+    program: &Program,
+) -> Result<(), ProgramValidationError> {
+    owned_sources::validate_basic_owned_dynamic_loading_emission(program)
+}
+
 /// Validates owned inner joins, their tuple reads and owned joined aggregates,
 /// composed with the owned Lookup and CollectionFind profile. Every older
 /// validator keeps refusing them.
@@ -397,6 +407,33 @@ fn validate_program_with_owned_joins(
     owned_xml: owned_sources::OwnedXmlPolicy,
     join: owned_sources::JoinPolicy,
 ) -> Result<(), ProgramValidationError> {
+    validate_program_with_owned_dynamic_loading(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        dynamic_field,
+        owned_xml,
+        join,
+        owned_sources::DynamicLoadingPolicy::Closed,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_program_with_owned_dynamic_loading(
+    program: &Program,
+    profile: owned_sources::BasicOwnedProfile,
+    failures: owned_sources::FailurePolicy,
+    sequence_item_at: owned_sources::SequenceItemAtPolicy,
+    path_hierarchy: owned_sources::PathHierarchyPolicy,
+    adjacency_tree: owned_sources::AdjacencyTreePolicy,
+    dynamic_field: owned_sources::DynamicFieldPolicy,
+    owned_xml: owned_sources::OwnedXmlPolicy,
+    join: owned_sources::JoinPolicy,
+    dynamic_loading: owned_sources::DynamicLoadingPolicy,
+) -> Result<(), ProgramValidationError> {
     xml::validate_boundary(program)?;
     validate_schema_metadata("source", &program.source)?;
     for source in &program.extra_sources {
@@ -447,7 +484,7 @@ fn validate_program_with_owned_joins(
     // that no target/failure root reaches in a directly constructed Program.
     sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)?;
     owned_sources::validate_structure(program)?;
-    owned_sources::validate_closed_contexts_with_joins(
+    owned_sources::validate_closed_contexts_with_dynamic_loading(
         program,
         profile,
         failures,
@@ -457,6 +494,7 @@ fn validate_program_with_owned_joins(
         dynamic_field,
         owned_xml,
         join,
+        dynamic_loading,
     )
 }
 
@@ -1775,6 +1813,9 @@ fn validate_scope(
 pub use owned_sources::validate_basic_owned_adjacency_tree_emission;
 pub use owned_sources::validate_basic_owned_path_hierarchy_emission;
 pub use owned_sources::validate_basic_owned_recursive_filter_emission;
+pub use owned_sources::{
+    OwnedDynamicLoading, owned_dynamic_loading, validate_basic_owned_dynamic_loading_emission,
+};
 pub use owned_sources::{
     is_basic_owned_primary_row_failure, validate_basic_owned_dynamic_field_emission,
     validate_basic_owned_emission, validate_basic_owned_failure_source_emission,

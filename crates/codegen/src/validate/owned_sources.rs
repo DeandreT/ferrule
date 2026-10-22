@@ -37,6 +37,11 @@ pub use recursive_filter::validate_basic_owned_recursive_filter_emission;
 mod dynamic_field;
 pub(super) use dynamic_field::DynamicFieldPolicy;
 pub use dynamic_field::validate_basic_owned_dynamic_field_emission;
+mod dynamic_loading;
+pub(super) use dynamic_loading::DynamicLoadingPolicy;
+pub use dynamic_loading::{
+    OwnedDynamicLoading, owned_dynamic_loading, validate_basic_owned_dynamic_loading_emission,
+};
 mod primary_row_failures;
 mod xml_serialize;
 pub use primary_row_failures::{
@@ -446,6 +451,16 @@ pub(super) fn validate_structure(program: &Program) -> Result<(), ProgramValidat
             driver_location(index, source),
             iteration_request(driver),
         )?;
+        if matches!(&driver.owner, mapping::SourceOwner::Named { name } if *name == source.name) {
+            return Err(ProgramValidationError::OwnedSource {
+                diagnostic: Diagnostic::Structure {
+                    location: driver_location(index, source),
+                    request: iteration_request(driver),
+                    reason: Structure::SelfDrivenDynamicSource,
+                }
+                .into(),
+            });
+        }
     }
     for (index, rule) in program.failure_rules.iter().enumerate() {
         if let FailureIteration::OwnedSource(source) = &rule.iteration {
@@ -519,6 +534,11 @@ fn failure(location: Location, query: Option<Request>, closed: Closed) -> Progra
     }
 }
 fn dynamic_owner(program: &Program, query: &Request) -> Option<Closed> {
+    loaded_owner(program, query, false)
+}
+/// A named owner that is a dynamic source, unless `loaded` admits exact reads
+/// of an owned dynamic endpoint's loaded documents.
+fn loaded_owner(program: &Program, query: &Request, loaded: bool) -> Option<Closed> {
     let owner = match query {
         Request::Field { owner, .. }
         | Request::Position { owner, .. }
@@ -535,6 +555,13 @@ fn dynamic_owner(program: &Program, query: &Request) -> Option<Closed> {
         .iter()
         .enumerate()
         .find(|(_, source)| source.name == *name && source.dynamic.is_some())
+        .filter(|(_, source)| {
+            !(loaded
+                && source
+                    .dynamic
+                    .as_ref()
+                    .is_some_and(|dynamic| dynamic.driver.owned().is_some()))
+        })
         .map(|(index, source)| Closed {
             reason: Capability::DynamicOwner,
             origin: Origin::DynamicSource {
@@ -781,6 +808,7 @@ struct Admission<'a> {
     dynamic_field: DynamicFieldPolicy,
     owned_xml: OwnedXmlPolicy,
     join: JoinPolicy,
+    dynamic_loading: DynamicLoadingPolicy,
     /// Expressions admitted inside an owned join tuple.
     tuple_nodes: std::collections::BTreeSet<NodeId>,
     visited: Vec<Visit<'a>>,
@@ -861,7 +889,13 @@ impl<'a> Admission<'a> {
                 && let Some(closed) = visit
                     .closed
                     .clone()
-                    .or_else(|| dynamic_owner(self.program, &query))
+                    .or_else(|| {
+                        loaded_owner(
+                            self.program,
+                            &query,
+                            self.dynamic_loading.permits_read(expression),
+                        )
+                    })
                     .or_else(|| {
                         self.owned_xml.closes(expression).then_some(Closed {
                             reason: Capability::XmlOperator,
@@ -1073,9 +1107,10 @@ impl<'a> Admission<'a> {
             }
             if let Some(source) = iteration.owned_source_iteration() {
                 let query = iteration_request(source.source());
+                let loaded = self.dynamic_loading == DynamicLoadingPolicy::Owned;
                 if let Some(closed) = closed
                     .clone()
-                    .or_else(|| dynamic_owner(self.program, &query))
+                    .or_else(|| loaded_owner(self.program, &query, loaded))
                 {
                     return Err(failure(
                         Location::Iteration {
@@ -1084,6 +1119,14 @@ impl<'a> Admission<'a> {
                         Some(query),
                         closed,
                     ));
+                }
+                if loaded {
+                    self.loading_scope(
+                        &route,
+                        &ancestry,
+                        source.source(),
+                        iteration.grouping().is_some(),
+                    )?;
                 }
             }
         }
@@ -1469,6 +1512,33 @@ pub(super) fn validate_closed_contexts_with_joins(
     owned_xml: OwnedXmlPolicy,
     join: JoinPolicy,
 ) -> Result<(), ProgramValidationError> {
+    validate_closed_contexts_with_dynamic_loading(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        dynamic_field,
+        owned_xml,
+        join,
+        DynamicLoadingPolicy::Closed,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn validate_closed_contexts_with_dynamic_loading(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+    path_hierarchy: PathHierarchyPolicy,
+    adjacency_tree: AdjacencyTreePolicy,
+    dynamic_field: DynamicFieldPolicy,
+    owned_xml: OwnedXmlPolicy,
+    join: JoinPolicy,
+    dynamic_loading: DynamicLoadingPolicy,
+) -> Result<(), ProgramValidationError> {
     if !has_owned(program) {
         return Ok(());
     }
@@ -1481,6 +1551,7 @@ pub(super) fn validate_closed_contexts_with_joins(
         dynamic_field,
         owned_xml,
         join,
+        dynamic_loading,
         tuple_nodes: std::collections::BTreeSet::new(),
         visited: Vec::new(),
     };
@@ -1534,6 +1605,11 @@ pub(super) fn validate_closed_contexts_with_joins(
             .as_ref()
             .and_then(|dynamic| dynamic.driver.owned())
         {
+            // Each loading scope admits its own driver and path; an unused
+            // declaration requests nothing.
+            if dynamic_loading == DynamicLoadingPolicy::Owned {
+                continue;
+            }
             return Err(failure(
                 driver_location(index, source),
                 Some(iteration_request(driver)),
@@ -1996,7 +2072,36 @@ fn validate_basic_owned_with_joins(
     owned_xml: OwnedXmlPolicy,
     join: JoinPolicy,
 ) -> Result<(), ProgramValidationError> {
-    super::validate_program_with_owned_joins(
+    validate_basic_owned_with_dynamic_loading(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        search,
+        dynamic_field,
+        owned_xml,
+        join,
+        DynamicLoadingPolicy::Closed,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_basic_owned_with_dynamic_loading(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+    path_hierarchy: PathHierarchyPolicy,
+    adjacency_tree: AdjacencyTreePolicy,
+    search: SearchPolicy,
+    dynamic_field: DynamicFieldPolicy,
+    owned_xml: OwnedXmlPolicy,
+    join: JoinPolicy,
+    dynamic_loading: DynamicLoadingPolicy,
+) -> Result<(), ProgramValidationError> {
+    super::validate_program_with_owned_dynamic_loading(
         program,
         profile,
         failures,
@@ -2006,6 +2111,7 @@ fn validate_basic_owned_with_joins(
         dynamic_field,
         owned_xml,
         join,
+        dynamic_loading,
     )?;
     let policy = BasicScopePolicy {
         profile,
