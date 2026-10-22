@@ -1,16 +1,23 @@
 //! Explicit, session-only JSON requests. Request/header files are host inputs,
 //! never mapping metadata, editor history, preferences, or diagnostic text.
+//!
+//! The REST JSON route plan is queried before the request form opens and
+//! again for the exact snapshot a started request owns, so a design the route
+//! refuses never reads a request file or opens a connection. The worker is
+//! owned by its exact thread handle (see `owned_worker.rs`).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, TryRecvError};
-use std::thread::JoinHandle;
+use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::Duration;
 
+use super::owned_worker::{OwnedWorker, WorkerExit};
 use super::*;
 
 const PREVIEW_BYTES: usize = 64 * 1024;
+const RESPONSE_IDENTITY: &str = "response.json";
+const OUTPUT_IDENTITY: &str = "result.json";
 
 enum RestPicker {
     Request,
@@ -103,14 +110,111 @@ fn rest_controls(ui: &mut egui::Ui, draft: &mut RestRunDraft) -> RestControls {
     }
 }
 
+/// The mapping options every GUI request uses. Preflight and the worker share
+/// them, so the plan admits exactly the observers the worker attaches: none.
+/// Cancellation is the worker's separate continuation gate.
+fn mapping_options(
+    runtime_parameters: Option<&engine::RuntimeParameters>,
+) -> cli::RestJsonMappingOptions<'_> {
+    let mut options =
+        cli::RestJsonMappingOptions::new(Path::new(RESPONSE_IDENTITY), Path::new(OUTPUT_IDENTITY));
+    options.runtime_parameters = runtime_parameters;
+    options
+}
+
+/// Prepares the REST JSON route for `project` without reading any host
+/// request file or opening a connection.
+pub(super) fn rest_run_preflight(
+    project: &Project,
+    project_path: &Path,
+) -> Result<cli::RoutePlan, cli::RestJsonError> {
+    cli::plan_rest_json_run(project, project_path, &mapping_options(None))
+}
+
+/// A preflight refusal. No request or response data has been read, so the
+/// design's own policy or mapping reason is shown rather than only a category.
+fn refusal_message(error: &cli::RestJsonError) -> String {
+    match error {
+        cli::RestJsonError::RequestPolicy(reason) => format!("This design cannot run: {reason}."),
+        cli::RestJsonError::Mapping(error) => format!("{error:#}"),
+        other => format!("Request refused during {}.", other.phase()),
+    }
+}
+
+/// One approved request, fixed when it starts: the project snapshot and
+/// mapping identity its plan admitted, the host files, the one-request grant
+/// and the run values. The worker owns it, so later editor state cannot
+/// change what executes.
+struct RestRunRequest {
+    project: Project,
+    project_path: PathBuf,
+    request_path: PathBuf,
+    header_path: Option<PathBuf>,
+    policy: cli::RestExecutionPolicy,
+    parameters: engine::RuntimeParameters,
+}
+
+/// What the worker reports: the in-memory outcome or a redacted category.
+type RestRunCompletion = Result<cli::PayloadRunOutcome, &'static str>;
+
+impl RestRunRequest {
+    /// Admits the request only when the route plan accepts this exact snapshot.
+    fn prepare(
+        project: Project,
+        project_path: PathBuf,
+        request_path: PathBuf,
+        header_path: Option<PathBuf>,
+        policy: cli::RestExecutionPolicy,
+        parameters: engine::RuntimeParameters,
+    ) -> Result<Self, cli::RestJsonError> {
+        rest_run_preflight(&project, &project_path)?;
+        Ok(Self {
+            project,
+            project_path,
+            request_path,
+            header_path,
+            policy,
+            parameters,
+        })
+    }
+
+    fn execute(&self, cancelled: &AtomicBool) -> RestRunCompletion {
+        let gate = || !cancelled.load(Ordering::Acquire);
+        let mut options = mapping_options(Some(&self.parameters));
+        options.should_continue = Some(&gate);
+        cli::run_project_value_rest_json_request_file_payloads(
+            &self.project,
+            &self.project_path,
+            &self.request_path,
+            self.header_path.as_deref(),
+            self.policy,
+            &options,
+        )
+        // Keep native causes in the public API. The GUI deliberately reports
+        // only the category, without logging a cause that could quote data.
+        .map_err(|error| error.phase())
+    }
+}
+
+/// A live request owned by its exact worker thread; its outcome is reported
+/// only after that thread was joined.
 pub(super) struct PendingRestRun {
-    receiver: Receiver<Result<cli::PayloadRunOutcome, &'static str>>,
-    worker: Option<JoinHandle<()>>,
+    worker: OwnedWorker<RestRunCompletion>,
     cancelled: Arc<AtomicBool>,
-    completed: Option<Result<cli::PayloadRunOutcome, &'static str>>,
+}
+
+impl PendingRestRun {
+    /// Every owner of the cancellation flag, including the worker's own.
+    #[cfg(test)]
+    pub(super) fn cancellation_for_test(&self) -> std::sync::Weak<AtomicBool> {
+        Arc::downgrade(&self.cancelled)
+    }
 }
 
 impl Drop for PendingRestRun {
+    /// Cancels, then drains the exact worker: the `worker` field is dropped
+    /// after this runs. An in-flight request cannot be interrupted, so the
+    /// drain waits for it within its configured timeout.
     fn drop(&mut self) {
         self.cancelled.store(true, Ordering::Release);
     }
@@ -193,6 +297,23 @@ impl FerruleApp {
         {
             return;
         }
+        let issues = cli::validate(&self.project);
+        if !issues.is_empty() {
+            self.status = format!("request blocked by {} validation issue(s)", issues.len());
+            self.diagnostics.validation(&self.project, issues);
+            return;
+        }
+        // Refuse an unsupported route before the form asks for host files or
+        // a grant. An unsaved design is prepared at its suggested path, which
+        // preparation does not read.
+        let project_path = self
+            .document
+            .saved_path()
+            .unwrap_or_else(|| self.document.suggested_path());
+        if let Err(error) = rest_run_preflight(&self.project, project_path) {
+            self.block_rest_run(&error);
+            return;
+        }
         if self.document.saved_path().is_none() {
             self.status = "request blocked".into();
             self.diagnostics.error(
@@ -203,6 +324,12 @@ impl FerruleApp {
         }
         self.rest_run_result = None;
         self.rest_run_draft = Some(RestRunDraft::default());
+    }
+
+    fn block_rest_run(&mut self, error: &cli::RestJsonError) {
+        self.status = "request blocked".into();
+        self.diagnostics
+            .error("Request blocked", refusal_message(error));
     }
 
     fn start_rest_run(&mut self) {
@@ -236,41 +363,39 @@ impl FerruleApp {
         let Some(request_path) = draft.request.take() else {
             return;
         };
-        let header_path = draft.headers.take();
         let policy = cli::RestExecutionPolicy::AllowSingleRequest {
             allow_insecure_http: draft.insecure_http,
         };
-        let project = self.project.clone();
+        // The snapshot is cloned once: the worker owns the copy its plan
+        // admitted, independent of later editor state.
+        let request = match RestRunRequest::prepare(
+            self.project.clone(),
+            project_path,
+            request_path,
+            draft.headers.take(),
+            policy,
+            parameters,
+        ) {
+            Ok(request) => request,
+            Err(error) => {
+                self.block_rest_run(&error);
+                return;
+            }
+        };
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
-        let (sender, receiver) = mpsc::channel();
-        let worker = std::thread::spawn(move || {
-            let gate = || !worker_cancelled.load(Ordering::Acquire);
-            let mut options = cli::RestJsonMappingOptions::new(
-                Path::new("response.json"),
-                Path::new("result.json"),
-            );
-            options.runtime_parameters = Some(&parameters);
-            options.should_continue = Some(&gate);
-            let result = cli::run_project_value_rest_json_request_file_payloads(
-                &project,
-                &project_path,
-                &request_path,
-                header_path.as_deref(),
-                policy,
-                &options,
-            )
-            .map_err(|error| error.phase());
-            // Keep native causes in the public API. The GUI deliberately sends
-            // only the category, without logging a cause that could quote data.
-            let _ = sender.send(result);
-        });
-        self.pending_rest_run = Some(PendingRestRun {
-            receiver,
-            worker: Some(worker),
-            cancelled,
-            completed: None,
-        });
+        let worker = match OwnedWorker::spawn("rest-json-request", move || {
+            request.execute(&worker_cancelled)
+        }) {
+            Ok(worker) => worker,
+            Err(_) => {
+                self.status = "live request failed".into();
+                self.diagnostics
+                    .error("Live request failed", "Request worker could not start.");
+                return;
+            }
+        };
+        self.pending_rest_run = Some(PendingRestRun { worker, cancelled });
         self.status = "live request running".into();
         self.diagnostics.clear();
     }
@@ -300,54 +425,38 @@ impl FerruleApp {
         let Some(pending) = &mut self.pending_rest_run else {
             return;
         };
-        if pending.completed.is_none() {
-            match pending.receiver.try_recv() {
-                Ok(result) => pending.completed = Some(result),
-                Err(TryRecvError::Disconnected) => pending.completed = Some(Err("worker")),
-                Err(TryRecvError::Empty) => {}
-            }
-        }
-        if pending.completed.is_none()
-            || !pending.worker.as_ref().is_some_and(JoinHandle::is_finished)
-        {
+        // A received result is not completion: the outcome arrives only
+        // after the exact worker thread was joined.
+        let Some(exit) = pending.worker.poll() else {
             context.request_repaint_after(Duration::from_millis(100));
-            return;
-        }
-        let Some(mut pending) = self.pending_rest_run.take() else {
             return;
         };
         let stopped = pending.cancelled.load(Ordering::Acquire);
-        let result = pending.completed.take().unwrap_or(Err("worker"));
-        // Join only after the exact owned handle reports completion. The
-        // optional handle avoids moving a field out of this Drop type.
-        let joined = pending
-            .worker
-            .take()
-            .is_some_and(|worker| worker.join().is_ok());
+        self.pending_rest_run = None;
         self.rest_run_result = None;
-        if stopped {
-            self.status = "live request cancelled".into();
-            self.diagnostics.clear();
-        } else if !joined {
-            self.status = "live request failed".into();
-            self.diagnostics.error(
-                "Live request failed",
-                "Request worker stopped unexpectedly.",
-            );
-        } else {
-            match result {
-                Ok(outcome) => {
-                    self.rest_run_result = Some(RestRunResult::new(outcome));
-                    self.status = "live request complete (in memory)".into();
-                    self.diagnostics.clear();
-                }
-                Err(category) => {
-                    self.status = "live request failed".into();
-                    self.diagnostics.error(
-                        "Live request failed",
-                        format!("Request failed during {category}."),
-                    );
-                }
+        match exit {
+            _ if stopped => {
+                self.status = "live request cancelled".into();
+                self.diagnostics.clear();
+            }
+            WorkerExit::Reported(Ok(outcome)) => {
+                self.rest_run_result = Some(RestRunResult::new(outcome));
+                self.status = "live request complete (in memory)".into();
+                self.diagnostics.clear();
+            }
+            WorkerExit::Reported(Err(category)) => {
+                self.status = "live request failed".into();
+                self.diagnostics.error(
+                    "Live request failed",
+                    format!("Request failed during {category}."),
+                );
+            }
+            WorkerExit::Unreported | WorkerExit::Panicked => {
+                self.status = "live request failed".into();
+                self.diagnostics.error(
+                    "Live request failed",
+                    "Request worker stopped unexpectedly.",
+                );
             }
         }
         if std::mem::take(&mut self.close_after_rest_run) {
