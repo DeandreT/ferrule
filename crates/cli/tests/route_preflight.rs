@@ -608,7 +608,9 @@ fn generate_refusal_publishes_nothing() -> anyhow::Result<()> {
         b"",
     )?;
     assert_refused(&refused, "already exists");
-    let error = cli::plan_generate(&project_path, &existing).unwrap_err();
+    let csharp = cli::GenerateTarget::CSharp;
+    let ordinary = cli::GenerateProfile::Ordinary;
+    let error = cli::plan_generate(&project_path, &existing, &csharp, ordinary).unwrap_err();
     assert_eq!(
         error.downcast_ref::<cli::RouteRefusal>(),
         Some(&cli::RouteRefusal::GeneratedOutputExists {
@@ -618,7 +620,7 @@ fn generate_refusal_publishes_nothing() -> anyhow::Result<()> {
     assert_eq!(directory.snapshot()?, before);
 
     let fresh = directory.join("nested/library");
-    let plan = cli::plan_generate(&project_path, &fresh)?;
+    let plan = cli::plan_generate(&project_path, &fresh, &csharp, ordinary)?;
     assert_eq!(plan.route(), cli::HostRoute::Generate);
     assert_eq!(
         plan.acquisitions(),
@@ -754,5 +756,259 @@ fn cancellation_needs_no_observer_and_stops_before_acquisition() -> anyhow::Resu
         std::fs::read(&output)?,
         std::fs::read(fixture_directory().join("expected_output.csv"))?
     );
+    Ok(())
+}
+
+#[test]
+fn generate_plan_refuses_what_generation_refuses_before_any_output() -> anyhow::Result<()> {
+    let directory = TempDir::new("generate_profiles")?;
+    let mut project = fixture_project()?;
+    project.target_path = Some("result.json".into());
+    let project_path = write_project(&directory.join("mapping.json"), &project)?;
+    let rust = |runtime: &str| cli::GenerateTarget::Rust {
+        runtime_path: directory.join(runtime),
+    };
+    let cases = [
+        // Adapter boundary policy, admitted before lowering.
+        (cli::GenerateTarget::CSharp, cli::GenerateProfile::CsvOutput),
+        (
+            cli::GenerateTarget::CSharp,
+            cli::GenerateProfile::CsvDocument,
+        ),
+        // Backend requirement of a C#-only profile.
+        (rust("runtime"), cli::GenerateProfile::CsvJson),
+        (
+            rust("runtime"),
+            cli::GenerateProfile::StaticDocuments {
+                source_envelope: None,
+                target_envelope: None,
+            },
+        ),
+        // Rust runtime resolution, after lowering and before emission.
+        (rust("missing-runtime"), cli::GenerateProfile::Ordinary),
+    ];
+    let before = directory.snapshot()?;
+    for (index, (target, profile)) in cases.into_iter().enumerate() {
+        let output = directory.join(&format!("library-{index}"));
+        let planned = cli::plan_generate(&project_path, &output, &target, profile).unwrap_err();
+        assert_eq!(
+            directory.snapshot()?,
+            before,
+            "{profile:?} plan wrote nothing"
+        );
+        let generated = cli::generate_project_with_profile(&project_path, &output, target, profile)
+            .unwrap_err();
+        assert_eq!(
+            format!("{planned:#}"),
+            format!("{generated:#}"),
+            "{profile:?}"
+        );
+        assert!(!output.exists());
+        assert_eq!(
+            directory.snapshot()?,
+            before,
+            "{profile:?} generation wrote nothing"
+        );
+    }
+
+    // The design check needs no saved project and resolves no runtime path.
+    let error = cli::check_generate_project(
+        &project,
+        &cli::GenerateTarget::CSharp,
+        cli::GenerateProfile::CsvOutput,
+    )
+    .unwrap_err();
+    assert!(format!("{error:#}").contains("generated CSV output requires a CSV target"));
+    cli::check_generate_project(
+        &project,
+        &cli::GenerateTarget::Rust {
+            runtime_path: PathBuf::from("not-resolved-here"),
+        },
+        cli::GenerateProfile::Ordinary,
+    )?;
+
+    // An admitted profile still ends with the destination refusal.
+    project.target_path = Some("result.csv".into());
+    let project_path = write_project(&directory.join("mapping.json"), &project)?;
+    let existing = directory.join("existing");
+    std::fs::create_dir(&existing)?;
+    let error = cli::plan_generate(
+        &project_path,
+        &existing,
+        &cli::GenerateTarget::CSharp,
+        cli::GenerateProfile::CsvOutput,
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.downcast_ref::<cli::RouteRefusal>(),
+        Some(&cli::RouteRefusal::GeneratedOutputExists {
+            path: existing.clone(),
+        })
+    );
+    let fresh = directory.join("fresh");
+    cli::plan_generate(
+        &project_path,
+        &fresh,
+        &cli::GenerateTarget::CSharp,
+        cli::GenerateProfile::CsvOutput,
+    )?;
+    assert!(!fresh.exists());
+    let outcome = cli::generate_project_with_profile(
+        &project_path,
+        &fresh,
+        cli::GenerateTarget::CSharp,
+        cli::GenerateProfile::CsvOutput,
+    )?;
+    assert!(outcome.files_written > 0);
+    Ok(())
+}
+
+fn write_two_host_inputs(directory: &TempDir) -> anyhow::Result<Vec<cli::PipelineHostFile>> {
+    let mut inputs = Vec::new();
+    for name in ["lookup", "orders"] {
+        let path = directory.join(&format!("{name}.json"));
+        std::fs::write(&path, format!(r#"{{"Value":"{name}"}}"#))?;
+        inputs.push(cli::PipelineHostFile {
+            name: name.into(),
+            path,
+        });
+    }
+    Ok(inputs)
+}
+
+#[test]
+fn pipeline_cancellation_needs_no_stage_hook_and_publishes_nothing() -> anyhow::Result<()> {
+    let directory = TempDir::new("pipeline_cancel")?;
+    let pipeline_path = directory.join("pipeline.json");
+    std::fs::write(&pipeline_path, serde_json::to_vec(&two_host_pipeline())?)?;
+    // Both host inputs are poisoned; cancellation must precede reading either.
+    let poisoned = ["lookup", "orders"].map(|name| cli::PipelineHostFile {
+        name: name.into(),
+        path: directory.join(&format!("poisoned-{name}.json")),
+    });
+    for input in &poisoned {
+        std::fs::create_dir(&input.path)?;
+    }
+    let output = directory.join("combined.json");
+    let outputs = [cli::PipelineOutputFile {
+        stage: "combine".into(),
+        target: None,
+        path: output.clone(),
+    }];
+    let cancelled = std::sync::atomic::AtomicBool::new(true);
+    let options = cli::PipelineRunOptions::default().with_cancellation(&cancelled);
+    assert_eq!(
+        options.observers(),
+        cli::SourceOwnershipObservers {
+            tracing: false,
+            debugging: true,
+        }
+    );
+    let before = directory.snapshot()?;
+    let error = cli::run_pipeline_file_with_options(&pipeline_path, &poisoned, &outputs, &options)
+        .unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<engine::EngineError>(),
+        Some(engine::EngineError::DebugCancelled)
+    ));
+    assert_eq!(directory.snapshot()?, before);
+
+    // Cancellation requested during evaluation stops at the interpreter's
+    // next control point without any stage debug hook and publishes nothing.
+    let inputs = write_two_host_inputs(&directory)?;
+    let before = directory.snapshot()?;
+    cancelled.store(false, Ordering::Release);
+    let cancel_on_trace = |_: &str, _: cli::TraceEvent| cancelled.store(true, Ordering::Release);
+    let options = cli::PipelineRunOptions::default()
+        .with_stage_trace_sink(&cancel_on_trace)
+        .with_cancellation(&cancelled);
+    let error = cli::run_pipeline_file_with_options(&pipeline_path, &inputs, &outputs, &options)
+        .unwrap_err();
+    // The interpreter reports the cancelled stage around the engine error.
+    assert!(
+        error.chain().any(|cause| matches!(
+            cause.downcast_ref::<engine::EngineError>(),
+            Some(engine::EngineError::DebugCancelled)
+        )),
+        "{error:#}"
+    );
+    assert!(cancelled.load(Ordering::Acquire), "evaluation was traced");
+    assert_eq!(directory.snapshot()?, before);
+
+    // The same uncancelled request publishes without any observer.
+    cancelled.store(false, Ordering::Release);
+    let options = cli::PipelineRunOptions::default().with_cancellation(&cancelled);
+    cli::run_pipeline_file_with_options(&pipeline_path, &inputs, &outputs, &options)?;
+    let published: serde_json::Value = serde_json::from_slice(&std::fs::read(&output)?)?;
+    assert_eq!(published, serde_json::json!({"Value": "lookup"}));
+    Ok(())
+}
+
+#[test]
+fn rest_json_plan_refuses_before_request_files_or_transport() -> anyhow::Result<()> {
+    let directory = TempDir::new("rest_json")?;
+    // The request description is poisoned: reading it would fail with I/O.
+    let request = directory.join("request.json");
+    std::fs::create_dir(&request)?;
+    let mut csv_project = fixture_project()?;
+    csv_project.source_options.delimiter = Some(';');
+    let project_path = directory.join("mapping.json");
+    let options =
+        cli::RestJsonMappingOptions::new(Path::new("response.json"), Path::new("output.json"));
+    let before = directory.snapshot()?;
+    for result in [
+        cli::plan_rest_json_run(&csv_project, &project_path, &options).map(drop),
+        cli::run_project_value_rest_json_request_file_payloads(
+            &csv_project,
+            &project_path,
+            &request,
+            None,
+            cli::RestExecutionPolicy::AllowSingleRequest {
+                allow_insecure_http: false,
+            },
+            &options,
+        )
+        .map(drop),
+    ] {
+        assert!(
+            matches!(
+                result,
+                Err(cli::RestJsonError::RequestPolicy(
+                    "this route requires one strict JSON input and one JSON output"
+                ))
+            ),
+            "{result:?}"
+        );
+    }
+    assert_eq!(directory.snapshot()?, before);
+
+    let mut json_project = two_host_pipeline().stages.remove(0).project;
+    json_project.extra_sources.clear();
+    json_project.graph.nodes.insert(
+        0,
+        Node::SourceField {
+            path: vec!["Value".into()],
+            frame: None,
+        },
+    );
+    let plan = cli::plan_rest_json_run(&json_project, &project_path, &options)
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+    assert_eq!(plan.route(), cli::HostRoute::RestJson);
+    assert_eq!(
+        plan.acquisitions(),
+        [
+            cli::PlannedAcquisition::Design(project_path.clone()),
+            cli::PlannedAcquisition::RestResponse {
+                identity: PathBuf::from("response.json"),
+            },
+        ]
+    );
+    assert_eq!(
+        plan.publications(),
+        [cli::PlannedPublication::Payload {
+            target: "Record".into()
+        }]
+    );
+    assert_eq!(directory.snapshot()?, before);
     Ok(())
 }

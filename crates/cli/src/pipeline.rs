@@ -3,11 +3,13 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 
 use anyhow::{Context, bail};
 use ir::SchemaNode;
 use mapping::{FormatOptions, Pipeline, PipelineInput};
 
+use crate::cancellation::{CancellableHook, check_cancelled};
 use crate::read_set::ReadSet;
 use crate::route_capability::{HostRoute, InputRole, PlannedPublication, RoutePlan};
 use crate::{
@@ -89,9 +91,22 @@ pub struct PipelineRunOptions<'a> {
     /// Host authority shared by every stage; `None` is the trusted default.
     /// Budgets are counted per stage evaluation.
     pub execution_policy: Option<&'a engine::ExecutionPolicy>,
+    /// Host cancellation, independent of tracing and debugging: checked before
+    /// each host acquisition, at interpreter control points and before
+    /// publication. As for a file run it is admitted as debugging, and it
+    /// cannot interrupt one synchronous parser.
+    pub cancellation: Option<&'a AtomicBool>,
 }
 
 impl<'a> PipelineRunOptions<'a> {
+    /// The observer contexts these options request from capability admission.
+    pub fn observers(&self) -> engine::SourceOwnershipObservers {
+        engine::SourceOwnershipObservers {
+            tracing: self.stage_trace_sink.is_some(),
+            debugging: self.requests_debug_hook() || self.cancellation.is_some(),
+        }
+    }
+
     pub(crate) fn requests_debug_hook(&self) -> bool {
         self.stage_debug_hook.is_some()
             || self.stage_node_debug_hook.is_some()
@@ -181,6 +196,11 @@ impl<'a> PipelineRunOptions<'a> {
 
     pub fn with_execution_policy(mut self, policy: &'a engine::ExecutionPolicy) -> Self {
         self.execution_policy = Some(policy);
+        self
+    }
+
+    pub fn with_cancellation(mut self, cancellation: &'a AtomicBool) -> Self {
+        self.cancellation = Some(cancellation);
         self
     }
 
@@ -403,6 +423,7 @@ fn run_pipeline_value_with_pdf_reader(
     let mut read_set = ReadSet::new(pipeline_path);
     let mut hosts = BTreeMap::new();
     for (name, boundary) in &host_boundaries {
+        check_cancelled(options.cancellation)?;
         let path = paths[name];
         let instance =
             read_instance_with_pdf_reader(path, boundary.schema, boundary.options, reader, policy)
@@ -410,6 +431,7 @@ fn run_pipeline_value_with_pdf_reader(
         read_set.push_source(path, &instance);
         hosts.insert((*name).to_owned(), instance);
     }
+    check_cancelled(options.cancellation)?;
 
     let pipeline_dir = pipeline_path
         .parent()
@@ -453,16 +475,23 @@ fn run_pipeline_value_with_pdf_reader(
             )
         })
         .collect::<BTreeMap<_, _>>();
-    let stage_debug_hook = options.requests_debug_hook().then(|| StageDebugHook {
-        stage: RefCell::new(String::new()),
-        hook: options.stage_debug_hook,
-        node_hook: options.stage_node_debug_hook,
-        function_node_hook: options.stage_function_node_debug_hook,
-        input_hook: options.stage_input_debug_hook,
-        function_input_hook: options.stage_function_input_debug_hook,
-        node_failure_hook: options.stage_node_failure_debug_hook,
-        function_failure_hook: options.stage_function_failure_debug_hook,
-        probe: options.stage_source_field_probe,
+    // Cancellation alone attaches a hook with no callbacks, so it reaches the
+    // interpreter's control points without invoking a host observer.
+    let stage_debug_hook =
+        (options.requests_debug_hook() || options.cancellation.is_some()).then(|| StageDebugHook {
+            stage: RefCell::new(String::new()),
+            hook: options.stage_debug_hook,
+            node_hook: options.stage_node_debug_hook,
+            function_node_hook: options.stage_function_node_debug_hook,
+            input_hook: options.stage_input_debug_hook,
+            function_input_hook: options.stage_function_input_debug_hook,
+            node_failure_hook: options.stage_node_failure_debug_hook,
+            function_failure_hook: options.stage_function_failure_debug_hook,
+            probe: options.stage_source_field_probe,
+        });
+    let stage_debug_hook = stage_debug_hook.as_ref().map(|inner| CancellableHook {
+        inner,
+        cancellation: options.cancellation,
     });
     let stage_trace_sink = options.stage_trace_sink.map(|sink| StageTraceSink {
         stage: RefCell::new(String::new()),
@@ -490,7 +519,7 @@ fn run_pipeline_value_with_pdf_reader(
             execution = execution.with_parameters(parameters);
         }
         if let Some(hook) = &stage_debug_hook {
-            hook.stage.replace(stage.to_owned());
+            hook.inner.stage.replace(stage.to_owned());
             execution = execution.with_debug_hook(hook);
         }
         if let Some(sink) = &stage_trace_sink {
@@ -524,6 +553,7 @@ fn run_pipeline_value_with_pdf_reader(
         })
         .collect::<Vec<_>>();
     let protected_refs = read_set.paths();
+    check_cancelled(options.cancellation)?;
     if options.before_publish.is_some_and(|gate| !gate()) {
         return Err(engine::EngineError::DebugCancelled.into());
     }
@@ -603,10 +633,7 @@ fn prepare_pipeline<'a>(
     // selected outputs only choose the files to publish.
     engine::check_pipeline_source_ownership_capability_with_observers(
         pipeline,
-        engine::SourceOwnershipObservers {
-            tracing: options.stage_trace_sink.is_some(),
-            debugging: options.requests_debug_hook(),
-        },
+        options.observers(),
     )?;
 
     let mut plan = RoutePlan::new(HostRoute::RunPipeline, pipeline_path);

@@ -147,18 +147,31 @@ one primary or named target; unselected target scopes are not evaluated or
 published, while the default all-target mode keeps its collision checks.
 
 Every host route (`run`, standard streams, `run-pipeline`, payload execution,
-and generation) prepares an immutable request before it acquires anything.
-Preparation resolves the known input and output identities into a
-`cli::RoutePlan`, admits the requested trace and debug observers, applies the
-execution policy to every known location, and refuses an unsupported route
+`run-rest-json`, and generation) prepares an immutable request before it
+acquires anything. Preparation resolves the known input and output identities
+into a `cli::RoutePlan`, admits the requested trace and debug observers, applies
+the execution policy to every known location, and refuses an unsupported route
 combination with a typed error such as `cli::RouteRefusal`. No input, standard
-stream, output, trace stage, or directory is touched by a refused request.
-`PreparedFileRun` and `PreparedStreamRun` execute such a request, refusing any
-observer it did not admit; `plan_run`, `plan_pipeline_run`, `plan_payload_run`,
-and `plan_generate` report the plan without executing it.
-`RunOptions::with_cancellation` stops a run at acquisition, interpreter control,
-and publication boundaries without a trace sink or host debug hook. It cannot
-interrupt one synchronous parser or request.
+stream, request file, output, trace stage, or directory is touched by a refused
+request. `PreparedFileRun` and `PreparedStreamRun` execute such a request,
+refusing any observer it did not admit; `plan_run`, `plan_file_run`,
+`plan_pipeline_run`, `plan_payload_run`, `plan_rest_json_run`, and
+`plan_generate` report the plan without executing it. The generation plan
+applies the selected `GenerateProfile`'s backend requirement and boundary
+policies, lowering, runtime resolution, and in-memory emission in the
+generating call's order, so it refuses whatever generation would refuse before
+writing.
+`RunOptions::with_cancellation` and `PipelineRunOptions::with_cancellation`
+stop a run at acquisition, interpreter control, and publication boundaries
+without a trace sink or host debug hook. They cannot interrupt one synchronous
+parser or request.
+
+The GUI queries these plans before Run, Debug Run, a pipeline run or preview,
+or Generate saves the project or starts a worker, and shows the refusal
+instead. Preview, pipeline, and library-generation workers are owned by their
+exact thread handles: an outcome is reported only after the thread has been
+joined, and dropping an unfinished owner cancels it where cancellation exists
+and then waits for the thread to exit.
 
 Hosts that own transport and persistence can instead use
 `cli::PayloadRunOptions`. Each input carries bounded bytes plus a logical path
