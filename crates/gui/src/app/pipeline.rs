@@ -131,6 +131,8 @@ pub(super) struct PendingPipelineRun {
     debug: bool,
     preview: bool,
     pub(super) phase: PipelineRunPhase,
+    /// The opted-in owned PDF extraction's latest state, if any.
+    pub(super) extraction: Option<Arc<super::pdf_extraction::ExtractionStatus>>,
 }
 
 impl PendingPipelineRun {
@@ -221,6 +223,12 @@ impl FerruleApp {
             "Cancel pipeline"
         };
         let running = phase.is_some();
+        let extraction = self
+            .pending_pipeline_run
+            .as_ref()
+            .and_then(|run| run.extraction.as_ref())
+            .and_then(|status| status.progress_label());
+        let closing = self.close_after_pipeline_run;
         let candidates = breakpoint_candidates(&draft.pipeline);
         if self
             .pipeline_run_breakpoint
@@ -490,6 +498,13 @@ impl FerruleApp {
                             });
                     }
                 }
+                ui.add_enabled(
+                    !running,
+                    egui::Checkbox::new(
+                        &mut self.owned_pdf_worker,
+                        "Extract file PDFs in an owned worker process",
+                    ),
+                );
                 match &phase {
                     Some(PipelineRunPhase::Running) => {
                         ui.horizontal(|ui| {
@@ -551,6 +566,12 @@ impl FerruleApp {
                         });
                     }
                     None => {}
+                }
+                if let Some(extraction) = &extraction {
+                    ui.weak(extraction);
+                }
+                if closing {
+                    ui.weak("The application closes after this pipeline has stopped.");
                 }
                 ui.separator();
                 ui.horizontal(|ui| {
@@ -852,6 +873,14 @@ impl FerruleApp {
         let (events, receiver) = mpsc::channel();
         let (commands, command_receiver) = mpsc::channel();
         let worker_cancelled = Arc::clone(&cancelled);
+        let extraction = self
+            .owned_pdf_worker
+            .then(|| Arc::new(super::pdf_extraction::ExtractionStatus::default()));
+        let pdf_worker = extraction
+            .as_ref()
+            .map(|status| (self.pdf_worker_package.clone(), Arc::clone(status)));
+        #[cfg(test)]
+        let reader_controls = self.pdf_reader_controls;
         let worker = OwnedWorker::spawn("ferrule-pipeline-run", move || {
             let trace = crate::run_report::PipelineTraceCollector::new();
             let hook = PipelineRunHook {
@@ -883,6 +912,15 @@ impl FerruleApp {
                 pause_on_failure,
                 failure_stage,
             };
+            // Owned by this thread; each read returns only after its
+            // extraction is closed, so the thread outlives any worker child.
+            let reader = pdf_worker.as_ref().map(|(package, status)| {
+                let reader =
+                    super::pdf_extraction::OwnedPdfReader::new(package, &hook.cancelled, status);
+                #[cfg(test)]
+                let reader = reader.with_controls(reader_controls);
+                reader
+            });
             let stage_hook = |stage: &str, write: &engine::PendingTargetWrite| {
                 hook.before_target_write(stage, write)
             };
@@ -986,8 +1024,22 @@ impl FerruleApp {
                     Ok(PipelineCompletion::Preview(outcome))
                 })()
             } else {
-                cli::run_pipeline_file_with_options(&worker_path, &inputs, &outputs, &options)
-                    .map(PipelineCompletion::Run)
+                match &reader {
+                    Some(reader) => cli::run_pipeline_file_with_options_and_pdf_reader(
+                        &worker_path,
+                        &inputs,
+                        &outputs,
+                        &options,
+                        reader,
+                    ),
+                    None => cli::run_pipeline_file_with_options(
+                        &worker_path,
+                        &inputs,
+                        &outputs,
+                        &options,
+                    ),
+                }
+                .map(PipelineCompletion::Run)
             };
             let result = result.map_err(|error| {
                 if error.chain().any(|cause| {
@@ -1029,6 +1081,7 @@ impl FerruleApp {
             debug,
             preview,
             phase: PipelineRunPhase::Running,
+            extraction,
         });
         self.run_report = None;
         self.show_run_report = false;

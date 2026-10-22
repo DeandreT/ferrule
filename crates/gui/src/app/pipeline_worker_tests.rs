@@ -29,6 +29,7 @@ fn held_pipeline_run(
         debug: false,
         preview: false,
         phase,
+        extraction: None,
     };
     (pending, events, release, exited)
 }

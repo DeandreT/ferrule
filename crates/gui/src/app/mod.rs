@@ -78,6 +78,10 @@ mod mfd_pipeline;
 #[path = "new_mapping.rs"]
 mod new_mapping_ui;
 mod owned_worker;
+mod pdf_extraction;
+#[cfg(all(test, target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[path = "pdf_run_tests.rs"]
+mod pdf_run_tests;
 #[path = "pipeline_editor.rs"]
 mod pipeline_editor_ui;
 mod pipeline_stage_canvas;
@@ -469,6 +473,12 @@ pub struct FerruleApp {
     file_run_pause_on_failure: bool,
     pending_file_run: Option<run_ui::PendingFileRun>,
     file_run_teardown: SavedFileRunTeardownPort,
+    /// Session opt-in: filesystem PDF inputs of file runs and file-backed
+    /// previews are extracted by an owned packaged worker. Off by default.
+    owned_pdf_worker: bool,
+    pdf_worker_package: pdf_extraction::PdfWorkerPackage,
+    #[cfg(test)]
+    pdf_reader_controls: pdf_extraction::ReaderControls,
     rest_run_draft: Option<rest_run::RestRunDraft>,
     pending_rest_run: Option<rest_run::PendingRestRun>,
     rest_run_result: Option<rest_run::RestRunResult>,
@@ -651,6 +661,10 @@ impl Default for FerruleApp {
             file_run_pause_on_failure: false,
             pending_file_run: None,
             file_run_teardown: SavedFileRunTeardownPort::default(),
+            owned_pdf_worker: false,
+            pdf_worker_package: pdf_extraction::PdfWorkerPackage::beside_current_executable(),
+            #[cfg(test)]
+            pdf_reader_controls: Default::default(),
             rest_run_draft: None,
             pending_rest_run: None,
             rest_run_result: None,

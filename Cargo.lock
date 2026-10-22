@@ -2254,6 +2254,7 @@ dependencies = [
  "lucide-icons",
  "mapping",
  "mfd",
+ "pdf-worker",
  "rfd",
  "serde",
  "serde_json",
