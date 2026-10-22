@@ -616,3 +616,78 @@ fn csharp_composition_matches_recorded_artifacts() -> TestResult<()> {
     }
     Ok(())
 }
+
+/// The JSON marker mapping, composed with the JSON5 companion, compiles and
+/// returns every marker field name and value unchanged through both the
+/// ordinary JSON method and the companion.
+#[test]
+#[ignore = "builds and runs a generated C# host with the .NET SDK"]
+fn csharp_composed_marker_library_compiles_and_preserves_text() -> TestResult<()> {
+    let directory = TempDir::new("csharp_composition_markers")?;
+    let project = json_marker_project();
+    let path = directory.0.join("project.json");
+    fs::write(&path, mapping::project_file::encode_pretty(&project)?)?;
+    let output = directory.0.join("generated");
+    cli::generate_project_with_json5_adapters(&path, &output, GenerateTarget::CSharp)?;
+    assert!(output.join("GeneratedMapping.Json5.cs").exists());
+
+    let source_field = "\n    private static global::Ferrule.Runtime.FerruleValue Node_1(";
+    let target_field = "public static class GeneratedMapping\n{";
+    let input = serde_json::json!({ source_field: MARKERS }).to_string();
+    fs::write(output.join("input.json"), &input)?;
+    let harness = output.join("Harness");
+    fs::create_dir(&harness)?;
+    fs::write(
+        harness.join("Harness.csproj"),
+        r#"<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ferrule.Generated.csproj" />
+  </ItemGroup>
+</Project>
+"#,
+    )?;
+    fs::write(
+        harness.join("Program.cs"),
+        r#"using Ferrule.Generated;
+
+var input = File.ReadAllText(args[0]);
+File.WriteAllText(args[1], GeneratedMapping.ExecuteJson(input));
+File.WriteAllText(args[2], GeneratedMapping.ExecuteJson5(input));
+"#,
+    )?;
+    let command = dotnet_command(&output)
+        .args([
+            "run",
+            "--project",
+            "Harness/Harness.csproj",
+            "--configuration",
+            "Release",
+            "--",
+            "input.json",
+            "json.txt",
+            "json5.txt",
+        ])
+        .current_dir(&output)
+        .isolated_output()?;
+    assert!(
+        command.status.success(),
+        "generated C# marker host failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&command.stdout),
+        String::from_utf8_lossy(&command.stderr)
+    );
+    let expected = serde_json::json!({ target_field: MARKERS, "Copied": MARKERS });
+    for name in ["json.txt", "json5.txt"] {
+        let actual: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(output.join(name))?)?;
+        assert_eq!(actual, expected, "{name}");
+    }
+    Ok(())
+}
