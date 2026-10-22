@@ -143,6 +143,9 @@ fn invocation_counter_restart_disconnect_records_one_reversible_edit() {
     viewer.disconnect(&from, &to, &mut snarl);
     assert!(viewer.error.is_none());
     assert_eq!(viewer.input_at(0, 2), None);
+    assert!(matches!(viewer.graph.nodes.get(&0),
+        Some(Node::InvocationCounter { key, start: 2, step: 3, restart: None })
+            if key == " Key "));
     assert_eq!(viewer.planned_edits.len(), 1);
     let edit = viewer.planned_edits.pop().unwrap();
     assert_eq!(
