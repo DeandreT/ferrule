@@ -111,13 +111,15 @@ fn sparse(root: &Root, len: u64) -> PathBuf {
 fn input_limit_admits_exactly_eight_mib_and_refuses_one_over_before_parsing() {
     refuse_source(
         |root| sparse(root, INPUT_BYTES + 1),
-        |failure, _| {
+        |failure, job| {
             assert_eq!(failure.kind, FailureKind::InputTooLarge);
             assert_eq!(failure.operation, "input byte cap");
             assert_eq!(
                 failure.diagnostics.display().text(),
                 "PDF input exceeds the 8388608-byte limit"
             );
+            // The closed prelaunch job retains only the owner's own receipt.
+            assert_eq!(names(job), ["receipt.json"]);
         },
     );
     // Exactly at the cap the bytes are staged and the worker runs.
@@ -276,6 +278,7 @@ fn scratch_reservation_requires_reserve_plus_headroom() {
     let margin = 64 * 1024 * 1024;
     let free = available(&scratch);
     assert!(free > SCRATCH_HEADROOM_BYTES + margin, "test scratch space");
+    let fds = descriptors();
     ScratchPolicy::admit(&scratch, free - SCRATCH_HEADROOM_BYTES - margin).unwrap();
     for reserve in [free - SCRATCH_HEADROOM_BYTES + margin, u64::MAX] {
         let failure = ScratchPolicy::admit(&scratch, reserve).unwrap_err();
@@ -285,6 +288,7 @@ fn scratch_reservation_requires_reserve_plus_headroom() {
             failure.diagnostics.display().text(),
             "explicit reserve plus96MiB required"
         );
+        assert_eq!(descriptors(), fds, "refusal closes its parent descriptor");
     }
     assert!(names(&scratch).is_empty());
 }
@@ -295,6 +299,7 @@ fn unsafe_or_symlinked_scratch_parents_are_refused() {
     let root = Root::new("scratch-parent");
     let shared = root.dir("shared");
     std::fs::set_permissions(&shared, std::fs::Permissions::from_mode(0o770)).unwrap();
+    let fds = descriptors();
     let failure = ScratchPolicy::admit(&shared, 0).unwrap_err();
     assert_eq!(failure.operation, "admit scratch parent");
     assert_eq!(
@@ -312,6 +317,7 @@ fn unsafe_or_symlinked_scratch_parents_are_refused() {
         failure.diagnostics.display().text(),
         "absolute scratch/program parent required"
     );
+    assert_eq!(descriptors(), fds, "refusals close every walked descriptor");
     assert!(names(&real).is_empty() && names(&shared).is_empty());
 }
 
