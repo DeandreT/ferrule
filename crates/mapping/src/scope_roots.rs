@@ -88,6 +88,11 @@ pub enum NestedScopeKind {
 impl Scope {
     /// Visits this scope's own root expressions in a fixed slot order. Nested
     /// scopes are not visited; see [`Scope::nested_scopes`].
+    ///
+    /// Analyses that stop at their first finding or report findings in order
+    /// see roots in this order, so it is part of their precedence: controls,
+    /// then the output path, presence and windows, secondary sort keys,
+    /// bindings, construction, the sequence, and dynamic child keys.
     pub fn visit_roots(&self, visit: &mut impl FnMut(ScopeRoot)) {
         let mut root = |node, slot, role| visit(ScopeRoot { node, slot, role });
         use ScopeRootRole::{GroupMember, Item, Output, Parent, RecursiveGroup};
@@ -115,9 +120,6 @@ impl Scope {
         if let Some(node) = self.sort_by {
             root(node, Slot::SortBy, Item);
         }
-        for (index, key) in self.sort_then_by.iter().enumerate() {
-            root(key.node, Slot::SortThenBy(index), Item);
-        }
         if let Some(node) = self.output_path() {
             root(node, Slot::OutputPath, Output);
         }
@@ -128,6 +130,9 @@ impl Scope {
             for node in window.nodes() {
                 root(node, Slot::Window(index), Parent);
             }
+        }
+        for (index, key) in self.sort_then_by.iter().enumerate() {
+            root(key.node, Slot::SortThenBy(index), Item);
         }
         for (index, binding) in self.bindings.iter().enumerate() {
             root(binding.node, Slot::Binding(index), Output);
@@ -236,8 +241,8 @@ fn visit_sequence_roots(
     );
 }
 
-/// Every executable root of a project, found through the visitor.
-#[cfg(test)]
+/// Every executable root of a project: each target's scope tree, dynamic
+/// source paths, and failure rules.
 pub(crate) fn project_roots(project: &crate::Project) -> Vec<NodeId> {
     let mut roots = Vec::new();
     let mut push = |root: ScopeRoot| roots.push(root.node);
