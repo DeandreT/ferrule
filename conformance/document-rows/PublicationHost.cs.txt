@@ -1,0 +1,44 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static FerruleInstance Source(params (string Order,FerruleValue Item)[] rows) =>
+    new FerruleGroup(new[] {new FerruleField("Rows",new FerruleRepeated(rows.Select(row=>new FerruleGroup(new[] {
+        new FerruleField("Order",new FerruleScalar(FerruleValue.FromString(row.Order))),
+        new FerruleField("Item",new FerruleScalar(row.Item)),
+    }))))});
+var output=Path.Combine(Path.GetTempPath(),"publication-"+Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(output);
+var execution=new FerruleExecutionContext("rows.ferrule").WithInvocationCounterLimits(new FerruleInvocationCounterLimits(1,16));
+int calls=0;
+string Clock(){calls++;return "fixed-";}
+var input=Source(("A",FerruleValue.FromString("x")),("B",FerruleValue.FromInt64(99)));
+try {
+    GeneratedMapping.VisitTargetDocumentsWithFilenameClock(input,Array.Empty<NamedInput>(),execution,null,Clock,document=>{
+        if(document.Path is not ("fixed-A.txt" or "fixed-B.txt"))throw new InvalidOperationException("Unexpected path.");
+        var bytes=GeneratedMapping.SerializeCsvDocumentBytes(document.Value);
+        try {File.WriteAllBytes(Path.Combine(output,document.Path),bytes);return GeneratedMapping.DocumentDecision<string>.Continue;}
+        catch(IOException error){return GeneratedMapping.DocumentDecision<string>.Break(error.Message);}
+    });
+    throw new InvalidOperationException("Expected failed later body.");
+} catch(GeneratedMapping.DocumentVisitException error) when(error.Accepted==1 && error.InnerException is FerruleRuntimeException {Error:FerruleRuntimeError.AggregateUnsupportedScalar}) { }
+if(calls!=1 || File.ReadAllText(Path.Combine(output,"fixed-A.txt"))!="x|1\r\n" || File.Exists(Path.Combine(output,"fixed-B.txt")))
+    throw new InvalidOperationException("Publication prefix differs.");
+var retry=Source(("B",FerruleValue.FromString("y")));
+var result=GeneratedMapping.VisitTargetDocumentsWithFilenameClock(retry,Array.Empty<NamedInput>(),execution,null,Clock,document=>{
+    if(document.Path!="fixed-B.txt")throw new InvalidOperationException("Retry resubmitted an accepted file.");
+    File.WriteAllBytes(Path.Combine(output,document.Path),GeneratedMapping.SerializeCsvDocumentBytes(document.Value));
+    return GeneratedMapping.DocumentDecision<string>.Continue;
+});
+if(!result.Completed || result.Accepted!=1 || File.ReadAllText(Path.Combine(output,"fixed-B.txt"))!="y|1\r\n" ||
+    File.ReadAllText(Path.Combine(output,"fixed-A.txt"))!="x|1\r\n")throw new InvalidOperationException("Retry differs.");
+File.WriteAllText(Path.Combine(output,"blocked"),"not a directory");
+int before=calls;
+result=GeneratedMapping.VisitTargetDocumentsWithFilenameClock(input,Array.Empty<NamedInput>(),execution,null,Clock,document=>{
+    var bytes=GeneratedMapping.SerializeCsvDocumentBytes(document.Value);
+    try {File.WriteAllBytes(Path.Combine(output,"blocked",document.Path),bytes);}
+    catch(IOException){return GeneratedMapping.DocumentDecision<string>.Break("write failed");}
+    throw new InvalidOperationException("Expected confined write failure.");
+});
+if(result.Completed || result.Accepted!=0 || result.Reason!="write failed" || calls!=before+1)
+    throw new InvalidOperationException("Failed publication was counted as accepted or later body ran.");
+Console.WriteLine("PASS document publication");

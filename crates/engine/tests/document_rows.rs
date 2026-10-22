@@ -329,3 +329,57 @@ fn document_row_wire_and_pruning_keep_body_and_filename_dependencies() {
     }
     assert!(engine::validate(&restored).is_empty());
 }
+
+#[test]
+fn flat_csv_row_roots_keep_nested_grouping_and_missing_field_presence() {
+    let mut project = project();
+    let mut row = project.source.child("Rows").unwrap().clone();
+    row.name = "Input".into();
+    row.repeating = false;
+    project.source = row;
+    project.root.set_source(Some(vec![]));
+    let Node::SourceField { frame, .. } = project.graph.nodes.get_mut(&2).unwrap() else {
+        unreachable!()
+    };
+    *frame = Some(vec![]);
+    let Node::Aggregate { collection, .. } = project.graph.nodes.get_mut(&5).unwrap() else {
+        unreachable!()
+    };
+    collection.clear();
+    let wrapped = input(&[
+        ("A", Some("x")),
+        ("B", Some("z")),
+        ("A", None),
+        ("A", Some("y")),
+    ]);
+    let source = wrapped.field("Rows").unwrap();
+    assert!(
+        engine::validate(&project).is_empty(),
+        "{:?}",
+        engine::validate(&project)
+    );
+    let mut actual = vec![];
+    let result = engine::visit_target_documents(
+        &project,
+        source,
+        vec![],
+        &context(),
+        TargetSelection::Primary,
+        |document| {
+            actual.push((
+                document.path().to_owned(),
+                csv(&project.target, document.value()),
+            ));
+            ControlFlow::<()>::Continue(())
+        },
+    )
+    .unwrap();
+    assert_eq!(result, DocumentVisit::Complete { accepted: 2 });
+    assert_eq!(
+        actual,
+        [
+            ("A.txt".into(), "x|1\r\ny|2\r\n".into()),
+            ("B.txt".into(), "z|3\r\n".into())
+        ]
+    );
+}
