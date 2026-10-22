@@ -49,7 +49,7 @@ mod graph_wire_edits;
 mod node_palette;
 
 use graph_node_ids::NodeIdReservation;
-pub(crate) use graph_planned_edits::PlannedGraphEdit;
+pub(crate) use graph_planned_edits::{PlannedGraphEdit, frame_has_edit_input};
 use graph_references::node_inputs;
 pub(crate) use graph_references::{
     InactiveTargetScope, ProjectGraphReferences, inactive_target_scopes, project_sequence_item_ids,

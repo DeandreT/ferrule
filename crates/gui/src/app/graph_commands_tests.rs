@@ -226,16 +226,26 @@ fn record_removal(app: &mut FerruleApp, document: MappingDocument, nodes: &[Node
     assert!(observe_planned(app, document, planned));
 }
 
-pub(super) fn next_undo_command(app: &FerruleApp) -> &GraphCommand {
+pub(super) fn next_undo_commands(app: &FerruleApp) -> &[GraphCommand] {
     match app.history.next_undo() {
-        Some(HistoryRecord::Command(record)) => record.command(),
+        Some(HistoryRecord::Command(record)) => record.commands(),
         _ => panic!("the next undo step is a command"),
+    }
+}
+
+pub(super) fn next_undo_command(app: &FerruleApp) -> &GraphCommand {
+    match next_undo_commands(app) {
+        [command] => command,
+        commands => panic!("one command, got {}", commands.len()),
     }
 }
 
 pub(super) fn next_redo_command(app: &FerruleApp) -> &GraphCommand {
     match app.history.next_redo() {
-        Some(HistoryRecord::Command(record)) => record.command(),
+        Some(HistoryRecord::Command(record)) => match record.commands() {
+            [command] => command,
+            commands => panic!("one command, got {}", commands.len()),
+        },
         _ => panic!("the next redo step is a command"),
     }
 }
@@ -640,3 +650,6 @@ mod owned_sources;
 
 #[path = "graph_commands_canvas_tests.rs"]
 mod canvas;
+
+#[path = "graph_property_commands_tests.rs"]
+mod properties;

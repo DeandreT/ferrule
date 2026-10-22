@@ -205,7 +205,7 @@ fn loaded_incompatible_root_policy_remains_visible_and_is_not_repaired_by_render
 }
 
 #[test]
-fn source_field_popup_keyboard_edit_saves_pending_history_and_roundtrips_undo_redo()
+fn source_field_popup_keyboard_edit_coalesces_into_one_command_and_roundtrips_undo_redo()
 -> anyhow::Result<()> {
     fn text_position(shape: &egui::epaint::Shape, text: &str) -> Option<egui::Pos2> {
         match shape {
@@ -366,8 +366,27 @@ fn source_field_popup_keyboard_edit_saves_pending_history_and_roundtrips_undo_re
     eprintln!("SourceField app complete edit originals: before={before_json}; after={changed}");
     assert_eq!(changed, serde_json::to_value(&expected)?);
     assert!(app.is_dirty());
-    assert!(app.pending_history.is_some());
-    assert_eq!(app.history.undo_len(), 0);
+    // Continued typing extends one typed property edit.
+    assert!(app.pending_history.is_none());
+    assert_eq!(app.history.undo_len(), 1);
+    assert_eq!(app.history.undo_label(), Some("Edit source field"));
+    match app.history.next_undo() {
+        Some(editor_ui::HistoryRecord::Command(record)) => match record.commands() {
+            [command] => {
+                assert_eq!(
+                    command.action(),
+                    &editor_ui::GraphAction::EditNode {
+                        node: 0,
+                        property: editor_ui::NodeProperty::SourceField,
+                    }
+                );
+                assert_eq!(command.patch().changed_nodes().collect::<Vec<_>>(), [0]);
+                assert_eq!(command.patch().nodes().count(), 1);
+            }
+            commands => panic!("one command, got {}", commands.len()),
+        },
+        _ => panic!("the edit is a command step"),
+    }
     assert!(app.can_undo());
 
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -387,7 +406,6 @@ fn source_field_popup_keyboard_edit_saves_pending_history_and_roundtrips_undo_re
         app.pending_history.is_some(),
     );
     assert!(save.layout_warning.is_none());
-    assert!(app.pending_history.is_some());
     assert!(!app.is_dirty());
     app.undo_project();
     let undone = serde_json::to_value(&app.project)?;

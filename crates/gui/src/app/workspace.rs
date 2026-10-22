@@ -940,6 +940,10 @@ impl FerruleApp {
                 MappingDocument::Main | MappingDocument::Target(_)
             );
         let mut type_action = None;
+        // The edited scope's fields before and after this pass, retained only
+        // on frames with input, and the document that owns the scope.
+        let mut scope_edit = None;
+        let watch_scope = crate::graph_viewer::frame_has_edit_input(ui.ctx());
         egui::ScrollArea::both()
             .id_salt(("scope_editor_scroll", active_target))
             .show(ui, |ui| {
@@ -989,6 +993,7 @@ impl FerruleApp {
                                     computed_property_owner,
                                 );
                             let scope = scope_at_mut(&mut target.root, &self.selected_scope);
+                            let before = watch_scope.then(|| ScopeFields::capture(scope));
                             type_action = show_scope_editor(
                                 ui,
                                 scope,
@@ -1010,6 +1015,11 @@ impl FerruleApp {
                                 &self.project.graph,
                                 computed_property_profile,
                             );
+                            scope_edit = before.map(|before| {
+                                let document =
+                                    GraphDocument::Target(TargetId::Named(target.name.clone()));
+                                (document, before, ScopeFields::capture(scope))
+                            });
                         }
                         None => {
                             let target_chain =
@@ -1054,6 +1064,7 @@ impl FerruleApp {
                                     computed_property_owner,
                                 );
                             let scope = scope_at_mut(&mut self.project.root, &self.selected_scope);
+                            let before = watch_scope.then(|| ScopeFields::capture(scope));
                             type_action = show_scope_editor(
                                 ui,
                                 scope,
@@ -1075,10 +1086,21 @@ impl FerruleApp {
                                 &self.project.graph,
                                 computed_property_profile,
                             );
+                            scope_edit = before.map(|before| {
+                                let document = GraphDocument::Target(TargetId::Primary);
+                                (document, before, ScopeFields::capture(scope))
+                            });
                         }
                     }
                 });
             });
+        if let Some((document, before, after)) = scope_edit {
+            let location = editor_ui::ScopeLocation::of_children(&self.selected_scope);
+            self.frame_commands
+                .extend(graph_commands::scope_edit_commands(
+                    &document, &location, &before, &after,
+                ));
+        }
         if let Some(action) = type_action {
             self.apply_selected_target_xml_type(&action);
         }

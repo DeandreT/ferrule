@@ -243,12 +243,15 @@ The native editor uses the same project model for primary, named-target, and
 function canvases. Compact glyphs keep closed nodes small; full hover identities,
 pin semantics, and property/details popovers retain the information needed to
 edit them. Layout is adjacent metadata rather than mapping behavior.
-Editor history is one linear sequence of typed commands, which name the node
-and scope identities they change and apply or invert atomically, and
-snapshots of edits that canvases still apply in place. Node removal, wire
-connection and disconnection, and palette insertion are commands; a frame's
-command is recorded only when it alone explains the frame's change, and the
-frame becomes a snapshot otherwise. Separate semantic and
+Editor history is one linear sequence of typed commands, which name the node,
+scope, binding, and scope-setting identities they change and apply or invert
+atomically, and snapshots of edits still applied in place. Node removal, wire
+connection and disconnection, palette insertion, node property edits, binding
+panel additions, retargets, and removals, and scope-setting edits (source
+iteration, filter, grouping, sort, windows, and output) are commands. A frame's
+commands form one history step only when together they explain the frame's
+change, and the frame becomes a snapshot otherwise; continued typing or
+dragging in one property or setting extends its step. Separate semantic and
 layout revisions track the save point, so a layout-only change never marks
 mapping content as changed.
 
