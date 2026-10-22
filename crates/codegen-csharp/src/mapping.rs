@@ -68,13 +68,20 @@ pub(crate) fn render_with_document_visitor(
     program: &Program,
     target: Option<usize>,
 ) -> Result<String, EmitError> {
-    render_with_options(program, true, Some(target))
+    render_with_options(program, true, Some((target, false)))
+}
+
+pub(crate) fn render_with_document_filename_clock(
+    program: &Program,
+    target: Option<usize>,
+) -> Result<String, EmitError> {
+    render_with_options(program, true, Some((target, true)))
 }
 
 fn render_with_options(
     program: &Program,
     json_boundaries: bool,
-    visitor: Option<Option<usize>>,
+    visitor: Option<(Option<usize>, bool)>,
 ) -> Result<String, EmitError> {
     codegen::validate_owned_emission(program)?;
     let has_filter_map = !program.filter_map_v1_sequences().is_empty();
@@ -266,9 +273,9 @@ fn render_with_options(
         render_bound_group(scope_index, scope, &mut output);
     }
     filter_map::add_scoped_node_wrappers(program, &mut output);
-    if let Some(target) = visitor {
+    if let Some((target, clock)) = visitor {
         let scope = target.map_or(primary_scope, |index| extra_scopes[index].1);
-        document_visitor::render(program, scope, &scopes[scope], &mut output)?;
+        document_visitor::render(program, scope, &scopes[scope], clock, &mut output)?;
     }
     output.push_str("}\n");
     Ok(output)
@@ -362,7 +369,7 @@ fn render_user_function_expression(
             output.push_str(" =>\n        context.ResolveRuntimeValue(");
             output.push_str("global::Ferrule.Runtime.FerruleRuntimeValue.");
             output.push_str(runtime_value_name(*value));
-            output.push_str(");\n");
+            output.push_str(&format!(", {node}U);\n"));
         }
         Expression::RuntimeParameter { name, ty } => {
             output.push_str(" =>\n        context.ResolveRuntimeParameter(");
@@ -1216,17 +1223,18 @@ fn render_iteration_scope_delivery(
     };
     if let Some(dynamic) = dynamic {
         output.push_str(&format!(
-            "            var output_{scope} = ScopeItem_{scope}({item_context});\n            var output_path_{scope} = Node_{}({item_context});\n",
-            dynamic.output_path(),
+            "            var output_{scope} = ScopeItem_{scope}({item_context});\n"
         ));
         if visitor {
             output.push_str(&format!(
-                "            var document_{scope} = global::Ferrule.Runtime.FerruleDynamicDocuments.Create({}U, output_path_{scope}, output_{scope});\n            if (!offerDocument(document_{scope})) return;\n            delivered_{scope}++;\n",
+                "            var filename_context_{scope} = {item_context}.WithDocumentFilenameClock(filenameClock);\n            var output_path_{scope} = Node_{}(filename_context_{scope});\n            var document_{scope} = global::Ferrule.Runtime.FerruleDynamicDocuments.Create({}U, output_path_{scope}, output_{scope});\n            if (!offerDocument(document_{scope})) return;\n            delivered_{scope}++;\n",
+                dynamic.output_path(),
                 dynamic.output_path(),
             ));
         } else {
             output.push_str(&format!(
-                "            documents_{scope}.Add(global::Ferrule.Runtime.FerruleDynamicDocuments.Create({}U, output_path_{scope}, output_{scope}));\n",
+                "            var output_path_{scope} = Node_{}({item_context});\n            documents_{scope}.Add(global::Ferrule.Runtime.FerruleDynamicDocuments.Create({}U, output_path_{scope}, output_{scope}));\n",
+                dynamic.output_path(),
                 dynamic.output_path(),
             ));
         }
@@ -2139,7 +2147,7 @@ fn render_expression(
             ));
             output.push_str("global::Ferrule.Runtime.FerruleRuntimeValue.");
             output.push_str(runtime_value_name(*value));
-            output.push_str(");\n");
+            output.push_str(&format!(", {node}U);\n"));
         }
         Expression::RuntimeParameter { name, ty } => {
             output.push_str(&format!(

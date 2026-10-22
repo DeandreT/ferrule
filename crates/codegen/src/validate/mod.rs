@@ -14,7 +14,7 @@ mod context;
 mod error;
 mod failures;
 mod filter_map;
-mod graph_dependencies;
+pub(crate) mod graph_dependencies;
 mod grouping;
 mod joins;
 mod lookup;

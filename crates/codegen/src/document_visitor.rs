@@ -1,8 +1,11 @@
 //! Explicit admission for incremental delivery of one selected ordinary target.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use crate::{IterationOutput, Program, ProgramValidationError, TargetConstruction, TargetScope};
+use crate::{
+    Expression, IterationOutput, Program, ProgramValidationError, TargetConstruction, TargetScope,
+};
 
 #[derive(Debug)]
 pub enum DocumentVisitorBoundaryError {
@@ -64,6 +67,53 @@ pub fn validate_document_visitor(
         return Err(DocumentVisitorBoundaryError::Unsupported(
             "nested document-output scopes are not supported",
         ));
+    }
+    Ok(index)
+}
+
+/// Admit filename-only clocks without opening UDF, owned or private producers.
+pub fn validate_document_filename_clock(
+    program: &Program,
+    target: Option<&str>,
+) -> Result<Option<usize>, DocumentVisitorBoundaryError> {
+    let index = validate_document_visitor(program, target)?;
+    let root = index.map_or(&program.root, |index| &program.extra_targets[index].root);
+    let path = root
+        .iteration
+        .as_ref()
+        .and_then(|iteration| iteration.dynamic_document_iteration())
+        .expect("validated document iteration")
+        .output_path();
+    let expressions = program
+        .expressions
+        .iter()
+        .map(|node| (node.id, &node.expression))
+        .collect::<BTreeMap<_, _>>();
+    let mut pending = vec![path];
+    let mut seen = BTreeSet::new();
+    while let Some(node) = pending.pop() {
+        if !seen.insert(node) {
+            continue;
+        }
+        let expression = expressions[&node];
+        if !matches!(
+            expression,
+            Expression::Const { .. }
+                | Expression::RuntimeValue { .. }
+                | Expression::RuntimeParameter { .. }
+                | Expression::RuntimeParameterDefault { .. }
+                | Expression::SourceField { .. }
+                | Expression::SourceDocumentPath
+                | Expression::Position { .. }
+                | Expression::Call { .. }
+                | Expression::If { .. }
+                | Expression::Aggregate { .. }
+        ) {
+            return Err(DocumentVisitorBoundaryError::Unsupported(
+                "filename clock sampling is limited to ordinary scalar graph expressions",
+            ));
+        }
+        pending.extend(crate::validate::graph_dependencies::of(expression));
     }
     Ok(index)
 }

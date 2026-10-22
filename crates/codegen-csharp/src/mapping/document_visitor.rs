@@ -4,6 +4,7 @@ pub(super) fn render(
     program: &Program,
     scope: usize,
     plan: &ScopePlan<'_>,
+    clock: bool,
     output: &mut String,
 ) -> Result<(), EmitError> {
     output.push_str(API);
@@ -19,6 +20,9 @@ pub(super) fn render(
         output,
     )?;
     output.push_str("    }\n");
+    if clock {
+        output.push_str(CLOCK_API);
+    }
     Ok(())
 }
 
@@ -49,6 +53,15 @@ const API: &str = r#"
         global::Ferrule.Runtime.FerruleExecutionContext? executionContext,
         global::Ferrule.Runtime.IFerruleDynamicSourceLoader? loader,
         global::System.Func<global::Ferrule.Runtime.FerruleDocument, DocumentDecision<B>> consumer)
+        => VisitDocuments(source, inputs, executionContext, loader, null, consumer);
+
+    private static DocumentVisit<B> VisitDocuments<B>(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> inputs,
+        global::Ferrule.Runtime.FerruleExecutionContext? executionContext,
+        global::Ferrule.Runtime.IFerruleDynamicSourceLoader? loader,
+        global::System.Func<string>? filenameClock,
+        global::System.Func<global::Ferrule.Runtime.FerruleDocument, DocumentDecision<B>> consumer)
     {
         global::System.ArgumentNullException.ThrowIfNull(consumer);
         var accepted = 0;
@@ -58,7 +71,7 @@ const API: &str = r#"
         try
         {
             var context = CreateContext(source, inputs, executionContext, loader);
-            VisitDocumentScope(context, document =>
+            VisitDocumentScope(context, filenameClock, document =>
             {
                 DocumentDecision<B> decision;
                 try { decision = consumer(document); }
@@ -77,6 +90,22 @@ const API: &str = r#"
 
     private static void VisitDocumentScope(
         global::Ferrule.Runtime.ScopeContext context,
+        global::System.Func<string>? filenameClock,
         global::System.Func<global::Ferrule.Runtime.FerruleDocument, bool> offerDocument)
     {
+"#;
+
+const CLOCK_API: &str = r#"
+    /// <summary>Samples only reached filename date-time nodes, after the complete body.</summary>
+    public static DocumentVisit<B> VisitTargetDocumentsWithFilenameClock<B>(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> inputs,
+        global::Ferrule.Runtime.FerruleExecutionContext? executionContext,
+        global::Ferrule.Runtime.IFerruleDynamicSourceLoader? loader,
+        global::System.Func<string> clock,
+        global::System.Func<global::Ferrule.Runtime.FerruleDocument, DocumentDecision<B>> consumer)
+    {
+        global::System.ArgumentNullException.ThrowIfNull(clock);
+        return VisitDocuments(source, inputs, executionContext, loader, clock, consumer);
+    }
 "#;

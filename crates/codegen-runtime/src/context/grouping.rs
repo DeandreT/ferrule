@@ -12,6 +12,7 @@ pub struct GroupedItems<'a> {
 
 struct OwnedGroup<'a> {
     invocation_counters: Option<crate::invocation_counter::CounterState>,
+    document_filename_clock: Option<&'a dyn crate::DocumentFilenameClock>,
     primary_source: &'a Instance,
     prefix: Vec<ScopeFrame<'a>>,
     named_inputs: &'a [NamedInput<'a>],
@@ -347,6 +348,7 @@ impl<'a> GroupedItems<'a> {
                     dynamic_source_loader: group.dynamic_source_loader,
                     filter_map: group.filter_map.clone(),
                     invocation_counters: group.invocation_counters.clone(),
+                    document_filename_clock: group.document_filename_clock,
                 }
             })
             .collect()
@@ -377,6 +379,7 @@ impl<'a> GroupedItems<'a> {
                         dynamic_source_loader: group.first.dynamic_source_loader,
                         filter_map: group.first.filter_map.clone(),
                         invocation_counters: group.first.invocation_counters.clone(),
+                        document_filename_clock: group.first.document_filename_clock,
                         wrapper,
                         members,
                         collection,

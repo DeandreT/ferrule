@@ -2,7 +2,7 @@ use mapping::NodeId;
 
 use crate::Expression;
 
-pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
+pub(crate) fn of(expression: &Expression) -> Vec<NodeId> {
     match expression {
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
