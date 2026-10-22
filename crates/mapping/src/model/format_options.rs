@@ -6,8 +6,8 @@ use crate::{
     CsvTextRepairDependency, EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat,
     EdiValueConstraint, ExternalSourceOptions, FixedWidthLayout, FlexTextLayout, HttpGetOptions,
     IdocLayout, IdocNativeConfig, IdocNativeTextSettings, NodeId, PdfLayout, ProtobufOptions,
-    SwiftMtLayout, TabularBoundaryKind, WsdlMessageOptions, X12Separators, XbrlBoundaryOptions,
-    XlsxHierarchicalLayout, is_false,
+    SqliteReadProfile, SwiftMtLayout, TabularBoundaryKind, WsdlMessageOptions, X12Separators,
+    XbrlBoundaryOptions, XlsxHierarchicalLayout, is_false,
 };
 
 macro_rules! xlsx_coordinate {
@@ -459,6 +459,12 @@ pub struct FormatOptions {
     /// other XLSX layout option.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xlsx_hierarchical: Option<XlsxHierarchicalLayout>,
+    /// SQLite: a declared read-only single-table query selected explicitly
+    /// for a primary or static named source. It is never combined with other
+    /// options and never falls back to an ordinary table read. Saved files
+    /// carrying it require the `sqlite_read_v1` file capability.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sqlite_read: Option<SqliteReadProfile>,
 }
 
 impl FormatOptions {

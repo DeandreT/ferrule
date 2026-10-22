@@ -435,10 +435,23 @@ fn versioned_metadata_is_strict_and_rejects_truncated_nonfinite_and_invalid_path
         assert_invalid(&value);
     }
     let mut value = envelope();
+    value["__ferrule_file"]["version"] = serde_json::json!(4);
+    assert!(matches!(
+        project_file::decode_str(&value.to_string()),
+        Err(FileCodecError::UnsupportedVersion { version: 4 })
+    ));
+    // Version 3 exists only to declare capabilities.
+    let mut value = envelope();
     value["__ferrule_file"]["version"] = serde_json::json!(3);
     assert!(matches!(
         project_file::decode_str(&value.to_string()),
-        Err(FileCodecError::UnsupportedVersion { version: 3 })
+        Err(FileCodecError::InvalidEnvelope { .. })
+    ));
+    let mut value = envelope();
+    value["__ferrule_file"]["capabilities"] = serde_json::json!(["sqlite_read_v1"]);
+    assert!(matches!(
+        project_file::decode_str(&value.to_string()),
+        Err(FileCodecError::InvalidEnvelope { .. })
     ));
     let mut value = envelope();
     value["__ferrule_file"]["ignored"] = Value::Bool(true);
@@ -581,6 +594,9 @@ struct PointerFixture {
     floats: Vec<f64>,
     text: String,
 }
+impl FileModel for PointerFixture {}
+impl FileModel for Value {}
+impl FileModel for String {}
 #[test]
 fn escaped_pointer_and_signed_zero_are_unambiguous() {
     let original = PointerFixture {

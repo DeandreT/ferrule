@@ -15,6 +15,7 @@ mod primary_root;
 mod schema;
 mod scope;
 mod sequences;
+mod sqlite_read;
 mod user_function;
 
 use graph::{validate_cycles, validate_graph};
@@ -477,6 +478,7 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         own_issues(&mut issues[start..], ValidationOwner::Endpoint(endpoint));
     }
     dynamic_loading::validate_references(project, &mut issues);
+    sqlite_read::validate_sqlite_read(project, &mut issues);
     validate_user_functions(project, &mut issues);
     validate_graph(project, &mut issues);
     validate_cycles(&project.graph, &mut issues);

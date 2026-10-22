@@ -187,6 +187,12 @@ pub enum RouteRefusal {
     },
     /// Execution supplied an observer the prepared request did not admit.
     UndeclaredObservers,
+    /// The route cannot own a declared SQLite query input; it refuses before
+    /// opening any database or evaluating a target.
+    UnsupportedInputProfile {
+        route: HostRoute,
+        input: InputRole,
+    },
 }
 
 impl fmt::Display for RouteRefusal {
@@ -217,6 +223,15 @@ impl fmt::Display for RouteRefusal {
             ),
             Self::UndeclaredObservers => formatter
                 .write_str("run observers must be declared when the request is prepared"),
+            Self::UnsupportedInputProfile { route, input } => write!(
+                formatter,
+                "the {route:?} route cannot acquire the declared SQLite query {}; use the filesystem run or preview route",
+                match input {
+                    InputRole::Primary => "primary input".to_owned(),
+                    InputRole::Named(name) | InputRole::PipelineHost(name) =>
+                        format!("input `{name}`"),
+                }
+            ),
         }
     }
 }

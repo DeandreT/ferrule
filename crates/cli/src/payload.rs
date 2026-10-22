@@ -254,6 +254,7 @@ fn preflight_payload_run<'p>(
     options: &PayloadRunOptions<'_>,
 ) -> anyhow::Result<Option<engine::RequiredTargetSources<'p>>> {
     require_valid(project)?;
+    crate::sqlite_query::reject_query_inputs(project, HostRoute::Payload)?;
     validate_input_budget(options)?;
     engine::check_source_ownership_capability_with_observers(
         project,
@@ -366,6 +367,50 @@ pub fn run_project_value_payloads(
     Ok(PayloadRunOutcome {
         records_written,
         artifacts,
+    })
+}
+
+/// Renders every target value in memory with the payload route's limits.
+pub(crate) fn render_all_outcome(
+    project: &mapping::Project,
+    project_path: &Path,
+    output_path: Option<&Path>,
+    output: &engine::ExecutionOutputs,
+    current_datetime: &str,
+) -> anyhow::Result<PayloadRunOutcome> {
+    let (records_written, artifacts) = render_all_targets(
+        project,
+        project_path,
+        output_path,
+        output,
+        current_datetime,
+        Limits::PRODUCTION,
+    )?;
+    Ok(PayloadRunOutcome {
+        records_written,
+        artifacts: serialization::finalize(artifacts, Limits::PRODUCTION)?,
+    })
+}
+
+/// Renders one selected target value in memory with the payload route's limits.
+pub(crate) fn render_selected_outcome(
+    project: &mapping::Project,
+    project_path: &Path,
+    output_path: Option<&Path>,
+    output: &engine::SelectedTargetOutput,
+    current_datetime: &str,
+) -> anyhow::Result<PayloadRunOutcome> {
+    let (records_written, artifacts) = render_selected_target(
+        project,
+        project_path,
+        output_path,
+        output,
+        current_datetime,
+        Limits::PRODUCTION,
+    )?;
+    Ok(PayloadRunOutcome {
+        records_written,
+        artifacts: serialization::finalize(artifacts, Limits::PRODUCTION)?,
     })
 }
 
@@ -802,6 +847,9 @@ pub(crate) fn read_payload(
     schema: &SchemaNode,
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
+    if options.sqlite_read.is_some() {
+        bail!("a declared SQLite query cannot be read from a payload");
+    }
     options
         .validate_xml_schema_hint_options(false)
         .map_err(anyhow::Error::msg)?;

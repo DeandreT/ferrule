@@ -287,6 +287,18 @@ fn lower_with_policy(
         ));
     }
 
+    // Declared SQLite query acquisition stays with filesystem hosts; generated
+    // code never drops it in favor of an ordinary table read.
+    if let Some(input) = project.sqlite_read_inputs().first() {
+        return Err(LowerError::new(vec![Diagnostic::UnsupportedInputProfile {
+            source: match input.owner {
+                mapping::SqliteReadOwner::Primary => None,
+                mapping::SqliteReadOwner::Named(name) => Some(name.to_owned()),
+            },
+            profile: mapping::SQLITE_READ_V1_CAPABILITY,
+        }]));
+    }
+
     // Owned document outputs remain closed at their complete original route,
     // and owned joins outside their explicit companion. All static Basic
     // selectors continue through unchanged lowering reachability.
