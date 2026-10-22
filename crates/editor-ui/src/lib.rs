@@ -11,19 +11,26 @@ mod edit_history;
 mod graph_command;
 mod graph_edit;
 mod revision;
+mod scope_setting;
 mod selection;
 mod snapshot_history;
 
 pub use command::{EditorCommand, EditorTransaction};
 pub use document::{CommandOutcome, DocumentOrigin, EditorDocument, HistoryLimit, HistoryOutcome};
 pub use edit_history::{EditHistory, HistoryRecord};
-pub use graph_command::{CanvasPosition, GraphAction, GraphCommand, WireSink};
+pub use graph_command::{
+    CanvasPosition, GraphAction, GraphCommand, NodeProperty, TargetBinding, WireSink,
+};
 pub use graph_edit::{
-    BindingsChange, GraphDocument, GraphEditError, GraphPatch, NodeChange, ScopeLocation, ScopeStep,
+    BindingsChange, GraphDocument, GraphEditError, GraphPatch, NodeChange, ScopeLocation,
+    ScopeStep, SettingChange,
 };
 pub use revision::{
     ComponentChange, DocumentRevision, LayoutRevision, RevisionChange, RevisionKeyed,
     RevisionTracker, SemanticRevision,
+};
+pub use scope_setting::{
+    Grouping, ScopeFields, ScopeSetting, ScopeSettingValue, Sorting, SourceIteration,
 };
 pub use selection::{BoundaryId, GraphNodeSelection, SourceId, TargetId, WorkspaceSelection};
 pub use snapshot_history::{HistoryStep, SnapshotHistory};

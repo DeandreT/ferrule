@@ -101,6 +101,14 @@ impl<S, C> EditHistory<S, C> {
         self.redo.back().map(|entry| &entry.record)
     }
 
+    /// The step the next undo reverses, for hosts that extend the newest
+    /// edit in place instead of recording another step. Its label is kept
+    /// and the redo branch is discarded, as for [`Self::record`].
+    pub fn newest_undo_mut(&mut self) -> Option<&mut HistoryRecord<S, C>> {
+        self.redo.clear();
+        self.undo.back_mut().map(|entry| &mut entry.record)
+    }
+
     /// Reverses the newest undo step.
     ///
     /// `reverse` restores the record's state and turns the record into the

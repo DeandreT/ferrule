@@ -27,7 +27,7 @@ fn canvas_frame(
     output
 }
 
-fn text_position(shape: &egui::epaint::Shape, wanted: &str) -> Option<egui::Pos2> {
+pub(super) fn text_position(shape: &egui::epaint::Shape, wanted: &str) -> Option<egui::Pos2> {
     match shape {
         egui::epaint::Shape::Text(text) if text.galley.text().contains(wanted) => {
             Some(text.visual_bounding_rect().center())
@@ -111,7 +111,7 @@ fn settle(app: &mut FerruleApp, context: &egui::Context) -> egui::FullOutput {
     output
 }
 
-fn pointer(pos: egui::Pos2, button: egui::PointerButton, pressed: bool) -> egui::Event {
+pub(super) fn pointer(pos: egui::Pos2, button: egui::PointerButton, pressed: bool) -> egui::Event {
     egui::Event::PointerButton {
         pos,
         button,
@@ -120,7 +120,7 @@ fn pointer(pos: egui::Pos2, button: egui::PointerButton, pressed: bool) -> egui:
     }
 }
 
-fn press_key(key: egui::Key) -> egui::Event {
+pub(super) fn press_key(key: egui::Key) -> egui::Event {
     egui::Event::Key {
         key,
         physical_key: None,

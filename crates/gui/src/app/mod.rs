@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 #[cfg(test)]
 use editor_ui::HistoryRecord;
 use editor_ui::{DocumentOrigin, EditHistory, RevisionKeyed, RevisionTracker, SemanticRevision};
+use editor_ui::{GraphDocument, ScopeFields, TargetId};
 use egui_snarl::Snarl;
 #[cfg(test)]
 use egui_snarl::{InPinId, OutPinId};
@@ -555,6 +556,9 @@ pub struct FerruleApp {
     pending_history: Option<PendingHistory>,
     /// Typed edits canvases applied this frame, awaiting the observer.
     frame_commands: Vec<editor_ui::GraphCommand>,
+    /// When the newest step was recorded or extended as one coalescing
+    /// command during continuing input.
+    command_coalescing: Option<std::time::Instant>,
 }
 
 struct PendingHistory {
@@ -731,6 +735,7 @@ impl Default for FerruleApp {
             fingerprints,
             pending_history: None,
             frame_commands: Vec::new(),
+            command_coalescing: None,
         }
     }
 }

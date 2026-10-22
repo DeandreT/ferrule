@@ -15,6 +15,21 @@ pub(crate) struct PlannedGraphEdit {
     pub(crate) patch: GraphPatch,
 }
 
+/// Whether this frame has input that can change a widget's value. Editors
+/// retain their state for a typed edit only on such frames; hover-only
+/// frames cannot edit.
+pub(crate) fn frame_has_edit_input(context: &egui::Context) -> bool {
+    context.input(|input| {
+        input.pointer.any_down()
+            || input.events.iter().any(|event| {
+                !matches!(
+                    event,
+                    egui::Event::PointerMoved(_) | egui::Event::MouseMoved(_)
+                )
+            })
+    })
+}
+
 impl GraphViewer<'_> {
     /// Runs one in-place canvas edit. When `action` names the edit from the
     /// edited state, the edit is re-applied through its typed patch and kept
@@ -31,6 +46,13 @@ impl GraphViewer<'_> {
         let Some(action) = action(self, &result) else {
             return result;
         };
+        self.plan_edit_since(graph, scope, action);
+        result
+    }
+
+    /// Re-applies the in-place edit that led from `graph` and `scope` to the
+    /// current state through its typed patch, keeping it as `action`.
+    pub(super) fn plan_edit_since(&mut self, graph: Graph, scope: Scope, action: GraphAction) {
         let edited_graph = std::mem::replace(self.graph, graph);
         let edited_scope = std::mem::replace(self.root_scope, scope);
         if let Some(patch) = self.adopt_planned_state(edited_graph, edited_scope)
@@ -38,7 +60,6 @@ impl GraphViewer<'_> {
         {
             self.planned_edits.push(PlannedGraphEdit { action, patch });
         }
-        result
     }
 
     /// Adopts a planned graph and scope state through its typed patch,

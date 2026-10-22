@@ -6,9 +6,10 @@ use std::fmt;
 
 use mapping::{Graph, Node, NodeId, Project, Scope};
 
+use crate::graph_edit::same_bindings;
 use crate::{
     EditorCommand, EditorTransaction, GraphDocument, GraphEditError, GraphPatch, ScopeLocation,
-    TargetId,
+    ScopeSetting, TargetId,
 };
 
 /// The receiving end of one wire.
@@ -38,6 +39,71 @@ pub struct CanvasPosition {
     pub y: f32,
 }
 
+/// The kind of node whose properties one edit changes, named in the action.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum NodeProperty {
+    Constant,
+    RuntimeParameter,
+    /// Ordinary and owner-qualified item positions.
+    Position,
+    FunctionCall,
+    Aggregate,
+    /// Ordinary and primary-root source field paths.
+    SourceField,
+    ValueMap,
+    Other,
+}
+
+impl NodeProperty {
+    pub fn of(node: &Node) -> Self {
+        match node {
+            Node::Const { .. } => Self::Constant,
+            Node::RuntimeParameter { .. } | Node::RuntimeParameterDefault { .. } => {
+                Self::RuntimeParameter
+            }
+            Node::Position { .. } | Node::OwnedPosition(_) => Self::Position,
+            Node::Call { .. } => Self::FunctionCall,
+            Node::Aggregate { .. } => Self::Aggregate,
+            Node::SourceField { .. } | Node::SourceRootField { .. } => Self::SourceField,
+            Node::ValueMap { .. } => Self::ValueMap,
+            _ => Self::Other,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Constant => "Edit constant",
+            Self::RuntimeParameter => "Edit runtime parameter",
+            Self::Position => "Edit position",
+            Self::FunctionCall => "Edit function call",
+            Self::Aggregate => "Edit aggregate",
+            Self::SourceField => "Edit source field",
+            Self::ValueMap => "Edit value map",
+            Self::Other => "Edit node properties",
+        }
+    }
+}
+
+/// One target binding: a target field and the node it reads.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TargetBinding {
+    pub field: String,
+    pub node: NodeId,
+}
+
+impl TargetBinding {
+    pub fn of(binding: &mapping::Binding) -> Self {
+        Self {
+            field: binding.target_field.clone(),
+            node: binding.node,
+        }
+    }
+
+    fn matches(&self, binding: &mapping::Binding) -> bool {
+        binding.target_field == self.field && binding.node == self.node
+    }
+}
+
 /// The user action a [`GraphCommand`] performs, named by the identities it
 /// targets. Dependent changes, such as orphaned inputs a removal or a
 /// replaced wire drops, appear only in the command's patch.
@@ -54,6 +120,33 @@ pub enum GraphAction {
         node: NodeId,
         position: CanvasPosition,
     },
+    /// Changes the properties of `node`, adding or retiring only the hidden
+    /// inputs that change requires.
+    EditNode {
+        node: NodeId,
+        property: NodeProperty,
+    },
+    /// Appends `binding` to the bindings of `scope`.
+    AddBinding {
+        scope: ScopeLocation,
+        binding: TargetBinding,
+    },
+    /// Removes `binding` from `scope`, keeping the order of the others.
+    RemoveBinding {
+        scope: ScopeLocation,
+        binding: TargetBinding,
+    },
+    /// Replaces the target field or node of one binding in place.
+    RetargetBinding {
+        scope: ScopeLocation,
+        from: TargetBinding,
+        to: TargetBinding,
+    },
+    /// Changes one setting of `scope`.
+    EditScope {
+        scope: ScopeLocation,
+        setting: ScopeSetting,
+    },
 }
 
 impl GraphAction {
@@ -64,7 +157,18 @@ impl GraphAction {
             Self::ConnectWire { .. } => "Connect wire",
             Self::DisconnectWire { .. } => "Disconnect wire",
             Self::InsertNode { .. } => "Insert node",
+            Self::EditNode { property, .. } => property.label(),
+            Self::AddBinding { .. } => "Add binding",
+            Self::RemoveBinding { .. } => "Remove binding",
+            Self::RetargetBinding { .. } => "Retarget binding",
+            Self::EditScope { setting, .. } => setting.label(),
         }
+    }
+
+    /// Whether consecutive commands performing this same action, such as
+    /// keystrokes in one property field, may form one history step.
+    pub fn coalesces(&self) -> bool {
+        matches!(self, Self::EditNode { .. } | Self::EditScope { .. })
     }
 
     /// Checks that `patch` performs this action on its named identities.
@@ -122,6 +226,7 @@ impl GraphAction {
                     return Err(GraphEditError::NotInserted { node: *node });
                 }
                 let additive = patch.scopes().next().is_none()
+                    && patch.settings().next().is_none()
                     && patch.nodes().all(|(_, change)| change.before().is_none());
                 if additive {
                     Ok(())
@@ -129,7 +234,103 @@ impl GraphAction {
                     Err(GraphEditError::InsertionNotAdditive)
                 }
             }
+            Self::EditNode { node, property } => {
+                let edited = patch.node(*node).is_some_and(|change| {
+                    change
+                        .before()
+                        .zip(change.after())
+                        .is_some_and(|(before, after)| {
+                            NodeProperty::of(before) == *property
+                                || NodeProperty::of(after) == *property
+                        })
+                });
+                if !edited {
+                    return Err(GraphEditError::NodeNotEdited { node: *node });
+                }
+                // Only hidden inputs the edit adds or retires may change beside it.
+                let local = patch.scopes().next().is_none()
+                    && patch.settings().next().is_none()
+                    && patch.nodes().all(|(id, change)| {
+                        id == *node || change.before().is_none() || change.after().is_none()
+                    });
+                if local {
+                    Ok(())
+                } else {
+                    Err(GraphEditError::UnrelatedChanges)
+                }
+            }
+            Self::AddBinding { scope, binding } => validate_binding_edit(patch, scope, |b, a| {
+                a.len() == b.len() + 1
+                    && same_bindings(b, &a[..b.len()])
+                    && a.last().is_some_and(|last| binding.matches(last))
+            }),
+            Self::RemoveBinding { scope, binding } => {
+                validate_binding_edit(patch, scope, |b, a| {
+                    b.len() == a.len() + 1
+                        && (0..b.len()).any(|index| {
+                            binding.matches(&b[index])
+                                && same_bindings(&b[..index], &a[..index])
+                                && same_bindings(&b[index + 1..], &a[index..])
+                        })
+                })
+            }
+            Self::RetargetBinding { scope, from, to } => {
+                validate_binding_edit(patch, scope, |b, a| {
+                    let mut differing = b.iter().zip(a).filter(|(b, a)| {
+                        !same_bindings(std::slice::from_ref(b), std::slice::from_ref(a))
+                    });
+                    from != to
+                        && b.len() == a.len()
+                        && differing
+                            .next()
+                            .is_some_and(|(b, a)| from.matches(b) && to.matches(a))
+                        && differing.next().is_none()
+                })
+            }
+            Self::EditScope { scope, setting } => {
+                if patch.setting(scope, *setting).is_none() {
+                    return Err(GraphEditError::SettingNotChanged {
+                        location: scope.clone(),
+                        setting: *setting,
+                    });
+                }
+                if patch.nodes().next().is_none()
+                    && patch.scopes().next().is_none()
+                    && patch.settings().count() == 1
+                {
+                    Ok(())
+                } else {
+                    Err(GraphEditError::UnrelatedChanges)
+                }
+            }
         }
+    }
+}
+
+/// Checks that the patch changes only the bindings of `scope`, and as
+/// `expected` describes from their old and new lists.
+fn validate_binding_edit(
+    patch: &GraphPatch,
+    scope: &ScopeLocation,
+    expected: impl Fn(&[mapping::Binding], &[mapping::Binding]) -> bool,
+) -> Result<(), GraphEditError> {
+    let Some(change) = patch.scope(scope) else {
+        return Err(GraphEditError::BindingNotChanged {
+            location: scope.clone(),
+        });
+    };
+    if patch.nodes().next().is_some()
+        || patch.settings().next().is_some()
+        || patch.scopes().count() != 1
+    {
+        return Err(GraphEditError::UnrelatedChanges);
+    }
+    if expected(change.before(), change.after()) {
+        Ok(())
+    } else {
+        Err(GraphEditError::BindingNotChanged {
+            location: scope.clone(),
+        })
     }
 }
 
@@ -197,6 +398,18 @@ impl GraphCommand {
 
     pub fn label(&self) -> &'static str {
         self.action.label()
+    }
+
+    /// The one command equivalent to this command followed by `next`, when
+    /// both perform the same coalescing action on one document and the
+    /// combined patch still performs it.
+    pub fn then(&self, next: &Self, same_node: impl Fn(&Node, &Node) -> bool) -> Option<Self> {
+        if self.document != next.document || self.action != next.action || !self.action.coalesces()
+        {
+            return None;
+        }
+        let patch = self.patch.then(&next.patch, same_node)?;
+        Self::new(self.document.clone(), self.action.clone(), patch).ok()
     }
 
     pub fn apply_to(&self, project: &mut Project) -> Result<(), GraphEditError> {
