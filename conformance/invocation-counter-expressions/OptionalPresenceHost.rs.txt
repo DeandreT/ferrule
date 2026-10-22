@@ -1,0 +1,33 @@
+use codegen_runtime::{ExecutionContext, InvocationCounterLimits, RuntimeParameters, Value};
+use std::path::Path;
+
+fn main() {
+    let cases = [
+        (false, false, "{\n  \"Maybe\": []\n}\n", "{\n  \"Value\": 1\n}\n"),
+        (false, true, "{\n  \"Maybe\": [\n    {\n      \"Value\": 1\n    }\n  ]\n}\n", "{\n  \"Value\": 2\n}\n"),
+        (true, false, "{\n  \"Maybe\": [\n    {\n      \"Value\": 2\n    }\n  ]\n}\n", "{\n  \"Value\": 3\n}\n"),
+        (true, true, "{\n  \"Maybe\": [\n    {\n      \"Value\": 2\n    }\n  ]\n}\n", "{\n  \"Value\": 3\n}\n"),
+    ];
+    for (count_condition, keep, primary, audit) in cases {
+        let mut parameters = RuntimeParameters::new();
+        parameters.insert("count_condition", Value::Bool(count_condition)).unwrap();
+        parameters.insert("keep", Value::Bool(keep)).unwrap();
+        let execution = ExecutionContext::new(Path::new("counter.ferrule"))
+            .with_parameters(&parameters)
+            .with_invocation_counter_limits(InvocationCounterLimits { max_counters: 1, max_text_bytes: 4 });
+        for _ in 0..2 {
+            let actual = counter_optional_presence::execute_json_outputs_with_context("{}", &execution).unwrap();
+            assert_eq!(actual.primary, primary);
+            assert_eq!(actual.extras.len(), 1);
+            assert_eq!(actual.extras[0].name, "audit");
+            assert_eq!(actual.extras[0].document, audit);
+            let named = counter_optional_presence::execute_json_selected_target_with_host(
+                "{}", &[], Some(&execution), None, counter_optional_presence::TargetSelection::Named("audit"),
+            ).unwrap();
+            let counter_optional_presence::SelectedJsonTargetOutput::Named(named) = named else { panic!("named target missing") };
+            assert_eq!(named.name, "audit");
+            assert_eq!(named.document, "{\n  \"Value\": 1\n}\n");
+        }
+    }
+    println!("PASS optional counter documents");
+}
