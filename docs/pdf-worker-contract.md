@@ -3,8 +3,8 @@
 Status: **wire codec implemented and locally verified in
 [#325](https://github.com/DeandreT/ferrule/issues/325)**. The Linux owner and CLI
 opt-in, file-input preview acquisition and GUI cancellation are implemented in the
-dependent increments below; resource qualification remains. The codec does not
-launch processes or install resource limits.
+dependent increments below, and the finite resource profile is recorded; no default
+changed. The codec does not launch processes or install resource limits.
 The planned first execution profile is one PDF extraction in an owned Linux
 child, using local filesystem documents. Mapping and target publication stay in
 the parent.
@@ -308,7 +308,7 @@ preview retention or serialized targets. See [Memory use and boundary limits](me
 | [C. GUI filesystem cancellation (#327)](https://github.com/DeandreT/ferrule/issues/327) | File-run and filesystem pipeline adapters/pending-state tests in `crates/gui`; narrow CLI cancellation API seam | B; alternate-display cancellation/close and existing publication regressions |
 | [D. Finite resource qualification (#328)](https://github.com/DeandreT/ferrule/issues/328) | Owned synthetic fixture/protocol tests and public bounded report | B; add C cases after C merges; repeated separate child/parent measurements before any default-policy change |
 | [E. File-input preview acquisition (#340)](https://github.com/DeandreT/ferrule/issues/340) | Explicit payload-or-file project and pipeline preview inputs in `crates/cli` | B and the borrowed reader (#344) |
-| [F. GUI preview ownership and shutdown (#341)](https://github.com/DeandreT/ferrule/issues/341) | Preview service, file-input preview selection and app-close deferral in `crates/gui` | C and E; the option stays off by default until D |
+| [F. GUI preview ownership and shutdown (#341)](https://github.com/DeandreT/ferrule/issues/341) | Preview service, file-input preview selection and app-close deferral in `crates/gui` | C and E; the option stays off by default |
 
 Keep `format-pdf` extraction/layout semantics, `mapping::PdfLayout` and `ir` model
 unchanged. Wire code belongs to the worker package, not a process-launching
@@ -355,7 +355,7 @@ They do not qualify subprocess limits, cancellation or memory use.
   supplement those gates and do not prove kernel signaling or physical closure.
 - [ ] Compare primary/static/dynamic selected-source acquisition and destination
   preservation with existing CLI controls; no unnecessary worker for unused sources.
-- [ ] Qualify GUI cancellation and app close on an alternate virtual display,
+- [x] Qualify GUI cancellation and app close on an alternate virtual display,
   keeping the user's active monitors untouched and all publication controls intact.
 - [x] Record executable/profile/kernel/effective limits, repeated child and parent
   RSS/CPU/wall brackets, exact outputs and all failures. Address-space limits,
