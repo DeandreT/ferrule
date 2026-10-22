@@ -5,7 +5,8 @@
 mod csv_document;
 mod csv_json;
 pub use csv_document::{
-    CsvDocumentEmitError, emit_with_csv_document_adapters, emit_with_csv_document_set_boundary,
+    CsvDocumentEmitError, emit_document_with_csv_document_set_boundary,
+    emit_with_csv_document_adapters, emit_with_csv_document_set_boundary,
 };
 mod csv_output;
 mod csv_x12;

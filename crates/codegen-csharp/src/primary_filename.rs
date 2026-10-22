@@ -5,7 +5,14 @@ use crate::{EmitError, literal};
 /// Add source-free filename evaluation to the ordinary instance library.
 /// This does not load files or expose a document-execution entry point.
 pub fn emit_with_primary_filename(document: &DocumentProgram) -> Result<ArtifactSet, EmitError> {
-    let mut files = crate::emit(document.program())?.into_files();
+    append(crate::emit(document.program())?, document)
+}
+
+pub(crate) fn append(
+    artifacts: ArtifactSet,
+    document: &DocumentProgram,
+) -> Result<ArtifactSet, EmitError> {
+    let mut files = artifacts.into_files();
     let expression = match document.primary_filename() {
         PrimaryFilenamePlan::Literal { text, .. } => literal::string(text),
         PrimaryFilenamePlan::Parameter { node, name } => format!(

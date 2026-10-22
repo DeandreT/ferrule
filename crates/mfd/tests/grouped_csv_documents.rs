@@ -504,7 +504,7 @@ fn supplied_grouped_document_generates_both_languages() -> Result<(), Box<dyn st
         output.join("project.json"),
         serde_json::to_vec_pretty(imported.document.project())?,
     )?;
-    let program = codegen::lower(imported.document.project())?;
+    let document = codegen::lower_document(&imported.document)?;
     let mut policy =
         codegen::CsvOutputPolicy::from_format_options(&imported.document.project().target_options)?;
     if std::env::var("FERRULE_GROUPED_CSV_RAW_CRLF").as_deref() == Ok("1") {
@@ -517,8 +517,8 @@ fn supplied_grouped_document_generates_both_languages() -> Result<(), Box<dyn st
         target: policy,
     };
     let runtime = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime");
-    let rust = codegen_rust::emit_with_csv_document_set_boundary(
-        &program,
+    let rust = codegen_rust::emit_document_with_csv_document_set_boundary(
+        &document,
         &codegen_rust::Options {
             package_name: "original_mapping".into(),
             runtime_dependency: codegen_rust::RuntimeDependency::Path(
@@ -527,7 +527,8 @@ fn supplied_grouped_document_generates_both_languages() -> Result<(), Box<dyn st
         },
         &boundary,
     )?;
-    let csharp = codegen_csharp::emit_with_csv_document_set_boundary(&program, &boundary)?;
+    let csharp =
+        codegen_csharp::emit_document_with_csv_document_set_boundary(&document, &boundary)?;
     for (language, artifacts) in [("rust", rust), ("csharp", csharp)] {
         for file in artifacts.files() {
             let path = output.join(language).join(file.path.as_str());
