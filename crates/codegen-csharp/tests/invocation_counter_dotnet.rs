@@ -4,10 +4,14 @@ use std::process::Command;
 
 #[path = "../../../conformance/invocation-counter-expressions/admission.rs"]
 mod admission;
+#[path = "../../../conformance/document-rows/project.rs"]
+mod document_rows;
 #[path = "../../../conformance/invocation-counter-expressions/expected.rs"]
 mod expected;
 #[path = "../../../conformance/invocation-counter-expressions/project.rs"]
 mod fixture;
+#[path = "../../../conformance/document-rows/named.rs"]
+mod named_document_rows;
 #[path = "../../../conformance/invocation-counter-expressions/optional_presence.rs"]
 mod optional_presence;
 
@@ -58,10 +62,50 @@ fn generated_optional_presence_keeps_counter_evaluation_order() -> Result<(), Bo
     )
 }
 
+#[test]
+fn generated_document_rows_keep_grouped_files_and_counter_state() -> Result<(), Box<dyn Error>> {
+    run_fixture(
+        document_rows::project(),
+        include_str!("../../../conformance/document-rows/Host.cs.txt"),
+        "PASS document row sets",
+    )
+}
+
+#[test]
+fn generated_document_visitor_stops_before_later_bodies_and_preserves_accepted_documents()
+-> Result<(), Box<dyn Error>> {
+    run_fixture_with_visitor(
+        document_rows::project(),
+        include_str!("../../../conformance/document-rows/VisitorHost.cs.txt"),
+        "PASS document visitors",
+        Some(None),
+    )
+}
+
+#[test]
+fn generated_document_visitor_selects_named_target_without_running_primary()
+-> Result<(), Box<dyn Error>> {
+    run_fixture_with_visitor(
+        named_document_rows::project(document_rows::project()),
+        include_str!("../../../conformance/document-rows/VisitorHost.cs.txt"),
+        "PASS document visitors",
+        Some(Some("selected")),
+    )
+}
+
 fn run_fixture(
     project: mapping::Project,
     host: &str,
     expected: &str,
+) -> Result<(), Box<dyn Error>> {
+    run_fixture_with_visitor(project, host, expected, None)
+}
+
+fn run_fixture_with_visitor(
+    project: mapping::Project,
+    host: &str,
+    expected: &str,
+    visitor: Option<Option<&str>>,
 ) -> Result<(), Box<dyn Error>> {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
@@ -72,7 +116,23 @@ fn run_fixture(
     )));
     std::fs::create_dir(&root.0)?;
     let program = codegen::lower(&project)?;
-    for file in codegen_csharp::emit(&program)?.files() {
+    let artifacts = if let Some(target) = visitor {
+        codegen_csharp::emit_with_document_visitor(&program, target)?
+    } else if program.root.construction == codegen::TargetConstruction::DocumentRows {
+        codegen_csharp::emit_with_csv_document_set_output(
+            &program,
+            &codegen::CsvOutputPolicy {
+                delimiter: Some('|'),
+                quote_disabled: true,
+                has_headers: false,
+                raw_delimited_crlf: true,
+                ..Default::default()
+            },
+        )?
+    } else {
+        codegen_csharp::emit(&program)?
+    };
+    for file in artifacts.files() {
         let path = root.0.join(file.path.as_str());
         std::fs::create_dir_all(path.parent().unwrap())?;
         std::fs::write(path, &file.contents)?;

@@ -205,6 +205,7 @@ fn scope_roots(scope: &TargetScope, roots: &mut Vec<NodeId>) {
         TargetConstruction::AdjacencyTree { root, .. }
         | TargetConstruction::OwnedAdjacencyTree { root, .. } => roots.extend(root),
         TargetConstruction::Group
+        | TargetConstruction::DocumentRows
         | TargetConstruction::CopyCurrentSource
         | TargetConstruction::XmlMixedContent { .. }
         | TargetConstruction::PathHierarchy { .. }

@@ -318,6 +318,9 @@ fn validate_scope(
                 "owned adjacency-tree row collections are not exportable",
             ));
         }
+        ScopeConstruction::DocumentRows => {
+            return Err(unsupported("document-row construction is not exportable"));
+        }
         ScopeConstruction::Constructed
         | ScopeConstruction::CopyCurrentSource
         | ScopeConstruction::XmlMixedContent { .. } => {}

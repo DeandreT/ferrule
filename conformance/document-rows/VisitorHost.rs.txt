@@ -1,0 +1,83 @@
+use codegen_runtime::{DocumentMember, ExecutionContext, Instance, InvocationCounterLimits, RuntimeError, Value, group, repeated};
+use document_visitor_mapping::{DocumentVisit, visit_target_documents};
+use std::{ops::ControlFlow, path::Path};
+
+fn source(rows: &[(&str, Option<Value>)]) -> Instance {
+    group([("Rows".into(), repeated(rows.iter().map(|(order, item)| {
+        let mut fields = vec![("Order".into(), Instance::Scalar(Value::String((*order).into())))];
+        if let Some(item) = item { fields.push(("Item".into(), Instance::Scalar(item.clone()))); }
+        group(fields)
+    })))])
+}
+fn text(value: &str) -> Option<Value> { Some(Value::String(value.into())) }
+fn check(document: &DocumentMember, path: &str, rows: &[(&str, i64)]) {
+    assert_eq!(document.path(), path);
+    assert_eq!(document.value(), &repeated(rows.iter().map(|(item,line)| group([
+        ("Item".into(), Instance::Scalar(Value::String((*item).into()))),
+        ("Line".into(), Instance::Scalar(Value::Int(*line))),
+    ]))));
+}
+fn main() {
+    let execution = ExecutionContext::new(Path::new("rows.ferrule"))
+        .with_invocation_counter_limits(InvocationCounterLimits { max_counters: 1, max_text_bytes: 16 });
+    let bad = Some(Value::Int(99));
+    for _ in 0..2 {
+        let input = source(&[("A",text("x")),("B",text("z")),("A",text("y")),("A",text("x"))]);
+        let mut documents = Vec::new();
+        let result = visit_target_documents(&input, &[], Some(&execution), None, |document| {
+            documents.push(document); ControlFlow::<()>::Continue(())
+        }).unwrap();
+        assert_eq!(result, DocumentVisit::Complete { accepted: 2 });
+        check(&documents[0], "A.txt", &[("x",1),("y",2)]);
+        check(&documents[1], "B.txt", &[("z",3)]);
+    }
+    let input = source(&[("A",text("x")),("B",bad.clone())]);
+    let stopped = visit_target_documents(&input, &[], Some(&execution), None, |document| {
+        check(&document, "A.txt", &[("x",1)]); ControlFlow::Break("full")
+    }).unwrap();
+    assert_eq!(stopped, DocumentVisit::Stopped { accepted: 0, reason: "full" });
+    let input = source(&[("A",text("x")),("B",text("y")),("C",bad.clone())]);
+    let mut offered = 0;
+    let stopped = visit_target_documents(&input, &[], Some(&execution), None, |_| {
+        offered += 1;
+        if offered == 2 { ControlFlow::Break(()) } else { ControlFlow::Continue(()) }
+    }).unwrap();
+    assert_eq!(stopped, DocumentVisit::Stopped { accepted: 1, reason: () });
+    for index in 0..3 {
+        let mut rows = vec![("A",text("x")),("B",text("y")),("C",text("z"))];
+        rows[index].1 = bad.clone();
+        let input = source(&rows);
+        let mut kept = Vec::new();
+        let error = visit_target_documents(&input, &[], Some(&execution), None, |document| {
+            kept.push(document); ControlFlow::<()>::Continue(())
+        }).unwrap_err();
+        assert_eq!(error.accepted, index);
+        assert_eq!(kept.len(), index);
+        assert!(matches!(error.source, RuntimeError::AggregateUnsupportedScalar { .. }));
+        for (offset, document) in kept.iter().enumerate() {
+            check(document, &format!("{}.txt", rows[offset].0), &[(if offset == 0 { "x" } else { "y" }, offset as i64 + 1)]);
+        }
+    }
+    // A later bad row rejects the complete document; no partial body is offered.
+    let input = source(&[("A",text("x")),("A",bad)]);
+    let error = visit_target_documents::<()>(&input, &[], Some(&execution), None, |_| panic!("partial body was offered")).unwrap_err();
+    assert_eq!(error.accepted, 0);
+    // A filename-only reduction fails after a valid body, without undoing A.
+    let input = group([("Rows".into(), repeated([
+        group([("Order".into(),Instance::Scalar(Value::String("A".into()))),("Item".into(),Instance::Scalar(Value::String("x".into())))]),
+        group([("Order".into(),Instance::Scalar(Value::Int(99))),("Item".into(),Instance::Scalar(Value::String("y".into())))]),
+    ]))]);
+    let error = visit_target_documents(&input, &[], Some(&execution), None, |document| {
+        check(&document,"A.txt",&[("x",1)]); ControlFlow::<()>::Continue(())
+    }).unwrap_err();
+    assert_eq!(error.accepted, 1);
+    assert!(matches!(error.source, RuntimeError::AggregateUnsupportedScalar { .. }));
+    let input = source(&[("A",None)]);
+    let complete = visit_target_documents(&input, &[], Some(&execution), None, |document| {
+        check(&document, "A.txt", &[]); ControlFlow::<()>::Continue(())
+    }).unwrap();
+    assert_eq!(complete, DocumentVisit::Complete { accepted: 1 });
+    let complete = visit_target_documents(&source(&[]), &[], Some(&execution), None, |_| panic!("no document")).unwrap();
+    assert_eq!(complete, DocumentVisit::<()>::Complete { accepted: 0 });
+    println!("PASS document visitors");
+}

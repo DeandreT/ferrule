@@ -119,6 +119,7 @@ pub enum CsvOutputError {
         reason: &'static str,
     },
     PrimaryRows,
+    DocumentRows,
     DynamicDocuments,
 }
 
@@ -168,6 +169,9 @@ impl fmt::Display for CsvOutputError {
             Self::PrimaryRows => {
                 f.write_str("generated CSV output requires a repeated primary row collection")
             }
+            Self::DocumentRows => {
+                f.write_str("generated CSV document-set output requires document-row construction")
+            }
             Self::DynamicDocuments => {
                 f.write_str("generated CSV output does not yet support dynamic document iteration")
             }
@@ -186,7 +190,7 @@ impl std::error::Error for CsvOutputError {
 
 /// Prove the generated CSV adapter's complete flat primary output contract.
 /// Existing mapping validation retains its typed failure and runs first.
-pub fn validate_csv_output(
+fn validate_csv_output_common(
     program: &Program,
     policy: &CsvOutputPolicy,
 ) -> Result<(), CsvOutputError> {
@@ -231,6 +235,15 @@ pub fn validate_csv_output(
             return Err(bad(Some(child.name.clone()), "column names must be unique"));
         }
     }
+    Ok(())
+}
+
+/// Prove one materialized flat CSV output, without dynamic document splitting.
+pub fn validate_csv_output(
+    program: &Program,
+    policy: &CsvOutputPolicy,
+) -> Result<(), CsvOutputError> {
+    validate_csv_output_common(program, policy)?;
     if !program
         .root
         .iteration
@@ -241,6 +254,36 @@ pub fn validate_csv_output(
     }
     if has_dynamic_documents(&program.root) {
         return Err(CsvOutputError::DynamicDocuments);
+    }
+    Ok(())
+}
+
+/// Prove a materialized collection of named, independently serialized row sets.
+/// This does not grant streaming publication or CSV input acquisition.
+pub fn validate_csv_document_set_output(
+    program: &Program,
+    policy: &CsvOutputPolicy,
+) -> Result<(), CsvOutputError> {
+    validate_csv_output_common(program, policy)?;
+    if program.root.construction != crate::TargetConstruction::DocumentRows
+        || program
+            .root
+            .iteration
+            .as_ref()
+            .is_none_or(|iteration| iteration.dynamic_document_iteration().is_none())
+    {
+        return Err(CsvOutputError::DocumentRows);
+    }
+    // This adapter currently exposes only primary-input/context entry points.
+    // Do not admit declarations whose named values or loader cannot be supplied.
+    if let Some(source) = program.extra_sources.first() {
+        return Err(if source.dynamic.is_some() {
+            CsvOutputError::DynamicInputs {
+                name: source.name.clone(),
+            }
+        } else {
+            CsvOutputError::NamedInputs
+        });
     }
     Ok(())
 }

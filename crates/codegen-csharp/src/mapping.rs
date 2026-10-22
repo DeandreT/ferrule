@@ -11,6 +11,7 @@ use ir::ScalarType;
 
 use crate::{EmitError, literal};
 
+mod document_visitor;
 mod failures;
 mod filter_map;
 mod owned_group_by;
@@ -59,6 +60,21 @@ pub(crate) fn append_basic_owned_json_api(
 fn render_with_json_boundaries(
     program: &Program,
     json_boundaries: bool,
+) -> Result<String, EmitError> {
+    render_with_options(program, json_boundaries, None)
+}
+
+pub(crate) fn render_with_document_visitor(
+    program: &Program,
+    target: Option<usize>,
+) -> Result<String, EmitError> {
+    render_with_options(program, true, Some(target))
+}
+
+fn render_with_options(
+    program: &Program,
+    json_boundaries: bool,
+    visitor: Option<Option<usize>>,
 ) -> Result<String, EmitError> {
     codegen::validate_owned_emission(program)?;
     let has_filter_map = !program.filter_map_v1_sequences().is_empty();
@@ -155,6 +171,14 @@ fn render_with_json_boundaries(
         output.push_str(&format!(
             "    private static global::Ferrule.Runtime.FerruleInstance ScopeItem_{scope_index}(\n        global::Ferrule.Runtime.ScopeContext context)\n    {{\n"
         ));
+        if *scope.construction == TargetConstruction::DocumentRows {
+            let (_, body) = scope
+                .children
+                .first()
+                .expect("validated document row scope");
+            output.push_str(&format!("        return Scope_{body}(context);\n    }}\n"));
+            continue;
+        }
         if let TargetConstruction::Scalar {
             expression,
             target_domain,
@@ -242,6 +266,10 @@ fn render_with_json_boundaries(
         render_bound_group(scope_index, scope, &mut output);
     }
     filter_map::add_scoped_node_wrappers(program, &mut output);
+    if let Some(target) = visitor {
+        let scope = target.map_or(primary_scope, |index| extra_scopes[index].1);
+        document_visitor::render(program, scope, &scopes[scope], &mut output)?;
+    }
     output.push_str("}\n");
     Ok(output)
 }
@@ -1080,6 +1108,24 @@ fn render_iteration_scope(
     merge_dynamic_fields: bool,
     output: &mut String,
 ) -> Result<(), EmitError> {
+    render_iteration_scope_delivery(
+        program,
+        scope,
+        iteration,
+        merge_dynamic_fields,
+        false,
+        output,
+    )
+}
+
+fn render_iteration_scope_delivery(
+    program: &Program,
+    scope: usize,
+    iteration: &IterationPlan,
+    merge_dynamic_fields: bool,
+    visitor: bool,
+    output: &mut String,
+) -> Result<(), EmitError> {
     render_iteration_candidates(program, scope, iteration.input(), output)?;
 
     let sort = iteration.sort();
@@ -1131,7 +1177,11 @@ fn render_iteration_scope(
     }
 
     let dynamic = iteration.dynamic_document_iteration();
-    if dynamic.is_some() {
+    if visitor {
+        output.push_str(&format!(
+            "        var delivered_{scope} = 0;\n        foreach (var item_context_{scope} in candidates_{scope})\n        {{\n"
+        ));
+    } else if dynamic.is_some() {
         output.push_str(&format!(
             "        var documents_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleDocument>();\n        foreach (var item_context_{scope} in candidates_{scope})\n        {{\n"
         ));
@@ -1150,7 +1200,9 @@ fn render_iteration_scope(
         ));
     }
     let item_context = if renumber_output {
-        let count = if dynamic.is_some() {
+        let count = if visitor {
+            format!("delivered_{scope}")
+        } else if dynamic.is_some() {
             format!("documents_{scope}.Count")
         } else {
             format!("items_{scope}.Count")
@@ -1164,16 +1216,30 @@ fn render_iteration_scope(
     };
     if let Some(dynamic) = dynamic {
         output.push_str(&format!(
-            "            var output_{scope} = ScopeItem_{scope}({item_context});\n            var output_path_{scope} = Node_{}({item_context});\n            documents_{scope}.Add(global::Ferrule.Runtime.FerruleDynamicDocuments.Create({}U, output_path_{scope}, output_{scope}));\n",
-            dynamic.output_path(),
+            "            var output_{scope} = ScopeItem_{scope}({item_context});\n            var output_path_{scope} = Node_{}({item_context});\n",
             dynamic.output_path(),
         ));
+        if visitor {
+            output.push_str(&format!(
+                "            var document_{scope} = global::Ferrule.Runtime.FerruleDynamicDocuments.Create({}U, output_path_{scope}, output_{scope});\n            if (!offerDocument(document_{scope})) return;\n            delivered_{scope}++;\n",
+                dynamic.output_path(),
+            ));
+        } else {
+            output.push_str(&format!(
+                "            documents_{scope}.Add(global::Ferrule.Runtime.FerruleDynamicDocuments.Create({}U, output_path_{scope}, output_{scope}));\n",
+                dynamic.output_path(),
+            ));
+        }
     } else {
         output.push_str(&format!(
             "            items_{scope}.Add(ScopeItem_{scope}({item_context}));\n"
         ));
     }
     output.push_str("        }\n");
+    if visitor {
+        output.push_str(&format!("        _ = delivered_{scope};\n"));
+        return Ok(());
+    }
     if dynamic.is_some() {
         output.push_str(&format!(
             "        return new global::Ferrule.Runtime.FerruleDocumentSet(documents_{scope});\n"

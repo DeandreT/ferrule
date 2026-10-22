@@ -96,6 +96,7 @@ fn collect_scope_roots(scope: &Scope, roots: &mut Vec<NodeId>) {
         ScopeConstruction::AdjacencyTree { plan } => roots.extend(plan.root()),
         ScopeConstruction::OwnedAdjacencyTree { plan } => roots.extend(plan.root()),
         ScopeConstruction::Constructed
+        | ScopeConstruction::DocumentRows
         | ScopeConstruction::CopyCurrentSource
         | ScopeConstruction::XmlMixedContent { .. }
         | ScopeConstruction::PathHierarchy { .. }

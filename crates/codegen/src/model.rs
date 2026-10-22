@@ -1579,6 +1579,8 @@ impl From<mapping::SequenceWindow> for SequenceWindow {
 pub enum TargetConstruction {
     #[default]
     Group,
+    /// The single unnamed child produces the complete flat row set of a document.
+    DocumentRows,
     DynamicGroup {
         /// Every statically declared property in the open target schema.
         ///

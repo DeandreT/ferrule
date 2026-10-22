@@ -27,6 +27,10 @@ pub enum ScopeConstruction {
     /// Build a new group from the scope's bindings and child scopes.
     #[default]
     Constructed,
+    /// Use the single unnamed child scope as this document's complete row set.
+    /// Only an ordinary dynamic-document root with a flat group target can use
+    /// this construction; the child does not create an extra target field.
+    DocumentRows,
     /// Clone the current source item as one complete group.
     CopyCurrentSource,
     /// Evaluate one scalar expression as the scope's complete output item.
@@ -194,6 +198,15 @@ pub struct Scope {
 }
 
 impl Scope {
+    pub fn document_rows(&self) -> Option<&Scope> {
+        if self.construction != ScopeConstruction::DocumentRows || self.children.len() != 1 {
+            return None;
+        }
+        self.children
+            .first()
+            .filter(|body| body.target_field.is_empty())
+    }
+
     /// Graph nodes owned by grouping controls, in stable mode order.
     pub fn grouping_nodes(&self) -> impl Iterator<Item = NodeId> {
         [

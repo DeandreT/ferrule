@@ -286,6 +286,7 @@ fn reserved_ids(project: &Project) -> std::collections::BTreeSet<NodeId> {
                 reserved.extend(plan.root());
             }
             ScopeConstruction::Constructed
+            | ScopeConstruction::DocumentRows
             | ScopeConstruction::CopyCurrentSource
             | ScopeConstruction::XmlMixedContent { .. }
             | ScopeConstruction::PathHierarchy { .. }
