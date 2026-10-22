@@ -2697,6 +2697,7 @@ fn mixed_content_text(value: &Value) -> String {
         Value::Bool(value) => value.to_string(),
         Value::Int(value) => value.to_string(),
         Value::Float(value) => value.to_string(),
+        Value::Decimal(value) => value.to_string(),
         Value::String(value) => value.clone(),
     }
 }
@@ -2735,7 +2736,7 @@ fn adapt_target_scalar(value: Value, target: Option<&ir::SchemaNode>) -> Value {
                 Value::Int(_) => Some(ScalarType::Int),
                 Value::Float(_) => Some(ScalarType::Float),
                 Value::Bool(_) => Some(ScalarType::Bool),
-                Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => None,
+                Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Decimal(_) => None,
             };
             if actual.is_some_and(|ty| types.contains(ty)) {
                 return value;

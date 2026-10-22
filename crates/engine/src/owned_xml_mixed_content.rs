@@ -87,6 +87,7 @@ fn append(output: &mut String, value: Value) {
         Value::Bool(value) => output.push_str(if value { "true" } else { "false" }),
         Value::Int(value) => output.push_str(&value.to_string()),
         Value::Float(value) => output.push_str(&value.to_string()),
+        Value::Decimal(value) => output.push_str(&value.to_string()),
     }
 }
 
@@ -200,4 +201,27 @@ pub(crate) fn eval_owned_xml_mixed_content(
         append(&mut output, value);
     }
     Ok(Value::String(output))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn owned_mixed_decimal_atomization_keeps_exact_lexical_text() {
+        for text in [
+            "9007199254740993.1",
+            "-0.0000000000000000000000000001",
+            "0",
+            "79228162514264337593543950335",
+        ] {
+            let mut output = String::from("before:");
+            append(
+                &mut output,
+                Value::decimal(ir::Decimal96::parse_exact(text).unwrap()),
+            );
+            output.push_str(":after");
+            assert_eq!(output, format!("before:{text}:after"));
+        }
+    }
 }

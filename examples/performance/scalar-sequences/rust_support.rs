@@ -136,6 +136,7 @@ pub fn scalar(value: &Value) -> Json {
         Value::Float(v) => {
             json!({"kind":"Scalar", "tag":"Float", "bits":format!("{:016x}", v.to_bits())})
         }
+        Value::Decimal(v) => json!({"kind":"Scalar", "tag":"Decimal", "value":v.to_string()}),
         Value::String(v) => json!({"kind":"Scalar", "tag":"String", "value":v}),
     }
 }

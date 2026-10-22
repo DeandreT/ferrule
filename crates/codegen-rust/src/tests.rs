@@ -16,10 +16,20 @@ use codegen::{
 use ir::{SchemaKind, SchemaNode};
 use mapping::{FunctionId, FunctionParameterId};
 
+#[test]
+fn decimal_literal_emission_remains_explicitly_refused() {
+    let value = Value::decimal(ir::Decimal96::parse_exact("9007199254740993.1").unwrap());
+    assert!(matches!(
+        rust_value(7, &value),
+        Err(EmitError::UnsupportedDecimalValue { node: 7 })
+    ));
+}
+
 mod collection_find;
 mod concatenate;
 mod copy_current_source;
 mod correlated_joins;
+mod decimal_conformance_observers;
 mod dynamic_documents;
 mod dynamic_source;
 mod dynamic_targets;

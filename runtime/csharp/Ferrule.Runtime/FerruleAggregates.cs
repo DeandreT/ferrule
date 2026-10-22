@@ -109,6 +109,10 @@ public static class FerruleAggregates
         IReadOnlyList<FerruleValue> values,
         FerruleValue? argument)
     {
+        if (argument is { Kind: FerruleValueKind.Decimal })
+        {
+            throw UnsupportedDecimal(FerruleAggregateOperation.ItemAt);
+        }
         var index = argument.HasValue ? ItemIndex(argument.Value) : null;
         if (index is null || index < 1 || index > values.Count)
         {
@@ -170,6 +174,10 @@ public static class FerruleAggregates
         FerruleValue value,
         out NumericValue number)
     {
+        if (value.Kind == FerruleValueKind.Decimal)
+        {
+            throw UnsupportedDecimal(operation);
+        }
         if (value.Kind == FerruleValueKind.Int64)
         {
             number = NumericValue.FromInteger(value.Int64Value);
@@ -357,6 +365,13 @@ public static class FerruleAggregates
             FerruleRuntimeError.AggregateIntegerOverflow,
             $"{operation} aggregate overflowed the integer range",
             exception,
+            aggregateOperation: operation);
+
+    private static FerruleRuntimeException UnsupportedDecimal(
+        FerruleAggregateOperation operation) => new(
+            FerruleRuntimeError.AggregateUnsupportedScalar,
+            $"{operation} aggregate cannot accept a decimal value.",
+            foundKind: FerruleValueKind.Decimal,
             aggregateOperation: operation);
 
     private static FerruleRuntimeException NonFinite(FerruleAggregateOperation operation) =>

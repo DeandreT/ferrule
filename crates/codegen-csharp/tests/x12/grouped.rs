@@ -565,6 +565,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "Runtime/FerruleUnicodeCasing.cs",
         "Runtime/FerruleUserFunctions.cs",
         "Runtime/FerruleValue.cs",
+        "Runtime/FerruleDecimal96.cs",
         "Runtime/FerruleValueMaps.cs",
         "Runtime/FerruleXml.Boundary.cs",
         "Runtime/FerruleXml.DocumentOutputs.cs",

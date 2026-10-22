@@ -57,6 +57,7 @@ fn scalar_original(value: &Value) -> Json {
         Value::XmlNil(value) => json!({"tag":"XmlNil","value":value}),
         Value::Bool(value) => json!({"tag":"Bool","value":value}),
         Value::Int(value) => json!({"tag":"Int","value":value}),
+        Value::Decimal(value) => json!({"tag":"Decimal","value":value.to_string()}),
         Value::Float(value) => json!({"tag":"Float","value":value,
             "binary64_bits":format!("{:016x}",value.to_bits())}),
         Value::String(value) => json!({"tag":"String","value":value}),
@@ -104,6 +105,7 @@ fn value_literal(value: &Value) -> Json {
         Value::XmlNil(value) => json!({"XmlNil":value}),
         Value::Bool(value) => json!({"Bool":value}),
         Value::Int(value) => json!({"Int":value}),
+        Value::Decimal(value) => json!({"Decimal":value.to_string()}),
         Value::Float(value) => {
             json!({"Float":value,"binary64_bits":format!("{:016x}",value.to_bits())})
         }

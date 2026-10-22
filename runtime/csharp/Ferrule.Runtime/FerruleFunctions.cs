@@ -267,6 +267,7 @@ public static partial class FerruleFunctions
         FerruleValueKind.Int64 => "int",
         FerruleValueKind.Double => "float",
         FerruleValueKind.String => "string",
+        FerruleValueKind.Decimal => "decimal",
         _ => "unknown",
     };
 
