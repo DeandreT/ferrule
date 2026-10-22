@@ -476,8 +476,8 @@ fixture does not qualify an actual resource-limit setup failure.
 #344's borrowed reader follows #326; GUI filesystem cancellation #327 and
 explicit preview acquisition #340 follow #344. GUI preview ownership #341
 follows #327/#340. Resource qualification #328 follows #326 and does not
-depend on #327. #328's source-only plan has
-20 recipes, 15 exact cases and 82 planned requests; all execution remains unrun.
+depend on #327; its [resource profile](performance/pdf-worker-resource-profile.md)
+compares worker and in-process extraction on a finite corpus.
 
 #309's duplication candidate passes all 753 GUI tests and strict warnings.
 Its 67 native calls match 60 success and seven typed `MappingException`
@@ -658,7 +658,7 @@ resumed, and pending jobs are not passes.
 | [#325 PDF isolation design](https://github.com/DeandreT/ferrule/issues/325) | Complete; #329 merged | Issue closed; design prerequisite complete | Portable PDF isolation contract; execution increments separate |
 | [#326 PDF worker host](https://github.com/DeandreT/ferrule/issues/326) | DeandreT; active | Initial 11 worker / 52 CLI tests and owned protocol, refusal, routing/cache and signal controls pass; #348 strict-lint correction and remaining failure controls pending | `feat/pdf-worker-host`; prerequisite for #344 and #328; no default activation |
 | [#327 PDF GUI filesystem runs](https://github.com/DeandreT/ferrule/issues/327) | DeandreT; dependent | Requires #326/#344 | GUI file Run/pipeline Run and cancellation; preview excluded |
-| [#328 PDF resource qualification](https://github.com/DeandreT/ferrule/issues/328) | DeandreT; source-only plan | 20 recipes, 15 exact cases and 82 planned requests; all execution unrun; requires #326 | Resource qualification; independent of #327 GUI |
+| [#328 PDF resource qualification](https://github.com/DeandreT/ferrule/issues/328) | DeandreT | Reproducible [resource profile](performance/pdf-worker-resource-profile.md) and plain boundary tests | Resource qualification; independent of #327 GUI; no default change |
 | [#336 PDF and desktop progress refresh](https://github.com/DeandreT/ferrule/issues/336) | Complete; #337 merged | Earlier two-document progress snapshot | Historical record; later updates belong to #349 |
 | [#340 Preview input acquisition](https://github.com/DeandreT/ferrule/issues/340) | DeandreT; dependent | Requires #326/#344 | CLI preview and pipeline-preview input seams; bounded memory outputs, no publication |
 | [#341 GUI preview ownership](https://github.com/DeandreT/ferrule/issues/341) | DeandreT; dependent | Requires #327/#340 | GUI preview service, cancellation and shutdown after the filesystem Run integration |
@@ -932,8 +932,8 @@ diagram check establishes additional product execution.
 - [ ] Complete GUI filesystem cancellation #327 after #326/#344.
 - [ ] Add explicit preview input acquisition #340 after #326/#344.
 - [ ] Complete GUI preview ownership #341 after #327/#340.
-- [ ] Execute resource qualification #328 after #326: 20 source-only recipes,
-  15 exact cases and 82 planned requests; all execution remains unrun.
+- [x] Execute resource qualification #328 after #326 as a reproducible
+  [resource profile](performance/pdf-worker-resource-profile.md).
   This scope does not depend on #327.
 - [x] Materialize and qualify #203's 24 public interpreter observations and 51
   separate typed export refusals; all 237 interchange library tests, strict

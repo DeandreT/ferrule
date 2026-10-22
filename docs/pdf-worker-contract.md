@@ -165,9 +165,10 @@ is `ProtocolError`. Never interpret an empty/malformed result as an empty PDF.
 
 Install no broader limits than the caller already has: reject an inherited limit
 that cannot admit this fixed profile, rather than raising it. Verify effective
-limits before the start token. These numbers require qualification with the
-packaged executable and small valid PDFs; no fitting-baseline or success evidence
-exists yet. Linux [`RLIMIT_AS`](https://man7.org/linux/man-pages/man2/getrlimit.2.html)
+limits before the start token. The finite
+[resource profile](performance/pdf-worker-resource-profile.md) measures these
+numbers with the packaged executable and small self-authored PDFs; it does not
+change them. Linux [`RLIMIT_AS`](https://man7.org/linux/man-pages/man2/getrlimit.2.html)
 limits virtual address space. Allocation or stack expansion can fail or terminate
 the child; it is not an RSS measurement. `RLIMIT_RSS` supplies no usable modern
 Linux RSS enforcement for this policy. CPU and file-size limits likewise do not
@@ -332,9 +333,10 @@ They do not qualify subprocess limits, cancellation or memory use.
   preservation with existing CLI controls; no unnecessary worker for unused sources.
 - [ ] Qualify GUI cancellation and app close on an alternate virtual display,
   keeping the user's active monitors untouched and all publication controls intact.
-- [ ] Record executable/profile/kernel/effective limits, repeated child and parent
+- [x] Record executable/profile/kernel/effective limits, repeated child and parent
   RSS/CPU/wall brackets, exact outputs and all failures. Address-space limits,
   RSS observations, input bytes and typed tree size remain separate quantities.
+  See the [resource profile](performance/pdf-worker-resource-profile.md).
 
 Design review, diagram rendering and pure wire/library checks are complete. The
 Linux worker, CLI, GUI and resource qualification gates remain pending. The codec
