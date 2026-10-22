@@ -91,294 +91,58 @@ pub fn emit_with_basic_owned_sources(program: &Program) -> Result<ArtifactSet, E
     emit_mapping_artifacts(program, generated_mapping)
 }
 
-/// Emits static Basic source filters with explicit caller limits.
-///
-/// Predicates use original source positions; accepted output contexts use compact
-/// positions. Other scope controls and the existing emitter families stay closed.
-pub fn emit_with_basic_owned_filters(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_filters(program)?;
-    codegen::validate_basic_owned_filter_emission(program)?;
-    let generated_mapping = owned_basic::render_public_basic_owned_filter_mapping(program)?;
-    // The explicit Basic inventory checked every primary/named/child scope and
-    // rejected DynamicDocuments before rendering. The XML classifier can therefore
-    // only select None or SingleDocument; its dynamic-document extension is false.
-    // Calling xml_output_mode here would re-enter the default ControlFree validator.
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits static Basic sorting with optional filtering and explicit caller limits.
-///
-/// Both filter orders preserve source identity and native phase positions under
-/// one bounded operation. Existing emitter families keep their admission.
-pub fn emit_with_basic_owned_sort(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_sort(program)?;
-    codegen::validate_basic_owned_sort_emission(program)?;
-    let generated_mapping = owned_basic::render_public_basic_owned_sort_mapping(program)?;
-    // Complete static Basic inventory excludes DynamicDocuments in every target.
-    // Its static artifact assembly therefore requires no default XML classifier.
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits ordered static Basic windows with optional filters and sorting.
-///
-/// Bounds use the parent context once; window scopes finish their predicate pass
-/// before targets. Existing emitter families retain their current admission.
-pub fn emit_with_basic_owned_windows(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_windows(program)?;
-    codegen::validate_basic_owned_window_emission(program)?;
-    let generated_mapping = owned_basic::render_public_basic_owned_window_mapping(program)?;
-    // The completed static Basic inventory excludes dynamic documents in all targets.
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits static Basic windows and authenticated primary-row failure rules.
-///
-/// The failure permission is independent of target scope controls. Ordinary
-/// failure rules retain their legacy route; owned rules execute before targets.
-pub fn emit_with_basic_owned_row_failures(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_row_failures(program)?;
-    codegen::validate_basic_owned_row_failure_emission(program)?;
-    let generated_mapping = owned_basic::render_public_basic_owned_row_failure_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits explicit Basic By grouping, any-member retention, and prior controls.
-///
-/// Group keys and retention predicates receive source candidates; window bounds
-/// receive the parent. Group outputs retain the first member and enumerate the
-/// complete bucket in children. Primary-row failures run before target controls.
-/// The two typed entry points still require caller limits and execution context.
-pub fn emit_with_basic_owned_group_by(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_group_by(program)?;
-    codegen::validate_basic_owned_group_by_emission(program)?;
-    let generated_mapping = owned_basic::render_public_basic_owned_group_by_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits scalar ItemAt over the four pure producers in a receiving Basic context.
-///
-/// Producer values precede one index evaluation in that same context. This
-/// companion composes By, prior controls, and primary-row failures without
-/// enabling ItemAt in owned failure predicates/messages or generated scopes.
-/// The two typed entry points retain mandatory limits and execution arguments.
-pub fn emit_with_basic_owned_sequence_item_at(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_sequence_item_at(program)?;
-    codegen::validate_basic_owned_sequence_item_at_emission(program)?;
-    let generated_mapping =
-        owned_basic::render_public_basic_owned_sequence_item_at_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits static Basic By/AdjacentBy grouping with the qualified scalar ItemAt
-/// producers. Prior companions retain their narrower control/consumer admission.
-pub fn emit_with_basic_owned_group_adjacent_by(
+/// Emits the Basic owned mapping for `capabilities` with explicit caller
+/// limits. Complete Basic admission precedes rendering; the static Basic
+/// inventory excludes dynamic documents, so no XML classifier is consulted.
+fn emit_with_owned_capabilities(
     program: &Program,
+    capabilities: codegen::OwnedCapabilities,
 ) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_group_adjacent_by(program)?;
-    codegen::validate_basic_owned_group_adjacent_by_emission(program)?;
+    codegen::validate_basic_owned_emission_with_capabilities(program, capabilities)?;
     let generated_mapping =
-        owned_basic::render_public_basic_owned_group_adjacent_by_mapping(program)?;
+        owned_basic::render_public_basic_owned_capability_mapping(program, capabilities)?;
     emit_mapping_files(generated_mapping, false)
 }
 
-/// Emits static Basic By/AdjacentBy/StartingWith grouping with the qualified
-/// scalar ItemAt producers. Prior companions keep their narrower admission.
-pub fn emit_with_basic_owned_group_starting_with(
-    program: &Program,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_group_starting_with(program)?;
-    codegen::validate_basic_owned_group_starting_with_emission(program)?;
-    let generated_mapping =
-        owned_basic::render_public_basic_owned_group_starting_with_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
+macro_rules! owned_presets {
+    ($($preset:ident => $emit:ident;)*) => {$(
+        #[doc = concat!(
+            "Emits the Basic owned mapping for the [`codegen::OwnedPreset::",
+            stringify!($preset),
+            "`] preset. The typed entry points require caller limits and an explicit execution context; ordinary emitters keep their admission."
+        )]
+        pub fn $emit(program: &Program) -> Result<ArtifactSet, EmitError> {
+            emit_with_owned_capabilities(program, codegen::OwnedPreset::$preset.capabilities())
+        }
+    )*};
 }
 
-/// Emits static Basic By/AdjacentBy/StartingWith/EndingWith grouping with the
-/// qualified scalar ItemAt producers. Prior companions keep their narrower admission.
-pub fn emit_with_basic_owned_group_ending_with(
-    program: &Program,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_group_ending_with(program)?;
-    codegen::validate_basic_owned_group_ending_with_emission(program)?;
-    let generated_mapping =
-        owned_basic::render_public_basic_owned_group_ending_with_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits static Basic By/AdjacentBy/StartingWith/EndingWith/IntoBlocks grouping
-/// with the qualified scalar ItemAt producers. Prior companions keep their
-/// narrower admission.
-pub fn emit_with_basic_owned_group_into_blocks(
-    program: &Program,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_group_into_blocks(program)?;
-    codegen::validate_basic_owned_group_into_blocks_emission(program)?;
-    let generated_mapping =
-        owned_basic::render_public_basic_owned_group_into_blocks_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emit EndingWith-profile targets with explicitly owned failure-rule walks
-/// over one exact Primary or named endpoint. Older emitters keep refusing them.
-pub fn emit_with_basic_owned_failure_sources(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_failure_sources(program)?;
-    codegen::validate_basic_owned_failure_source_emission(program)?;
-    let generated_mapping = owned_basic::render_public_basic_owned_failure_source_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits an owned path-hierarchy input collection with the EndingWith controls,
-/// scalar ItemAt producers, primary-row failures and owned failure-source walks.
-/// The directory, file and name fields only describe output; older companions
-/// keep refusing the operator.
-pub fn emit_with_basic_owned_path_hierarchy(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_path_hierarchy(program)?;
-    codegen::validate_basic_owned_path_hierarchy_emission(program)?;
-    let generated_mapping = owned_basic::render_public_basic_owned_path_hierarchy_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits an owned adjacency-tree row collection with the owned path-hierarchy
-/// composition (EndingWith controls, scalar ItemAt producers, primary-row and
-/// owned failure-source walks). Key, parent and target names only describe rows
-/// and output; older companions keep refusing the operator.
-pub fn emit_with_basic_owned_adjacency_tree(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_adjacency_tree(program)?;
-    codegen::validate_basic_owned_adjacency_tree_emission(program)?;
-    let generated_mapping = owned_basic::render_public_basic_owned_adjacency_tree_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits the owned adjacency-tree profile plus SequenceItemAt over explicitly
-/// owned recursive collection walks. Older emitters keep refusing them.
-pub fn emit_with_basic_owned_recursive_collect(
-    program: &Program,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_recursive_collect(program)?;
-    codegen::validate_basic_owned_recursive_collect_emission(program)?;
-    let generated_mapping =
-        owned_basic::render_public_basic_owned_recursive_collect_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits SequenceExists over the four pure producers beside ItemAt and the
-/// By/AdjacentBy/StartingWith/EndingWith controls. Producer arguments use the receiving
-/// context; each reached predicate item gets a copied paired view with one
-/// lexical item frame. Owned failure predicates and older companions stay closed.
-pub fn emit_with_basic_owned_sequence_exists(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_sequence_exists(program)?;
-    codegen::validate_basic_owned_sequence_exists_emission(program)?;
-    let generated_mapping =
-        owned_basic::render_public_basic_owned_sequence_exists_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits the owned recursive-collect profile plus recursive filtering of an
-/// owned scope selector. Older emitters keep refusing the owned filter.
-pub fn emit_with_basic_owned_recursive_filter(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_recursive_filter(program)?;
-    codegen::validate_basic_owned_recursive_filter_emission(program)?;
-    let generated_mapping =
-        owned_basic::render_public_basic_owned_recursive_filter_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emit owned-recursive-filter-profile targets with explicitly owned Lookup and
-/// CollectionFind over one exact endpoint. Older emitters keep refusing them.
-pub fn emit_with_basic_owned_lookup_find(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_lookup_find(program)?;
-    codegen::validate_basic_owned_lookup_find_emission(program)?;
-    let generated_mapping = owned_basic::render_public_basic_owned_lookup_find_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits the owned dynamic-field profile plus explicit owned dynamic driver
-/// loading. Every older emitter keeps refusing owned drivers.
-pub fn emit_with_basic_owned_dynamic_loading(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_dynamic_loading(program)?;
-    codegen::validate_basic_owned_dynamic_loading_emission(program)?;
-    let generated_mapping =
-        owned_basic::render_public_basic_owned_dynamic_loading_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits the owned recursive-filter profile plus explicitly owned dynamic
-/// source-field reads. Older emitters keep refusing them.
-pub fn emit_with_basic_owned_dynamic_field(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_dynamic_field(program)?;
-    codegen::validate_basic_owned_dynamic_field_emission(program)?;
-    let generated_mapping = owned_basic::render_public_basic_owned_dynamic_field_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits SequenceAggregate over the four pure producers beside the
-/// SequenceExists profile. Each reached item gets a copied paired view for its
-/// predicate and value; the reducer argument keeps the receiving context.
-pub fn emit_with_basic_owned_sequence_aggregate(
-    program: &Program,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_sequence_aggregate(program)?;
-    codegen::validate_basic_owned_sequence_aggregate_emission(program)?;
-    let generated_mapping =
-        owned_basic::render_public_basic_owned_sequence_aggregate_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits owned XML serialization in Basic target contexts, composing the owned
-/// dynamic source-field companion. Legacy serializers keep the ordinary emitter
-/// and older companions keep refusing the owned form.
-pub fn emit_with_basic_owned_xml_serialize(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_xml_serialize(program)?;
-    codegen::validate_basic_owned_xml_serialize_emission(program)?;
-    let generated_mapping = owned_basic::render_public_basic_owned_xml_serialize_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emit owned-search-profile targets with explicitly owned collection
-/// aggregates over one exact endpoint. Older emitters keep refusing them.
-pub fn emit_with_basic_owned_collection_aggregates(
-    program: &Program,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_collection_aggregates(program)?;
-    codegen::validate_basic_owned_collection_aggregates_emission(program)?;
-    let generated_mapping =
-        owned_basic::render_public_basic_owned_collection_aggregates_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emit owned-search-profile targets with owned inner joins, their tuple reads
-/// and owned joined aggregates. Older emitters keep refusing both.
-pub fn emit_with_basic_owned_joins(program: &Program) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_joins(program)?;
-    codegen::validate_basic_owned_joins_emission(program)?;
-    let generated_mapping = owned_basic::render_public_basic_owned_joins_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits owned XML mixed-content atomization in Basic target contexts,
-/// composing the owned XML serialization companion. Legacy mixed-content nodes
-/// keep the ordinary emitter and older companions keep refusing the owned form.
-pub fn emit_with_basic_owned_xml_mixed_content(
-    program: &Program,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_xml_mixed_content(program)?;
-    codegen::validate_basic_owned_xml_mixed_content_emission(program)?;
-    let generated_mapping =
-        owned_basic::render_public_basic_owned_xml_mixed_content_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
-}
-
-/// Emits mixed-content construction by an owned selector in Basic target
-/// contexts, composing the owned XML mixed-content companion. Legacy,
-/// inherited and grouped constructions keep refusing.
-pub fn emit_with_basic_owned_xml_mixed_construction(
-    program: &Program,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_xml_mixed_construction(program)?;
-    codegen::validate_basic_owned_xml_mixed_construction_emission(program)?;
-    let generated_mapping =
-        owned_basic::render_public_basic_owned_xml_mixed_construction_mapping(program)?;
-    emit_mapping_files(generated_mapping, false)
+owned_presets! {
+    Filters => emit_with_basic_owned_filters;
+    Sort => emit_with_basic_owned_sort;
+    Windows => emit_with_basic_owned_windows;
+    RowFailures => emit_with_basic_owned_row_failures;
+    GroupBy => emit_with_basic_owned_group_by;
+    SequenceItemAt => emit_with_basic_owned_sequence_item_at;
+    GroupAdjacentBy => emit_with_basic_owned_group_adjacent_by;
+    GroupStartingWith => emit_with_basic_owned_group_starting_with;
+    GroupEndingWith => emit_with_basic_owned_group_ending_with;
+    GroupIntoBlocks => emit_with_basic_owned_group_into_blocks;
+    FailureSources => emit_with_basic_owned_failure_sources;
+    PathHierarchy => emit_with_basic_owned_path_hierarchy;
+    AdjacencyTree => emit_with_basic_owned_adjacency_tree;
+    RecursiveCollect => emit_with_basic_owned_recursive_collect;
+    RecursiveFilter => emit_with_basic_owned_recursive_filter;
+    LookupFind => emit_with_basic_owned_lookup_find;
+    DynamicField => emit_with_basic_owned_dynamic_field;
+    DynamicLoading => emit_with_basic_owned_dynamic_loading;
+    CollectionAggregates => emit_with_basic_owned_collection_aggregates;
+    Joins => emit_with_basic_owned_joins;
+    SequenceExists => emit_with_basic_owned_sequence_exists;
+    SequenceAggregate => emit_with_basic_owned_sequence_aggregate;
+    XmlSerialize => emit_with_basic_owned_xml_serialize;
+    XmlMixedContent => emit_with_basic_owned_xml_mixed_content;
+    XmlMixedConstruction => emit_with_basic_owned_xml_mixed_construction;
 }
 
 fn emit_mapping_artifacts(

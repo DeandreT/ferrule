@@ -7,11 +7,11 @@
 use crate::{EmitError, literal, mapping};
 use ::mapping::{NodeId, SourceOwner, SourceScopeLocation, SourceScopeStep, SourceScopeTarget};
 use codegen::{
-    Expression, IterationOutput, IterationSource, OwnedSourceCapabilityOrigin as Origin,
-    OwnedSourceCapabilityReason as Reason, OwnedSourceDiagnostic as Diagnostic,
-    OwnedSourceDiagnosticLocation as Location, OwnedSourceDiagnosticRequest as Request,
-    OwnedSourceNamespace as Namespace, Program, ProgramValidationError, TargetConstruction,
-    TargetScope,
+    Expression, IterationOutput, IterationSource, OwnedCapabilities, OwnedPreset,
+    OwnedSourceCapabilityOrigin as Origin, OwnedSourceCapabilityReason as Reason,
+    OwnedSourceDiagnostic as Diagnostic, OwnedSourceDiagnosticLocation as Location,
+    OwnedSourceDiagnosticRequest as Request, OwnedSourceNamespace as Namespace, OwnedXml, Program,
+    ProgramValidationError, TargetConstruction, TargetScope,
 };
 use std::collections::BTreeSet;
 
@@ -21,573 +21,32 @@ mod search;
 pub(crate) use aggregate::render_owned_aggregate;
 pub(crate) use search::render_owned_search;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum SequenceItemAtPolicy {
-    Closed,
-    BasicScalarProducers,
-    /// The four scalar producers plus the owned recursive collection walk.
-    BasicScalarAndOwnedRecursiveProducers,
-    /// Also admits SequenceExists over the same pure producers.
-    BasicScalarProducersWithExists,
-    /// Also admits SequenceAggregate over the same pure producers.
-    BasicScalarProducersWithExistsAndAggregate,
-}
-
-#[derive(Clone, Copy)]
-pub(super) enum TargetControls {
-    Closed,
-    By,
-    ByAndAdjacent,
-    ByAndAdjacentAndStarting,
-    ByAndAdjacentAndStartingAndEnding,
-    ByAndAdjacentAndStartingAndEndingAndBlocks,
-}
-
-impl TargetControls {
-    fn has_scoped_groups(self) -> bool {
-        matches!(
-            self,
-            Self::By
-                | Self::ByAndAdjacent
-                | Self::ByAndAdjacentAndStarting
-                | Self::ByAndAdjacentAndStartingAndEnding
-                | Self::ByAndAdjacentAndStartingAndEndingAndBlocks
-        )
-    }
-
-    pub(super) fn permits_grouping(self, grouping: Option<codegen::GroupingPlan>) -> bool {
-        match grouping {
-            Some(codegen::GroupingPlan::By { .. }) => self.has_scoped_groups(),
-            Some(codegen::GroupingPlan::AdjacentBy { .. }) => matches!(
-                self,
-                Self::ByAndAdjacent
-                    | Self::ByAndAdjacentAndStarting
-                    | Self::ByAndAdjacentAndStartingAndEnding
-                    | Self::ByAndAdjacentAndStartingAndEndingAndBlocks
-            ),
-            Some(codegen::GroupingPlan::StartingWith { .. }) => matches!(
-                self,
-                Self::ByAndAdjacentAndStarting
-                    | Self::ByAndAdjacentAndStartingAndEnding
-                    | Self::ByAndAdjacentAndStartingAndEndingAndBlocks
-            ),
-            Some(codegen::GroupingPlan::EndingWith { .. }) => matches!(
-                self,
-                Self::ByAndAdjacentAndStartingAndEnding
-                    | Self::ByAndAdjacentAndStartingAndEndingAndBlocks
-            ),
-            Some(codegen::GroupingPlan::IntoBlocks { .. }) => {
-                matches!(self, Self::ByAndAdjacentAndStartingAndEndingAndBlocks)
-            }
-            None => false,
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-struct TargetExtension {
-    controls: TargetControls,
-    sequence_item_at: SequenceItemAtPolicy,
-    /// Explicitly owned failure walks, beside the primary-row permission.
-    failure_sources: bool,
-    /// Owned path-hierarchy construction is an orthogonal explicit permission.
-    path_hierarchy: bool,
-    /// Owned adjacency-tree construction is an orthogonal explicit permission.
-    adjacency_tree: bool,
-    /// Recursive filtering of an owned selector is an orthogonal permission.
-    recursive_filter: bool,
-    /// Explicitly owned Lookup and CollectionFind, optionally with owned
-    /// collection aggregates.
-    owned_search: OwnedSearch,
-    /// Owned dynamic source-field reads are an orthogonal explicit permission.
-    dynamic_field: bool,
-    /// Owned XML operators are one nested explicit expression permission.
-    owned_xml: OwnedXml,
-    /// Owned inner joins, their tuple reads and owned joined aggregates.
-    owned_joins: bool,
-    /// Owned dynamic driver loading scopes, beside owned dynamic reads.
-    dynamic_loading: bool,
-}
-
-/// The owned XML companions nest: each admits the operators it composes.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum OwnedXml {
-    Closed,
-    Serialize,
-    MixedContent,
-    MixedConstruction,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum OwnedSearch {
-    Closed,
-    LookupFind,
-    /// LookupFind plus owned collection aggregates.
-    CollectionAggregates,
-}
-
-impl TargetExtension {
-    const CLOSED: Self = Self {
-        controls: TargetControls::Closed,
-        sequence_item_at: SequenceItemAtPolicy::Closed,
-        failure_sources: false,
-        path_hierarchy: false,
-        adjacency_tree: false,
-        recursive_filter: false,
-        owned_search: OwnedSearch::Closed,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-    const GROUP_BY: Self = Self {
-        controls: TargetControls::By,
-        sequence_item_at: SequenceItemAtPolicy::Closed,
-        failure_sources: false,
-        path_hierarchy: false,
-        adjacency_tree: false,
-        recursive_filter: false,
-        owned_search: OwnedSearch::Closed,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-    const SEQUENCE_ITEM_AT: Self = Self {
-        controls: TargetControls::By,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
-        failure_sources: false,
-        path_hierarchy: false,
-        adjacency_tree: false,
-        recursive_filter: false,
-        owned_search: OwnedSearch::Closed,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-
-    const GROUP_ADJACENT_BY: Self = Self {
-        controls: TargetControls::ByAndAdjacent,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
-        failure_sources: false,
-        path_hierarchy: false,
-        adjacency_tree: false,
-        recursive_filter: false,
-        owned_search: OwnedSearch::Closed,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-
-    const SEQUENCE_EXISTS: Self = Self {
-        controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducersWithExists,
-        failure_sources: false,
-        path_hierarchy: false,
-        adjacency_tree: false,
-        recursive_filter: false,
-        owned_search: OwnedSearch::Closed,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-
-    const SEQUENCE_AGGREGATE: Self = Self {
-        controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate,
-        failure_sources: false,
-        path_hierarchy: false,
-        adjacency_tree: false,
-        recursive_filter: false,
-        owned_search: OwnedSearch::Closed,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-
-    const GROUP_STARTING_WITH: Self = Self {
-        controls: TargetControls::ByAndAdjacentAndStarting,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
-        failure_sources: false,
-        path_hierarchy: false,
-        adjacency_tree: false,
-        recursive_filter: false,
-        owned_search: OwnedSearch::Closed,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-
-    const FAILURE_SOURCES: Self = Self {
-        controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
-        failure_sources: true,
-        path_hierarchy: false,
-        adjacency_tree: false,
-        recursive_filter: false,
-        owned_search: OwnedSearch::Closed,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-
-    const GROUP_ENDING_WITH: Self = Self {
-        controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
-        failure_sources: false,
-        path_hierarchy: false,
-        adjacency_tree: false,
-        recursive_filter: false,
-        owned_search: OwnedSearch::Closed,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-
-    /// The newest companion: FailureSources plus owned hierarchy construction.
-    const PATH_HIERARCHY: Self = Self {
-        controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
-        failure_sources: true,
-        path_hierarchy: true,
-        adjacency_tree: false,
-        recursive_filter: false,
-        owned_search: OwnedSearch::Closed,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-
-    /// PATH_HIERARCHY plus owned adjacency-tree construction.
-    const ADJACENCY_TREE: Self = Self {
-        controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
-        failure_sources: true,
-        path_hierarchy: true,
-        adjacency_tree: true,
-        recursive_filter: false,
-        owned_search: OwnedSearch::Closed,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-
-    /// ADJACENCY_TREE plus ItemAt over owned recursive collection walks.
-    const RECURSIVE_COLLECT: Self = Self {
-        controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-        failure_sources: true,
-        path_hierarchy: true,
-        adjacency_tree: true,
-        recursive_filter: false,
-        owned_search: OwnedSearch::Closed,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-
-    /// RECURSIVE_COLLECT plus recursive filtering of owned selectors.
-    const RECURSIVE_FILTER: Self = Self {
-        controls: TargetControls::ByAndAdjacentAndStartingAndEnding,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-        failure_sources: true,
-        path_hierarchy: true,
-        adjacency_tree: true,
-        recursive_filter: true,
-        owned_search: OwnedSearch::Closed,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-
-    /// RECURSIVE_FILTER and IntoBlocks controls plus owned Lookup and
-    /// CollectionFind.
-    const LOOKUP_FIND: Self = Self {
-        controls: TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-        failure_sources: true,
-        path_hierarchy: true,
-        adjacency_tree: true,
-        recursive_filter: true,
-        owned_search: OwnedSearch::LookupFind,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-
-    /// LOOKUP_FIND plus owned dynamic source-field reads.
-    const DYNAMIC_FIELD: Self = Self {
-        controls: TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-        failure_sources: true,
-        path_hierarchy: true,
-        adjacency_tree: true,
-        recursive_filter: true,
-        owned_search: OwnedSearch::LookupFind,
-        dynamic_field: true,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-
-    /// DYNAMIC_FIELD plus owned dynamic driver loading.
-    const DYNAMIC_LOADING: Self = Self {
-        dynamic_loading: true,
-        ..Self::DYNAMIC_FIELD
-    };
-
-    /// DYNAMIC_FIELD plus owned XML serialization.
-    const XML_SERIALIZE: Self = Self {
-        controls: TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-        failure_sources: true,
-        path_hierarchy: true,
-        adjacency_tree: true,
-        recursive_filter: true,
-        owned_search: OwnedSearch::LookupFind,
-        dynamic_field: true,
-        owned_xml: OwnedXml::Serialize,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-
-    /// LOOKUP_FIND plus owned inner joins, their tuple reads and joined aggregates.
-    const JOINS: Self = Self {
-        controls: TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-        failure_sources: true,
-        path_hierarchy: true,
-        adjacency_tree: true,
-        recursive_filter: true,
-        owned_search: OwnedSearch::LookupFind,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: true,
-        dynamic_loading: false,
-    };
-
-    /// LOOKUP_FIND plus owned collection aggregates.
-    const COLLECTION_AGGREGATES: Self = Self {
-        owned_search: OwnedSearch::CollectionAggregates,
-        ..Self::LOOKUP_FIND
-    };
-
-    fn permits_path_hierarchy(self) -> bool {
-        self.path_hierarchy
-    }
-
-    const GROUP_INTO_BLOCKS: Self = Self {
-        controls: TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
-        sequence_item_at: SequenceItemAtPolicy::BasicScalarProducers,
-        failure_sources: false,
-        path_hierarchy: false,
-        adjacency_tree: false,
-        recursive_filter: false,
-        owned_search: OwnedSearch::Closed,
-        dynamic_field: false,
-        owned_xml: OwnedXml::Closed,
-        owned_joins: false,
-        dynamic_loading: false,
-    };
-
-    /// XML_SERIALIZE plus owned XML mixed-content atomization.
-    const XML_MIXED_CONTENT: Self = Self {
-        owned_xml: OwnedXml::MixedContent,
-        ..Self::XML_SERIALIZE
-    };
-
-    /// XML_MIXED_CONTENT plus mixed-content construction by an owned selector.
-    const XML_MIXED_CONSTRUCTION: Self = Self {
-        owned_xml: OwnedXml::MixedConstruction,
-        ..Self::XML_SERIALIZE
-    };
-
-    fn permits_xml_serialize(self) -> bool {
-        self.owned_xml >= OwnedXml::Serialize
-    }
-
-    fn permits_xml_mixed_content(self) -> bool {
-        self.owned_xml >= OwnedXml::MixedContent
-    }
-
-    fn permits_xml_mixed_construction(self) -> bool {
-        self.owned_xml >= OwnedXml::MixedConstruction
-    }
-
-    fn permits_into_blocks(self) -> bool {
-        matches!(
-            self.controls,
-            TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks
-        )
-    }
-
-    fn permits_ending_with(self) -> bool {
-        matches!(
-            self.controls,
-            TargetControls::ByAndAdjacentAndStartingAndEnding
-        )
-    }
-
-    fn permits_starting_with(self) -> bool {
-        matches!(self.controls, TargetControls::ByAndAdjacentAndStarting)
-    }
-
-    fn permits_adjacent_by(self) -> bool {
-        matches!(self.controls, TargetControls::ByAndAdjacent)
-    }
-
-    fn permits_sequence_item_at(self) -> bool {
-        self.sequence_item_at != SequenceItemAtPolicy::Closed
-    }
-
-    fn permits_sequence_exists(self) -> bool {
-        matches!(
-            self.sequence_item_at,
-            SequenceItemAtPolicy::BasicScalarProducersWithExists
-                | SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate
-        )
-    }
-
-    fn permits_sequence_aggregate(self) -> bool {
-        self.sequence_item_at == SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate
-    }
-
-    fn permits_owned_recursive_collect(self) -> bool {
-        self.sequence_item_at == SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers
-    }
-
-    /// Whether this profile renders ItemAt over `sequence` in the paired context.
-    fn item_at_sequence(self, sequence: &codegen::GeneratedSequence) -> bool {
-        matches!(
-            sequence,
-            codegen::GeneratedSequence::Range { .. }
-                | codegen::GeneratedSequence::Tokenize { .. }
-                | codegen::GeneratedSequence::TokenizeByLength { .. }
-                | codegen::GeneratedSequence::TokenizeRegex { .. }
-        ) || self.permits_owned_recursive_collect()
-            && matches!(
-                sequence,
-                codegen::GeneratedSequence::OwnedRecursiveCollect { .. }
-            )
-    }
-}
-
 pub(crate) fn render_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    render_basic_owned_mapping_profile(
-        program,
-        false,
-        false,
-        false,
-        false,
-        false,
-        TargetExtension::CLOSED,
-    )
+    render_basic_owned_mapping_profile(program, false, OwnedPreset::ControlFree.capabilities())
 }
 
 fn render_basic_owned_mapping_profile(
     program: &Program,
     public_owned_nodes: bool,
-    allow_filters: bool,
-    allow_sort: bool,
-    allow_windows: bool,
-    allow_row_failures: bool,
-    extension: TargetExtension,
+    capabilities: OwnedCapabilities,
 ) -> Result<String, EmitError> {
-    let allow_scoped_groups = extension.controls.has_scoped_groups();
-    // Select the control/consumer pair before the older ItemAt-only companion.
-    if extension.permits_xml_mixed_construction() {
-        codegen::validate_program_with_basic_owned_xml_mixed_construction(program)?;
-    } else if extension.permits_xml_mixed_content() {
-        codegen::validate_program_with_basic_owned_xml_mixed_content(program)?;
-    } else if extension.permits_xml_serialize() {
-        codegen::validate_program_with_basic_owned_xml_serialize(program)?;
-    } else if extension.dynamic_loading {
-        codegen::validate_program_with_basic_owned_dynamic_loading(program)?;
-    } else if extension.dynamic_field {
-        codegen::validate_program_with_basic_owned_dynamic_field(program)?;
-    } else if extension.owned_search == OwnedSearch::CollectionAggregates {
-        codegen::validate_program_with_basic_owned_collection_aggregates(program)?;
-    } else if extension.owned_joins {
-        codegen::validate_program_with_basic_owned_joins(program)?;
-    } else if extension.owned_search == OwnedSearch::LookupFind {
-        codegen::validate_program_with_basic_owned_lookup_find(program)?;
-    } else if extension.recursive_filter {
-        codegen::validate_program_with_basic_owned_recursive_filter(program)?;
-    } else if extension.permits_sequence_aggregate() {
-        codegen::validate_program_with_basic_owned_sequence_aggregate(program)?;
-    } else if extension.permits_sequence_exists() {
-        codegen::validate_program_with_basic_owned_sequence_exists(program)?;
-    } else if extension.permits_owned_recursive_collect() {
-        codegen::validate_program_with_basic_owned_recursive_collect(program)?;
-    } else if extension.adjacency_tree {
-        codegen::validate_program_with_basic_owned_adjacency_tree(program)?;
-    } else if extension.permits_path_hierarchy() {
-        codegen::validate_program_with_basic_owned_path_hierarchy(program)?;
-    } else if extension.failure_sources {
-        codegen::validate_program_with_basic_owned_failure_sources(program)?;
-    } else if extension.permits_into_blocks() {
-        codegen::validate_program_with_basic_owned_group_into_blocks(program)?;
-    } else if extension.permits_ending_with() {
-        codegen::validate_program_with_basic_owned_group_ending_with(program)?;
-    } else if extension.permits_starting_with() {
-        codegen::validate_program_with_basic_owned_group_starting_with(program)?;
-    } else if extension.permits_adjacent_by() {
-        codegen::validate_program_with_basic_owned_group_adjacent_by(program)?;
-    } else if extension.permits_sequence_item_at() {
-        codegen::validate_program_with_basic_owned_sequence_item_at(program)?;
-    } else if allow_scoped_groups {
-        codegen::validate_program_with_basic_owned_group_by(program)?;
-    } else if allow_row_failures {
-        codegen::validate_program_with_basic_owned_row_failures(program)?;
-    } else if allow_windows {
-        codegen::validate_program_with_basic_owned_windows(program)?;
-    } else if allow_sort {
-        codegen::validate_program_with_basic_owned_sort(program)?;
-    } else if allow_filters {
-        codegen::validate_program_with_basic_owned_filters(program)?;
+    // Public renderers admit their complete capability set; the private
+    // prototype keeps the ordinary program validator.
+    if public_owned_nodes {
+        codegen::validate_basic_owned_emission_with_capabilities(program, capabilities)?;
     } else {
-        codegen::validate_program(program)?;
+        codegen::validate_program_with_owned_capabilities(program, capabilities)?;
     }
     let retained = retained_expressions(program);
-    validate_private_inventory(
-        program,
-        &retained,
-        allow_filters,
-        allow_sort,
-        allow_windows,
-        allow_row_failures,
-        extension,
-    )?;
+    validate_private_inventory(program, &retained, capabilities)?;
     let mut body = String::new();
-    let (primary, extras) = if extension.dynamic_loading {
-        mapping::render_basic_scopes_with_owned_dynamic_loading(program, &mut body)?
-    } else if extension.permits_into_blocks() {
-        mapping::render_basic_scopes_with_group_into_blocks(program, &mut body)?
-    } else if extension.permits_ending_with() {
-        mapping::render_basic_scopes_with_group_ending_with(program, &mut body)?
-    } else if extension.permits_starting_with() {
-        mapping::render_basic_scopes_with_group_starting_with(program, &mut body)?
-    } else if extension.permits_adjacent_by() {
-        mapping::render_basic_scopes_with_group_adjacent_by(program, &mut body)?
-    } else if allow_scoped_groups {
-        mapping::render_basic_scopes_with_group_by(program, &mut body)?
-    } else if allow_windows {
-        mapping::render_basic_scopes_with_windows(program, &mut body)?
-    } else {
-        mapping::render_basic_scopes(program, &mut body)?
-    };
+    let (primary, extras) = mapping::render_basic_scopes_profile(
+        program,
+        &mut body,
+        capabilities.controls.windows,
+        capabilities.grouping,
+        capabilities.dynamic_loading,
+    )?;
     let mut output = String::from(
         "namespace Ferrule.Generated;\n\npublic sealed record NamedOutput(string Name, global::Ferrule.Runtime.FerruleInstance Instance);\npublic sealed record ExecutionOutputs(global::Ferrule.Runtime.FerruleInstance Primary, global::System.Collections.Generic.IReadOnlyList<NamedOutput> Extras);\n\n",
     );
@@ -634,12 +93,7 @@ fn render_basic_owned_mapping_profile(
         output.push_str(&format!("        if (global::System.String.Equals(name, {}, global::System.StringComparison.Ordinal)) return {};\n", literal::string(name), index + 1));
     }
     output.push_str("        throw new global::Ferrule.Runtime.FerruleRuntimeException(\n            global::Ferrule.Runtime.FerruleRuntimeError.UnknownTarget,\n            $\"project has no named target `{name}`\",\n            detail: name);\n    }\n");
-    render_basic_failures(
-        program,
-        &mut output,
-        allow_row_failures,
-        extension.failure_sources,
-    )?;
+    render_basic_failures(program, &mut output, capabilities.failures)?;
     if program.expressions.iter().any(|node| {
         retained.contains(&node.id)
             && match &node.expression {
@@ -664,7 +118,7 @@ fn render_basic_owned_mapping_profile(
     nodes.sort_by_key(|node| node.id);
     for node in nodes {
         if retained.contains(&node.id) {
-            if allow_windows && !expression_needs_owned_sources(program, node.id) {
+            if capabilities.controls.windows && !expression_needs_owned_sources(program, node.id) {
                 mapping::render_legacy_basic_expression(node.id, &node.expression, &mut output)?;
             }
             if public_owned_nodes {
@@ -757,31 +211,17 @@ fn scope_error(scope: &TargetScope, route: SourceScopeLocation, reason: Reason) 
     )
 }
 
-#[derive(Clone, Copy)]
-struct ScopeControls {
-    owned_joins: bool,
-    filters: bool,
-    sort: bool,
-    windows: bool,
-    grouping: TargetControls,
-    path_hierarchy: bool,
-    adjacency_tree: bool,
-    recursive_filter: bool,
-    /// Mixed-content construction by an ungrouped scope's own owned selector.
-    mixed_construction: bool,
-}
-
 fn check_scope(
     program: &Program,
     scope: &TargetScope,
     route: SourceScopeLocation,
-    controls: ScopeControls,
+    capabilities: OwnedCapabilities,
     inherited_owned: bool,
 ) -> Result<(), EmitError> {
     let paired = inherited_owned || scope_needs_owned_sources(program, scope);
     if let Some(iteration) = &scope.iteration {
         // Codegen admission validated the complete owned join subtree.
-        if controls.owned_joins && iteration.owned_inner_join().is_some() {
+        if capabilities.joins && iteration.owned_inner_join().is_some() {
             return Ok(());
         }
         let reason = match iteration.input() {
@@ -797,31 +237,32 @@ fn check_scope(
         if let Some(reason) = reason {
             return Err(scope_error(scope, route, reason));
         }
-        if (!controls.filters && iteration.filter().is_some())
-            || (!controls.sort && iteration.sort().is_some())
+        if (!capabilities.controls.filter && iteration.filter().is_some())
+            || (!capabilities.controls.sort && iteration.sort().is_some())
             || (iteration.grouping().is_some()
-                && !(controls.grouping.has_scoped_groups()
-                    && (!paired || controls.grouping.permits_grouping(iteration.grouping()))))
-            || (iteration.post_group_filter().is_some() && !controls.grouping.has_scoped_groups())
-            || (!controls.windows && !iteration.windows().is_empty())
+                && !(capabilities.grouping.any()
+                    && (!paired || capabilities.grouping.permits(iteration.grouping()))))
+            || (iteration.post_group_filter().is_some() && !capabilities.grouping.any())
+            || (!capabilities.controls.windows && !iteration.windows().is_empty())
             || (iteration.output() != IterationOutput::Repeated
-                && !(controls.windows && iteration.output() == IterationOutput::First))
+                && !(capabilities.controls.windows && iteration.output() == IterationOutput::First))
         {
             return Err(scope_error(scope, route, Reason::ScopeControl));
         }
     }
-    let admitted_construction = controls.path_hierarchy
+    let admitted_construction = capabilities.constructions.path_hierarchy
         && matches!(
             scope.construction,
             TargetConstruction::OwnedPathHierarchy { .. }
         )
-        || controls.adjacency_tree
+        || capabilities.constructions.adjacency_tree
             && matches!(
                 scope.construction,
                 TargetConstruction::OwnedAdjacencyTree { .. }
             )
-        || controls.recursive_filter && owned_recursive_filter_predicate(scope).is_some()
-        || controls.mixed_construction
+        || capabilities.constructions.recursive_filter
+            && owned_recursive_filter_predicate(scope).is_some()
+        || capabilities.xml >= OwnedXml::MixedConstruction
             && matches!(
                 scope.construction,
                 TargetConstruction::XmlMixedContent { .. }
@@ -858,14 +299,14 @@ fn check_scope(
     let inherited_owned = inherited_owned
         || scope.iteration.as_ref().is_some_and(|iteration| {
             matches!(iteration.input(), IterationSource::OwnedSource(_))
-                || paired && controls.grouping.permits_grouping(iteration.grouping())
+                || paired && capabilities.grouping.permits(iteration.grouping())
         });
     for (index, child) in scope.children.iter().enumerate() {
         check_scope(
             program,
             child,
             route.clone().descendant(SourceScopeStep::Child(index)),
-            controls,
+            capabilities,
             inherited_owned,
         )?;
     }
@@ -1047,29 +488,14 @@ fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
 fn validate_private_inventory(
     program: &Program,
     retained: &BTreeSet<NodeId>,
-    allow_filters: bool,
-    allow_sort: bool,
-    allow_windows: bool,
-    allow_row_failures: bool,
-    extension: TargetExtension,
+    capabilities: OwnedCapabilities,
 ) -> Result<(), EmitError> {
     // General schema/structure and existing validation precedence already ran.
-    let controls = ScopeControls {
-        owned_joins: extension.owned_joins,
-        filters: allow_filters,
-        sort: allow_sort,
-        windows: allow_windows,
-        grouping: extension.controls,
-        path_hierarchy: extension.permits_path_hierarchy(),
-        adjacency_tree: extension.adjacency_tree,
-        recursive_filter: extension.recursive_filter,
-        mixed_construction: extension.permits_xml_mixed_construction(),
-    };
     check_scope(
         program,
         &program.root,
         SourceScopeLocation::root(SourceScopeTarget::Primary),
-        controls,
+        capabilities,
         false,
     )?;
     for (index, target) in program.extra_targets.iter().enumerate() {
@@ -1080,54 +506,14 @@ fn validate_private_inventory(
                 index,
                 name: target.name.clone(),
             }),
-            controls,
+            capabilities,
             false,
         )?;
     }
-    if extension.permits_xml_mixed_construction() {
-        codegen::validate_basic_owned_xml_mixed_construction_emission(program)?;
-    } else if extension.permits_xml_mixed_content() {
-        codegen::validate_basic_owned_xml_mixed_content_emission(program)?;
-    } else if extension.permits_xml_serialize() {
-        codegen::validate_basic_owned_xml_serialize_emission(program)?;
-    } else if extension.dynamic_loading {
-        codegen::validate_basic_owned_dynamic_loading_emission(program)?;
-    } else if extension.dynamic_field {
-        codegen::validate_basic_owned_dynamic_field_emission(program)?;
-    } else if extension.owned_search == OwnedSearch::CollectionAggregates {
-        codegen::validate_basic_owned_collection_aggregates_emission(program)?;
-    } else if extension.owned_joins {
-        codegen::validate_basic_owned_joins_emission(program)?;
-    } else if extension.owned_search == OwnedSearch::LookupFind {
-        codegen::validate_basic_owned_lookup_find_emission(program)?;
-    } else if extension.recursive_filter {
-        codegen::validate_basic_owned_recursive_filter_emission(program)?;
-    } else if extension.permits_sequence_aggregate() {
-        codegen::validate_basic_owned_sequence_aggregate_emission(program)?;
-    } else if extension.permits_sequence_exists() {
-        codegen::validate_basic_owned_sequence_exists_emission(program)?;
-    } else if extension.permits_owned_recursive_collect() {
-        codegen::validate_basic_owned_recursive_collect_emission(program)?;
-    } else if extension.adjacency_tree {
-        codegen::validate_basic_owned_adjacency_tree_emission(program)?;
-    } else if extension.permits_path_hierarchy() {
-        codegen::validate_basic_owned_path_hierarchy_emission(program)?;
-    } else if extension.failure_sources {
-        codegen::validate_basic_owned_failure_source_emission(program)?;
-    } else if extension.permits_into_blocks() {
-        codegen::validate_basic_owned_group_into_blocks_emission(program)?;
-    } else if extension.permits_ending_with() {
-        codegen::validate_basic_owned_group_ending_with_emission(program)?;
-    } else if extension.permits_starting_with() {
-        codegen::validate_basic_owned_group_starting_with_emission(program)?;
-    } else if extension.permits_adjacent_by() {
-        codegen::validate_basic_owned_group_adjacent_by_emission(program)?;
-    } else if extension.permits_sequence_item_at() {
-        codegen::validate_basic_owned_sequence_item_at_emission(program)?;
-    } else if extension.controls.has_scoped_groups() {
-        codegen::validate_basic_owned_group_by_emission(program)?;
-    } else if allow_row_failures {
-        codegen::validate_basic_owned_row_failure_emission(program)?;
+    // With a failure-rule capability the complete Basic admission owns failure
+    // domains; otherwise the ordinary failure inventory applies.
+    if capabilities.failures.primary_rows {
+        codegen::validate_basic_owned_emission_with_capabilities(program, capabilities)?;
     } else {
         validate_basic_failures(program)?;
     }
@@ -1165,19 +551,19 @@ fn validate_private_inventory(
             .into());
         }
         let reason = match &node.expression {
-            Expression::SequenceItemAt { sequence, .. }
-                if extension.permits_sequence_item_at() && extension.item_at_sequence(sequence) =>
+            Expression::SequenceItemAt { .. }
+            | Expression::SequenceExists { .. }
+            | Expression::SequenceAggregate { .. }
+                if capabilities.sequences.permits(&node.expression) =>
             {
                 continue;
             }
             Expression::OwnedLookup(_) | Expression::OwnedCollectionFind(_)
-                if extension.owned_search != OwnedSearch::Closed =>
+                if capabilities.search.lookup_find =>
             {
                 continue;
             }
-            Expression::OwnedAggregate(_)
-                if extension.owned_search == OwnedSearch::CollectionAggregates =>
-            {
+            Expression::OwnedAggregate(_) if capabilities.search.collection_aggregates => {
                 continue;
             }
             // Codegen bound each read to its dominating owned join tuple.
@@ -1185,24 +571,13 @@ fn validate_private_inventory(
             | Expression::OwnedJoinSourcePosition(_)
             | Expression::OwnedJoinAggregate(_)
             | Expression::JoinPosition { .. }
-                if extension.owned_joins =>
+                if capabilities.joins =>
             {
                 continue;
             }
-            Expression::SequenceExists { sequence, .. }
-                if extension.permits_sequence_exists() && extension.item_at_sequence(sequence) =>
-            {
-                continue;
-            }
-            Expression::OwnedDynamicSourceField(_) if extension.dynamic_field => continue,
-            Expression::SequenceAggregate { sequence, .. }
-                if extension.permits_sequence_aggregate()
-                    && extension.item_at_sequence(sequence) =>
-            {
-                continue;
-            }
-            Expression::OwnedXmlSerialize(_) if extension.permits_xml_serialize() => continue,
-            Expression::OwnedXmlMixedContent(_) if extension.permits_xml_mixed_content() => {
+            Expression::OwnedDynamicSourceField(_) if capabilities.dynamic_fields => continue,
+            Expression::OwnedXmlSerialize(_) if capabilities.xml >= OwnedXml::Serialize => continue,
+            Expression::OwnedXmlMixedContent(_) if capabilities.xml >= OwnedXml::MixedContent => {
                 continue;
             }
             Expression::OwnedXmlSerialize(_) | Expression::OwnedXmlMixedContent(_) => {
@@ -1541,8 +916,7 @@ fn validate_basic_failures(program: &Program) -> Result<(), EmitError> {
 fn render_basic_failures(
     program: &Program,
     output: &mut String,
-    allow_row_failures: bool,
-    allow_failure_sources: bool,
+    failures: codegen::FailureSources,
 ) -> Result<(), EmitError> {
     use codegen::{FailureIteration, FailureSelection};
     if program.failure_rules.is_empty() {
@@ -1555,12 +929,12 @@ fn render_basic_failures(
     output.push_str("    }\n");
     for (index, rule) in program.failure_rules.iter().enumerate() {
         if let (true, FailureIteration::OwnedSource(source)) =
-            (allow_failure_sources, &rule.iteration)
+            (failures.owned_sources, &rule.iteration)
         {
             row_failures::render_owned_source_rule(index, rule, source.source(), output);
             continue;
         }
-        if allow_row_failures && row_failures::needs_owned_rows(program, rule) {
+        if failures.primary_rows && row_failures::needs_owned_rows(program, rule) {
             row_failures::render_rule(index, rule, output)?;
             continue;
         }
@@ -1602,88 +976,28 @@ pub(crate) fn render_checked_basic_owned_mapping(program: &Program) -> Result<St
     render_checked_basic_owned_mapping_profile(
         program,
         false,
-        false,
-        false,
-        false,
-        false,
-        TargetExtension::CLOSED,
+        OwnedPreset::ControlFree.capabilities(),
     )
 }
 
 fn render_checked_basic_owned_mapping_profile(
     program: &Program,
     public_owned_nodes: bool,
-    allow_filters: bool,
-    allow_sort: bool,
-    allow_windows: bool,
-    allow_row_failures: bool,
-    extension: TargetExtension,
+    capabilities: OwnedCapabilities,
 ) -> Result<String, EmitError> {
-    let mut source = if public_owned_nodes {
-        render_basic_owned_mapping_profile(
-            program,
-            true,
-            allow_filters,
-            allow_sort,
-            allow_windows,
-            allow_row_failures,
-            extension,
-        )?
+    let (mut source, plan) = if public_owned_nodes {
+        (
+            render_basic_owned_mapping_profile(program, true, capabilities)?,
+            codegen::legacy_named_input_admission_plan_with_owned_capabilities(
+                program,
+                capabilities,
+            )?,
+        )
     } else {
-        render_basic_owned_mapping(program)?
-    };
-    let plan = if extension.permits_xml_mixed_construction() {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_xml_mixed_construction(program)?
-    } else if extension.permits_xml_mixed_content() {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_xml_mixed_content(program)?
-    } else if extension.permits_xml_serialize() {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_xml_serialize(program)?
-    } else if extension.dynamic_loading {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_loading(program)?
-    } else if extension.dynamic_field {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_field(program)?
-    } else if extension.owned_search == OwnedSearch::CollectionAggregates {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_collection_aggregates(program)?
-    } else if extension.owned_joins {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_joins(program)?
-    } else if extension.owned_search == OwnedSearch::LookupFind {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_lookup_find(program)?
-    } else if extension.recursive_filter {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_filter(program)?
-    } else if extension.permits_sequence_aggregate() {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_aggregate(program)?
-    } else if extension.permits_sequence_exists() {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_exists(program)?
-    } else if extension.permits_owned_recursive_collect() {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_recursive_collect(program)?
-    } else if extension.adjacency_tree {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_adjacency_tree(program)?
-    } else if extension.permits_path_hierarchy() {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy(program)?
-    } else if extension.failure_sources {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_failure_sources(program)?
-    } else if extension.permits_into_blocks() {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_group_into_blocks(program)?
-    } else if extension.permits_ending_with() {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_group_ending_with(program)?
-    } else if extension.permits_starting_with() {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_group_starting_with(program)?
-    } else if extension.permits_adjacent_by() {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_group_adjacent_by(program)?
-    } else if extension.permits_sequence_item_at() {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_sequence_item_at(program)?
-    } else if extension.controls.has_scoped_groups() {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_group_by(program)?
-    } else if allow_row_failures {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_row_failures(program)?
-    } else if allow_windows {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_windows(program)?
-    } else if allow_sort {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_sort(program)?
-    } else if allow_filters {
-        codegen::legacy_named_input_admission_plan_with_basic_owned_filters(program)?
-    } else {
-        codegen::legacy_named_input_admission_plan(program)?
+        (
+            render_basic_owned_mapping(program)?,
+            codegen::legacy_named_input_admission_plan(program)?,
+        )
     };
     let (primary, extras) = mapping::render_basic_scopes(program, &mut String::new())?;
     // Reuse the ordinary NamedInput spelling and exact record declaration.
@@ -1698,7 +1012,7 @@ fn render_checked_basic_owned_mapping_profile(
         );
     }
     // A loading profile threads the optional host loader into its roots.
-    let (loader_parameter, loader_attach) = if extension.dynamic_loading {
+    let (loader_parameter, loader_attach) = if capabilities.dynamic_loading {
         (
             ",\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader? loader = null",
             "        if (loader is not null) roots = roots.WithDynamicSourceLoader(loader);\n",
@@ -1834,48 +1148,19 @@ const CHECKED_INPUT_ACCESSOR: &str = r#"
 "#;
 
 pub(crate) fn render_public_basic_owned_mapping(program: &Program) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        false,
-        false,
-        false,
-        false,
-        TargetExtension::CLOSED,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
+    render_public_basic_owned_capability_mapping(program, OwnedPreset::ControlFree.capabilities())
 }
 
-pub(crate) fn render_public_basic_owned_filter_mapping(
+/// Render the public Basic owned mapping for one capability set.
+pub(crate) fn render_public_basic_owned_capability_mapping(
     program: &Program,
+    capabilities: OwnedCapabilities,
 ) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        false,
-        false,
-        false,
-        TargetExtension::CLOSED,
-    )?;
+    let mut source = render_checked_basic_owned_mapping_profile(program, true, capabilities)?;
     source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_sort_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        false,
-        false,
-        TargetExtension::CLOSED,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
+    if capabilities.dynamic_loading {
+        source.push_str(PUBLIC_BASIC_LOADING_ENTRIES);
+    }
     Ok(source)
 }
 
@@ -2024,214 +1309,6 @@ pub(super) fn scope_needs_owned_sources(program: &Program, scope: &TargetScope) 
             .any(|child| scope_needs_owned_sources(program, child))
 }
 
-pub(crate) fn render_public_basic_owned_window_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        false,
-        TargetExtension::CLOSED,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_row_failure_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::CLOSED,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_group_by_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::GROUP_BY,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_sequence_item_at_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::SEQUENCE_ITEM_AT,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_group_adjacent_by_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::GROUP_ADJACENT_BY,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_group_starting_with_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::GROUP_STARTING_WITH,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_group_ending_with_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::GROUP_ENDING_WITH,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_failure_source_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::FAILURE_SOURCES,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_path_hierarchy_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::PATH_HIERARCHY,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_adjacency_tree_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::ADJACENCY_TREE,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_group_into_blocks_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::GROUP_INTO_BLOCKS,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_recursive_collect_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::RECURSIVE_COLLECT,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_sequence_exists_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::SEQUENCE_EXISTS,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
 /// The predicate of a recursive filter whose scope iterates an owned source.
 pub(crate) fn owned_recursive_filter_predicate(scope: &TargetScope) -> Option<NodeId> {
     match (&scope.construction, &scope.iteration) {
@@ -2242,167 +1319,6 @@ pub(crate) fn owned_recursive_filter_predicate(scope: &TargetScope) -> Option<No
         }
         _ => None,
     }
-}
-
-pub(crate) fn render_public_basic_owned_recursive_filter_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::RECURSIVE_FILTER,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_lookup_find_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::LOOKUP_FIND,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_dynamic_field_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::DYNAMIC_FIELD,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_dynamic_loading_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::DYNAMIC_LOADING,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    source.push_str(PUBLIC_BASIC_LOADING_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_sequence_aggregate_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::SEQUENCE_AGGREGATE,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_xml_serialize_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::XML_SERIALIZE,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_collection_aggregates_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::COLLECTION_AGGREGATES,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_joins_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::JOINS,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_xml_mixed_content_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::XML_MIXED_CONTENT,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
-}
-
-pub(crate) fn render_public_basic_owned_xml_mixed_construction_mapping(
-    program: &Program,
-) -> Result<String, EmitError> {
-    let mut source = render_checked_basic_owned_mapping_profile(
-        program,
-        true,
-        true,
-        true,
-        true,
-        true,
-        TargetExtension::XML_MIXED_CONSTRUCTION,
-    )?;
-    source.push_str(PUBLIC_BASIC_CHECKED_ENTRIES);
-    Ok(source)
 }
 
 /// Owned mixed-content atomization; the runtime attributes only its own group

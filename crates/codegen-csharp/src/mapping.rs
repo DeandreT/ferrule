@@ -2506,93 +2506,8 @@ pub(super) fn render_basic_scopes<'a>(
         program,
         output,
         false,
-        crate::owned_basic::TargetControls::Closed,
-    )
-}
-
-pub(super) fn render_basic_scopes_with_windows<'a>(
-    program: &'a Program,
-    output: &mut String,
-) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(
-        program,
-        output,
-        true,
-        crate::owned_basic::TargetControls::Closed,
-    )
-}
-
-pub(super) fn render_basic_scopes_with_group_by<'a>(
-    program: &'a Program,
-    output: &mut String,
-) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(
-        program,
-        output,
-        true,
-        crate::owned_basic::TargetControls::By,
-    )
-}
-
-pub(super) fn render_basic_scopes_with_group_adjacent_by<'a>(
-    program: &'a Program,
-    output: &mut String,
-) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(
-        program,
-        output,
-        true,
-        crate::owned_basic::TargetControls::ByAndAdjacent,
-    )
-}
-
-pub(super) fn render_basic_scopes_with_group_starting_with<'a>(
-    program: &'a Program,
-    output: &mut String,
-) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(
-        program,
-        output,
-        true,
-        crate::owned_basic::TargetControls::ByAndAdjacentAndStarting,
-    )
-}
-
-pub(super) fn render_basic_scopes_with_group_ending_with<'a>(
-    program: &'a Program,
-    output: &mut String,
-) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(
-        program,
-        output,
-        true,
-        crate::owned_basic::TargetControls::ByAndAdjacentAndStartingAndEnding,
-    )
-}
-
-pub(super) fn render_basic_scopes_with_group_into_blocks<'a>(
-    program: &'a Program,
-    output: &mut String,
-) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(
-        program,
-        output,
-        true,
-        crate::owned_basic::TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
-    )
-}
-
-/// IntoBlocks controls plus owned dynamic loading scopes.
-pub(super) fn render_basic_scopes_with_owned_dynamic_loading<'a>(
-    program: &'a Program,
-    output: &mut String,
-) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_loading(
-        program,
-        output,
-        true,
-        crate::owned_basic::TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
-        &owned_dynamic_loading::loading_scopes(program),
+        codegen::OwnedPreset::ControlFree.capabilities().grouping,
+        false,
     )
 }
 
@@ -2604,20 +2519,29 @@ pub(super) fn owned_dynamic_loading_paths(program: &Program) -> Vec<NodeId> {
         .collect()
 }
 
-fn render_basic_scopes_profile<'a>(
+/// Render Basic scopes with the window, grouping and dynamic-loading
+/// capabilities an owned capability set admits; windows also select the
+/// paired legacy islands and loading wraps each loading scope.
+pub(super) fn render_basic_scopes_profile<'a>(
     program: &'a Program,
     output: &mut String,
     allow_windows: bool,
-    grouping: crate::owned_basic::TargetControls,
+    grouping: codegen::GroupingModes,
+    dynamic_loading: bool,
 ) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_loading(program, output, allow_windows, grouping, &BTreeMap::new())
+    let loading = if dynamic_loading {
+        owned_dynamic_loading::loading_scopes(program)
+    } else {
+        BTreeMap::new()
+    };
+    render_basic_scopes_loading(program, output, allow_windows, grouping, &loading)
 }
 
 fn render_basic_scopes_loading<'a>(
     program: &'a Program,
     output: &mut String,
     allow_windows: bool,
-    grouping: crate::owned_basic::TargetControls,
+    grouping: codegen::GroupingModes,
     loading: &BTreeMap<usize, codegen::OwnedDynamicLoading<'_>>,
 ) -> Result<BasicScopeIndices<'a>, EmitError> {
     let mut scopes = Vec::new();
@@ -2671,7 +2595,7 @@ fn render_basic_scopes_loading<'a>(
                 }
                 _ => return Err(crate::owned_basic::scope_refusal(program, index)),
             }
-            if grouping.permits_grouping(iteration.grouping()) {
+            if grouping.permits(iteration.grouping()) {
                 owned_group_by::render_operation(index, iteration, output);
             } else if allow_windows
                 && (!iteration.windows().is_empty() || iteration.output() == IterationOutput::First)
@@ -2777,7 +2701,7 @@ fn render_basic_scopes_loading<'a>(
         if allow_windows
             && owned_routes[index]
             && let Some(iteration) = scope.iteration
-            && grouping.permits_grouping(iteration.grouping())
+            && grouping.permits(iteration.grouping())
         {
             owned_group_by::render_controls(index, iteration, output);
         }
@@ -2806,7 +2730,7 @@ fn collect_basic_window_routes(
     program: &Program,
     scope: &TargetScope,
     inherited: bool,
-    grouping: crate::owned_basic::TargetControls,
+    grouping: codegen::GroupingModes,
     routes: &mut Vec<bool>,
 ) {
     let owned = inherited || crate::owned_basic::scope_needs_owned_sources(program, scope);
@@ -2824,7 +2748,7 @@ fn collect_basic_window_routes(
         && scope
             .iteration
             .as_ref()
-            .is_some_and(|iteration| grouping.permits_grouping(iteration.grouping()));
+            .is_some_and(|iteration| grouping.permits(iteration.grouping()));
     for child in &scope.children {
         collect_basic_window_routes(
             program,

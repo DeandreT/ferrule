@@ -7237,8 +7237,14 @@ fn public_basic_sort_companion_preserves_existing_bytes_and_closed_routes() {
     let sorted = crate::emit_with_basic_owned_sort(&plain);
     let private_plain = render_basic_owned_mapping(&plain);
     let public_plain = crate::owned_basic::render_public_basic_owned_mapping(&plain);
-    let public_filter_plain = crate::owned_basic::render_public_basic_owned_filter_mapping(&plain);
-    let public_sort_plain = crate::owned_basic::render_public_basic_owned_sort_mapping(&plain);
+    let public_filter_plain = crate::owned_basic::render_public_basic_owned_capability_mapping(
+        &plain,
+        codegen::OwnedPreset::Filters.capabilities(),
+    );
+    let public_sort_plain = crate::owned_basic::render_public_basic_owned_capability_mapping(
+        &plain,
+        codegen::OwnedPreset::Sort.capabilities(),
+    );
     eprintln!(
         "N669 compatibility complete input={plain:#?} old={old:#?} filter={filtered:#?} sort={sorted:#?} private={private_plain:#?} public={public_plain:#?} public_filter={public_filter_plain:#?} public_sort={public_sort_plain:#?}"
     );
