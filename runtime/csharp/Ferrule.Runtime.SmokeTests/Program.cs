@@ -288,6 +288,8 @@ internal static partial class Program
             ("recursive filter exact owned frames", RecursiveFilterOwnedEndpoints),
             ("recursive filter owned roots and errors", RecursiveFilterOwnedRootsAndErrors),
             ("owned dynamic source fields exact owner and frame", OwnedDynamicFieldEndpoints),
+            ("owned dynamic loading exact drivers and document roots", OwnedDynamicLoadingDocuments),
+            ("owned dynamic loading typed failures", OwnedDynamicLoadingFailures),
             ("owned runtime exact namespaces", OwnedRuntimeNamed),
             ("owned runtime strict fields and walking", OwnedRuntimeFieldAndWalk),
             ("owned runtime positions and immutable copies", OwnedRuntimePositionsAndCopies),

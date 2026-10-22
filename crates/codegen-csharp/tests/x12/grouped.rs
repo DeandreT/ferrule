@@ -547,6 +547,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "Runtime/FerruleSourceOrigin.cs",
         "Runtime/FerruleJoins.cs",
         "Runtime/FerruleOwnedDynamicField.cs",
+        "Runtime/FerruleOwnedDynamicLoading.cs",
         "Runtime/FerrulePathHierarchy.cs",
         "Runtime/FerrulePrimaryRoot.cs",
         "Runtime/FerruleRecursiveFilter.cs",

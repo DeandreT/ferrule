@@ -1555,7 +1555,25 @@ public sealed class FerruleOwnedSourceRoots
         if (_named[found].Instance is null) throw query.Error(FerruleOwnedSourceErrorKind.SourceUnavailable);
         return found + 1;
     }
+    /// <summary>Like <see cref="Resolve"/>, also returning a declared but unsupplied owner.</summary>
+    internal int ResolveDeclared(FerruleOwnedSourceOwner owner, OwnedQuery query, out bool supplied)
+    {
+        supplied = true;
+        if (owner.IsPrimary) return 0;
+        var name = owner.Name!;
+        if (name.Length == 0) return Resolve(owner, query);
+        var found = -1;
+        for (var i = 0; i < _named.Length; i++)
+            if (string.Equals(_named[i].Name, name, StringComparison.Ordinal)) { found = i; break; }
+        if (found < 0 || _named[found].Instance is not null) return Resolve(owner, query);
+        // Ambiguity and empty names keep their exact original refusals.
+        for (var i = found + 1; i < _named.Length; i++)
+            if (string.Equals(_named[i].Name, name, StringComparison.Ordinal)) return Resolve(owner, query);
+        supplied = false;
+        return found + 1;
+    }
     internal FerruleInstance Instance(int key) => key == 0 ? _primary : _named[key - 1].Instance!;
+    internal FerruleInstance? SuppliedInstance(int key) => key == 0 ? _primary : _named[key - 1].Instance;
     internal string? Name(int key) => key == 0 ? null : _named[key - 1].Name;
 }
 
@@ -1702,10 +1720,12 @@ public sealed partial class FerruleOwnedScopeContext
 {
     // Authenticated synthetic member containers minted only by paired By,
     // AdjacentBy, StartingWith, EndingWith and IntoBlocks. Nested ordinary occurrences remain Items.
+    // A Document roots one loaded document of an owned dynamic endpoint inside
+    // its loading scope; it is never a position or an exact occurrence.
     internal readonly record struct Occurrence(int Owner, IReadOnlyList<string> Path, FerruleInstance Item, nuint Index,
-        bool GroupMembers = false);
+        bool GroupMembers = false, bool Document = false);
     internal readonly record struct Observation(int Owner, IReadOnlyList<string> Path, FerruleInstance Item, nuint Index,
-        bool GroupMembers = false);
+        bool GroupMembers = false, bool Document = false);
     private readonly Occurrence[] _frames;
     private FerruleOwnedScopeContext(FerruleOwnedSourceRoots roots, Occurrence[] frames) { Roots = roots; _frames = frames; }
     internal static FerruleOwnedScopeContext CreateRoot(FerruleOwnedSourceRoots roots)
@@ -1717,7 +1737,7 @@ public sealed partial class FerruleOwnedScopeContext
     internal FerruleOwnedSourceRoots Roots { get; }
     internal int FrameCount => _frames.Length;
     internal Observation FrameAt(int index)
-    { var f = _frames[index]; return new(f.Owner, f.Path, f.Item, f.Index, f.GroupMembers); }
+    { var f = _frames[index]; return new(f.Owner, f.Path, f.Item, f.Index, f.GroupMembers, f.Document); }
     private static bool Prefix(IReadOnlyList<string> path, IReadOnlyList<string> prefix)
     {
         if (prefix.Count > path.Count) return false;
@@ -1728,7 +1748,7 @@ public sealed partial class FerruleOwnedScopeContext
     private int Match(int owner, IReadOnlyList<string>? path, bool exact)
     {
         for (var i = _frames.Length - 1; i >= 0; i--)
-            if (_frames[i].Owner == owner && (path is null ||
+            if (_frames[i].Owner == owner && (!_frames[i].Document || (!exact && path is not null)) && (path is null ||
                 (exact ? path.Count == _frames[i].Path.Count && Prefix(path, _frames[i].Path) : Prefix(path, _frames[i].Path))))
                 return i;
         return -1;
@@ -1757,7 +1777,7 @@ public sealed partial class FerruleOwnedScopeContext
     private FerruleValue ResolveFieldCore(FerruleOwnedSourceOwner owner, IReadOnlyList<string> path,
         IReadOnlyList<string>? frame, OwnedQuery? admittedQuery, bool declaredNonrepeating = false)
     {
-        var q = admittedQuery ?? new OwnedQuery(this, owner, path, frame); var key = Roots.Resolve(owner, q);
+        var q = admittedQuery ?? new OwnedQuery(this, owner, path, frame); var key = Resolve(owner, q);
         if (frame is not null && !Prefix(path, frame))
             throw q.Error(FerruleOwnedSourceErrorKind.IncompatibleFramePath, path, frame);
         // The Basic path supplies the static exact-owner declaration proof.
@@ -1767,12 +1787,12 @@ public sealed partial class FerruleOwnedScopeContext
         // a newer member Item shadows its older root group, never another owner's.
         var rootGroup = Match(key, Array.Empty<string>(), true);
         var registeredRoot = frame is { Count: 0 } &&
-            ((declaredNonrepeating && Roots.Instance(key) is not FerruleRepeated) ||
+            ((declaredNonrepeating && RootOf(key) is not FerruleRepeated) ||
               (rootGroup >= 0 && _frames[rootGroup].GroupMembers));
         var selected = registeredRoot ? -1 : Match(key, frame ?? path, frame is not null);
         if (frame is not null && selected < 0 && !registeredRoot)
             throw q.Error(FerruleOwnedSourceErrorKind.InactiveSourceFrame, collection: frame);
-        var current = selected < 0 ? Roots.Instance(key) : _frames[selected].Item;
+        var current = selected < 0 ? RootOf(key) : _frames[selected].Item;
         var consumed = selected < 0 ? 0 : _frames[selected].Path.Count;
         if (selected >= 0 && _frames[selected].GroupMembers)
         {
@@ -1808,7 +1828,7 @@ public sealed partial class FerruleOwnedScopeContext
         OwnedQuery? admittedQuery)
     {
         var q = admittedQuery ?? new OwnedQuery(this, owner, collection ?? Array.Empty<string>(), null);
-        var key = Roots.Resolve(owner, q); var selected = Match(key, collection, true);
+        var key = Resolve(owner, q); var selected = Match(key, collection, true);
         if (selected < 0) throw q.Error(FerruleOwnedSourceErrorKind.InactiveSourceFrame, collection: collection);
         return _frames[selected].Index;
     }
@@ -1838,7 +1858,7 @@ public sealed partial class FerruleOwnedScopeContext
         IReadOnlyList<string>? collection, nuint index)
     {
         var q = new OwnedQuery(this, owner, collection ?? Array.Empty<string>(), null);
-        var key = Roots.Resolve(owner, q); var selected = Match(key, collection, true);
+        var key = Resolve(owner, q); var selected = Match(key, collection, true);
         if (selected < 0) throw q.Error(FerruleOwnedSourceErrorKind.InactiveSourceFrame, collection: collection);
         if (index == 0) throw q.Error(FerruleOwnedSourceErrorKind.InvalidPosition, index: index);
         var copy = CopyFrames(q, _frames); copy[selected] = copy[selected] with { Index = index };
@@ -1889,7 +1909,7 @@ public sealed partial class FerruleOwnedScopeContext
             // output owns its separately admitted immutable path snapshot.
             var path = new string[f.Path.Count];
             for (var j = 0; j < path.Length; j++) path[j] = f.Path[j];
-            copy[i] = new(f.Owner, path, f.Item, f.Index, f.GroupMembers);
+            copy[i] = new(f.Owner, path, f.Item, f.Index, f.GroupMembers, f.Document);
         }
         return new FerruleOwnedScopeContext(roots, copy);
     }
@@ -1916,7 +1936,7 @@ public sealed partial class FerruleOwnedScopeContext
         FerruleOwnedSourceOwner owner, IReadOnlyList<string> path, BasicOwnedWalkObserver? observed)
     {
         var q = observed is null ? new OwnedQuery(this, owner, path, null) : observed.CreateQuery(this, owner, path);
-        var key = Roots.Resolve(owner, q);
+        var key = Resolve(owner, q);
         var identity = Match(key, path, true);
         if (identity >= 0 && !_frames[identity].GroupMembers)
         {
@@ -1934,7 +1954,7 @@ public sealed partial class FerruleOwnedScopeContext
             return observed is null ? Array.AsReadOnly(new[] { identityContext }) : Array.Empty<FerruleOwnedScopeContext>();
         }
         var selected = Match(key, path, false);
-        var current = selected < 0 ? Roots.Instance(key) : _frames[selected].Item;
+        var current = selected < 0 ? RootOf(key) : _frames[selected].Item;
         var consumed = selected < 0 ? 0 : _frames[selected].Path.Count;
         observed?.SelectedBase(key, current, consumed, false, selected);
         observed?.BeforeWalkBuffers();
@@ -2412,8 +2432,17 @@ public sealed class FerruleBasicSourceRoots
     private readonly int[] _unique;
     private readonly nuint _retainedSlots;
     private FerruleBasicSourceRoots(FerruleOwnedSourceRoots owned, FerruleGroup projection,
-        int[] supplied, int[] unique, nuint retainedSlots)
-    { _owned = owned; _projection = projection; _supplied = supplied; _unique = unique; _retainedSlots = retainedSlots; }
+        int[] supplied, int[] unique, nuint retainedSlots, IFerruleDynamicSourceLoader? dynamicSourceLoader = null)
+    { _owned = owned; _projection = projection; _supplied = supplied; _unique = unique; _retainedSlots = retainedSlots; DynamicSourceLoader = dynamicSourceLoader; }
+    /// <summary>The host boundary owned dynamic loading scopes request documents from.</summary>
+    internal IFerruleDynamicSourceLoader? DynamicSourceLoader { get; }
+    /// <summary>These roots with a host loader for owned dynamic loading scopes.
+    /// Generated mappings never access a filesystem or cache documents.</summary>
+    public FerruleBasicSourceRoots WithDynamicSourceLoader(IFerruleDynamicSourceLoader loader)
+    {
+        ArgumentNullException.ThrowIfNull(loader);
+        return new(_owned, _projection, _supplied, _unique, _retainedSlots, loader);
+    }
     internal FerruleOwnedSourceRoots OwnedRoots => _owned;
     internal FerruleGroup Projection => _projection;
     internal FerruleOwnedSourceLimits Limits => _owned.Limits;
@@ -2575,6 +2604,9 @@ public sealed class FerruleBasicSourceRoots
 public sealed partial class FerruleBasicScopeContext
 {
     private readonly BasicFrameOrigin[] _origins;
+    // The documents a loading scope requested; only that scope's own walk of
+    // their owner consults them.
+    private FerruleOwnedDynamicDocuments.Loaded? _loading;
     private readonly int _legacyContainers;
     private readonly FerruleOwnedScopeContext _owned;
     private FerruleBasicScopeContext(FerruleBasicSourceRoots roots, ScopeContext legacy,
@@ -2717,7 +2749,7 @@ public sealed partial class FerruleBasicScopeContext
         var origins = new BasicFrameOrigin[_origins.Length];
         for (var i = 0; i < origins.Length; i++)
         { budget.Charge((nuint)_origins[i].Canonical.Count); budget.Path(_origins[i].Canonical); origins[i] = _origins[i]; }
-        return new FerruleBasicScopeContext(Roots, legacy, owned, origins, 2);
+        return new FerruleBasicScopeContext(Roots, legacy, owned, origins, 2) { _loading = _loading };
     }
     public FerruleBasicScopeContext CloneView()
     {
@@ -2802,7 +2834,7 @@ internal interface BasicCompleteRows : BasicSourceIds
 }
 
 /// <summary>A complete original source walk with read-only candidate access.</summary>
-public sealed class FerruleRetainedSourceCohort : IReadOnlyList<FerruleBasicSourceCandidate>, BasicCompleteRows
+public sealed partial class FerruleRetainedSourceCohort : IReadOnlyList<FerruleBasicSourceCandidate>, BasicCompleteRows
 {
     private FerruleBasicSourceCandidate[] _items = Array.Empty<FerruleBasicSourceCandidate>();
     private int _count;
@@ -2850,6 +2882,8 @@ public sealed class FerruleRetainedSourceCohort : IReadOnlyList<FerruleBasicSour
     private static FerruleRetainedSourceCohort Walk(FerruleBasicScopeContext parent,
         IReadOnlyList<string> path, FerruleOwnedSourceOwner? owner, bool primaryFailureRows)
     {
+        if (owner.HasValue && parent.LoadingFor(owner.Value) is { } loading)
+            return WalkLoaded(parent, loading, owner.Value, path);
         var budget = parent.Begin();
         budget.Charge(2); // original holder and shared per-walk witness, replacing the native output containers
         var result = new FerruleRetainedSourceCohort(parent, budget, primaryFailureRows);

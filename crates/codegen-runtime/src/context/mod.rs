@@ -28,7 +28,8 @@ pub use basic::{
     BasicGroupByControls, BasicGroupByMetadata, BasicGroupEndingWithControls,
     BasicGroupIntoBlocksControls, BasicGroupStartingWithControls, BasicScopeContext,
     BasicSourceBridgeError, BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort,
-    OwnedJoinKey, OwnedJoinSource, OwnedJoinStage, PhaseSelection, RetainedSourceCohort,
+    OwnedDynamicDocuments, OwnedJoinKey, OwnedJoinSource, OwnedJoinStage, PhaseSelection,
+    RetainedSourceCohort,
 };
 pub use basic_json_inputs::{
     BasicJsonDocumentRef, BasicJsonInputAdmission, BasicJsonParsedInputs,
@@ -722,6 +723,9 @@ enum OwnedOccurrenceKind {
     // Authenticated member containers minted only by paired By / AdjacentBy /
     // StartingWith / EndingWith / IntoBlocks.
     GroupMembers,
+    // The root of one loaded document of an owned dynamic endpoint, minted only
+    // by owned dynamic loading. It roots its owner and is never a position.
+    Document,
 }
 
 /// An owner-aware view separate from every legacy ScopeContext operation.
@@ -1029,9 +1033,19 @@ impl<'a> OwnedScopeContext<'a> {
                     .collect(),
             });
         }
+        let key = OwnedOwnerKey::Named(index);
+        // A dynamic declaration has no supplied root; inside its loading scope
+        // the active loaded document is that root.
         declaration
             .instance
-            .map(|instance| (OwnedOwnerKey::Named(index), instance))
+            .or_else(|| {
+                self.frames
+                    .iter()
+                    .rev()
+                    .find(|frame| frame.owner == key && frame.kind == OwnedOccurrenceKind::Document)
+                    .map(|frame| frame.instance)
+            })
+            .map(|instance| (key, instance))
             .ok_or_else(|| OwnedSourceError::SourceUnavailable {
                 name: name.to_string(),
             })
@@ -1052,7 +1066,9 @@ impl<'a> OwnedScopeContext<'a> {
         collection: Option<&[&str]>,
     ) -> Option<usize> {
         self.frames.iter().rposition(|frame| {
-            frame.owner == owner && collection.is_none_or(|path| same_path(path, &frame.collection))
+            frame.owner == owner
+                && frame.kind != OwnedOccurrenceKind::Document
+                && collection.is_none_or(|path| same_path(path, &frame.collection))
         })
     }
 

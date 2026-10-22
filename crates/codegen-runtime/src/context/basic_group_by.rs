@@ -461,6 +461,7 @@ impl<'src> GroupPrefixTemplate<'src> {
                 projection_bytes: c.projection_bytes,
                 identity: Arc::new(()),
                 join: None,
+                loading: None,
             },
             owner: t.owner,
             owned_path: plan.canonical.to_vec(),
@@ -543,6 +544,7 @@ fn clone_selection_prepaid<'src>(context: &BasicScopeContext<'src>) -> BasicScop
         projection_bytes: context.projection_bytes,
         identity: Arc::new(()),
         join: None,
+        loading: None,
     }
 }
 

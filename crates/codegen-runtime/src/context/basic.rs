@@ -22,6 +22,10 @@ use std::{
 #[path = "basic_dynamic_field.rs"]
 mod dynamic_field;
 
+#[path = "basic_dynamic_loading.rs"]
+mod dynamic_loading;
+pub use dynamic_loading::OwnedDynamicDocuments;
+
 #[path = "basic_failures.rs"]
 mod failure_rows;
 
@@ -468,6 +472,20 @@ impl<'src> BasicSourceRoots<'src> {
     {
         self.root_context_impl(Some(*execution))
     }
+    /// Attaches the host boundary owned dynamic loading scopes request
+    /// documents from. Generated mappings never access a filesystem.
+    pub fn root_context_with_dynamic_source_loader<'ctx>(
+        &'ctx self,
+        execution: Option<&ExecutionContext<'ctx>>,
+        loader: &'ctx dyn crate::DynamicSourceLoader,
+    ) -> Result<BasicScopeContext<'ctx>, RuntimeError>
+    where
+        'src: 'ctx,
+    {
+        let mut context = self.root_context_impl(execution.copied())?;
+        context.legacy = context.legacy.with_dynamic_source_loader(loader);
+        Ok(context)
+    }
     fn root_context_impl<'ctx>(
         &'ctx self,
         execution: Option<ExecutionContext<'ctx>>,
@@ -500,6 +518,7 @@ impl<'src> BasicSourceRoots<'src> {
             projection_bytes: self.projection_bytes,
             identity: Arc::new(()),
             join: None,
+            loading: None,
         })
     }
 }
@@ -571,6 +590,9 @@ pub struct BasicScopeContext<'ctx> {
     identity: Arc<()>,
     /// The active owned join tuple; only owned join reads consult it.
     join: Option<std::rc::Rc<owned_join::OwnedJoinTuple<'ctx>>>,
+    /// The documents a loading scope requested; only that scope's own walk of
+    /// their owner consults them.
+    loading: Option<std::rc::Rc<dynamic_loading::LoadedDocuments<'ctx>>>,
 }
 pub struct BasicSourceCandidate<'ctx> {
     context: BasicScopeContext<'ctx>,
@@ -726,6 +748,7 @@ impl<'ctx> BasicScopeContext<'ctx> {
             projection_bytes: self.projection_bytes,
             identity: Arc::new(()),
             join: self.join.clone(),
+            loading: self.loading.clone(),
         })
     }
     pub fn try_clone_view(&self) -> Result<Self, RuntimeError> {
@@ -905,6 +928,13 @@ impl<'ctx> BasicScopeContext<'ctx> {
         path: &[&str],
         retained: bool,
     ) -> Result<(Vec<BasicSourceCandidate<'ctx>>, Arc<WalkCohort<'ctx>>), RuntimeError> {
+        if let Some(loading) = self
+            .loading
+            .as_ref()
+            .filter(|loading| loading.owns(&self.owned.registry, owner))
+        {
+            return self.walk_loaded_documents(loading, owner, path);
+        }
         let (mut budget, bounds) = self.budget(owner, path, None, false)?;
         budget.slots(if retained { 2 } else { 1 })?;
         let cohort = Arc::new(WalkCohort {
@@ -1468,6 +1498,7 @@ impl<'ctx> BasicSourceCandidate<'ctx> {
             projection_bytes: self.context.projection_bytes,
             identity: Arc::new(()),
             join: None,
+            loading: None,
         };
         if let Some(cursor) = self.cursor {
             context.legacy.frames[cursor.legacy]
@@ -2172,6 +2203,7 @@ impl<'ctx> BasicLegacyObserver<'_, 'ctx> {
                 projection_bytes: self.parent.projection_bytes,
                 identity: Arc::new(()),
                 join: None,
+                loading: None,
             },
             cohort: Arc::clone(&self.cohort),
             ordinal,
@@ -2321,8 +2353,11 @@ impl<'ctx> OwnedWalkObserver<'ctx> for BasicOwnedObserver<'_, 'ctx> {
         }
         let ordinal = self.produced;
         self.produced += 1;
+        // A loaded document roots its owner like a registry root; it is never
+        // the terminal occurrence of a walk.
         let terminal_index = owned.frames.iter().rposition(|frame| {
             frame.owner == self.key
+                && frame.kind != super::OwnedOccurrenceKind::Document
                 && frame
                     .collection
                     .iter()
@@ -2363,6 +2398,7 @@ impl<'ctx> OwnedWalkObserver<'ctx> for BasicOwnedObserver<'_, 'ctx> {
                 projection_bytes: self.parent.projection_bytes,
                 identity: Arc::new(()),
                 join: None,
+                loading: None,
             },
             cohort: Arc::clone(&self.cohort),
             ordinal,
