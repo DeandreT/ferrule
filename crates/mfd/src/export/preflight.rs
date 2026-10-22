@@ -145,6 +145,25 @@ pub(super) fn validate_source_ownership(project: &Project) -> Result<(), MfdErro
     Ok(())
 }
 
+/// A document-row body must not fall back to ordinary child-field export.
+pub(super) fn validate_document_rows(project: &Project) -> Result<(), MfdError> {
+    let mut pending = vec![&project.root];
+    pending.extend(project.extra_targets.iter().map(|target| &target.root));
+    while let Some(scope) = pending.pop() {
+        if scope.construction == mapping::ScopeConstruction::DocumentRows {
+            return Err(MfdError::Unsupported(
+                "document-row construction is not exportable".into(),
+            ));
+        }
+        pending.extend(scope.children.iter());
+        pending.extend(scope.dynamic_children.iter().map(|child| &child.scope));
+        if let Some(sequence) = scope.concatenated() {
+            pending.extend(sequence.iter());
+        }
+    }
+    Ok(())
+}
+
 /// Optional presence has no qualified .mfd representation yet, so export
 /// refuses it before writing any artifact.
 pub(super) fn validate_optional_presence(project: &Project) -> Result<(), MfdError> {

@@ -189,6 +189,9 @@ pub fn visit_target_documents_with_options<B>(
         }
     };
     check_scope(root, path).map_err(before)?;
+    if root.construction == mapping::ScopeConstruction::DocumentRows {
+        crate::eval_scope::check_document_rows(root, Some(schema), &trace).map_err(before)?;
+    }
     if options.filename_clock.is_some() {
         check_clock_path(project, root).map_err(before)?;
     }

@@ -101,6 +101,9 @@ pub(crate) fn eval_scope_with_document_visitor(
     trace_scope: &TraceScope,
     mut visitor: Option<&mut dyn FnMut(DocumentMember) -> bool>,
 ) -> Result<Instance, EngineError> {
+    if scope.construction == ScopeConstruction::DocumentRows {
+        check_document_rows(scope, target, trace_scope)?;
+    }
     if visitor.is_some() && (program.owned_context.is_some() || scope.output_path().is_none()) {
         return Err(EngineError::DocumentStreamUnsupported {
             reason: "streaming requires an ordinary document-output scope",
@@ -839,6 +842,48 @@ fn produced_document(scope: &Scope, produced: ProducedItem) -> Result<DocumentMe
         .output_path
         .ok_or(EngineError::EmptyDynamicTargetPath { node })?;
     DocumentMember::new(path, produced.instance).ok_or(EngineError::EmptyDynamicTargetPath { node })
+}
+
+pub(crate) fn check_document_rows(
+    scope: &Scope,
+    target: Option<&ir::SchemaNode>,
+    trace: &TraceScope,
+) -> Result<(), EngineError> {
+    let body = scope
+        .document_rows()
+        .ok_or(EngineError::DocumentRowsConstruction {
+            reason: "exactly one unnamed row scope is required",
+        })?;
+    let flat = target.is_some_and(|target| match &target.kind {
+        SchemaKind::Group { children, .. } => children
+            .iter()
+            .all(|child| child.is_scalar() && !child.repeating),
+        _ => false,
+    });
+    if !trace.source_scope.path.is_empty()
+        || !matches!(
+            scope.iteration,
+            mapping::ScopeIteration::DynamicDocuments { .. }
+        )
+        || scope.iteration_output != IterationOutput::Repeated
+        || !scope.bindings.is_empty()
+        || !scope.dynamic_bindings.is_empty()
+        || !scope.dynamic_children.is_empty()
+        || scope.merge_dynamic_fields
+        || !matches!(body.iteration, mapping::ScopeIteration::Source(_))
+        || body.iteration_output != IterationOutput::Repeated
+        || body.construction != ScopeConstruction::Constructed
+        || !body.children.is_empty()
+        || !body.dynamic_bindings.is_empty()
+        || !body.dynamic_children.is_empty()
+        || body.merge_dynamic_fields
+        || !flat
+    {
+        return Err(EngineError::DocumentRowsConstruction {
+            reason: "ordinary document selection and one flat constructed row scope are required",
+        });
+    }
+    Ok(())
 }
 
 fn scope_needs_owned(program: EvalProgram<'_>, scope: &Scope) -> bool {
@@ -2375,6 +2420,22 @@ impl ItemEvaluator<'_> {
             return Ok(None);
         }
 
+        if scope.construction == ScopeConstruction::DocumentRows {
+            let body = scope
+                .document_rows()
+                .expect("document rows checked before iteration");
+            return eval_scope(
+                program,
+                body,
+                target,
+                context,
+                output_positions,
+                extra_sources,
+                source_loader,
+                &trace_scope.child("", 0),
+            )
+            .map(Some);
+        }
         if let ScopeConstruction::Scalar { value } = &scope.construction {
             let mut in_progress = HashSet::new();
             let value = eval_expr(program, *value, context, output_positions, &mut in_progress)?;

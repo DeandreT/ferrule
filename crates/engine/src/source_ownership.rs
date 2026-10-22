@@ -1339,6 +1339,7 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
         ScopeConstruction::RecursiveFilter { .. }
         | ScopeConstruction::PathHierarchy { .. }
         | ScopeConstruction::AdjacencyTree { .. } => OwnedCapabilityContext::TreeOperator,
+        ScopeConstruction::DocumentRows => OwnedCapabilityContext::Document,
         ScopeConstruction::CopyCurrentSource => OwnedCapabilityContext::SpecialConstruction,
     }
 }

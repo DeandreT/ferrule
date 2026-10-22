@@ -3,7 +3,7 @@ use ir::SchemaKind;
 
 use super::{EmitError, rust_string};
 
-pub(super) fn render(program: &Program, policy: &CsvOutputPolicy) -> Result<String, EmitError> {
+fn render_policy(program: &Program, policy: &CsvOutputPolicy) -> Result<String, EmitError> {
     let SchemaKind::Group { children, .. } = &program.target.kind else {
         return Err(CsvOutputError::TargetSchema {
             field: None,
@@ -51,6 +51,11 @@ pub(super) fn render(program: &Program, policy: &CsvOutputPolicy) -> Result<Stri
         policy.raw_delimited_crlf
     ));
     source.push_str("        repair_dependency: None,\n    }\n}\n\n");
+    Ok(source)
+}
+
+pub(super) fn render(program: &Program, policy: &CsvOutputPolicy) -> Result<String, EmitError> {
+    let mut source = render_policy(program, policy)?;
     source.push_str(ADAPTERS);
     if program
         .extra_sources
@@ -66,6 +71,43 @@ pub(super) fn render(program: &Program, policy: &CsvOutputPolicy) -> Result<Stri
     {
         source.push_str(DYNAMIC_ADAPTERS);
     }
+    Ok(source)
+}
+
+pub(super) fn render_document_set(
+    program: &Program,
+    policy: &CsvOutputPolicy,
+) -> Result<String, EmitError> {
+    let mut source = render_policy(program, policy)?;
+    source.push_str(r#"
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CsvOutputDocument { pub path: String, pub document: String }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CsvOutputBytesDocument { pub path: String, pub document: Vec<u8> }
+
+/// Materialize the mapping, then serialize each complete CSV document.
+pub fn execute_csv_documents_with_context(source: &Instance, execution: &ExecutionContext<'_>) -> Result<Vec<CsvOutputDocument>, codegen_runtime::CsvBoundaryError> {
+    let output = execute_with_context(source, execution)?;
+    let Instance::DocumentSet(documents) = output else { unreachable!("validated document-row output") };
+    let schema = csv_output_schema();
+    let options = csv_output_options();
+    documents.into_iter().map(|document| {
+        let text = codegen_runtime::serialize_csv(&schema, document.value(), &options)?;
+        Ok(CsvOutputDocument { path: document.path().to_owned(), document: text })
+    }).collect()
+}
+
+pub fn execute_csv_documents_bytes_with_context(source: &Instance, execution: &ExecutionContext<'_>) -> Result<Vec<CsvOutputBytesDocument>, codegen_runtime::CsvBoundaryError> {
+    let output = execute_with_context(source, execution)?;
+    let Instance::DocumentSet(documents) = output else { unreachable!("validated document-row output") };
+    let schema = csv_output_schema();
+    let options = csv_output_options();
+    documents.into_iter().map(|document| {
+        let bytes = codegen_runtime::serialize_csv_bytes(&schema, document.value(), &options)?;
+        Ok(CsvOutputBytesDocument { path: document.path().to_owned(), document: bytes })
+    }).collect()
+}
+"#);
     Ok(source)
 }
 

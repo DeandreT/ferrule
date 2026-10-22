@@ -18,6 +18,8 @@ use ir::{ScalarType, Value};
 use mapping::{FunctionId, FunctionParameterId, NodeId};
 
 mod csv_api;
+mod document_visitor;
+pub use document_visitor::emit_with_document_visitor;
 mod csv_document;
 pub use csv_document::{CsvDocumentEmitError, emit_with_csv_document_adapters};
 mod failure;
@@ -685,6 +687,23 @@ pub fn emit_with_csv_output(
     ArtifactSet::new(files).map_err(EmitError::from)
 }
 
+/// Emit explicitly selected flat row sets paired with their document paths.
+pub fn emit_with_csv_document_set_output(
+    program: &Program,
+    options: &Options,
+    policy: &CsvOutputPolicy,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_csv_document_set_output(program, policy)?;
+    let mut files = emit(program, options)?.into_files();
+    let adapters = csv_api::render_document_set(program, policy)?;
+    for file in &mut files {
+        if file.path.as_str() == "src/lib.rs" {
+            file.contents.extend_from_slice(adapters.as_bytes());
+        }
+    }
+    ArtifactSet::new(files).map_err(EmitError::from)
+}
+
 fn valid_package_name(name: &str) -> bool {
     !name.is_empty()
         && name
@@ -1104,6 +1123,7 @@ fn expression_usage(
             TargetConstruction::AdjacencyTree { root, .. }
             | TargetConstruction::OwnedAdjacencyTree { root, .. } => pending.extend(*root),
             TargetConstruction::Group
+            | TargetConstruction::DocumentRows
             | TargetConstruction::CopyCurrentSource
             | TargetConstruction::XmlMixedContent { .. }
             | TargetConstruction::PathHierarchy { .. }
@@ -2772,6 +2792,16 @@ fn render_iteration_scope(
     iteration: &IterationPlan,
     child_names: &[String],
 ) -> Result<String, EmitError> {
+    render_iteration_scope_delivery(program, scope, iteration, child_names, false)
+}
+
+fn render_iteration_scope_delivery(
+    program: &Program,
+    scope: &TargetScope,
+    iteration: &IterationPlan,
+    child_names: &[String],
+    visitor: bool,
+) -> Result<String, EmitError> {
     let mut output = String::new();
     let sort = iteration.sort();
     let filter_before_sort = iteration.filter().is_some()
@@ -2835,7 +2865,11 @@ fn render_iteration_scope(
         output.push_str("    candidates = apply_sequence_windows(candidates, &windows);\n");
     }
 
-    output.push_str("    let mut outputs = Vec::with_capacity(candidates.len());\n");
+    if visitor {
+        output.push_str("    let mut delivered = 0usize;\n");
+    } else {
+        output.push_str("    let mut outputs = Vec::with_capacity(candidates.len());\n");
+    }
     output.push_str("    for item_context in candidates {\n");
     if !filter_before_sort
         && !has_windows
@@ -2847,9 +2881,14 @@ fn render_iteration_scope(
         ));
     }
     let item_context = if renumber_output {
-        output.push_str(
-            "        let output_context = item_context.with_compact_last_position(outputs.len() + 1);\n",
-        );
+        let count = if visitor {
+            "delivered"
+        } else {
+            "outputs.len()"
+        };
+        output.push_str(&format!(
+            "        let output_context = item_context.with_compact_last_position({count} + 1);\n"
+        ));
         "&output_context"
     } else {
         "&item_context"
@@ -2862,15 +2901,25 @@ fn render_iteration_scope(
         item_context,
     ));
     if let Some(dynamic) = iteration.dynamic_document_iteration() {
-        output.push_str(&format!(
-            "        let output_path = expression_{}({item_context})?;\n        outputs.push(dynamic_document({}, output_path, output)?);\n",
-            dynamic.output_path(),
-            dynamic.output_path(),
-        ));
+        if visitor {
+            output.push_str(&format!(
+                "        let output_path = expression_{}({item_context})?;\n        let document = dynamic_document({}, output_path, output)?;\n        if !offer_document(document) {{ return Ok(()); }}\n        delivered += 1;\n",
+                dynamic.output_path(), dynamic.output_path(),
+            ));
+        } else {
+            output.push_str(&format!(
+                "        let output_path = expression_{}({item_context})?;\n        outputs.push(dynamic_document({}, output_path, output)?);\n",
+                dynamic.output_path(), dynamic.output_path(),
+            ));
+        }
     } else {
         output.push_str("        outputs.push(output);\n");
     }
     output.push_str("    }\n");
+    if visitor {
+        output.push_str("    let _ = delivered;\n    Ok(())\n");
+        return Ok(output);
+    }
     if iteration.dynamic_document_iteration().is_some() {
         output.push_str("    Ok(Instance::DocumentSet(outputs))\n");
         return Ok(output);
@@ -3297,6 +3346,11 @@ fn render_scope_item(
     context: &str,
 ) -> String {
     let mut output = String::new();
+    if scope.construction == TargetConstruction::DocumentRows {
+        let body = child_names.first().expect("validated document row scope");
+        output.push_str(&format!("{indent}let output = {body}({context})?;\n"));
+        return output;
+    }
     if let TargetConstruction::Scalar {
         expression,
         target_domain,

@@ -35,7 +35,8 @@ pub(super) fn validate(
         }
         match construction {
             TargetConstruction::Group => {}
-            TargetConstruction::DynamicGroup {
+            TargetConstruction::DocumentRows
+            | TargetConstruction::DynamicGroup {
                 fixed_fields: _,
                 bindings: _,
                 children: _,

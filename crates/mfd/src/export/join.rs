@@ -896,6 +896,7 @@ fn collect_scope_aggregate_contexts(
         ScopeConstruction::AdjacencyTree { plan } => roots.extend(plan.root()),
         ScopeConstruction::OwnedAdjacencyTree { plan } => roots.extend(plan.root()),
         ScopeConstruction::Constructed
+        | ScopeConstruction::DocumentRows
         | ScopeConstruction::CopyCurrentSource
         | ScopeConstruction::XmlMixedContent { .. }
         | ScopeConstruction::PathHierarchy { .. }

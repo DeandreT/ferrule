@@ -352,6 +352,10 @@ impl fmt::Display for ProgramValidationError {
                 "dynamic extra source {source:?} driver {} matches no available static source path",
                 display_path(driver)
             ),
+            Self::InvalidDocumentRowsConstruction { target_path } => write!(
+                formatter,
+                "target {target_path:?} requires an ordinary document scope with one unnamed flat row scope"
+            ),
             Self::DynamicDocumentsRequireRoot { target_path } => write!(
                 formatter,
                 "target scope {} dynamic document iteration is valid only at a target root",

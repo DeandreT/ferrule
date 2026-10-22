@@ -12,6 +12,7 @@ mod csv_output;
 mod csv_x12_boundary;
 mod diagnostic;
 mod document_program;
+mod document_visitor;
 mod embedded_schema;
 mod join;
 mod json5_boundary;
@@ -36,7 +37,9 @@ pub use csv_json_boundary::{
     CsvJsonBoundaryError, CsvJsonBoundaryOwner, CsvJsonBoundaryPolicy, CsvJsonBoundaryProfile,
     NamedJsonTargetDescriptor, prepare_csv_json_boundary, prepare_csv_json_project_boundary,
 };
-pub use csv_output::{CsvOutputError, CsvOutputPolicy, validate_csv_output};
+pub use csv_output::{
+    CsvOutputError, CsvOutputPolicy, validate_csv_document_set_output, validate_csv_output,
+};
 pub use csv_x12_boundary::{
     CsvX12BoundaryError, CsvX12BoundaryPolicy, CsvX12BoundaryProfile, prepare_csv_x12_boundary,
     prepare_csv_x12_project_boundary,
@@ -44,6 +47,9 @@ pub use csv_x12_boundary::{
 pub use diagnostic::{Diagnostic, LowerError, ScopeFeature, UnsupportedNodeKind};
 pub use document_program::{
     DocumentLowerError, DocumentProgram, PrimaryFilenamePlan, lower_document,
+};
+pub use document_visitor::{
+    DocumentVisitorBoundaryError, DocumentVisitorEmitError, validate_document_visitor,
 };
 pub use embedded_schema::{
     EmbeddedSchemaError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_EMBEDDED_XML_SCHEMA_BYTES,

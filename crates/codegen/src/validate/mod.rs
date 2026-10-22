@@ -38,6 +38,7 @@ pub use error::{
     OwnedSourceNamespace, OwnedSourceSchemaShape, OwnedSourceStructureReason,
     ProgramValidationError,
 };
+pub(crate) use owned_sources::has_owned;
 pub use owned_sources::{
     owned_expression_emission_error, owned_sequence_emission_error,
     validate_basic_owned_collection_aggregates_emission, validate_owned_emission,
@@ -1108,6 +1109,33 @@ fn validate_scope(
     }
 
     match &scope.construction {
+        TargetConstruction::DocumentRows => {
+            let body = scope.children.first();
+            let flat = matches!(&target_node.kind, SchemaKind::Group { children, .. }
+                if children.iter().all(|field| field.is_scalar() && !field.repeating));
+            if !target_path.is_empty()
+                || !flat
+                || scope.iteration.as_ref().is_none_or(|iteration| {
+                    iteration.dynamic_document_iteration().is_none()
+                        || iteration.output() != IterationOutput::Repeated
+                })
+                || !scope.bindings.is_empty()
+                || scope.children.len() != 1
+                || body.is_none_or(|body| {
+                    !body.target_field.is_empty()
+                        || body.construction != TargetConstruction::Group
+                        || !body.children.is_empty()
+                        || body.iteration.as_ref().is_none_or(|iteration| {
+                            !matches!(iteration.input(), IterationSource::Source(_))
+                                || iteration.output() != IterationOutput::Repeated
+                        })
+                })
+            {
+                return Err(ProgramValidationError::InvalidDocumentRowsConstruction {
+                    target_path: target_path.clone(),
+                });
+            }
+        }
         TargetConstruction::Group | TargetConstruction::DynamicGroup { .. } => {
             if !matches!(target_node.kind, SchemaKind::Group { .. }) {
                 return Err(
@@ -1740,7 +1768,10 @@ fn validate_scope(
 
     let child_root_context = root_context && scope.iteration.is_none();
     for child in &scope.children {
-        target_path.push(child.target_field.clone());
+        let document_body = scope.construction == TargetConstruction::DocumentRows;
+        if !document_body {
+            target_path.push(child.target_field.clone());
+        }
         let result = validate_scope(
             child,
             expressions,
@@ -1755,7 +1786,9 @@ fn validate_scope(
             &scope_joins,
             child_root_context,
         );
-        target_path.pop();
+        if !document_body {
+            target_path.pop();
+        }
         result?;
     }
     Ok(())
