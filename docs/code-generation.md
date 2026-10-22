@@ -1184,6 +1184,44 @@ row validation precedes output encoding, and the 64 MiB limit counts all UTF-8
 bytes, including separators, CRLF, headers and any BOM. Generated text and byte
 methods return the same complete document or the existing typed stage failure.
 
+## Grouped CSV Document Plans
+
+The explicit grouped import produces a retained `DocumentProject`. Generate
+its complete CSV parsing, per-document serialization, filename evaluation and
+incremental visitor APIs with:
+
+```sh
+ferrule generate --project document.json --language rust --rust-runtime-path crates/codegen-runtime --out generated-rust --csv-document-set-adapters --raw-delimited-crlf
+ferrule generate --project document.json --language csharp --out generated-csharp --csv-document-set-adapters --raw-delimited-crlf
+```
+
+The source and target must have explicit CSV identities and flat supported
+schemas; the target must disable quoting. The flag requires the explicit raw
+CRLF policy and cannot be combined with another adapter profile. Ordinary
+project decoding and the single-document CSV adapter remain separate.
+
+Call `EvaluatePrimaryFilename` / `evaluate_primary_filename` with the supplied
+execution context before acquiring input. Then use the generated CSV parser
+and `VisitTargetDocumentsWithFilenameClock` /
+`visit_target_documents_with_filename_clock`. The host clock is sampled only
+at reached filename expressions, after the complete document body; body clocks
+retain the fixed execution-context value. Without an override, the ordinary
+visitor keeps its fixed-clock behavior.
+
+`SerializeCsvDocumentBytes` / `serialize_csv_document_bytes` serializes one
+complete row document without rerunning the mapping. The visitor reports
+complete delivery, consumer stop or an evaluation failure with the number of
+earlier accepted documents. A stopped document is not accepted. Empty row sets
+remain documents; no outer groups means no documents.
+
+File selection, input limits and decoding policy, destination confinement,
+publication and retry bookkeeping belong to the host. The library does not
+open files or promise atomic writes. Accept a document only after the required
+publication succeeds, and retain successful state when retrying failed work.
+The library-level composition is `codegen::lower_document` followed by
+`emit_document_with_csv_document_set_boundary`; the CLI uses the same path and
+publishes the generated source tree atomically.
+
 ## Flat CSV Input to X12
 
 Select `--csv-x12-adapters` with `--language csharp` to generate flat CSV text

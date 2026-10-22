@@ -27,7 +27,7 @@ may be combined. `--require-executable` applies to single-project imports and
 cannot be combined with `--pipeline`. Static admission does not execute the
 mapping or establish behavioral equivalence with another application.
 
-CSV, JSON and EDI document imports diagnose connected `FileInstance` filename
+Ordinary CSV, JSON and EDI document imports diagnose connected `FileInstance` filename
 inputs and outputs. Their document-loading and output-document behavior is not
 represented by the imported data mapping, so executable import refuses them.
 Ordinary import keeps the partial mapping with that diagnostic. Unconnected
@@ -214,6 +214,28 @@ under each catalog root. Parent traversal after a real path segment, absolute
 paths, ambiguous case-insensitive matches, and symlink escapes reject. Once the
 root schema matches a catalog, its nested local `$ref` graph remains confined
 to that same canonical root.
+
+### Explicit grouped CSV document import
+
+Use `--grouped-csv-documents` for the bounded version-26 profile with one flat
+String-column CSV source and target, separate document/row groupings and an
+unquoted target. This writes a `DocumentProject`, not an ordinary `Project`:
+
+```sh
+ferrule import-mfd --mfd design.mfd --out document.json --grouped-csv-documents
+```
+
+The retained primary filename never uses a preview as its runtime value. The
+profile preserves missing sequence presence, fixed-column declaration order,
+distinct-key text reductions, sequence-wide fallback text, decimal sums and
+directly connected default invocation counters. Raw ambiguous pins, unknown
+operators or metadata, extra endpoints, custom counter inputs and the separate
+exception-order profile are refused before writing the destination. This option
+cannot be combined with `--pipeline` or `--item-ordered-exceptions`.
+
+Generate the document library with `--csv-document-set-adapters` and an explicit
+`--raw-delimited-crlf` policy. Acquisition, byte decoding, clocks and file
+publication remain host contracts; see [grouped CSV generation](code-generation.md#grouped-csv-document-plans).
 
 ### Read-only parity surveys
 

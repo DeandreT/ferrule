@@ -194,6 +194,7 @@ enum Command {
             .args(["x12_adapters", "static_document_adapters"])
             .multiple(true)
     ))]
+    #[command(group(clap::ArgGroup::new("csv_document_io").args(["csv_document_adapters", "csv_document_set_adapters"])))]
     Generate {
         #[arg(long)]
         project: PathBuf,
@@ -237,8 +238,12 @@ enum Command {
         /// Include complete single-document CSV input/output methods in Rust or C#.
         #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters"])]
         csv_document_adapters: bool,
+        /// Generate a retained grouped CSV DocumentProject with explicit input,
+        /// per-document output and filename-clock APIs.
+        #[arg(long, requires = "raw_delimited_crlf", conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters"])]
+        csv_document_set_adapters: bool,
         /// Write unescaped target fields and CRLF records; target quoting must be disabled.
-        #[arg(long, requires = "csv_document_adapters")]
+        #[arg(long, requires = "csv_document_io")]
         raw_delimited_crlf: bool,
     },
     /// Import an XSD file's root element as a SchemaNode, printed as JSON --
@@ -271,6 +276,9 @@ enum Command {
         /// Refuse incomplete single-project imports before writing the project.
         #[arg(long, conflicts_with = "pipeline")]
         require_executable: bool,
+        /// Retain and lower the bounded grouped CSV document profile.
+        #[arg(long, conflicts_with_all = ["pipeline", "item_ordered_exceptions"])]
+        grouped_csv_documents: bool,
         /// Preserve supported row error order; refuse unsupported exception shapes.
         #[arg(long)]
         item_ordered_exceptions: bool,
@@ -795,6 +803,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             csv_x12_target_envelope_profile,
             csv_json_adapters,
             csv_document_adapters,
+            csv_document_set_adapters,
             raw_delimited_crlf,
         } => {
             if csv_json_adapters && matches!(language, CodegenLanguage::Rust) {
@@ -819,7 +828,14 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     cli::GenerateTarget::CSharp
                 }
             };
-            let outcome = if csv_document_adapters {
+            let outcome = if csv_document_set_adapters {
+                cli::generate_document_with_csv_document_set_adapters(
+                    &project,
+                    &out,
+                    target,
+                    raw_delimited_crlf,
+                )?
+            } else if csv_document_adapters {
                 if raw_delimited_crlf {
                     cli::generate_project_with_raw_delimited_document_adapters(
                         &project, &out, target,
@@ -883,13 +899,23 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             out,
             pipeline,
             require_executable,
+            grouped_csv_documents,
             item_ordered_exceptions,
             package_root,
             package_manifest,
             edi_catalog_roots,
             json_schema_catalog_roots,
         } => {
-            let warnings = if require_executable && !item_ordered_exceptions {
+            let warnings = if grouped_csv_documents {
+                cli::import_mfd_grouped_csv(
+                    &mfd,
+                    &out,
+                    package_root.as_deref(),
+                    package_manifest.as_deref(),
+                    &edi_catalog_roots,
+                    &json_schema_catalog_roots,
+                )?
+            } else if require_executable && !item_ordered_exceptions {
                 cli::import_mfd_with_profile(
                     &mfd,
                     &out,
@@ -1455,6 +1481,61 @@ mod csv_x12_flag_tests {
             "--csv-x12-adapters requires --language csharp"
         );
         assert!(!output.parent().unwrap().exists());
+    }
+}
+
+#[cfg(test)]
+mod grouped_csv_flag_tests {
+    use super::*;
+    use clap::error::ErrorKind;
+
+    #[test]
+    fn grouped_generation_requires_its_explicit_raw_policy() {
+        let base = [
+            "ferrule",
+            "generate",
+            "--project",
+            "unused.json",
+            "--language",
+            "csharp",
+            "--out",
+            "unused-output",
+            "--csv-document-set-adapters",
+        ];
+        assert_eq!(
+            Cli::try_parse_from(base).err().unwrap().kind(),
+            ErrorKind::MissingRequiredArgument
+        );
+        let mut selected = base.to_vec();
+        selected.push("--raw-delimited-crlf");
+        assert!(Cli::try_parse_from(&selected).is_ok());
+        selected.push("--csv-document-adapters");
+        assert_eq!(
+            Cli::try_parse_from(selected).err().unwrap().kind(),
+            ErrorKind::ArgumentConflict
+        );
+    }
+
+    #[test]
+    fn grouped_import_keeps_pipeline_and_exception_profiles_separate() {
+        let base = [
+            "ferrule",
+            "import-mfd",
+            "--mfd",
+            "unused.mfd",
+            "--out",
+            "unused.json",
+            "--grouped-csv-documents",
+        ];
+        assert!(Cli::try_parse_from(base).is_ok());
+        for flag in ["--pipeline", "--item-ordered-exceptions"] {
+            let mut conflicting = base.to_vec();
+            conflicting.push(flag);
+            assert_eq!(
+                Cli::try_parse_from(conflicting).err().unwrap().kind(),
+                ErrorKind::ArgumentConflict
+            );
+        }
     }
 }
 
