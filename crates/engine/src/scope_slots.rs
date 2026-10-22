@@ -19,6 +19,19 @@ pub(crate) fn roots(scope: &Scope, admit: impl Fn(Slot) -> bool) -> Vec<NodeId> 
     roots
 }
 
+/// This scope's admitted roots ordered by rank, in visit order within a rank.
+pub(crate) fn ranked_roots<R: Ord>(scope: &Scope, rank: impl Fn(Slot) -> Option<R>) -> Vec<NodeId> {
+    let mut roots = Vec::new();
+    scope.visit_roots(&mut |root| {
+        if let Some(rank) = rank(root.slot) {
+            roots.push((rank, root.node));
+        }
+    });
+    // Stable, so roots sharing a rank keep their visit order.
+    roots.sort_by(|(left, _), (right, _)| left.cmp(right));
+    roots.into_iter().map(|(_, node)| node).collect()
+}
+
 /// Required-source discovery reads every root except the reserved item a
 /// composed sequence owns besides its own item. Generated items are
 /// unframed empty-path fields, so neither names a source.
@@ -73,6 +86,37 @@ pub(crate) fn join_validation(slot: Slot) -> bool {
     )
 }
 
+/// The order in which join validation reads the roots a scope evaluates once
+/// in its parent context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum ParentJoinRoot {
+    BlockSize,
+    Window,
+    SequenceInput,
+    Presence,
+}
+
+/// The roots whose join references are validated against the parent's active
+/// joins: exactly the parent-role roots. Validation pops roots last first, so
+/// they are read block size first, then windows, sequence inputs and
+/// presence, the order these issues have always been reported in, rather
+/// than in visit order.
+pub(crate) fn parent_join_validation(slot: Slot) -> Option<ParentJoinRoot> {
+    match slot {
+        Slot::GroupIntoBlocks => Some(ParentJoinRoot::BlockSize),
+        Slot::Window(_) => Some(ParentJoinRoot::Window),
+        Slot::SequenceInput => Some(ParentJoinRoot::SequenceInput),
+        Slot::Presence => Some(ParentJoinRoot::Presence),
+        _ => None,
+    }
+}
+
+/// The receiving-context expressions of an owned join scope: its window
+/// bounds. Every other root of the scope belongs to its tuple.
+pub(crate) fn owned_join_receiving(slot: Slot) -> bool {
+    matches!(slot, Slot::Window(_))
+}
+
 /// The tuple expressions of an owned join scope and its static descendants.
 /// Its windows are receiving-context expressions admitted separately.
 pub(crate) fn join_tuple(slot: Slot) -> bool {
@@ -99,12 +143,17 @@ pub(crate) enum AdmittedRoot {
     Scope,
     /// Before the construction, in the dynamic target context.
     DynamicBinding,
+    /// In visit order, in the context the scope's construction kind decides.
+    Construction,
     /// After the construction, in the dynamic target context.
     DynamicChildKey,
 }
 
-/// Construction and sequence roots are admitted with their construction or
-/// sequence, whose contexts depend on more than the slot.
+/// Sequence roots are admitted with their sequence, before every other root.
+/// The visitor flattens a composed sequence into one input slot, while
+/// admission reads each composition level in a context derived from the
+/// level enclosing it and admits the level's functions and collection
+/// between levels, so their contexts cannot be recovered from the slot.
 pub(crate) fn admitted(slot: Slot) -> Option<AdmittedRoot> {
     match slot {
         Slot::Filter
@@ -123,11 +172,11 @@ pub(crate) fn admitted(slot: Slot) -> Option<AdmittedRoot> {
         Slot::DynamicBindingKey(_) | Slot::DynamicBindingValue(_) => {
             Some(AdmittedRoot::DynamicBinding)
         }
+        Slot::ScalarValue | Slot::RecursiveFilterPredicate | Slot::AdjacencyTreeRoot => {
+            Some(AdmittedRoot::Construction)
+        }
         Slot::DynamicChildKey(_) => Some(AdmittedRoot::DynamicChildKey),
-        Slot::ScalarValue
-        | Slot::RecursiveFilterPredicate
-        | Slot::AdjacencyTreeRoot
-        | Slot::SequenceInput
+        Slot::SequenceInput
         | Slot::SequenceItem
         | Slot::SequenceReservedItem
         | Slot::FailurePredicate
