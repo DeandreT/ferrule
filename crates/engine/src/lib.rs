@@ -17,6 +17,7 @@ mod adjacency_tree;
 mod aggregate;
 mod context;
 mod debug;
+mod documents;
 mod dynamic_field_owned;
 mod dynamic_target;
 mod eval_expr;
@@ -65,6 +66,7 @@ pub use debug::{
     PendingFunctionNodeValue, PendingNodeFailure, PendingNodeInput, PendingNodeValue,
     PendingTargetWrite,
 };
+pub use documents::{DocumentVisit, DocumentVisitError, visit_target_documents};
 pub use filter_map::{
     FilterMapBoundary, FilterMapBoundaryKind, FilterMapBudgetKind, FilterMapCancellation,
     FilterMapLimitError, FilterMapLimits, FilterMapPhase, MAX_FILTER_MAP_SOURCE_ITEMS,
@@ -279,6 +281,8 @@ pub enum OwnedCapabilityContext {
 
 #[derive(Debug, Error, PartialEq)]
 pub enum EngineError {
+    #[error("document streaming is unsupported: {reason}")]
+    DocumentStreamUnsupported { reason: &'static str },
     #[error("graph node {node}: invocation counters require explicit host limits")]
     MissingInvocationCounters { node: NodeId },
     #[error("graph node {node}: counter {operand} expected {expected}, got {found}")]
