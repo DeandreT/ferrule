@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
     Binding, DynamicBinding, DynamicChild, FilterMapCapture, FilterMapV1, FunctionId, Graph,
@@ -399,4 +401,89 @@ fn join_validation_reports_a_block_size_with_the_parent_roots() {
         [4, 3, 5, 6, 2, 1]
             .map(|node| format!("join field node {node} references inactive join 99"))
     );
+}
+
+/// Item-ownership validation's scope roots as it collected them by hand.
+fn legacy_scope_graph_roots(scope: &Scope, roots: &mut BTreeSet<NodeId>) {
+    roots.extend(scope.filter);
+    roots.extend(scope.post_group_filter);
+    roots.extend(scope.grouping_nodes());
+    roots.extend(scope.sort_keys().map(|key| key.node));
+    roots.extend(scope.output_path());
+    roots.extend(scope.presence());
+    roots.extend(
+        scope
+            .windows
+            .iter()
+            .copied()
+            .flat_map(|window| window.nodes()),
+    );
+    if let Some(sequence) = scope.sequence() {
+        roots.extend(sequence.inputs());
+    }
+    if let ScopeConstruction::Scalar { value } = &scope.construction {
+        roots.insert(*value);
+    }
+    if let ScopeConstruction::RecursiveFilter { plan } = &scope.construction {
+        roots.insert(plan.predicate());
+    }
+    if let ScopeConstruction::AdjacencyTree { plan } = &scope.construction
+        && let Some(root) = plan.root()
+    {
+        roots.insert(root);
+    }
+    if let ScopeConstruction::OwnedAdjacencyTree { plan } = &scope.construction
+        && let Some(root) = plan.root()
+    {
+        roots.insert(root);
+    }
+    if let Some(segments) = scope.concatenated() {
+        for segment in segments.iter() {
+            legacy_scope_graph_roots(segment, roots);
+        }
+    }
+    roots.extend(scope.bindings.iter().map(|binding| binding.node));
+    for binding in &scope.dynamic_bindings {
+        roots.extend([binding.key, binding.value]);
+    }
+    for child in &scope.children {
+        legacy_scope_graph_roots(child, roots);
+    }
+    for child in &scope.dynamic_children {
+        roots.insert(child.key);
+        legacy_scope_graph_roots(&child.scope, roots);
+    }
+}
+
+#[test]
+fn item_ownership_reads_every_root_but_item_identities() {
+    let mut fixtures = parent_fixtures();
+    fixtures.push(composed_sequence());
+    let mut nested = every_slot();
+    nested.children.push(composed_sequence());
+    nested.children.push(Scope {
+        construction: ScopeConstruction::Scalar { value: 40 },
+        ..Scope::default()
+    });
+    fixtures.push(nested);
+    for scope in fixtures {
+        let mut roots = BTreeSet::new();
+        shared_graph_roots(&scope, &mut roots);
+        let mut legacy = BTreeSet::new();
+        legacy_scope_graph_roots(&scope, &mut legacy);
+        assert_eq!(roots, legacy, "{scope:?}");
+    }
+    let projects = super::project_corpus::projects();
+    for project in &projects {
+        for root in std::iter::once(&project.root)
+            .chain(project.extra_targets.iter().map(|target| &target.root))
+        {
+            let mut roots = BTreeSet::new();
+            shared_graph_roots(root, &mut roots);
+            let mut legacy = BTreeSet::new();
+            legacy_scope_graph_roots(root, &mut legacy);
+            assert_eq!(roots, legacy);
+        }
+    }
+    assert!(projects.len() > 50, "{} corpus projects", projects.len());
 }
