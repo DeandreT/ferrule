@@ -25,6 +25,7 @@ use crate::{DebugHook, EngineError, ExecutionPurpose};
 #[derive(Clone, Copy)]
 pub(crate) struct EvalProgram<'a> {
     document_filename_clock: Option<&'a dyn crate::DocumentFilenameClock>,
+    document_body_clock: Option<&'a dyn crate::DocumentBodyClock>,
     evaluating_document_filename: bool,
     pub(crate) invocation_counters: Option<&'a RefCell<functions::InvocationCounters>>,
     pub(crate) graph: &'a Graph,
@@ -55,6 +56,7 @@ impl<'a> EvalProgram<'a> {
     ) -> Self {
         Self {
             document_filename_clock: None,
+            document_body_clock: None,
             evaluating_document_filename: false,
             invocation_counters: None,
             graph,
@@ -103,6 +105,14 @@ impl<'a> EvalProgram<'a> {
 
     pub(crate) fn for_document_filename(mut self) -> Self {
         self.evaluating_document_filename = true;
+        self
+    }
+
+    pub(crate) fn with_document_body_clock(
+        mut self,
+        clock: Option<&'a dyn crate::DocumentBodyClock>,
+    ) -> Self {
+        self.document_body_clock = clock;
         self
     }
 
@@ -473,6 +483,17 @@ fn eval_expr_inner(
                     .sample_datetime()
                     .map(Value::String)
                     .map_err(|message| EngineError::DocumentFilenameClock {
+                        node: node_id,
+                        message,
+                    })
+            } else if !program.evaluating_document_filename
+                && *value == mapping::RuntimeValue::CurrentDateTime
+                && let Some(clock) = program.document_body_clock
+            {
+                clock
+                    .sample_datetime()
+                    .map(Value::String)
+                    .map_err(|message| EngineError::DocumentBodyClock {
                         node: node_id,
                         message,
                     })

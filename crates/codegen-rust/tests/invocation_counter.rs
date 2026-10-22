@@ -11,6 +11,8 @@ use host_target::GeneratedHostCommand;
 
 #[path = "../../../conformance/invocation-counter-expressions/admission.rs"]
 mod admission;
+#[path = "../../../conformance/document-body-clocks/project.rs"]
+mod document_body_clocks;
 #[path = "../../../conformance/document-clocks/project.rs"]
 mod document_clocks;
 #[path = "../../../conformance/document-rows/publication.rs"]
@@ -121,6 +123,32 @@ fn generated_document_filename_clock_is_lazy_and_body_local() -> Result<(), Box<
 }
 
 #[test]
+fn generated_document_body_clocks_are_reached_and_distinct_from_filenames()
+-> Result<(), Box<dyn Error>> {
+    run_fixture_with_options(
+        document_body_clocks::project(document_clocks::project()),
+        "document_body_clock_mapping",
+        include_str!("../../../conformance/document-body-clocks/Host.rs.txt"),
+        "PASS document body clocks",
+        Some((None, true)),
+        true,
+    )
+}
+
+#[test]
+fn generated_document_body_clocks_keep_the_unselected_primary_inactive()
+-> Result<(), Box<dyn Error>> {
+    run_fixture_with_options(
+        document_body_clocks::named(document_body_clocks::project(document_clocks::project())),
+        "document_body_clock_mapping",
+        include_str!("../../../conformance/document-body-clocks/Host.rs.txt"),
+        "PASS document body clocks",
+        Some((Some("selected"), true)),
+        true,
+    )
+}
+
+#[test]
 fn generated_csv_visitor_publishes_only_complete_accepted_documents() -> Result<(), Box<dyn Error>>
 {
     run_fixture_with_visitor(
@@ -148,6 +176,17 @@ fn run_fixture_with_visitor(
     expected: &str,
     visitor: Option<(Option<&str>, bool)>,
 ) -> Result<(), Box<dyn Error>> {
+    run_fixture_with_options(project, package_name, host, expected, visitor, false)
+}
+
+fn run_fixture_with_options(
+    project: mapping::Project,
+    package_name: &str,
+    host: &str,
+    expected: &str,
+    visitor: Option<(Option<&str>, bool)>,
+    body_clock: bool,
+) -> Result<(), Box<dyn Error>> {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_nanos();
@@ -164,7 +203,9 @@ fn run_fixture_with_visitor(
             runtime.to_string_lossy().into_owned(),
         ),
     };
-    let artifacts = if visitor == Some((None, true))
+    let artifacts = if body_clock {
+        codegen_rust::emit_with_document_clocks(&program, &options, visitor.and_then(|v| v.0))?
+    } else if visitor == Some((None, true))
         && program.root.construction == codegen::TargetConstruction::DocumentRows
     {
         codegen_rust::emit_with_csv_document_set_visitor(
