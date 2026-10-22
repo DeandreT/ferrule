@@ -84,6 +84,8 @@ mod csv_x12_adapters;
 mod disconnected_inputs;
 #[path = "code_generation/dynamic_properties.rs"]
 mod dynamic_properties;
+#[path = "code_generation/dynamic_source_fault_projection.rs"]
+mod dynamic_source_fault_projection;
 #[path = "code_generation/enclosing_frame_date_producers.rs"]
 mod enclosing_frame_date_producers;
 #[path = "code_generation/enclosing_frame_value_maps.rs"]

@@ -202,7 +202,12 @@ Engine (`engine` crate):
   other hosts can apply the same rules at their own acquisition points.
 - `ExecutionContext::with_policy(&policy)`.
 - `DynamicSourceLoader::load_restricted`, which policy-aware hosts implement.
-  Its default refuses with `UnconfinedDynamicSourceLoader`.
+  Its default refuses with `UnconfinedDynamicSourceLoader`. The engine calls
+  its tagged form, `load_restricted_tagged`, whose default adapts it. A refusal
+  becomes `EngineError::DynamicSourceRefused`, whose `DynamicSourceRefusal`
+  holds the source name, logical path and typed refusal. `DynamicSourceDiagnostic` projects it as a host acquisition failure, as
+  generated libraries see a confining host's refusal (see
+  [interpreter host loaders](../code-generation.md#interpreter-host-loaders)).
 
 CLI library (`cli` crate): the `execution_policy` field or builder on
 `RunOptions`, `StandardIoRunOptions`, `PipelineRunOptions` (shared by pipeline

@@ -9,7 +9,7 @@ use mapping::{
 
 use super::{DynamicSourceLoader, EngineError, ExecutionContext, run_with_context, validate};
 
-struct FixtureLoader;
+pub(crate) struct FixtureLoader;
 
 impl DynamicSourceLoader for FixtureLoader {
     fn load(&self, source: &str, path: &str) -> Result<Arc<Instance>, String> {
@@ -37,7 +37,7 @@ impl DynamicSourceLoader for FixtureLoader {
     }
 }
 
-fn dynamic_project() -> Project {
+pub(crate) fn dynamic_project() -> Project {
     let source = SchemaNode::group(
         "Files",
         vec![SchemaNode::scalar("File", ScalarType::String).repeating()],
@@ -253,12 +253,15 @@ fn restricted_dynamic_sources_require_a_policy_aware_loader() {
     let first = files(&[Some("first.xml")]);
     assert_eq!(
         run(&FixtureLoader, &first),
-        Err(EngineError::DynamicSourceRefused {
-            source_name: "document".into(),
-            refusal: crate::PolicyRefusal::UnsupportedCapability {
-                capability: crate::RestrictedCapability::UnconfinedDynamicSourceLoader,
-            },
-        })
+        Err(EngineError::DynamicSourceRefused(Box::new(
+            crate::DynamicSourceRefusal {
+                source_name: "document".into(),
+                path: "first.xml".into(),
+                refusal: crate::PolicyRefusal::UnsupportedCapability {
+                    capability: crate::RestrictedCapability::UnconfinedDynamicSourceLoader,
+                },
+            }
+        )))
     );
     // A Null path acquires nothing, so even an unaware loader is never asked.
     assert!(run(&FixtureLoader, &files(&[None])).is_ok());
@@ -275,12 +278,15 @@ fn restricted_dynamic_sources_require_a_policy_aware_loader() {
             &PolicyAwareLoader,
             &files(&[Some("first.xml"), Some("second.xml")])
         ),
-        Err(EngineError::DynamicSourceRefused {
-            source_name: "document".into(),
-            refusal: crate::PolicyRefusal::HttpOriginDenied {
-                origin: "second.xml".into(),
-            },
-        })
+        Err(EngineError::DynamicSourceRefused(Box::new(
+            crate::DynamicSourceRefusal {
+                source_name: "document".into(),
+                path: "second.xml".into(),
+                refusal: crate::PolicyRefusal::HttpOriginDenied {
+                    origin: "second.xml".into(),
+                },
+            }
+        )))
     );
 }
 
