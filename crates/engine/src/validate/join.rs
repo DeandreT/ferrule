@@ -503,26 +503,17 @@ fn owned_member(
     None
 }
 
-/// The inputs join validation reads without the consumer's root context, in
-/// visit order. They follow the evaluation roles, per item, per generated item
-/// and per framed occurrence, except where join validation has always
-/// classified by node kind: every input of a legacy lookup or mixed-content
-/// node counts, although a lookup's needle and a parent-frame replacement are
-/// evaluated in the consumer's context, and no input of an owned search or
-/// owned mixed content counts, although those evaluate with item or
-/// occurrence frames.
+/// The inputs evaluated with a new item, generated-item or occurrence frame,
+/// which join validation reads without the consumer's root context, in visit
+/// order. Every other input, including a lookup's needle and a replacement
+/// kept in the parent frame, is evaluated in the consumer's own context.
 pub(super) fn item_context_inputs(node: &Node) -> Vec<NodeId> {
     let mut inputs = Vec::new();
     node.visit_inputs(&mut |input| {
-        let item_context = match node {
-            Node::Lookup { .. } | Node::XmlMixedContent { .. } => true,
-            Node::OwnedCollectionFind(_) | Node::OwnedXmlMixedContent(_) => false,
-            _ => matches!(
-                input.role,
-                NodeInputRole::Item | NodeInputRole::GeneratedItem | NodeInputRole::Occurrence
-            ),
-        };
-        if item_context {
+        if matches!(
+            input.role,
+            NodeInputRole::Item | NodeInputRole::GeneratedItem | NodeInputRole::Occurrence
+        ) {
             inputs.push(input.node);
         }
     });

@@ -260,7 +260,8 @@ fn legacy_node_inputs(node: &Node) -> Vec<(String, NodeId)> {
     }
 }
 
-/// Join validation's item-context inputs as they were written by hand.
+/// Join validation's item-context inputs as they were written by hand, which
+/// classified lookups, mixed content and owned searches by node kind.
 fn legacy_item_context_inputs(node: &Node) -> Vec<NodeId> {
     match node {
         Node::Aggregate { expression, .. } => expression.iter().copied().collect(),
@@ -758,6 +759,31 @@ fn corpus_nodes() -> Vec<Node> {
     nodes
 }
 
+/// The item-context inputs join validation reads by role: the hand-written
+/// classification everywhere except lookups and mixed content, legacy and
+/// owned, and owned searches, which now follow their evaluation context.
+fn role_item_context_inputs(node: &Node) -> Vec<NodeId> {
+    match node {
+        // A needle is evaluated once in the consumer's context.
+        Node::Lookup { .. } | Node::OwnedLookup(_) => Vec::new(),
+        // Only a replacement with a collection gets an occurrence frame.
+        Node::XmlMixedContent { replacements, .. } => replacements
+            .iter()
+            .filter(|replacement| !replacement.collection.is_empty())
+            .map(|replacement| replacement.expression)
+            .collect(),
+        Node::OwnedXmlMixedContent(mixed) => mixed
+            .replacements
+            .iter()
+            .filter(|replacement| replacement.context == OwnedXmlMixedContentContext::Occurrence)
+            .map(|replacement| replacement.expression)
+            .collect(),
+        // Each candidate is the latest frame of the predicate and value.
+        Node::OwnedCollectionFind(find) => vec![find.predicate, find.value],
+        _ => legacy_item_context_inputs(node),
+    }
+}
+
 fn check(node: &Node) {
     let new_labelled = node_inputs(node);
     assert_eq!(node.dependencies(), legacy_dependencies(node), "{node:?}");
@@ -769,7 +795,7 @@ fn check(node: &Node) {
     );
     assert_eq!(
         item_context_inputs(node),
-        legacy_item_context_inputs(node),
+        role_item_context_inputs(node),
         "{node:?}"
     );
     if matches!(
