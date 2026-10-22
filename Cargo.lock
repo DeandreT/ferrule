@@ -914,6 +914,7 @@ dependencies = [
  "codegen-rust",
  "codegen-schema",
  "engine",
+ "flate2",
  "format-csv",
  "format-db",
  "format-edi",

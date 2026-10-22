@@ -217,8 +217,16 @@ pub fn assert_closed(launch: Launch, receipt: &ClosedReceipt) {
         assert!(receipt.child_birth.is_some());
         assert_eq!(receipt.child_ppid, Some(std::process::id()));
     } else {
+        // No child, so no spawn, Ready limits, birth identity or reap usage.
         assert!(!receipt.own_reap && !receipt.pidfd_acquired);
-        assert!(receipt.raw_wait_status.is_none());
+        assert!(receipt.raw_wait_status.is_none() && receipt.reap_usage.is_none());
+        assert!(receipt.child_birth.is_none() && receipt.effective_limits.is_none());
+        assert!(
+            !receipt
+                .events
+                .iter()
+                .any(|event| event.operation == "spawn")
+        );
     }
     assert!(receipt.observed_unexpected_children.is_empty());
     assert!(!receipt.stop_allowance_exceeded);
