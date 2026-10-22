@@ -1,6 +1,6 @@
 //! Lazy native substitution for immutable ordinary-JSON String fields.
 
-use ir::{ScalarType, SchemaKind};
+use ir::{JsonNullability, ScalarType, SchemaKind, SchemaNode};
 use mapping::{Node, NodeId};
 
 use super::constructed_parser_scalar;
@@ -247,36 +247,13 @@ impl GraphBuilder<'_> {
         }
         let path = source.ports.get(&output)?.clone();
         let leaf = schema_node_at(&source.schema, &path)?;
-        if leaf.repeating
-            || !matches!(
-                leaf.kind,
-                SchemaKind::Scalar {
-                    ty: ScalarType::String
-                }
-            )
-            || (nullable && !leaf.nullable)
-            || path.is_empty()
-            || leaf.json_any
-            || leaf.json_array_wrapper
-            || leaf.container_nullable
-            || leaf.json_object_item_nullable.is_some()
-            || leaf.default.is_some()
-            || leaf.value_generation.is_some()
-            || leaf.recursive_ref.is_some()
-        {
+        if !substitution_leaf(leaf, nullable) || path.is_empty() {
             return None;
         }
         for depth in 0..path.len() {
             let node = schema_node_at(&source.schema, &path[..depth])?;
-            if !matches!(node.kind, SchemaKind::Group { .. })
+            if !substitution_ancestor(node)
                 || (node.repeating && !self.framed.contains(&path[..depth]))
-                || node.container_nullable
-                || node.json_single_container_nullable()
-                || node.json_array_wrapper
-                || node.json_any
-                || node.recursive_ref.is_some()
-                || !node.alternatives().is_empty()
-                || node.dynamic_fields().is_some()
             {
                 return None;
             }
@@ -310,4 +287,34 @@ impl GraphBuilder<'_> {
                 .as_ref()
                 .is_some_and(|(_, ty)| ty == "string")
     }
+}
+
+/// A singular plain JSON string leaf. A nullable substitution requires the
+/// leaf's own value to admit explicit null; a non-null one accepts either.
+pub(super) fn substitution_leaf(leaf: &SchemaNode, nullable: bool) -> bool {
+    !leaf.repeating
+        && matches!(
+            leaf.kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::String
+            }
+        )
+        && matches!(
+            leaf.effective_json_nullability(),
+            Ok(JsonNullability::Occurrence { null }) if null || !nullable
+        )
+        && !leaf.json_any
+        && leaf.default.is_none()
+        && leaf.value_generation.is_none()
+        && leaf.recursive_ref.is_none()
+}
+
+/// An ordinary JSON object, or array of objects, with no null at any level.
+pub(super) fn substitution_ancestor(node: &SchemaNode) -> bool {
+    matches!(node.kind, SchemaKind::Group { .. })
+        && super::presence::json_plain_non_null(node)
+        && !node.json_any
+        && node.recursive_ref.is_none()
+        && node.alternatives().is_empty()
+        && node.dynamic_fields().is_none()
 }

@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use ir::SchemaKind;
+use ir::{SchemaKind, SchemaNode};
 use mapping::{IterationOutput, Node, NodeId, Scope};
 
 use super::super::function::produces_scalar;
@@ -269,15 +269,15 @@ fn at<'a>(mut scope: &'a Scope, path: &[String]) -> Option<&'a Scope> {
 
 fn plain_source_path(path: &[String], builder: &GraphBuilder<'_>) -> bool {
     (1..=path.len()).all(|length| {
-        schema_node_at(&builder.sources[0].schema, &path[..length]).is_some_and(|node| {
-            !node.container_nullable
-                && !node.nullable
-                && !node.json_single_container_nullable()
-                && !node.json_any
-                && !node.json_array_wrapper
-                && matches!(node.kind, SchemaKind::Group { .. })
-        })
+        schema_node_at(&builder.sources[0].schema, &path[..length]).is_some_and(plain_source_group)
     })
+}
+
+/// A JSON object, or array of objects, with no null at any level.
+pub(in crate::import) fn plain_source_group(node: &SchemaNode) -> bool {
+    crate::import::presence::json_plain_non_null(node)
+        && !node.json_any
+        && matches!(node.kind, SchemaKind::Group { .. })
 }
 
 fn at_mut<'a>(scope: &'a mut Scope, path: &[String]) -> Option<&'a mut Scope> {
@@ -408,15 +408,19 @@ fn raw_scalar_owner_bounded(
 fn source_path_in_frame(path: &[String], active: &[String], builder: &GraphBuilder<'_>) -> bool {
     (1..=path.len()).all(|length| {
         schema_node_at(&builder.sources[0].schema, &path[..length]).is_some_and(|node| {
-            (!node.repeating || active.starts_with(&path[..length]))
-                && !node.json_array_wrapper
-                && !node.json_any
-                && (!matches!(node.kind, SchemaKind::Group { .. })
-                    || !node.nullable
-                        && !node.container_nullable
-                        && !node.json_single_container_nullable())
+            (!node.repeating || active.starts_with(&path[..length])) && framed_source_step(node)
         })
     })
+}
+
+/// One step of a framed source path: outside a nested-array frame, with
+/// non-null objects. Scalar values keep their own null admission.
+pub(in crate::import) fn framed_source_step(node: &SchemaNode) -> bool {
+    !node.json_any
+        && node.effective_json_nullability().is_ok_and(|json| {
+            !matches!(json, ir::JsonNullability::NestedArrays { .. })
+                && (!matches!(node.kind, SchemaKind::Group { .. }) || !json.admits_null())
+        })
 }
 
 fn scalar_frames(

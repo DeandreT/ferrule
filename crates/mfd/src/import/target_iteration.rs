@@ -19,6 +19,13 @@ mod conditional_group_driver;
 mod implicit_branches;
 mod sparse_child;
 use branch_owners::{BindingOrigins, DeclaredBranch, DeclaredBranches};
+#[cfg(test)]
+pub(super) use implicit_branches::{
+    json_frame_anchor, json_scalar_leaf, ordinary_scalar_domain_node, plain_schema,
+    value_map_domain_node,
+};
+#[cfg(test)]
+pub(super) use sparse_child::{framed_source_step, plain_source_group};
 
 pub(super) fn csv_raw_authority(
     structure: &roxmltree::Node<'_, '_>,

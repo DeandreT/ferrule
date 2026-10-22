@@ -162,8 +162,8 @@ fn render_non_nullable_shape(
             super::ranges::render(node, out)?;
             super::string_lengths::render(node, out);
             super::formats::render(node, out);
-            super::patterns::render(node, out);
-            super::multiples::render(node, out)?;
+            super::patterns::render(node, layers.value_null, out);
+            super::multiples::render(node, layers.value_null, out)?;
         }
         SchemaKind::ScalarUnion { types } => {
             let mut types = types
@@ -179,8 +179,8 @@ fn render_non_nullable_shape(
             super::ranges::render(node, out)?;
             super::string_lengths::render(node, out);
             super::formats::render(node, out);
-            super::patterns::render(node, out);
-            super::multiples::render(node, out)?;
+            super::patterns::render(node, layers.value_null, out);
+            super::multiples::render(node, layers.value_null, out)?;
         }
         SchemaKind::Group {
             children,

@@ -119,11 +119,7 @@ pub(super) fn expand_record(
                             source: source.source,
                             path: source.path[..length].to_vec(),
                         })
-                        .is_some_and(|node| {
-                            !node.nullable
-                                && !node.container_nullable
-                                && node.alternatives().is_empty()
-                        })
+                        .is_some_and(present_record_step)
                         && (length == 0
                             || builder
                                 .schema_node(&SourcePath {
@@ -131,7 +127,10 @@ pub(super) fn expand_record(
                                     path: source.path[..length - 1].to_vec(),
                                 })
                                 .is_some_and(|parent| {
-                                    parent.required_fields().contains(&source.path[length - 1])
+                                    super::presence::json_property_required(
+                                        parent,
+                                        &source.path[length - 1],
+                                    )
                                 }))
                 });
         }
@@ -154,4 +153,10 @@ pub(super) fn expand_record(
             })
             .collect(),
     ))
+}
+
+/// One step of a JSON record input that establishes presence: its occurrence,
+/// array container or scalar value is never null and it has no alternatives.
+pub(super) fn present_record_step(node: &SchemaNode) -> bool {
+    super::presence::json_values_non_null(node) && node.alternatives().is_empty()
 }
