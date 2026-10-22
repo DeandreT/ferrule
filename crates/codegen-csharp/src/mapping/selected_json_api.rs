@@ -96,7 +96,7 @@ pub(super) fn render(program: &Program, output: &mut String) {
 "#
         ));
         if dynamic {
-            output.push_str("        global::Ferrule.Runtime.IFerruleDynamicSourceLoader? adapter = loader is null\n            ? null\n            : new GeneratedDynamicJsonSourceLoader(loader);\n");
+            output.push_str("        global::Ferrule.Runtime.IFerruleDynamicSourceLoader? adapter = loader is null\n            ? null\n            : new global::Ferrule.Runtime.FerruleJsonDynamicSourceAdapter(loader, DynamicSourceJsonSchema);\n");
         } else {
             output.push_str(
                 "        global::Ferrule.Runtime.IFerruleDynamicSourceLoader? adapter = null;\n",
