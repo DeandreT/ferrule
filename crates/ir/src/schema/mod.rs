@@ -16,7 +16,7 @@ mod string_length_range;
 
 pub use effective::{
     EffectiveCardinality, EffectiveNullability, EffectivePresence, EffectiveSchemaView,
-    EffectiveViewError, JsonNullability, RepeatedItems,
+    EffectiveViewError, EffectiveXmlView, JsonNullability, RepeatedItems, XmlOccurrence,
 };
 pub use item_count_range::ItemCountRange;
 pub use json_allowed_values::{

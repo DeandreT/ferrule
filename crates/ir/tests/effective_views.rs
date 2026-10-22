@@ -1,6 +1,6 @@
 use ir::{
     EffectiveCardinality, EffectivePresence, EffectiveViewError, ItemCountRange, JsonNullability,
-    RepeatedItems, ScalarType, ScalarTypeSet, SchemaNode,
+    RepeatedItems, ScalarType, ScalarTypeSet, SchemaNode, XmlOccurrence,
 };
 
 fn single(presence: EffectivePresence) -> EffectiveCardinality {
@@ -281,4 +281,139 @@ fn views_are_derived_without_changing_saved_schema_wire() {
     let restored: SchemaNode = serde_json::from_str(&wire).unwrap();
     assert_eq!(restored, schema);
     assert_eq!(restored.effective_view().unwrap(), view);
+}
+
+fn is_xml_error(error: EffectiveViewError) -> bool {
+    matches!(
+        error,
+        EffectiveViewError::XmlOptionalOutsideElement
+            | EffectiveViewError::XmlAttributeRequiredOutsideAttribute
+    )
+}
+
+#[test]
+fn layer_views_compose_the_complete_view_and_ignore_the_other_format() {
+    let wrapper = SchemaNode::group("matrix", vec![text("item").repeating()]);
+    let shapes = [
+        text("Value"),
+        SchemaNode::group("Value", vec![]),
+        SchemaNode::group("Value", vec![text("Leaf")]),
+        wrapper,
+    ];
+    let (mut complete, mut xml_only, mut json_only) = (0, 0, 0);
+    for shape in shapes {
+        for bits in 0u32..(1 << 9) {
+            for item in [None, Some(false), Some(true)] {
+                let mut node = shape.clone();
+                node.repeating = bits & 1 != 0;
+                node.attribute = bits & 2 != 0;
+                node.text = bits & 4 != 0;
+                node.nillable = bits & 8 != 0;
+                node.xml_optional = bits & 16 != 0;
+                node.xml_attribute_required = bits & 32 != 0;
+                node.nullable = bits & 64 != 0;
+                node.container_nullable = bits & 128 != 0;
+                node.json_array_wrapper = bits & 256 != 0;
+                node.json_object_item_nullable = item;
+                let xml = node.effective_xml_view();
+                let json = node.effective_json_nullability();
+                match node.effective_view() {
+                    Ok(view) => {
+                        complete += 1;
+                        assert_eq!(xml, Ok(view.xml()), "{node:?}");
+                        assert_eq!(json, Ok(view.nullability().json()), "{node:?}");
+                        assert_eq!(view.xml().nil(), node.nillable);
+                    }
+                    // JSON metadata is checked first, so an XML error means the
+                    // JSON layer alone is still interpretable, and vice versa.
+                    Err(error) if is_xml_error(error) => {
+                        xml_only += 1;
+                        assert_eq!(xml, Err(error), "{node:?}");
+                        assert!(json.is_ok(), "{node:?}");
+                    }
+                    Err(error) => {
+                        assert_eq!(json, Err(error), "{node:?}");
+                        if let Ok(xml) = xml {
+                            json_only += 1;
+                            let expected = if node.repeating {
+                                XmlOccurrence::Repeated
+                            } else {
+                                XmlOccurrence::Single {
+                                    presence: if node.attribute && !node.xml_attribute_required
+                                        || !node.attribute && node.xml_optional
+                                    {
+                                        EffectivePresence::Optional
+                                    } else {
+                                        EffectivePresence::Required
+                                    },
+                                }
+                            };
+                            assert_eq!(xml.occurrence(), expected, "{node:?}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(complete > 100 && xml_only > 100 && json_only > 100);
+}
+
+#[test]
+fn xml_layer_reports_declared_occurrence_and_nil_only() {
+    use EffectivePresence::{Optional, Required};
+    let mut optional = text("Note").nillable();
+    assert!(optional.set_xml_optional(true));
+    let mut required_attribute = text("code").attribute();
+    assert!(required_attribute.set_xml_attribute_required(true));
+    // JSON-only container metadata on a singular scalar does not affect XML.
+    let mut json_contradiction = text("Name");
+    json_contradiction.container_nullable = true;
+    let cases = [
+        (
+            text("Name"),
+            XmlOccurrence::Single { presence: Required },
+            false,
+        ),
+        (optional, XmlOccurrence::Single { presence: Optional }, true),
+        (
+            text("code").attribute(),
+            XmlOccurrence::Single { presence: Optional },
+            false,
+        ),
+        (
+            required_attribute,
+            XmlOccurrence::Single { presence: Required },
+            false,
+        ),
+        (
+            text("Line").repeating().nillable(),
+            XmlOccurrence::Repeated,
+            true,
+        ),
+        (
+            json_contradiction,
+            XmlOccurrence::Single { presence: Required },
+            false,
+        ),
+    ];
+    for (schema, occurrence, nil) in cases {
+        let view = schema.effective_xml_view().unwrap();
+        assert_eq!(
+            (view.occurrence(), view.nil()),
+            (occurrence, nil),
+            "{schema:?}"
+        );
+    }
+    let mut required_element = text("Name");
+    required_element.xml_attribute_required = true;
+    assert_eq!(
+        required_element.effective_xml_view(),
+        Err(EffectiveViewError::XmlAttributeRequiredOutsideAttribute)
+    );
+    let mut optional_attribute = text("code").attribute();
+    optional_attribute.xml_optional = true;
+    assert_eq!(
+        optional_attribute.effective_json_nullability(),
+        Ok(JsonNullability::Occurrence { null: false })
+    );
 }

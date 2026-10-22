@@ -205,10 +205,6 @@ fn prepare(
 
 // Contradictory role metadata has no effective view and is refused.
 fn required_singleton(node: &SchemaNode) -> bool {
-    #[cfg(test)]
-    if tests::legacy_selected() {
-        return tests::legacy_required_singleton(node);
-    }
     node.effective_view()
         .is_ok_and(EffectiveSchemaView::is_required_non_null_singleton)
 }

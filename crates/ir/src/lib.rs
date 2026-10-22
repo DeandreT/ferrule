@@ -54,10 +54,10 @@ pub use source_origin::{
 
 pub use schema::{
     EffectiveCardinality, EffectiveNullability, EffectivePresence, EffectiveSchemaView,
-    EffectiveViewError, IntegerRange, ItemCountRange, JsonAllowedValue, JsonAllowedValues,
-    JsonAllowedValuesError, JsonContainsConstraint, JsonContainsConstraints, JsonContainsPredicate,
-    JsonDependentSchemaConstraint, JsonDependentSchemaConstraints, JsonFormatAnnotations,
-    JsonFormatAnnotationsError, JsonMultipleOf, JsonMultipleOfConstraints,
+    EffectiveViewError, EffectiveXmlView, IntegerRange, ItemCountRange, JsonAllowedValue,
+    JsonAllowedValues, JsonAllowedValuesError, JsonContainsConstraint, JsonContainsConstraints,
+    JsonContainsPredicate, JsonDependentSchemaConstraint, JsonDependentSchemaConstraints,
+    JsonFormatAnnotations, JsonFormatAnnotationsError, JsonMultipleOf, JsonMultipleOfConstraints,
     JsonMultipleOfConstraintsError, JsonNullability, JsonPatternConstraints,
     JsonPatternConstraintsError, JsonPatternPropertyNames, JsonPropertyDependencies,
     JsonPropertyDependenciesError, JsonPropertyNameConstraints, JsonPropertyNameSet,
@@ -71,6 +71,7 @@ pub use schema::{
     MAX_JSON_PROPERTY_DEPENDENCY_NAME_BYTES, MAX_JSON_PROPERTY_DEPENDENCY_TRIGGERS,
     MAX_JSON_PROPERTY_NAME_BYTES, MAX_JSON_PROPERTY_NAME_TOTAL_BYTES, MAX_JSON_PROPERTY_NAMES,
     NumberBound, NumberRange, NumericRange, PropertyCountRange, RepeatedItems, StringLengthRange,
+    XmlOccurrence,
 };
 
 /// Instance-field name used for an XML element's simple text content.

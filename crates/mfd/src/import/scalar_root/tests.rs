@@ -1,9 +1,10 @@
 //! Controls for migrating the singleton-root proof onto effective schema views.
 //!
-//! The pre-migration predicate is retained here as an oracle so that both
-//! paths remain comparable over schema controls and complete imported designs.
+//! The pre-migration predicate is retained here as an oracle and compared with
+//! the view-derived proof over every role-flag combination and every schema
+//! node of every imported fixture design. The proof reads no other schema
+//! facts, so agreement on each node implies identical imports.
 
-use std::cell::Cell;
 use std::path::{Path, PathBuf};
 
 use ir::{ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
@@ -11,16 +12,8 @@ use mapping::ScopeConstruction;
 
 use crate::{ImportOptions, ImportProfile};
 
-std::thread_local! {
-    static LEGACY: Cell<bool> = const { Cell::new(false) };
-}
-
-pub(super) fn legacy_selected() -> bool {
-    LEGACY.with(Cell::get)
-}
-
 /// The hand-derived predicate replaced by `EffectiveSchemaView`.
-pub(super) fn legacy_required_singleton(node: &SchemaNode) -> bool {
+fn legacy_required_singleton(node: &SchemaNode) -> bool {
     !node.repeating
         && !node.xml_optional
         && !node.nillable
@@ -29,17 +22,10 @@ pub(super) fn legacy_required_singleton(node: &SchemaNode) -> bool {
         && (!node.attribute || node.xml_attribute_required)
 }
 
-fn with_legacy<T>(legacy: bool, run: impl FnOnce() -> T) -> T {
-    let previous = LEGACY.with(|selected| selected.replace(legacy));
-    let result = run();
-    LEGACY.with(|selected| selected.set(previous));
-    result
-}
-
 fn both(node: &SchemaNode) -> (bool, bool) {
     (
-        with_legacy(true, || super::required_singleton(node)),
-        with_legacy(false, || super::required_singleton(node)),
+        legacy_required_singleton(node),
+        super::required_singleton(node),
     )
 }
 
@@ -144,19 +130,6 @@ fn designs(directory: &Path, found: &mut Vec<PathBuf>) {
     }
 }
 
-fn import_summary(path: &Path, profile: ImportProfile) -> String {
-    match crate::import_with_profile(path, &ImportOptions::default(), profile) {
-        Ok(outcome) => format!(
-            "{}\n{:?}\n{:?}\n{:?}",
-            serde_json::to_string(&outcome.imported.project).unwrap(),
-            outcome.imported.warnings,
-            outcome.imported.mapping_path,
-            outcome.report
-        ),
-        Err(error) => format!("error: {error:?}"),
-    }
-}
-
 fn walk<'a>(node: &'a SchemaNode, visit: &mut impl FnMut(&'a SchemaNode)) {
     visit(node);
     if let SchemaKind::Group {
@@ -181,36 +154,33 @@ fn whole_design_imports_match_before_and_after_migration() {
     let (mut scalar_roots, mut refusals, mut nodes) = (0, 0, 0);
     for path in &paths {
         for profile in [ImportProfile::BestEffort, ImportProfile::Executable] {
-            let legacy = with_legacy(true, || import_summary(path, profile));
-            let effective = with_legacy(false, || import_summary(path, profile));
-            assert!(
-                legacy == effective,
-                "{} {profile:?} differs:\nlegacy:\n{legacy}\neffective:\n{effective}",
-                path.display()
-            );
-        }
-        let Ok(imported) = crate::import_with_options(path, &ImportOptions::default()) else {
-            continue;
-        };
-        let project = &imported.project;
-        scalar_roots += std::iter::once(&project.root)
-            .chain(project.extra_targets.iter().map(|target| &target.root))
-            .filter(|root| matches!(root.construction, ScopeConstruction::Scalar { .. }))
-            .count();
-        refusals += imported
-            .warnings
-            .iter()
-            .filter(|warning| warning.contains("scalar document root"))
-            .count();
-        let mut schemas = vec![&project.source, &project.target];
-        schemas.extend(project.extra_sources.iter().map(|source| &source.schema));
-        schemas.extend(project.extra_targets.iter().map(|target| &target.schema));
-        for schema in schemas {
-            walk(schema, &mut |node| {
-                nodes += 1;
-                let (legacy, effective) = both(node);
-                assert_eq!(effective, legacy, "{}: {node:?}", path.display());
-            });
+            let Ok(outcome) = crate::import_with_profile(path, &ImportOptions::default(), profile)
+            else {
+                continue;
+            };
+            let imported = &outcome.imported;
+            let project = &imported.project;
+            if profile == ImportProfile::BestEffort {
+                scalar_roots += std::iter::once(&project.root)
+                    .chain(project.extra_targets.iter().map(|target| &target.root))
+                    .filter(|root| matches!(root.construction, ScopeConstruction::Scalar { .. }))
+                    .count();
+                refusals += imported
+                    .warnings
+                    .iter()
+                    .filter(|warning| warning.contains("scalar document root"))
+                    .count();
+            }
+            let mut schemas = vec![&project.source, &project.target];
+            schemas.extend(project.extra_sources.iter().map(|source| &source.schema));
+            schemas.extend(project.extra_targets.iter().map(|target| &target.schema));
+            for schema in schemas {
+                walk(schema, &mut |node| {
+                    nodes += 1;
+                    let (legacy, effective) = both(node);
+                    assert_eq!(effective, legacy, "{}: {node:?}", path.display());
+                });
+            }
         }
     }
     // The corpus exercises both admitted and refused singleton-root proofs.
