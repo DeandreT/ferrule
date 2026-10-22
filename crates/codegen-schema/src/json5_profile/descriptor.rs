@@ -91,6 +91,7 @@ pub(super) fn validate(descriptor: &str) -> Result<(), Json5ProfileError> {
                 | "container_nullable"
                 | "json_array_wrapper"
                 | "json_any"
+                | "json_undeclared_property"
                 | "json_unique_items"
                 | "xml_type_alternatives" => default(value.as_bool() == Some(false), field)?,
                 "json_object_item_nullable" => default(false, field)?,

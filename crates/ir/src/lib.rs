@@ -61,9 +61,10 @@ pub use schema::{
     JsonMultipleOf, JsonMultipleOfConstraints, JsonMultipleOfConstraintsError, JsonNullability,
     JsonPatternConstraints, JsonPatternConstraintsError, JsonPatternPropertyNames,
     JsonPropertyDependencies, JsonPropertyDependenciesError, JsonPropertyNameConstraints,
-    JsonPropertyNameSet, JsonPropertyNameSetError, JsonSchemaPredicate, MAX_DISTINCT_JSON_PATTERNS,
-    MAX_JSON_ALLOWED_VALUE_STRING_BYTES, MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES,
-    MAX_JSON_ALLOWED_VALUES, MAX_JSON_CONTAINS_CONSTRAINTS, MAX_JSON_DEPENDENT_SCHEMA_CONSTRAINTS,
+    JsonPropertyNameSet, JsonPropertyNameSetError, JsonSchemaPredicate,
+    JsonUndeclaredPropertyError, MAX_DISTINCT_JSON_PATTERNS, MAX_JSON_ALLOWED_VALUE_STRING_BYTES,
+    MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES, MAX_JSON_ALLOWED_VALUES,
+    MAX_JSON_CONTAINS_CONSTRAINTS, MAX_JSON_DEPENDENT_SCHEMA_CONSTRAINTS,
     MAX_JSON_FORMAT_ANNOTATION_BYTES, MAX_JSON_FORMAT_ANNOTATION_TOTAL_BYTES,
     MAX_JSON_FORMAT_ANNOTATIONS, MAX_JSON_MULTIPLE_OF_ALTERNATIVES, MAX_JSON_MULTIPLE_OF_TERMS,
     MAX_JSON_PATTERN_ALTERNATIVES, MAX_JSON_PATTERN_INSTRUCTIONS, MAX_JSON_PATTERN_SOURCE_BYTES,
@@ -585,6 +586,17 @@ pub struct SchemaNode {
     /// other formats and the mapping graph continue to see an ordinary string.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub json_any: bool,
+    /// This object property is an authored member that its parent object's
+    /// JSON Schema does not declare in `properties` but admits through its
+    /// dynamic value schema (`additionalProperties`, or a matching
+    /// `patternProperties` selector).
+    ///
+    /// The member keeps its exact authored name and carries exactly the
+    /// parent's dynamic value schema, so instance boundaries govern it as that
+    /// runtime-named property. JSON Schema export omits it from `properties`.
+    /// See [`SchemaNode::add_json_undeclared_property`].
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub json_undeclared_property: bool,
     /// A required literal value for a scalar node (XSD's `xs:fixed`, JSON
     /// Schema's `const`), compared against the raw text before parsing.
     /// Format adapters use it both to validate and to disambiguate --
@@ -796,6 +808,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             json_any: bool,
             #[serde(default)]
+            json_undeclared_property: bool,
+            #[serde(default)]
             fixed: Option<String>,
             #[serde(default)]
             json_allowed_values: Option<JsonAllowedValues>,
@@ -866,6 +880,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             json_object_item_nullable: repr.json_object_item_nullable,
             json_array_wrapper: repr.json_array_wrapper,
             json_any: repr.json_any,
+            json_undeclared_property: repr.json_undeclared_property,
             fixed: repr.fixed,
             json_allowed_values: repr.json_allowed_values,
             numeric_range: repr.numeric_range,
@@ -900,6 +915,11 @@ impl<'de> Deserialize<'de> for SchemaNode {
         if guard.is_root && !node.json_array_wrappers_tree_is_valid() {
             return Err(serde::de::Error::custom(
                 "invalid JSON array-wrapper metadata",
+            ));
+        }
+        if guard.is_root && node.json_undeclared_property {
+            return Err(serde::de::Error::custom(
+                "a schema root cannot be an undeclared JSON object property",
             ));
         }
         if guard.is_root
@@ -1162,6 +1182,7 @@ impl SchemaNode {
             && self.container_nullable_is_valid()
             && self.json_object_item_nullable_is_valid()
             && self.json_any_is_valid()
+            && self.json_undeclared_properties_are_valid()
             && self.xml_wildcard_namespace_is_valid()
             && self.xml_wildcard_process_contents_is_valid()
     }
@@ -1203,6 +1224,7 @@ impl SchemaNode {
             && self.container_nullable_is_valid()
             && self.json_object_item_nullable_is_valid()
             && self.json_any_is_valid()
+            && self.json_undeclared_properties_are_valid()
             && self.xml_wildcard_namespace_is_valid()
             && self.xml_wildcard_process_contents_is_valid()
     }
@@ -1226,6 +1248,7 @@ impl SchemaNode {
             json_object_item_nullable: None,
             json_array_wrapper: false,
             json_any: false,
+            json_undeclared_property: false,
             fixed: None,
             json_allowed_values: None,
             numeric_range: None,
@@ -1279,6 +1302,7 @@ impl SchemaNode {
             json_object_item_nullable: None,
             json_array_wrapper: false,
             json_any: false,
+            json_undeclared_property: false,
             fixed: None,
             json_allowed_values: None,
             numeric_range: None,
@@ -1364,6 +1388,7 @@ impl SchemaNode {
             json_object_item_nullable: None,
             json_array_wrapper: false,
             json_any: false,
+            json_undeclared_property: false,
             fixed: None,
             json_allowed_values: None,
             numeric_range: None,
@@ -2072,7 +2097,11 @@ impl SchemaNode {
         }
         let mut expectations = std::collections::BTreeMap::new();
         for child in children {
-            if !same_schema_ignoring_name(child, dynamic) {
+            // An authored undeclared property exists only because a selector
+            // admits it under the dynamic value schema.
+            if child.json_undeclared_property {
+                expectations.insert(child.name.clone(), true);
+            } else if !same_schema_ignoring_name(child, dynamic) {
                 expectations.insert(child.name.clone(), false);
             }
         }
