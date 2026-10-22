@@ -3,9 +3,13 @@
 use std::collections::BTreeSet;
 
 use crate::{
-    GroupAlternativeMode, SchemaKind, SchemaNode, XML_TEXT_FIELD, XmlAlternativeKind, XmlNamespace,
-    XmlWildcardProcessContents, primary_root_ncname_is_valid,
+    EffectivePresence, GroupAlternativeMode, SchemaKind, SchemaNode, XML_TEXT_FIELD,
+    XmlAlternativeKind, XmlNamespace, XmlOccurrence, XmlWildcardProcessContents,
+    primary_root_ncname_is_valid,
 };
+
+#[cfg(test)]
+mod view_tests;
 
 pub const MAX_STRUCTURED_XML_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_STRUCTURED_XML_DEPTH: usize = 64;
@@ -37,11 +41,7 @@ fn supported(schema: &SchemaNode, root: bool, depth: usize, nodes: &mut usize) -
             || schema.name.chars().any(|ch| ch as u32 > 0xFFFF)
             || !primary_root_ncname_is_valid(&schema.name)))
         || (schema.text && !text)
-        || (root && (schema.attribute || schema.text || schema.xml_optional))
-        || (schema.attribute && (schema.text || schema.repeating || schema.nillable))
-        || (schema.text && (schema.repeating || schema.nillable || schema.xml_namespace.is_some()))
-        || (schema.xml_optional && (schema.attribute || schema.text || schema.repeating))
-        || (schema.xml_attribute_required && !schema.attribute)
+        || !xml_roles_supported(schema, root)
         || !namespace_supported(schema)
         || !metadata_supported(schema)
     {
@@ -59,7 +59,6 @@ fn supported(schema: &SchemaNode, root: bool, depth: usize, nodes: &mut usize) -
         } => {
             if schema.attribute
                 || schema.text
-                || schema.nillable
                 || !alternatives.is_empty()
                 || !required.is_empty()
                 || !xml_restricted_alternatives.is_empty()
@@ -75,6 +74,24 @@ fn supported(schema: &SchemaNode, root: bool, depth: usize, nodes: &mut usize) -
             })
         }
     }
+}
+
+/// The node's declared XML occurrence and nil admission fit the profile: the
+/// document root is one required element, and only scalar elements admit
+/// `xsi:nil`. Contradictory XML roles have no effective view and are never
+/// supported.
+fn xml_roles_supported(schema: &SchemaNode, root: bool) -> bool {
+    let Ok(xml) = schema.effective_xml_view() else {
+        return false;
+    };
+    let optional = xml.occurrence()
+        == XmlOccurrence::Single {
+            presence: EffectivePresence::Optional,
+        };
+    !(root && (schema.attribute || schema.text || optional))
+        && !(schema.attribute && (schema.text || schema.repeating || xml.nil()))
+        && !(schema.text && (schema.repeating || xml.nil() || schema.xml_namespace.is_some()))
+        && !(matches!(schema.kind, SchemaKind::Group { .. }) && xml.nil())
 }
 
 fn namespace_supported(schema: &SchemaNode) -> bool {

@@ -1,4 +1,5 @@
 use super::*;
+use crate::declaration::declaration;
 
 mod alternatives;
 
@@ -518,41 +519,6 @@ fn write_element(
         alternatives,
         out,
     )
-}
-
-/// The declared XML occurrence and nil admission written for one node.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct XmlDeclaration {
-    pub(super) repeated: bool,
-    /// One occurrence may be absent: `minOccurs="0"` or an optional attribute.
-    pub(super) optional: bool,
-    pub(super) nil: bool,
-}
-
-/// Derives the written declaration from the effective XML view. JSON-only
-/// metadata is not consulted; contradictory XML roles have no declaration.
-pub(super) fn declaration(node: &SchemaNode) -> Result<XmlDeclaration, XmlFormatError> {
-    let view = node.effective_xml_view().map_err(|error| match error {
-        ir::EffectiveViewError::XmlAttributeRequiredOutsideAttribute => {
-            XmlFormatError::InvalidXmlAttributeRequired {
-                name: node.name.clone(),
-            }
-        }
-        _ => XmlFormatError::InvalidXmlOptional {
-            name: node.name.clone(),
-        },
-    })?;
-    let (repeated, optional) = match view.occurrence() {
-        ir::XmlOccurrence::Single { presence } => {
-            (false, presence == ir::EffectivePresence::Optional)
-        }
-        ir::XmlOccurrence::Repeated => (true, false),
-    };
-    Ok(XmlDeclaration {
-        repeated,
-        optional,
-        nil: view.nil(),
-    })
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

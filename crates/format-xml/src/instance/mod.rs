@@ -880,7 +880,7 @@ fn has_xml_nil(
     if !is_nil {
         return Ok(false);
     }
-    if !schema.nillable {
+    if !crate::declaration::declaration(schema)?.nil {
         return Err(XmlFormatError::UnexpectedXmlNil {
             name: schema.name.clone(),
         });
@@ -1323,7 +1323,7 @@ fn write_single_node<W: std::io::Write>(
     match (&schema.kind, instance) {
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
             if value.is_xml_nil() {
-                if !schema.nillable {
+                if !crate::declaration::declaration(schema)?.nil {
                     return Err(XmlFormatError::UnexpectedXmlNil {
                         name: schema.name.clone(),
                     });
@@ -2390,6 +2390,8 @@ fn integral_i64(value: f64) -> Option<i64> {
         .then_some(value as i64)
 }
 
+#[cfg(test)]
+mod effective_nil_tests;
 #[cfg(test)]
 mod strict_writer_tests;
 #[cfg(test)]
