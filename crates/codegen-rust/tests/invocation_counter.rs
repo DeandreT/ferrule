@@ -13,6 +13,8 @@ use host_target::GeneratedHostCommand;
 mod admission;
 #[path = "../../../conformance/document-clocks/project.rs"]
 mod document_clocks;
+#[path = "../../../conformance/document-rows/publication.rs"]
+mod document_publication;
 #[path = "../../../conformance/document-rows/project.rs"]
 mod document_rows;
 #[path = "../../../conformance/invocation-counter-expressions/expected.rs"]
@@ -118,6 +120,18 @@ fn generated_document_filename_clock_is_lazy_and_body_local() -> Result<(), Box<
     )
 }
 
+#[test]
+fn generated_csv_visitor_publishes_only_complete_accepted_documents() -> Result<(), Box<dyn Error>>
+{
+    run_fixture_with_visitor(
+        document_publication::project(document_rows::project()),
+        "document_publication_mapping",
+        include_str!("../../../conformance/document-rows/PublicationHost.rs.txt"),
+        "PASS document publication",
+        Some((None, true)),
+    )
+}
+
 fn run_fixture(
     project: mapping::Project,
     package_name: &str,
@@ -150,7 +164,21 @@ fn run_fixture_with_visitor(
             runtime.to_string_lossy().into_owned(),
         ),
     };
-    let artifacts = if let Some((target, true)) = visitor {
+    let artifacts = if visitor == Some((None, true))
+        && program.root.construction == codegen::TargetConstruction::DocumentRows
+    {
+        codegen_rust::emit_with_csv_document_set_visitor(
+            &program,
+            &options,
+            &codegen::CsvOutputPolicy {
+                delimiter: Some('|'),
+                quote_disabled: true,
+                has_headers: false,
+                raw_delimited_crlf: true,
+                ..Default::default()
+            },
+        )?
+    } else if let Some((target, true)) = visitor {
         codegen_rust::emit_with_document_filename_clock(&program, &options, target)?
     } else if let Some((target, false)) = visitor {
         codegen_rust::emit_with_document_visitor(&program, &options, target)?

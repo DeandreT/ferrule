@@ -20,9 +20,22 @@ pub(crate) fn emit_document_set(
 }
 
 fn emit_adapter(program: &Program, adapter: String) -> Result<ArtifactSet, EmitError> {
+    add_adapter(crate::emit(program)?, adapter)
+}
+
+pub(crate) fn append_document_set(
+    program: &Program,
+    policy: &CsvOutputPolicy,
+    artifacts: ArtifactSet,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_csv_document_set_output(program, policy)?;
+    add_adapter(artifacts, render_document_set(program, policy))
+}
+
+fn add_adapter(artifacts: ArtifactSet, adapter: String) -> Result<ArtifactSet, EmitError> {
     // Keep ordinary emission and its runtime registration untouched. CSV adds
     // one partial class and its runtime only after the shared boundary proof.
-    let mut files = crate::emit(program)?.into_files();
+    let mut files = artifacts.into_files();
     for generated in &mut files {
         match generated.path.as_str() {
             "GeneratedMapping.cs" => {
@@ -124,6 +137,13 @@ fn render_document_set(program: &Program, policy: &CsvOutputPolicy) -> String {
     output.push_str(r#"
     public sealed record CsvOutputDocument(string Path, string Document);
     public sealed record CsvOutputBytesDocument(string Path, byte[] Document);
+
+    /// <summary>Serialize one completed row document; this does not run the mapping or write a file.</summary>
+    public static string SerializeCsvDocument(global::Ferrule.Runtime.FerruleInstance value) =>
+        global::Ferrule.Runtime.FerruleCsv.Serialize(value, CsvOutputFields, CsvOutputPolicy);
+
+    public static byte[] SerializeCsvDocumentBytes(global::Ferrule.Runtime.FerruleInstance value) =>
+        global::Ferrule.Runtime.FerruleCsv.SerializeBytes(value, CsvOutputFields, CsvOutputPolicy);
 
     /// <summary>Materialize the mapping, then serialize each complete CSV document.</summary>
     public static global::System.Collections.Generic.IReadOnlyList<CsvOutputDocument> ExecuteCsvDocuments(

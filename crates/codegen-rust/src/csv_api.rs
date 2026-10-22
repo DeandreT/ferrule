@@ -85,6 +85,15 @@ pub struct CsvOutputDocument { pub path: String, pub document: String }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CsvOutputBytesDocument { pub path: String, pub document: Vec<u8> }
 
+/// Serialize one completed row document without rerunning the mapping or opening files.
+pub fn serialize_csv_document(value: &Instance) -> Result<String, codegen_runtime::CsvBoundaryError> {
+    codegen_runtime::serialize_csv(&csv_output_schema(), value, &csv_output_options())
+}
+
+pub fn serialize_csv_document_bytes(value: &Instance) -> Result<Vec<u8>, codegen_runtime::CsvBoundaryError> {
+    codegen_runtime::serialize_csv_bytes(&csv_output_schema(), value, &csv_output_options())
+}
+
 /// Materialize the mapping, then serialize each complete CSV document.
 pub fn execute_csv_documents_with_context(source: &Instance, execution: &ExecutionContext<'_>) -> Result<Vec<CsvOutputDocument>, codegen_runtime::CsvBoundaryError> {
     let output = execute_with_context(source, execution)?;
