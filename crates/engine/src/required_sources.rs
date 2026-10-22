@@ -138,13 +138,6 @@ impl<'a> Analysis<'a> {
         }
     }
 
-    /// A sequence node's own roots are its inputs and item.
-    fn inspect_sequence(&mut self, sequence: &SequenceExpr) {
-        self.pending.extend(sequence.inputs());
-        self.pending.push(sequence.item());
-        self.inspect_sequence_sources(sequence);
-    }
-
     fn inspect_sequence_sources(&mut self, sequence: &SequenceExpr) {
         if let SequenceExpr::RecursiveCollect { collection, .. } = sequence {
             self.inspect_path(collection);
@@ -162,6 +155,8 @@ impl<'a> Analysis<'a> {
             let Some(node) = self.project.graph.nodes.get(&id) else {
                 continue;
             };
+            // Every input, whatever its role, including a sequence's
+            // inputs and item identities.
             self.pending.extend(node.dependencies());
             self.inspect_node(node);
         }
@@ -195,7 +190,7 @@ impl<'a> Analysis<'a> {
             }
             Node::SequenceExists { sequence, .. }
             | Node::SequenceItemAt { sequence, .. }
-            | Node::SequenceAggregate { sequence, .. } => self.inspect_sequence(sequence),
+            | Node::SequenceAggregate { sequence, .. } => self.inspect_sequence_sources(sequence),
             Node::JoinAggregate { plan, .. } => {
                 for source in plan.sources() {
                     self.inspect_path(source.collection());
@@ -297,6 +292,10 @@ impl<'a> Analysis<'a> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/required_sources_roles.rs"]
+mod role_tests;
 
 #[cfg(test)]
 mod tests {
