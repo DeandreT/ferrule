@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "Code": { "type": "integer" },
+    "Item": {
+      "type": "object",
+      "properties": { "Code": { "type": "integer" } }
+    }
+  }
+}

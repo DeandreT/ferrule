@@ -1075,6 +1075,20 @@ property domain, schema-valued declarations remain typed, and explicit `false`
 rejects undeclared input properties instead of discarding them. MFD export
 writes a canonical JSON Schema sibling and re-import retains the same open,
 typed-open, or closed behavior.
+A JSON target entry may name a property that its open object admits without
+declaring it, such as `code` beside a declared `Code`. Import keeps the exact
+entry name and records an explicit undeclared member
+(`json_undeclared_property`) whose schema copies the object's dynamic value
+schema, so it is typed only when `additionalProperties` (or a matching
+`patternProperties` selector) constrains the value. Presence stays owned by
+the object's `required` list. Names are never case-folded and the referenced
+schema is not rewritten: JSON Schema export omits the member from
+`properties`, and MFD export/re-import restores it from the target entry. A
+closed object still reports the missing target path, and a name rejected by
+the object's selectors or `propertyNames` is reported and skipped. When a
+required member's mapped value is absent, native and generated Rust/C# output
+refuse the object for the missing required property, exactly as for a declared
+property of the same name, rather than emitting the object without it.
 Referenced schemas also retain exact closed homogeneous `patternProperties`.
 The containing schema must explicitly type `object` or `object | null`, use
 `additionalProperties: false`, and assign every portable selector in a

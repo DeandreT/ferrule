@@ -1,0 +1,5 @@
+{
+  "type": "object",
+  "properties": { "Code": { "type": "integer" } },
+  "additionalProperties": false
+}
