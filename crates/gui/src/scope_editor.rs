@@ -13,6 +13,7 @@ pub(crate) mod computed_properties;
 mod copy_controls;
 mod output_controls;
 mod sort_controls;
+mod source_iteration;
 mod window_controls;
 
 pub(crate) use copy_controls::{check_static_binding, copied_ancestor_at_path};
@@ -606,8 +607,9 @@ pub(crate) fn show_scope_editor(
         source,
         output_path,
     } = &scope.iteration
+        && !source_iteration::owned_editable(scope)
     {
-        ui.label("Owned source iteration is unavailable; this saved scope is read-only.");
+        ui.label("This owned source iteration's construction is not authorable; this saved scope is read-only.");
         ui.monospace(format!("owner: {:?}", source.owner));
         ui.monospace(format!("path: {:?}", source.path));
         if let Some(output_path) = output_path {
@@ -653,9 +655,9 @@ pub(crate) fn show_scope_editor(
     output_controls::show(ui, scope, output_profile);
 
     match &scope.iteration {
-        ScopeIteration::OwnedSource { .. }
-        | ScopeIteration::OwnedInnerJoin { .. }
-        | ScopeIteration::OptionalPresence { .. } => return None,
+        ScopeIteration::OwnedInnerJoin { .. } | ScopeIteration::OptionalPresence { .. } => {
+            return None;
+        }
         ScopeIteration::Sequence(sequence) => {
             ui.horizontal(|ui| {
                 ui.label("iteration:");
@@ -699,20 +701,9 @@ pub(crate) fn show_scope_editor(
         }
         ScopeIteration::None
         | ScopeIteration::Source(_)
-        | ScopeIteration::DynamicDocuments { .. } => {
-            ui.horizontal(|ui| {
-                ui.label("source path:");
-                let mut has_source = scope.source().expect("owned scope is read-only").is_some();
-                if ui.checkbox(&mut has_source, "iterates").changed() {
-                    scope.set_source(has_source.then(Vec::new));
-                }
-            });
-            if let Some(source) = scope.source_mut().expect("owned scope is read-only") {
-                ui.horizontal(|ui| {
-                    ui.label("  path:");
-                    source_paths.show_scope_picker(ui, "scope_source_path", source, owner.nested);
-                });
-            }
+        | ScopeIteration::DynamicDocuments { .. }
+        | ScopeIteration::OwnedSource { .. } => {
+            source_iteration::show(ui, scope, source_paths, owner.nested);
         }
     }
 
@@ -951,11 +942,11 @@ fn binding_node_picker(
 fn node_label(node: &mapping::Node) -> String {
     match node {
         mapping::Node::OwnedSourceField(field) => format!(
-            "owned field {:?} {:?}; frame {:?} (unavailable)",
+            "owned field {:?} {:?}; frame {:?}",
             field.source.owner, field.source.path, field.frame
         ),
         mapping::Node::OwnedPosition(position) => format!(
-            "owned position {:?} {:?} (unavailable)",
+            "owned position {:?} {:?}",
             position.owner, position.collection
         ),
         mapping::Node::OwnedRowDocumentPath(path) => format!(

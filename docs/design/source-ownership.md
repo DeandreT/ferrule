@@ -8,7 +8,31 @@ The owner/path foundation ([#433](https://github.com/DeandreT/ferrule/issues/433
 
 An owner selects immutable primary or one exact named endpoint. Preserve name bytes; reject empty named owners without trimming, alias/prefix fallback or new path restrictions. Paths are endpoint-local. Owned `[]` differs from inherited/null selection; absent-frame differs from root-frame. Preserve legacy fallback, while owned reads never borrow another endpoint. Generated item IDs, function inputs and JoinId remain separate identities.
 
-Keep structural validity separate from executable capability. Preserve strict new forms and reject unsupported execution/emission, including directly constructed Program validation. P2 checks new-kind potential branches, called functions and demanded paths without changing legacy laziness. Codegen keeps its reachable lowering/metadata rules; native export needs whole-design checks before writing. Preserve saved GUI owner data/IDs/wires read-only; authoring/conversion stays closed.
+Keep structural validity separate from executable capability. Preserve strict new forms and reject unsupported execution/emission, including directly constructed Program validation. P2 checks new-kind potential branches, called functions and demanded paths without changing legacy laziness. Codegen keeps its reachable lowering/metadata rules; native export needs whole-design checks before writing. Preserve saved GUI owner data/IDs/wires; the native editor authors only the forms described under [native editor authoring](#native-editor-authoring) and never converts saved legacy forms automatically.
+
+## Native editor authoring
+
+The native editor authors owned fields, positions and source iterations; every
+other owned operator stays read-only. A legacy path names its endpoint only by
+leading text, so two cases are ambiguous: a named alias that the primary input
+or any input can define (the conservative alias-shadowing check), and a primary
+path whose first segment equals a named alias. Wiring a pin in either case
+creates an `OwnedSourceField` with the pin's exact owner, its absolute
+endpoint-local path and its innermost repetition as `frame` (`None` outside
+repetition). Once a project holds any owned form, every addressable pin authors
+owned reads. Duplicate or blank aliases and per-item dynamic inputs remain
+unaddressable and keep the refusal message. Projects without either condition
+author legacy `SourceField` paths exactly as before.
+
+Owned reads are visible canvas nodes titled with their owner; legacy fields
+stay hidden behind source pins. In an ambiguous or owned project the scope
+editor offers owner-qualified collections, producing `ScopeIteration::OwnedSource`
+for ordinary constructed scopes; owned scopes with per-item document outputs or
+specialized constructions stay read-only. A position's properties likewise
+choose an owner and collection, and the palette inserts an owned position once
+the project uses ownership. A legacy scope or position converts only on that
+explicit choice. Wires record as typed connect commands; scope and property
+choices record as snapshots.
 
 ## Scalar target construction
 

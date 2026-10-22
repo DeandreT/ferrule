@@ -931,7 +931,8 @@ impl FerruleApp {
 
         ui.separator();
         let source_paths =
-            SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
+            SourcePathCatalog::new(&self.project.source, &self.project.extra_sources)
+                .with_project_ownership(&self.project);
         let primary_root_bindings = crate::primary_root_authoring::available(&self.project);
         let computed_property_owner = self.embedded_stage_namespace.is_none()
             && matches!(
@@ -1090,7 +1091,8 @@ impl FerruleApp {
         let mut requested_function = None;
         let source_paths =
             SourcePathCatalog::new(&self.project.source, &self.project.extra_sources)
-                .with_primary_source_options(&self.project.source_options);
+                .with_primary_source_options(&self.project.source_options)
+                .with_project_ownership(&self.project);
         let source_x12 = crate::x12_tooltips::boundary_has_x12(
             &self.project.source,
             self.project.source_path.as_deref(),

@@ -120,7 +120,8 @@ fn edit_canvas(
 ) -> (Vec<PlannedGraphEdit>, Option<String>) {
     let source_blocks = project_source_blocks(&app.project);
     let source_paths = SourcePathCatalog::new(&app.project.source, &app.project.extra_sources)
-        .with_primary_source_options(&app.project.source_options);
+        .with_primary_source_options(&app.project.source_options)
+        .with_project_ownership(&app.project);
     let (root_scope, extra_targets, schema, snarl): (_, &[NamedTarget], _, _) = match document {
         MappingDocument::Main => (
             &mut app.project.root,
@@ -633,6 +634,9 @@ fn idle_observation_keys_the_project_once_and_never_refingerprints() {
 
 #[path = "graph_wire_commands_tests.rs"]
 mod wires;
+
+#[path = "owned_source_authoring_tests.rs"]
+mod owned_sources;
 
 #[path = "graph_commands_canvas_tests.rs"]
 mod canvas;

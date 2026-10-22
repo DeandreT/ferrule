@@ -86,19 +86,19 @@ pub(super) fn owned_source_title(node: &Node) -> Option<String> {
     }
     fn frame(frame: Option<&[String]>) -> String {
         match frame {
-            None => "automatic (unresolved)".into(),
+            None => "automatic (this input's innermost active item)".into(),
             Some(path) => format!("explicit {path:?}"),
         }
     }
     match node {
         Node::OwnedSourceField(field) => Some(format!(
-            "Owned source: {}\nPath: {:?}\nFrame: {}\nRead-only; source ownership execution is unavailable",
+            "Owned source: {}\nPath: {:?}\nFrame: {}\nReads exactly this input; never another input with the same path",
             owner(&field.source.owner),
             field.source.path,
             frame(field.frame.as_deref()),
         )),
         Node::OwnedPosition(position) => Some(format!(
-            "Owned position: {}\nCollection: {}\nRead-only; source ownership execution is unavailable",
+            "Owned position: {}\nCollection: {}\nCounts exactly this input's active items",
             owner(&position.owner),
             frame(position.collection.as_deref()),
         )),
@@ -377,16 +377,26 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
         full_title
     };
     let (icon, summary) = match node {
+        // Compact owned reads keep their owner visible beside the read itself.
         Node::OwnedSourceField(field) => (
             Icon::ArrowRightFromLine,
-            field
-                .source
-                .path
-                .last()
-                .map_or("owned root", String::as_str)
-                .to_owned(),
+            format!(
+                "{}: {}",
+                crate::source_ownership::owner_label(&field.source.owner),
+                field.source.path.last().map_or("<root>", String::as_str)
+            ),
         ),
-        Node::OwnedPosition(_) => (Icon::ListOrdered, "owned".into()),
+        Node::OwnedPosition(position) => (
+            Icon::ListOrdered,
+            format!(
+                "{}: {}",
+                crate::source_ownership::owner_label(&position.owner),
+                position
+                    .collection
+                    .as_ref()
+                    .map_or_else(|| "<latest>".to_owned(), |path| path.join("/"))
+            ),
+        ),
         Node::OwnedRowDocumentPath(_) => (Icon::ListOrdered, "row path".into()),
         Node::OwnedXmlSerialize(_) => (Icon::FileCode, "owned serialize".into()),
         Node::OwnedXmlMixedContent(mixed) => (
