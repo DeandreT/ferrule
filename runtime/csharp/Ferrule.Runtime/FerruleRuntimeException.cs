@@ -72,6 +72,9 @@ public enum FerruleRuntimeError
     BasicSourceBridge,
     PrimaryFilenameType,
     AggregateUnsupportedScalar,
+    MissingInvocationCounters,
+    InvocationCounterOperand,
+    InvocationCounter,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>

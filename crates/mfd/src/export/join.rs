@@ -1171,6 +1171,15 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .into_iter()
+            .flatten()
+            .collect(),
         Node::If {
             condition,
             then,

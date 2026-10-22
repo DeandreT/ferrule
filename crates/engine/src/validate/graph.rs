@@ -825,6 +825,7 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
         | Node::RuntimeValue { .. }
         | Node::RuntimeParameter { .. }
         | Node::RuntimeParameterDefault { .. }
+        | Node::InvocationCounter { .. }
         | Node::Call { .. }
         | Node::UserFunctionCall { .. }
         | Node::If { .. }
@@ -1362,6 +1363,16 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
         | Node::XmlSerialize { .. } => Vec::new(),
         Node::RuntimeParameterDefault { default, .. } => {
             vec![("default".into(), *default)]
+        }
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => {
+            let mut inputs = vec![("start".into(), *start), ("step".into(), *step)];
+            inputs.extend(restart.map(|id| ("restart".into(), id)));
+            inputs
         }
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args
             .iter()

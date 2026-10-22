@@ -983,6 +983,12 @@ pub enum Expression {
         ty: ScalarType,
         default: NodeId,
     },
+    InvocationCounter {
+        key: String,
+        start: NodeId,
+        step: NodeId,
+        restart: Option<NodeId>,
+    },
     Call {
         function: ScalarFunction,
         args: Vec<NodeId>,

@@ -145,6 +145,26 @@ pub(super) fn validate_source_ownership(project: &Project) -> Result<(), MfdErro
     Ok(())
 }
 
+pub(super) fn validate_invocation_counters(project: &Project) -> Result<(), MfdError> {
+    if project
+        .graph
+        .nodes
+        .values()
+        .chain(
+            project
+                .user_functions
+                .values()
+                .flat_map(|function| function.body.nodes.values()),
+        )
+        .any(|node| matches!(node, mapping::Node::InvocationCounter { .. }))
+    {
+        return Err(MfdError::Unsupported(
+            "explicit invocation counters have no qualified .mfd representation".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn validate_decimal_values(project: &Project) -> Result<(), MfdError> {
     // Scan stored literals, including unused nodes and declared function bodies.
     // A decimal type must not be reinterpreted as the legacy Float export path.

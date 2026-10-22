@@ -802,6 +802,16 @@ impl<'a> Analysis<'a> {
                 Expression::RuntimeParameterDefault { default, .. } => {
                     self.queue(namespace, context, *default)
                 }
+                Expression::InvocationCounter {
+                    start,
+                    step,
+                    restart,
+                    ..
+                } => {
+                    self.queue(namespace, context, *start);
+                    self.queue(namespace, context, *step);
+                    self.optional(namespace, context, *restart);
+                }
                 Expression::Call { args, .. } | Expression::UserFunctionCall { args, .. } => {
                     for argument in args {
                         self.queue(namespace, context, *argument);

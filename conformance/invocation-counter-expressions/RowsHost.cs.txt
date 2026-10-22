@@ -1,0 +1,10 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+using System.Text;
+var context=new FerruleExecutionContext("counter.ferrule").WithInvocationCounterLimits(new(1,4));
+const string input="{\"Rows\":[{\"start\":10,\"step\":2},{\"start\":999,\"step\":3},{\"start\":20,\"step\":9,\"restart\":\"\"},{\"start\":999,\"step\":0,\"restart\":\"\"},{\"start\":30,\"step\":-1},{\"start\":999,\"step\":-2}]}";
+for(var repeat=0;repeat<3;repeat++) {
+    var output=GeneratedMapping.ExecuteJsonOutputs(input,context);
+    if(output.Extras.Count!=0) throw new InvalidOperationException("Unexpected extra document");
+    Console.WriteLine($"DOC|rows-{repeat}|{Convert.ToHexStringLower(Encoding.UTF8.GetBytes(output.Primary))}");
+}

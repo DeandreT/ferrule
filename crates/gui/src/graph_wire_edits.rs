@@ -237,7 +237,7 @@ impl GraphViewer<'_> {
                     node: to_id,
                     input: to.id.input,
                 };
-                if self.clear_raise_message(to_id, to.id.input) {
+                if self.clear_optional_input(to_id, to.id.input) {
                     snarl.disconnect(from.id, to.id);
                     if let Some(disconnected) = disconnected {
                         self.remove_orphaned_input(disconnected, snarl);
