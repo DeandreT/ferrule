@@ -21,6 +21,12 @@ pub(crate) fn model_key<T: Serialize>(model: &T) -> String {
     snapshot_key(model)
 }
 
+/// [`model_key`] for a part that may hold in-memory content the project
+/// format rejects; such content has no key.
+pub(crate) fn try_model_key<T: Serialize>(model: &T) -> Option<String> {
+    try_snapshot_key(model)
+}
+
 #[cfg(test)]
 thread_local! {
     static PROJECT_KEYS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -37,9 +43,13 @@ pub(crate) fn pipeline_snapshot_key(pipeline: &Pipeline) -> String {
 }
 
 fn snapshot_key<T: Serialize>(model: &T) -> String {
-    let mut key = serde_json::to_string(model).expect("model serialization cannot fail");
+    try_snapshot_key(model).expect("model serialization cannot fail")
+}
+
+fn try_snapshot_key<T: Serialize>(model: &T) -> Option<String> {
+    let mut key = serde_json::to_string(model).ok()?;
     if !key.contains("null") {
-        return key;
+        return Some(key);
     }
     let mut markers = Vec::new();
     model
@@ -47,7 +57,7 @@ fn snapshot_key<T: Serialize>(model: &T) -> String {
             path: String::new(),
             markers: &mut markers,
         })
-        .expect("model float traversal cannot fail after serialization");
+        .ok()?;
     for marker in markers {
         key.push_str("\n#nonfinite:");
         key.push_str(&marker.path.len().to_string());
@@ -58,7 +68,7 @@ fn snapshot_key<T: Serialize>(model: &T) -> String {
         key.push(':');
         key.push_str(&format!("{:016x}", marker.bits));
     }
-    key
+    Some(key)
 }
 
 struct Marker {

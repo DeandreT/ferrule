@@ -12,6 +12,13 @@ impl GraphViewer<'_> {
         let Some(node_id) = Self::mapping_id(snarl[pin.id.node]) else {
             return;
         };
+        // Property widgets change values only in response to input, so the
+        // node is retained for a typed edit only on such frames.
+        // Nodes the project format rejects stay out of typed edits.
+        let watched = frame_has_edit_input(ui.ctx())
+            .then(|| self.graph.nodes.get(&node_id))
+            .flatten()
+            .and_then(|node| Some((crate::project_state::try_model_key(node)?, node.clone())));
         let sequence_owners = if self.function_output.is_none()
             && matches!(
                 self.graph.nodes.get(&node_id),
@@ -675,6 +682,31 @@ impl GraphViewer<'_> {
                 }
             }
         }
+        let aggregate_toggled = aggregate_before
+            .is_some_and(|(expression, _)| expression.is_some() != aggregate_calculated);
+        let planned_before = watched
+            .filter(|(before, _)| {
+                let edited = staged_node
+                    .as_ref()
+                    .or(self.graph.nodes.get(&node_id))
+                    .map(crate::project_state::try_model_key);
+                match edited {
+                    Some(Some(edited)) => {
+                        new_call_arg_needed || aggregate_toggled || edited != *before
+                    }
+                    // A removed node is no property edit, and an edit
+                    // leaving rejected content stays a snapshot.
+                    Some(None) | None => false,
+                }
+            })
+            .map(|(_, before)| {
+                // Only this node has changed in place so far; its dependent
+                // input changes follow below.
+                let property = editor_ui::NodeProperty::of(&before);
+                let mut graph = self.graph.clone();
+                graph.nodes.insert(node_id, before);
+                (graph, self.root_scope.clone(), property)
+            });
         let edit_committed = if let Some(node) = staged_node {
             let result = if aggregate_before.is_some() {
                 self.commit_aggregate_property_edit(node_id, node, aggregate_calculated)
@@ -747,6 +779,16 @@ impl GraphViewer<'_> {
                 snarl.disconnect(remote, input);
             }
             self.remove_orphaned_input(removed, snarl);
+        }
+        if let Some((graph, scope, property)) = planned_before {
+            self.plan_edit_since(
+                graph,
+                scope,
+                editor_ui::GraphAction::EditNode {
+                    node: node_id,
+                    property,
+                },
+            );
         }
     }
 

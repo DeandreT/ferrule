@@ -229,12 +229,35 @@ fn show_lines_editor(ui: &mut egui::Ui, project: &mut Project) {
     );
 }
 
-/// Chooses an owned collection for the `Lines` scope in its scope editor.
+/// Chooses an owned collection for the `Lines` scope in the Inspector's
+/// scope editor, which records one typed iteration change.
 fn choose_lines_iteration(app: &mut FerruleApp, context: &egui::Context, labels: [&str; 2]) {
+    app.selected_scope = vec![0];
     for label in labels {
-        click_label(context, label, |ui| show_lines_editor(ui, &mut app.project));
+        click_label(context, label, |ui| app.show_inspector(ui, true));
     }
     app.observe_editor_history(std::time::Instant::now(), false);
+    assert_eq!(app.history.undo_label(), Some("Change scope iteration"));
+    let command = next_undo_command(app);
+    let lines = ScopeLocation::of_children(&[0]);
+    assert_eq!(
+        command.action(),
+        &GraphAction::EditScope {
+            scope: lines.clone(),
+            setting: editor_ui::ScopeSetting::SourceIteration,
+        }
+    );
+    let change = command
+        .patch()
+        .setting(&lines, editor_ui::ScopeSetting::SourceIteration)
+        .expect("the iteration change");
+    assert!(matches!(
+        change.after(),
+        editor_ui::ScopeSettingValue::SourceIteration(editor_ui::SourceIteration::Owned {
+            source,
+            output_path: None,
+        }) if source.owner == ref_owner()
+    ));
 }
 
 fn lines_editor_shows(project: &mut Project, label: &str) -> bool {
@@ -252,13 +275,15 @@ fn lines_editor_shows(project: &mut Project, label: &str) -> bool {
     !shapes_with(&output, label).is_empty()
 }
 
-/// Picks a position's owned collection in its canvas property editor.
+/// Picks a position's owned collection in its canvas property editor,
+/// which records one typed position edit.
 fn choose_position_collection(
     app: &mut FerruleApp,
     context: &egui::Context,
     node: NodeId,
     labels: [&str; 2],
 ) {
+    let mut edits = Vec::new();
     for label in labels {
         let (planned, error) = edit_canvas(app, MappingDocument::Main, |viewer, snarl| {
             let pin = snarl.out_pin(OutPinId {
@@ -269,10 +294,27 @@ fn choose_position_collection(
                 viewer.show_properties_for_test(&pin, ui, snarl);
             });
         });
-        assert!(planned.is_empty());
         assert_eq!(error, None);
+        edits.extend(planned);
     }
-    app.observe_editor_history(std::time::Instant::now(), false);
+    let [edit] = <[PlannedGraphEdit; 1]>::try_from(edits)
+        .unwrap_or_else(|edits| panic!("one typed edit, got {}", edits.len()));
+    assert_eq!(
+        edit.action,
+        GraphAction::EditNode {
+            node,
+            property: editor_ui::NodeProperty::Position,
+        }
+    );
+    assert!(observe_planned(app, MappingDocument::Main, edit));
+    assert_eq!(app.history.undo_label(), Some("Edit position"));
+    assert_eq!(
+        next_undo_command(app)
+            .patch()
+            .changed_nodes()
+            .collect::<Vec<_>>(),
+        [node]
+    );
 }
 
 /// The equivalent project written by hand with explicit owned forms.

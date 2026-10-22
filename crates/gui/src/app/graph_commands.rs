@@ -1,31 +1,37 @@
 //! Native graph edits recorded as typed commands instead of snapshots.
 //!
-//! Canvases apply node removals, wire connections and disconnections, and
-//! palette insertions through a [`editor_ui::GraphPatch`] and hand them to
-//! the hosting document, which queues each one with its graph identity. The
-//! frame observer records a queued command when it alone explains the
-//! frame's project change. Undo and redo invert or reapply the patch on the
-//! observed project and rebuild canvases from the retained layout, which
-//! stays outside the project.
+//! Canvases apply node removals, wire connections and disconnections,
+//! palette insertions, and node property edits through a
+//! [`editor_ui::GraphPatch`]; the scope editor describes binding and setting
+//! changes of its scope the same way. Hosts queue each edit with its graph
+//! identity, and the frame observer records the queued commands as one step
+//! when together they exactly explain the frame's project change. Repeated
+//! edits of one property while typing or dragging extend that step. Undo and
+//! redo invert or reapply the patches on the observed project and rebuild
+//! canvases from the retained layout, which stays outside the project.
 
-use editor_ui::{GraphCommand, GraphDocument, GraphEditError, HistoryRecord, TargetId};
+use editor_ui::{
+    GraphCommand, GraphDocument, GraphEditError, HistoryRecord, ScopeFields, ScopeLocation,
+    TargetBinding, TargetId,
+};
 use mapping::{Node, Project};
 
-use super::{CanvasLayout, EditorSnapshot, FerruleApp, MappingDocument};
+use super::{CanvasLayout, EditorSnapshot, FerruleApp, HISTORY_COALESCE_DELAY, MappingDocument};
 use crate::graph_viewer::PlannedGraphEdit;
 use crate::layout_store::project_fingerprint;
 use crate::project_state::{model_key, project_snapshot_key};
 
-/// One command step with the canvas layout of the state it restores.
+/// One history step of one or more commands, applied in order, with the
+/// canvas layout of the state it restores.
 pub(super) struct GraphCommandRecord {
-    command: GraphCommand,
+    commands: Vec<GraphCommand>,
     layout: CanvasLayout,
 }
 
 impl GraphCommandRecord {
     #[cfg(test)]
-    pub(super) fn command(&self) -> &GraphCommand {
-        &self.command
+    pub(super) fn commands(&self) -> &[GraphCommand] {
+        &self.commands
     }
 }
 
@@ -39,8 +45,79 @@ fn same_node(left: &Node, right: &Node) -> bool {
     model_key(left) == model_key(right)
 }
 
+/// The history label of a step: the shared action label, or a count of
+/// the step's distinct edits.
+fn step_label(commands: &[GraphCommand]) -> String {
+    match commands {
+        [first, rest @ ..] if rest.iter().all(|command| command.label() == first.label()) => {
+            first.label().to_owned()
+        }
+        commands => format!("{} edits", commands.len()),
+    }
+}
+
+/// Typed commands for one scope editor pass over the scope at `location`:
+/// one per changed binding list or setting. A binding change that is not a
+/// single addition, removal, or retarget forms no command.
+pub(super) fn scope_edit_commands(
+    document: &GraphDocument,
+    location: &ScopeLocation,
+    before: &ScopeFields,
+    after: &ScopeFields,
+) -> Vec<GraphCommand> {
+    editor_ui::GraphPatch::of_scope(location, before, after)
+        .into_scope_parts()
+        .into_iter()
+        .filter_map(|patch| {
+            let action = match patch.settings().next() {
+                Some((scope, setting, _)) => editor_ui::GraphAction::EditScope {
+                    scope: scope.clone(),
+                    setting,
+                },
+                None => binding_action(location, before.bindings(), after.bindings())?,
+            };
+            GraphCommand::new(document.clone(), action, patch).ok()
+        })
+        .collect()
+}
+
+/// Names a binding list change as the one addition, removal, or retarget
+/// the binding panel performs; the command validates the exact shape.
+fn binding_action(
+    scope: &ScopeLocation,
+    before: &[mapping::Binding],
+    after: &[mapping::Binding],
+) -> Option<editor_ui::GraphAction> {
+    let scope = scope.clone();
+    let differs = |left: &mapping::Binding, right: &mapping::Binding| {
+        TargetBinding::of(left) != TargetBinding::of(right)
+    };
+    let first_difference = before
+        .iter()
+        .zip(after)
+        .position(|(before, after)| differs(before, after));
+    Some(match after.len().cmp(&before.len()) {
+        std::cmp::Ordering::Greater => editor_ui::GraphAction::AddBinding {
+            scope,
+            binding: TargetBinding::of(after.last()?),
+        },
+        std::cmp::Ordering::Less => editor_ui::GraphAction::RemoveBinding {
+            scope,
+            binding: TargetBinding::of(&before[first_difference.unwrap_or(after.len())]),
+        },
+        std::cmp::Ordering::Equal => {
+            let index = first_difference?;
+            editor_ui::GraphAction::RetargetBinding {
+                scope,
+                from: TargetBinding::of(&before[index]),
+                to: TargetBinding::of(&after[index]),
+            }
+        }
+    })
+}
+
 impl FerruleApp {
-    fn graph_document(&self, document: MappingDocument) -> Option<GraphDocument> {
+    pub(super) fn graph_document(&self, document: MappingDocument) -> Option<GraphDocument> {
         match document {
             MappingDocument::Main => Some(GraphDocument::Target(TargetId::Primary)),
             MappingDocument::Target(index) => self
@@ -70,31 +147,78 @@ impl FerruleApp {
         );
     }
 
-    /// Takes the frame's queued commands and returns the one command that
-    /// alone leads from the observed state to `current`, if any. Otherwise
-    /// several edits, or other edits made in place, share the frame.
-    pub(super) fn take_frame_command(&mut self, current: &Project) -> Option<GraphCommand> {
+    /// Takes the frame's queued commands and returns them when together, in
+    /// order, they lead from the observed state to `current`. Otherwise other
+    /// edits made in place share the frame.
+    pub(super) fn take_frame_commands(&mut self, current: &Project) -> Option<Vec<GraphCommand>> {
         let commands = std::mem::take(&mut self.frame_commands);
-        let [command] = <[GraphCommand; 1]>::try_from(commands).ok()?;
+        if commands.is_empty() {
+            return None;
+        }
         let mut before = current.clone();
-        (command.revert_on_matching(&mut before, same_node).is_ok()
-            && project_snapshot_key(&before) == self.observed_editor.state.serialized_project)
-            .then_some(command)
+        let reverted = commands
+            .iter()
+            .rev()
+            .all(|command| command.revert_on_matching(&mut before, same_node).is_ok());
+        (reverted && project_snapshot_key(&before) == self.observed_editor.state.serialized_project)
+            .then_some(commands)
     }
 
-    /// Records `command`, which leads from the observed state to `current`,
+    /// Records `commands`, which lead from the observed state to `current`,
     /// as one history step. Layout changes from the same frame belong to it.
-    pub(super) fn record_graph_command(&mut self, command: GraphCommand, current: EditorSnapshot) {
+    /// While `coalesce` input continues, one repeated coalescing edit extends
+    /// the newest step instead.
+    pub(super) fn record_graph_commands(
+        &mut self,
+        commands: Vec<GraphCommand>,
+        current: EditorSnapshot,
+        now: std::time::Instant,
+        coalesce: bool,
+    ) {
         self.commit_pending_history();
-        let label = command.label();
+        let continues = coalesce
+            && self
+                .command_coalescing
+                .is_some_and(|last| now.saturating_duration_since(last) < HISTORY_COALESCE_DELAY);
+        if continues
+            && let [command] = &commands[..]
+            && self.extend_newest_command(command)
+        {
+            self.adopt_observed(current);
+            self.command_coalescing = Some(now);
+            return;
+        }
+        self.command_coalescing = (coalesce
+            && matches!(&commands[..], [command] if command.action().coalesces()))
+        .then_some(now);
+        let label = step_label(&commands);
         let previous = self.adopt_observed(current);
         self.history.record(
             HistoryRecord::Command(GraphCommandRecord {
-                command,
+                commands,
                 layout: previous.state.layout,
             }),
             label,
         );
+    }
+
+    /// Folds `next` into the newest step when that step is one command
+    /// performing the same coalescing action, returning whether it did.
+    fn extend_newest_command(&mut self, next: &GraphCommand) -> bool {
+        let combined = match self.history.next_undo() {
+            Some(HistoryRecord::Command(record)) => match &record.commands[..] {
+                [previous] => previous.then(next, same_node),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some(combined) = combined else {
+            return false;
+        };
+        if let Some(HistoryRecord::Command(record)) = self.history.newest_undo_mut() {
+            record.commands = vec![combined];
+        }
+        true
     }
 
     /// Drops queued commands that no longer describe the observed state.
@@ -102,8 +226,8 @@ impl FerruleApp {
         self.frame_commands.clear();
     }
 
-    /// Inverts or reapplies one command on the observed project. On failure
-    /// the record and editor state are unchanged.
+    /// Inverts or reapplies one step's commands on the observed project. On
+    /// failure the record and editor state are unchanged.
     pub(super) fn exchange_graph_command(
         &mut self,
         record: &mut GraphCommandRecord,
@@ -111,8 +235,15 @@ impl FerruleApp {
     ) -> Result<(), GraphEditError> {
         let mut project = self.observed_editor.project.clone();
         match direction {
-            HistoryDirection::Undo => record.command.revert_on_matching(&mut project, same_node)?,
-            HistoryDirection::Redo => record.command.apply_to_matching(&mut project, same_node)?,
+            HistoryDirection::Undo => record
+                .commands
+                .iter()
+                .rev()
+                .try_for_each(|command| command.revert_on_matching(&mut project, same_node))?,
+            HistoryDirection::Redo => record
+                .commands
+                .iter()
+                .try_for_each(|command| command.apply_to_matching(&mut project, same_node))?,
         }
         let mut layout = std::mem::replace(
             &mut record.layout,
