@@ -135,6 +135,32 @@ fn formatters_reject_invalid_values_pictures_and_nondefault_locale_arguments() {
 }
 
 #[test]
+fn default_minute_and_second_formatting_is_zero_padded() {
+    for (clock, expected) in [
+        ("2030-01-02T00:00:00", "2030010200000"),
+        ("2030-01-02T01:02:03", "2030010210203"),
+        ("2030-01-02T09:08:07", "2030010290807"),
+        ("2030-01-02T10:00:09", "20300102100009"),
+        ("2030-01-02T12:34:56", "20300102123456"),
+        ("2030-01-02T23:59:59", "20300102235959"),
+    ] {
+        assert_eq!(
+            format_datetime(&[text(clock), text("[Y][M,2-2][D,2-2][H][m][s]")]).unwrap(),
+            text(expected),
+            "{clock}"
+        );
+    }
+    assert_eq!(
+        format_time(&[text("01:02:03"), text("[H]:[m]:[s]")]).unwrap(),
+        text("1:02:03")
+    );
+    assert_eq!(
+        parse_time(&[text("1:2:3"), text("[H]:[m]:[s]")]).unwrap(),
+        text("01:02:03")
+    );
+}
+
+#[test]
 fn parse_time_uses_atomic_numeric_lexical_forms() {
     assert_eq!(
         parse_time(&[Value::Float(953.0), text("[H,1-1][m,2-2]"),]).unwrap(),

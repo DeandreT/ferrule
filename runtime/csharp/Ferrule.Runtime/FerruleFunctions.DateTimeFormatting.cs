@@ -290,7 +290,7 @@ public static partial class FerruleFunctions
         {
             throw InvalidArgument(function, SupportedPictureDetail);
         }
-        if (component.FixedWidth is int width)
+        if (component.FormatWidth is int width)
         {
             if (digits.Length > width)
             {

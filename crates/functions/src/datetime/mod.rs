@@ -41,6 +41,7 @@ struct Component {
     min_width: usize,
     max_width: usize,
     fixed_width: Option<usize>,
+    format_width: Option<usize>,
     letter_case: Option<LetterCase>,
 }
 
@@ -855,7 +856,7 @@ fn format_numeric(
     if !digits.bytes().all(|byte| byte.is_ascii_digit()) {
         return invalid(function);
     }
-    let width = component.fixed_width;
+    let width = component.format_width;
     let mut digits = digits.to_string();
     if let Some(width) = width {
         if digits.len() > width {
@@ -1031,11 +1032,18 @@ fn parse_component(spec: &str) -> Option<Component> {
     let fixed_width = (min_width == max_width)
         .then_some(min_width)
         .or(presentation_width);
+    // Default clock minutes/seconds render with two digits. Keep parsing
+    // permissive: [m] and [s] still accept a single digit in input pictures.
+    let format_width = fixed_width.or_else(|| {
+        (width.is_none() && modifier.is_empty() && matches!(field, Field::Minute | Field::Second))
+            .then_some(2)
+    });
     Some(Component {
         field,
         min_width,
         max_width,
         fixed_width,
+        format_width,
         letter_case,
     })
 }
