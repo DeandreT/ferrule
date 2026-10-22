@@ -131,6 +131,7 @@ fn packaged_sibling_admission_refuses_each_unsupported_node() {
         prepare(&package);
         let worker = package.join("ferrule-pdf-worker");
         let before = node(&worker);
+        let fds = descriptors();
         let failure = admission_failure(&package);
         assert_failure(
             &failure,
@@ -139,14 +140,17 @@ fn packaged_sibling_admission_refuses_each_unsupported_node() {
             errno,
             diagnostic,
         );
-        // Refusal neither repairs, replaces nor creates package nodes.
+        // Refusal neither repairs, replaces nor creates package nodes, and
+        // closes every descriptor it opened on the way.
         assert_eq!(node(&worker), before, "{name}");
+        assert_eq!(descriptors(), fds, "{name}");
         assert!(thread_children().is_empty());
     }
 
     let untrusted = root.dir("untrusted-parent");
     install_program(&untrusted, "ferrule-pdf-worker");
     std::fs::set_permissions(&untrusted, std::fs::Permissions::from_mode(0o770)).unwrap();
+    let fds = descriptors();
     assert_failure(
         &admission_failure(&untrusted),
         FailureKind::UnsupportedHost,
@@ -154,6 +158,7 @@ fn packaged_sibling_admission_refuses_each_unsupported_node() {
         None,
         "untrusted directory owner/mode",
     );
+    assert_eq!(descriptors(), fds);
 
     let real = root.dir("real-package");
     install_program(&real, "ferrule-pdf-worker");
@@ -166,6 +171,7 @@ fn packaged_sibling_admission_refuses_each_unsupported_node() {
         Some(libc::ENOTDIR),
         "Not a directory (os error 20)",
     );
+    assert_eq!(descriptors(), fds);
 
     let supported = root.dir("supported");
     install_program(&supported, "ferrule-pdf-worker");

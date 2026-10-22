@@ -165,9 +165,7 @@ is `ProtocolError`. Never interpret an empty/malformed result as an empty PDF.
 
 Install no broader limits than the caller already has: reject an inherited limit
 that cannot admit this fixed profile, rather than raising it. Verify effective
-limits before the start token. These numbers require qualification with the
-packaged executable and small valid PDFs; no fitting-baseline or success evidence
-exists yet. Linux [`RLIMIT_AS`](https://man7.org/linux/man-pages/man2/getrlimit.2.html)
+limits before the start token. Linux [`RLIMIT_AS`](https://man7.org/linux/man-pages/man2/getrlimit.2.html)
 limits virtual address space. Allocation or stack expansion can fail or terminate
 the child; it is not an RSS measurement. `RLIMIT_RSS` supplies no usable modern
 Linux RSS enforcement for this policy. CPU and file-size limits likewise do not
@@ -332,7 +330,7 @@ They do not qualify subprocess limits, cancellation or memory use.
   preservation with existing CLI controls; no unnecessary worker for unused sources.
 - [ ] Qualify GUI cancellation and app close on an alternate virtual display,
   keeping the user's active monitors untouched and all publication controls intact.
-- [ ] Record executable/profile/kernel/effective limits, repeated child and parent
+- [x] Record executable/profile/kernel/effective limits, repeated child and parent
   RSS/CPU/wall brackets, exact outputs and all failures. Address-space limits,
   RSS observations, input bytes and typed tree size remain separate quantities.
 
@@ -340,3 +338,14 @@ Design review, diagram rendering and pure wire/library checks are complete. The
 Linux worker, CLI, GUI and resource qualification gates remain pending. The codec
 checks establish no actual worker success, hostile PDF safety, streaming behavior
 or RSS ceiling.
+
+To compare extraction modes on Linux, build and run the
+[`pdf_worker_profile` example](../crates/cli/examples/pdf_worker_profile/main.rs):
+
+```sh
+cargo build --release --locked -p cli --bins --example pdf_worker_profile
+target/release/examples/pdf_worker_profile --repeats 10 --raw trials.jsonl
+```
+
+The fixture compares complete outputs;
+whole-process RSS includes more than PDF decoding.

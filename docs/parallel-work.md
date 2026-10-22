@@ -29,9 +29,6 @@ choose a lane and avoid conflicting changes.
 - [ ] Complete GUI filesystem cancellation #327 after #326/#344.
 - [ ] Add explicit preview input acquisition #340 after #326/#344.
 - [ ] Complete GUI preview ownership #341 after #327/#340.
-- [ ] Execute resource qualification #328 after #326: 20 source-only recipes,
-  15 exact cases and 82 planned requests; all execution remains unrun.
-  This scope does not depend on #327.
 - [ ] Qualify #263's individually admitted native save/reopen/save2 cycle after exact
   owned-window proof. Native 180-second timeout, #285 diagnostics and #291 presentation refusal
   remain negatives; modeled 16 query checks and helper source do not prove live ownership.
