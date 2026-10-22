@@ -224,7 +224,7 @@ fn assert_records(records: &[Json], backend: &str) {
         }
     }
 }
-fn target(directory: &Path) -> io::Result<PathBuf> {
+pub(super) fn target(directory: &Path) -> io::Result<PathBuf> {
     let cwd = std::env::current_dir()?;
     let path = match std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR") {
         Some(value) if value.is_empty() => {

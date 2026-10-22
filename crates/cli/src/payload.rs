@@ -590,14 +590,8 @@ struct PayloadDynamicSourceLoader {
 
 impl engine::DynamicSourceLoader for PayloadDynamicSourceLoader {
     fn load(&self, source_name: &str, path: &str) -> Result<Arc<Instance>, String> {
-        self.sources
-            .get(&(source_name.to_string(), normalize_payload_identity(path)))
-            .cloned()
-            .ok_or_else(|| {
-                format!(
-                    "host did not supply payload source `{source_name}` at logical path `{path}`"
-                )
-            })
+        self.load_tagged(source_name, path)
+            .map_err(engine::DynamicSourceFault::into_message)
     }
 
     /// Logical identities select among host-supplied bytes; nothing is acquired.
@@ -609,6 +603,33 @@ impl engine::DynamicSourceLoader for PayloadDynamicSourceLoader {
     ) -> Result<Arc<Instance>, engine::DynamicSourceLoadError> {
         self.load(source_name, path)
             .map_err(engine::DynamicSourceLoadError::Failed)
+    }
+
+    /// Supplied documents were decoded before execution, so the only fault
+    /// left is an identity the host did not supply.
+    fn load_tagged(
+        &self,
+        source_name: &str,
+        path: &str,
+    ) -> Result<Arc<Instance>, engine::DynamicSourceFault> {
+        self.sources
+            .get(&(source_name.to_string(), normalize_payload_identity(path)))
+            .cloned()
+            .ok_or_else(|| {
+                engine::DynamicSourceFault::acquisition(crate::UnsuppliedPayloadSource {
+                    source_name: source_name.to_owned(),
+                    path: path.to_owned(),
+                })
+            })
+    }
+
+    fn load_restricted_tagged(
+        &self,
+        source_name: &str,
+        path: &str,
+        _policy: &engine::RestrictedPolicy,
+    ) -> Result<Arc<Instance>, engine::RestrictedDynamicSourceError> {
+        Ok(self.load_tagged(source_name, path)?)
     }
 }
 

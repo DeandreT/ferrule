@@ -28,6 +28,7 @@ const MAX_HTTP_REDIRECTS: u32 = 5;
 mod bundle;
 mod cancellation;
 mod code_generation;
+mod dynamic_source_fault;
 mod dynamic_source_loader;
 mod execution_policy;
 mod file_run;
@@ -44,6 +45,9 @@ mod project_paths;
 mod read_set;
 mod route_capability;
 pub use bundle::{BundleCatalog, BundleCatalogKind, BundleOptions, BundleOutcome, bundle_project};
+pub use dynamic_source_fault::{
+    DynamicSourceReadError, UndeclaredDynamicSource, UnsuppliedPayloadSource,
+};
 use dynamic_source_loader::ProjectDynamicSourceLoader;
 pub use engine::{
     ExecutionBudgetKind, ExecutionBudgets, ExecutionPolicy, PathAccess, PolicyRefusal,
