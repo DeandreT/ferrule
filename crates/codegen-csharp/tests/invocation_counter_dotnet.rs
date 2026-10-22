@@ -8,6 +8,8 @@ mod admission;
 mod expected;
 #[path = "../../../conformance/invocation-counter-expressions/project.rs"]
 mod fixture;
+#[path = "../../../conformance/invocation-counter-expressions/optional_presence.rs"]
+mod optional_presence;
 
 struct Temporary(PathBuf);
 impl Drop for Temporary {
@@ -42,6 +44,17 @@ fn generated_counter_rows_share_state_and_keep_restart_presence() -> Result<(), 
         fixture::rows_project(),
         include_str!("../../../conformance/invocation-counter-expressions/RowsHost.cs.txt"),
         &expected::rows(),
+    )
+}
+
+#[test]
+fn generated_optional_presence_keeps_counter_evaluation_order() -> Result<(), Box<dyn Error>> {
+    run_fixture(
+        optional_presence::project(fixture::project()),
+        include_str!(
+            "../../../conformance/invocation-counter-expressions/OptionalPresenceHost.cs.txt"
+        ),
+        "PASS optional counter documents",
     )
 }
 

@@ -13,6 +13,8 @@ use host_target::GeneratedHostCommand;
 mod admission;
 #[path = "../../../conformance/invocation-counter-expressions/expected.rs"]
 mod expected;
+#[path = "../../../conformance/invocation-counter-expressions/optional_presence.rs"]
+mod optional_presence;
 
 struct Temporary(PathBuf);
 impl Drop for Temporary {
@@ -50,6 +52,18 @@ fn generated_counter_rows_share_state_and_keep_restart_presence() -> Result<(), 
         "counter_rows",
         include_str!("../../../conformance/invocation-counter-expressions/RowsHost.rs.txt"),
         &expected::rows(),
+    )
+}
+
+#[test]
+fn generated_optional_presence_keeps_counter_evaluation_order() -> Result<(), Box<dyn Error>> {
+    run_fixture(
+        optional_presence::project(fixture::project()),
+        "counter_optional_presence",
+        include_str!(
+            "../../../conformance/invocation-counter-expressions/OptionalPresenceHost.rs.txt"
+        ),
+        "PASS optional counter documents",
     )
 }
 
