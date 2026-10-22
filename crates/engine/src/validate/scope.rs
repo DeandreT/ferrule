@@ -566,20 +566,8 @@ pub(super) fn validate_scope(
             ));
         }
     }
-    // A block size is evaluated in the parent context like these roots. Roots
-    // are validated last first, so leading with it keeps the others' order.
-    let mut parent_roots = scope.group_into_blocks.into_iter().collect::<Vec<_>>();
-    parent_roots.extend(
-        scope
-            .windows
-            .iter()
-            .copied()
-            .flat_map(|window| window.nodes()),
-    );
-    if let Some(sequence) = scope.sequence() {
-        parent_roots.extend(sequence.inputs());
-    }
-    parent_roots.extend(scope.presence());
+    let parent_roots =
+        crate::scope_slots::ranked_roots(scope, crate::scope_slots::parent_join_validation);
     let parent_root_context = is_root_context(project, schemas.parent_source);
     validate_join_roots(
         &project.graph,
