@@ -141,6 +141,7 @@ fn with_function_viewer<R>(
         camera_focus: None,
         canvas_transform: None,
         pin_interaction_ids: Vec::new(),
+        planned_edits: Vec::new(),
         error: None,
     };
     edit(&mut viewer, &mut canvas.snarl)

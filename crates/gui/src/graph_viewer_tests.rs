@@ -121,6 +121,7 @@ impl Fixture {
             camera_focus: None,
             canvas_transform: None,
             pin_interaction_ids: Vec::new(),
+            planned_edits: Vec::new(),
             error: None,
         }
     }
@@ -461,6 +462,7 @@ fn long_endpoint_paths_do_not_expand_the_source_node() {
             camera_focus: None,
             canvas_transform: None,
             pin_interaction_ids: Vec::new(),
+            planned_edits: Vec::new(),
             error: None,
         };
         SnarlWidget::new().show(&mut snarl, &mut viewer, ui);
@@ -582,6 +584,7 @@ fn lookup_node_width_stabilizes_across_repaints() {
                     camera_focus: None,
                     canvas_transform: None,
                     pin_interaction_ids: Vec::new(),
+                    planned_edits: Vec::new(),
                     error: None,
                 };
                 crate::canvas_keyboard::show(
@@ -754,6 +757,7 @@ fn sibling_repeating_source_pins_create_distinct_framed_fields() {
         camera_focus: None,
         canvas_transform: None,
         pin_interaction_ids: Vec::new(),
+        planned_edits: Vec::new(),
         error: None,
     };
 
