@@ -2670,6 +2670,8 @@ fn render_scope(
     if let Some(iteration) = &scope.iteration {
         if iteration.concatenated().is_some() {
             output.push_str(&render_concatenated_scope(iteration, segment_names));
+        } else if let Some(presence) = iteration.presence() {
+            output.push_str(&render_presence_scope(scope, presence, child_names));
         } else {
             output.push_str(&render_iteration_scope(
                 program,
@@ -2704,6 +2706,22 @@ fn render_concatenated_scope(iteration: &IterationPlan, segment_names: &[String]
         }
         IterationOutput::First => unreachable!("validated scope sequences cannot use First"),
     }
+    output
+}
+
+/// The condition runs once against the parent context, which the constructed
+/// group keeps: optional presence adds no candidate frame or position.
+fn render_presence_scope(
+    scope: &TargetScope,
+    presence: codegen::OptionalPresence,
+    child_names: &[String],
+) -> String {
+    let condition = presence.condition();
+    let mut output = format!(
+        "    if !require_bool({condition}, expression_{condition}(context)?)? {{\n        return Ok(repeated(Vec::new()));\n    }}\n"
+    );
+    output.push_str(&render_scope_item(scope, child_names, "    ", "context"));
+    output.push_str("    Ok(repeated([output]))\n");
     output
 }
 
@@ -2871,7 +2889,8 @@ fn render_grouping_with_prefix(
         ),
         IterationSource::Generated(_)
         | IterationSource::InnerJoin(_)
-        | IterationSource::Concatenate(_) => "None".to_string(),
+        | IterationSource::Concatenate(_)
+        | IterationSource::OptionalPresence(_) => "None".to_string(),
         IterationSource::OwnedInnerJoin(_) => unreachable!("owned join emission gate"),
     };
     let binding = if candidates_are_reassigned {
@@ -3052,6 +3071,9 @@ fn render_iteration_candidates(
         IterationSource::OwnedInnerJoin(_) => unreachable!("owned join emission gate"),
         IterationSource::Concatenate(_) => {
             unreachable!("concatenated scopes render before candidate iteration")
+        }
+        IterationSource::OptionalPresence(_) => {
+            unreachable!("optional-presence scopes render before candidate iteration")
         }
     }
     Ok(())

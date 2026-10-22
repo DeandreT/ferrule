@@ -800,7 +800,8 @@ fn collect_nested_targets(
             }
             ScopeIteration::None
             | ScopeIteration::InnerJoin { .. }
-            | ScopeIteration::Concatenate(_) => {
+            | ScopeIteration::Concatenate(_)
+            | ScopeIteration::OptionalPresence { .. } => {
                 return Err(dynamic_target_error(
                     "nested computed properties require source or generated-sequence iteration",
                 ));

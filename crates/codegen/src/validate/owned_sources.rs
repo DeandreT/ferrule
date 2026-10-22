@@ -1002,6 +1002,7 @@ impl<'a> Admission<'a> {
                     IterationSource::Generated(_) => Some(Capability::GeneratedItem),
                     IterationSource::InnerJoin(_) => Some(Capability::Join),
                     IterationSource::Concatenate(_) => Some(Capability::Concatenate),
+                    IterationSource::OptionalPresence(_) => Some(Capability::OptionalPresence),
                     _ => None,
                 }
             };
@@ -2162,6 +2163,7 @@ fn basic_scope(
                 Some(Capability::Join)
             }
             IterationSource::Concatenate(_) => Some(Capability::Concatenate),
+            IterationSource::OptionalPresence(_) => Some(Capability::OptionalPresence),
             IterationSource::DynamicDocuments(_) => Some(Capability::Document),
         };
         if let Some(reason) = reason {

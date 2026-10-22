@@ -1,0 +1,22 @@
+{
+  "title": "Source",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "Rows": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "Flag": { "type": "boolean" },
+          "Label": { "type": "string" },
+          "Code": { "type": "integer" },
+          "Note": { "type": "string" },
+          "Other": { "type": "string" }
+        }
+      }
+    }
+  }
+}

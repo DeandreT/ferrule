@@ -9,6 +9,7 @@ mod join;
 mod mixed_content;
 mod options;
 mod owner;
+mod presence;
 mod primary_root;
 mod schema;
 mod scope;

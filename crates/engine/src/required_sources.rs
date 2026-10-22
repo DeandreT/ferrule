@@ -111,6 +111,7 @@ impl<'a> Analysis<'a> {
         self.pending.extend(scope.grouping_nodes());
         self.pending.extend(scope.sort_by);
         self.pending.extend(scope.output_path());
+        self.pending.extend(scope.presence());
         self.pending.extend(
             scope
                 .windows

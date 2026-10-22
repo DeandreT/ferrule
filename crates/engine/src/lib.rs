@@ -266,6 +266,7 @@ pub enum OwnedCapabilityContext {
     Document,
     DynamicTarget,
     Concatenate,
+    OptionalPresence,
     SpecialConstruction,
     Tracing,
     Debugging,
@@ -1071,6 +1072,9 @@ mod iteration_output_tests;
 #[cfg(test)]
 #[path = "tests/join.rs"]
 mod join_tests;
+#[cfg(test)]
+#[path = "tests/optional_presence.rs"]
+mod optional_presence_tests;
 #[cfg(test)]
 #[path = "tests/owned_adjacency_tree.rs"]
 mod owned_adjacency_tree_tests;

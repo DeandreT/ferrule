@@ -281,6 +281,16 @@ pub(crate) fn eval_scope(
                     .collect::<Vec<_>>()
             })
             .collect()
+    } else if let Some(condition) = scope.presence() {
+        // The parent item is the only candidate; no frame or position is added.
+        if passes_filter(program, Some(condition), context, positions)? {
+            vec![WalkExtension {
+                instances: Vec::new(),
+                positions: Vec::new(),
+            }]
+        } else {
+            Vec::new()
+        }
     } else {
         match scope
             .source()
@@ -794,6 +804,7 @@ fn scope_needs_owned(program: EvalProgram<'_>, scope: &Scope) -> bool {
             _ => None,
         })
         .chain(scope.filter)
+        .chain(scope.presence())
         .chain(scope.grouping_nodes())
         .chain(scope.post_group_filter)
         .chain(scope.sort_keys().map(|key| key.node))

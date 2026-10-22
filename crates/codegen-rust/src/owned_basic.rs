@@ -207,6 +207,9 @@ fn check_scope(
             IterationSource::Concatenate(_) => {
                 return Err(scope_refusal(route, Capability::Concatenate, None));
             }
+            IterationSource::OptionalPresence(_) => {
+                return Err(scope_refusal(route, Capability::OptionalPresence, None));
+            }
             IterationSource::DynamicDocuments(_) => {
                 return Err(scope_refusal(route, Capability::Document, None));
             }
@@ -1052,6 +1055,9 @@ fn check_sort_scope(
             }
             IterationSource::Concatenate(_) => {
                 return Err(scope_refusal(route, Capability::Concatenate, None));
+            }
+            IterationSource::OptionalPresence(_) => {
+                return Err(scope_refusal(route, Capability::OptionalPresence, None));
             }
             IterationSource::DynamicDocuments(_) => {
                 return Err(scope_refusal(route, Capability::Document, None));

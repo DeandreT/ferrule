@@ -137,6 +137,10 @@ pub enum TraceIteration {
     Concatenate {
         segments: usize,
     },
+    /// Zero or one group selected by a parent-context presence expression.
+    OptionalPresence {
+        condition: NodeId,
+    },
 }
 
 pub(crate) fn scope_iteration(
@@ -157,6 +161,9 @@ pub(crate) fn scope_iteration(
         ScopeIteration::InnerJoin { id, .. } => TraceIteration::Join { join: *id },
         ScopeIteration::Concatenate(segments) => TraceIteration::Concatenate {
             segments: segments.iter().count(),
+        },
+        ScopeIteration::OptionalPresence { condition } => TraceIteration::OptionalPresence {
+            condition: *condition,
         },
     })
 }
