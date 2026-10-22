@@ -53,6 +53,7 @@ rustix = { workspace = true }
 
 [dev-dependencies]
 codegen-runtime = { workspace = true }
+flate2 = "1.1"
 roxmltree = { workspace = true }
 rusqlite = { workspace = true }
 rust_xlsxwriter = { workspace = true }
