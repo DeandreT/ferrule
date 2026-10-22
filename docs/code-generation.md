@@ -742,7 +742,8 @@ the node is evaluated.
 
 The serializer schema, declaration, indent and default-namespace options keep
 the legacy meaning and the legacy writer, so XML bytes, writer type failures,
-size limits and the read-then-write error order are shared. Validation checks
+size limits, the refusal of characters outside XML 1.0 after the size check and
+the read-then-write error order are shared. Validation checks
 the schema name and kind against the exact owner's schema and keeps the legacy
 document checks (non-repeating schema, non-empty namespace, closed schema
 features). Unknown, empty and unresolved owners, frames that do not prefix the
