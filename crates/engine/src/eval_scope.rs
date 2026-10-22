@@ -795,7 +795,7 @@ fn scope_needs_owned(program: EvalProgram<'_>, scope: &Scope) -> bool {
     {
         return true;
     }
-    let mut pending = owned_probe_roots(scope);
+    let mut pending = crate::scope_slots::roots(scope, crate::scope_slots::owned_probe);
     let mut visited = HashSet::new();
     while let Some(id) = pending.pop() {
         if !visited.insert(id) {
@@ -812,31 +812,6 @@ fn scope_needs_owned(program: EvalProgram<'_>, scope: &Scope) -> bool {
         .children
         .iter()
         .any(|child| scope_needs_owned(program, child))
-}
-
-/// The roots whose expressions decide whether a scope needs owned evaluation.
-pub(crate) fn owned_probe_roots(scope: &Scope) -> Vec<NodeId> {
-    scope
-        .bindings
-        .iter()
-        .map(|binding| binding.node)
-        .chain(match &scope.construction {
-            ScopeConstruction::Scalar { value } => Some(*value),
-            _ => None,
-        })
-        .chain(scope.filter)
-        .chain(scope.presence())
-        .chain(scope.grouping_nodes())
-        .chain(scope.post_group_filter)
-        .chain(scope.sort_keys().map(|key| key.node))
-        .chain(
-            scope
-                .windows
-                .iter()
-                .copied()
-                .flat_map(|window| window.nodes()),
-        )
-        .collect()
 }
 
 /// Only the implicit First window may use bounded candidate retention.
