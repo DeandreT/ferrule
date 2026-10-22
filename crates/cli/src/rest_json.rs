@@ -10,7 +10,7 @@ mod mapping;
 mod validation;
 
 pub use mapping::{
-    RestJsonMappingOptions, run_project_rest_json_request_file_payloads,
+    RestJsonMappingOptions, plan_rest_json_run, run_project_rest_json_request_file_payloads,
     run_project_value_rest_json_payloads, run_project_value_rest_json_request_file_payloads,
 };
 

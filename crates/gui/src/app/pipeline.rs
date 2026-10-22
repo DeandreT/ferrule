@@ -1,3 +1,4 @@
+use super::owned_worker::{OwnedWorker, WorkerExit};
 use super::*;
 
 use std::cell::Cell;
@@ -85,11 +86,13 @@ enum PipelineRunEvent {
     PausedFailure(String, Box<engine::PendingNodeFailure>),
     PausedFunctionFailure(String, Box<engine::PendingFunctionNodeFailure>),
     ReadyToPublish,
-    Finished(
-        Result<PipelineCompletion, PipelineRunError>,
-        crate::run_report::TraceReport,
-    ),
 }
+
+/// What the pipeline worker returns when its thread finishes.
+type PipelineRunResult = (
+    Result<PipelineCompletion, PipelineRunError>,
+    crate::run_report::TraceReport,
+);
 
 enum PipelineCompletion {
     Run(cli::PipelineRunOutcome),
@@ -115,7 +118,11 @@ pub(super) enum PipelineRunPhase {
     Stopping,
 }
 
+/// A pipeline run or preview owned by its exact worker thread. Pause and
+/// publication events arrive on `receiver`; the outcome is reported only
+/// after that thread was joined.
 pub(super) struct PendingPipelineRun {
+    worker: OwnedWorker<PipelineRunResult>,
     receiver: Receiver<PipelineRunEvent>,
     commands: Sender<PipelineRunCommand>,
     cancelled: Arc<AtomicBool>,
@@ -150,6 +157,9 @@ impl PendingPipelineRun {
 }
 
 impl Drop for PendingPipelineRun {
+    /// Cancels unless outputs are already being published, then drains the
+    /// exact worker: the `worker` field is dropped after this runs, while the
+    /// command channel is still connected.
     fn drop(&mut self) {
         if !matches!(self.phase, PipelineRunPhase::Publishing) {
             self.cancelled.store(true, Ordering::Release);
@@ -158,492 +168,11 @@ impl Drop for PendingPipelineRun {
     }
 }
 
-struct PipelineRunHook {
-    events: Sender<PipelineRunEvent>,
-    commands: Receiver<PipelineRunCommand>,
-    cancelled: Arc<AtomicBool>,
-    pause_each_write: Cell<bool>,
-    pause_next_node: Cell<bool>,
-    pause_next_input: Cell<bool>,
-    breakpoint: Option<PipelineBreakpoint>,
-    value_condition: Option<DebugScalarCondition>,
-    position_condition: Option<DebugPositionCondition>,
-    source_condition: Option<DebugSourceCondition>,
-    node_condition: Option<DebugNodeCondition>,
-    expression_condition: Option<DebugExpressionCondition>,
-    expression_stage: Option<String>,
-    input_condition: Option<DebugInputCondition>,
-    input_stage: Option<String>,
-    pause_on_failure: bool,
-    failure_stage: Option<String>,
-}
-
-impl PipelineRunHook {
-    fn after_failure(&self, event: PipelineRunEvent) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PipelineRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(
-                    PipelineRunCommand::Step
-                    | PipelineRunCommand::Continue
-                    | PipelineRunCommand::Pause
-                    | PipelineRunCommand::Publish,
-                ) => {}
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-        if self.events.send(event).is_err() {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PipelineRunCommand::Continue) => return engine::DebugDecision::Resume,
-                Ok(PipelineRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(
-                    PipelineRunCommand::Pause
-                    | PipelineRunCommand::Step
-                    | PipelineRunCommand::Publish,
-                )
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-            }
-        }
-    }
-
-    fn after_node_failure(
-        &self,
-        stage: &str,
-        failure: &engine::PendingNodeFailure,
-    ) -> engine::DebugDecision {
-        if !self.pause_on_failure
-            || !self
-                .failure_stage
-                .as_deref()
-                .is_none_or(|selected| selected == stage)
-        {
-            return engine::DebugDecision::Resume;
-        }
-        self.after_failure(PipelineRunEvent::PausedFailure(
-            stage.into(),
-            Box::new(failure.clone()),
-        ))
-    }
-
-    fn after_function_node_failure(
-        &self,
-        stage: &str,
-        failure: &engine::PendingFunctionNodeFailure,
-    ) -> engine::DebugDecision {
-        if !self.pause_on_failure
-            || !self
-                .failure_stage
-                .as_deref()
-                .is_none_or(|selected| selected == stage)
-        {
-            return engine::DebugDecision::Resume;
-        }
-        self.after_failure(PipelineRunEvent::PausedFunctionFailure(
-            stage.into(),
-            Box::new(failure.clone()),
-        ))
-    }
-
-    fn source_field_probe(&self) -> Option<(usize, String)> {
-        self.source_condition
-            .as_ref()
-            .map(DebugSourceCondition::probe)
-    }
-
-    fn before_target_write(
-        &self,
-        stage: &str,
-        write: &engine::PendingTargetWrite,
-    ) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PipelineRunCommand::Pause | PipelineRunCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(PipelineRunCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(PipelineRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(PipelineRunCommand::Publish) | Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_selection = self
-            .breakpoint
-            .as_ref()
-            .is_none_or(|breakpoint| breakpoint.matches(stage, write));
-        let matches_value = self
-            .value_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let matches_position = self
-            .position_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let matches_source = self
-            .source_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let matches_node = self
-            .node_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let has_breakpoint = self.breakpoint.is_some()
-            || self.value_condition.is_some()
-            || self.position_condition.is_some()
-            || self.source_condition.is_some()
-            || self.node_condition.is_some();
-        if !self.pause_each_write.get()
-            && !(has_breakpoint
-                && matches_selection
-                && matches_value
-                && matches_position
-                && matches_source
-                && matches_node)
-        {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(PipelineRunEvent::Paused(
-                stage.into(),
-                Box::new(write.clone()),
-            ))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PipelineRunCommand::Step) => {
-                    self.pause_each_write.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PipelineRunCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PipelineRunCommand::Pause | PipelineRunCommand::Publish)
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(PipelineRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_node_value(
-        &self,
-        stage: &str,
-        value: &engine::PendingNodeValue,
-    ) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PipelineRunCommand::Pause | PipelineRunCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(PipelineRunCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(PipelineRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(PipelineRunCommand::Publish) | Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_expression = self.expression_condition.as_ref().is_some_and(|condition| {
-            self.expression_stage
-                .as_deref()
-                .is_none_or(|id| id == stage)
-                && condition.matches(value)
-        });
-        if !self.pause_next_node.replace(false) && !matches_expression {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(PipelineRunEvent::PausedNode(
-                stage.into(),
-                Box::new(value.clone()),
-            ))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PipelineRunCommand::Step) => {
-                    self.pause_next_node.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PipelineRunCommand::Continue) => {
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PipelineRunCommand::Pause | PipelineRunCommand::Publish)
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(PipelineRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_function_node_value(
-        &self,
-        stage: &str,
-        value: &engine::PendingFunctionNodeValue,
-    ) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PipelineRunCommand::Pause | PipelineRunCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(PipelineRunCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(PipelineRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(PipelineRunCommand::Publish) | Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_expression = self.expression_condition.as_ref().is_some_and(|condition| {
-            self.expression_stage
-                .as_deref()
-                .is_none_or(|id| id == stage)
-                && condition.matches_function(value)
-        });
-        if !self.pause_next_node.replace(false) && !matches_expression {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(PipelineRunEvent::PausedFunctionNode(
-                stage.into(),
-                Box::new(value.clone()),
-            ))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PipelineRunCommand::Step) => {
-                    self.pause_next_node.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PipelineRunCommand::Continue) => {
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PipelineRunCommand::Pause | PipelineRunCommand::Publish)
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(PipelineRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_node_input(
-        &self,
-        stage: &str,
-        input: &engine::PendingNodeInput,
-    ) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PipelineRunCommand::Pause | PipelineRunCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(PipelineRunCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(PipelineRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(PipelineRunCommand::Publish) | Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_pin = self.input_condition.as_ref().is_some_and(|condition| {
-            self.input_stage.as_deref().is_none_or(|id| id == stage) && condition.matches(input)
-        });
-        if !self.pause_next_input.replace(false) && !matches_pin {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(PipelineRunEvent::PausedInput(
-                stage.into(),
-                Box::new(input.clone()),
-            ))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PipelineRunCommand::Step) => {
-                    self.pause_next_input.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PipelineRunCommand::Continue) => {
-                    self.pause_next_input.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PipelineRunCommand::Pause | PipelineRunCommand::Publish)
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(PipelineRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_function_node_input(
-        &self,
-        stage: &str,
-        input: &engine::PendingFunctionNodeInput,
-    ) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PipelineRunCommand::Pause | PipelineRunCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(PipelineRunCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(PipelineRunCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(PipelineRunCommand::Publish) | Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_pin = self.input_condition.as_ref().is_some_and(|condition| {
-            self.input_stage.as_deref().is_none_or(|id| id == stage)
-                && condition.matches_function(input)
-        });
-        if !self.pause_next_input.replace(false) && !matches_pin {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(PipelineRunEvent::PausedFunctionInput(
-                stage.into(),
-                Box::new(input.clone()),
-            ))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PipelineRunCommand::Step) => {
-                    self.pause_next_input.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PipelineRunCommand::Continue) => {
-                    self.pause_next_input.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PipelineRunCommand::Pause | PipelineRunCommand::Publish)
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(PipelineRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn before_publish(&self) -> bool {
-        if self.cancelled.load(Ordering::Acquire)
-            || self.events.send(PipelineRunEvent::ReadyToPublish).is_err()
-        {
-            return false;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return false;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PipelineRunCommand::Publish) => {
-                    return !self.cancelled.load(Ordering::Acquire);
-                }
-                Ok(PipelineRunCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return false;
-                }
-                Ok(
-                    PipelineRunCommand::Step
-                    | PipelineRunCommand::Continue
-                    | PipelineRunCommand::Pause,
-                )
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-            }
-        }
+#[cfg(test)]
+impl PendingPipelineRun {
+    /// Every owner of the cancellation flag, including the worker's own.
+    pub(super) fn cancellation_for_test(&self) -> std::sync::Weak<AtomicBool> {
+        Arc::downgrade(&self.cancelled)
     }
 }
 
@@ -1256,6 +785,36 @@ impl FerruleApp {
             }
         };
         let path = draft.path.clone();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        // Capability preflight, before any host input is acquired.
+        let preflight = if preview {
+            super::route_preflight::pipeline_preview(
+                &draft.pipeline,
+                &path,
+                &inputs,
+                &preview_identities,
+                &runtime_parameters,
+                &cancelled,
+            )
+        } else {
+            super::route_preflight::pipeline_run(
+                &path,
+                &inputs,
+                &outputs,
+                &runtime_parameters,
+                &cancelled,
+            )
+        };
+        if let Err(error) = preflight {
+            let title = if preview {
+                "Pipeline preview blocked"
+            } else {
+                "Pipeline run blocked"
+            };
+            self.status = title.to_lowercase();
+            self.diagnostics.error(title, format!("{error:#}"));
+            return;
+        }
         let worker_path = path.clone();
         let worker_pipeline = preview.then(|| Arc::clone(&draft.pipeline));
         let breakpoint = if debug {
@@ -1292,12 +851,11 @@ impl FerruleApp {
         let pause_on_failure = debug && self.pipeline_run_pause_on_failure;
         let (events, receiver) = mpsc::channel();
         let (commands, command_receiver) = mpsc::channel();
-        let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
-        std::thread::spawn(move || {
+        let worker = OwnedWorker::spawn("ferrule-pipeline-run", move || {
             let trace = crate::run_report::PipelineTraceCollector::new();
             let hook = PipelineRunHook {
-                events: events.clone(),
+                events,
                 commands: command_receiver,
                 cancelled: worker_cancelled,
                 pause_each_write: Cell::new(
@@ -1351,13 +909,19 @@ impl FerruleApp {
             let stage_trace = |stage: &str, event: cli::TraceEvent| trace.record(stage, event);
             let source_row_capacity = || trace.can_retain_event();
             let gate = || hook.before_publish();
+            // Cancellation and the publication gate need no stage hook; only
+            // a debug run attaches pause and breakpoint callbacks.
             let mut options = cli::PipelineRunOptions::default()
-                .with_stage_debug_hook(&stage_hook)
-                .with_stage_source_field_probe(&source_probe)
                 .with_stage_trace_sink(&stage_trace)
                 .with_stage_trace_source_row_capacity(&source_row_capacity)
+                .with_cancellation(hook.cancelled.as_ref())
                 .with_before_publish(&gate);
             options.runtime_parameters = Some(&runtime_parameters);
+            if debug {
+                options = options
+                    .with_stage_debug_hook(&stage_hook)
+                    .with_stage_source_field_probe(&source_probe);
+            }
             if hook.expression_condition.is_some() {
                 options = options
                     .with_stage_node_debug_hook(&stage_node_hook)
@@ -1375,22 +939,6 @@ impl FerruleApp {
             }
             let result: anyhow::Result<PipelineCompletion> = if preview {
                 (|| {
-                    let empty_hosts = inputs
-                        .iter()
-                        .map(|input| {
-                            let document = cli::PayloadDocument::new(&input.path, &[])?;
-                            cli::PipelineHostPayload::new(&input.name, document)
-                        })
-                        .collect::<anyhow::Result<Vec<_>>>()?;
-                    let preflight_options = cli::PipelinePreviewOptions::new(&empty_hosts)
-                        .with_output_identities(&preview_identities)
-                        .with_runtime_parameters(&runtime_parameters)
-                        .with_cancellation(hook.cancelled.as_ref());
-                    cli::validate_pipeline_preview(
-                        worker_pipeline.as_ref().expect("preview pipeline snapshot"),
-                        &worker_path,
-                        &preflight_options,
-                    )?;
                     let loaded = crate::pipeline_run::load_preview_hosts(&inputs, || {
                         hook.cancelled.load(Ordering::Acquire)
                     })?;
@@ -1404,11 +952,14 @@ impl FerruleApp {
                     let mut preview_options = cli::PipelinePreviewOptions::new(&hosts)
                         .with_output_identities(&preview_identities)
                         .with_runtime_parameters(&runtime_parameters)
-                        .with_stage_debug_hook(&stage_hook)
-                        .with_stage_source_field_probe(&source_probe)
                         .with_stage_trace_sink(&stage_trace)
                         .with_stage_trace_source_row_capacity(&source_row_capacity)
                         .with_cancellation(hook.cancelled.as_ref());
+                    if debug {
+                        preview_options = preview_options
+                            .with_stage_debug_hook(&stage_hook)
+                            .with_stage_source_field_probe(&source_probe);
+                    }
                     if hook.expression_condition.is_some() {
                         preview_options = preview_options
                             .with_stage_node_debug_hook(&stage_node_hook)
@@ -1450,9 +1001,26 @@ impl FerruleApp {
                     PipelineRunError::Failed(format!("{error:#}"))
                 }
             });
-            let _ = events.send(PipelineRunEvent::Finished(result, trace.finish()));
+            (result, trace.finish())
         });
+        let worker = match worker {
+            Ok(worker) => worker,
+            Err(error) => {
+                let title = if preview {
+                    "Pipeline preview failed"
+                } else {
+                    "Pipeline run failed"
+                };
+                self.status = title.to_lowercase();
+                self.diagnostics.error(
+                    title,
+                    format!("Could not start the pipeline worker: {error}"),
+                );
+                return;
+            }
+        };
         self.pending_pipeline_run = Some(PendingPipelineRun {
+            worker,
             receiver,
             commands,
             cancelled,
@@ -1495,29 +1063,33 @@ impl FerruleApp {
         let Some(pending) = &mut self.pending_pipeline_run else {
             return;
         };
-        let event = match pending.receiver.try_recv() {
-            Ok(event) => event,
-            Err(TryRecvError::Empty) => {
-                if !matches!(
-                    pending.phase,
-                    PipelineRunPhase::Paused(..)
-                        | PipelineRunPhase::PausedNode(..)
-                        | PipelineRunPhase::PausedFunctionNode(..)
-                        | PipelineRunPhase::PausedInput(..)
-                        | PipelineRunPhase::PausedFunctionInput(..)
-                        | PipelineRunPhase::PausedFailure(..)
-                        | PipelineRunPhase::PausedFunctionFailure(..)
-                ) {
-                    ctx.request_repaint_after(Duration::from_millis(100));
+        // Pause and publication events are relayed only while the exact
+        // worker runs; its outcome is the joined thread, never a message or a
+        // disconnected channel.
+        let event = if pending.worker.is_finished() {
+            None
+        } else {
+            pending.receiver.try_recv().ok()
+        };
+        let Some(event) = event else {
+            match pending.worker.poll() {
+                Some(exit) => self.finish_pipeline_run(exit, ctx),
+                None => {
+                    if !matches!(
+                        pending.phase,
+                        PipelineRunPhase::Paused(..)
+                            | PipelineRunPhase::PausedNode(..)
+                            | PipelineRunPhase::PausedFunctionNode(..)
+                            | PipelineRunPhase::PausedInput(..)
+                            | PipelineRunPhase::PausedFunctionInput(..)
+                            | PipelineRunPhase::PausedFailure(..)
+                            | PipelineRunPhase::PausedFunctionFailure(..)
+                    ) {
+                        ctx.request_repaint_after(Duration::from_millis(100));
+                    }
                 }
-                return;
             }
-            Err(TryRecvError::Disconnected) => PipelineRunEvent::Finished(
-                Err(PipelineRunError::Failed(
-                    "pipeline worker stopped unexpectedly".into(),
-                )),
-                crate::run_report::TraceReport::default(),
-            ),
+            return;
         };
         match event {
             PipelineRunEvent::Paused(stage, write) => {
@@ -1618,71 +1190,81 @@ impl FerruleApp {
                 }
                 ctx.request_repaint();
             }
-            PipelineRunEvent::Finished(result, trace) => {
-                let pending = self
-                    .pending_pipeline_run
-                    .take()
-                    .expect("pending run exists");
-                if matches!(pending.phase, PipelineRunPhase::Stopping)
-                    || matches!(result, Err(PipelineRunError::Cancelled))
-                {
-                    self.status = if pending.preview {
-                        "pipeline preview cancelled"
-                    } else {
-                        "pipeline cancelled"
-                    }
-                    .into();
-                    self.diagnostics.clear();
-                    self.finish_deferred_pipeline_close(ctx);
-                    return;
-                }
-                match result {
-                    Ok(PipelineCompletion::Run(outcome)) => {
-                        self.status = format!(
-                            "pipeline completed {} stage(s) and wrote {} file(s)",
-                            outcome.stages_executed.len(),
-                            outcome.artifacts.len()
-                        );
-                        let report = crate::run_report::RunReport::from_pipeline_outcome(
-                            outcome,
-                            pending.path.clone(),
-                            pending.started.elapsed(),
-                            trace,
-                        );
-                        self.run_report = Some(crate::run_report::RunReportView::new(report));
-                        self.show_run_report = true;
-                        self.pipeline_run_draft = None;
-                    }
-                    Ok(PipelineCompletion::Preview(outcome)) => {
-                        self.status = format!(
-                            "pipeline preview completed {} stage(s) and {} artifact(s)",
-                            outcome.stages_executed.len(),
-                            outcome.artifacts.len()
-                        );
-                        let report = crate::run_report::RunReport::from_pipeline_preview_outcome(
-                            outcome,
-                            pending.path.clone(),
-                            pending.started.elapsed(),
-                            trace,
-                        );
-                        self.run_report = Some(crate::run_report::RunReportView::new(report));
-                        self.show_run_report = true;
-                        self.pipeline_run_draft = None;
-                    }
-                    Err(PipelineRunError::Failed(error)) => {
-                        let title = if pending.preview {
-                            "Pipeline preview failed"
-                        } else {
-                            "Pipeline run failed"
-                        };
-                        self.status = title.to_lowercase();
-                        self.diagnostics.error(title, error);
-                    }
-                    Err(PipelineRunError::Cancelled) => unreachable!("handled above"),
-                }
-                self.finish_deferred_pipeline_close(ctx);
-            }
         }
+    }
+
+    /// Applies the outcome of a joined pipeline worker.
+    fn finish_pipeline_run(&mut self, exit: WorkerExit<PipelineRunResult>, ctx: &egui::Context) {
+        let Some(pending) = self.pending_pipeline_run.take() else {
+            return;
+        };
+        let (result, trace) = match exit {
+            WorkerExit::Reported(completion) => completion,
+            WorkerExit::Unreported | WorkerExit::Panicked => (
+                Err(PipelineRunError::Failed(
+                    "pipeline worker stopped unexpectedly".into(),
+                )),
+                crate::run_report::TraceReport::default(),
+            ),
+        };
+        if matches!(pending.phase, PipelineRunPhase::Stopping)
+            || matches!(result, Err(PipelineRunError::Cancelled))
+        {
+            self.status = if pending.preview {
+                "pipeline preview cancelled"
+            } else {
+                "pipeline cancelled"
+            }
+            .into();
+            self.diagnostics.clear();
+            self.finish_deferred_pipeline_close(ctx);
+            return;
+        }
+        match result {
+            Ok(PipelineCompletion::Run(outcome)) => {
+                self.status = format!(
+                    "pipeline completed {} stage(s) and wrote {} file(s)",
+                    outcome.stages_executed.len(),
+                    outcome.artifacts.len()
+                );
+                let report = crate::run_report::RunReport::from_pipeline_outcome(
+                    outcome,
+                    pending.path.clone(),
+                    pending.started.elapsed(),
+                    trace,
+                );
+                self.run_report = Some(crate::run_report::RunReportView::new(report));
+                self.show_run_report = true;
+                self.pipeline_run_draft = None;
+            }
+            Ok(PipelineCompletion::Preview(outcome)) => {
+                self.status = format!(
+                    "pipeline preview completed {} stage(s) and {} artifact(s)",
+                    outcome.stages_executed.len(),
+                    outcome.artifacts.len()
+                );
+                let report = crate::run_report::RunReport::from_pipeline_preview_outcome(
+                    outcome,
+                    pending.path.clone(),
+                    pending.started.elapsed(),
+                    trace,
+                );
+                self.run_report = Some(crate::run_report::RunReportView::new(report));
+                self.show_run_report = true;
+                self.pipeline_run_draft = None;
+            }
+            Err(PipelineRunError::Failed(error)) => {
+                let title = if pending.preview {
+                    "Pipeline preview failed"
+                } else {
+                    "Pipeline run failed"
+                };
+                self.status = title.to_lowercase();
+                self.diagnostics.error(title, error);
+            }
+            Err(PipelineRunError::Cancelled) => {}
+        }
+        self.finish_deferred_pipeline_close(ctx);
     }
 
     fn finish_deferred_pipeline_close(&mut self, ctx: &egui::Context) {
@@ -1702,46 +1284,10 @@ fn input_label(input: &PipelineInput) -> String {
     }
 }
 
+#[path = "pipeline_run_hook.rs"]
+mod pipeline_run_hook;
+use pipeline_run_hook::PipelineRunHook;
+
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn close_during_pipeline_publication_waits_for_worker() {
-        let (events, receiver) = mpsc::channel();
-        let (commands, _command_receiver) = mpsc::channel();
-        let mut app = FerruleApp {
-            pending_pipeline_run: Some(PendingPipelineRun {
-                receiver,
-                commands,
-                cancelled: Arc::new(AtomicBool::new(false)),
-                started: Instant::now(),
-                path: PathBuf::from("pipeline.json"),
-                debug: false,
-                preview: false,
-                phase: PipelineRunPhase::Publishing,
-            }),
-            ..FerruleApp::default()
-        };
-        let context = egui::Context::default();
-
-        app.guard_app_close_requested(&context, true);
-        assert!(app.close_after_pipeline_run);
-        let pending = app
-            .pending_pipeline_run
-            .as_ref()
-            .expect("worker remains active");
-        assert!(matches!(pending.phase, PipelineRunPhase::Publishing));
-        assert!(!pending.cancelled.load(Ordering::Acquire));
-
-        events
-            .send(PipelineRunEvent::Finished(
-                Err(PipelineRunError::Cancelled),
-                crate::run_report::TraceReport::default(),
-            ))
-            .expect("completion event is sent");
-        app.poll_pipeline_run(&context);
-        assert!(app.pending_pipeline_run.is_none());
-        assert!(!app.close_after_pipeline_run);
-    }
-}
+#[path = "pipeline_worker_tests.rs"]
+mod pipeline_worker_tests;
