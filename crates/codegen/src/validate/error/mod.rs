@@ -41,6 +41,11 @@ pub enum OwnedSourceDiagnosticLocation {
     FailureIteration {
         index: usize,
     },
+    /// The owned driver walk of the zero-based dynamic source declaration.
+    DynamicDriver {
+        index: usize,
+        name: String,
+    },
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OwnedSourceDiagnosticRequest {

@@ -215,10 +215,7 @@ fn adjacent_catalogues_keep_all_original_ordinals_and_global_dependencies() {
     unused.name = "unusedStatic".into();
     p.extra_sources.insert(0, unused.clone());
     unused.name = "unavailableDynamic".into();
-    unused.dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 99,
-        iteration: vec![],
-    });
+    unused.dynamic_path = Some(mapping::DynamicSourcePath::legacy(99, vec![]));
     p.extra_sources.push(unused);
     p.graph.nodes.insert(
         80,

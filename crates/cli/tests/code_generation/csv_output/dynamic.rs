@@ -48,10 +48,7 @@ fn dynamic_csv_project(mixed: bool) -> Project {
                 ],
             ),
             options: Default::default(),
-            dynamic_path: Some(mapping::DynamicSourcePath {
-                node: 0,
-                iteration: vec!["Driver".into()],
-            }),
+            dynamic_path: Some(mapping::DynamicSourcePath::legacy(0, vec!["Driver".into()])),
         }],
         extra_targets: Vec::new(),
         user_functions: Default::default(),

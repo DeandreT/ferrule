@@ -4,6 +4,7 @@ use std::fmt;
 use mapping::{Project, XbrlBoundaryMode};
 
 mod adjacency_tree;
+pub(crate) mod dynamic_loading;
 mod graph;
 mod join;
 mod mixed_content;
@@ -23,7 +24,7 @@ use options::{
     validate_structured_edi_options, validate_target_options, validate_wsdl_options,
     validate_xbrl_options, validate_xlsx_options, validate_xml_schema_hint_options,
 };
-use schema::{display_path, source_path_matches, validate_schema};
+use schema::validate_schema;
 use scope::{ScopeSchemas, validate_scope};
 use user_function::validate_user_functions;
 
@@ -471,18 +472,11 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
                     ),
                 ));
             }
-            if !source_path_matches(project, &dynamic.iteration, |_| true) {
-                issues.push(ValidationIssue::new(
-                    &location,
-                    format!(
-                        "dynamic path iteration `{}` matches no source path",
-                        display_path(&dynamic.iteration)
-                    ),
-                ));
-            }
+            dynamic_loading::validate_driver(project, source, dynamic, &location, &mut issues);
         }
         own_issues(&mut issues[start..], ValidationOwner::Endpoint(endpoint));
     }
+    dynamic_loading::validate_references(project, &mut issues);
     validate_user_functions(project, &mut issues);
     validate_graph(project, &mut issues);
     validate_cycles(&project.graph, &mut issues);

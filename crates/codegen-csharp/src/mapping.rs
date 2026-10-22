@@ -1301,7 +1301,10 @@ fn render_source_iteration_candidates(
             "        var dynamic_source_items_{scope} = global::Ferrule.Runtime.FerruleDynamicSourceItems.Load(\n            context,\n            {},\n            ",
             literal::string(&source_program.name),
         ));
-        render_path(dynamic.driver.path(), output);
+        let Some(driver) = dynamic.driver.legacy() else {
+            unreachable!("owned dynamic drivers are refused before legacy emission")
+        };
+        render_path(driver.path(), output);
         output.push_str(",\n            ");
         render_path(&source_path[1..], output);
         output.push_str(&format!(

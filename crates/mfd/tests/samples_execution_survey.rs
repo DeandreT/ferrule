@@ -1298,10 +1298,7 @@ fn dynamic_sources_load_only_declared_contained_files_and_cache_them() -> Result
             xml_document: true,
             ..FormatOptions::default()
         },
-        dynamic_path: Some(DynamicSourcePath {
-            node: 0,
-            iteration: Vec::new(),
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(0, Vec::new())),
     };
     let sources = [source];
     let loader = SurveyDynamicSourceLoader::new(&sample_root, &sample_root, &sources)?;
@@ -1345,10 +1342,7 @@ fn dynamic_sources_reject_symlinks_outside_the_sample_root() -> Result<(), Box<d
             xml_document: true,
             ..FormatOptions::default()
         },
-        dynamic_path: Some(DynamicSourcePath {
-            node: 0,
-            iteration: Vec::new(),
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(0, Vec::new())),
     };
     let sources = [source];
     let loader = SurveyDynamicSourceLoader::new(&sample_root, &sample_root, &sources)?;

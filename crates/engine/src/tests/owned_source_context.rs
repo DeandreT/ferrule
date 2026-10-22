@@ -703,10 +703,7 @@ fn root_scalar_refuses_document_mapped_sequence_and_dynamic_provenance() {
         })
     );
     let mut dynamic = project(record_schema(), &["Ref"]);
-    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 91,
-        iteration: vec![],
-    });
+    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(91, vec![]));
     let inputs = vec![(
         "Ref".into(),
         group(vec![(
@@ -1636,10 +1633,7 @@ fn owned_frames_reject_foreign_bindings_forged_ancestry_and_nonbasic_origins() {
 #[test]
 fn owned_walks_reject_document_dynamic_and_noncollection_domains_completely() {
     let mut p = project604(&["Dynamic"]);
-    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 77,
-        iteration: vec![],
-    });
+    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(77, vec![]));
     let document =
         Instance::DocumentSet(vec![DocumentMember::new("a.json", group(vec![])).unwrap()]);
     let mapped = Instance::MappedSequence(vec![group(vec![])]);

@@ -689,10 +689,7 @@ fn owned_search_stays_closed_outside_basic_contexts() {
     }
     // A dynamic owner is unavailable before evaluation.
     let mut p = root_value(vec![(1, search(2)), (2, constant(string("C")))]);
-    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 2,
-        iteration: Vec::new(),
-    });
+    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(2, Vec::new()));
     assert_eq!(
         crate::run_with_sources(&p, &primary_input(), inputs()),
         Err(EngineError::UnsupportedOwnedContext {

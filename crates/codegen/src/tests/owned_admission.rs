@@ -145,7 +145,7 @@ fn complete_catalogues_preserve_original_ordinals_exact_names_and_reserved_dynam
     );
     p.extra_sources[6].dynamic = Some(crate::DynamicSourceProgram {
         path: 40,
-        driver: SourceIteration::new(vec![]),
+        driver: SourceIteration::new(vec![]).into(),
     });
     let actual = capture("N536-01", &p);
     assert_eq!(
@@ -467,7 +467,7 @@ fn demanded_dynamic_paths_and_drivers_close_only_their_legacy_requirements() {
     );
     p.extra_sources[6].dynamic = Some(crate::DynamicSourceProgram {
         path: 40,
-        driver: SourceIteration::new(path(&["Driver", "Rows"])),
+        driver: SourceIteration::new(path(&["Driver", "Rows"])).into(),
     });
     let inactive = capture("N536-09-unused", &p);
     assert_eq!(
@@ -645,11 +645,11 @@ fn dynamic_path_revisits_have_fixed_environments_and_terminate_without_inherited
     );
     p.extra_sources[0].dynamic = Some(crate::DynamicSourceProgram {
         path: 41,
-        driver: SourceIteration::new(vec![]),
+        driver: SourceIteration::new(vec![]).into(),
     });
     p.extra_sources[6].dynamic = Some(crate::DynamicSourceProgram {
         path: 40,
-        driver: SourceIteration::new(vec![]),
+        driver: SourceIteration::new(vec![]).into(),
     });
     p.root.iteration = Some(IterationPlan::source(path(&["Dynamic", "Rows"])));
     p.root.repeating = true;
@@ -1354,7 +1354,7 @@ mod filter_admission {
         let mut p = fixture(None);
         p.extra_sources[6].dynamic = Some(crate::DynamicSourceProgram {
             path: 0,
-            driver: SourceIteration::new(path(&["Rows"])),
+            driver: SourceIteration::new(path(&["Rows"])).into(),
         });
         assert_eq!(
             observed("N657-13 unused reserved dynamic declaration", &p),
@@ -1638,7 +1638,7 @@ mod sort_admission {
             );
             p.extra_sources[6].dynamic = Some(crate::DynamicSourceProgram {
                 path: 40,
-                driver: SourceIteration::new(vec![]),
+                driver: SourceIteration::new(vec![]).into(),
             });
             let actual = observed("N667-A01 control-free", &p);
             assert_eq!(actual, legacy_named_input_admission_plan(&p));
@@ -2455,7 +2455,7 @@ mod window_admission {
         );
         p.extra_sources[6].dynamic = Some(crate::DynamicSourceProgram {
             path: 40,
-            driver: SourceIteration::new(vec![]),
+            driver: SourceIteration::new(vec![]).into(),
         });
         let actual = observed("N698-A01 old control-free reserved slot", &p);
         assert_eq!(actual, Ok(expected(&p, &[], &[], &[])));

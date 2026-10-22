@@ -2996,7 +2996,10 @@ fn render_source_iteration_candidates(
             .and_then(|candidate| candidate.dynamic.as_ref().map(|plan| (candidate, plan)))
     });
     if let Some((source_program, dynamic)) = dynamic {
-        let driver = render_string_path(dynamic.driver.path());
+        let Some(driver) = dynamic.driver.legacy() else {
+            unreachable!("owned dynamic drivers are refused before legacy emission")
+        };
+        let driver = render_string_path(driver.path());
         let tail = render_string_path(&source_path[1..]);
         output.push_str(&format!(
             "    let dynamic_source_items = DynamicSourceItems::load(\n        context,\n        {},\n        &[{driver}],\n        &[{tail}],\n        {},\n        |driver_context| expression_{}(driver_context),\n    )?;\n    {binding} = dynamic_source_items.contexts();\n",

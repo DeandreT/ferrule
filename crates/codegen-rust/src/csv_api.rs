@@ -446,7 +446,7 @@ mod tests {
             source: SchemaNode::group("Dynamic", Vec::new()),
             dynamic: Some(codegen::DynamicSourceProgram {
                 path: 1,
-                driver: codegen::SourceIteration::new(Vec::new()),
+                driver: codegen::SourceIteration::new(Vec::new()).into(),
             }),
         });
         let after = render(&dynamic, &CsvOutputPolicy::default()).unwrap();

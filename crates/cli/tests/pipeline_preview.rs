@@ -955,10 +955,7 @@ fn dynamic_named_sources_cannot_trigger_local_loading() -> anyhow::Result<()> {
         path: "missing.json".into(),
         schema: value_schema(),
         options: json_options(),
-        dynamic_path: Some(DynamicSourcePath {
-            node: 0,
-            iteration: vec!["Rows".into()],
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(0, vec!["Rows".into()])),
     });
     let pipeline = single(project);
     let hosts = [host("input", Path::new("input.json"), b"invalid JSON")?];

@@ -147,7 +147,7 @@ fn dynamic_document_fixture() -> Program {
             ),
             dynamic: Some(DynamicSourceProgram {
                 path: 1,
-                driver: SourceIteration::new(vec!["Files".into()]),
+                driver: SourceIteration::new(vec!["Files".into()]).into(),
             }),
         }],
         target: SchemaNode::group(
@@ -483,7 +483,7 @@ fn unused_second_document_fixture() -> Program {
         ),
         dynamic: Some(DynamicSourceProgram {
             path: 99,
-            driver: SourceIteration::new(vec!["Files".into()]),
+            driver: SourceIteration::new(vec!["Files".into()]).into(),
         }),
     });
     program.expressions.push(ExpressionNode {

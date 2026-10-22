@@ -475,7 +475,7 @@ pub fn programs(
     });
     dynamic.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 99,
-        driver: codegen::SourceIteration::new(path(&["Rows"])),
+        driver: codegen::SourceIteration::new(path(&["Rows"])).into(),
     });
     let audit = SourceScopeLocation::root(SourceScopeTarget::Named {
         index: 0,

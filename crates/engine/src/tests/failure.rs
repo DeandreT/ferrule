@@ -416,10 +416,7 @@ fn validation_rejects_dynamic_extra_source_selectors_and_dependencies() {
             ],
         ),
         options: Default::default(),
-        dynamic_path: Some(DynamicSourcePath {
-            node: 50,
-            iteration: Vec::new(),
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(50, Vec::new())),
     });
     project.failure_rules.push(FailureRule {
         iteration: FailureIteration::Source {
@@ -574,10 +571,7 @@ fn validation_confines_an_unused_failure_item_from_external_roots() {
         path: String::new(),
         schema: SchemaNode::group("Dynamic", Vec::new()),
         options: Default::default(),
-        dynamic_path: Some(DynamicSourcePath {
-            node: 1,
-            iteration: Vec::new(),
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(1, Vec::new())),
     });
 
     let issues = validate(&project);

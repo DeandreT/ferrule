@@ -50,6 +50,16 @@ pub(super) fn validate_source_ownership(project: &Project) -> Result<(), MfdErro
     }) {
         return Err(MfdError::UnsupportedFailureSourceIteration { rule: index + 1 });
     }
+    if let Some(source) = project.extra_sources.iter().find(|source| {
+        source
+            .dynamic_path
+            .as_ref()
+            .is_some_and(|dynamic| dynamic.owned_driver().is_some())
+    }) {
+        return Err(MfdError::UnsupportedDynamicSourceDriver {
+            source_name: source.name.clone(),
+        });
+    }
     for (&node, expression) in &project.graph.nodes {
         if let Some(kind) = expression.owned_source_kind() {
             return Err(MfdError::UnsupportedSourceOwnership {

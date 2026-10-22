@@ -609,10 +609,8 @@ fn closed_contexts_and_legacy_islands_keep_refusing() {
             value: Value::String("lookup.json".into()),
         },
     );
-    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 30,
-        iteration: vec!["Dir".into()],
-    });
+    dynamic.extra_sources[0].dynamic_path =
+        Some(mapping::DynamicSourcePath::legacy(30, vec!["Dir".into()]));
     assert!(matches!(
         run(&dynamic, &primary(), Some(&lookup())),
         Err(EngineError::UnsupportedOwnedContext {

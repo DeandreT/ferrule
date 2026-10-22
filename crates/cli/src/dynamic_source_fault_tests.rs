@@ -43,10 +43,7 @@ fn json_source() -> NamedSource {
             vec![SchemaNode::scalar("Value", ScalarType::String)],
         ),
         options: Default::default(),
-        dynamic_path: Some(DynamicSourcePath {
-            node: 0,
-            iteration: Vec::new(),
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(0, Vec::new())),
     }
 }
 

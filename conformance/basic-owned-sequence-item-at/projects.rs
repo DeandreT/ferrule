@@ -302,10 +302,7 @@ pub fn base() -> Project {
                 path: "unused/dynamic.json".into(),
                 schema: endpoint(),
                 options: Default::default(),
-                dynamic_path: Some(mapping::DynamicSourcePath {
-                    node: 900,
-                    iteration: vec![],
-                }),
+                dynamic_path: Some(mapping::DynamicSourcePath::legacy(900, vec![])),
             },
         ],
         extra_targets: vec![

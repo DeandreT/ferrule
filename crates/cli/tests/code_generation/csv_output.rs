@@ -1279,10 +1279,7 @@ fn generated_csv_dynamic_named_admission_keeps_document_refusal_before_publicati
             path: "unused.json".into(),
             schema: SchemaNode::group(name, Vec::new()),
             options: FormatOptions::default(),
-            dynamic_path: Some(mapping::DynamicSourcePath {
-                node: 19,
-                iteration: Vec::new(),
-            }),
+            dynamic_path: Some(mapping::DynamicSourcePath::legacy(19, Vec::new())),
         });
     }
     let path = write_mapping(&directory.path, &project)?;

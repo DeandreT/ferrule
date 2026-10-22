@@ -222,10 +222,7 @@ fn selected_unused_static_dynamic_and_primary_acquisition() {
                 pdf: Some(layout()),
                 ..FormatOptions::default()
             },
-            dynamic_path: dynamic.then_some(DynamicSourcePath {
-                node: 2,
-                iteration: Vec::new(),
-            }),
+            dynamic_path: dynamic.then_some(DynamicSourcePath::legacy(2, Vec::new())),
         });
         p.extra_targets.push(NamedTarget {
             name: "unused-target".into(),

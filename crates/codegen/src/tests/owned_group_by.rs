@@ -481,10 +481,7 @@ fn owned_group_by_catalogues_keep_global_and_selected_target_dependencies_and_ex
     let mut p = project(SourceOwner::Named {
         name: "Rows".into(),
     });
-    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 30,
-        iteration: vec![],
-    });
+    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(30, vec![]));
     p.graph.nodes.insert(
         30,
         Node::Const {
@@ -777,10 +774,7 @@ fn owned_group_by_preserves_malformed_project_diagnostics_exactly() {
 fn owned_group_by_key_and_post_keep_dynamic_legacy_dependency_gates() {
     for root in [1, 2] {
         let mut p = project(SourceOwner::Primary);
-        p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-            node: 30,
-            iteration: vec![],
-        });
+        p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(30, vec![]));
         p.graph.nodes.insert(
             30,
             Node::Const {

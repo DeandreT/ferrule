@@ -552,10 +552,7 @@ fn dynamic_xml_file_set_pipeline() -> Pipeline {
             local_xml_file_set: true,
             ..FormatOptions::default()
         },
-        dynamic_path: Some(DynamicSourcePath {
-            node: 0,
-            iteration: vec!["File".into()],
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(0, vec!["File".into()])),
     });
     mapping.graph.nodes.insert(
         0,
@@ -1177,10 +1174,7 @@ mod source_ownership_admission {
             path: "absent-dynamic.json".into(),
             schema: schema(),
             options: project.source_options.clone(),
-            dynamic_path: Some(DynamicSourcePath {
-                iteration: vec![],
-                node: 47,
-            }),
+            dynamic_path: Some(DynamicSourcePath::legacy(47, vec![])),
         });
         project.graph.nodes.insert(
             61,

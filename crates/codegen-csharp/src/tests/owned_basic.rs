@@ -1250,7 +1250,7 @@ fn private_legacy_dynamic_inventory_closes_only_potential_demands() {
         source: source_schema("Dynamic"),
         dynamic: Some(codegen::DynamicSourceProgram {
             path: 10,
-            driver: codegen::SourceIteration::new(path(&["Rows"])),
+            driver: codegen::SourceIteration::new(path(&["Rows"])).into(),
         }),
     });
     let mut cases: Vec<(&str, Program, Option<ProgramValidationError>)> = Vec::new();
@@ -1393,7 +1393,7 @@ fn checked_program() -> Program {
     );
     p.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 99,
-        driver: codegen::SourceIteration::new(Vec::new()),
+        driver: codegen::SourceIteration::new(Vec::new()).into(),
     });
     add_target(
         &mut p,
@@ -2357,7 +2357,7 @@ fn private_source_failure_dynamic_owned_generated_and_specialized_admission() {
         source: source_schema("Dynamic"),
         dynamic: Some(codegen::DynamicSourceProgram {
             path: 102,
-            driver: codegen::SourceIteration::new(path(&["Rows"])),
+            driver: codegen::SourceIteration::new(path(&["Rows"])).into(),
         }),
     });
     base.failure_rules
@@ -3963,7 +3963,7 @@ fn private_target_value_map_retains_legacy_input_catalogues_and_dynamic_guard() 
     );
     p.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 99,
-        driver: codegen::SourceIteration::new(vec![]),
+        driver: codegen::SourceIteration::new(vec![]).into(),
     });
     let refused = checked_result("S566-01 retained ValueMap input", &p);
     let expected = ProgramValidationError::OwnedSource {
@@ -4197,7 +4197,7 @@ fn private_retained_inventory_omits_dead_ordinary_nodes_and_unreferenced_functio
         source: source_schema("Dynamic"),
         dynamic: Some(codegen::DynamicSourceProgram {
             path: 98,
-            driver: codegen::SourceIteration::new(path(&["Rows"])),
+            driver: codegen::SourceIteration::new(path(&["Rows"])).into(),
         }),
     });
     baseline.expressions.push(expression(
@@ -5475,7 +5475,7 @@ fn private_failure_value_maps_keep_potential_inputs_and_retained_dynamic_envelop
     let mut base = failure594_program();
     base.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 99,
-        driver: codegen::SourceIteration::new(vec![]),
+        driver: codegen::SourceIteration::new(vec![]).into(),
     });
     for (label, input) in [
         (
@@ -5686,7 +5686,7 @@ fn private_failure_value_maps_keep_owned_structure_and_actual_called_body_priori
     ));
     call.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 99,
-        driver: codegen::SourceIteration::new(vec![]),
+        driver: codegen::SourceIteration::new(vec![]).into(),
     });
     failure594_refuse(
         "S594-20 stored call before dynamic argument",
@@ -5728,7 +5728,7 @@ fn private_failure_value_maps_keep_per_rule_priority_and_shared_public_refusals(
     let mut base = failure594_program();
     base.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 99,
-        driver: codegen::SourceIteration::new(vec![]),
+        driver: codegen::SourceIteration::new(vec![]).into(),
     });
     let mut later = base.clone();
     failure594_expression(

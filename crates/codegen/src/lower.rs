@@ -253,7 +253,7 @@ enum OwnedJoinLowering {
     Open,
 }
 
-fn lower_with_validator(
+pub(crate) fn lower_with_validator(
     project: &Project,
     validator: fn(&Program) -> Result<(), ProgramValidationError>,
 ) -> Result<Program, LowerError> {
@@ -509,7 +509,14 @@ fn lower_with_policy(
                 roots.push(dynamic.node);
                 DynamicSourceProgram {
                     path: dynamic.node,
-                    driver: SourceIteration::new(dynamic.iteration.clone()),
+                    driver: match &dynamic.iteration {
+                        mapping::SourceSelector::Legacy(path) => {
+                            SourceIteration::new(path.clone()).into()
+                        }
+                        mapping::SourceSelector::Owned(driver) => {
+                            crate::OwnedSourceIteration::new(driver.clone()).into()
+                        }
+                    },
                 }
             }),
         })

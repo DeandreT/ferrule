@@ -1865,10 +1865,8 @@ mod owned_trace_witness {
             );
         }
         let mut dynamic = witness_project(&["A"]);
-        dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-            node: 0,
-            iteration: Vec::new(),
-        });
+        dynamic.extra_sources[0].dynamic_path =
+            Some(mapping::DynamicSourcePath::legacy(0, Vec::new()));
         let roots = [TraceOwnedRootRef {
             owner: owner(&dynamic, 0),
             input: None,

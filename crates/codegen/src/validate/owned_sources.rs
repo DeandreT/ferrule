@@ -273,6 +273,26 @@ fn has_owned(program: &Program) -> bool {
             matches!(rule.iteration, FailureIteration::OwnedSource(_))
                 || recursive_collect::failure_sequence(rule).is_some()
         })
+        || owned_drivers(program).next().is_some()
+}
+/// Each dynamic declaration with an owned driver, in declaration order.
+fn owned_drivers(
+    program: &Program,
+) -> impl Iterator<Item = (usize, &crate::NamedSourceProgram, &mapping::OwnedSourceRef)> {
+    program
+        .extra_sources
+        .iter()
+        .enumerate()
+        .filter_map(|(index, source)| {
+            let driver = source.dynamic.as_ref()?.driver.owned()?;
+            Some((index, source, driver))
+        })
+}
+fn driver_location(index: usize, source: &crate::NamedSourceProgram) -> Location {
+    Location::DynamicDriver {
+        index,
+        name: source.name.clone(),
+    }
 }
 fn visit_scopes<'a>(
     scope: &'a TargetScope,
@@ -419,6 +439,13 @@ pub(super) fn validate_structure(program: &Program) -> Result<(), ProgramValidat
                 iteration_request(collection),
             )?;
         }
+    }
+    for (index, source, driver) in owned_drivers(program) {
+        structure(
+            program,
+            driver_location(index, source),
+            iteration_request(driver),
+        )?;
     }
     for (index, rule) in program.failure_rules.iter().enumerate() {
         if let FailureIteration::OwnedSource(source) = &rule.iteration {
@@ -1502,6 +1529,23 @@ pub(super) fn validate_closed_contexts_with_joins(
     }
     // Lowering represents every stored dynamic path; preserve that exact generated inventory.
     for (index, source) in program.extra_sources.iter().enumerate() {
+        if let Some(driver) = source
+            .dynamic
+            .as_ref()
+            .and_then(|dynamic| dynamic.driver.owned())
+        {
+            return Err(failure(
+                driver_location(index, source),
+                Some(iteration_request(driver)),
+                Closed {
+                    reason: Capability::DynamicLoader,
+                    origin: Origin::DynamicSource {
+                        index,
+                        name: source.name.clone(),
+                    },
+                },
+            ));
+        }
         if let Some(dynamic) = &source.dynamic {
             admission.expression(Visit {
                 namespace: Namespace::Main,

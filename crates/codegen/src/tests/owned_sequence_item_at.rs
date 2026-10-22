@@ -554,10 +554,7 @@ fn owned_sequence_item_at_full_catalogues_preserve_global_selection_alias_and_re
             value: Value::String("unused.json".into()),
         },
     );
-    p.extra_sources[3].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 200,
-        iteration: vec![],
-    });
+    p.extra_sources[3].dynamic_path = Some(mapping::DynamicSourcePath::legacy(200, vec![]));
     p.graph.nodes.insert(
         201,
         Node::SourceField {
@@ -704,10 +701,7 @@ fn owned_sequence_item_at_target_demand_follows_every_hidden_producer_and_index_
                     value: Value::String("unused.json".into()),
                 },
             );
-            p.extra_sources[3].dynamic_path = Some(mapping::DynamicSourcePath {
-                node: 200,
-                iteration: vec![],
-            });
+            p.extra_sources[3].dynamic_path = Some(mapping::DynamicSourcePath::legacy(200, vec![]));
             let Node::OwnedSourceField(original) = p.graph.nodes[&root].clone() else {
                 panic!("owned input")
             };
@@ -928,7 +922,7 @@ fn owned_sequence_item_at_preserves_cycle_priority_and_dynamic_owner_refusals() 
     });
     p.extra_sources[3].dynamic = Some(DynamicSourceProgram {
         path: 200,
-        driver: SourceIteration::new(vec![]),
+        driver: SourceIteration::new(vec![]).into(),
     });
     *expression(&mut p, 8) = Expression::OwnedSourceField(field(
         SourceOwner::Named {

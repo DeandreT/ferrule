@@ -144,10 +144,7 @@ pub fn projects() -> Vec<(&'static str, Project, Vec<codegen::Diagnostic>)> {
         vec![validation("owned collection `Note` is not a repeating path in its owner")],
     ));
     let mut p = projects::project("F02-named-when-true");
-    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 41,
-        iteration: path(&["Rows"]),
-    });
+    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(41, path(&["Rows"])));
     p.extra_targets[0].root.bindings[0].node = 41;
     result.push((
         "R06-dynamic-owner",
@@ -181,7 +178,7 @@ pub fn programs(base: &codegen::Program) -> Vec<(&'static str, codegen::Program,
     // The audit binding becomes a constant dynamic path, so only the walk is owned.
     dynamic.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 22,
-        driver: codegen::SourceIteration::new(path(&["Rows"])),
+        driver: codegen::SourceIteration::new(path(&["Rows"])).into(),
     });
     for node in &mut dynamic.expressions {
         if node.id == 22 {

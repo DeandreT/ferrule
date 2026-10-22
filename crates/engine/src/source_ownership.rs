@@ -653,7 +653,12 @@ impl<'a> Admission<'a> {
             .enumerate()
             .filter(|(_, source)| source.name == *name)
         {
-            let Some(dynamic) = &source.dynamic_path else {
+            // An owned driver is admitted only through its owned loading scope.
+            let Some((dynamic, driver)) = source
+                .dynamic_path
+                .as_ref()
+                .and_then(|dynamic| Some((dynamic, dynamic.legacy_driver()?)))
+            else {
                 continue;
             };
             if self.dynamic.insert(index) {
@@ -663,7 +668,7 @@ impl<'a> Admission<'a> {
                     false,
                     [dynamic.node],
                 );
-                if let Some(driver) = dynamic.iteration.first() {
+                if let Some(driver) = driver.first() {
                     self.path(std::slice::from_ref(driver));
                 }
             }

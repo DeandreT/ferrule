@@ -185,10 +185,7 @@ fn add_dynamic_input(project: &mut Project) {
             ],
         ),
         options: json_options(),
-        dynamic_path: Some(DynamicSourcePath {
-            node: 90,
-            iteration: vec!["File".into()],
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(90, vec!["File".into()])),
     });
     project.graph.nodes.extend([
         (

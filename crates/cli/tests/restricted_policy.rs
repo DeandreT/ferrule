@@ -258,10 +258,7 @@ fn dynamic_project() -> Project {
             path: String::new(),
             schema: document,
             options: FormatOptions::default(),
-            dynamic_path: Some(DynamicSourcePath {
-                node: 0,
-                iteration: vec!["File".into()],
-            }),
+            dynamic_path: Some(DynamicSourcePath::legacy(0, vec!["File".into()])),
         }],
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),

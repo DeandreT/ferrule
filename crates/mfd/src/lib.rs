@@ -86,6 +86,8 @@ pub enum MfdError {
     UnsupportedSourceIteration { scope: mapping::SourceScopeLocation },
     #[error("cannot export owned failure iteration in failure rule {rule}")]
     UnsupportedFailureSourceIteration { rule: usize },
+    #[error("cannot export the owned driver of dynamic extra source `{source_name}`")]
+    UnsupportedDynamicSourceDriver { source_name: String },
     #[error(
         "cannot export {kind} node {node} (function {function:?}): source ownership is unsupported"
     )]

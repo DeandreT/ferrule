@@ -201,3 +201,7 @@ mod owned_dynamic_field_tests;
 #[cfg(test)]
 #[path = "tests/optional_presence.rs"]
 mod optional_presence_tests;
+
+#[cfg(test)]
+#[path = "tests/owned_dynamic_driver.rs"]
+mod owned_dynamic_driver_tests;

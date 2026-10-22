@@ -463,6 +463,7 @@ pub(super) fn validate_scope(
         issues,
     );
 
+    super::dynamic_loading::validate_scope(project, scope, &location, issues);
     match scope.source_selector() {
         Some(mapping::SourceSelectorRef::Owned(source)) => {
             super::schema::validate_owned_collection(project, source, &location, issues);

@@ -495,10 +495,8 @@ fn closed_contexts_refuse_owned_rows() {
             value: Value::String("audit.json".into()),
         },
     );
-    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 0,
-        iteration: vec!["Batch".into()],
-    });
+    dynamic.extra_sources[0].dynamic_path =
+        Some(mapping::DynamicSourcePath::legacy(0, vec!["Batch".into()]));
     assert!(matches!(
         run(&dynamic, input("r", vec![row("r", None)]), None),
         Err(EngineError::UnsupportedOwnedContext {

@@ -183,21 +183,28 @@ pub(crate) fn eval_scope(
                     .filter(|source| source.dynamic_path.is_some())
             })
         });
-    let dynamic_drivers = dynamic_source
-        .and_then(|source| source.dynamic_path.as_ref())
-        .map(|dynamic| {
+    // An owned driver is reachable only through an owned selector; a legacy
+    // alias never repairs its missing ownership.
+    let legacy_driver = match dynamic_source.and_then(|source| source.dynamic_path.as_ref()) {
+        Some(dynamic) => Some(dynamic.legacy_driver().ok_or_else(|| {
+            EngineError::UnsupportedSourceIteration {
+                scope: trace_scope.source_scope.clone(),
+            }
+        })?),
+        None => None,
+    };
+    let dynamic_drivers = legacy_driver
+        .map(|iteration| {
             context
                 .iter()
                 .rev()
-                .find(|frame| match dynamic.iteration.first() {
+                .find(|frame| match iteration.first() {
                     Some(first) => frame.field(first).is_some(),
                     None => true,
                 })
                 .copied()
                 .or_else(|| context.last().copied())
-                .map_or_else(Vec::new, |base| {
-                    walk(base, &dynamic.iteration, &[], &[], &[])
-                })
+                .map_or_else(Vec::new, |base| walk(base, iteration, &[], &[], &[]))
         })
         .unwrap_or_default();
     let mut loaded_dynamic = Vec::new();

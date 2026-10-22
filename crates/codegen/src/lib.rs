@@ -75,16 +75,17 @@ pub use lower::{
 };
 pub use model::{
     AggregateFunction, AggregateValue, Binding, DelimitedTextField, DelimitedTextFieldError,
-    DynamicDocumentIteration, DynamicSourceProgram, DynamicTargetBinding, DynamicTargetChild,
-    Expression, ExpressionNode, FailureIteration, FailureRule, FailureSelection,
-    FlexTextFieldProfile, GeneratedFilterMapCapture, GeneratedFilterMapV1, GeneratedRange,
-    GeneratedSequence, GroupingPlan, IterationOutput, IterationPlan, IterationSource,
-    NamedSourceProgram, NamedTargetProgram, NamedXmlInputPolicy, NamedXmlOutputPolicy,
-    OptionalPresence, OwnedSourceIteration, Program, RuntimeValue, SUPPORTED_SCALAR_CALLS,
-    ScalarFunction, ScalarTargetDomain, ScopeSequence, SequenceWindow, SortFilterOrder, SortKey,
-    SortPlan, SourceIteration, TargetConstruction, TargetScope, UserFunctionParameter,
-    UserFunctionProgram, XmlBoundaryProgram, XmlInputPolicy, XmlInputProfile,
-    XmlMixedContentElement, XmlMixedContentReplacement, XmlOutputMode, XmlOutputPolicy,
+    DynamicDocumentIteration, DynamicSourceDriver, DynamicSourceProgram, DynamicTargetBinding,
+    DynamicTargetChild, Expression, ExpressionNode, FailureIteration, FailureRule,
+    FailureSelection, FlexTextFieldProfile, GeneratedFilterMapCapture, GeneratedFilterMapV1,
+    GeneratedRange, GeneratedSequence, GroupingPlan, IterationOutput, IterationPlan,
+    IterationSource, NamedSourceProgram, NamedTargetProgram, NamedXmlInputPolicy,
+    NamedXmlOutputPolicy, OptionalPresence, OwnedSourceIteration, Program, RuntimeValue,
+    SUPPORTED_SCALAR_CALLS, ScalarFunction, ScalarTargetDomain, ScopeSequence, SequenceWindow,
+    SortFilterOrder, SortKey, SortPlan, SourceIteration, TargetConstruction, TargetScope,
+    UserFunctionParameter, UserFunctionProgram, XmlBoundaryProgram, XmlInputPolicy,
+    XmlInputProfile, XmlMixedContentElement, XmlMixedContentReplacement, XmlOutputMode,
+    XmlOutputPolicy,
 };
 pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_adjacency_tree;
 pub use owned_admission::legacy_named_input_admission_plan_with_basic_owned_path_hierarchy;

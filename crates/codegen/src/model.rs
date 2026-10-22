@@ -711,11 +711,50 @@ pub struct NamedSourceProgram {
 }
 
 /// One host-loaded secondary document whose logical path is evaluated in a
-/// primary-source driver context.
+/// driver context.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DynamicSourceProgram {
     pub path: NodeId,
-    pub driver: SourceIteration,
+    pub driver: DynamicSourceDriver,
+}
+
+/// The collection whose items each request one dynamic document.
+///
+/// A legacy driver walks a primary-relative path. An owned driver walks one
+/// collection of exactly one endpoint and is emitted only by the explicit
+/// owned dynamic-loading companion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DynamicSourceDriver {
+    Legacy(SourceIteration),
+    Owned(OwnedSourceIteration),
+}
+
+impl DynamicSourceDriver {
+    pub const fn legacy(&self) -> Option<&SourceIteration> {
+        match self {
+            Self::Legacy(driver) => Some(driver),
+            Self::Owned(_) => None,
+        }
+    }
+
+    pub const fn owned(&self) -> Option<&mapping::OwnedSourceRef> {
+        match self {
+            Self::Legacy(_) => None,
+            Self::Owned(driver) => Some(driver.source()),
+        }
+    }
+}
+
+impl From<SourceIteration> for DynamicSourceDriver {
+    fn from(driver: SourceIteration) -> Self {
+        Self::Legacy(driver)
+    }
+}
+
+impl From<OwnedSourceIteration> for DynamicSourceDriver {
+    fn from(driver: OwnedSourceIteration) -> Self {
+        Self::Owned(driver)
+    }
 }
 
 /// One named output lowered against the program's shared source and graph.

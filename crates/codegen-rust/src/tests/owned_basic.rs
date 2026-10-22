@@ -1442,7 +1442,7 @@ fn private_source_failure_bridge_keeps_generated_owned_and_dynamic_routes_closed
         source: source_schema(),
         dynamic: Some(codegen::DynamicSourceProgram {
             path: 30,
-            driver: codegen::SourceIteration::new(path(&["Rows"])),
+            driver: codegen::SourceIteration::new(path(&["Rows"])).into(),
         }),
     });
     check_failure_source_error(
@@ -1487,7 +1487,7 @@ fn private_source_failure_bridge_retains_only_potential_ordinary_dependencies() 
         source: source_schema(),
         dynamic: Some(codegen::DynamicSourceProgram {
             path: 30,
-            driver: codegen::SourceIteration::new(path(&["Rows"])),
+            driver: codegen::SourceIteration::new(path(&["Rows"])).into(),
         }),
     });
     let expected = ProgramValidationError::OwnedSource {
@@ -2074,7 +2074,7 @@ fn checked_catalogue_program() -> Program {
     );
     p.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 99,
-        driver: codegen::SourceIteration::new(Vec::new()),
+        driver: codegen::SourceIteration::new(Vec::new()).into(),
     });
     for (name, expression) in [("legacy", 2), ("owned", 3)] {
         p.extra_targets.push(NamedTargetProgram {
@@ -2235,7 +2235,7 @@ fn checked_private_inventory_keeps_potential_unsupported_branches_and_dynamic_fr
     };
     p.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 3,
-        driver: codegen::SourceIteration::new(Vec::new()),
+        driver: codegen::SourceIteration::new(Vec::new()).into(),
     });
     p.expressions[0].expression = Expression::SourceField {
         path: path(&["Value"]),
@@ -3680,7 +3680,7 @@ fn failure586_program() -> Program {
         source: source_schema(),
         dynamic: Some(codegen::DynamicSourceProgram {
             path: 90,
-            driver: codegen::SourceIteration::new(path(&["Rows"])),
+            driver: codegen::SourceIteration::new(path(&["Rows"])).into(),
         }),
     });
     program

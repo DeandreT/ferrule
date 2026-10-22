@@ -4,8 +4,8 @@ use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::NodeId;
 
 use crate::{
-    Expression, IterationOutput, IterationSource, Program, ScalarTargetDomain, TargetConstruction,
-    TargetScope,
+    DynamicSourceDriver, Expression, IterationOutput, IterationSource, Program, ScalarTargetDomain,
+    TargetConstruction, TargetScope,
 };
 
 mod adjacency_tree;
@@ -515,22 +515,33 @@ fn validate_dynamic_sources(
                 expression: dynamic.path,
             });
         }
-        if dynamic.driver.path().first().is_some_and(|first| {
-            program
-                .extra_sources
-                .iter()
-                .any(|candidate| candidate.name == *first && candidate.dynamic.is_some())
-        }) {
-            return Err(ProgramValidationError::InvalidDynamicSourceDriver {
-                source: source.name.clone(),
-                driver: dynamic.driver.path().to_vec(),
-            });
-        }
-        let Some(driver) = sources.schema_at(None, dynamic.driver.path()) else {
-            return Err(ProgramValidationError::InvalidDynamicSourceDriver {
-                source: source.name.clone(),
-                driver: dynamic.driver.path().to_vec(),
-            });
+        // An owned driver's endpoint and collection are typed owned requests,
+        // checked by the structural pass; only its path expression is checked here.
+        let driver = match &dynamic.driver {
+            DynamicSourceDriver::Owned(driver) => match sources.owned_schema_at(driver.source()) {
+                Some(driver) => driver,
+                None => continue,
+            },
+            DynamicSourceDriver::Legacy(driver) => {
+                if driver.path().first().is_some_and(|first| {
+                    program
+                        .extra_sources
+                        .iter()
+                        .any(|candidate| candidate.name == *first && candidate.dynamic.is_some())
+                }) {
+                    return Err(ProgramValidationError::InvalidDynamicSourceDriver {
+                        source: source.name.clone(),
+                        driver: driver.path().to_vec(),
+                    });
+                }
+                let Some(driver) = sources.schema_at(None, driver.path()) else {
+                    return Err(ProgramValidationError::InvalidDynamicSourceDriver {
+                        source: source.name.clone(),
+                        driver: driver.path().to_vec(),
+                    });
+                };
+                driver
+            }
         };
         joins::validate_expression(dynamic.path, expressions, sources, Some(driver), &[], false)?;
     }

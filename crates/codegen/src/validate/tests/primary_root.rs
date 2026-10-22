@@ -842,7 +842,7 @@ fn observed_combined_neutral_owner_proof_requires_complete_static_input_policies
             4 => {
                 invalid.extra_sources[0].dynamic = Some(crate::DynamicSourceProgram {
                     path: 3,
-                    driver: SourceIteration::new(Vec::new()),
+                    driver: SourceIteration::new(Vec::new()).into(),
                 })
             }
             5 => invalid.extra_targets[1].root.target_field = "Audit".into(),

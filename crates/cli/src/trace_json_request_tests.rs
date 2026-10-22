@@ -371,10 +371,7 @@ fn writer_refusal_does_not_change_mapping_result_or_published_output() {
             path: String::new(),
             schema,
             options: Default::default(),
-            dynamic_path: Some(DynamicSourcePath {
-                node: 0,
-                iteration: Vec::new(),
-            }),
+            dynamic_path: Some(DynamicSourcePath::legacy(0, Vec::new())),
         }],
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),

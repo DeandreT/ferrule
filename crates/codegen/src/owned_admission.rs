@@ -526,10 +526,14 @@ impl<'a> Analysis<'a> {
         // schema field with this spelling does not remove the eager alias.
         for index in indices {
             if let Some(dynamic) = program.extra_sources[index].dynamic.as_ref() {
+                // An owned driver is never reached through a legacy alias.
+                let Some(driver) = dynamic.driver.legacy() else {
+                    continue;
+                };
                 if !self.inspected_dynamic.insert(index) {
                     continue;
                 }
-                let driver = dynamic.driver.path();
+                let driver = driver.path();
                 self.path(driver);
                 // One fixed per-declaration environment. D->E->D therefore
                 // revisits a finite context rather than extending caller ancestry.

@@ -120,7 +120,7 @@ fn named_program() -> Program {
             source: SchemaNode::scalar("Reserved", ScalarType::Bool),
             dynamic: Some(DynamicSourceProgram {
                 path: 99,
-                driver: SourceIteration::new(Vec::new()),
+                driver: SourceIteration::new(Vec::new()).into(),
             }),
         },
         NamedSourceProgram {

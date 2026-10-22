@@ -781,10 +781,7 @@ fn dynamic_named_source_path_is_protected_during_delete_and_orphan_cleanup() {
         path: String::new(),
         schema: SchemaNode::group("Document", vec![output_schema("Item").repeating()]),
         options: Default::default(),
-        dynamic_path: Some(DynamicSourcePath {
-            node: 88,
-            iteration: vec!["Rows".to_string()],
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(88, vec!["Rows".to_string()])),
     });
     project.extra_targets[0].schema =
         SchemaNode::group("audit", vec![output_schema("row").repeating()]);

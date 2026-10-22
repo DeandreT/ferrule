@@ -432,10 +432,10 @@ fn basic_xml_mixed470_unsupported_constructions_refuse() -> TestResult<()> {
             value: Value::String("notes.json".into()),
         },
     );
-    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 96,
-        iteration: vec!["Docs".into(), "Doc".into()],
-    });
+    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(
+        96,
+        vec!["Docs".into(), "Doc".into()],
+    ));
     lowered_error(
         &dynamic,
         &scope_refusal(

@@ -52,7 +52,7 @@ fn program() -> Program {
                 source: SchemaNode::scalar("Dynamic", ScalarType::Bool),
                 dynamic: Some(codegen::DynamicSourceProgram {
                     path: 3,
-                    driver: codegen::SourceIteration::new(vec![]),
+                    driver: codegen::SourceIteration::new(vec![]).into(),
                 }),
             },
             NamedSourceProgram {
