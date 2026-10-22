@@ -220,7 +220,10 @@ pin semantics, and property/details popovers retain the information needed to
 edit them. Layout is adjacent metadata rather than mapping behavior.
 Editor history is one linear sequence of typed commands, which name the node
 and scope identities they change and apply or invert atomically, and
-snapshots of edits that canvases still apply in place. Separate semantic and
+snapshots of edits that canvases still apply in place. Node removal, wire
+connection and disconnection, and palette insertion are commands; a frame's
+command is recorded only when it alone explains the frame's change, and the
+frame becomes a snapshot otherwise. Separate semantic and
 layout revisions track the save point, so a layout-only change never marks
 mapping content as changed.
 

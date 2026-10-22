@@ -3,9 +3,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use mapping::{Binding, FunctionId, Graph, Node, NodeId, Project, Scope};
+use mapping::{Binding, FunctionId, Graph, Node, NodeId, Scope};
 
-use crate::{EditorCommand, EditorTransaction, TargetId};
+use crate::{TargetId, WireSink};
 
 /// The graph and target scope tree that one mapping canvas edits.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -36,6 +36,22 @@ impl ScopeLocation {
 
     pub fn steps(&self) -> &[ScopeStep] {
         &self.0
+    }
+
+    /// Locates the static child scope chain that canvases bind target fields
+    /// through: at each step, the first child whose target field matches.
+    pub fn of_child_chain(root: &Scope, chain: &[String]) -> Option<Self> {
+        let mut scope = root;
+        let mut steps = Vec::with_capacity(chain.len());
+        for field in chain {
+            let index = scope
+                .children
+                .iter()
+                .position(|child| child.target_field == *field)?;
+            scope = &scope.children[index];
+            steps.push(ScopeStep::Child(index));
+        }
+        Some(Self(steps))
     }
 
     fn join(&self, step: ScopeStep) -> Self {
@@ -113,6 +129,10 @@ pub enum GraphEditError {
         node: NodeId,
         expected: bool,
     },
+    /// A node's content differs from the state the edit replaces.
+    NodeDiffers {
+        node: NodeId,
+    },
     MissingScope {
         location: ScopeLocation,
     },
@@ -127,6 +147,21 @@ pub enum GraphEditError {
         node: NodeId,
     },
     EmptyRemoval,
+    /// The edit does not connect `source` into `sink`.
+    NotConnected {
+        source: NodeId,
+        sink: WireSink,
+    },
+    /// The edit does not disconnect `sink`.
+    NotDisconnected {
+        sink: WireSink,
+    },
+    /// The edit does not add `node`.
+    NotInserted {
+        node: NodeId,
+    },
+    /// A node insertion also changes or removes existing identities.
+    InsertionNotAdditive,
 }
 
 impl fmt::Display for GraphEditError {
@@ -140,6 +175,7 @@ impl fmt::Display for GraphEditError {
                 let state = if *expected { "present" } else { "absent" };
                 write!(f, "mapping node {node} is not {state} as the edit requires")
             }
+            Self::NodeDiffers { node } => write!(f, "mapping node {node} changed since the edit"),
             Self::MissingScope { location } => write!(f, "scope {location:?} no longer exists"),
             Self::BindingsDiffer { location } => {
                 write!(f, "bindings of scope {location:?} changed since the edit")
@@ -147,6 +183,17 @@ impl fmt::Display for GraphEditError {
             Self::NoTargetScope => f.write_str("function graphs have no target bindings"),
             Self::NotRemoved { node } => write!(f, "mapping node {node} is not removed"),
             Self::EmptyRemoval => f.write_str("a node removal must remove at least one node"),
+            Self::NotConnected { source, sink } => {
+                write!(
+                    f,
+                    "the edit does not connect mapping node {source} to {sink}"
+                )
+            }
+            Self::NotDisconnected { sink } => write!(f, "the edit does not disconnect {sink}"),
+            Self::NotInserted { node } => write!(f, "mapping node {node} is not inserted"),
+            Self::InsertionNotAdditive => {
+                f.write_str("a node insertion must not change existing identities")
+            }
         }
     }
 }
@@ -226,20 +273,54 @@ impl GraphPatch {
         self.bindings.iter()
     }
 
+    /// The change of one node identity, if the edit affects it.
+    pub fn node(&self, id: NodeId) -> Option<&NodeChange> {
+        self.nodes.get(&id)
+    }
+
+    /// The binding change of one scope, if the edit affects it.
+    pub fn scope(&self, location: &ScopeLocation) -> Option<&BindingsChange> {
+        self.bindings.get(location)
+    }
+
+    /// Applies the edit, validating node presence and scope bindings.
     pub fn apply_to(
         &self,
         graph: &mut Graph,
         scope: Option<&mut Scope>,
     ) -> Result<(), GraphEditError> {
-        self.exchange(graph, scope, Side::After)
+        self.exchange(graph, scope, Side::After, &|_, _| true)
     }
 
+    /// Reverts the edit, validating node presence and scope bindings.
     pub fn revert_on(
         &self,
         graph: &mut Graph,
         scope: Option<&mut Scope>,
     ) -> Result<(), GraphEditError> {
-        self.exchange(graph, scope, Side::Before)
+        self.exchange(graph, scope, Side::Before, &|_, _| true)
+    }
+
+    /// Like [`Self::apply_to`], and also requires every present node the
+    /// edit replaces to match its recorded content under `same_node`.
+    pub fn apply_to_matching(
+        &self,
+        graph: &mut Graph,
+        scope: Option<&mut Scope>,
+        same_node: impl Fn(&Node, &Node) -> bool,
+    ) -> Result<(), GraphEditError> {
+        self.exchange(graph, scope, Side::After, &same_node)
+    }
+
+    /// Like [`Self::revert_on`], with the content check of
+    /// [`Self::apply_to_matching`].
+    pub fn revert_on_matching(
+        &self,
+        graph: &mut Graph,
+        scope: Option<&mut Scope>,
+        same_node: impl Fn(&Node, &Node) -> bool,
+    ) -> Result<(), GraphEditError> {
+        self.exchange(graph, scope, Side::Before, &same_node)
     }
 
     fn nodes_where(&self, keep: fn(&NodeChange) -> bool) -> impl Iterator<Item = NodeId> + '_ {
@@ -254,11 +335,21 @@ impl GraphPatch {
         graph: &mut Graph,
         scope: Option<&mut Scope>,
         target: Side,
+        same_node: &dyn Fn(&Node, &Node) -> bool,
     ) -> Result<(), GraphEditError> {
         for (&node, change) in &self.nodes {
-            let expected = target.replaced_node(change).is_some();
-            if graph.nodes.contains_key(&node) != expected {
-                return Err(GraphEditError::NodePresence { node, expected });
+            let replaced = target.replaced_node(change);
+            match (graph.nodes.get(&node), replaced) {
+                (Some(current), Some(replaced)) if !same_node(current, replaced) => {
+                    return Err(GraphEditError::NodeDiffers { node });
+                }
+                (current, replaced) if current.is_some() != replaced.is_some() => {
+                    return Err(GraphEditError::NodePresence {
+                        node,
+                        expected: replaced.is_some(),
+                    });
+                }
+                _ => {}
             }
         }
         if !self.bindings.is_empty() {
@@ -400,110 +491,6 @@ fn diff_scopes(
         )?;
     }
     Ok(())
-}
-
-/// Removal of graph nodes from one document together with every dependent
-/// change the removal implies: consumer inputs rewired to hidden unconnected
-/// nodes, cleared raise messages, dropped target bindings, and orphaned
-/// inputs.
-#[derive(Clone, Debug)]
-pub struct GraphNodeRemoval {
-    document: GraphDocument,
-    requested: BTreeSet<NodeId>,
-    patch: GraphPatch,
-}
-
-impl GraphNodeRemoval {
-    pub fn new(
-        document: GraphDocument,
-        requested: BTreeSet<NodeId>,
-        patch: GraphPatch,
-    ) -> Result<Self, GraphEditError> {
-        if requested.is_empty() {
-            return Err(GraphEditError::EmptyRemoval);
-        }
-        if let Some(&node) = requested.iter().find(|node| {
-            !patch
-                .nodes
-                .get(node)
-                .is_some_and(|change| change.before.is_some() && change.after.is_none())
-        }) {
-            return Err(GraphEditError::NotRemoved { node });
-        }
-        Ok(Self {
-            document,
-            requested,
-            patch,
-        })
-    }
-
-    pub fn document(&self) -> &GraphDocument {
-        &self.document
-    }
-
-    /// The nodes the user asked to remove; [`Self::patch`] also lists the
-    /// dependent identities.
-    pub fn requested(&self) -> &BTreeSet<NodeId> {
-        &self.requested
-    }
-
-    pub fn patch(&self) -> &GraphPatch {
-        &self.patch
-    }
-
-    pub fn label(&self) -> &'static str {
-        if self.requested.len() == 1 {
-            "Remove node"
-        } else {
-            "Remove nodes"
-        }
-    }
-
-    pub fn apply_to(&self, project: &mut Project) -> Result<(), GraphEditError> {
-        let (graph, scope) = document_parts(project, &self.document)?;
-        self.patch.apply_to(graph, scope)
-    }
-
-    pub fn revert_on(&self, project: &mut Project) -> Result<(), GraphEditError> {
-        let (graph, scope) = document_parts(project, &self.document)?;
-        self.patch.revert_on(graph, scope)
-    }
-}
-
-impl EditorCommand for GraphNodeRemoval {
-    type Error = GraphEditError;
-
-    fn label(&self) -> &str {
-        Self::label(self)
-    }
-
-    fn apply(self, transaction: &mut EditorTransaction<'_>) -> Result<(), Self::Error> {
-        self.apply_to(transaction.project_mut())
-    }
-}
-
-fn document_parts<'p>(
-    project: &'p mut Project,
-    document: &GraphDocument,
-) -> Result<(&'p mut Graph, Option<&'p mut Scope>), GraphEditError> {
-    let missing = || GraphEditError::MissingDocument(document.clone());
-    match document {
-        GraphDocument::Target(TargetId::Primary) => {
-            Ok((&mut project.graph, Some(&mut project.root)))
-        }
-        GraphDocument::Target(TargetId::Named(name)) => {
-            let target = project
-                .extra_targets
-                .iter_mut()
-                .find(|target| target.name == *name)
-                .ok_or_else(missing)?;
-            Ok((&mut project.graph, Some(&mut target.root)))
-        }
-        GraphDocument::Function(id) => {
-            let function = project.user_functions.get_mut(id).ok_or_else(missing)?;
-            Ok((&mut function.body, None))
-        }
-    }
 }
 
 #[cfg(test)]

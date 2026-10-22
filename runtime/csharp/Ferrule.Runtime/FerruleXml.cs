@@ -242,6 +242,9 @@ public static partial class FerruleXml
             throw new InvalidOperationException(
                 $"serialized output exceeds {MaximumOutputBytes} bytes");
         }
+        // Document boundaries verify their completed text with their own
+        // output category; the node writer reports the native message here.
+        if (!documentBoundary) RequireXmlCharacters(output);
         return FerruleValue.FromString(output);
     }
 
