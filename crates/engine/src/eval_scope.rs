@@ -27,6 +27,8 @@ use crate::trace::{
 };
 use crate::{DynamicSourceLoader, EngineError};
 
+#[path = "eval_scope/owned_dynamic_loading.rs"]
+mod owned_dynamic_loading;
 #[path = "eval_scope/owned_join_scope.rs"]
 mod owned_join_scope;
 
@@ -914,6 +916,32 @@ fn record_basic_sort_position<'tree>(
     extension.origins = original.origins;
 }
 
+/// Maps an owned scope's metadata failure to its scope-located engine error.
+pub(super) fn owned_access_error(
+    trace_scope: &TraceScope,
+    source: crate::OwnedSourceError,
+) -> EngineError {
+    match source {
+        crate::OwnedSourceError::UnsupportedSourceDomain { found } => {
+            EngineError::UnsupportedOwnedContext {
+                node: None,
+                function: None,
+                scope: Some(trace_scope.source_scope.clone()),
+                context: if found == "a document set" {
+                    crate::OwnedCapabilityContext::Document
+                } else {
+                    crate::OwnedCapabilityContext::GeneratedItem
+                },
+            }
+        }
+        source => EngineError::OwnedSourceAccess {
+            node: None,
+            scope: Some(Box::new(trace_scope.source_scope.clone())),
+            source,
+        },
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn eval_basic_owned_scope<'a>(
     program: EvalProgram<'a>,
@@ -925,7 +953,6 @@ fn eval_basic_owned_scope<'a>(
     source_loader: Option<&dyn DynamicSourceLoader>,
     trace_scope: &TraceScope,
 ) -> Result<Instance, EngineError> {
-    use crate::owned_context::OwnedContext;
     use crate::source_iteration::{
         ObservedExtension, ObservedWalkRequest, reserve_observed_copy, select_observed,
         select_observed_with_candidate_observer,
@@ -951,25 +978,7 @@ fn eval_basic_owned_scope<'a>(
     let state = program
         .owned_context
         .expect("basic owned route has a context");
-    let access = |source| match source {
-        crate::OwnedSourceError::UnsupportedSourceDomain { found } => {
-            EngineError::UnsupportedOwnedContext {
-                node: None,
-                function: None,
-                scope: Some(trace_scope.source_scope.clone()),
-                context: if found == "a document set" {
-                    crate::OwnedCapabilityContext::Document
-                } else {
-                    crate::OwnedCapabilityContext::GeneratedItem
-                },
-            }
-        }
-        source => EngineError::OwnedSourceAccess {
-            node: None,
-            scope: Some(Box::new(trace_scope.source_scope.clone())),
-            source,
-        },
-    };
+    let access = |source| owned_access_error(trace_scope, source);
     let domain = crate::source_ownership::scope_context(scope);
     if domain != crate::OwnedCapabilityContext::Basic {
         return Err(EngineError::UnsupportedOwnedContext {
@@ -1003,7 +1012,24 @@ fn eval_basic_owned_scope<'a>(
             has_source,
         );
     };
-    let (mut extensions, budget, own, candidates, replay) = match scope.source_selector() {
+    // An owned dynamic endpoint without an active document loads one per driver.
+    if let Some(mapping::SourceSelectorRef::Owned(source)) = scope.source_selector()
+        && let Some(driver) = owned_dynamic_loading::driver(state, source).map_err(access)?
+    {
+        return owned_dynamic_loading::eval_loading_scope(
+            receiving_program,
+            scope,
+            target,
+            context,
+            positions,
+            extra_sources,
+            source_loader,
+            trace_scope,
+            source,
+            driver,
+        );
+    }
+    let (extensions, budget, own, candidates, replay) = match scope.source_selector() {
         Some(mapping::SourceSelectorRef::Owned(source)) => {
             let (owner, base, prefix, tail, budget) = state.select(source).map_err(access)?;
             let request = ObservedWalkRequest {
@@ -1142,6 +1168,67 @@ fn eval_basic_owned_scope<'a>(
             (vec![extension], budget, false, 1, None)
         }
     };
+    eval_basic_owned_selected(
+        receiving_program,
+        scope,
+        target,
+        context,
+        positions,
+        extra_sources,
+        source_loader,
+        trace_scope,
+        BasicSelection {
+            extensions,
+            budget,
+            own,
+            candidates,
+            replay,
+            retain_first,
+        },
+    )
+}
+
+/// One owned scope's complete selected candidates before controls run.
+pub(super) struct BasicSelection<'a, 'query> {
+    pub extensions: Vec<crate::source_iteration::ObservedExtension<'a>>,
+    pub budget: crate::owned_context::WorkBudget,
+    /// The scope's own selector names an owner.
+    pub own: bool,
+    pub candidates: usize,
+    pub replay: Option<crate::source_iteration::ObservedReplay<'a, 'query>>,
+    /// Only the original walk's implicit First retains one candidate.
+    pub retain_first: bool,
+}
+
+/// Runs the controls, windows, grouping and output of selected candidates in
+/// their receiving context.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn eval_basic_owned_selected<'a>(
+    receiving_program: EvalProgram<'a>,
+    scope: &Scope,
+    target: Option<&ir::SchemaNode>,
+    context: &[&'a Instance],
+    positions: &[PositionFrame],
+    extra_sources: &[NamedSource],
+    source_loader: Option<&dyn DynamicSourceLoader>,
+    trace_scope: &TraceScope,
+    selected: BasicSelection<'a, '_>,
+) -> Result<Instance, EngineError> {
+    use crate::owned_context::OwnedContext;
+    use crate::source_iteration::reserve_observed_copy;
+    let BasicSelection {
+        mut extensions,
+        budget,
+        own,
+        candidates,
+        replay,
+        retain_first,
+    } = selected;
+    let program = receiving_program.with_owned_trace_phase(crate::TraceOwnedPhase::Structural);
+    let state = program
+        .owned_context
+        .expect("basic owned route has a context");
+    let access = |source| owned_access_error(trace_scope, source);
     let ancestry = state.owned_ancestry
         || own
         || scope.group_by.is_some()

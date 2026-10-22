@@ -430,6 +430,13 @@ impl<'a> SourceRoots<'a> {
         let (_, root) = matches.next()?;
         matches.next().is_none().then_some(root)
     }
+    /// Whether the owner's documents load through an owned dynamic driver.
+    pub(crate) fn loaded(&self, key: OwnerKey) -> bool {
+        matches!(key, OwnerKey::Named(index) if self.declared[index]
+            .dynamic_path
+            .as_ref()
+            .is_some_and(|dynamic| dynamic.owned_driver().is_some()))
+    }
     pub fn named_key(&self, name: &str) -> Option<OwnerKey> {
         let mut matches = self
             .declared
@@ -472,6 +479,9 @@ pub(crate) enum SourceOriginKind {
     Ordinary,
     GroupWrapper,
     GroupMembers,
+    /// The root of one loaded document of an owned dynamic endpoint. It is
+    /// that endpoint's root inside the loading scope; it is never a position.
+    Document,
 }
 
 #[derive(Clone)]
@@ -501,6 +511,29 @@ impl<'a> OwnedContext<'a> {
             owned_ancestry: false,
         }
     }
+    /// The owner's root: the latest active loaded document of an owned
+    /// dynamic endpoint, or a static endpoint's supplied root. A dynamic owner
+    /// outside its loading scope is unavailable; no other root repairs it.
+    pub fn endpoint_root(&self, key: OwnerKey) -> Result<&'a Instance, OwnedSourceError> {
+        match key {
+            OwnerKey::Named(index) if self.roots.loaded(key) => self
+                .loaded_document(key)
+                .ok_or_else(|| OwnedSourceError::SourceUnavailable {
+                    owner: SourceOwner::Named {
+                        name: self.roots.declared[index].name.clone(),
+                    },
+                }),
+            _ => self.roots.root(key),
+        }
+    }
+    /// The latest active loaded document of `key`, if any.
+    pub fn loaded_document(&self, key: OwnerKey) -> Option<&'a Instance> {
+        self.origins
+            .iter()
+            .rev()
+            .find(|origin| origin.owner == key && origin.kind == SourceOriginKind::Document)
+            .map(|origin| origin.item)
+    }
     pub fn field(&self, field: &OwnedSourceField) -> Result<Value, OwnedSourceError> {
         let owner_name = match &field.source.owner {
             SourceOwner::Primary => None,
@@ -523,7 +556,7 @@ impl<'a> OwnedContext<'a> {
                         frame: pin.to_vec(),
                     });
                 };
-                let root = self.roots.root(key)?;
+                let root = self.endpoint_root(key)?;
                 let declared_repeating = match key {
                     OwnerKey::Primary => self.roots.primary_repeating,
                     OwnerKey::Named(index) => self.roots.declared[index].schema.repeating,
@@ -562,7 +595,7 @@ impl<'a> OwnedContext<'a> {
                         };
                         (item, &field.source.path[frame.collection.len()..])
                     }
-                    None => (self.roots.root(key)?, field.source.path.as_slice()),
+                    None => (self.endpoint_root(key)?, field.source.path.as_slice()),
                 }
             }
         };
@@ -585,7 +618,7 @@ impl<'a> OwnedContext<'a> {
             &self.origins,
         )?;
         let key = self.roots.key(owner)?;
-        self.roots.root(key)?;
+        self.endpoint_root(key)?;
         self.frames
             .iter()
             .rev()
@@ -664,7 +697,7 @@ impl<'a> OwnedContext<'a> {
                 &source.path[frame.collection.len()..],
                 work,
             )),
-            None => Ok((key, self.roots.root(key)?, &[], &source.path, work)),
+            None => Ok((key, self.endpoint_root(key)?, &[], &source.path, work)),
         }
     }
     pub fn active_identity(&self, owner: OwnerKey, path: &[String], item: &Instance) -> bool {

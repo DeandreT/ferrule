@@ -401,6 +401,22 @@ fn owned_drivers_validate_their_exact_endpoint_and_collection() {
 }
 
 #[test]
+fn loading_scopes_never_group_loaded_documents() {
+    let mut grouped = project("Primary");
+    grouped.root.children[0].group_by = Some(LABEL);
+    assert!(
+        issues(&grouped)
+            .contains("scope `Docs`: an owned dynamic loading scope cannot group `Docs` documents"),
+        "{:?}",
+        issues(&grouped)
+    );
+    // A nested iteration of the current document is not a loading scope.
+    let mut nested = project("Primary");
+    nested.root.children[0].children[0].group_by = Some(CODE);
+    assert!(issues(&nested).is_empty(), "{:?}", issues(&nested));
+}
+
+#[test]
 fn legacy_aliases_never_reach_an_owned_dynamic_source() {
     let alias = "legacy path `Docs/Lines` names owned dynamic source `Docs`; use an owned selector";
     let mut scope = project("Primary");
@@ -435,28 +451,367 @@ fn legacy_aliases_never_reach_an_owned_dynamic_source() {
     );
 }
 
+fn int(value: i64) -> Instance {
+    Instance::Scalar(Value::Int(value))
+}
+fn line(code: &str, position: i64) -> Instance {
+    group(vec![("Code", text(code)), ("Position", int(position))])
+}
+fn loaded_part(name: &str, doc: &str, label: &str) -> Instance {
+    group(vec![
+        ("Name", text(name)),
+        ("Doc", text(doc)),
+        ("Label", text(label)),
+    ])
+}
+fn out_doc(
+    title: &str,
+    label: &str,
+    driver: i64,
+    lines: Vec<Instance>,
+    parts: Vec<Instance>,
+) -> Instance {
+    group(vec![
+        ("Title", text(title)),
+        ("Label", text(label)),
+        ("Driver", int(driver)),
+        ("Lines", repeated(lines)),
+        ("Parts", repeated(parts)),
+    ])
+}
+fn out(docs: Vec<Instance>) -> Instance {
+    group(vec![("Docs", repeated(docs))])
+}
+fn catalog(files: &[(&str, &str)]) -> Vec<(String, Instance)> {
+    vec![("Catalog".into(), batch(files))]
+}
+fn documents() -> RecordingLoader {
+    RecordingLoader::new(vec![
+        ("Docs", "a.json", doc("A", &["a1", "a2"], &["p1.json"])),
+        ("Docs", "b.json", doc("B", &["b1"], &["p1.json", "p2.json"])),
+        ("Docs", "c.json", doc("C", &[], &[])),
+        ("Parts", "p1.json", part("P1")),
+        ("Parts", "p2.json", part("P2")),
+    ])
+}
+fn run(
+    project: &Project,
+    source: &Instance,
+    extras: Vec<(String, Instance)>,
+    loader: &RecordingLoader,
+) -> Result<Instance, crate::EngineError> {
+    crate::run_with_sources_and_context(project, source, extras, &execution(loader))
+}
+fn unavailable(name: &str) -> crate::OwnedSourceError {
+    crate::OwnedSourceError::SourceUnavailable {
+        owner: SourceOwner::Named { name: name.into() },
+    }
+}
+
 #[test]
-fn owned_dynamic_owners_stay_closed_before_any_callback() {
-    let loader = RecordingLoader::new(vec![
-        ("Docs", "a.json", doc("A", &["a1"], &["p.json"])),
-        ("Parts", "p.json", part("P")),
-    ]);
-    let result = crate::run_with_sources_and_context(
+fn loaded_documents_keep_their_driver_owner_and_identity_through_nested_loading() {
+    let loader = documents();
+    let output = run(
         &project("Primary"),
+        &batch(&[("a.json", "first"), ("b.json", "second")]),
+        catalog(&[("c.json", "catalog")]),
+        &loader,
+    )
+    .unwrap();
+    assert_eq!(
+        output,
+        out(vec![
+            out_doc(
+                "A",
+                "first",
+                1,
+                vec![line("a1", 1), line("a2", 2)],
+                vec![loaded_part("P1", "A", "first")],
+            ),
+            out_doc(
+                "B",
+                "second",
+                2,
+                vec![line("b1", 1)],
+                vec![
+                    loaded_part("P1", "B", "second"),
+                    loaded_part("P2", "B", "second"),
+                ],
+            ),
+        ])
+    );
+    // Every attempted callback is recorded; a repeated successful path is
+    // physically read once by the success-only host cache.
+    assert_eq!(
+        loader.calls(),
+        [
+            "Docs:a.json",
+            "Docs:b.json",
+            "Parts:p1.json",
+            "Parts:p1.json",
+            "Parts:p2.json"
+        ]
+    );
+    assert_eq!(
+        loader.physical(),
+        [
+            "Docs:a.json",
+            "Docs:b.json",
+            "Parts:p1.json",
+            "Parts:p2.json"
+        ]
+    );
+}
+
+#[test]
+fn same_shaped_driver_collections_select_only_the_declared_endpoint() {
+    let loader = documents();
+    let output = run(
+        &project("Catalog"),
+        &batch(&[("a.json", "first"), ("b.json", "second")]),
+        catalog(&[("c.json", "catalog")]),
+        &loader,
+    )
+    .unwrap();
+    assert_eq!(
+        output,
+        out(vec![out_doc("C", "catalog", 1, Vec::new(), Vec::new())])
+    );
+    assert_eq!(loader.calls(), ["Docs:c.json"]);
+
+    // An empty selected collection loads nothing; the primary rows of the same
+    // shape never repair it.
+    let empty = documents();
+    let output = run(
+        &project("Catalog"),
+        &batch(&[("a.json", "first")]),
+        vec![("Catalog".into(), group(Vec::new()))],
+        &empty,
+    )
+    .unwrap();
+    assert_eq!(output, out(Vec::new()));
+    assert_eq!(empty.calls(), Vec::<String>::new());
+
+    // An unsupplied driver endpoint is a typed failure at the loading scope.
+    let missing = documents();
+    let error = run(
+        &project("Catalog"),
+        &batch(&[("a.json", "first")]),
+        Vec::new(),
+        &missing,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(&error, crate::EngineError::OwnedSourceAccess { node: None, scope: Some(_), source }
+            if *source == unavailable("Catalog")),
+        "{error:?}"
+    );
+    assert_eq!(missing.calls(), Vec::<String>::new());
+}
+
+#[test]
+fn absent_and_null_paths_skip_their_driver_and_other_values_are_typed_failures() {
+    let mut source = batch(&[("a.json", "first")]);
+    let Instance::Group(fields) = &mut source else {
+        unreachable!()
+    };
+    let rows = |paths: Vec<Option<Value>>| {
+        repeated(
+            paths
+                .into_iter()
+                .enumerate()
+                .map(|(index, path)| {
+                    let label = text(&format!("row{}", index + 1));
+                    match path {
+                        Some(path) => {
+                            group(vec![("Path", Instance::Scalar(path)), ("Label", label)])
+                        }
+                        None => group(vec![("Label", label)]),
+                    }
+                })
+                .collect(),
+        )
+    };
+    let mut fields: Vec<(String, Instance)> = fields.iter().cloned().collect();
+    fields[0].1 = rows(vec![
+        None,
+        Some(Value::Null),
+        Some(Value::json_null()),
+        Some(Value::String("b.json".into())),
+    ]);
+    let skipping = Instance::Group(fields.clone().into());
+    let loader = documents();
+    let output = run(&project("Primary"), &skipping, Vec::new(), &loader).unwrap();
+    // The driver position stays the raw driver row's position.
+    assert_eq!(
+        output,
+        out(vec![out_doc(
+            "B",
+            "row4",
+            4,
+            vec![line("b1", 1)],
+            vec![
+                loaded_part("P1", "B", "row4"),
+                loaded_part("P2", "B", "row4")
+            ],
+        )])
+    );
+    assert_eq!(loader.calls()[0], "Docs:b.json");
+
+    fields[0].1 = rows(vec![
+        Some(Value::String("a.json".into())),
+        Some(Value::Int(7)),
+        Some(Value::String("b.json".into())),
+    ]);
+    let invalid = Instance::Group(fields.into());
+    let loader = documents();
+    let error = run(&project("Primary"), &invalid, Vec::new(), &loader).unwrap_err();
+    assert_eq!(
+        error,
+        crate::EngineError::DynamicSourcePath {
+            source_name: "Docs".into(),
+            found: "int",
+        }
+    );
+    // Requests already issued in driver order remain; later drivers never run.
+    assert_eq!(loader.calls(), ["Docs:a.json"]);
+}
+
+#[test]
+fn reached_loading_scopes_require_a_loader_and_host_failures_keep_their_path() {
+    let error = crate::run_with_sources_and_context(
+        &project("Primary"),
+        &batch(&[]),
+        Vec::new(),
+        &ExecutionContext::new(Path::new("dynload475.mapping")),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error,
+        crate::EngineError::MissingDynamicSourceLoader {
+            source_name: "Docs".into()
+        }
+    );
+    let loader = documents();
+    let error = run(
+        &project("Primary"),
+        &batch(&[("a.json", "first"), ("missing.json", "second")]),
+        Vec::new(),
+        &loader,
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        crate::EngineError::DynamicSourceLoad {
+            source_name: "Docs".into(),
+            path: "missing.json".into(),
+            message: "no document Docs:missing.json".into(),
+        }
+        .to_string()
+    );
+    // The failure is attempted after the earlier success and is not cached.
+    assert_eq!(loader.calls(), ["Docs:a.json", "Docs:missing.json"]);
+    assert_eq!(loader.physical(), ["Docs:a.json", "Docs:missing.json"]);
+    let retry = run(
+        &project("Primary"),
+        &batch(&[("a.json", "first"), ("missing.json", "second")]),
+        Vec::new(),
+        &loader,
+    );
+    assert!(retry.is_err());
+    assert_eq!(
+        loader.physical(),
+        ["Docs:a.json", "Docs:missing.json", "Docs:missing.json"]
+    );
+}
+
+#[test]
+fn unused_owned_dynamic_sources_are_never_requested() {
+    let mut unused = project("Primary");
+    unused.root.children.clear();
+    let output = crate::run_with_sources_and_context(
+        &unused,
+        &batch(&[("a.json", "first")]),
+        Vec::new(),
+        &ExecutionContext::new(Path::new("dynload475.mapping")),
+    )
+    .unwrap();
+    assert_eq!(output, group(Vec::new()));
+
+    // A named target that loads documents runs only when it is selected.
+    let mut targets = project("Primary");
+    targets.extra_targets.push(mapping::NamedTarget {
+        name: "audit".into(),
+        path: None,
+        schema: targets.target.clone(),
+        options: Default::default(),
+        root: std::mem::take(&mut targets.root),
+    });
+    let loader = documents();
+    let selected = crate::run_selected_target_with_sources_and_context(
+        &targets,
         &batch(&[("a.json", "first")]),
         Vec::new(),
         &execution(&loader),
+        crate::TargetSelection::Primary,
+    )
+    .unwrap();
+    assert!(matches!(selected, crate::SelectedTargetOutput::Primary(_)));
+    assert_eq!(loader.calls(), Vec::<String>::new());
+    let all = crate::run_outputs_with_sources_and_context(
+        &targets,
+        &batch(&[("a.json", "first")]),
+        Vec::new(),
+        &execution(&loader),
+    )
+    .unwrap();
+    assert_eq!(all.extras.len(), 1);
+    assert_eq!(loader.calls(), ["Docs:a.json", "Parts:p1.json"]);
+}
+
+#[test]
+fn owned_dynamic_owners_outside_their_loading_scope_are_unavailable() {
+    // A read of a loaded endpoint outside its loading scope never borrows a
+    // document, driver row or another endpoint.
+    let mut read = project("Primary");
+    read.target = SchemaNode::group(
+        "Out",
+        vec![
+            SchemaNode::scalar("Title", ScalarType::String),
+            read.target.child("Docs").cloned().unwrap(),
+        ],
     );
+    read.root.bindings.push(binding("Title", TITLE));
+    let loader = documents();
+    let error = run(&read, &batch(&[("a.json", "first")]), Vec::new(), &loader).unwrap_err();
     assert!(
-        matches!(
-            result,
-            Err(crate::EngineError::UnsupportedOwnedContext {
-                context: crate::OwnedCapabilityContext::DynamicOwner,
-                ..
-            })
-        ),
-        "{result:?}"
+        matches!(&error, crate::EngineError::OwnedSourceAccess { node: Some(TITLE), source, .. }
+            if *source == unavailable("Docs")),
+        "{error:?}"
+    );
+    // A nested driver needs its own driver's current document.
+    let mut nested = project("Primary");
+    let parts = nested.root.children[0].children.remove(1);
+    nested.root.children[0] = Scope {
+        target_field: "Docs".into(),
+        ..Scope::default()
+    };
+    nested.root.children[0].children.push(parts);
+    nested.root.children[0].children[0].bindings.truncate(1);
+    let loader = documents();
+    let error = run(&nested, &batch(&[("a.json", "first")]), Vec::new(), &loader).unwrap_err();
+    assert!(
+        matches!(&error, crate::EngineError::OwnedSourceAccess { node: None, scope: Some(_), source }
+            if *source == unavailable("Docs")),
+        "{error:?}"
     );
     assert_eq!(loader.calls(), Vec::<String>::new());
-    assert_eq!(loader.physical(), Vec::<String>::new());
+}
+
+#[test]
+fn legacy_drivers_keep_their_behavior_beside_owned_drivers() {
+    // The legacy fixture keeps its wire, driver walk and requests.
+    let project = super::dynamic_source_tests::dynamic_project();
+    let wire = serde_json::to_value(&project.extra_sources[0].dynamic_path).unwrap();
+    assert_eq!(wire, serde_json::json!({"node":0,"iteration":["File"]}));
 }

@@ -82,9 +82,11 @@ fn owned_alias(location: &str, name: &str, path: &[String]) -> ValidationIssue {
 }
 
 /// Scope selectors, constructions and generated producers of one scope.
+/// `rooted` names the owned dynamic sources an enclosing iteration roots.
 pub(super) fn validate_scope(
     project: &Project,
     scope: &Scope,
+    rooted: &[&str],
     location: &str,
     issues: &mut Vec<ValidationIssue>,
 ) {
@@ -94,12 +96,22 @@ pub(super) fn validate_scope(
         Some(SourceSelectorRef::Owned(source)) => {
             if let SourceOwner::Named { name } = &source.owner
                 && owned_dynamic(project, name).is_some()
-                && scope.output_path().is_some()
             {
-                issues.push(ValidationIssue::new(
-                    location,
-                    format!("owned dynamic source `{name}` cannot drive per-item document outputs"),
-                ));
+                if scope.output_path().is_some() {
+                    issues.push(ValidationIssue::new(
+                        location,
+                        format!(
+                            "owned dynamic source `{name}` cannot drive per-item document outputs"
+                        ),
+                    ));
+                }
+                // Each loaded document keeps only its own driver row.
+                if scope.has_grouping() && !rooted.contains(&name.as_str()) {
+                    issues.push(ValidationIssue::new(
+                        location,
+                        format!("an owned dynamic loading scope cannot group `{name}` documents"),
+                    ));
+                }
             }
         }
         None => {}

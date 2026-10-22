@@ -271,7 +271,8 @@ impl<'a> Admission<'a> {
             match scope.source_selector() {
                 Some(SourceSelectorRef::Legacy(path)) => self.path(path),
                 Some(SourceSelectorRef::Owned(source)) => {
-                    self.static_owner(&source.owner, &source.path, None, None, Some(&location))?;
+                    self.loaded_owner(&source.owner, &source.path, None, None, Some(&location))?;
+                    self.loading(&source.owner, &location, context)?;
                     self.summary.used_owned = true;
                 }
                 None => {}
@@ -510,6 +511,30 @@ impl<'a> Admission<'a> {
         node: Option<NodeId>,
         scope: Option<&SourceScopeLocation>,
     ) -> Result<(), EngineError> {
+        self.endpoint_owner(owner, path, pin, node, scope, false)
+    }
+    /// Like [`Self::static_owner`], also admitting an owned dynamic endpoint:
+    /// only exact field and position reads and source iterations read loaded
+    /// documents, which exist only inside their loading scope.
+    fn loaded_owner(
+        &mut self,
+        owner: &SourceOwner,
+        path: &[String],
+        pin: Option<&[String]>,
+        node: Option<NodeId>,
+        scope: Option<&SourceScopeLocation>,
+    ) -> Result<(), EngineError> {
+        self.endpoint_owner(owner, path, pin, node, scope, true)
+    }
+    fn endpoint_owner(
+        &mut self,
+        owner: &SourceOwner,
+        path: &[String],
+        pin: Option<&[String]>,
+        node: Option<NodeId>,
+        scope: Option<&SourceScopeLocation>,
+        loaded: bool,
+    ) -> Result<(), EngineError> {
         if self.owned_budget.is_none() {
             self.owned_budget = Some(
                 crate::owned_context::OwnedBudget::new(
@@ -555,13 +580,45 @@ impl<'a> Admission<'a> {
                     OwnedSourceError::AmbiguousOwner { name: name.clone() },
                 ));
             }
-            if source.dynamic_path.is_some() {
+            let owned_driver = source
+                .dynamic_path
+                .as_ref()
+                .is_some_and(|dynamic| dynamic.owned_driver().is_some());
+            if source.dynamic_path.is_some() && !(loaded && owned_driver) {
                 return Err(EngineError::UnsupportedOwnedContext {
                     node,
                     function: None,
                     scope: scope.cloned(),
                     context: OwnedCapabilityContext::DynamicOwner,
                 });
+            }
+        }
+        Ok(())
+    }
+    /// Admit the exact driver and path expression of an owned dynamic owner
+    /// iterated by `location`. The path is a Basic expression of each driver
+    /// item; its driver may itself be an owned dynamic endpoint.
+    fn loading(
+        &mut self,
+        owner: &SourceOwner,
+        location: &SourceScopeLocation,
+        context: OwnedCapabilityContext,
+    ) -> Result<(), EngineError> {
+        let SourceOwner::Named { name } = owner else {
+            return Ok(());
+        };
+        let project = self.project;
+        for (index, source) in project.extra_sources.iter().enumerate() {
+            let Some(dynamic) = source.dynamic_path.as_ref() else {
+                continue;
+            };
+            let Some(driver) = dynamic.owned_driver() else {
+                continue;
+            };
+            if source.name == *name && self.dynamic.insert(index) {
+                self.loaded_owner(&driver.owner, &driver.path, None, None, Some(location))?;
+                self.push(None, context, true, [dynamic.node]);
+                self.loading(&driver.owner, location, context)?;
             }
         }
         Ok(())
@@ -810,13 +867,15 @@ impl<'a> Admission<'a> {
                     });
                 }
                 match node {
+                    // Failure scalars never see a loaded document.
                     Node::OwnedSourceField(field) => {
-                        self.static_owner(
+                        self.endpoint_owner(
                             &field.source.owner,
                             &field.source.path,
                             field.frame.as_deref(),
                             Some(id),
                             None,
+                            context == OwnedCapabilityContext::Basic,
                         )?;
                         if let Some(frame) = &field.frame
                             && !field.source.path.starts_with(frame)
@@ -831,12 +890,13 @@ impl<'a> Admission<'a> {
                             ));
                         }
                     }
-                    Node::OwnedPosition(position) => self.static_owner(
+                    Node::OwnedPosition(position) => self.endpoint_owner(
                         &position.owner,
                         position.collection.as_deref().unwrap_or_default(),
                         None,
                         Some(id),
                         None,
+                        context == OwnedCapabilityContext::Basic,
                     )?,
                     Node::OwnedRowDocumentPath(path) => self.static_owner(
                         &path.owner,
