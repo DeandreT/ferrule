@@ -1109,6 +1109,37 @@ Per-driver sources use `execute_with_dynamic_source_loader`,
 variants. The host implements `DynamicSourceLoader` and returns one
 schema-shaped `Instance` for each source-name/logical-path request.
 
+## Prepared Boundary Emission and Typed-Only Libraries
+
+Both emitters validate a Program once through
+`codegen::prepare_boundary_emission(program, companions)`. Its refusals are
+exactly those of `codegen::validate_program`, in the same order. The returned
+`BoundaryEmissionPlan` borrows the Program and keeps what validation proved
+about its XML document adapter: the `XmlOutputMode`, how the adapter accepts
+inputs (`XmlDocumentInputs`), each output's single-document or document-list
+cardinality, and the validated policies. Both renderers dispatch on that plan;
+neither re-derives the classification from the Program.
+`Program::xml_output_mode` remains a public query that validates the complete
+Program on every call.
+
+`CompanionSelection` chooses the API families rendered beside the typed
+instance entry points:
+
+| Selection | Rust | C# | Renders |
+| --- | --- | --- | --- |
+| `Complete` | `emit`, `emit_with_companions` | `emit`, `emit_with_companions` | Typed entry points, JSON and selected-target JSON companions, and the Program's XML adapter |
+| `TypedOnly` | `emit_with_companions` | `emit_with_companions` | Typed `execute...` / `Execute...` entry points only |
+
+A typed-only library admits no JSON or XML companion descriptor, so a schema
+beyond the embedded JSON descriptor limit does not block it. The Program,
+including any XML boundary policy it carries, is still validated. C# typed-only
+libraries also omit the JSON document records and the dynamic-input XML runtime
+source. `emit` and the CLI keep the complete inventory.
+
+A new boundary format adds its own proved facts to the plan and its own
+selection, rather than combining independent flags or sharing one codec
+abstraction across formats.
+
 ## Explicit C# X12 Companions
 
 Add `--x12-adapters` to the C# CLI generation command for explicit raw X12

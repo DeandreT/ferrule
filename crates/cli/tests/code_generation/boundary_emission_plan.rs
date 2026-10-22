@@ -3,8 +3,9 @@
 //! `fixtures/boundary_emission_plan.txt`.
 //!
 //! Each line records one family for one subject: lowering, Program validation,
-//! the proved XML output mode, ordinary Rust and C# emission with their public
-//! API inventories, and the companion emitters layered on ordinary emission.
+//! the proved XML output mode and prepared boundary plan, ordinary and
+//! typed-only Rust and C# emission with their public API inventories, and the
+//! companion emitters layered on ordinary emission.
 //! Results use the owned capability preset encoding: `ok`, `ok:<hash>` of the
 //! lowered Program or artifact bytes, or `err:<hash>` of the complete
 //! diagnostic `Debug` with a short summary. Set
@@ -12,6 +13,7 @@
 //! intended change.
 use super::owned_capability_presets::{Corpus, Subject, accepted, artifacts, digest};
 use super::*;
+use codegen::CompanionSelection;
 use std::fmt::Write as _;
 use std::fs;
 
@@ -69,12 +71,33 @@ fn emission_families(program: &codegen::Program) -> Vec<Family> {
             accepted(&program.xml_output_mode(), |mode| format!("ok:{mode:?}")),
         ),
     ];
+    families.push((
+        "plan",
+        accepted(
+            &codegen::prepare_boundary_emission(program, CompanionSelection::Complete),
+            |plan| match plan.xml() {
+                Some(xml) => format!(
+                    "ok:{:?}/{:?}/{:?}",
+                    xml.mode(),
+                    xml.inputs(),
+                    xml.named_outputs()
+                ),
+                None => "ok:None".into(),
+            },
+        ),
+    ));
     let rust = codegen_rust::emit(program, &options);
     families.push(("rust", accepted(&rust, artifacts)));
     families.push(("rust_api", accepted(&rust, api)));
     let csharp = codegen_csharp::emit(program);
     families.push(("csharp", accepted(&csharp, artifacts)));
     families.push(("csharp_api", accepted(&csharp, api)));
+    let rust = codegen_rust::emit_with_companions(program, &options, CompanionSelection::TypedOnly);
+    families.push(("rust_typed", accepted(&rust, artifacts)));
+    families.push(("rust_t_api", accepted(&rust, api)));
+    let csharp = codegen_csharp::emit_with_companions(program, CompanionSelection::TypedOnly);
+    families.push(("csharp_typed", accepted(&csharp, artifacts)));
+    families.push(("csharp_t_api", accepted(&csharp, api)));
     let csv = codegen::CsvOutputPolicy::default();
     families.push((
         "rust_csv",

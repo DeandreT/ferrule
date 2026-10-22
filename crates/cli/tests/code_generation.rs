@@ -126,6 +126,8 @@ mod legacy_artifact_policy;
 mod owned_capability_presets;
 #[path = "code_generation/owned_row_document_path.rs"]
 mod owned_row_document_path;
+#[path = "code_generation/typed_only_companions.rs"]
+mod typed_only_companions;
 
 #[path = "code_generation/edi_structure_variables.rs"]
 mod edi_structure_variables;
