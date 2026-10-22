@@ -13,11 +13,11 @@ use crate::aggregate::sort_value_ordering;
 use crate::debug::before_target_write;
 use crate::dynamic_target::{self, eval_dynamic_key, insert_target_field};
 use crate::eval_expr::{EvalProgram, eval_expr};
+use crate::frame_view::FrameView;
 use crate::grouping::GroupingMode;
 use crate::iteration_output::finalize_scope_output;
 use crate::join::{execute as execute_join, extensions as join_extensions};
 use crate::recursive_filter;
-use crate::resolve::context_for_position;
 use crate::sequence::eval_sequence;
 use crate::source_iteration::{PositionFrame, WalkExtension, walk};
 use crate::trace::{
@@ -311,22 +311,11 @@ pub(crate) fn eval_scope(
                     // A grouped scope stores its member collection in the
                     // context under the original collection frame. Preserve
                     // that identity when an empty-path child iterates members.
-                    let prefix = if path.is_empty()
-                        && positions.last().is_some_and(|position| {
-                            position.grouped
-                                && context_for_position(
-                                    context,
-                                    positions,
-                                    positions.len().saturating_sub(1),
-                                ) == Some(base)
-                        }) {
-                        positions
-                            .last()
-                            .map(|position| position.collection.as_slice())
-                            .unwrap_or_default()
-                    } else {
-                        &[]
-                    };
+                    let prefix = path
+                        .is_empty()
+                        .then(|| FrameView::grouped_members_collection(context, positions, base))
+                        .flatten()
+                        .unwrap_or_default();
                     walk(base, path, prefix, &[], &[])
                 }),
         }
@@ -655,13 +644,11 @@ pub(crate) fn eval_scope(
                 Instance::Group(fields) => (Some(&group.frame), &fields[0].1),
                 members => (None, members),
             };
-            let parent_wrappers = positions.iter().filter(|position| position.grouped).count();
-            let parent_frame_start = context
-                .len()
-                .checked_sub(positions.len() + parent_wrappers)
-                .expect("iteration positions have matching context frames");
-            let mut next_context = context[..parent_frame_start].to_vec();
-            next_context.extend_from_slice(&context[parent_frame_start..]);
+            assert!(
+                FrameView::receiving_start(context, positions).is_some(),
+                "iteration positions have matching context frames"
+            );
+            let mut next_context = context.to_vec();
             next_context.extend_from_slice(group.intermediate_frames);
             if let Some(wrapper) = wrapper {
                 next_context.push(wrapper);
@@ -1085,22 +1072,13 @@ fn eval_basic_owned_scope<'a>(
                     ObservedWalkRequest {
                         base: actual,
                         path: tail,
-                        raw_prefix: if path.is_empty()
-                            && positions.last().is_some_and(|position| {
-                                position.grouped
-                                    && context_for_position(
-                                        context,
-                                        positions,
-                                        positions.len().saturating_sub(1),
-                                    ) == Some(base)
-                            }) {
-                            &positions
-                                .last()
-                                .expect("checked grouped position")
-                                .collection
-                        } else {
-                            &path[..consumed]
-                        },
+                        raw_prefix: path
+                            .is_empty()
+                            .then(|| {
+                                FrameView::grouped_members_collection(context, positions, base)
+                            })
+                            .flatten()
+                            .unwrap_or(&path[..consumed]),
                         canonical_prefix: canonical,
                         owner: Some(owner),
                         context: state,

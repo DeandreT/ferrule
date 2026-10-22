@@ -132,8 +132,25 @@ fn unvalidated_unpositioned_join_member_keeps_legacy_index_pairing() {
 }
 
 use crate::frame_view::{FrameEndpoint, FrameKind, FrameOrigin, FrameView};
-use crate::resolve::context_for_position;
 use crate::source_iteration::PositionFrame;
+
+/// Legacy position lookup, as lookups paired a position with its context
+/// instance before the frame view.
+fn context_for_position<'a>(
+    context: &[&'a Instance],
+    positions: &[PositionFrame],
+    position_index: usize,
+) -> Option<&'a Instance> {
+    let wrapper_count = positions.iter().filter(|position| position.grouped).count();
+    let context_offset = context.len().checked_sub(positions.len() + wrapper_count)?;
+    let preceding_wrappers = positions[..=position_index]
+        .iter()
+        .filter(|position| position.grouped)
+        .count();
+    context
+        .get(context_offset + position_index + preceding_wrappers)
+        .copied()
+}
 
 fn position(collection: &[&str], index: usize, grouped: bool) -> PositionFrame {
     PositionFrame {
@@ -448,14 +465,13 @@ fn receiving_cases(mut check: impl FnMut(&[&Instance], &[PositionFrame])) {
     let all = [
         position(&["Rows"], 1, true),
         joined(&["A"], 1, false),
+        position(&[], 1, false),
         joined(&["B"], 1, true),
         joined(&["A"], 2, false),
         position(&["A"], 3, false),
         joined(&["A"], 1, false),
     ];
-    let instances: Vec<_> = (0..10)
-        .map(|index| record(vec![("v", text(&format!("instance-{index}")))]))
-        .collect();
+    let instances: Vec<_> = (0..11).map(receiving_instance).collect();
     let instances: Vec<_> = instances.iter().collect();
     for length in 0..=all.len() {
         let positions = &all[..length];
@@ -553,4 +569,251 @@ fn an_unbound_joined_frame_does_not_fall_back_to_an_earlier_one() {
         ),
         None
     );
+}
+
+/// A receiving context instance whose fields every lookup below can read:
+/// its own value, an `A` item with a nested group, an empty `B` repetition,
+/// and a dynamic object.
+fn receiving_instance(index: usize) -> Instance {
+    let value = |prefix: &str| text(&format!("{prefix}-{index}"));
+    record(vec![
+        ("v", value("instance")),
+        (
+            "A",
+            record(vec![
+                ("v", value("a")),
+                ("w", record(vec![("v", value("a-w"))])),
+            ]),
+        ),
+        ("B", Instance::Repeated(Vec::new())),
+        ("Object", record(vec![("Key", value("key"))])),
+    ])
+}
+
+fn legacy_owner_in_active_collection<'a, 'p>(
+    context: &[&'a Instance],
+    positions: &[PositionFrame],
+    path: &'p [String],
+) -> Option<(&'a Instance, &'p [String])> {
+    for (position_index, position) in positions.iter().enumerate().rev() {
+        if position.collection.is_empty() || !path.starts_with(&position.collection) {
+            continue;
+        }
+        let Some(owner) = context_for_position(context, positions, position_index) else {
+            continue;
+        };
+        return Some((owner, &path[position.collection.len()..]));
+    }
+    None
+}
+
+/// `instance_in_active_collection` as it read positions before the frame view.
+fn legacy_instance_in_active_collection<'a>(
+    context: &[&'a Instance],
+    positions: &[PositionFrame],
+    path: &[String],
+) -> Option<&'a Instance> {
+    match legacy_owner_in_active_collection(context, positions, path) {
+        Some((owner, suffix)) => crate::resolve::instance(&[owner], suffix),
+        None => crate::resolve::instance(context, path),
+    }
+}
+
+/// `scalar_in_active_collection` as it read positions before the frame view.
+fn legacy_scalar_in_active_collection(
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    path: &[String],
+) -> Option<Value> {
+    match legacy_owner_in_active_collection(context, positions, path) {
+        Some((owner, suffix)) => {
+            Some(crate::resolve::scalar(&[owner], suffix).unwrap_or(Value::Null))
+        }
+        None => crate::resolve::scalar(context, path),
+    }
+}
+
+fn legacy_pinned_owner<'a>(
+    context: &[&'a Instance],
+    positions: &[PositionFrame],
+    frame: &[String],
+) -> Option<&'a Instance> {
+    let position_index = positions.iter().rposition(|position| {
+        position.collection == frame
+            || !position.collection.is_empty() && frame.ends_with(position.collection.as_slice())
+    })?;
+    context_for_position(context, positions, position_index)
+}
+
+/// `dynamic_scalar` as it read positions before the frame view.
+fn legacy_dynamic_scalar(
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    frame: Option<&[String]>,
+    object: &[String],
+    key: &str,
+) -> Option<Value> {
+    fn dynamic_scalar_in(item: &Instance, object: &[String], key: &str) -> Option<Option<Value>> {
+        let mut current = item;
+        for segment in object {
+            if let Instance::Repeated(items) = current {
+                current = items.first()?;
+            }
+            current = current.field(segment)?;
+        }
+        if let Instance::Repeated(items) = current {
+            current = items.first()?;
+        }
+        Some(current.field(key).and_then(Instance::as_scalar).cloned())
+    }
+    if let Some(frame) = frame {
+        let instance = legacy_pinned_owner(context, positions, frame)?;
+        return dynamic_scalar_in(instance, object, key).flatten();
+    }
+    for item in context.iter().rev() {
+        if let Some(value) = dynamic_scalar_in(item, object, key) {
+            return value;
+        }
+    }
+    None
+}
+
+/// The grouped-members check an empty-path walk made before the frame view.
+fn legacy_grouped_members_collection<'p>(
+    context: &[&Instance],
+    positions: &'p [PositionFrame],
+    base: &Instance,
+) -> Option<&'p [String]> {
+    positions
+        .last()
+        .is_some_and(|position| {
+            position.grouped
+                && context_for_position(context, positions, positions.len().saturating_sub(1))
+                    == Some(base)
+        })
+        .then(|| {
+            positions
+                .last()
+                .map(|position| position.collection.as_slice())
+        })
+        .flatten()
+}
+
+const PATHS: &[&[&str]] = &[
+    &["A", "v"],
+    &["A", "w", "v"],
+    &["A", "missing"],
+    &["A"],
+    &["B", "v"],
+    &["B"],
+    &["Rows", "v"],
+    &["v"],
+    &[],
+];
+const PINS: &[&[&str]] = &[&["A"], &["X", "A"], &["B"], &["Rows"], &["C"], &[]];
+
+fn same_instance(left: Option<&Instance>, right: Option<&Instance>) -> bool {
+    left.map(std::ptr::from_ref) == right.map(std::ptr::from_ref)
+}
+
+#[test]
+fn active_collection_lookups_read_what_legacy_position_lookup_read() {
+    let mut checked = 0;
+    let mut owned = 0;
+    receiving_cases(|context, positions| {
+        for parts in PATHS {
+            let path = path(parts);
+            let read = crate::resolve::instance_in_active_collection(context, positions, &path);
+            let legacy = legacy_instance_in_active_collection(context, positions, &path);
+            assert!(
+                same_instance(read, legacy),
+                "{path:?} over {} instances and {} positions",
+                context.len(),
+                positions.len()
+            );
+            assert_eq!(
+                crate::resolve::scalar_in_active_collection(context, positions, &path),
+                legacy_scalar_in_active_collection(context, positions, &path),
+                "{path:?} over {} instances and {} positions",
+                context.len(),
+                positions.len()
+            );
+            owned +=
+                usize::from(legacy_owner_in_active_collection(context, positions, &path).is_some());
+            checked += 1;
+        }
+    });
+    assert!(checked > 300, "checked {checked} lookups");
+    assert!(owned > 50, "{owned} lookups found an active owner");
+}
+
+#[test]
+fn pinned_lookups_read_the_frame_legacy_position_lookup_read() {
+    let mut checked = 0;
+    let mut bound = 0;
+    receiving_cases(|context, positions| {
+        for pin in PINS {
+            let pin = path(pin);
+            bound += usize::from(legacy_pinned_owner(context, positions, &pin).is_some());
+            for parts in PATHS {
+                let path = path(parts);
+                assert!(same_instance(
+                    crate::resolve::instance_in_frame(context, positions, &pin, &path),
+                    legacy_pinned_owner(context, positions, &pin)
+                        .and_then(|owner| crate::resolve::instance(&[owner], &path)),
+                ));
+                assert_eq!(
+                    crate::resolve::scalar_in_frame(context, positions, &pin, &path),
+                    legacy_pinned_owner(context, positions, &pin)
+                        .and_then(|owner| crate::resolve::scalar(&[owner], &path)),
+                    "{pin:?}/{path:?} over {} instances and {} positions",
+                    context.len(),
+                    positions.len()
+                );
+                checked += 1;
+            }
+            for key in ["Key", "missing"] {
+                for object in [&["Object"][..], &["A"], &["Missing"]] {
+                    let object = path(object);
+                    for frame in [Some(pin.as_slice()), None] {
+                        assert_eq!(
+                            crate::resolve::dynamic_scalar(context, positions, frame, &object, key),
+                            legacy_dynamic_scalar(context, positions, frame, &object, key),
+                            "{frame:?}/{object:?}/{key} over {} instances and {} positions",
+                            context.len(),
+                            positions.len()
+                        );
+                    }
+                }
+            }
+        }
+    });
+    assert!(checked > 1000, "checked {checked} lookups");
+    assert!(bound > 50, "{bound} pins named a bound frame");
+}
+
+#[test]
+fn grouped_members_and_receiving_start_match_legacy_position_lookup() {
+    let detached = receiving_instance(3);
+    let mut grouped = 0;
+    receiving_cases(|context, positions| {
+        // Equal instances match by value, as the legacy comparison did.
+        for base in context.iter().copied().chain([&detached]) {
+            let collection = FrameView::grouped_members_collection(context, positions, base);
+            assert_eq!(
+                collection,
+                legacy_grouped_members_collection(context, positions, base),
+                "over {} instances and {} positions",
+                context.len(),
+                positions.len()
+            );
+            grouped += usize::from(collection.is_some());
+        }
+        let wrappers = positions.iter().filter(|position| position.grouped).count();
+        assert_eq!(
+            FrameView::receiving_start(context, positions),
+            context.len().checked_sub(positions.len() + wrappers)
+        );
+    });
+    assert!(grouped > 5, "{grouped} bases matched grouped members");
 }

@@ -304,57 +304,7 @@ impl<'a> Admission<'a> {
                     )
                 }));
             }
-            let mut child_keys = Vec::new();
-            scope.visit_roots(&mut |root| match scope_slots::admitted(root.slot) {
-                Some(AdmittedRoot::Scope) => self.push(None, context, ancestry, [root.node]),
-                Some(AdmittedRoot::DynamicBinding) => self.push(
-                    None,
-                    OwnedCapabilityContext::DynamicTarget,
-                    ancestry,
-                    [root.node],
-                ),
-                Some(AdmittedRoot::DynamicChildKey) => child_keys.push(root.node),
-                None => {}
-            });
-            match &scope.construction {
-                ScopeConstruction::Scalar { value } => self.push(None, context, ancestry, [*value]),
-                // An owned selector's filter evaluates its predicate in Basic
-                // item frames of that same owner; a legacy filter stays closed.
-                ScopeConstruction::RecursiveFilter { plan } => self.push(
-                    None,
-                    if scope.owned_recursive_filter().is_some() {
-                        context
-                    } else {
-                        OwnedCapabilityContext::TreeOperator
-                    },
-                    ancestry,
-                    [plan.predicate()],
-                ),
-                ScopeConstruction::PathHierarchy { plan } => self.path(plan.collection()),
-                ScopeConstruction::OwnedPathHierarchy { plan } => {
-                    let source = plan.collection();
-                    self.static_owner(&source.owner, &source.path, None, None, Some(&location))?;
-                    self.summary.used_owned = true;
-                }
-                ScopeConstruction::AdjacencyTree { plan } => {
-                    self.path(plan.collection());
-                    self.push(
-                        None,
-                        OwnedCapabilityContext::TreeOperator,
-                        ancestry,
-                        plan.root(),
-                    );
-                }
-                // Rows are an exact owned read in the receiving context; the
-                // root expression keeps that Basic parent context.
-                ScopeConstruction::OwnedAdjacencyTree { plan } => {
-                    let source = plan.collection();
-                    self.static_owner(&source.owner, &source.path, None, None, Some(&location))?;
-                    self.summary.used_owned = true;
-                    self.push(None, context, ancestry, plan.root());
-                }
-                _ => {}
-            }
+            self.scope_roots(scope, &location, context, ancestry)?;
             pending.extend(scope.children.iter().enumerate().map(|(index, child)| {
                 (
                     child,
@@ -363,12 +313,6 @@ impl<'a> Admission<'a> {
                     ancestry,
                 )
             }));
-            self.push(
-                None,
-                OwnedCapabilityContext::DynamicTarget,
-                ancestry,
-                child_keys,
-            );
             for (index, child) in scope.dynamic_children.iter().enumerate() {
                 pending.push((
                     &child.scope,
@@ -378,6 +322,73 @@ impl<'a> Admission<'a> {
                 ));
             }
         }
+        Ok(())
+    }
+    /// Admits a scope's own roots other than its sequence's, in visit order
+    /// with its dynamic child keys last, and its construction's collection.
+    fn scope_roots(
+        &mut self,
+        scope: &'a Scope,
+        location: &SourceScopeLocation,
+        context: OwnedCapabilityContext,
+        ancestry: bool,
+    ) -> Result<(), EngineError> {
+        let mut child_keys = Vec::new();
+        scope.visit_roots(&mut |root| {
+            let context = match scope_slots::admitted(root.slot) {
+                Some(AdmittedRoot::Scope) => context,
+                Some(AdmittedRoot::DynamicBinding) => OwnedCapabilityContext::DynamicTarget,
+                Some(AdmittedRoot::Construction) => match &scope.construction {
+                    // A legacy tree's rows are walked before its root is read.
+                    ScopeConstruction::AdjacencyTree { plan } => {
+                        self.path(plan.collection());
+                        OwnedCapabilityContext::TreeOperator
+                    }
+                    // An owned selector's filter evaluates its predicate in
+                    // Basic item frames of that same owner; a legacy filter
+                    // stays closed.
+                    ScopeConstruction::RecursiveFilter { .. }
+                        if scope.owned_recursive_filter().is_none() =>
+                    {
+                        OwnedCapabilityContext::TreeOperator
+                    }
+                    // A scalar value and an owned tree's root, whose rows are
+                    // an exact owned read in the receiving context, keep that
+                    // context.
+                    _ => context,
+                },
+                Some(AdmittedRoot::DynamicChildKey) => {
+                    child_keys.push(root.node);
+                    return;
+                }
+                None => return,
+            };
+            self.push(None, context, ancestry, [root.node]);
+        });
+        let owned_rows = match &scope.construction {
+            ScopeConstruction::PathHierarchy { plan } => {
+                self.path(plan.collection());
+                None
+            }
+            // A tree with a root walked its rows before admitting the root.
+            ScopeConstruction::AdjacencyTree { plan } if plan.root().is_none() => {
+                self.path(plan.collection());
+                None
+            }
+            ScopeConstruction::OwnedPathHierarchy { plan } => Some(plan.collection()),
+            ScopeConstruction::OwnedAdjacencyTree { plan } => Some(plan.collection()),
+            _ => None,
+        };
+        if let Some(source) = owned_rows {
+            self.static_owner(&source.owner, &source.path, None, None, Some(location))?;
+            self.summary.used_owned = true;
+        }
+        self.push(
+            None,
+            OwnedCapabilityContext::DynamicTarget,
+            ancestry,
+            child_keys,
+        );
         Ok(())
     }
     /// Admit one owned join scope. Its sources name static endpoints and its
@@ -425,11 +436,7 @@ impl<'a> Admission<'a> {
             None,
             OwnedCapabilityContext::Basic,
             inherited_owned,
-            scope
-                .windows
-                .iter()
-                .copied()
-                .flat_map(|window| window.nodes()),
+            scope_slots::roots(scope, scope_slots::owned_join_receiving),
         );
         self.join_tuple_scope(scope, location)
     }
@@ -1478,6 +1485,10 @@ fn node_context(node: &Node) -> OwnedCapabilityContext {
         _ => OwnedCapabilityContext::Basic,
     }
 }
+
+#[cfg(test)]
+#[path = "tests/root_admission.rs"]
+mod root_admission_tests;
 
 #[cfg(test)]
 pub(crate) fn check_context_reuse_for_test(

@@ -136,6 +136,29 @@ impl<'v, 'a> FrameView<'v, 'a> {
         None
     }
 
+    /// The collection of the innermost receiving frame when that frame is a
+    /// group's member collection and its instance equals `base`: an
+    /// empty-path walk from `base` iterates those members and keeps the
+    /// grouped collection's identity. An unbound frame never matches.
+    pub(crate) fn grouped_members_collection(
+        context: &'v [&'a Instance],
+        positions: &'v [PositionFrame],
+        base: &Instance,
+    ) -> Option<&'v [String]> {
+        let (frame, instance) = Self::latest_receiving(context, positions, |_| true)?;
+        (frame.kind == FrameKind::GroupMembers && instance == Some(base))
+            .then_some(frame.collection)
+    }
+
+    /// Where the receiving positions and their group wrappers start in the
+    /// context, or `None` when the context is too short to bind them.
+    pub(crate) fn receiving_start(
+        context: &[&Instance],
+        positions: &[PositionFrame],
+    ) -> Option<usize> {
+        receiving_offset(context, positions)
+    }
+
     /// Pairs a joined row's positions with its instances by index. `exact`
     /// records whether every source contributed one instance per position;
     /// otherwise the endpoints name the legacy index pairing.

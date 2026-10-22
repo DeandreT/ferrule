@@ -117,6 +117,105 @@ fn join_validation_reads_item_and_output_roots_in_legacy_order() {
     assert!(roots(&composed_sequence(), join_validation).is_empty());
 }
 
+/// Parent-context roots as join validation listed them before reading them
+/// through the visitor.
+fn legacy_parent_roots(scope: &Scope) -> Vec<NodeId> {
+    let mut parent_roots = scope.group_into_blocks.into_iter().collect::<Vec<_>>();
+    parent_roots.extend(
+        scope
+            .windows
+            .iter()
+            .copied()
+            .flat_map(|window| window.nodes()),
+    );
+    if let Some(sequence) = scope.sequence() {
+        parent_roots.extend(sequence.inputs());
+    }
+    parent_roots.extend(scope.presence());
+    parent_roots
+}
+
+/// Parent roots of every kind a scope can combine, with several windows.
+fn parent_fixtures() -> Vec<Scope> {
+    let windows = vec![
+        SequenceWindow::FromTo {
+            first: 30,
+            last: 31,
+        },
+        SequenceWindow::Last { count: 32 },
+        SequenceWindow::SkipFirst { count: 33 },
+    ];
+    let mut present = presence();
+    present.group_into_blocks = Some(34);
+    present.windows = windows.clone();
+    let mut sequence = composed_sequence();
+    sequence.group_into_blocks = Some(35);
+    sequence.windows = windows;
+    sequence.filter = Some(36);
+    let mut blocks_only = Scope {
+        iteration: ScopeIteration::Source(vec!["Rows".into()]),
+        group_into_blocks: Some(37),
+        ..Scope::default()
+    };
+    blocks_only.children.push(presence());
+    vec![
+        every_slot(),
+        presence(),
+        composed_sequence(),
+        present,
+        sequence,
+        blocks_only,
+        Scope::default(),
+    ]
+}
+
+#[test]
+fn parent_join_validation_reads_the_roots_it_listed_by_hand() {
+    for scope in parent_fixtures() {
+        assert_eq!(
+            ranked_roots(&scope, parent_join_validation),
+            legacy_parent_roots(&scope),
+            "{scope:?}"
+        );
+    }
+    assert_eq!(
+        ranked_roots(&every_slot(), parent_join_validation),
+        [7, 10, 11]
+    );
+    assert_eq!(
+        ranked_roots(&parent_fixtures()[3], parent_join_validation),
+        [34, 30, 31, 32, 33, 1]
+    );
+    assert_eq!(
+        ranked_roots(&parent_fixtures()[4], parent_join_validation),
+        [35, 30, 31, 32, 33, 1, 2, 5]
+    );
+}
+
+/// Join validation reads exactly the parent-role roots in the parent context.
+#[test]
+fn parent_join_validation_admits_exactly_the_parent_role() {
+    for scope in parent_fixtures() {
+        scope.visit_roots(&mut |root| {
+            assert_eq!(
+                parent_join_validation(root.slot).is_some(),
+                root.role == mapping::ScopeRootRole::Parent,
+                "{root:?}"
+            );
+        });
+    }
+}
+
+#[test]
+fn an_owned_join_receives_only_its_windows() {
+    assert_eq!(roots(&every_slot(), owned_join_receiving), [10, 11]);
+    assert_eq!(
+        roots(&parent_fixtures()[3], owned_join_receiving),
+        [30, 31, 32, 33]
+    );
+    assert!(roots(&presence(), owned_join_receiving).is_empty());
+}
+
 #[test]
 fn an_owned_join_tuple_reads_controls_sort_keys_bindings_and_a_scalar_value() {
     assert_eq!(
@@ -138,7 +237,9 @@ fn owned_admission_reads_dynamic_roots_in_the_dynamic_target_context() {
         });
         found
     };
-    use AdmittedRoot::{DynamicBinding as Binding, DynamicChildKey as ChildKey, Scope as Own};
+    use AdmittedRoot::{
+        Construction, DynamicBinding as Binding, DynamicChildKey as ChildKey, Scope as Own,
+    };
     assert_eq!(
         admitted_roots(&every_slot()),
         [
@@ -160,6 +261,7 @@ fn owned_admission_reads_dynamic_roots_in_the_dynamic_target_context() {
             (16, Binding),
             (17, Binding),
             (19, Binding),
+            (18, Construction),
             (20, ChildKey),
         ]
     );
