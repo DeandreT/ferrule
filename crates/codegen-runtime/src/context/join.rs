@@ -63,6 +63,7 @@ impl<'a> ScopeContext<'a> {
                     dynamic_source_loader: self.dynamic_source_loader,
                     filter_map: self.filter_map.clone(),
                     invocation_counters: self.invocation_counters.clone(),
+                    document_filename_clock: self.document_filename_clock,
                 }
             })
             .collect())

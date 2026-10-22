@@ -2,6 +2,17 @@ use ir::{DocumentMember, Instance, Value};
 
 use crate::RuntimeError;
 
+/// Explicit host clock used only by a reached generated filename expression.
+pub trait DocumentFilenameClock {
+    fn sample_datetime(&self) -> Result<String, String>;
+}
+
+impl<F: Fn() -> Result<String, String>> DocumentFilenameClock for F {
+    fn sample_datetime(&self) -> Result<String, String> {
+        self()
+    }
+}
+
 /// Pairs one generated target value with its portable output path.
 ///
 /// Resolved filesystem locations are intentionally absent: generated mappings

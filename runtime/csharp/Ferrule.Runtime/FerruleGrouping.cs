@@ -247,7 +247,7 @@ public sealed partial class ScopeContext
                 new ReadOnlyCollection<FerruleInstance>(frames),
                 new ReadOnlyCollection<CollectionIdentity>(collections),
                 _executionContext,
-                _dynamicSourceLoader, invocationCounters: _invocationCounters);
+                _dynamicSourceLoader, invocationCounters: _invocationCounters, documentFilenameClock: _documentFilenameClock);
         }
         return new ReadOnlyCollection<ScopeContext>(contexts);
     }

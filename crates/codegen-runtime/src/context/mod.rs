@@ -75,6 +75,7 @@ impl GeneratedItems {
 #[derive(Clone)]
 pub struct ScopeContext<'a> {
     pub(crate) invocation_counters: Option<crate::invocation_counter::CounterState>,
+    document_filename_clock: Option<&'a dyn crate::DocumentFilenameClock>,
     primary_source: &'a Instance,
     frames: Vec<ScopeFrame<'a>>,
     named_inputs: &'a [NamedInput<'a>],
@@ -136,6 +137,7 @@ impl<'a> ScopeContext<'a> {
     pub fn new(source: &'a Instance) -> Self {
         Self {
             invocation_counters: None,
+            document_filename_clock: None,
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
@@ -156,6 +158,7 @@ impl<'a> ScopeContext<'a> {
     pub fn with_named_inputs(source: &'a Instance, inputs: &'a [NamedInput<'a>]) -> Self {
         Self {
             invocation_counters: None,
+            document_filename_clock: None,
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
@@ -177,6 +180,7 @@ impl<'a> ScopeContext<'a> {
     pub fn with_execution_context(source: &'a Instance, execution: &ExecutionContext<'a>) -> Self {
         Self {
             invocation_counters: crate::invocation_counter::new_state(*execution),
+            document_filename_clock: None,
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
@@ -200,6 +204,7 @@ impl<'a> ScopeContext<'a> {
     ) -> Self {
         Self {
             invocation_counters: crate::invocation_counter::new_state(*execution),
+            document_filename_clock: None,
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
@@ -255,6 +260,40 @@ impl<'a> ScopeContext<'a> {
     /// Resolves one host-supplied scalar or returns the same typed missing
     /// value error as the interpreter.
     pub fn runtime_value(&self, value: RuntimeValue) -> Result<Value, RuntimeError> {
+        self.resolve_runtime_value(None, value)
+    }
+
+    /// Retains the actual generated node when the filename provider fails.
+    pub fn runtime_value_at_node(
+        &self,
+        node: u32,
+        value: RuntimeValue,
+    ) -> Result<Value, RuntimeError> {
+        self.resolve_runtime_value(Some(node), value)
+    }
+
+    /// Install only on the filename's cloned context, never the body context.
+    pub fn with_document_filename_clock(
+        mut self,
+        clock: Option<&'a dyn crate::DocumentFilenameClock>,
+    ) -> Self {
+        self.document_filename_clock = clock;
+        self
+    }
+
+    fn resolve_runtime_value(
+        &self,
+        node: Option<u32>,
+        value: RuntimeValue,
+    ) -> Result<Value, RuntimeError> {
+        if value == RuntimeValue::CurrentDateTime
+            && let Some(clock) = self.document_filename_clock
+        {
+            return clock
+                .sample_datetime()
+                .map(Value::String)
+                .map_err(|message| RuntimeError::DocumentFilenameClock { node, message });
+        }
         self.execution
             .and_then(|execution| execution.value(value))
             .ok_or(RuntimeError::MissingRuntimeValue { value })
@@ -461,6 +500,7 @@ impl<'a> ScopeContext<'a> {
                 dynamic_source_loader: self.dynamic_source_loader,
                 filter_map: self.filter_map.clone(),
                 invocation_counters: self.invocation_counters.clone(),
+                document_filename_clock: self.document_filename_clock,
             }
         })
     }
@@ -516,6 +556,7 @@ impl<'a> ScopeContext<'a> {
             dynamic_source_loader: self.dynamic_source_loader,
             filter_map: self.filter_map.clone(),
             invocation_counters: self.invocation_counters.clone(),
+            document_filename_clock: self.document_filename_clock,
         }
     }
 
@@ -554,6 +595,7 @@ impl<'a> ScopeContext<'a> {
             dynamic_source_loader: self.dynamic_source_loader,
             filter_map: self.filter_map.clone(),
             invocation_counters: self.invocation_counters.clone(),
+            document_filename_clock: self.document_filename_clock,
         }
     }
 

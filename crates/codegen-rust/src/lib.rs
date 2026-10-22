@@ -19,7 +19,7 @@ use mapping::{FunctionId, FunctionParameterId, NodeId};
 
 mod csv_api;
 mod document_visitor;
-pub use document_visitor::emit_with_document_visitor;
+pub use document_visitor::{emit_with_document_filename_clock, emit_with_document_visitor};
 mod csv_document;
 pub use csv_document::{CsvDocumentEmitError, emit_with_csv_document_adapters};
 mod failure;
@@ -2140,7 +2140,7 @@ fn render_expression_in_context_with_scalar_item_at(
                 format!("Ok(parameters[{index}].clone())")
             }
             Expression::RuntimeValue { value } => format!(
-                "{legacy_context}.runtime_value(RuntimeValue::{})",
+                "{legacy_context}.runtime_value_at_node({id}, RuntimeValue::{})",
                 runtime_value_name(*value)
             ),
             Expression::RuntimeParameter { name, ty } => format!(
@@ -2903,7 +2903,7 @@ fn render_iteration_scope_delivery(
     if let Some(dynamic) = iteration.dynamic_document_iteration() {
         if visitor {
             output.push_str(&format!(
-                "        let output_path = expression_{}({item_context})?;\n        let document = dynamic_document({}, output_path, output)?;\n        if !offer_document(document) {{ return Ok(()); }}\n        delivered += 1;\n",
+                "        let filename_context = ScopeContext::clone({item_context}).with_document_filename_clock(filename_clock);\n        let output_path = expression_{}(&filename_context)?;\n        let document = dynamic_document({}, output_path, output)?;\n        if !offer_document(document) {{ return Ok(()); }}\n        delivered += 1;\n",
                 dynamic.output_path(), dynamic.output_path(),
             ));
         } else {

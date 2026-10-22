@@ -1,5 +1,7 @@
 use codegen::{DocumentVisitorBoundaryError, validate_document_visitor};
 
+#[path = "../../../conformance/document-clocks/project.rs"]
+mod clocks;
 #[path = "../../../conformance/document-rows/project.rs"]
 mod fixture;
 
@@ -50,6 +52,64 @@ fn a_static_target_is_not_silently_wrapped_as_a_document_stream() {
     let program = codegen::lower(&project).unwrap();
     assert!(matches!(
         validate_document_visitor(&program, None),
+        Err(DocumentVisitorBoundaryError::Unsupported(_))
+    ));
+}
+
+#[test]
+fn filename_clock_admission_is_separate_from_stable_clock_visitors() {
+    let mut project = clocks::project();
+    let program = codegen::lower(&project).unwrap();
+    codegen::validate_document_filename_clock(&program, None).unwrap();
+    project
+        .graph
+        .nodes
+        .insert(20, mapping::Node::Raise { message: None });
+    let program = codegen::lower(&project).unwrap();
+    codegen::validate_document_visitor(&program, None).unwrap();
+    assert!(matches!(
+        codegen::validate_document_filename_clock(&program, None),
+        Err(DocumentVisitorBoundaryError::Unsupported(_))
+    ));
+}
+
+#[test]
+fn filename_clock_udf_routes_remain_closed() {
+    let mut project = clocks::project();
+    let id = mapping::FunctionId::new(1);
+    project.user_functions.insert(
+        id,
+        mapping::UserFunction {
+            library: "fixture".into(),
+            name: "name".into(),
+            description: None,
+            parameters: vec![],
+            output_type: ir::ScalarType::String,
+            output_name: "out".into(),
+            output: 0,
+            body: mapping::Graph {
+                nodes: [(
+                    0,
+                    mapping::Node::Const {
+                        value: ir::Value::String("fixed.xml".into()),
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            },
+        },
+    );
+    project.graph.nodes.insert(
+        20,
+        mapping::Node::UserFunctionCall {
+            function: id,
+            args: vec![],
+        },
+    );
+    let program = codegen::lower(&project).unwrap();
+    codegen::validate_document_visitor(&program, None).unwrap();
+    assert!(matches!(
+        codegen::validate_document_filename_clock(&program, None),
         Err(DocumentVisitorBoundaryError::Unsupported(_))
     ));
 }

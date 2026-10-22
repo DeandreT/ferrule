@@ -62,7 +62,7 @@ pub use context::{
 pub use csv::{
     CsvBoundaryError, CsvDocumentError, MAX_CSV_DOCUMENT_BYTES, serialize_csv, serialize_csv_bytes,
 };
-pub use dynamic_document::dynamic_document;
+pub use dynamic_document::{DocumentFilenameClock, dynamic_document};
 pub use dynamic_source::{
     DynamicJsonSourceLoader, DynamicSourceCategory, DynamicSourceCause, DynamicSourceCodecKind,
     DynamicSourceDiagnostic, DynamicSourceFault, DynamicSourceItems, DynamicSourceLoadFailure,
@@ -328,6 +328,10 @@ pub enum RuntimeError {
     },
     MissingRuntimeValue {
         value: RuntimeValue,
+    },
+    DocumentFilenameClock {
+        node: Option<u32>,
+        message: String,
     },
     MissingRuntimeParameter {
         node: u32,
@@ -604,6 +608,9 @@ impl fmt::Display for RuntimeError {
             Self::MissingRuntimeValue { value } => {
                 write!(formatter, "execution context does not provide {value:?}")
             }
+            Self::DocumentFilenameClock { node, message } => {
+                write!(formatter, "document filename clock at {node:?}: {message}")
+            }
             Self::MissingInvocationCounters { node } => write!(
                 formatter,
                 "node {node}: invocation counters require explicit host limits"
@@ -798,6 +805,7 @@ impl std::error::Error for RuntimeError {
             | Self::ZeroWidthTokenizeRegex
             | Self::TokenizeRegexTooLarge { .. }
             | Self::MissingRuntimeValue { .. }
+            | Self::DocumentFilenameClock { .. }
             | Self::MissingInvocationCounters { .. }
             | Self::InvocationCounterOperand { .. }
             | Self::MissingRuntimeParameter { .. }
