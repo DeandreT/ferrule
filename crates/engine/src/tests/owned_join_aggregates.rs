@@ -255,12 +255,20 @@ const REDUCERS: [(&str, AggregateOp); 7] = [
 
 #[test]
 fn decimal_sum_stays_closed_for_owned_joined_aggregates() {
+    assert_joined_reducer_closed(AggregateOp::DecimalSum);
+}
+
+#[test]
+fn ordered_text_owned_joined_aggregates_remain_closed() {
+    for function in [AggregateOp::LastPresentText, AggregateOp::LastDistinctText] {
+        assert_joined_reducer_closed(function);
+    }
+}
+
+fn assert_joined_reducer_closed(function: AggregateOp) {
     for expression in [None, Some(2)] {
         let p = root_value(vec![
-            (
-                1,
-                aggregate(AggregateOp::DecimalSum, rows_plan(), expression, Some(3)),
-            ),
+            (1, aggregate(function, rows_plan(), expression, Some(3))),
             (2, Node::Raise { message: Some(4) }),
             (3, Node::Raise { message: Some(5) }),
             (4, constant(text_value("projection must not run"))),

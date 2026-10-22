@@ -285,16 +285,21 @@ fn items_scope(owner: SourceOwner, group_by: Option<NodeId>, bindings: Vec<Bindi
 
 #[test]
 fn decimal_sum_stays_closed_for_owned_collections() {
+    assert_owned_reducer_refused(AggregateOp::DecimalSum);
+}
+
+#[test]
+fn ordered_text_owned_collections_refuse_new_selectors() {
+    for function in [AggregateOp::LastPresentText, AggregateOp::LastDistinctText] {
+        assert_owned_reducer_refused(function);
+    }
+}
+
+fn assert_owned_reducer_refused(function: AggregateOp) {
     for owner in [SourceOwner::Primary, named()] {
         for node in [
-            aggregate(
-                AggregateOp::DecimalSum,
-                owner.clone(),
-                &["Rows"],
-                &["Price"],
-                None,
-            ),
-            computed(AggregateOp::DecimalSum, owner, &["Rows"], 2, None),
+            aggregate(function, owner.clone(), &["Rows"], &["Price"], None),
+            computed(function, owner, &["Rows"], 2, None),
         ] {
             let p = root_value(vec![(1, node), (2, constant(Value::String("bad".into())))]);
             assert_eq!(
