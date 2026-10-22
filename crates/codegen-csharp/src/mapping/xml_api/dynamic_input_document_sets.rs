@@ -1,22 +1,16 @@
 //! One-loader/static input admission plus dynamic-primary XML member serialization.
 use super::output_arguments;
 use crate::{EmitError, literal};
-use codegen::{Program, ProgramValidationError, XmlOutputMode};
+use codegen::{Program, ProgramValidationError, XmlEmissionPlan};
 
 pub(super) const TYPES: &str = "public sealed record NamedXmlInput(string Name, string Document);\npublic sealed record NamedXmlBytesInput(string Name, byte[] Document);\npublic sealed record XmlDocumentOutput(string Path, string Document);\npublic sealed record XmlBytesDocumentOutput(string Path, byte[] Document);\n\n";
 
-pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitError> {
-    if program.xml_output_mode()? != Some(XmlOutputMode::DynamicNamedInputDynamicPrimaryDocuments) {
-        return Err(ProgramValidationError::InvalidXmlBoundary {
-            reason: "dynamic-input XML document lists require their checked adapter mode".into(),
-        }
-        .into());
-    }
-    let policy = program.xml_boundary.as_ref().ok_or_else(|| {
-        ProgramValidationError::InvalidXmlBoundary {
-            reason: "missing dynamic-input document-list XML boundary".into(),
-        }
-    })?;
+pub(super) fn render(
+    program: &Program,
+    plan: &XmlEmissionPlan<'_>,
+    output: &mut String,
+) -> Result<(), EmitError> {
+    let policy = plan.policy();
     let static_sources = program
         .extra_sources
         .iter()
@@ -281,7 +275,7 @@ mod tests {
     #[test]
     fn four_distinct_loader_list_methods_own_static_subsequence_and_dynamic_original_index() {
         let mut output = String::new();
-        render(&program(), &mut output).unwrap();
+        super::super::render(&program(), &mut output).unwrap();
         assert_eq!(
             output
                 .matches("public static global::System.Collections.Generic.IReadOnlyList<")
@@ -314,7 +308,7 @@ mod tests {
     #[test]
     fn phase_scopes_keep_host_accessors_outside_product_catches_and_count_before_writers() {
         let mut output = String::new();
-        render(&program(), &mut output).unwrap();
+        super::super::render(&program(), &mut output).unwrap();
         assert!(output.contains("var suppliedCount = extraSources.Count;"));
         assert!(output.contains("var input_2 = extraSources[indices[1]].Document;"));
         assert!(output.contains("return (primary, parsedInputs, budget)"));
@@ -355,7 +349,7 @@ mod tests {
         invalid.xml_boundary.as_mut().unwrap().extra_inputs[2].name = "wrong".into();
         assert!(super::super::render_types(&invalid).is_err());
         let mut refused = String::new();
-        assert!(render(&invalid, &mut refused).is_err());
+        assert!(super::super::render(&invalid, &mut refused).is_err());
         assert!(refused.is_empty());
         invalid.xml_boundary = None;
         assert_eq!(super::super::render_types(&invalid).unwrap(), "");
@@ -365,7 +359,7 @@ mod tests {
         let project: ::mapping::Project = serde_json::from_str(include_str!("../../../../codegen/src/tests/fixtures/multiple_dynamic_named_inputs_dynamic_primary_xml_documents.json")).unwrap();
         let mut program = codegen::lower(&project).unwrap();
         let mut output = String::new();
-        render(&program, &mut output).unwrap();
+        super::super::render(&program, &mut output).unwrap();
         assert_eq!(
             output
                 .matches("FerruleXmlDynamicSourceAdapter.ForSources(loader,")
@@ -388,7 +382,7 @@ mod tests {
             4
         );
         let mut single = String::new();
-        render(&self::program(), &mut single).unwrap();
+        super::super::render(&self::program(), &mut single).unwrap();
         assert_eq!(
             single
                 .matches("new global::Ferrule.Runtime.FerruleXmlDynamicSourceAdapter(loader,")
@@ -398,7 +392,7 @@ mod tests {
         assert!(!single.contains("FerruleXmlDynamicSourceAdapter.ForSources("));
         program.xml_boundary.as_mut().unwrap().extra_inputs[3].name = "wrong".into();
         let mut refused = String::new();
-        assert!(render(&program, &mut refused).is_err());
+        assert!(super::super::render(&program, &mut refused).is_err());
         assert!(refused.is_empty());
     }
 }

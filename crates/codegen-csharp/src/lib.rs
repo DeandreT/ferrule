@@ -50,7 +50,9 @@ pub use primary_filename::emit_with_primary_filename;
 pub use static_documents::StaticDocumentEmitError;
 pub use x12_output::X12EmitError;
 
-use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program, validate_program};
+use codegen::{
+    ArtifactPath, ArtifactSet, BoundaryEmissionPlan, CompanionSelection, GeneratedFile, Program,
+};
 
 /// Emits a complete package-free .NET 10 class library.
 ///
@@ -61,17 +63,32 @@ use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program, validate_progra
 /// variants provide a bounded document boundary over the same generated
 /// functions.
 pub fn emit(program: &Program) -> Result<ArtifactSet, EmitError> {
-    validate_program(program)?;
-    codegen::validate_owned_emission(program)?;
-    let generated_mapping = mapping::render(program)?;
-    emit_mapping_artifacts(program, generated_mapping)
+    emit_with_companions(program, CompanionSelection::Complete)
 }
 
-fn emit_typed(program: &Program) -> Result<ArtifactSet, EmitError> {
-    validate_program(program)?;
+/// Emits the .NET 10 class library with the selected companions.
+///
+/// Program validation runs once and its proved boundary plan drives every
+/// renderer. [`CompanionSelection::TypedOnly`] renders only the typed
+/// `Execute`/`ExecuteOutputs` family and admits no JSON or XML companion
+/// descriptor; refusals that precede rendering are those of [`emit`].
+pub fn emit_with_companions(
+    program: &Program,
+    companions: CompanionSelection,
+) -> Result<ArtifactSet, EmitError> {
+    let plan = codegen::prepare_boundary_emission(program, companions)?;
     codegen::validate_owned_emission(program)?;
-    let generated_mapping = mapping::render_typed(program)?;
-    emit_mapping_artifacts(program, generated_mapping)
+    let generated_mapping = mapping::render(program, &plan)?;
+    emit_mapping_artifacts(&plan, generated_mapping)
+}
+
+/// The typed library beneath the CSV adapters. It omits every companion
+/// entry point yet keeps the JSON records its artifacts have always declared.
+fn emit_typed(program: &Program) -> Result<ArtifactSet, EmitError> {
+    let plan = codegen::prepare_boundary_emission(program, CompanionSelection::TypedOnly)?;
+    codegen::validate_owned_emission(program)?;
+    let generated_mapping = mapping::render_with_json_records(program, &plan)?;
+    emit_mapping_artifacts(&plan, generated_mapping)
 }
 
 /// Emits typed and strict JSON Basic source entry points with an explicit policy.
@@ -84,11 +101,11 @@ fn emit_typed(program: &Program) -> Result<ArtifactSet, EmitError> {
 /// runtime owns bounded admission and parsed-input storage. Ordinary emitters and
 /// the other Basic control profiles retain their existing admission and APIs.
 pub fn emit_with_basic_owned_sources(program: &Program) -> Result<ArtifactSet, EmitError> {
-    validate_program(program)?;
+    let plan = codegen::prepare_boundary_emission(program, CompanionSelection::Complete)?;
     codegen::validate_basic_owned_emission(program)?;
     let mut generated_mapping = owned_basic::render_public_basic_owned_mapping(program)?;
     mapping::append_basic_owned_json_api(program, &mut generated_mapping)?;
-    emit_mapping_artifacts(program, generated_mapping)
+    emit_mapping_artifacts(&plan, generated_mapping)
 }
 
 /// Emits the Basic owned mapping for `capabilities` with explicit caller
@@ -146,11 +163,12 @@ owned_presets! {
 }
 
 fn emit_mapping_artifacts(
-    program: &Program,
+    plan: &BoundaryEmissionPlan<'_>,
     generated_mapping: String,
 ) -> Result<ArtifactSet, EmitError> {
-    let dynamic_input_document_outputs = program.xml_output_mode()?
-        == Some(codegen::XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments);
+    let dynamic_input_document_outputs = plan.xml().is_some_and(|xml| {
+        xml.mode() == codegen::XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments
+    });
     emit_mapping_files(generated_mapping, dynamic_input_document_outputs)
 }
 

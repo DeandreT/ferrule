@@ -1,22 +1,16 @@
 //! Static input admission plus dynamic-primary XML member serialization.
 use super::output_arguments;
 use crate::{EmitError, literal};
-use codegen::{Program, ProgramValidationError, XmlOutputMode};
+use codegen::{Program, XmlEmissionPlan};
 
 pub(super) const TYPES: &str = "public sealed record NamedXmlInput(string Name, string Document);\npublic sealed record NamedXmlBytesInput(string Name, byte[] Document);\npublic sealed record XmlDocumentOutput(string Path, string Document);\npublic sealed record XmlBytesDocumentOutput(string Path, byte[] Document);\n\n";
 
-pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitError> {
-    if program.xml_output_mode()? != Some(XmlOutputMode::StaticNamedInputsDynamicPrimaryDocuments) {
-        return Err(ProgramValidationError::InvalidXmlBoundary {
-            reason: "static XML input document lists require their checked adapter mode".into(),
-        }
-        .into());
-    }
-    let policy = program.xml_boundary.as_ref().ok_or_else(|| {
-        ProgramValidationError::InvalidXmlBoundary {
-            reason: "missing static-input document-list XML boundary".into(),
-        }
-    })?;
+pub(super) fn render(
+    program: &Program,
+    plan: &XmlEmissionPlan<'_>,
+    output: &mut String,
+) -> Result<(), EmitError> {
+    let policy = plan.policy();
     let source = codegen::serialize_embedded_schema(
         &program.source,
         codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES,
@@ -225,7 +219,7 @@ mod tests {
     #[test]
     fn emits_four_source_overloads_and_both_exact_input_schemas() {
         let mut output = String::new();
-        render(&program(), &mut output).unwrap();
+        super::super::render(&program(), &mut output).unwrap();
         assert_eq!(
             output
                 .matches("public static global::System.Collections.Generic.IReadOnlyList<")
@@ -254,7 +248,7 @@ mod tests {
         invalid.xml_boundary.as_mut().unwrap().extra_inputs[1].name = "wrong".into();
         assert!(super::super::render_types(&invalid).is_err());
         let mut source = String::new();
-        assert!(render(&invalid, &mut source).is_err());
+        assert!(super::super::render(&invalid, &mut source).is_err());
         assert!(source.is_empty());
         invalid.xml_boundary = None;
         assert_eq!(super::super::render_types(&invalid).unwrap(), "");
