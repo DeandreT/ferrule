@@ -8,6 +8,8 @@ pub(super) fn aggregate_component_name(op: AggregateOp) -> &'static str {
         AggregateOp::Count => "count",
         AggregateOp::Sum => "sum",
         AggregateOp::DecimalSum => "decimal-sum",
+        AggregateOp::LastPresentText => "last-present-text",
+        AggregateOp::LastDistinctText => "last-distinct-text",
         AggregateOp::Avg => "avg",
         AggregateOp::Min => "min",
         AggregateOp::Max => "max",

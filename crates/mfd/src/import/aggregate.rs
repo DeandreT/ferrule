@@ -22,6 +22,8 @@ impl GraphBuilder<'_> {
                     | AggregateOp::Min
                     | AggregateOp::Max
                     | AggregateOp::Join
+                    | AggregateOp::LastPresentText
+                    | AggregateOp::LastDistinctText
                     | AggregateOp::ItemAt,
                 )
                 | None => ir::Value::Null,
