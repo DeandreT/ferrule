@@ -4,7 +4,7 @@ use mapping::{
     FailureIteration, NamedTarget, Node, NodeId, Project, Scope, ScopeConstruction, SequenceExpr,
 };
 
-use crate::{EngineError, TargetSelection};
+use crate::{EngineError, TargetSelection, scope_slots};
 
 pub(crate) fn selected_target<'a>(
     project: &'a Project,
@@ -88,7 +88,7 @@ impl<'a> Analysis<'a> {
             None => {}
         }
         if let Some(sequence) = scope.sequence() {
-            self.inspect_sequence(sequence);
+            self.inspect_sequence_sources(sequence);
         }
         if let Some((_, join)) = scope.join() {
             for source in join.sources() {
@@ -100,62 +100,25 @@ impl<'a> Analysis<'a> {
                 self.inspect_owner(&source.collection().owner);
             }
         }
-        if let Some(segments) = scope.concatenated() {
-            for segment in segments.iter() {
-                self.inspect_scope(segment);
-            }
-        }
-
-        self.pending.extend(scope.filter);
-        self.pending.extend(scope.post_group_filter);
-        self.pending.extend(scope.grouping_nodes());
-        self.pending.extend(scope.sort_by);
-        self.pending.extend(scope.output_path());
-        self.pending.extend(scope.presence());
-        self.pending.extend(
-            scope
-                .windows
-                .iter()
-                .copied()
-                .flat_map(|window| window.nodes()),
-        );
-        self.pending
-            .extend(scope.sort_then_by.iter().map(|key| key.node));
-        self.pending
-            .extend(scope.bindings.iter().map(|binding| binding.node));
-        self.pending.extend(
-            scope
-                .dynamic_bindings
-                .iter()
-                .flat_map(|binding| [binding.key, binding.value]),
-        );
-
         match &scope.construction {
-            ScopeConstruction::Scalar { value } => self.pending.push(*value),
-            ScopeConstruction::RecursiveFilter { plan } => self.pending.push(plan.predicate()),
             ScopeConstruction::PathHierarchy { plan } => self.inspect_path(plan.collection()),
             ScopeConstruction::OwnedPathHierarchy { plan } => {
                 self.inspect_owner(&plan.collection().owner)
             }
-            ScopeConstruction::AdjacencyTree { plan } => {
-                self.inspect_path(plan.collection());
-                self.pending.extend(plan.root());
-            }
+            ScopeConstruction::AdjacencyTree { plan } => self.inspect_path(plan.collection()),
             ScopeConstruction::OwnedAdjacencyTree { plan } => {
-                self.inspect_owner(&plan.collection().owner);
-                self.pending.extend(plan.root());
+                self.inspect_owner(&plan.collection().owner)
             }
             ScopeConstruction::Constructed
             | ScopeConstruction::CopyCurrentSource
-            | ScopeConstruction::XmlMixedContent { .. } => {}
+            | ScopeConstruction::XmlMixedContent { .. }
+            | ScopeConstruction::Scalar { .. }
+            | ScopeConstruction::RecursiveFilter { .. } => {}
         }
-
-        for child in &scope.children {
-            self.inspect_scope(child);
-        }
-        for child in &scope.dynamic_children {
-            self.pending.push(child.key);
-            self.inspect_scope(&child.scope);
+        self.pending
+            .extend(scope_slots::roots(scope, scope_slots::required_source));
+        for (_, nested) in scope.nested_scopes() {
+            self.inspect_scope(nested);
         }
     }
 
@@ -163,17 +126,26 @@ impl<'a> Analysis<'a> {
         for rule in &self.project.failure_rules {
             match &rule.iteration {
                 FailureIteration::Source { collection } => self.inspect_path(collection),
-                FailureIteration::Sequence { sequence } => self.inspect_sequence(sequence),
+                FailureIteration::Sequence { sequence } => self.inspect_sequence_sources(sequence),
                 FailureIteration::OwnedSource { source } => self.inspect_owner(&source.owner),
             }
-            self.pending.extend(rule.selection.predicate());
-            self.pending.extend(rule.message);
+            let pending = &mut self.pending;
+            rule.visit_roots(&mut |root| {
+                if scope_slots::required_source(root.slot) {
+                    pending.push(root.node);
+                }
+            });
         }
     }
 
+    /// A sequence node's own roots are its inputs and item.
     fn inspect_sequence(&mut self, sequence: &SequenceExpr) {
         self.pending.extend(sequence.inputs());
         self.pending.push(sequence.item());
+        self.inspect_sequence_sources(sequence);
+    }
+
+    fn inspect_sequence_sources(&mut self, sequence: &SequenceExpr) {
         if let SequenceExpr::RecursiveCollect { collection, .. } = sequence {
             self.inspect_path(collection);
         }
@@ -303,116 +275,6 @@ impl<'a> Analysis<'a> {
             if let Some(driver) = dynamic.iteration.first().cloned() {
                 self.inspect_path(&[driver]);
             }
-        }
-    }
-}
-
-/// What one required-source analysis discovered: the static and dynamic
-/// source indexes it requires and its sorted root nodes before graph traversal.
-#[cfg(test)]
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) struct AnalysisSnapshot {
-    required: BTreeSet<usize>,
-    dynamic: BTreeSet<usize>,
-    roots: Vec<NodeId>,
-}
-
-/// Runs the hand-written scope walk, or the shared scope-root visitor that is
-/// meant to replace it, over one selected target.
-#[cfg(test)]
-pub(crate) fn analysis_snapshot(
-    project: &Project,
-    selection: TargetSelection<'_>,
-    visitor: bool,
-) -> Result<AnalysisSnapshot, EngineError> {
-    let selected = selected_target(project, selection)?;
-    let root = selected.map_or(&project.root, |target| &target.root);
-    let mut analysis = Analysis::new(project);
-    if visitor {
-        analysis.inspect_scope_with_visitor(root);
-        analysis.inspect_failure_rules_with_visitor();
-    } else {
-        analysis.inspect_scope(root);
-        analysis.inspect_failure_rules();
-    }
-    let mut roots = analysis.pending.clone();
-    roots.sort_unstable();
-    analysis.inspect_graph();
-    Ok(AnalysisSnapshot {
-        required: analysis.required,
-        dynamic: analysis.inspected_dynamic,
-        roots,
-    })
-}
-
-#[cfg(test)]
-impl Analysis<'_> {
-    /// Collection inspection is unchanged; node roots come from the visitor.
-    /// The hand-written walk reads a sequence's `item` but not the reserved
-    /// item a composed sequence also owns, so that slot stays excluded.
-    fn inspect_scope_with_visitor(&mut self, scope: &Scope) {
-        match scope.source_selector() {
-            Some(mapping::SourceSelectorRef::Legacy(source)) => self.inspect_path(source),
-            Some(mapping::SourceSelectorRef::Owned(source)) => self.inspect_owner(&source.owner),
-            None => {}
-        }
-        if let Some(sequence) = scope.sequence() {
-            self.inspect_sequence_sources(sequence);
-        }
-        if let Some((_, join)) = scope.join() {
-            for source in join.sources() {
-                self.inspect_path(source.collection());
-            }
-        }
-        if let Some((_, join)) = scope.iteration.owned_join() {
-            for source in join.sources() {
-                self.inspect_owner(&source.collection().owner);
-            }
-        }
-        match &scope.construction {
-            ScopeConstruction::PathHierarchy { plan } => self.inspect_path(plan.collection()),
-            ScopeConstruction::OwnedPathHierarchy { plan } => {
-                self.inspect_owner(&plan.collection().owner)
-            }
-            ScopeConstruction::AdjacencyTree { plan } => self.inspect_path(plan.collection()),
-            ScopeConstruction::OwnedAdjacencyTree { plan } => {
-                self.inspect_owner(&plan.collection().owner)
-            }
-            _ => {}
-        }
-        let pending = &mut self.pending;
-        scope.visit_roots(&mut |root| {
-            if root.slot != mapping::ScopeRootSlot::SequenceReservedItem {
-                pending.push(root.node);
-            }
-        });
-        for (_, nested) in scope.nested_scopes() {
-            self.inspect_scope_with_visitor(nested);
-        }
-    }
-
-    fn inspect_failure_rules_with_visitor(&mut self) {
-        for rule in &self.project.failure_rules {
-            match &rule.iteration {
-                FailureIteration::Source { collection } => self.inspect_path(collection),
-                FailureIteration::Sequence { sequence } => self.inspect_sequence_sources(sequence),
-                FailureIteration::OwnedSource { source } => self.inspect_owner(&source.owner),
-            }
-            let pending = &mut self.pending;
-            rule.visit_roots(&mut |root| {
-                if root.slot != mapping::ScopeRootSlot::SequenceReservedItem {
-                    pending.push(root.node);
-                }
-            });
-        }
-    }
-
-    fn inspect_sequence_sources(&mut self, sequence: &SequenceExpr) {
-        if let SequenceExpr::RecursiveCollect { collection, .. } = sequence {
-            self.inspect_path(collection);
-        }
-        if let Some(source) = sequence.owned_source() {
-            self.inspect_owner(&source.owner);
         }
     }
 }

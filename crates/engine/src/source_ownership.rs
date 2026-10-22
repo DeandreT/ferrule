@@ -1,4 +1,5 @@
 //! Context-keyed admission for the new basic source domain; acquires no input.
+use crate::scope_slots::{self, AdmittedRoot};
 use crate::{EngineError, OwnedCapabilityContext, OwnedSourceError, TargetSelection};
 use mapping::{
     FailureIteration, FunctionId, Node, NodeId, Project, Scope, ScopeConstruction, SequenceExpr,
@@ -302,43 +303,18 @@ impl<'a> Admission<'a> {
                     )
                 }));
             }
-            self.push(None, context, ancestry, scope.filter);
-            self.push(None, context, ancestry, scope.post_group_filter);
-            self.push(None, context, ancestry, scope.grouping_nodes());
-            self.push(None, context, ancestry, scope.sort_by);
-            self.push(None, context, ancestry, scope.output_path());
-            self.push(None, context, ancestry, scope.presence());
-            self.push(
-                None,
-                context,
-                ancestry,
-                scope
-                    .windows
-                    .iter()
-                    .copied()
-                    .flat_map(|window| window.nodes()),
-            );
-            self.push(
-                None,
-                context,
-                ancestry,
-                scope.sort_then_by.iter().map(|key| key.node),
-            );
-            self.push(
-                None,
-                context,
-                ancestry,
-                scope.bindings.iter().map(|binding| binding.node),
-            );
-            self.push(
-                None,
-                OwnedCapabilityContext::DynamicTarget,
-                ancestry,
-                scope
-                    .dynamic_bindings
-                    .iter()
-                    .flat_map(|binding| [binding.key, binding.value]),
-            );
+            let mut child_keys = Vec::new();
+            scope.visit_roots(&mut |root| match scope_slots::admitted(root.slot) {
+                Some(AdmittedRoot::Scope) => self.push(None, context, ancestry, [root.node]),
+                Some(AdmittedRoot::DynamicBinding) => self.push(
+                    None,
+                    OwnedCapabilityContext::DynamicTarget,
+                    ancestry,
+                    [root.node],
+                ),
+                Some(AdmittedRoot::DynamicChildKey) => child_keys.push(root.node),
+                None => {}
+            });
             match &scope.construction {
                 ScopeConstruction::Scalar { value } => self.push(None, context, ancestry, [*value]),
                 // An owned selector's filter evaluates its predicate in Basic
@@ -386,13 +362,13 @@ impl<'a> Admission<'a> {
                     ancestry,
                 )
             }));
+            self.push(
+                None,
+                OwnedCapabilityContext::DynamicTarget,
+                ancestry,
+                child_keys,
+            );
             for (index, child) in scope.dynamic_children.iter().enumerate() {
-                self.push(
-                    None,
-                    OwnedCapabilityContext::DynamicTarget,
-                    ancestry,
-                    [child.key],
-                );
                 pending.push((
                     &child.scope,
                     location.descendant(SourceScopeStep::DynamicChild(index)),
@@ -461,18 +437,7 @@ impl<'a> Admission<'a> {
         scope: &'a Scope,
         location: &SourceScopeLocation,
     ) -> Result<(), EngineError> {
-        let mut nodes: Vec<_> = scope
-            .filter
-            .into_iter()
-            .chain(scope.post_group_filter)
-            .chain(scope.grouping_nodes())
-            .chain(scope.sort_keys().map(|key| key.node))
-            .chain(scope.bindings.iter().map(|binding| binding.node))
-            .collect();
-        if let ScopeConstruction::Scalar { value } = scope.construction {
-            nodes.push(value);
-        }
-        self.join_tuple_nodes(nodes)?;
+        self.join_tuple_nodes(scope_slots::roots(scope, scope_slots::join_tuple))?;
         for (index, child) in scope.children.iter().enumerate() {
             let location = location.descendant(SourceScopeStep::Child(index));
             // Only static descendant projections share a tuple; a nested
@@ -1236,27 +1201,7 @@ fn access_error(
 }
 
 fn scope_demands_owned(project: &Project, scope: &Scope) -> bool {
-    let mut pending: Vec<_> = scope
-        .bindings
-        .iter()
-        .map(|binding| binding.node)
-        .chain(scope.filter)
-        .chain(scope.presence())
-        .chain(scope.grouping_nodes())
-        .chain(scope.post_group_filter)
-        .chain(scope.sort_keys().map(|key| key.node))
-        .chain(
-            scope
-                .windows
-                .iter()
-                .copied()
-                .flat_map(|window| window.nodes()),
-        )
-        .chain(match scope.construction {
-            ScopeConstruction::Scalar { value } => Some(value),
-            _ => None,
-        })
-        .collect();
+    let mut pending = scope_slots::roots(scope, scope_slots::owned_probe);
     let mut visited = BTreeSet::new();
     while let Some(id) = pending.pop() {
         if visited.insert(id)

@@ -42,8 +42,7 @@ mod recursive_collect_owned;
 mod recursive_filter;
 mod required_sources;
 mod resolve;
-#[cfg(test)]
-mod scope_roots_check;
+mod scope_slots;
 mod sequence;
 mod source_iteration;
 mod source_ownership;
@@ -928,8 +927,6 @@ fn evaluate_run<R>(
     used_owned: bool,
     evaluate: impl FnOnce(eval_expr::EvalProgram<'_>, &[&Instance]) -> Result<R, EngineError>,
 ) -> Result<R, EngineError> {
-    #[cfg(test)]
-    scope_roots_check::assert_equivalent(project);
     project.validate_filter_map_v1()?;
     let issues = validate::validate_filter_map_contexts(project);
     if !issues.is_empty() {

@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::{NodeId, Project, Scope, ScopeConstruction};
+use crate::{NodeId, Project};
 
 impl Project {
     /// Removes graph expressions that no target, control, or dynamic source
@@ -15,39 +15,7 @@ impl Project {
         additional_roots: impl IntoIterator<Item = NodeId>,
     ) {
         let mut pending = additional_roots.into_iter().collect::<Vec<_>>();
-        #[cfg(test)]
-        let additional = pending.len();
-        collect_scope_roots(&self.root, &mut pending);
-        for target in &self.extra_targets {
-            collect_scope_roots(&target.root, &mut pending);
-        }
-        pending.extend(
-            self.extra_sources
-                .iter()
-                .filter_map(|source| source.dynamic_path.as_ref())
-                .map(|path| path.node),
-        );
-        for rule in &self.failure_rules {
-            pending.extend(rule.message);
-            pending.extend(rule.selection.predicate());
-            if let crate::FailureIteration::Sequence { sequence } = &rule.iteration {
-                pending.extend(sequence.inputs());
-                pending.extend(sequence.owned_items());
-            }
-        }
-        // The shared scope-root visitor runs beside this walk until it
-        // replaces it; both must name the same executable roots.
-        #[cfg(test)]
-        {
-            let mut legacy = pending[additional..].to_vec();
-            let mut visited = crate::scope_roots::project_roots(self);
-            legacy.sort_unstable();
-            visited.sort_unstable();
-            assert_eq!(
-                legacy, visited,
-                "scope-root visitor diverged from reachability roots"
-            );
-        }
+        pending.extend(crate::scope_roots::project_roots(self));
 
         let mut reachable = BTreeSet::new();
         while let Some(id) = pending.pop() {
@@ -65,57 +33,6 @@ impl Project {
         self.source_options
             .mfd_optional_parser_input_names
             .retain(|id, _| reachable.contains(id));
-    }
-}
-
-fn collect_scope_roots(scope: &Scope, roots: &mut Vec<NodeId>) {
-    roots.extend(scope.filter);
-    roots.extend(scope.post_group_filter);
-    roots.extend(scope.grouping_nodes());
-    roots.extend(scope.sort_by);
-    roots.extend(scope.output_path());
-    roots.extend(scope.presence());
-    roots.extend(
-        scope
-            .windows
-            .iter()
-            .copied()
-            .flat_map(|window| window.nodes()),
-    );
-    roots.extend(scope.sort_then_by.iter().map(|key| key.node));
-    roots.extend(scope.bindings.iter().map(|binding| binding.node));
-    roots.extend(
-        scope
-            .dynamic_bindings
-            .iter()
-            .flat_map(|binding| [binding.key, binding.value]),
-    );
-    match &scope.construction {
-        ScopeConstruction::Scalar { value } => roots.push(*value),
-        ScopeConstruction::RecursiveFilter { plan } => roots.push(plan.predicate()),
-        ScopeConstruction::AdjacencyTree { plan } => roots.extend(plan.root()),
-        ScopeConstruction::OwnedAdjacencyTree { plan } => roots.extend(plan.root()),
-        ScopeConstruction::Constructed
-        | ScopeConstruction::CopyCurrentSource
-        | ScopeConstruction::XmlMixedContent { .. }
-        | ScopeConstruction::PathHierarchy { .. }
-        | ScopeConstruction::OwnedPathHierarchy { .. } => {}
-    }
-    if let Some(sequence) = scope.sequence() {
-        roots.extend(sequence.inputs());
-        roots.extend(sequence.owned_items());
-    }
-    if let Some(segments) = scope.concatenated() {
-        for segment in segments.iter() {
-            collect_scope_roots(segment, roots);
-        }
-    }
-    for child in &scope.children {
-        collect_scope_roots(child, roots);
-    }
-    for child in &scope.dynamic_children {
-        roots.push(child.key);
-        collect_scope_roots(&child.scope, roots);
     }
 }
 

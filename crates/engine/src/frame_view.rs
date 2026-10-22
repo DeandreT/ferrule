@@ -97,31 +97,43 @@ impl<'v, 'a> FrameView<'v, 'a> {
     /// position lookup does: positions and group wrappers occupy the end of
     /// the context, and a grouped position's instance follows its wrapper.
     pub(crate) fn receiving(context: &'v [&'a Instance], positions: &'v [PositionFrame]) -> Self {
-        let wrappers = positions.iter().filter(|position| position.grouped).count();
-        let offset = context.len().checked_sub(positions.len() + wrappers);
+        let offset = receiving_offset(context, positions);
         let mut preceding_wrappers = 0;
         let frames = positions
             .iter()
             .enumerate()
             .map(|(index, position)| {
                 preceding_wrappers += usize::from(position.grouped);
-                Frame {
-                    endpoint: offset.map_or(FrameEndpoint::Unbound, |offset| {
-                        FrameEndpoint::Context(offset + index + preceding_wrappers)
-                    }),
-                    collection: &position.collection,
-                    position,
-                    origin: position
-                        .join
-                        .map_or(FrameOrigin::Iterated, FrameOrigin::Joined),
-                    kind: FrameKind::of(position),
-                }
+                receiving_frame(offset, index, preceding_wrappers, position)
             })
             .collect();
         Self {
             instances: context,
             frames,
         }
+    }
+
+    /// The latest receiving frame satisfying `select`, innermost first, with
+    /// its instance, paired exactly as [`FrameView::receiving`] pairs it but
+    /// without preparing the whole view. An unbound frame is still selected
+    /// and has no instance; selection never falls back to an earlier frame.
+    pub(crate) fn latest_receiving(
+        context: &'v [&'a Instance],
+        positions: &'v [PositionFrame],
+        select: impl Fn(&Frame<'v>) -> bool,
+    ) -> Option<(Frame<'v>, Option<&'a Instance>)> {
+        let offset = receiving_offset(context, positions);
+        // Wrappers at or before each position, counted down from the end.
+        let mut preceding_wrappers = positions.iter().filter(|position| position.grouped).count();
+        for (index, position) in positions.iter().enumerate().rev() {
+            let frame = receiving_frame(offset, index, preceding_wrappers, position);
+            preceding_wrappers -= usize::from(position.grouped);
+            if select(&frame) {
+                let instance = instance_at(context, frame.endpoint);
+                return Some((frame, instance));
+            }
+        }
+        None
     }
 
     /// Pairs a joined row's positions with its instances by index. `exact`
@@ -162,11 +174,43 @@ impl<'v, 'a> FrameView<'v, 'a> {
 
     /// The borrowed instance corresponding to `frame`.
     pub(crate) fn instance(&self, frame: &Frame<'v>) -> Option<&'a Instance> {
-        match frame.endpoint {
-            FrameEndpoint::Context(index)
-            | FrameEndpoint::Row(index)
-            | FrameEndpoint::LegacyRow(index) => self.instances.get(index).copied(),
-            FrameEndpoint::Unbound => None,
-        }
+        instance_at(self.instances, frame.endpoint)
+    }
+}
+
+/// Where the receiving positions and their wrappers start in the context, or
+/// `None` when the context is too short to hold them.
+fn receiving_offset(context: &[&Instance], positions: &[PositionFrame]) -> Option<usize> {
+    let wrappers = positions.iter().filter(|position| position.grouped).count();
+    context.len().checked_sub(positions.len() + wrappers)
+}
+
+/// The receiving frame at `index`, after `preceding_wrappers` group wrappers
+/// at or before it.
+fn receiving_frame(
+    offset: Option<usize>,
+    index: usize,
+    preceding_wrappers: usize,
+    position: &PositionFrame,
+) -> Frame<'_> {
+    Frame {
+        endpoint: offset.map_or(FrameEndpoint::Unbound, |offset| {
+            FrameEndpoint::Context(offset + index + preceding_wrappers)
+        }),
+        collection: &position.collection,
+        position,
+        origin: position
+            .join
+            .map_or(FrameOrigin::Iterated, FrameOrigin::Joined),
+        kind: FrameKind::of(position),
+    }
+}
+
+fn instance_at<'a>(instances: &[&'a Instance], endpoint: FrameEndpoint) -> Option<&'a Instance> {
+    match endpoint {
+        FrameEndpoint::Context(index)
+        | FrameEndpoint::Row(index)
+        | FrameEndpoint::LegacyRow(index) => instances.get(index).copied(),
+        FrameEndpoint::Unbound => None,
     }
 }
