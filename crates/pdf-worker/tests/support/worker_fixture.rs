@@ -9,6 +9,9 @@ mod protocol_boundary_fixture;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 mod ownership_fault_fixture351;
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+mod inheritance_fixture;
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 fn run() -> std::io::Result<u8> {
     use pdf_worker::*;
@@ -22,6 +25,9 @@ fn run() -> std::io::Result<u8> {
         return result;
     }
     if let Some(result) = protocol_boundary_fixture::run(&name) {
+        return result;
+    }
+    if let Some(result) = inheritance_fixture::run(&name) {
         return result;
     }
     if name == "fixture-production" {

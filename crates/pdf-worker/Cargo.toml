@@ -21,6 +21,10 @@ libc = "=0.2.186"
 [features]
 host-tests = []
 
+# Plain `cargo test` builds the fixture worker and runs the owned host tests.
+[dev-dependencies]
+pdf-worker = { path = ".", features = ["host-tests"] }
+
 [[bin]]
 name = "pdf-worker-fixture"
 path = "tests/support/worker_fixture.rs"
