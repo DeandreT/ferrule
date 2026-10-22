@@ -1,0 +1,60 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static FerruleInstance Source(params (bool Fail, long Mode)[] flags) =>
+    new FerruleDocumentSet(flags.Select((flag,index) => new FerruleDocument($"{index}.xml",new FerruleGroup(new[] {
+        new FerruleField("Fail",new FerruleScalar(FerruleValue.FromBoolean(flag.Fail))),
+        new FerruleField("Mode",new FerruleScalar(FerruleValue.FromInt64(flag.Mode))),
+        new FerruleField("Samples",new FerruleRepeated(Enumerable.Range(0,2).Select(_ => new FerruleGroup(new[] {
+            new FerruleField("Marker",new FerruleScalar(FerruleValue.FromString("x")))
+        })))),
+    }))));
+static void CheckBody(FerruleDocument document) {
+    if (document.Value is not FerruleGroup group || !group.TryGetField("Body",out var field) ||
+        field is not FerruleScalar scalar || scalar.Value.StringValue != "body-clock")
+        throw new InvalidOperationException("The body clock changed.");
+}
+var execution=new FerruleExecutionContext("clock.ferrule","clock.ferrule","body-clock");
+int calls=0;
+string Clock() => $"{++calls}-";
+var input=Source((false,1),(false,0),(false,2),(false,3));
+var documents=new List<FerruleDocument>();
+var result=GeneratedMapping.VisitTargetDocumentsWithFilenameClock(input,Array.Empty<NamedInput>(),execution,null,Clock,
+    document => { documents.Add(document);CheckBody(document);return GeneratedMapping.DocumentDecision<string>.Continue; });
+if (!result.Completed || result.Accepted!=4 || calls!=5 ||
+    !documents.Select(document=>document.Path).SequenceEqual(new[] {"1-0.xml","fixed-1.xml","2-3-2.xml","5-3.xml"}))
+    throw new InvalidOperationException("Filename samples or order differ.");
+var stable=new List<string>();
+var before=calls;
+GeneratedMapping.VisitTargetDocuments(input,Array.Empty<NamedInput>(),execution,null,document => {
+    CheckBody(document);stable.Add(document.Path);return GeneratedMapping.DocumentDecision<string>.Continue;
+});
+if (calls!=before || !stable.SequenceEqual(new[] {"body-clock0.xml","fixed-1.xml","body-clockbody-clock2.xml","body-clock3.xml"}))
+    throw new InvalidOperationException("The original visitor clock changed.");
+try {
+    GeneratedMapping.VisitTargetDocumentsWithFilenameClock<string>(Source((true,1)),Array.Empty<NamedInput>(),execution,null,Clock,
+        _=>throw new InvalidOperationException("Failed body offered."));
+    throw new InvalidOperationException("Expected body failure.");
+} catch (GeneratedMapping.DocumentVisitException error) when(error.Accepted==0 && error.InnerException is FerruleRuntimeException {Error:FerruleRuntimeError.MappingException,Node:2}) { }
+if(calls!=before)throw new InvalidOperationException("Clock sampled before body failure.");
+result=GeneratedMapping.VisitTargetDocumentsWithFilenameClock(Source((false,1),(true,1)),Array.Empty<NamedInput>(),execution,null,Clock,
+    _=>GeneratedMapping.DocumentDecision<string>.Break("stop"));
+if(result.Completed || result.Accepted!=0 || result.Reason!="stop" || calls!=before+1)
+    throw new InvalidOperationException("Stopped visitor evaluated later work.");
+int attempts=0;
+var cause=new InvalidOperationException("clock unavailable");
+string FailingClock() => ++attempts==2 ? throw cause : "good-";
+var kept=new List<FerruleDocument>();
+try {
+    GeneratedMapping.VisitTargetDocumentsWithFilenameClock(Source((false,1),(false,1),(false,1)),Array.Empty<NamedInput>(),execution,null,FailingClock,
+        document=>{kept.Add(document);return GeneratedMapping.DocumentDecision<string>.Continue;});
+    throw new InvalidOperationException("Expected clock failure.");
+} catch (GeneratedMapping.DocumentVisitException error) {
+    if(error.Accepted!=1 || error.InnerException is not FerruleRuntimeException {Error:FerruleRuntimeError.DocumentFilenameClock,Node:0} runtime ||
+        !ReferenceEquals(runtime.InnerException,cause) || attempts!=2 || kept.Count!=1 || kept[0].Path!="good-0.xml")
+        throw new InvalidOperationException("Clock failure lost its cause or accepted prefix.");
+}
+result=GeneratedMapping.VisitTargetDocumentsWithFilenameClock<string>(Source(),Array.Empty<NamedInput>(),execution,null,Clock,
+    _=>throw new InvalidOperationException("Empty source offered a document."));
+if(!result.Completed || result.Accepted!=0 || calls!=before+1)throw new InvalidOperationException("Empty source sampled clock.");
+Console.WriteLine("PASS document filename clocks");

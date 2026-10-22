@@ -21,6 +21,7 @@ public sealed partial class ScopeContext
     private readonly FerruleExecutionContext? _executionContext;
     private readonly IFerruleDynamicSourceLoader? _dynamicSourceLoader;
     private readonly FerruleInvocationCounters? _invocationCounters;
+    private readonly Func<string>? _documentFilenameClock;
 
     private ScopeContext(
         FerruleInstance primarySource,
@@ -31,13 +32,15 @@ public sealed partial class ScopeContext
         FerruleFilterMapRunState? filterMapRunState = null,
         FerruleFilterMapBoundary? filterMapBoundary = null,
         int filterMapCallDepth = 0,
-        FerruleInvocationCounters? invocationCounters = null)
+        FerruleInvocationCounters? invocationCounters = null,
+        Func<string>? documentFilenameClock = null)
     {
         _primarySource = primarySource;
         _frames = frames;
         _collections = collections;
         _executionContext = executionContext;
         _dynamicSourceLoader = dynamicSourceLoader;
+        _documentFilenameClock = documentFilenameClock;
         _filterMapRunState = filterMapRunState ?? new FerruleFilterMapRunState(executionContext);
         _filterMapBoundary = filterMapBoundary;
         _filterMapCallDepth = filterMapCallDepth;
@@ -72,8 +75,13 @@ public sealed partial class ScopeContext
     {
         ArgumentNullException.ThrowIfNull(loader);
         return new ScopeContext(_primarySource, _frames, _collections, _executionContext, loader,
-            _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
+            _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock);
     }
+
+    /// <summary>Install only on a cloned filename context after its complete body.</summary>
+    public ScopeContext WithDocumentFilenameClock(Func<string>? clock) =>
+        new ScopeContext(_primarySource, _frames, _collections, _executionContext, _dynamicSourceLoader,
+            _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, clock);
 
     public static ScopeContext FromSource(
         FerruleInstance source,
@@ -108,8 +116,22 @@ public sealed partial class ScopeContext
     }
 
     /// <summary>Returns one exact host value or a typed missing-context error.</summary>
-    public FerruleValue ResolveRuntimeValue(FerruleRuntimeValue value)
+    public FerruleValue ResolveRuntimeValue(FerruleRuntimeValue value, uint? node = null)
     {
+        if (value == FerruleRuntimeValue.CurrentDateTime && _documentFilenameClock is { } clock)
+        {
+            string sample;
+            try { sample = clock(); }
+            catch (Exception error)
+            {
+                throw new FerruleRuntimeException(FerruleRuntimeError.DocumentFilenameClock,
+                    error.Message, error, node: node);
+            }
+            if (sample is null)
+                throw new FerruleRuntimeException(FerruleRuntimeError.DocumentFilenameClock,
+                    "The filename clock returned null.", node: node);
+            return FerruleValue.FromString(sample);
+        }
         var resolved = _executionContext?.GetValue(value);
         if (resolved is null)
         {
@@ -694,7 +716,7 @@ public sealed partial class ScopeContext
             _frames,
             new ReadOnlyCollection<CollectionIdentity>(collections),
             _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock);
     }
 
     /// <summary>Clones the innermost source group for independent target ownership.</summary>
@@ -775,7 +797,7 @@ public sealed partial class ScopeContext
             new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections),
             _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock);
     }
 
     private FerruleInstance? FindAggregateBase(IReadOnlyList<string> path)
@@ -986,7 +1008,7 @@ public sealed partial class ScopeContext
             new ReadOnlyCollection<FerruleInstance>(allFrames),
             new ReadOnlyCollection<CollectionIdentity>(allCollections),
             _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock);
         output.Add(candidate);
         observed?.Candidate(candidate, frames.Count, collections.Count);
     }
@@ -2376,7 +2398,7 @@ public sealed partial class ScopeContext
         if (slot.HasValue) collections[slot.Value] = collections[slot.Value] with { Index = index };
         return new ScopeContext(_primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections), _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock);
     }
     internal ScopeContext ProjectBasicOwned(FerruleOwnedScopeContext observed, int inheritedOwnedFrames,
         FerruleInstance terminal, IReadOnlyList<string> canonical, bool identity, BasicSourceBudget budget)
@@ -2420,7 +2442,7 @@ public sealed partial class ScopeContext
         if (plain) frames[^1] = terminal;
         return new ScopeContext(_primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections), _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock);
     }
 }
 

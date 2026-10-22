@@ -4,6 +4,8 @@ use std::process::Command;
 
 #[path = "../../../conformance/invocation-counter-expressions/admission.rs"]
 mod admission;
+#[path = "../../../conformance/document-clocks/project.rs"]
+mod document_clocks;
 #[path = "../../../conformance/document-rows/project.rs"]
 mod document_rows;
 #[path = "../../../conformance/invocation-counter-expressions/expected.rs"]
@@ -78,7 +80,7 @@ fn generated_document_visitor_stops_before_later_bodies_and_preserves_accepted_d
         document_rows::project(),
         include_str!("../../../conformance/document-rows/VisitorHost.cs.txt"),
         "PASS document visitors",
-        Some(None),
+        Some((None, false)),
     )
 }
 
@@ -89,7 +91,17 @@ fn generated_document_visitor_selects_named_target_without_running_primary()
         named_document_rows::project(document_rows::project()),
         include_str!("../../../conformance/document-rows/VisitorHost.cs.txt"),
         "PASS document visitors",
-        Some(Some("selected")),
+        Some((Some("selected"), false)),
+    )
+}
+
+#[test]
+fn generated_document_filename_clock_is_lazy_and_body_local() -> Result<(), Box<dyn Error>> {
+    run_fixture_with_visitor(
+        document_clocks::project(),
+        include_str!("../../../conformance/document-clocks/Host.cs.txt"),
+        "PASS document filename clocks",
+        Some((None, true)),
     )
 }
 
@@ -105,7 +117,7 @@ fn run_fixture_with_visitor(
     project: mapping::Project,
     host: &str,
     expected: &str,
-    visitor: Option<Option<&str>>,
+    visitor: Option<(Option<&str>, bool)>,
 ) -> Result<(), Box<dyn Error>> {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
@@ -116,7 +128,9 @@ fn run_fixture_with_visitor(
     )));
     std::fs::create_dir(&root.0)?;
     let program = codegen::lower(&project)?;
-    let artifacts = if let Some(target) = visitor {
+    let artifacts = if let Some((target, true)) = visitor {
+        codegen_csharp::emit_with_document_filename_clock(&program, target)?
+    } else if let Some((target, false)) = visitor {
         codegen_csharp::emit_with_document_visitor(&program, target)?
     } else if program.root.construction == codegen::TargetConstruction::DocumentRows {
         codegen_csharp::emit_with_csv_document_set_output(

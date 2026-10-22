@@ -192,7 +192,7 @@ public sealed partial class ScopeContext
                 FerruleRuntimeError.UserFunctionDepth, "user function exceeds the 64-call depth limit", maximumDepth: 64);
         }
         return new ScopeContext(_primarySource, _frames, _collections, _executionContext, _dynamicSourceLoader,
-            _filterMapRunState, active, _filterMapCallDepth + 1, _invocationCounters);
+            _filterMapRunState, active, _filterMapCallDepth + 1, _invocationCounters, _documentFilenameClock);
     }
 
     internal void CheckFilterMap(FerruleFilterMapBoundary boundary) => _filterMapRunState.Check(boundary);

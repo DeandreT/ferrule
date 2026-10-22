@@ -445,6 +445,7 @@ impl<'src> GroupPrefixTemplate<'src> {
             dynamic_source_loader: c.legacy.dynamic_source_loader,
             filter_map: c.legacy.filter_map.clone(),
             invocation_counters: c.legacy.invocation_counters.clone(),
+            document_filename_clock: c.legacy.document_filename_clock,
         };
         let mut owned_frames = Vec::with_capacity(t.owned_cut + 1);
         owned_frames.extend(c.owned.frames[..t.owned_cut].iter().cloned());
