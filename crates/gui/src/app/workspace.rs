@@ -459,6 +459,7 @@ impl FerruleApp {
             ui.separator();
             ui.add_enabled_ui(editing_enabled, |ui| {
                 ui.horizontal_wrapped(|ui| self.show_runtime_paths(ui));
+                self.show_owned_pdf_worker_toggle(ui);
                 self.host_parameters.show(ui);
                 self.show_file_debug_controls(ui);
             });
@@ -467,6 +468,18 @@ impl FerruleApp {
         self.show_mapping_tabs(ui, editing_enabled);
         ui.spacing_mut().item_spacing.y = item_spacing_y;
         self.show_workspace_tabs(ui, layout_class);
+    }
+
+    pub(super) fn show_owned_pdf_worker_toggle(&mut self, ui: &mut egui::Ui) {
+        ui.checkbox(
+            &mut self.owned_pdf_worker,
+            "Extract file PDFs in an owned worker process",
+        )
+        .on_hover_text(
+            "Runs and file previews read PDF inputs in the packaged ferrule-pdf-worker \
+             beside this application (Linux x86_64). Cancelling or closing waits until \
+             that process has been stopped and reaped. There is no in-process fallback.",
+        );
     }
 
     fn show_runtime_paths(&mut self, ui: &mut egui::Ui) {

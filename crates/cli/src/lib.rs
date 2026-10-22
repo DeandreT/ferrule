@@ -41,6 +41,7 @@ mod pdf_worker_policy;
 mod pdf_worker_signal;
 mod pipeline;
 mod pipeline_preview;
+mod preview_inputs;
 mod project_paths;
 mod read_set;
 mod route_capability;
@@ -59,7 +60,8 @@ pub use execution_policy::{load_execution_policy_file, parse_execution_policy};
 use file_run::run_project_value_with_filesystem_policy;
 pub use file_run::{
     PreparedFileRun, RunObservers, RunOptions, RunOutcome, RunRequest, WrittenOutput,
-    preview_project_value_from_files, run_project, run_project_value_with_options,
+    preview_project_value_from_files, preview_project_value_from_files_with_pdf_reader,
+    run_project, run_project_value_with_options,
     run_project_value_with_options_and_filesystem_policy,
     run_project_value_with_options_and_pdf_reader, run_project_value_with_paths,
     run_project_value_with_paths_and_trace, run_project_with_options,
@@ -110,6 +112,7 @@ pub use pipeline_preview::{
     PipelineHostPayload, PipelinePreviewArtifact, PipelinePreviewOptions, PipelinePreviewOutcome,
     PipelinePreviewOutputIdentity, preview_pipeline_value_payloads, validate_pipeline_preview,
 };
+pub use preview_inputs::{ProjectPreviewInputs, preview_project_value};
 pub use project_paths::{
     mapping_identity_relative_to as pipeline_mapping_identity, rebase as rebase_project_paths,
     relocates as project_paths_relocate,

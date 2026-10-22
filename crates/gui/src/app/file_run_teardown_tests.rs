@@ -152,6 +152,7 @@ fn fixture(mut options: Options) -> Fixture {
         started: Instant::now(),
         debug: false,
         phase: options.phase,
+        extraction: None,
         shutdown: ShutdownIntent {
             join_observer: Some(joins.clone()),
             ..Default::default()

@@ -1,9 +1,10 @@
 # PDF Worker Contract
 
 Status: **wire codec implemented and locally verified in
-[#325](https://github.com/DeandreT/ferrule/issues/325)**. The Linux owner, CLI opt-in,
-GUI cancellation and resource qualification remain in the dependent increments
-below. The codec does not launch processes or install resource limits.
+[#325](https://github.com/DeandreT/ferrule/issues/325)**. The Linux owner and CLI
+opt-in, file-input preview acquisition and GUI cancellation are implemented in the
+dependent increments below, and the finite resource profile is recorded; no default
+changed. The codec does not launch processes or install resource limits.
 The planned first execution profile is one PDF extraction in an owned Linux
 child, using local filesystem documents. Mapping and target publication stay in
 the parent.
@@ -44,11 +45,10 @@ The [filesystem dispatcher](../crates/cli/src/lib.rs) calls `format_pdf::read`
 for configured primary, static and dynamic PDF sources. The
 [payload dispatcher](../crates/cli/src/payload.rs) calls `from_bytes`; its general
 64-MiB document limit does not replace PDF's smaller 8-MiB limit.
-GUI [file runs](../crates/gui/src/app/run.rs) currently run on a Rust thread and
-check cancellation through debug and before-publication controls. Those checks
-cannot interrupt synchronous PDF decoding. [Preview](../crates/gui/src/app/preview.rs)
-uses the payload route; dropping a pending preview sets a flag rather than
-terminating a parser thread.
+GUI [file runs](../crates/gui/src/app/run.rs) run on a Rust thread and check
+cancellation through debug and before-publication controls. Without the owned
+worker those checks cannot interrupt synchronous PDF decoding; the opt-in below
+moves extraction into a child that cancellation can stop.
 
 ## Eligible host and compatibility
 
@@ -272,10 +272,32 @@ existing cancellation flags through an explicit worker-enabled API. Pending GUI
 state must own the extraction manager until closed; a detached Rust thread and
 a flag are insufficient closure evidence.
 
-Preview and pipeline-preview currently turn documents into payloads. They do
-not acquire this profile by changing their labels. A future filesystem-backed
-preview adapter needs its own reviewed acquisition/spooling and cancellation
-contract; arbitrary editor text and payload library calls remain in-process.
+Project previews select their inputs explicitly through
+[`ProjectPreviewInputs`](../crates/cli/src/preview_inputs.rs): caller-owned payloads,
+which never reach a PDF reader, or the configured files, acquired exactly as a
+file run acquires them (the primary once, only selected static sources, dynamic
+sources as requested) and optionally through a borrowed `FilesystemPdfReader`.
+[Pipeline previews](../crates/cli/src/pipeline_preview.rs) accept payload hosts or
+host files. File hosts are read once each, after graph, identity, format, policy
+and metadata byte-budget preflight; dynamic named sources stay refused. Previews
+return artifacts and publish nothing. Arbitrary editor text and payload library
+calls remain in-process.
+
+The GUI has an off-by-default session option to extract file PDFs in the packaged
+`ferrule-pdf-worker` beside `ferrule-gui`; a failed admission is an error, never an
+in-process fallback. A signal-free [`OwnedPdfReader`](../crates/gui/src/app/pdf_extraction.rs)
+owns the manager on the run or preview thread, forwards that thread's single
+cancellation flag, and returns only after the job is closed. A job whose closure
+is unresolved keeps being serviced, so its thread stays pending. Saved-file runs,
+pipeline runs, file-input previews and pipeline previews use it; editor-text
+previews stay on the payload route. Cancellation observed before, during or
+after extraction wins over a late result, so nothing is published or reported.
+Pending runs keep their exact thread until it is joined. An owned preview whose
+UI owner is dropped hands its thread to the
+[preview service](../crates/gui/src/app/preview_service.rs), and the desktop
+runner joins whatever the service still retains after the window closes. App
+close is deferred while an owned run or preview, or a retained preview thread, is
+pending; the existing dirty-document confirmation follows.
 There is no hard process-memory claim for the parent, decoded tree, mapping,
 preview retention or serialized targets. See [Memory use and boundary limits](memory-and-limits.md).
 
@@ -285,6 +307,8 @@ preview retention or serialized targets. See [Memory use and boundary limits](me
 | [B. Linux filesystem worker and CLI opt-in (#326)](https://github.com/DeandreT/ferrule/issues/326) | `crates/pdf-worker` Linux owner/client and worker binary; narrow `crates/cli` filesystem-policy/dispatch/packaging tests | A; real ready/limits/kill/reap and complete library-versus-worker fixture comparisons |
 | [C. GUI filesystem cancellation (#327)](https://github.com/DeandreT/ferrule/issues/327) | File-run and filesystem pipeline adapters/pending-state tests in `crates/gui`; narrow CLI cancellation API seam | B; alternate-display cancellation/close and existing publication regressions |
 | [D. Finite resource qualification (#328)](https://github.com/DeandreT/ferrule/issues/328) | Owned synthetic fixture/protocol tests and public bounded report | B; add C cases after C merges; repeated separate child/parent measurements before any default-policy change |
+| [E. File-input preview acquisition (#340)](https://github.com/DeandreT/ferrule/issues/340) | Explicit payload-or-file project and pipeline preview inputs in `crates/cli` | B and the borrowed reader (#344) |
+| [F. GUI preview ownership and shutdown (#341)](https://github.com/DeandreT/ferrule/issues/341) | Preview service, file-input preview selection and app-close deferral in `crates/gui` | C and E; the option stays off by default |
 
 Keep `format-pdf` extraction/layout semantics, `mapping::PdfLayout` and `ir` model
 unchanged. Wire code belongs to the worker package, not a process-launching
@@ -331,7 +355,7 @@ They do not qualify subprocess limits, cancellation or memory use.
   supplement those gates and do not prove kernel signaling or physical closure.
 - [ ] Compare primary/static/dynamic selected-source acquisition and destination
   preservation with existing CLI controls; no unnecessary worker for unused sources.
-- [ ] Qualify GUI cancellation and app close on an alternate virtual display,
+- [x] Qualify GUI cancellation and app close on an alternate virtual display,
   keeping the user's active monitors untouched and all publication controls intact.
 - [x] Record executable/profile/kernel/effective limits, repeated child and parent
   RSS/CPU/wall brackets, exact outputs and all failures. Address-space limits,
