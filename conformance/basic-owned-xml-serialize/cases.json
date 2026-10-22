@@ -2081,6 +2081,203 @@
      }
     }
    ]
+  },
+  {
+   "id": "C20-forbidden-characters",
+   "model": "X01-endpoints",
+   "source": {
+    "Header": {
+     "id": "p",
+     "Note": "bell\u0001",
+     "Tag": [
+      "a",
+      "b"
+     ]
+    },
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a\ufffe",
+       "Note": "audit",
+       "Tag": [
+        "z"
+       ]
+      }
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "All",
+     "expected": {
+      "Err": {
+       "kind": "XmlSerialization",
+       "node": 1
+      }
+     }
+    },
+    {
+     "selection": "Primary",
+     "expected": {
+      "Err": {
+       "kind": "XmlSerialization",
+       "node": 1
+      }
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Err": {
+       "kind": "XmlSerialization",
+       "node": 2
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "C21-valid-boundary-characters",
+   "model": "X01-endpoints",
+   "source": {
+    "Header": {
+     "id": "p\t\n\r \ud7ff\ue000\ufffd\ud800\udc00\ud83d\ude00\udbff\udfff",
+     "Note": "n\t\n\r \ud7ff\ue000\ufffd\ud800\udc00\ud83d\ude00\udbff\udfff",
+     "Tag": [
+      "\t\n\r \ud7ff\ue000\ufffd\ud800\udc00\ud83d\ude00\udbff\udfff"
+     ]
+    },
+    "Orders": {
+     "Order": [
+      {
+       "num": "1",
+       "Label": "x",
+       "Detail": {
+        "code": "P1",
+        "Text": "first",
+        "Line": [
+         {
+          "n": "1",
+          "Qty": 2
+         },
+         {
+          "n": "2",
+          "Qty": 3
+         }
+        ]
+       }
+      },
+      {
+       "num": "2",
+       "Label": "y",
+       "Detail": {
+        "code": "P2",
+        "Text": "second",
+        "Line": []
+       }
+      }
+     ]
+    },
+    "Single": "s"
+   },
+   "inputs": [
+    [
+     "audit",
+     {
+      "Header": {
+       "id": "a\t\n\r \ud7ff\ue000\ufffd\ud800\udc00\ud83d\ude00\udbff\udfff",
+       "Note": "m\t\n\r \ud7ff\ue000\ufffd\ud800\udc00\ud83d\ude00\udbff\udfff",
+       "Tag": []
+      }
+     }
+    ],
+    [
+     "Header",
+     {
+      "Header": {
+       "id": "h",
+       "Note": "alias",
+       "Tag": []
+      },
+      "Single": "u"
+     }
+    ]
+   ],
+   "calls": [
+    {
+     "selection": "Primary",
+     "expected": {
+      "Ok": [
+       [
+        null,
+        {
+         "Primary": "<Header id=\"p&#x9;&#xA;&#xD; \ud7ff\ue000\ufffd\ud800\udc00\ud83d\ude00\udbff\udfff\"><Note>n\t\n&#xD; \ud7ff\ue000\ufffd\ud800\udc00\ud83d\ude00\udbff\udfff</Note><Tag>\t\n&#xD; \ud7ff\ue000\ufffd\ud800\udc00\ud83d\ude00\udbff\udfff</Tag></Header>",
+         "Alias": "<Header id=\"h\">\n  <Note>alias</Note>\n</Header>"
+        }
+       ]
+      ]
+     }
+    },
+    {
+     "selection": "audit",
+     "expected": {
+      "Ok": [
+       [
+        "audit",
+        {
+         "Header": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Header xmlns=\"urn:audit\" id=\"a&#x9;&#xA;&#xD; \ud7ff\ue000\ufffd\ud800\udc00\ud83d\ude00\udbff\udfff\">\n  <Note>m\t\n&#xD; \ud7ff\ue000\ufffd\ud800\udc00\ud83d\ude00\udbff\udfff</Note>\n</Header>"
+        }
+       ]
+      ]
+     }
+    }
+   ]
   }
  ]
 }

@@ -194,6 +194,35 @@ public static partial class FerruleXml
         return new XmlLiteralHints(noNamespace, locations);
     }
 
+    /// <summary>
+    /// Refuses the first character outside the XML 1.0 Char production, after
+    /// the size limit like the native writer. Unpaired UTF-16 surrogates have
+    /// no Unicode scalar value and are refused at their own code unit.
+    /// </summary>
+    private static void RequireXmlCharacters(string output)
+    {
+        var byteOffset = 0;
+        for (var index = 0; index < output.Length; index++)
+        {
+            var character = output[index];
+            if (char.IsHighSurrogate(character) && index + 1 < output.Length &&
+                char.IsLowSurrogate(output[index + 1]))
+            {
+                index++;
+                byteOffset += 4;
+                continue;
+            }
+            if (character is not ('\t' or '\n' or '\r') &&
+                (character < 0x20 || character > 0xD7FF) &&
+                (character < 0xE000 || character > 0xFFFD))
+            {
+                throw new InvalidOperationException(
+                    $"XML output contains forbidden XML 1.0 character U+{(int)character:X4} at UTF-8 byte {byteOffset}");
+            }
+            byteOffset += character < 0x80 ? 1 : character < 0x800 ? 2 : 3;
+        }
+    }
+
     private static void ValidateHintToken(string value)
     {
         if (value.Length == 0 || OutputUtf8.GetByteCount(value) > 4096 ||

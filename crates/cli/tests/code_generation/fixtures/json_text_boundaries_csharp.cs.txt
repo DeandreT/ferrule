@@ -42,6 +42,16 @@ static void Verify(Func<string> run, JsonElement test)
         { return; }
         throw new Exception($"Expected execution failure was accepted: {test}");
     }
+    if (test.TryGetProperty("xml_error", out var expectedXml))
+    {
+        try { _ = run(); }
+        catch (FerruleRuntimeException error) when (
+            error.Error == FerruleRuntimeError.XmlSerialization &&
+            error.Node == expectedXml.GetProperty("node").GetUInt32() &&
+            error.Detail == expectedXml.GetProperty("message").GetString())
+        { return; }
+        throw new Exception($"Expected XML serialization failure was accepted: {test}");
+    }
     if (test.TryGetProperty("reject", out _) || test.TryGetProperty("reject_output", out _))
     {
         try
