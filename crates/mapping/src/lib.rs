@@ -21,6 +21,7 @@ mod idoc_native_config;
 mod idoc_native_text;
 mod iteration;
 mod model;
+mod node_inputs;
 mod owned_join;
 mod path_hierarchy;
 mod path_hierarchy_owned;
@@ -107,6 +108,7 @@ pub use model::{
     XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout, XlsxRow, XlsxTableRegion,
     XlsxWorksheetSetLayout, XmlMixedContentElement, XmlMixedContentReplacement,
 };
+pub use node_inputs::{NodeInput, NodeInputRole, NodeInputSlot};
 pub use owned_join::{
     OwnedJoinConditions, OwnedJoinKey, OwnedJoinPlan, OwnedJoinPlanError, OwnedJoinSource,
     describe_owned_collection,
