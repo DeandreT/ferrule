@@ -31,6 +31,25 @@ pub(crate) fn eval_owned_aggregate(
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
+    // New reducers need their own owned projection/evaluation qualification.
+    // In particular, eager collection must not hide a DecimalSum overflow
+    // behind a later item's conversion or projection failure.
+    if !matches!(
+        owned.function,
+        AggregateOp::Count
+            | AggregateOp::Sum
+            | AggregateOp::Avg
+            | AggregateOp::Min
+            | AggregateOp::Max
+            | AggregateOp::Join
+            | AggregateOp::ItemAt
+    ) {
+        return Err(functions::FunctionError::InvalidArgument {
+            function: "owned_aggregate",
+            message: "this reducer is not supported for owned collections",
+        }
+        .into());
+    }
     let state = owned_state(program, node, "owned_aggregate")?;
     let access = access(node);
     let (rows, work) = candidates(state, &owned.collection, positions.len()).map_err(&access)?;

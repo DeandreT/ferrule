@@ -12,11 +12,28 @@ public enum FerruleAggregateOperation
     Max,
     Join,
     ItemAt,
+    DecimalSum,
 }
 
 /// <summary>Applies one scalar reduction over an already-evaluated item sequence.</summary>
 public static class FerruleAggregates
 {
+    /// <summary>Advance a decimal fold before evaluating another operand; ordinary reductions remain eager.</summary>
+    public static void CollectValue(FerruleAggregateOperation operation, List<FerruleValue> values, FerruleValue value)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        if (operation == FerruleAggregateOperation.DecimalSum)
+        {
+            var total = Apply(operation, values);
+            total = Apply(operation, new[] { total, value });
+            values.Clear();
+            values.Add(total);
+        }
+        else
+        {
+            values.Add(value);
+        }
+    }
     public static FerruleValue Apply(
         FerruleAggregateOperation operation,
         IReadOnlyList<FerruleValue> values,
@@ -25,6 +42,7 @@ public static class FerruleAggregates
         ArgumentNullException.ThrowIfNull(values);
         return operation switch
         {
+            FerruleAggregateOperation.DecimalSum => DecimalSum(values, argument),
             FerruleAggregateOperation.Count => FerruleValue.FromInt64(values.Count),
             FerruleAggregateOperation.Sum => Sum(values),
             FerruleAggregateOperation.Avg => Average(values),
@@ -34,6 +52,30 @@ public static class FerruleAggregates
             FerruleAggregateOperation.ItemAt => ItemAt(values, argument),
             _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, null),
         };
+    }
+
+    private static FerruleValue DecimalSum(IReadOnlyList<FerruleValue> values, FerruleValue? argument)
+    {
+        const FerruleAggregateOperation operation = FerruleAggregateOperation.DecimalSum;
+        if (argument.HasValue)
+            throw new FerruleRuntimeException(FerruleRuntimeError.FunctionInvalidArgument,
+                "`decimal_sum` does not accept an argument.", function: "decimal_sum");
+        var total = FerruleDecimal96.Zero;
+        foreach (var value in values)
+        {
+            if (value.Kind != FerruleValueKind.Decimal)
+                throw new FerruleRuntimeException(FerruleRuntimeError.AggregateUnsupportedScalar,
+                    $"{operation} aggregate cannot accept a {value.Kind} value.",
+                    foundKind: value.Kind, aggregateOperation: operation);
+            try { total = total.AddRounded(value.DecimalValue); }
+            catch (FerruleDecimalException error)
+            {
+                throw new FerruleRuntimeException(FerruleRuntimeError.AggregateDecimal,
+                    $"{operation} aggregate: {error.Message}", error,
+                    aggregateOperation: operation, detail: error.Error.ToString());
+            }
+        }
+        return FerruleValue.FromDecimal(total);
     }
 
     private static FerruleValue Sum(IReadOnlyList<FerruleValue> values)
@@ -109,6 +151,10 @@ public static class FerruleAggregates
         IReadOnlyList<FerruleValue> values,
         FerruleValue? argument)
     {
+        if (argument is { Kind: FerruleValueKind.Decimal })
+        {
+            throw UnsupportedDecimal(FerruleAggregateOperation.ItemAt);
+        }
         var index = argument.HasValue ? ItemIndex(argument.Value) : null;
         if (index is null || index < 1 || index > values.Count)
         {
@@ -170,6 +216,10 @@ public static class FerruleAggregates
         FerruleValue value,
         out NumericValue number)
     {
+        if (value.Kind == FerruleValueKind.Decimal)
+        {
+            throw UnsupportedDecimal(operation);
+        }
         if (value.Kind == FerruleValueKind.Int64)
         {
             number = NumericValue.FromInteger(value.Int64Value);
@@ -357,6 +407,13 @@ public static class FerruleAggregates
             FerruleRuntimeError.AggregateIntegerOverflow,
             $"{operation} aggregate overflowed the integer range",
             exception,
+            aggregateOperation: operation);
+
+    private static FerruleRuntimeException UnsupportedDecimal(
+        FerruleAggregateOperation operation) => new(
+            FerruleRuntimeError.AggregateUnsupportedScalar,
+            $"{operation} aggregate cannot accept a decimal value.",
+            foundKind: FerruleValueKind.Decimal,
             aggregateOperation: operation);
 
     private static FerruleRuntimeException NonFinite(FerruleAggregateOperation operation) =>

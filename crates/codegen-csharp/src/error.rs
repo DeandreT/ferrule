@@ -4,6 +4,7 @@ use codegen::{ArtifactPathError, ArtifactSetError, ProgramValidationError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EmitError {
+    UnsupportedDecimalValue { node: mapping::NodeId },
     UnsupportedFilterMapV1 { item: mapping::NodeId },
     ProgramValidation(ProgramValidationError),
     CsvOutput(codegen::CsvOutputError),
@@ -16,6 +17,10 @@ pub enum EmitError {
 impl fmt::Display for EmitError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedDecimalValue { node } => write!(
+                formatter,
+                "decimal literal at node {node} has no admitted generated C# profile"
+            ),
             Self::UnsupportedFilterMapV1 { item } => write!(
                 formatter,
                 "generated C# filter_map_v1 item {item} is not implemented"
@@ -37,7 +42,9 @@ impl std::error::Error for EmitError {
         match self {
             Self::ProgramValidation(error) => Some(error),
             Self::CsvOutput(error) => Some(error),
-            Self::UnsupportedFilterMapV1 { .. } | Self::SchemaSerialization(_) => None,
+            Self::UnsupportedDecimalValue { .. }
+            | Self::UnsupportedFilterMapV1 { .. }
+            | Self::SchemaSerialization(_) => None,
             Self::EmbeddedSchema(error) => Some(error),
             Self::ArtifactPath(error) => Some(error),
             Self::ArtifactSet(error) => Some(error),

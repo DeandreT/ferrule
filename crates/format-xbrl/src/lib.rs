@@ -592,6 +592,7 @@ fn scalar_value(instance: &Instance) -> Option<String> {
         Value::Float(value) if value.is_finite() => Some(value.to_string()),
         Value::Float(_) => None,
         Value::Bool(value) => Some(value.to_string()),
+        Value::Decimal(value) => Some(value.to_string()),
     }
 }
 

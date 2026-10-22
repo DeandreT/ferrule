@@ -103,6 +103,7 @@ fn typed(value: &Value) -> Json {
         Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => json!({"tag": value.type_name()}),
         Value::Bool(value) => json!({"tag": "bool", "value": value}),
         Value::Int(value) => json!({"tag": "int", "value": value}),
+        Value::Decimal(value) => json!({"tag": "decimal", "value": value.to_string()}),
         Value::String(value) => json!({"tag": "string", "value": value}),
         Value::Float(value) => json!({"tag": "float", "value": value,
             "ieee754_binary64_hex": format!("{:016x}", value.to_bits())}),

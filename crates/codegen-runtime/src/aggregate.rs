@@ -10,6 +10,26 @@ pub enum AggregateFunction {
     Max,
     Join,
     ItemAt,
+    DecimalSum,
+}
+
+/// Append an ordinary aggregate operand, or advance a decimal fold immediately.
+/// Decimal projection failures and arithmetic failures therefore keep input
+/// order. A failed append leaves the previously collected values unchanged.
+pub fn collect_aggregate_value(
+    function: AggregateFunction,
+    values: &mut Vec<Value>,
+    value: Value,
+) -> Result<(), RuntimeError> {
+    if function == AggregateFunction::DecimalSum {
+        let total = aggregate(function, values, None)?;
+        let total = aggregate(function, &[total, value], None)?;
+        values.clear();
+        values.push(total);
+    } else {
+        values.push(value);
+    }
+    Ok(())
 }
 
 /// Applies one aggregate after generated code has evaluated every item value.
@@ -19,6 +39,28 @@ pub fn aggregate(
     arg: Option<Value>,
 ) -> Result<Value, RuntimeError> {
     match function {
+        AggregateFunction::DecimalSum => {
+            if arg.is_some() {
+                return Err(crate::FunctionError::InvalidArgument {
+                    function: "decimal_sum",
+                    message: "does not accept an argument",
+                }
+                .into());
+            }
+            let mut total = ir::Decimal96::ZERO;
+            for value in values {
+                let Value::Decimal(decimal) = value else {
+                    return Err(RuntimeError::AggregateUnsupportedScalar {
+                        function,
+                        found: value.type_name(),
+                    });
+                };
+                total = total
+                    .add_rounded(**decimal)
+                    .map_err(|source| RuntimeError::AggregateDecimal { function, source })?;
+            }
+            Ok(Value::decimal(total))
+        }
         AggregateFunction::Count => Ok(Value::Int(values.len() as i64)),
         AggregateFunction::Sum => {
             let numbers = numeric_values(function, values)?;
@@ -73,11 +115,21 @@ pub fn aggregate(
             ))
         }
         AggregateFunction::ItemAt => {
+            if matches!(arg, Some(Value::Decimal(_))) {
+                return Err(RuntimeError::AggregateUnsupportedScalar {
+                    function,
+                    found: "decimal",
+                });
+            }
             let index = arg.as_ref().and_then(|value| match value {
                 Value::Int(value) => Some(*value),
                 Value::Float(value) => Some(value.round() as i64),
                 Value::String(value) => value.trim().parse().ok(),
-                Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Bool(_) => None,
+                Value::Null
+                | Value::JsonNull(_)
+                | Value::XmlNil(_)
+                | Value::Bool(_)
+                | Value::Decimal(_) => None,
             });
             Ok(match index {
                 Some(index) if index >= 1 => values
@@ -131,7 +183,7 @@ fn numeric_value(value: &Value) -> Result<Option<NumericValue>, ()> {
     match value {
         Value::Int(value) => Ok(Some(NumericValue::Int(*value))),
         Value::Float(value) if value.is_finite() => Ok(Some(NumericValue::Float(*value))),
-        Value::Float(_) => Err(()),
+        Value::Float(_) | Value::Decimal(_) => Err(()),
         Value::String(value) => {
             let value = value.trim();
             if let Ok(value) = value.parse::<i64>() {
@@ -151,11 +203,21 @@ fn numeric_values(
     function: AggregateFunction,
     values: &[Value],
 ) -> Result<Vec<NumericValue>, RuntimeError> {
-    values
-        .iter()
-        .filter_map(|value| numeric_value(value).transpose())
-        .collect::<Result<_, _>>()
-        .map_err(|()| RuntimeError::AggregateNonFinite { function })
+    let mut numbers = Vec::new();
+    for value in values {
+        if matches!(value, Value::Decimal(_)) {
+            return Err(RuntimeError::AggregateUnsupportedScalar {
+                function,
+                found: "decimal",
+            });
+        }
+        if let Some(number) =
+            numeric_value(value).map_err(|()| RuntimeError::AggregateNonFinite { function })?
+        {
+            numbers.push(number);
+        }
+    }
+    Ok(numbers)
 }
 
 fn finite_float(function: AggregateFunction, value: f64) -> Result<f64, RuntimeError> {
@@ -253,6 +315,7 @@ fn value_text(value: &Value) -> String {
         Value::Bool(value) => value.to_string(),
         Value::Int(value) => value.to_string(),
         Value::Float(value) => value.to_string(),
+        Value::Decimal(value) => value.to_string(),
         Value::String(value) => value.clone(),
     }
 }
@@ -260,6 +323,60 @@ fn value_text(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decimal_values_are_never_skipped_by_legacy_numeric_aggregates() {
+        for function in [
+            AggregateFunction::Sum,
+            AggregateFunction::Avg,
+            AggregateFunction::Min,
+            AggregateFunction::Max,
+        ] {
+            for index in 0..3 {
+                let mut values = vec![Value::Int(1), Value::Int(2), Value::Int(3)];
+                values[index] = Value::decimal(ir::Decimal96::parse_exact("0.1").unwrap());
+                assert_eq!(
+                    aggregate(function, &values, None),
+                    Err(RuntimeError::AggregateUnsupportedScalar {
+                        function,
+                        found: "decimal"
+                    })
+                );
+            }
+        }
+        let decimal = Value::decimal(ir::Decimal96::parse_exact("9007199254740993").unwrap());
+        assert_eq!(
+            aggregate(
+                AggregateFunction::Count,
+                std::slice::from_ref(&decimal),
+                None
+            ),
+            Ok(Value::Int(1))
+        );
+        assert_eq!(
+            aggregate(
+                AggregateFunction::ItemAt,
+                std::slice::from_ref(&decimal),
+                Some(Value::Int(1))
+            ),
+            Ok(decimal.clone())
+        );
+        assert_eq!(
+            aggregate(
+                AggregateFunction::Join,
+                std::slice::from_ref(&decimal),
+                None
+            ),
+            Ok(Value::String("9007199254740993".into()))
+        );
+        assert_eq!(
+            aggregate(AggregateFunction::ItemAt, &[Value::Int(1)], Some(decimal)),
+            Err(RuntimeError::AggregateUnsupportedScalar {
+                function: AggregateFunction::ItemAt,
+                found: "decimal"
+            })
+        );
+    }
 
     #[test]
     fn exact_integer_and_mixed_numeric_reductions_match_engine_contracts() {

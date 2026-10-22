@@ -431,6 +431,7 @@ public static class FerruleCsv
         FerruleValueKind.Int64 => "int",
         FerruleValueKind.Double => "float",
         FerruleValueKind.String => "string",
+        FerruleValueKind.Decimal => "decimal",
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 

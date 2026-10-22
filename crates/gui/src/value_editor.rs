@@ -40,6 +40,7 @@ pub fn display_string(value: &Value) -> String {
         Value::Bool(b) => b.to_string(),
         Value::Int(i) => i.to_string(),
         Value::Float(f) => f.to_string(),
+        Value::Decimal(value) => value.to_string(),
         Value::String(s) => s.clone(),
         Value::XmlNil(_) => "xsi:nil".to_string(),
     }
@@ -63,6 +64,10 @@ pub fn title_preview(value: &Value) -> String {
 }
 
 pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
+    if let Value::Decimal(value) = value {
+        ui.label(format!("decimal {value} (read-only)"));
+        return;
+    }
     egui::ComboBox::from_id_salt(ui.scope_id().with("value_kind"))
         .selected_text(value.type_name())
         .show_ui(ui, |ui| {
@@ -129,7 +134,7 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
             )
             .on_hover_text(s.as_str());
         }
-        Value::XmlNil(_) => {}
+        Value::XmlNil(_) | Value::Decimal(_) => {}
     }
 }
 
@@ -355,7 +360,7 @@ impl MapCellKind {
             Value::Float(_) => Self::Float,
             Value::Bool(_) => Self::Bool,
             Value::Null => Self::Absent,
-            Value::JsonNull(_) | Value::XmlNil(_) => Self::Imported,
+            Value::JsonNull(_) | Value::XmlNil(_) | Value::Decimal(_) => Self::Imported,
         }
     }
 
@@ -529,6 +534,18 @@ fn edit_map_value(ui: &mut Ui, value: &mut Value, label: &str, stacked: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decimal_editor_retains_exact_read_only_values() {
+        let mut value = Value::decimal(ir::Decimal96::parse_exact("9007199254740993.1").unwrap());
+        let original = value.clone();
+        let context = egui::Context::default();
+        let _ = context.run_test_ui(Default::default(), |ui| show_value_editor(ui, &mut value));
+        assert_eq!(value, original);
+        assert_eq!(display_string(&value), "9007199254740993.1");
+        assert!(MapCellKind::from_value(&value) == MapCellKind::Imported);
+        assert!(MapCellKind::Imported.parse("1.0").is_none());
+    }
 
     #[test]
     fn float_editor_rejects_nonfinite_text_and_retains_normalized_finite_input() {
