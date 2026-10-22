@@ -6,8 +6,9 @@
 
 use std::path::{Path, PathBuf};
 
-use super::super::super::export::{XmlDeclaration, declaration, optional_element};
+use super::super::super::export::optional_element;
 use super::super::super::*;
+use crate::declaration::{XmlDeclaration, declaration};
 
 /// The hand-derived element and attribute readings replaced by the view.
 fn legacy_matches(node: &SchemaNode, declared: XmlDeclaration) -> bool {
@@ -132,7 +133,7 @@ fn independently_authored_occurrence_controls() {
     }
 }
 
-fn fixtures(directory: &Path, found: &mut Vec<PathBuf>) {
+pub(crate) fn fixtures(directory: &Path, found: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(directory) else {
         return;
     };
@@ -149,7 +150,7 @@ fn fixtures(directory: &Path, found: &mut Vec<PathBuf>) {
     }
 }
 
-fn walk(node: &SchemaNode, visit: &mut impl FnMut(&SchemaNode)) {
+pub(crate) fn walk(node: &SchemaNode, visit: &mut impl FnMut(&SchemaNode)) {
     visit(node);
     if let SchemaKind::Group {
         children, dynamic, ..

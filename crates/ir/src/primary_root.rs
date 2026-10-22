@@ -241,7 +241,7 @@ pub fn primary_root_schema_is_supported(schema: &SchemaNode) -> bool {
     !schema.repeating
         && !schema.attribute
         && !schema.text
-        && !schema.nillable
+        && schema.effective_xml_view().is_ok_and(|xml| !xml.nil())
         && primary_root_ncname_is_valid(&schema.name)
         && schema.recursive_ref.is_none()
         && schema.dynamic_fields().is_none()
