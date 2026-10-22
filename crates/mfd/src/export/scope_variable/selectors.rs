@@ -139,6 +139,7 @@ pub(in crate::export) fn selector_context_warnings(
                 }
                 Node::Raise { message } => parent.extend(message.iter().copied()),
                 Node::RuntimeParameterDefault { default, .. } => parent.push(*default),
+                Node::InvocationCounter { .. } => parent.extend(node.dependencies()),
                 Node::If {
                     condition,
                     then,

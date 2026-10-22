@@ -74,6 +74,7 @@ impl GeneratedItems {
 /// when the selected value is not itself a collection.
 #[derive(Clone)]
 pub struct ScopeContext<'a> {
+    pub(crate) invocation_counters: Option<crate::invocation_counter::CounterState>,
     primary_source: &'a Instance,
     frames: Vec<ScopeFrame<'a>>,
     named_inputs: &'a [NamedInput<'a>],
@@ -134,6 +135,7 @@ impl<'a> ScopeContext<'a> {
     /// Creates the root context for one generated mapping execution.
     pub fn new(source: &'a Instance) -> Self {
         Self {
+            invocation_counters: None,
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
@@ -153,6 +155,7 @@ impl<'a> ScopeContext<'a> {
     /// one outer named frame.
     pub fn with_named_inputs(source: &'a Instance, inputs: &'a [NamedInput<'a>]) -> Self {
         Self {
+            invocation_counters: None,
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
@@ -173,6 +176,7 @@ impl<'a> ScopeContext<'a> {
     /// values remain borrowed for the mapping execution.
     pub fn with_execution_context(source: &'a Instance, execution: &ExecutionContext<'a>) -> Self {
         Self {
+            invocation_counters: crate::invocation_counter::new_state(*execution),
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
@@ -195,6 +199,7 @@ impl<'a> ScopeContext<'a> {
         execution: &ExecutionContext<'a>,
     ) -> Self {
         Self {
+            invocation_counters: crate::invocation_counter::new_state(*execution),
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
@@ -455,6 +460,7 @@ impl<'a> ScopeContext<'a> {
                 execution: self.execution,
                 dynamic_source_loader: self.dynamic_source_loader,
                 filter_map: self.filter_map.clone(),
+                invocation_counters: self.invocation_counters.clone(),
             }
         })
     }
@@ -509,6 +515,7 @@ impl<'a> ScopeContext<'a> {
             execution: self.execution,
             dynamic_source_loader: self.dynamic_source_loader,
             filter_map: self.filter_map.clone(),
+            invocation_counters: self.invocation_counters.clone(),
         }
     }
 
@@ -546,6 +553,7 @@ impl<'a> ScopeContext<'a> {
             execution: self.execution,
             dynamic_source_loader: self.dynamic_source_loader,
             filter_map: self.filter_map.clone(),
+            invocation_counters: self.invocation_counters.clone(),
         }
     }
 
