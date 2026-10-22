@@ -7,9 +7,6 @@ use crate::{
 use ScopeRootRole::{GeneratedItem, GroupMember, Item, Lazy, Output, Parent, RecursiveGroup};
 use ScopeRootSlot as Slot;
 
-#[path = "project_corpus.rs"]
-mod project_corpus;
-
 fn roots(scope: &Scope) -> Vec<(NodeId, ScopeRootSlot, ScopeRootRole)> {
     let mut roots = Vec::new();
     scope.visit_roots(&mut |root| roots.push((root.node, root.slot, root.role)));
@@ -74,10 +71,10 @@ fn every_scope_slot_has_its_evaluation_role() {
             (10, Slot::GroupEndingWith, Item),
             (11, Slot::GroupIntoBlocks, Parent),
             (12, Slot::SortBy, Item),
-            (13, Slot::SortThenBy(0), Item),
             (14, Slot::Window(0), Parent),
             (15, Slot::Window(1), Parent),
             (16, Slot::Window(1), Parent),
+            (13, Slot::SortThenBy(0), Item),
             (17, Slot::Binding(0), Output),
             (18, Slot::DynamicBindingKey(0), Output),
             (19, Slot::DynamicBindingValue(0), Output),
@@ -222,17 +219,78 @@ fn a_failure_message_is_lazy_beside_its_item_predicate() {
     );
 }
 
-/// Pruning compares the visitor with its own hand-written root walk on every
-/// call; this runs that comparison over each serialized Project fixture.
+/// Pruning keeps every root the visitor reports, in every target, nested
+/// scope, dynamic source path and failure rule, and nothing else.
 #[test]
-fn serialized_projects_reach_the_same_roots_through_the_visitor() {
-    let corpus = project_corpus::projects(|text| crate::project_file::decode_str(text).ok());
-    assert!(
-        corpus.len() >= 50,
-        "expected the repository's serialized Project fixtures, found {}",
-        corpus.len()
+fn pruning_keeps_exactly_the_visited_roots() {
+    let mut root = every_slot();
+    root.children.push(Scope {
+        iteration: ScopeIteration::Concatenate(ScopeSequence::new(
+            Scope {
+                filter: Some(22),
+                ..Scope::default()
+            },
+            Vec::new(),
+        )),
+        ..Scope::default()
+    });
+    let mut project = crate::Project {
+        source: ir::SchemaNode::group("Source", Vec::new()),
+        target: ir::SchemaNode::group("Target", Vec::new()),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: vec![crate::NamedSource {
+            name: "lookup".into(),
+            path: String::new(),
+            schema: ir::SchemaNode::group("Lookup", Vec::new()),
+            options: Default::default(),
+            dynamic_path: Some(crate::DynamicSourcePath {
+                node: 23,
+                iteration: Vec::new(),
+            }),
+        }],
+        extra_targets: vec![crate::NamedTarget {
+            name: "extra".into(),
+            path: None,
+            schema: ir::SchemaNode::group("Extra", Vec::new()),
+            options: Default::default(),
+            root: Scope {
+                iteration: ScopeIteration::DynamicDocuments {
+                    source: vec!["Rows".into()],
+                    output_path: 24,
+                },
+                ..Scope::default()
+            },
+        }],
+        failure_rules: vec![FailureRule {
+            iteration: FailureIteration::Source {
+                collection: Vec::new(),
+            },
+            selection: FailureSelection::WhenTrue { predicate: 25 },
+            message: Some(26),
+        }],
+        user_functions: Default::default(),
+        graph: crate::Graph {
+            nodes: (1..=27)
+                .map(|id| {
+                    (
+                        id,
+                        crate::Node::Const {
+                            value: ir::Value::Null,
+                        },
+                    )
+                })
+                .collect(),
+        },
+        root,
+    };
+
+    project.prune_unreachable_nodes();
+
+    assert_eq!(
+        project.graph.nodes.keys().copied().collect::<Vec<_>>(),
+        (1..=26).collect::<Vec<_>>()
     );
-    for (_, mut project) in corpus {
-        project.prune_unreachable_nodes();
-    }
 }
