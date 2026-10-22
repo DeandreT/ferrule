@@ -201,3 +201,98 @@ fn counter_evaluations_are_not_memoized_by_node_id() {
         Some(&Value::Int(2))
     );
 }
+
+fn optional_counter_project(condition: Node) -> Project {
+    let mut p = project();
+    p.target = SchemaNode::group(
+        "Output",
+        vec![
+            SchemaNode::group("Maybe", vec![SchemaNode::scalar("Value", ScalarType::Int)])
+                .repeating(),
+        ],
+    );
+    p.graph.nodes.insert(4, condition);
+    p.root = Scope {
+        children: vec![Scope {
+            target_field: "Maybe".into(),
+            iteration: mapping::ScopeIteration::OptionalPresence { condition: 4 },
+            bindings: vec![Binding {
+                target_field: "Value".into(),
+                node: 1,
+            }],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    p
+}
+
+#[test]
+fn optional_presence_skips_counter_effects_but_shares_state_when_present() {
+    for present in [false, true] {
+        let p = optional_counter_project(Node::Const {
+            value: Value::Bool(present),
+        });
+        assert!(engine::validate(&p).is_empty());
+        let context = configured();
+        for _ in 0..2 {
+            let output =
+                engine::run_outputs_with_sources_and_context(&p, &empty(), vec![], &context)
+                    .unwrap();
+            let items = match output.primary.field("Maybe") {
+                Some(Instance::Repeated(items)) => items.as_slice(),
+                None => &[],
+                other => panic!("unexpected optional group: {other:?}"),
+            };
+            assert_eq!(items.len(), usize::from(present));
+            if present {
+                assert_eq!(
+                    items[0].field("Value").and_then(Instance::as_scalar),
+                    Some(&Value::Int(1))
+                );
+            }
+            assert_eq!(
+                output.extras[0]
+                    .instance
+                    .field("Value")
+                    .and_then(Instance::as_scalar),
+                Some(&Value::Int(if present { 2 } else { 1 }))
+            );
+        }
+    }
+}
+
+#[test]
+fn optional_presence_condition_and_body_are_separate_counter_calls() {
+    let mut p = optional_counter_project(Node::Call {
+        function: "equal".into(),
+        args: vec![1, 5],
+    });
+    p.graph.nodes.insert(
+        5,
+        Node::Const {
+            value: Value::Int(1),
+        },
+    );
+    assert!(engine::validate(&p).is_empty());
+    let context = configured();
+    for _ in 0..2 {
+        let output =
+            engine::run_outputs_with_sources_and_context(&p, &empty(), vec![], &context).unwrap();
+        let Some(Instance::Repeated(items)) = output.primary.field("Maybe") else {
+            panic!("present group is missing");
+        };
+        assert_eq!(items.len(), 1);
+        assert_eq!(
+            items[0].field("Value").and_then(Instance::as_scalar),
+            Some(&Value::Int(2))
+        );
+        assert_eq!(
+            output.extras[0]
+                .instance
+                .field("Value")
+                .and_then(Instance::as_scalar),
+            Some(&Value::Int(3))
+        );
+    }
+}
