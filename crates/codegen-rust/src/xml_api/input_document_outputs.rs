@@ -1,22 +1,10 @@
 //! Closed static input admission followed by complete existing mixed XML serialization.
 use super::output_arguments;
 use crate::{EmitError, rust_string};
-use codegen::{Program, ProgramValidationError};
+use codegen::{Program, ProgramValidationError, XmlEmissionPlan};
 
-pub(super) fn render(program: &Program) -> Result<String, EmitError> {
-    if program.xml_output_mode()?
-        != Some(codegen::XmlOutputMode::StaticNamedInputsStaticPrimaryDynamicNamedDocuments)
-    {
-        return Err(ProgramValidationError::InvalidXmlBoundary {
-            reason: "static input mixed XML outputs require their checked adapter mode".into(),
-        }
-        .into());
-    }
-    let policy = program.xml_boundary.as_ref().ok_or_else(|| {
-        ProgramValidationError::InvalidXmlBoundary {
-            reason: "XML document outputs require a boundary".into(),
-        }
-    })?;
+pub(super) fn render(program: &Program, plan: &XmlEmissionPlan<'_>) -> Result<String, EmitError> {
+    let policy = plan.policy();
     if policy.extra_outputs.len() != program.extra_targets.len()
         || program
             .extra_targets
@@ -238,7 +226,7 @@ mod tests {
                 project.extra_targets.swap(0, 1);
             }
             let program = codegen::lower(&project).unwrap();
-            let output = render(&program).unwrap();
+            let output = super::super::render(&program).unwrap();
             for (index, input) in program.extra_sources.iter().enumerate() {
                 let descriptor = codegen::serialize_embedded_schema(
                     &input.source,
@@ -283,7 +271,7 @@ mod tests {
 
     #[test]
     fn complete_inputs_precede_mapping_and_alignment_count_precede_serialization() {
-        let output = render(&program()).unwrap();
+        let output = super::super::render(&program()).unwrap();
         let count = output
             .find("XmlInputSetBudget::new(inputs.len().saturating_add(1))")
             .unwrap();
