@@ -3569,6 +3569,7 @@ dependencies = [
  "ir",
  "libc",
  "mapping",
+ "pdf-worker",
  "serde",
  "serde_json",
  "sha2 0.10.9",
