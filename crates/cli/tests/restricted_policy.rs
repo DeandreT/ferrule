@@ -329,15 +329,29 @@ fn dynamic_source_paths_are_checked_for_every_driver_item() {
             .find_map(|cause| cause.downcast_ref::<engine::EngineError>())
             .unwrap_or_else(|| panic!("no engine error in {error:#}"));
         match engine_error {
-            engine::EngineError::DynamicSourceRefused {
-                source_name,
-                refusal: cli::PolicyRefusal::PathOutsideRoots { access, .. },
-            } => {
-                assert_eq!(source_name, "document");
+            engine::EngineError::DynamicSourceRefused(refused) => {
+                assert_eq!(refused.source_name, "document");
+                assert_eq!(refused.path, denied);
+                let cli::PolicyRefusal::PathOutsideRoots { access, .. } = &refused.refusal else {
+                    panic!("unexpected refusal {:?}", refused.refusal);
+                };
                 assert_eq!(*access, cli::PathAccess::Read);
             }
             other => panic!("unexpected error {other:?}"),
         }
+        // A refusal projects as a host acquisition failure, as a confining
+        // generated-library host would report it.
+        let diagnostic = engine::DynamicSourceDiagnostic::find(error.as_ref())
+            .expect("projected dynamic-source refusal");
+        assert_eq!(
+            (
+                diagnostic.phase.as_str(),
+                diagnostic.category.as_str(),
+                diagnostic.endpoint.as_str(),
+                diagnostic.path.as_deref(),
+            ),
+            ("acquisition", "host", "document", Some(denied))
+        );
         // Trusted runs keep loading dynamic absolute and relative paths.
         run(&project, &files, &output, None).unwrap();
     }

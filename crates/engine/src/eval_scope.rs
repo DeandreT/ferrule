@@ -229,25 +229,12 @@ pub(crate) fn eval_scope(
                     found: path.type_name(),
                 });
             };
-            let loaded = match program.restricted {
-                None => loader
-                    .load(&source.name, &path)
-                    .map_err(crate::DynamicSourceLoadError::Failed),
-                Some(policy) => loader.load_restricted(&source.name, &path, policy),
-            };
-            let instance = loaded.map_err(|error| match error {
-                crate::DynamicSourceLoadError::Refused(refusal) => {
-                    EngineError::DynamicSourceRefused {
-                        source_name: source.name.clone(),
-                        refusal,
-                    }
-                }
-                crate::DynamicSourceLoadError::Failed(message) => EngineError::DynamicSourceLoad {
-                    source_name: source.name.clone(),
-                    path,
-                    message,
-                },
-            })?;
+            let instance = crate::dynamic_source::load_document(
+                loader,
+                program.restricted,
+                &source.name,
+                path,
+            )?;
             loaded_dynamic.push((driver_index, instance));
         }
     }
