@@ -158,7 +158,7 @@ pub fn show(
                 || input.consume_key(egui::Modifiers::NONE, egui::Key::Backspace)
         });
     if delete {
-        viewer.remove_snarl_nodes_from_ui(ui, &selected, snarl);
+        viewer.remove_snarl_nodes_recorded(&selected, snarl);
     }
     let frame = style
         .bg_frame
