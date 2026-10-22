@@ -6,6 +6,8 @@
 //! which fixes the order of join validation issues and of owned admission
 //! errors.
 
+use std::collections::BTreeSet;
+
 use mapping::{NodeId, Scope, ScopeRootSlot as Slot};
 
 /// This scope's admitted roots, in visit order.
@@ -37,6 +39,22 @@ pub(crate) fn ranked_roots<R: Ord>(scope: &Scope, rank: impl Fn(Slot) -> Option<
 /// unframed empty-path fields, so neither names a source.
 pub(crate) fn required_source(slot: Slot) -> bool {
     slot != Slot::SequenceReservedItem
+}
+
+/// The roots a scope reads from the shared graph, which item-ownership
+/// validation checks against generated items: every root except a generated
+/// sequence's private item identities.
+pub(crate) fn shared_graph(slot: Slot) -> bool {
+    !matches!(slot, Slot::SequenceItem | Slot::SequenceReservedItem)
+}
+
+/// Adds the shared-graph roots of `scope` and its nested scopes to `roots`.
+pub(crate) fn shared_graph_roots(scope: &Scope, roots: &mut BTreeSet<NodeId>) {
+    scope.visit_tree_roots(&mut |root| {
+        if shared_graph(root.slot) {
+            roots.insert(root.node);
+        }
+    });
 }
 
 /// Whether a scope needs owned evaluation is decided by its controls,
@@ -187,3 +205,7 @@ pub(crate) fn admitted(slot: Slot) -> Option<AdmittedRoot> {
 #[cfg(test)]
 #[path = "tests/scope_slots.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/project_corpus.rs"]
+pub(crate) mod project_corpus;
