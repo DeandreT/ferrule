@@ -151,6 +151,7 @@ internal static partial class Program
             ("JSON independent object-item output nullability", JsonObjectItemOutputNullability),
             ("JSON object-item metadata and legacy gates", JsonObjectItemMetadataGates),
             ("JSON object-item pattern-schema equality", JsonObjectItemPatternSchemaEquality),
+            ("JSON independent scalar-item nullability", JsonScalarItemNullability),
             ("JSON required and undeclared property precedence", JsonRequiredPropertyPrecedence),
             ("JSON String-or-Int integer ranges", JsonStringIntRangeBoundaries),
             ("JSON duplicate schema declarations", JsonDuplicateDeclarationMaterialization),

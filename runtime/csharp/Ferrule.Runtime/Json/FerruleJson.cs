@@ -3508,7 +3508,8 @@ public static partial class FerruleJson
 
         public bool ContainerNullable { get; private set; }
         public bool? JsonObjectItemNullable { get; private set; }
-        public bool SingleContainerNullable => JsonObjectItemNullable ?? ContainerNullable;
+        // Scalar items admit null only through their own Nullable value domain.
+        public bool SingleContainerNullable => !IsScalar && (JsonObjectItemNullable ?? ContainerNullable);
         public bool JsonArrayWrapper { get; }
 
         public bool JsonAny { get; }

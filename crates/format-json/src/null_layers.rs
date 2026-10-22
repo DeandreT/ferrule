@@ -85,9 +85,10 @@ pub(crate) struct InstanceNull {
     /// values or nested arrays. A missing property of such a node reads as
     /// absent rather than as an empty array.
     pub(crate) whole: bool,
-    /// One singular object or array item is `null` before its own shape is
-    /// read or written. Nested-array frames and arbitrary JSON never consult
-    /// it: their items are owned by the frame's `item` child or are JSON text.
+    /// One singular object or object-array item is `null` before its own
+    /// shape is read or written. Nested-array frames and arbitrary JSON never
+    /// consult it: their items are owned by the frame's `item` child or are
+    /// JSON text. Scalar array items admit null only through `value`.
     pub(crate) single: bool,
     /// The scalar value, or each scalar item, is `null`.
     pub(crate) value: bool,
@@ -99,9 +100,9 @@ pub(crate) fn instance_null(node: &SchemaNode) -> Result<InstanceNull, JsonForma
     let single = match (layers.array, &node.kind) {
         (false, _) => layers.container_null,
         (true, SchemaKind::Group { .. }) => layers.object_item_null,
-        // Known gap #924: a scalar array item still admits null whenever its
-        // array container does; the declared item domain is `value`.
-        (true, SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }) => layers.container_null,
+        // A scalar item's null belongs to its declared value domain, never to
+        // the array container.
+        (true, SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }) => false,
     };
     Ok(InstanceNull {
         whole: layers.container_null,

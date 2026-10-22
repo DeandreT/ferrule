@@ -1580,7 +1580,9 @@ both generated readers and writers. Schemas with explicit
 `json_object_item_nullable` metadata use embedded descriptor version 4, which
 older runtimes reject. Schemas without this metadata keep their existing
 descriptor bytes and item behavior. The selected JSON5 companion profile
-rejects explicit object-item metadata.
+rejects explicit object-item metadata. Scalar arrays likewise admit a null
+item only when the item's own value domain is nullable, independent of
+array-container nullability.
 
 Rust:
 
