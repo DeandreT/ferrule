@@ -178,10 +178,21 @@ fn owned_aggregates_lower_exactly_and_stay_demand_driven() {
 
 #[test]
 fn decimal_sum_stays_closed_for_owned_aggregate_profiles() {
+    assert_owned_reducer_refused(AggregateOp::DecimalSum);
+}
+
+#[test]
+fn ordered_text_owned_aggregate_profiles_refuse_new_selectors() {
+    for function in [AggregateOp::LastPresentText, AggregateOp::LastDistinctText] {
+        assert_owned_reducer_refused(function);
+    }
+}
+
+fn assert_owned_reducer_refused(function: AggregateOp) {
     for (id, owner) in [(2, SourceOwner::Primary), (3, named()), (99, named())] {
         let mut p = project();
         let mut aggregate = sum(owner.clone());
-        aggregate.function = AggregateOp::DecimalSum;
+        aggregate.function = function;
         let mut direct = lower_with_basic_owned_collection_aggregates(&p).unwrap();
         if id == 99 {
             direct.expressions.push(ExpressionNode {

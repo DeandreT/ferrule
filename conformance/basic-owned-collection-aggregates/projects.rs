@@ -279,7 +279,9 @@ fn every_reducer(project: &mut Project, name: &str, audit: bool) {
             AggregateOp::Sum | AggregateOp::Avg => &["Rank"],
             AggregateOp::Min | AggregateOp::Max => &["Price"],
             AggregateOp::Join | AggregateOp::ItemAt => &["Name"],
-            AggregateOp::DecimalSum => {
+            AggregateOp::DecimalSum
+            | AggregateOp::LastPresentText
+            | AggregateOp::LastDistinctText => {
                 unreachable!("the owned corpus includes only its seven qualified reducers")
             }
         };
@@ -554,7 +556,9 @@ pub fn project(profile: &str) -> Project {
                     AggregateOp::Avg => (&["Rank"], None),
                     AggregateOp::Join => (&["Code"], Some(46)),
                     AggregateOp::ItemAt => (&["Code"], Some(45)),
-                    AggregateOp::DecimalSum => {
+                    AggregateOp::DecimalSum
+                    | AggregateOp::LastPresentText
+                    | AggregateOp::LastDistinctText => {
                         unreachable!("the owned corpus includes only its seven qualified reducers")
                     }
                 };
