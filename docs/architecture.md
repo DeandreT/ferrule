@@ -118,8 +118,12 @@ A ferrule project is plain JSON built from four main concepts:
    item bounds and value or nested-array items) and the null-like values each
    layer admits: XML nil, and JSON null for a single occurrence or separately
    for an array and its items. Absence is never one of those values.
-   Contradictory role metadata has no view. Consumers that combine these facts
-   should use the view rather than re-reading the individual flags.
+   Contradictory role metadata has no view. `effective_xml_view` and
+   `effective_json_nullability` derive one layer alone, so a boundary that
+   consults only XML or only JSON is unaffected by the other format's metadata;
+   the XSD and JSON Schema exporters write occurrences, attribute use, nil and
+   null from these layers. Consumers that combine these facts should use the
+   views rather than re-reading the individual flags.
 2. **Graph nodes** compute scalar values. Nodes read source fields and positions,
    hold constants, call built-in functions, branch lazily, translate value maps,
    perform lookups and joins, reduce collections, and access selected runtime

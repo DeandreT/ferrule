@@ -62,6 +62,8 @@ mod temperature_native;
 mod tests;
 
 #[cfg(test)]
+mod exception_presence_tests;
+#[cfg(test)]
 mod filter_map_model_tests;
 mod udf;
 mod wsdl;
