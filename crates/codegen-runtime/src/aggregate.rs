@@ -11,6 +11,8 @@ pub enum AggregateFunction {
     Join,
     ItemAt,
     DecimalSum,
+    LastPresentText,
+    LastDistinctText,
 }
 
 /// Append an ordinary aggregate operand, or advance a decimal fold immediately.
@@ -39,6 +41,37 @@ pub fn aggregate(
     arg: Option<Value>,
 ) -> Result<Value, RuntimeError> {
     match function {
+        AggregateFunction::LastPresentText | AggregateFunction::LastDistinctText => {
+            if arg.is_some() {
+                return Err(crate::FunctionError::InvalidArgument {
+                    function: if function == AggregateFunction::LastPresentText {
+                        "last_present_text"
+                    } else {
+                        "last_distinct_text"
+                    },
+                    message: "does not accept an argument",
+                }
+                .into());
+            }
+            let distinct = function == AggregateFunction::LastDistinctText;
+            let mut seen = std::collections::HashSet::new();
+            let mut selected = None;
+            for value in values {
+                if matches!(value, Value::Null) {
+                    continue;
+                }
+                let Value::String(text) = value else {
+                    return Err(RuntimeError::AggregateUnsupportedScalar {
+                        function,
+                        found: value.type_name(),
+                    });
+                };
+                if !distinct || seen.insert(text.as_str()) {
+                    selected = Some(text.clone());
+                }
+            }
+            Ok(selected.map_or(Value::Null, Value::String))
+        }
         AggregateFunction::DecimalSum => {
             if arg.is_some() {
                 return Err(crate::FunctionError::InvalidArgument {

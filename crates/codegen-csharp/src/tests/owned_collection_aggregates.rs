@@ -147,6 +147,20 @@ fn function<'a>(source: &'a str, start: &str) -> &'a str {
 
 #[test]
 fn decimal_sum_stays_closed_for_owned_emission() {
+    assert_owned_reducer_refused(mapping::AggregateOp::DecimalSum);
+}
+
+#[test]
+fn ordered_text_owned_emission_refuses_new_selectors() {
+    for function in [
+        mapping::AggregateOp::LastPresentText,
+        mapping::AggregateOp::LastDistinctText,
+    ] {
+        assert_owned_reducer_refused(function);
+    }
+}
+
+fn assert_owned_reducer_refused(function: mapping::AggregateOp) {
     let mut program = owned_aggregate_program();
     let node = program
         .expressions
@@ -156,7 +170,7 @@ fn decimal_sum_stays_closed_for_owned_emission() {
     let codegen::Expression::OwnedAggregate(aggregate) = &mut node.expression else {
         panic!("expected owned aggregate");
     };
-    aggregate.function = mapping::AggregateOp::DecimalSum;
+    aggregate.function = function;
     let result = crate::emit_with_basic_owned_collection_aggregates(&program);
     assert!(
         matches!(&result, Err(crate::EmitError::ProgramValidation(error)) if *error == closed_aggregate()),

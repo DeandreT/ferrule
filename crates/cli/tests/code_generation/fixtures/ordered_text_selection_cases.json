@@ -1,0 +1,16 @@
+[
+  {"id":"empty","input":{"Rows":[]},"expected":{"Last":"","Distinct":"","Present":false}},
+  {"id":"missing","input":{"Rows":[{},{}]},"expected":{"Last":"","Distinct":"","Present":false}},
+  {"id":"repeated-first","input":{"Rows":[{"Text":"A"},{"Text":"B"},{"Text":"A"}]},"expected":{"Last":"A","Distinct":"B","Present":true}},
+  {"id":"missing-tail","input":{"Rows":[{"Text":"A"},{"Text":"B"},{}]},"expected":{"Last":"B","Distinct":"B","Present":true}},
+  {"id":"empty-is-present","input":{"Rows":[{"Text":""}]},"expected":{"Last":"","Distinct":"","Present":true}},
+  {"id":"distinct-empty","input":{"Rows":[{"Text":"A"},{"Text":""},{"Text":"A"}]},"expected":{"Last":"A","Distinct":"","Present":true}},
+  {"id":"whitespace","input":{"Rows":[{"Text":" X "},{"Text":"X"},{"Text":" X "}]},"expected":{"Last":" X ","Distinct":"X","Present":true}},
+  {"id":"ordinal-unicode","input":{"Rows":[{"Text":"é"},{"Text":"é"},{"Text":"é"}]},"expected":{"Last":"é","Distinct":"é","Present":true}},
+  {"id":"ordinal-case","input":{"Rows":[{"Text":"A"},{"Text":"a"},{"Text":"A"}]},"expected":{"Last":"A","Distinct":"a","Present":true}},
+  {"id":"null-first","input":{"Rows":[{"Text":null},{"Text":"A"}]},"error":"unsupported"},
+  {"id":"corrected-retry","input":{"Rows":[{"Text":"A"},{"Text":"B"},{"Text":"A"}]},"expected":{"Last":"A","Distinct":"B","Present":true}},
+  {"id":"null-middle","input":{"Rows":[{"Text":"A"},{"Text":null},{"Text":"B"}]},"error":"unsupported"},
+  {"id":"null-last","input":{"Rows":[{"Text":"A"},{"Text":"B"},{"Text":null}]},"error":"unsupported"},
+  {"id":"after-failures","input":{"Rows":[{"Text":"C"}]},"expected":{"Last":"C","Distinct":"C","Present":true}}
+]

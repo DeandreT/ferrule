@@ -70,6 +70,8 @@ fn aggregate_label(function: AggregateOp) -> &'static str {
         AggregateOp::Count => "count",
         AggregateOp::Sum => "sum",
         AggregateOp::DecimalSum => "decimal sum",
+        AggregateOp::LastPresentText => "last present text",
+        AggregateOp::LastDistinctText => "last distinct text",
         AggregateOp::Avg => "average",
         AggregateOp::Min => "min",
         AggregateOp::Max => "max",

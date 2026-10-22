@@ -609,6 +609,37 @@ impl SequenceItemAtPolicy {
 }
 
 #[cfg(test)]
+mod ordered_text_admission_tests {
+    use super::*;
+
+    #[test]
+    fn existing_owned_aggregate_profile_does_not_admit_new_text_selectors() {
+        for function in [
+            crate::AggregateFunction::Sum,
+            crate::AggregateFunction::LastPresentText,
+            crate::AggregateFunction::LastDistinctText,
+        ] {
+            let expression = Expression::SequenceAggregate {
+                function,
+                sequence: crate::GeneratedSequence::Tokenize {
+                    input: 1,
+                    delimiter: 2,
+                    item: 3,
+                },
+                predicate: None,
+                expression: Some(3),
+                arg: None,
+            };
+            assert_eq!(
+                SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate
+                    .permits(&expression),
+                function == crate::AggregateFunction::Sum
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod decimal_owned_admission_tests {
     use super::*;
 
@@ -629,7 +660,16 @@ mod decimal_owned_admission_tests {
             assert_eq!(
                 SequenceItemAtPolicy::BasicScalarProducersWithExistsAndAggregate
                     .permits(&expression),
-                *function != crate::AggregateFunction::DecimalSum
+                matches!(
+                    function,
+                    crate::AggregateFunction::Count
+                        | crate::AggregateFunction::Sum
+                        | crate::AggregateFunction::Avg
+                        | crate::AggregateFunction::Min
+                        | crate::AggregateFunction::Max
+                        | crate::AggregateFunction::Join
+                        | crate::AggregateFunction::ItemAt
+                )
             );
         }
     }

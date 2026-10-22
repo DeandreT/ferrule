@@ -1,0 +1,24 @@
+use codegen_runtime::{AggregateFunction, RuntimeError, parse_json, serialize_json_compact};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cases: serde_json::Value = serde_json::from_str(include_str!("../cases.json"))?;
+    for case in cases.as_array().unwrap() {
+        let input = parse_json(include_str!("../source-schema.json"), &case["input"].to_string())?;
+        let result = execute(&input);
+        if case.get("error").is_some() {
+            match result {
+                Err(error @ RuntimeError::AggregateUnsupportedScalar { function: AggregateFunction::LastPresentText, found: "json null" }) =>
+                    println!("OBSERVATION {}", serde_json::json!({"id":case["id"],"error":"unsupported","detail":format!("{error:?}")})),
+                actual => panic!("{}: unexpected result {actual:?}", case["id"]),
+            }
+        } else {
+            let text = serialize_json_compact(include_str!("../target-schema.json"), &result?)?;
+            let output: serde_json::Value = serde_json::from_str(&text)?;
+            assert_eq!(output, case["expected"], "{}", case["id"]);
+            println!("OBSERVATION {}", serde_json::json!({"id":case["id"],"output":output}));
+        }
+        println!("PASS {}", case["id"]);
+    }
+    Ok(())
+}
