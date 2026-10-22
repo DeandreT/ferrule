@@ -798,7 +798,7 @@ mod tests {
             "UserFunction_1_Node_1(\n        global::Ferrule.Runtime.ScopeContext context"
         ));
         assert!(source.contains(
-            "context.ResolveRuntimeValue(global::Ferrule.Runtime.FerruleRuntimeValue.CurrentDateTime)"
+            "context.ResolveRuntimeValue(global::Ferrule.Runtime.FerruleRuntimeValue.CurrentDateTime, 1U)"
         ));
         Ok(())
     }
