@@ -38,6 +38,7 @@ public static partial class FerruleFunctions
         int MinimumWidth,
         int MaximumWidth,
         int? FixedWidth,
+        int? FormatWidth,
         DateTimePictureLetterCase? LetterCase) : DateTimePicturePart;
 
     private static FerruleValue ParseDate(IReadOnlyList<FerruleValue> arguments)
@@ -344,6 +345,9 @@ public static partial class FerruleFunctions
         var fixedWidth = parsedWidth.Value.Minimum == parsedWidth.Value.Maximum
             ? parsedWidth.Value.Minimum
             : presentationWidth;
+        // Rendering defaults do not narrow the accepted input picture width.
+        var formatWidth = fixedWidth ?? (width is null && modifier.Length == 0 &&
+            field is DateTimePictureField.Minute or DateTimePictureField.Second ? 2 : (int?)null);
         var letterCase = (field, modifier) switch
         {
             (DateTimePictureField.MonthName, "N") or
@@ -359,6 +363,7 @@ public static partial class FerruleFunctions
             parsedWidth.Value.Minimum,
             parsedWidth.Value.Maximum,
             fixedWidth,
+            formatWidth,
             letterCase);
     }
 
