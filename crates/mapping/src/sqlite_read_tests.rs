@@ -128,16 +128,53 @@ fn schema_shape_is_validated_before_the_descriptor() {
             .reason,
         QueryProfileReason::SchemaNotRepeatingGroup
     );
-    let mut generated = schema();
-    if let SchemaKind::Group { children, .. } = &mut generated.kind {
-        children[0].value_generation = Some(ir::ValueGeneration::MaxNumber);
-    }
+    let generated = |index: usize, ty: Option<ScalarType>| {
+        let mut schema = schema();
+        if let SchemaKind::Group { children, .. } = &mut schema.kind {
+            if let Some(ty) = ty {
+                children[index].kind = SchemaKind::Scalar { ty };
+            }
+            children[index].value_generation = Some(ir::ValueGeneration::MaxNumber);
+        }
+        schema
+    };
+    // The `import-db` marker on the projected Int key is inert for a read.
+    let plan = validate_sqlite_read_profile(&generated(0, None), &profile()).unwrap();
     assert_eq!(
-        validate_sqlite_read_profile(&generated, &profile())
-            .unwrap_err()
-            .path,
-        "schema/id"
+        plan,
+        validate_sqlite_read_profile(&schema(), &profile()).unwrap()
     );
+    // Any other generated field still refuses before the descriptor.
+    let refused = |schema: &SchemaNode, profile: &SqliteReadProfile| {
+        let error = validate_sqlite_read_profile(schema, profile).unwrap_err();
+        (error.path, error.reason)
+    };
+    for (schema, path) in [
+        (generated(2, None), "schema/score"),
+        (generated(0, Some(ScalarType::String)), "schema/id"),
+    ] {
+        assert_eq!(
+            refused(&schema, &edited(|value| value["table"] = "".into())),
+            (
+                path.to_owned(),
+                QueryProfileReason::SchemaFieldNotPlainScalar
+            )
+        );
+    }
+    let other_key = edited(|value| {
+        value["key"] = "score".into();
+        value["order_by"] = serde_json::json!([
+            {"column": "score", "type": "int", "direction": "asc", "nulls": "last"}
+        ]);
+    });
+    assert_eq!(
+        refused(&generated(0, None), &other_key),
+        (
+            "schema/id".to_owned(),
+            QueryProfileReason::SchemaFieldNotPlainScalar
+        )
+    );
+    assert!(validate_sqlite_read_profile(&generated(2, None), &other_key).is_ok());
 }
 
 #[test]

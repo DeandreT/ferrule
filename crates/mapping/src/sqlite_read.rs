@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use ir::{ScalarType, SchemaKind, SchemaNode};
+use ir::{ScalarType, SchemaKind, SchemaNode, ValueGeneration};
 use serde::{Deserialize, Serialize};
 
 use crate::{FormatOptions, Project};
@@ -233,7 +233,7 @@ impl fmt::Display for QueryProfileReason {
                 f.write_str("the source schema must be a repeating group of scalar fields")
             }
             Self::SchemaFieldNotPlainScalar => f.write_str(
-                "each field must be a nonrepeating String, Int, Float or Bool scalar without other format metadata",
+                "each field must be a nonrepeating String, Int, Float or Bool scalar without other format metadata; only the Int field projected from the key may be generated",
             ),
             Self::DuplicateSchemaField => f.write_str("schema field names must be distinct"),
             Self::EmptyIdentifier => f.write_str("identifier must not be empty"),
@@ -382,7 +382,7 @@ pub fn validate_sqlite_read_profile(
     profile: &SqliteReadProfile,
 ) -> Result<ValidatedSqliteRead, QueryProfileError> {
     let SqliteReadProfile::SqliteReadV1(profile) = profile;
-    let fields = schema_fields(schema)?;
+    let fields = schema_fields(schema, profile)?;
     identifier("/table", &profile.table)?;
     identifier("/key", &profile.key)?;
 
@@ -572,7 +572,13 @@ pub fn validate_sqlite_read_profile(
     })
 }
 
-fn schema_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, QueryProfileError> {
+/// The generated-key marker `import-db` writes on a rowid alias is inert for
+/// a read, so it is admitted only on the Int field projected from the key;
+/// the reader still proves that column is the table's rowid alias.
+fn schema_fields<'s>(
+    schema: &'s SchemaNode,
+    profile: &SqliteReadV1,
+) -> Result<Vec<(&'s str, ScalarType)>, QueryProfileError> {
     let SchemaKind::Group { children, .. } = &schema.kind else {
         return Err(error("schema", QueryProfileReason::SchemaNotRepeatingGroup));
     };
@@ -586,7 +592,14 @@ fn schema_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, QueryPr
         let SchemaKind::Scalar { ty } = child.kind else {
             return Err(error(&path, QueryProfileReason::SchemaFieldNotPlainScalar));
         };
-        if *child != SchemaNode::scalar(child.name.clone(), ty) {
+        let mut plain = SchemaNode::scalar(child.name.clone(), ty);
+        if child.value_generation == Some(ValueGeneration::MaxNumber)
+            && ty == ScalarType::Int
+            && projects_key(profile, index, &child.name)
+        {
+            plain.value_generation = child.value_generation;
+        }
+        if *child != plain {
             return Err(error(&path, QueryProfileReason::SchemaFieldNotPlainScalar));
         }
         if children[..index]
@@ -601,6 +614,14 @@ fn schema_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, QueryPr
         return Err(error("schema", QueryProfileReason::SchemaNotRepeatingGroup));
     }
     Ok(fields)
+}
+
+/// Projection follows schema order, so field `index` maps to entry `index`.
+fn projects_key(profile: &SqliteReadV1, index: usize, field: &str) -> bool {
+    profile
+        .projection
+        .get(index)
+        .is_some_and(|entry| entry.field == field && same_identifier(&entry.column, &profile.key))
 }
 
 /// Agreed scalar types for distinct columns, in first-use order.

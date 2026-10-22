@@ -501,8 +501,11 @@ fields through an ordered projection, a conjunction of `eq`, `ne`, `lt`, `le`,
 `gt` and `ge` comparisons with typed named parameters or explicit NULL tests,
 and an order that ends with the proved `INTEGER PRIMARY KEY` ascending. The
 descriptor carries no SQL text. It cannot be combined with other format options
-and never falls back to an ordinary table read. Existing table reads, imported
-query lowering and full-replace writes are unchanged.
+and never falls back to an ordinary table read. Existing table reads and
+imported query lowering are unchanged. When a full-replace write creates a
+missing table, it declares a sole generated column `INTEGER PRIMARY KEY` and
+Bool columns `BOOLEAN`, so the table's `import-db` schema can carry a query
+without edits.
 
 Each query parameter binds one required runtime parameter of exactly its
 declared type, supplied with `--param NAME=VALUE` or as a typed host value and
