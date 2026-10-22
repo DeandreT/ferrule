@@ -66,7 +66,10 @@ pub use debug::{
     PendingFunctionNodeValue, PendingNodeFailure, PendingNodeInput, PendingNodeValue,
     PendingTargetWrite,
 };
-pub use documents::{DocumentVisit, DocumentVisitError, visit_target_documents};
+pub use documents::{
+    DocumentFilenameClock, DocumentVisit, DocumentVisitError, DocumentVisitOptions,
+    visit_target_documents, visit_target_documents_with_options,
+};
 pub use filter_map::{
     FilterMapBoundary, FilterMapBoundaryKind, FilterMapBudgetKind, FilterMapCancellation,
     FilterMapLimitError, FilterMapLimits, FilterMapPhase, MAX_FILTER_MAP_SOURCE_ITEMS,
@@ -281,6 +284,8 @@ pub enum OwnedCapabilityContext {
 
 #[derive(Debug, Error, PartialEq)]
 pub enum EngineError {
+    #[error("filename clock at node {node} failed: {message}")]
+    DocumentFilenameClock { node: NodeId, message: String },
     #[error("document streaming is unsupported: {reason}")]
     DocumentStreamUnsupported { reason: &'static str },
     #[error("graph node {node}: invocation counters require explicit host limits")]

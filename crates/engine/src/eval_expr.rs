@@ -24,6 +24,8 @@ use crate::{DebugHook, EngineError, ExecutionPurpose};
 
 #[derive(Clone, Copy)]
 pub(crate) struct EvalProgram<'a> {
+    document_filename_clock: Option<&'a dyn crate::DocumentFilenameClock>,
+    evaluating_document_filename: bool,
     pub(crate) invocation_counters: Option<&'a RefCell<functions::InvocationCounters>>,
     pub(crate) graph: &'a Graph,
     pub(crate) user_functions: &'a BTreeMap<FunctionId, UserFunction>,
@@ -52,6 +54,8 @@ impl<'a> EvalProgram<'a> {
         first_failure_reported: &'a Cell<bool>,
     ) -> Self {
         Self {
+            document_filename_clock: None,
+            evaluating_document_filename: false,
             invocation_counters: None,
             graph,
             user_functions,
@@ -86,6 +90,19 @@ impl<'a> EvalProgram<'a> {
         counters: Option<&'a RefCell<functions::InvocationCounters>>,
     ) -> Self {
         self.invocation_counters = counters;
+        self
+    }
+
+    pub(crate) fn with_document_filename_clock(
+        mut self,
+        clock: Option<&'a dyn crate::DocumentFilenameClock>,
+    ) -> Self {
+        self.document_filename_clock = clock;
+        self
+    }
+
+    pub(crate) fn for_document_filename(mut self) -> Self {
+        self.evaluating_document_filename = true;
         self
     }
 
@@ -447,12 +464,27 @@ fn eval_expr_inner(
         Node::FunctionParameter { .. } => {
             Err(EngineError::FunctionParameterOutsideFunction { node: node_id })
         }
-        Node::RuntimeValue { value } => context
-            .first()
-            .and_then(|frame| frame.field(runtime_field(*value)))
-            .and_then(Instance::as_scalar)
-            .cloned()
-            .ok_or(EngineError::MissingRuntimeValue(*value)),
+        Node::RuntimeValue { value } => {
+            if program.evaluating_document_filename
+                && *value == mapping::RuntimeValue::CurrentDateTime
+                && let Some(clock) = program.document_filename_clock
+            {
+                clock
+                    .sample_datetime()
+                    .map(Value::String)
+                    .map_err(|message| EngineError::DocumentFilenameClock {
+                        node: node_id,
+                        message,
+                    })
+            } else {
+                context
+                    .first()
+                    .and_then(|frame| frame.field(runtime_field(*value)))
+                    .and_then(Instance::as_scalar)
+                    .cloned()
+                    .ok_or(EngineError::MissingRuntimeValue(*value))
+            }
+        }
         Node::InvocationCounter {
             key,
             start,
