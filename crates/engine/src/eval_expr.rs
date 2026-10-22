@@ -289,15 +289,13 @@ fn eval_expr_inner(
         },
         Node::OwnedPosition(position) => match program.owned_context {
             Some(context) => {
-                let slot = context
-                    .position_slot(&position.owner, position.collection.as_deref())
+                let index = context
+                    .position(&position.owner, position.collection.as_deref(), positions)
                     .map_err(|source| EngineError::OwnedSourceAccess {
                         node: Some(node_id),
                         scope: None,
                         source,
-                    })?;
-                let index = positions
-                    .get(slot)
+                    })?
                     .ok_or_else(|| EngineError::OwnedSourceAccess {
                         node: Some(node_id),
                         scope: None,

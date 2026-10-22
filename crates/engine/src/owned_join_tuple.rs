@@ -15,6 +15,7 @@ use mapping::{
 };
 
 use crate::eval_expr::EvalProgram;
+use crate::frame_view::latest_owned;
 use crate::owned_context::{OccurrenceKind, OwnedContext, WorkBudget};
 use crate::source_iteration::{PositionFrame, walk_observed};
 use crate::{EngineError, OwnedSourceError};
@@ -120,17 +121,13 @@ fn members<'a>(
     )?;
     // An identity selection is the active occurrence itself, at its current
     // position; an endpoint root identity is position one.
-    let identity = state
-        .frames
-        .iter()
-        .rev()
-        .find(|frame| {
-            frame.owner == owner
-                && frame.collection == collection.path
-                && frame.kind == OccurrenceKind::Item
-        })
-        .and_then(|frame| positions.get(frame.position_slot))
-        .map_or(1, |position| position.index);
+    let identity = latest_owned(&state.frames, positions, |frame| {
+        frame.owner == owner
+            && frame.collection == collection.path
+            && frame.kind == OccurrenceKind::Item
+    })
+    .and_then(|(_, position)| position)
+    .map_or(1, |position| position.index);
     Ok(rows
         .into_iter()
         .map(|row| {

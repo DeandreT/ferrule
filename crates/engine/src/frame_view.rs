@@ -11,10 +11,15 @@
 //! The view is read-only and additive. Both lists stay authoritative, and the
 //! view reproduces their legacy pairing exactly; each frame's endpoint names
 //! which pairing rule produced its instance, including the legacy fallbacks.
+//!
+//! Owned source frames pair with their legacy positions the other way round:
+//! each frame records the slot of its position. [`latest_owned`]
+//! selects an owned frame and reads its position through that slot.
 
 use ir::Instance;
 use mapping::JoinId;
 
+use crate::owned_context::SourceFrame;
 use crate::source_iteration::PositionFrame;
 
 /// Which instance, if any, corresponds to a frame.
@@ -199,6 +204,19 @@ impl<'v, 'a> FrameView<'v, 'a> {
     pub(crate) fn instance(&self, frame: &Frame<'v>) -> Option<&'a Instance> {
         instance_at(self.instances, frame.endpoint)
     }
+}
+
+/// The latest owned source frame satisfying `select`, innermost first, with
+/// the position its slot names. That frame is authoritative: when its slot
+/// names no position it has none, and selection never falls back to an
+/// earlier frame.
+pub(crate) fn latest_owned<'f, 'a, 'p>(
+    frames: &'f [SourceFrame<'a>],
+    positions: &'p [PositionFrame],
+    select: impl Fn(&SourceFrame<'a>) -> bool,
+) -> Option<(&'f SourceFrame<'a>, Option<&'p PositionFrame>)> {
+    let frame = frames.iter().rev().find(|frame| select(frame))?;
+    Some((frame, positions.get(frame.position_slot)))
 }
 
 /// Where the receiving positions and their wrappers start in the context, or

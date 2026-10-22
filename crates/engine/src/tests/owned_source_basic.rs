@@ -208,7 +208,11 @@ fn position(
     positions: &[PositionFrame],
 ) -> usize {
     let pin = pin.map(path);
-    positions[context.position_slot(owner, pin.as_deref()).unwrap()].index
+    context
+        .position(owner, pin.as_deref(), positions)
+        .unwrap()
+        .expect("the selected frame names a position")
+        .index
 }
 fn extras(extras: Instance) -> Vec<(String, Instance)> {
     let Instance::Group(fields) = extras else {
@@ -472,7 +476,7 @@ fn s10_s11_pin_and_namespace_error_order_is_typed() {
     ));
     for pin in [None, Some(path(&["Rows"]))] {
         assert!(matches!(
-            context.position_slot(&SourceOwner::Primary, pin.as_deref()),
+            context.position(&SourceOwner::Primary, pin.as_deref(), &[]),
             Err(Access::InactiveSourceFrame { .. })
         ));
     }
@@ -513,7 +517,7 @@ fn s12_s14_flat_root_and_empty_root_identity_are_distinct() {
         Value::String("P.root".into())
     );
     assert!(matches!(
-        identity.position_slot(&SourceOwner::Primary, Some(&[])),
+        identity.position(&SourceOwner::Primary, Some(&[]), &[]),
         Err(Access::InactiveSourceFrame { .. })
     ));
 }
