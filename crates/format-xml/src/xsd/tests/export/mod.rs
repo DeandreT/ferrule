@@ -1,5 +1,7 @@
 use super::super::*;
 
+mod effective_declarations;
+
 #[test]
 fn export_then_import_roundtrips() {
     let schema = SchemaNode::group(
