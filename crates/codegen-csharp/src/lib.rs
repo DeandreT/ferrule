@@ -464,6 +464,19 @@ pub fn emit_with_csv_document_set_output(
     csv_output::emit_document_set(program, policy)
 }
 
+/// Combine complete CSV row serialization with an explicit filename-clock visitor.
+/// The host accepts or rejects each completed document and owns file publication.
+pub fn emit_with_csv_document_set_visitor(
+    program: &Program,
+    policy: &codegen::CsvOutputPolicy,
+) -> Result<ArtifactSet, codegen::DocumentVisitorEmitError<EmitError>> {
+    codegen::validate_csv_document_set_output(program, policy)
+        .map_err(|error| codegen::DocumentVisitorEmitError::Emit(error.into()))?;
+    let artifacts = emit_with_document_filename_clock(program, None)?;
+    csv_output::append_document_set(program, policy, artifacts)
+        .map_err(codegen::DocumentVisitorEmitError::Emit)
+}
+
 /// Emit explicit singular closed-object JSON5 input companions.
 ///
 /// All four overloads retain strict JSON output and execute the mapping once.

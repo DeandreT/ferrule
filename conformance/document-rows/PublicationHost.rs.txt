@@ -1,0 +1,51 @@
+use std::{cell::Cell,ops::ControlFlow,path::Path};
+use codegen_runtime::{ExecutionContext,Instance,InvocationCounterLimits,Value,group,repeated};
+use document_publication_mapping::{DocumentVisit,serialize_csv_document_bytes,visit_target_documents_with_filename_clock as visit};
+
+fn source(rows:&[(&str,Value)])->Instance {
+    group([("Rows".into(),repeated(rows.iter().map(|(order,item)|group([
+        ("Order".into(),Instance::Scalar(Value::String((*order).into()))),
+        ("Item".into(),Instance::Scalar(item.clone())),
+    ]))))])
+}
+fn main() {
+    let nonce=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let output=std::env::temp_dir().join(format!("publication-{nonce}"));
+    std::fs::create_dir(&output).unwrap();
+    let execution=ExecutionContext::new(Path::new("rows.ferrule"))
+        .with_invocation_counter_limits(InvocationCounterLimits{max_counters:1,max_text_bytes:16});
+    let calls=Cell::new(0);
+    let clock=||{calls.set(calls.get()+1);Ok("fixed-".into())};
+    let input=source(&[("A",Value::String("x".into())),("B",Value::Int(99))]);
+    let error=visit(&input,&[],Some(&execution),None,&clock,|document|{
+        assert!(matches!(document.path(),"fixed-A.txt"|"fixed-B.txt"));
+        let bytes=serialize_csv_document_bytes(document.value()).unwrap();
+        match std::fs::write(output.join(document.path()),bytes) {
+            Ok(())=>ControlFlow::Continue(()), Err(error)=>ControlFlow::Break(error.to_string()),
+        }
+    }).unwrap_err();
+    assert_eq!(error.accepted,1);
+    assert_eq!(calls.get(),1);
+    assert_eq!(std::fs::read(output.join("fixed-A.txt")).unwrap(),b"x|1\r\n");
+    assert!(!output.join("fixed-B.txt").exists());
+    // Retry only the failed document. The earlier file is not resubmitted.
+    let retry=source(&[("B",Value::String("y".into()))]);
+    let result=visit(&retry,&[],Some(&execution),None,&clock,|document|{
+        assert_eq!(document.path(),"fixed-B.txt");
+        std::fs::write(output.join(document.path()),serialize_csv_document_bytes(document.value()).unwrap()).unwrap();
+        ControlFlow::<String>::Continue(())
+    }).unwrap();
+    assert_eq!(result,DocumentVisit::Complete{accepted:1});
+    assert_eq!(std::fs::read(output.join("fixed-B.txt")).unwrap(),b"y|1\r\n");
+    assert_eq!(std::fs::read(output.join("fixed-A.txt")).unwrap(),b"x|1\r\n");
+    std::fs::write(output.join("blocked"),b"not a directory").unwrap();
+    let before=calls.get();
+    let result=visit(&input,&[],Some(&execution),None,&clock,|document|{
+        let bytes=serialize_csv_document_bytes(document.value()).unwrap();
+        assert!(std::fs::write(output.join("blocked").join(document.path()),bytes).is_err());
+        ControlFlow::Break("write failed")
+    }).unwrap();
+    assert_eq!(result,DocumentVisit::Stopped{accepted:0,reason:"write failed"});
+    assert_eq!(calls.get(),before+1);
+    println!("PASS document publication");
+}

@@ -704,6 +704,27 @@ pub fn emit_with_csv_document_set_output(
     ArtifactSet::new(files).map_err(EmitError::from)
 }
 
+/// Combine complete CSV row serialization with an explicit filename-clock visitor.
+/// The host accepts or rejects each completed document and owns file publication.
+pub fn emit_with_csv_document_set_visitor(
+    program: &Program,
+    options: &Options,
+    policy: &CsvOutputPolicy,
+) -> Result<ArtifactSet, codegen::DocumentVisitorEmitError<EmitError>> {
+    use codegen::DocumentVisitorEmitError;
+    codegen::validate_csv_document_set_output(program, policy)
+        .map_err(|error| DocumentVisitorEmitError::Emit(error.into()))?;
+    let mut files = emit_with_document_filename_clock(program, options, None)?.into_files();
+    let adapters =
+        csv_api::render_document_set(program, policy).map_err(DocumentVisitorEmitError::Emit)?;
+    for file in &mut files {
+        if file.path.as_str() == "src/lib.rs" {
+            file.contents.extend_from_slice(adapters.as_bytes());
+        }
+    }
+    ArtifactSet::new(files).map_err(|error| DocumentVisitorEmitError::Emit(error.into()))
+}
+
 fn valid_package_name(name: &str) -> bool {
     !name.is_empty()
         && name
