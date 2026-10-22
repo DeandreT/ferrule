@@ -3,9 +3,13 @@
 //! A result message or a disconnected channel is not proof that a worker
 //! exited. [`OwnedWorker`] reports an outcome only after its own retained
 //! `JoinHandle` reports that the thread finished and has been joined, and
-//! dropping an unfinished owner blocks until that exact thread exits. These
-//! workers have no cooperative cancellation, so the drain waits for their
-//! bounded work rather than abandoning it mid-publication.
+//! dropping an unfinished owner blocks until that exact thread exits.
+//!
+//! Library generation has no cooperative cancellation, so its drain waits for
+//! the bounded work rather than abandoning it mid-publication. Preview and
+//! pipeline owners request cancellation before the drain, which then waits for
+//! the worker's next control point. Cancellation cannot interrupt one
+//! synchronous parser or request, so the drain also waits for that call.
 
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::JoinHandle;
@@ -50,6 +54,30 @@ impl<T: Send + 'static> OwnedWorker<T> {
         (worker, input)
     }
 
+    /// A live worker that reports `value` at once, then keeps running until
+    /// the returned sender releases it (or ten seconds pass). Its last action
+    /// sets the returned flag, so a test can tell whether the thread exited.
+    #[cfg(test)]
+    pub(super) fn held_after_report_for_test(
+        value: T,
+    ) -> (
+        Self,
+        Sender<()>,
+        std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) {
+        use std::sync::atomic::Ordering;
+        let (release, released) = mpsc::channel::<()>();
+        let exited = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let worker_exited = std::sync::Arc::clone(&exited);
+        let worker = Self::spawn_reporting("owned-worker-held", move |sender| {
+            let _ = sender.send(value);
+            let _ = released.recv_timeout(std::time::Duration::from_secs(10));
+            worker_exited.store(true, Ordering::Release);
+        })
+        .expect("held test worker starts");
+        (worker, release, exited)
+    }
+
     /// Runs `body`, which reports at most one value and may keep running
     /// after it does.
     fn spawn_reporting(
@@ -69,6 +97,13 @@ impl<T: Send + 'static> OwnedWorker<T> {
 }
 
 impl<T> OwnedWorker<T> {
+    /// Whether the exact worker thread has finished; an outcome is then
+    /// available from [`Self::poll`]. Hosts stop relaying a finished worker's
+    /// queued interaction events, which no longer have a receiver waiting.
+    pub(super) fn is_finished(&self) -> bool {
+        self.handle.as_ref().is_none_or(JoinHandle::is_finished)
+    }
+
     /// Returns the outcome once, after the exact worker thread was joined.
     pub(super) fn poll(&mut self) -> Option<WorkerExit<T>> {
         // Observe exit before probing the queue: a value sent just before the
@@ -114,16 +149,7 @@ mod tests {
     /// A worker that reports first, then stays alive until released and
     /// records its own exit as its last action.
     fn reporting_then_held() -> (OwnedWorker<u32>, Sender<()>, Arc<AtomicBool>) {
-        let (release, released) = mpsc::channel::<()>();
-        let exited = Arc::new(AtomicBool::new(false));
-        let worker_exited = Arc::clone(&exited);
-        let worker = OwnedWorker::spawn_reporting("owned-worker-test", move |sender| {
-            let _ = sender.send(7);
-            let _ = released.recv_timeout(WAIT);
-            worker_exited.store(true, Ordering::Release);
-        })
-        .expect("test worker starts");
-        (worker, release, exited)
+        OwnedWorker::held_after_report_for_test(7)
     }
 
     fn poll_until_exit<T>(worker: &mut OwnedWorker<T>) -> WorkerExit<T> {
@@ -147,12 +173,14 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         assert_eq!(worker.poll(), None);
+        assert!(!worker.is_finished());
         assert!(!exited.load(Ordering::Acquire));
 
         release.send(()).expect("worker waits for release");
         assert_eq!(poll_until_exit(&mut worker), WorkerExit::Reported(7));
         assert!(exited.load(Ordering::Acquire));
         assert!(worker.handle.is_none(), "the exact handle was joined");
+        assert!(worker.is_finished());
         assert_eq!(worker.poll(), None, "an outcome is reported once");
     }
 

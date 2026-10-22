@@ -86,6 +86,7 @@ mod pipeline_ui;
 mod preview_ui;
 mod primary_xml_input;
 mod rest_run;
+mod route_preflight;
 #[path = "run.rs"]
 mod run_ui;
 mod scope_retirement;

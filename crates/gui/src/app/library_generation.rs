@@ -90,6 +90,22 @@ impl LibraryGenerationDraft {
 }
 
 impl LibraryGenerationSettings {
+    fn profile(&self) -> cli::GenerateProfile {
+        generate_profile(self.include_csv_output)
+    }
+
+    /// Admits the design for these settings without resolving any path. An
+    /// unsaved project has no folder for relative settings yet.
+    fn check_design(&self, project: &mapping::Project) -> anyhow::Result<()> {
+        let target = match self.language {
+            LibraryLanguage::Rust => cli::GenerateTarget::Rust {
+                runtime_path: PathBuf::from(self.runtime_path.trim()),
+            },
+            LibraryLanguage::CSharp => cli::GenerateTarget::CSharp,
+        };
+        cli::check_generate_project(project, &target, self.profile())
+    }
+
     fn validate_settings_presence(&self) -> anyhow::Result<()> {
         if self.destination.trim().is_empty() {
             bail!("Enter a new folder for the generated library.");
@@ -137,6 +153,14 @@ impl LibraryGenerationSettings {
     }
 }
 
+fn generate_profile(include_csv_output: bool) -> cli::GenerateProfile {
+    if include_csv_output {
+        cli::GenerateProfile::CsvOutput
+    } else {
+        cli::GenerateProfile::Ordinary
+    }
+}
+
 fn project_folder(project_path: &Path) -> &Path {
     project_path
         .parent()
@@ -162,16 +186,26 @@ struct LibraryGenerationRequest {
 }
 
 impl LibraryGenerationRequest {
+    /// Applies every refusal generation would make for `project` before it
+    /// writes, without saving the project or writing anything.
+    fn preflight(&self, project: &mapping::Project) -> anyhow::Result<()> {
+        cli::plan_generate_project(
+            project,
+            &self.project_path,
+            &self.destination,
+            &self.target,
+            generate_profile(self.include_csv_output),
+        )
+        .map(drop)
+    }
+
     fn generate(self) -> anyhow::Result<cli::GenerateOutcome> {
-        if self.include_csv_output {
-            cli::generate_project_with_csv_output(
-                &self.project_path,
-                &self.destination,
-                self.target,
-            )
-        } else {
-            cli::generate_project(&self.project_path, &self.destination, self.target)
-        }
+        cli::generate_project_with_profile(
+            &self.project_path,
+            &self.destination,
+            self.target,
+            generate_profile(self.include_csv_output),
+        )
     }
 }
 
@@ -233,16 +267,19 @@ impl FerruleApp {
         let Some(draft) = &self.library_generation_draft else {
             return;
         };
-        let settings = match self.document.saved_path() {
-            Some(saved) => draft.request(saved).map(|_| ()),
+        let request = match self.document.saved_path() {
+            Some(saved) => draft.request(saved).map(Some),
             // Save As chooses the folder used by relative settings. Check only
             // their presence until the project has actually been saved there.
-            None => draft.validate_settings_presence(),
+            None => draft.validate_settings_presence().map(|()| None),
         };
-        if let Err(error) = settings {
-            self.library_generation_failed(format!("{error:#}"));
-            return;
-        }
+        let request = match request {
+            Ok(request) => request,
+            Err(error) => {
+                self.library_generation_failed(format!("{error:#}"));
+                return;
+            }
+        };
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
             if let Some(draft) = &mut self.library_generation_draft {
@@ -251,6 +288,16 @@ impl FerruleApp {
             }
             self.status = "library generation blocked by mapping issues".into();
             self.diagnostics.validation(&self.project, issues);
+            return;
+        }
+        // Refuse what generation would refuse before saving or writing.
+        let preflight = match (&request, &self.library_generation_draft) {
+            (Some(request), _) => request.preflight(&self.project),
+            (None, Some(draft)) => draft.settings().check_design(&self.project),
+            (None, None) => return,
+        };
+        if let Err(error) = preflight {
+            self.library_generation_failed(format!("{error:#}"));
             return;
         }
         if let Some(draft) = &mut self.library_generation_draft {

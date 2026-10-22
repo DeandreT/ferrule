@@ -4805,3 +4805,6 @@ fn new_mapping_stages_both_schemas_before_replacing_the_project() {
 
     std::fs::remove_dir_all(directory).expect("temporary test directory is removed");
 }
+
+#[path = "owned_run_worker_tests.rs"]
+mod owned_run_worker_tests;
