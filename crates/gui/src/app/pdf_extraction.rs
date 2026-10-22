@@ -87,6 +87,7 @@ pub(crate) struct ExtractionSnapshot {
     pub(crate) phase: ExtractionPhase,
     /// The current or most recently closed child.
     pub(crate) child_pid: Option<u32>,
+    /// Jobs begun, including any refused before a child started.
     pub(crate) jobs_started: u32,
     pub(crate) jobs_closed: u32,
     /// Whether the last closed job's child was reaped by its owner.
@@ -218,17 +219,20 @@ impl<'a> OwnedPdfReader<'a> {
         path: &Path,
         layout: &mapping::PdfLayout,
     ) -> anyhow::Result<ir::Instance> {
-        match manager.begin(path, layout, &self.flag) {
-            Ok(_) | Err(BeginFailure::OwnedStopping { .. }) => {}
-            Err(BeginFailure::NoChild(failure)) => {
-                return Err(anyhow::Error::new(failure).context("PDF worker job was not started"));
-            }
-        }
+        // Staging and spawning happen inside `begin`, which can take a while.
         self.status.update(|snapshot| {
             snapshot.phase = ExtractionPhase::Starting;
             snapshot.child_pid = None;
             snapshot.jobs_started = snapshot.jobs_started.saturating_add(1);
         });
+        match manager.begin(path, layout, &self.flag) {
+            Ok(_) | Err(BeginFailure::OwnedStopping { .. }) => {}
+            Err(BeginFailure::NoChild(failure)) => {
+                self.status
+                    .update(|snapshot| snapshot.phase = ExtractionPhase::Idle);
+                return Err(anyhow::Error::new(failure).context("PDF worker job was not started"));
+            }
+        }
         loop {
             self.observe_cancellation();
             match manager.poll() {
