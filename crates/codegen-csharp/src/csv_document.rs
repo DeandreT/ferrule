@@ -9,6 +9,7 @@ use crate::{EmitError, file, literal};
 pub enum CsvDocumentEmitError {
     Boundary(Box<CsvDocumentBoundaryError>),
     Emit(EmitError),
+    Visitor(codegen::DocumentVisitorEmitError<EmitError>),
     ArtifactInvariant,
 }
 
@@ -17,6 +18,7 @@ impl fmt::Display for CsvDocumentEmitError {
         match self {
             Self::Boundary(e) => e.fmt(f),
             Self::Emit(e) => e.fmt(f),
+            Self::Visitor(e) => e.fmt(f),
             Self::ArtifactInvariant => {
                 f.write_str("CSV document project artifact is missing its compile entry")
             }
@@ -29,6 +31,7 @@ impl std::error::Error for CsvDocumentEmitError {
         match self {
             Self::Boundary(e) => Some(e.as_ref()),
             Self::Emit(e) => Some(e),
+            Self::Visitor(e) => Some(e),
             Self::ArtifactInvariant => None,
         }
     }
@@ -39,11 +42,34 @@ pub fn emit_with_csv_document_adapters(
     program: &Program,
     policy: &CsvDocumentBoundaryPolicy,
 ) -> Result<ArtifactSet, CsvDocumentEmitError> {
-    codegen::validate_csv_document_boundary(program, policy)
-        .map_err(|e| CsvDocumentEmitError::Boundary(Box::new(e)))?;
-    let mut files = crate::emit_with_csv_output(program, &policy.target)
-        .map_err(CsvDocumentEmitError::Emit)?
-        .into_files();
+    emit_document(program, policy, false)
+}
+
+pub fn emit_with_csv_document_set_boundary(
+    program: &Program,
+    policy: &CsvDocumentBoundaryPolicy,
+) -> Result<ArtifactSet, CsvDocumentEmitError> {
+    emit_document(program, policy, true)
+}
+
+fn emit_document(
+    program: &Program,
+    policy: &CsvDocumentBoundaryPolicy,
+    document_set: bool,
+) -> Result<ArtifactSet, CsvDocumentEmitError> {
+    (if document_set {
+        codegen::validate_csv_document_set_boundary(program, policy)
+    } else {
+        codegen::validate_csv_document_boundary(program, policy)
+    })
+    .map_err(|e| CsvDocumentEmitError::Boundary(Box::new(e)))?;
+    let artifacts = if document_set {
+        crate::emit_with_csv_document_set_visitor(program, &policy.target)
+            .map_err(CsvDocumentEmitError::Visitor)?
+    } else {
+        crate::emit_with_csv_output(program, &policy.target).map_err(CsvDocumentEmitError::Emit)?
+    };
+    let mut files = artifacts.into_files();
     let project = files
         .iter_mut()
         .find(|f| f.path.as_str() == "Ferrule.Generated.csproj")
@@ -62,8 +88,11 @@ pub fn emit_with_csv_document_adapters(
         )
         .into_bytes();
     files.push(
-        file("GeneratedMapping.CsvDocument.cs", render(program, policy))
-            .map_err(CsvDocumentEmitError::Emit)?,
+        file(
+            "GeneratedMapping.CsvDocument.cs",
+            render(program, policy, document_set),
+        )
+        .map_err(CsvDocumentEmitError::Emit)?,
     );
     files.push(
         file(
@@ -72,19 +101,21 @@ pub fn emit_with_csv_document_adapters(
         )
         .map_err(CsvDocumentEmitError::Emit)?,
     );
-    files.push(
-        file(
-            "Runtime/FerruleCsvSource.cs",
-            include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs"),
-        )
-        .map_err(CsvDocumentEmitError::Emit)?,
-    );
+    if !document_set {
+        files.push(
+            file(
+                "Runtime/FerruleCsvSource.cs",
+                include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs"),
+            )
+            .map_err(CsvDocumentEmitError::Emit)?,
+        );
+    }
     ArtifactSet::new(files)
         .map_err(EmitError::from)
         .map_err(CsvDocumentEmitError::Emit)
 }
 
-fn render(program: &Program, policy: &CsvDocumentBoundaryPolicy) -> String {
+fn render(program: &Program, policy: &CsvDocumentBoundaryPolicy, document_set: bool) -> String {
     let SchemaKind::Group { children, .. } = &program.source.kind else {
         unreachable!("admitted CSV source")
     };
@@ -114,6 +145,9 @@ fn render(program: &Program, policy: &CsvDocumentBoundaryPolicy) -> String {
         let suffix = if bytes { "Bytes" } else { "" };
         let ty = if bytes { "byte[]" } else { "string" };
         s.push_str(&format!("\n    public static global::Ferrule.Runtime.FerruleInstance ParseCsv{suffix}({ty} source) =>\n        global::Ferrule.Runtime.FerruleCsvInput.Parse{suffix}(source, CsvInputFields, CsvInputOptions);\n"));
+        if document_set {
+            continue;
+        }
         for contextual in [false, true] {
             let arg = if contextual {
                 ", global::Ferrule.Runtime.FerruleExecutionContext executionContext"
@@ -133,7 +167,7 @@ fn render(program: &Program, policy: &CsvDocumentBoundaryPolicy) -> String {
         }
     }
     s.push_str("\n    public static global::Ferrule.Runtime.FerruleInstance ParseCsvBytesWithDecodingPolicy(byte[] source, global::Ferrule.Runtime.FerruleCsvByteDecodingPolicy policy) =>\n        global::Ferrule.Runtime.FerruleCsvInput.ParseBytesWithDecodingPolicy(source, CsvInputFields, policy, CsvInputOptions);\n");
-    for contextual in [false, true] {
+    for contextual in [false, true].into_iter().filter(|_| !document_set) {
         let argument = if contextual {
             ", global::Ferrule.Runtime.FerruleExecutionContext execution"
         } else {

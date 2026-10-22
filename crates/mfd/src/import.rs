@@ -77,7 +77,10 @@ mod unused_xml_source;
 mod xml_root_view;
 mod xml_serializer;
 
-pub use csv_document::{ImportedDocument, import_csv_document, import_csv_document_with_options};
+pub use csv_document::{
+    ImportedDocument, import_csv_document, import_csv_document_with_options,
+    import_grouped_csv_document, import_grouped_csv_document_with_options,
+};
 pub use schema::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
 
 use db_query::is_routine_catalog;

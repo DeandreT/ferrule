@@ -21,7 +21,9 @@ mod csv_api;
 mod document_visitor;
 pub use document_visitor::{emit_with_document_filename_clock, emit_with_document_visitor};
 mod csv_document;
-pub use csv_document::{CsvDocumentEmitError, emit_with_csv_document_adapters};
+pub use csv_document::{
+    CsvDocumentEmitError, emit_with_csv_document_adapters, emit_with_csv_document_set_boundary,
+};
 mod failure;
 mod json5_api;
 mod owned_basic;

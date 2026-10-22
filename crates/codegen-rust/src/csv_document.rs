@@ -9,6 +9,7 @@ use crate::{EmitError, Options, rust_string};
 pub enum CsvDocumentEmitError {
     Boundary(Box<CsvDocumentBoundaryError>),
     Emit(EmitError),
+    Visitor(codegen::DocumentVisitorEmitError<EmitError>),
 }
 
 impl fmt::Display for CsvDocumentEmitError {
@@ -16,6 +17,7 @@ impl fmt::Display for CsvDocumentEmitError {
         match self {
             Self::Boundary(e) => e.fmt(f),
             Self::Emit(e) => e.fmt(f),
+            Self::Visitor(e) => e.fmt(f),
         }
     }
 }
@@ -25,6 +27,7 @@ impl std::error::Error for CsvDocumentEmitError {
         Some(match self {
             Self::Boundary(e) => e.as_ref(),
             Self::Emit(e) => e,
+            Self::Visitor(e) => e,
         })
     }
 }
@@ -35,11 +38,37 @@ pub fn emit_with_csv_document_adapters(
     options: &Options,
     policy: &CsvDocumentBoundaryPolicy,
 ) -> Result<ArtifactSet, CsvDocumentEmitError> {
-    codegen::validate_csv_document_boundary(program, policy)
-        .map_err(|e| CsvDocumentEmitError::Boundary(Box::new(e)))?;
-    let mut files = crate::emit_with_csv_output(program, options, &policy.target)
-        .map_err(CsvDocumentEmitError::Emit)?
-        .into_files();
+    emit_document(program, options, policy, false)
+}
+
+pub fn emit_with_csv_document_set_boundary(
+    program: &Program,
+    options: &Options,
+    policy: &CsvDocumentBoundaryPolicy,
+) -> Result<ArtifactSet, CsvDocumentEmitError> {
+    emit_document(program, options, policy, true)
+}
+
+fn emit_document(
+    program: &Program,
+    options: &Options,
+    policy: &CsvDocumentBoundaryPolicy,
+    document_set: bool,
+) -> Result<ArtifactSet, CsvDocumentEmitError> {
+    (if document_set {
+        codegen::validate_csv_document_set_boundary(program, policy)
+    } else {
+        codegen::validate_csv_document_boundary(program, policy)
+    })
+    .map_err(|e| CsvDocumentEmitError::Boundary(Box::new(e)))?;
+    let artifacts = if document_set {
+        crate::emit_with_csv_document_set_visitor(program, options, &policy.target)
+            .map_err(CsvDocumentEmitError::Visitor)?
+    } else {
+        crate::emit_with_csv_output(program, options, &policy.target)
+            .map_err(CsvDocumentEmitError::Emit)?
+    };
+    let mut files = artifacts.into_files();
     let SchemaKind::Group { children, .. } = &program.source.kind else {
         unreachable!("admitted CSV source")
     };
@@ -64,6 +93,9 @@ pub fn emit_with_csv_document_adapters(
         let input = if bytes { "&[u8]" } else { "&str" };
         let output = if bytes { "Vec<u8>" } else { "String" };
         source.push_str(&format!("\npub fn parse_csv{suffix}(source: {input}) -> Result<Instance, codegen_runtime::CsvReadError> {{\n    codegen_runtime::parse_csv_rows{suffix}(source, &csv_input_schema(), &csv_input_options()).map(Instance::Repeated)\n}}\n"));
+        if document_set {
+            continue;
+        }
         for contextual in [false, true] {
             let context = if contextual { "_with_context" } else { "" };
             let arg = if contextual {
@@ -76,7 +108,7 @@ pub fn emit_with_csv_document_adapters(
         }
     }
     source.push_str("\npub fn parse_csv_bytes_with_decoding_policy(source: &[u8], policy: codegen_runtime::CsvByteDecodingPolicy) -> Result<Instance, codegen_runtime::CsvReadError> {\n    codegen_runtime::parse_csv_rows_bytes_with_decoding_policy(source, &csv_input_schema(), &csv_input_options(), policy).map(Instance::Repeated)\n}\n");
-    for contextual in [false, true] {
+    for contextual in [false, true].into_iter().filter(|_| !document_set) {
         let suffix = if contextual { "_with_context" } else { "" };
         let argument = if contextual {
             ", execution: &ExecutionContext<'_>"
