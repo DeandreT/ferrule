@@ -6,7 +6,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
-use ir::{ScalarType, SchemaKind, SchemaNode, Value};
+use ir::{EffectivePresence, ScalarType, SchemaKind, SchemaNode, Value, XmlOccurrence};
 use mapping::{
     FailureIteration, FailureSelection, FormatOptions, IterationOutput, Node, NodeId, Project,
     Scope, ScopeConstruction, ScopeIteration,
@@ -187,10 +187,32 @@ fn local_xml(path: &Option<String>, options: &FormatOptions) -> bool {
             })
 }
 
+// Contradictory occurrence metadata has no effective XML view and is refused.
+fn plain_schema(node: &SchemaNode) -> bool {
+    plain_shape(node) && plain_occurrences(node)
+}
+
+fn plain_occurrences(node: &SchemaNode) -> bool {
+    node.effective_xml_view().is_ok()
+        && match &node.kind {
+            SchemaKind::Group { children, .. } => children.iter().all(plain_occurrences),
+            _ => true,
+        }
+}
+
+/// The declared presence of one singular element; `None` for a repeated
+/// collection or contradictory occurrence metadata.
+pub(super) fn singular_presence(node: &SchemaNode) -> Option<EffectivePresence> {
+    match node.effective_xml_view().ok()?.occurrence() {
+        XmlOccurrence::Single { presence } => Some(presence),
+        XmlOccurrence::Repeated => None,
+    }
+}
+
 // Comparing with a freshly constructed plain shape makes additional metadata
 // fail closed, including future schema assertions. Only ordinary optional
 // singular XML elements are included in this proof.
-fn plain_schema(node: &SchemaNode) -> bool {
+pub(super) fn plain_shape(node: &SchemaNode) -> bool {
     let mut plain = match &node.kind {
         SchemaKind::Scalar { ty }
             if matches!(ty, ScalarType::String | ScalarType::Int | ScalarType::Bool) =>
@@ -198,7 +220,7 @@ fn plain_schema(node: &SchemaNode) -> bool {
             SchemaNode::scalar(&node.name, *ty)
         }
         SchemaKind::Group { children, .. } => {
-            if !children.iter().all(plain_schema) {
+            if !children.iter().all(plain_shape) {
                 return false;
             }
             let names: BTreeSet<_> = children.iter().map(|node| &node.name).collect();
@@ -280,12 +302,13 @@ impl Proof<'_> {
                 let mut schema = self.item;
                 let mut present = true;
                 for name in path {
-                    schema = child(schema, name)
-                        .filter(|schema| !schema.repeating)
-                        .ok_or_else(|| {
-                            format!("node {id} does not read one declared singular item field")
-                        })?;
-                    present &= !schema.xml_optional;
+                    schema = child(schema, name).ok_or_else(|| {
+                        format!("node {id} does not read one declared singular item field")
+                    })?;
+                    let presence = singular_presence(schema).ok_or_else(|| {
+                        format!("node {id} does not read one declared singular item field")
+                    })?;
+                    present &= presence == EffectivePresence::Required;
                 }
                 match &schema.kind {
                     SchemaKind::Scalar { ty } => Ok(Domain { ty: *ty, present }),
@@ -412,19 +435,19 @@ impl Proof<'_> {
             if !names.insert(binding.target_field.as_str()) {
                 return Err("duplicate target bindings are not proved".into());
             }
-            let leaf = child(target, &binding.target_field)
-                .filter(|leaf| !leaf.repeating)
-                .ok_or_else(|| {
-                    format!(
-                        "target binding `{}` does not own one singular leaf",
-                        binding.target_field
-                    )
-                })?;
+            let singular = child(target, &binding.target_field)
+                .and_then(|leaf| Some((leaf, singular_presence(leaf)?)));
+            let (leaf, presence) = singular.ok_or_else(|| {
+                format!(
+                    "target binding `{}` does not own one singular leaf",
+                    binding.target_field
+                )
+            })?;
             let SchemaKind::Scalar { ty } = &leaf.kind else {
                 return Err("target binding must be scalar".into());
             };
             let domain = self.expression(binding.node, here)?;
-            if domain.ty != *ty || !domain.present && !leaf.xml_optional {
+            if domain.ty != *ty || !domain.present && presence == EffectivePresence::Required {
                 return Err(format!(
                     "target binding `{}` requires unproved coercion or presence",
                     binding.target_field
@@ -443,7 +466,8 @@ impl Proof<'_> {
             return Err("target scopes must construct groups".into());
         };
         if children.iter().any(|child| {
-            !child.repeating && !child.xml_optional && !names.contains(child.name.as_str())
+            singular_presence(child) == Some(EffectivePresence::Required)
+                && !names.contains(child.name.as_str())
         }) {
             return Err("required target fields must have proved bindings or children".into());
         }
