@@ -2627,11 +2627,13 @@ fn private_source_failure_preserves_ordinary_bytes_and_public_owned_gates() {
     assert!(
         untyped_source
             .expect("complete ordinary source recorded")
+            .members
             .contains("FailureRule_0(context);")
     );
     assert!(
         typed_source
             .expect("complete typed source recorded")
+            .members
             .contains("FailureRule_0(context);")
     );
 }

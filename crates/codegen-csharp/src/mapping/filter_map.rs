@@ -64,13 +64,8 @@ pub(super) fn add_scoped_node_wrappers(program: &Program, output: &mut String) {
     if program.filter_map_v1_sequences().is_empty() {
         return;
     }
-    // Replace declarations only. The required literal newline cannot occur
-    // inside escaped project string literals. Dependencies keep calling Node_.
-    let declaration = "\n    private static global::Ferrule.Runtime.FerruleValue Node_";
-    *output = output.replace(
-        declaration,
-        "\n    private static global::Ferrule.Runtime.FerruleValue NodeCore_",
-    );
+    // Node bodies are declared under their core names; dependencies keep
+    // calling the scoped Node_ wrappers.
     for node in &program.expressions {
         output.push_str(&format!(
             "\n    private static global::Ferrule.Runtime.FerruleValue Node_{}(global::Ferrule.Runtime.ScopeContext context) =>\n        context.EvaluateFilterMapNode({}U, null, () => NodeCore_{}(context));\n",
@@ -79,13 +74,6 @@ pub(super) fn add_scoped_node_wrappers(program: &Program, output: &mut String) {
     }
     for function in &program.user_functions {
         let id = function.id.get();
-        let declaration = format!(
-            "\n    private static global::Ferrule.Runtime.FerruleValue UserFunction_{id}_Node_"
-        );
-        let replacement = format!(
-            "\n    private static global::Ferrule.Runtime.FerruleValue UserFunctionCore_{id}_Node_"
-        );
-        *output = output.replace(&declaration, &replacement);
         for node in &function.expressions {
             output.push_str(&format!(
                 "\n    private static global::Ferrule.Runtime.FerruleValue UserFunction_{id}_Node_{}(\n        global::Ferrule.Runtime.ScopeContext context, global::System.Collections.Generic.IReadOnlyList<global::Ferrule.Runtime.FerruleValue> parameters) =>\n        context.EvaluateFilterMapNode({}U, {id}UL, () => UserFunctionCore_{id}_Node_{}(context, parameters));\n",

@@ -9,6 +9,7 @@ use codegen::{
 };
 use ir::ScalarType;
 
+use crate::composition::ClassPart;
 use crate::{EmitError, literal};
 
 mod failures;
@@ -47,7 +48,7 @@ struct BindingPlan<'a> {
 
 /// Renders under the complete companion selection, preparing its plan.
 #[cfg(test)]
-pub(crate) fn render_complete(program: &Program) -> Result<String, EmitError> {
+pub(crate) fn render_complete(program: &Program) -> Result<ClassPart, EmitError> {
     render(
         program,
         &codegen::prepare_boundary_emission(program, codegen::CompanionSelection::Complete)?,
@@ -56,7 +57,7 @@ pub(crate) fn render_complete(program: &Program) -> Result<String, EmitError> {
 
 /// Renders the typed entry points alone, preparing their plan.
 #[cfg(test)]
-pub(crate) fn render_typed(program: &Program) -> Result<String, EmitError> {
+pub(crate) fn render_typed(program: &Program) -> Result<ClassPart, EmitError> {
     render(
         program,
         &codegen::prepare_boundary_emission(program, codegen::CompanionSelection::TypedOnly)?,
@@ -83,7 +84,7 @@ enum JsonRecords {
 pub(crate) fn render(
     program: &Program,
     plan: &codegen::BoundaryEmissionPlan<'_>,
-) -> Result<String, EmitError> {
+) -> Result<ClassPart, EmitError> {
     let records = if plan.json_companions() {
         JsonRecords::Declared
     } else {
@@ -97,7 +98,7 @@ pub(crate) fn render(
 pub(crate) fn render_with_json_records(
     program: &Program,
     plan: &codegen::BoundaryEmissionPlan<'_>,
-) -> Result<String, EmitError> {
+) -> Result<ClassPart, EmitError> {
     render_mapping(program, plan, JsonRecords::Declared)
 }
 
@@ -105,7 +106,7 @@ fn render_mapping(
     program: &Program,
     plan: &codegen::BoundaryEmissionPlan<'_>,
     records: JsonRecords,
-) -> Result<String, EmitError> {
+) -> Result<ClassPart, EmitError> {
     codegen::validate_owned_emission(program)?;
     let has_filter_map = !program.filter_map_v1_sequences().is_empty();
     let mut expressions = BTreeMap::new();
@@ -126,21 +127,18 @@ fn render_mapping(
         .map(|target| (target.name.as_str(), add_scope(&target.root, &mut scopes)))
         .collect::<Vec<_>>();
 
-    let mut output = String::from(
-        "namespace Ferrule.Generated;\n\npublic sealed record NamedInput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record NamedOutput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record ExecutionOutputs(\n    global::Ferrule.Runtime.FerruleInstance Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedOutput> Extras);\n\n",
+    let mut types = String::from(
+        "public sealed record NamedInput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record NamedOutput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record ExecutionOutputs(\n    global::Ferrule.Runtime.FerruleInstance Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedOutput> Extras);\n\n",
     );
     if records == JsonRecords::Declared {
-        output.push_str(JSON_RECORDS);
+        types.push_str(JSON_RECORDS);
     }
-    output.push_str("public static class GeneratedMapping\n{\n");
-    let type_position = output
-        .find("public static class GeneratedMapping")
-        .expect("generated mapping header");
-    output.insert_str(type_position, SELECTED_TARGET_OUTPUT_TYPES);
+    types.push_str(xml_api::types(plan.xml()));
     if plan.json_companions() {
-        output.insert_str(type_position, selected_json_api::OUTPUT_TYPES);
+        types.push_str(selected_json_api::OUTPUT_TYPES);
     }
-    output.insert_str(type_position, xml_api::types(plan.xml()));
+    types.push_str(SELECTED_TARGET_OUTPUT_TYPES);
+    let mut output = String::new();
     render_entry_points(program, primary_scope, &extra_scopes, &mut output);
     if plan.json_companions() {
         render_json_entry_points(program, &mut output)?;
@@ -294,8 +292,10 @@ fn render_mapping(
         render_bound_group(scope_index, scope, &mut output);
     }
     filter_map::add_scoped_node_wrappers(program, &mut output);
-    output.push_str("}\n");
-    Ok(output)
+    Ok(ClassPart {
+        types,
+        members: output,
+    })
 }
 
 fn render_user_function(
@@ -351,7 +351,12 @@ fn render_user_function_expression(
         )
     };
     output.push_str(&format!(
-        "\n    private static global::Ferrule.Runtime.FerruleValue UserFunction_{}_Node_{node}(\n        global::Ferrule.Runtime.ScopeContext context,\n        global::System.Collections.Generic.IReadOnlyList<global::Ferrule.Runtime.FerruleValue> parameters)",
+        "\n    private static global::Ferrule.Runtime.FerruleValue {}_{}_Node_{node}(\n        global::Ferrule.Runtime.ScopeContext context,\n        global::System.Collections.Generic.IReadOnlyList<global::Ferrule.Runtime.FerruleValue> parameters)",
+        if has_filter_map {
+            "UserFunctionCore"
+        } else {
+            "UserFunction"
+        },
         function.get()
     ));
     match expression {
@@ -1868,6 +1873,7 @@ fn render_expression(
         }
     }
     let method = match mode {
+        ExpressionContext::Legacy if has_filter_map => format!("NodeCore_{node}"),
         ExpressionContext::Legacy => format!("Node_{node}"),
         ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes => {
             format!("NodeBody_{node}")

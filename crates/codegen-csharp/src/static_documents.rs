@@ -18,14 +18,18 @@ use codegen::{
     StaticDocumentBoundaryError, StaticDocumentBoundaryPolicy, StaticDocumentBoundaryProfile,
 };
 
-use crate::{EmitError, file, literal};
+use crate::composition::ClassPart;
+use crate::{EmitError, literal};
 
 /// Failures from complete static JSON/X12 document companions.
 #[derive(Debug)]
 pub enum StaticDocumentEmitError {
     Policy(StaticDocumentBoundaryError),
     Ordinary(EmitError),
-    ArtifactInvariant { path: &'static str },
+    /// Retained for API compatibility; structural composition never produces it.
+    ArtifactInvariant {
+        path: &'static str,
+    },
 }
 
 impl fmt::Display for StaticDocumentEmitError {
@@ -65,36 +69,11 @@ pub(crate) fn emit(
 ) -> Result<ArtifactSet, StaticDocumentEmitError> {
     let profile = codegen::prepare_static_document_boundary(program, policy)
         .map_err(StaticDocumentEmitError::Policy)?;
-    let mut files = crate::emit(program)?.into_files();
-    for (path, before, after) in [
-        (
-            "GeneratedMapping.cs",
-            "public static class GeneratedMapping\n{",
-            "public static partial class GeneratedMapping\n{",
-        ),
-        (
-            "Ferrule.Generated.csproj",
-            "    <Compile Include=\"GeneratedMapping.cs\" />\n",
-            "    <Compile Include=\"GeneratedMapping.cs\" />\n    <Compile Include=\"GeneratedMapping.Documents.cs\" />\n",
-        ),
-    ] {
-        let generated = files
-            .iter_mut()
-            .find(|generated| generated.path.as_str() == path)
-            .ok_or(StaticDocumentEmitError::ArtifactInvariant { path })?;
-        let source = std::str::from_utf8(&generated.contents)
-            .map_err(|_| StaticDocumentEmitError::ArtifactInvariant { path })?;
-        if source.matches(before).count() != 1 {
-            return Err(StaticDocumentEmitError::ArtifactInvariant { path });
-        }
-        generated.contents = source.replacen(before, after, 1).into_bytes();
-    }
-    files.push(file("GeneratedMapping.Documents.cs", render(&profile))?);
-    for (path, source) in crate::x12_output::X12_SOURCES {
-        files.push(file(path, source)?);
-    }
-    ArtifactSet::new(files)
-        .map_err(EmitError::from)
+    let mut library = crate::library(program)?;
+    library.add_companion("GeneratedMapping.Documents.cs", render(&profile));
+    library.add_runtime(&crate::x12_output::X12_SOURCES);
+    library
+        .into_artifacts()
         .map_err(StaticDocumentEmitError::from)
 }
 
@@ -112,12 +91,10 @@ fn format_name(format: DocumentBoundaryFormat) -> &'static str {
     }
 }
 
-fn render(profile: &StaticDocumentBoundaryProfile) -> String {
-    let mut output = String::from("namespace Ferrule.Generated;\n\n");
-    output.push_str(crate::document_output_types::OUTPUT_TYPES);
-    output.push_str(COMPLETE_OUTPUT_TYPES);
-    output.push_str("public static partial class GeneratedMapping\n{\n");
-    output.push_str(COMPLETE_OUTPUT_HELPERS);
+fn render(profile: &StaticDocumentBoundaryProfile) -> ClassPart {
+    let mut types = String::from(crate::document_output_types::OUTPUT_TYPES);
+    types.push_str(COMPLETE_OUTPUT_TYPES);
+    let mut output = String::from(COMPLETE_OUTPUT_HELPERS);
     for (name, descriptor) in [
         ("DocumentSourceDescriptor", &profile.source.descriptor),
         ("DocumentTargetDescriptor", &profile.target.descriptor),
@@ -154,8 +131,10 @@ fn render(profile: &StaticDocumentBoundaryProfile) -> String {
         render_complete_parse(profile, bytes, &mut output);
         render_complete_serialize(profile, bytes, &mut output);
     }
-    output.push_str("}\n");
-    output
+    ClassPart {
+        types,
+        members: output,
+    }
 }
 
 const COMPLETE_OUTPUT_TYPES: &str = r#"/// <summary>One complete physical run; Extras retain exact target declaration order.</summary>

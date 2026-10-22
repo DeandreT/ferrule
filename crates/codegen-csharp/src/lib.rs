@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod composition;
 mod csv_document;
 mod csv_json;
 pub use csv_document::{CsvDocumentEmitError, emit_with_csv_document_adapters};
@@ -21,6 +22,8 @@ mod runtime;
 mod static_documents;
 mod x12_output;
 
+#[cfg(test)]
+mod composition_tests;
 #[cfg(test)]
 mod csv_output_tests;
 #[cfg(test)]
@@ -76,19 +79,42 @@ pub fn emit_with_companions(
     program: &Program,
     companions: CompanionSelection,
 ) -> Result<ArtifactSet, EmitError> {
+    library_with_companions(program, companions)?.into_artifacts()
+}
+
+/// The complete ordinary library, which companion emitters extend.
+fn library(program: &Program) -> Result<composition::Library, EmitError> {
+    library_with_companions(program, CompanionSelection::Complete)
+}
+
+fn library_with_companions(
+    program: &Program,
+    companions: CompanionSelection,
+) -> Result<composition::Library, EmitError> {
     let plan = codegen::prepare_boundary_emission(program, companions)?;
     codegen::validate_owned_emission(program)?;
-    let generated_mapping = mapping::render(program, &plan)?;
-    emit_mapping_artifacts(&plan, generated_mapping)
+    let mapping = mapping::render(program, &plan)?;
+    Ok(composition::Library::new(
+        mapping,
+        dynamic_input_document_outputs(&plan),
+    ))
 }
 
 /// The typed library beneath the CSV adapters. It omits every companion
 /// entry point yet keeps the JSON records its artifacts have always declared.
-fn emit_typed(program: &Program) -> Result<ArtifactSet, EmitError> {
+fn typed_library(program: &Program) -> Result<composition::Library, EmitError> {
     let plan = codegen::prepare_boundary_emission(program, CompanionSelection::TypedOnly)?;
     codegen::validate_owned_emission(program)?;
-    let generated_mapping = mapping::render_with_json_records(program, &plan)?;
-    emit_mapping_artifacts(&plan, generated_mapping)
+    let mapping = mapping::render_with_json_records(program, &plan)?;
+    Ok(composition::Library::new(
+        mapping,
+        dynamic_input_document_outputs(&plan),
+    ))
+}
+
+#[cfg(test)]
+fn emit_typed(program: &Program) -> Result<ArtifactSet, EmitError> {
+    typed_library(program)?.into_artifacts()
 }
 
 /// Emits typed and strict JSON Basic source entry points with an explicit policy.
@@ -105,7 +131,7 @@ pub fn emit_with_basic_owned_sources(program: &Program) -> Result<ArtifactSet, E
     codegen::validate_basic_owned_emission(program)?;
     let mut generated_mapping = owned_basic::render_public_basic_owned_mapping(program)?;
     mapping::append_basic_owned_json_api(program, &mut generated_mapping)?;
-    emit_mapping_artifacts(&plan, generated_mapping)
+    composition::unit_artifacts(generated_mapping, dynamic_input_document_outputs(&plan))
 }
 
 /// Emits the Basic owned mapping for `capabilities` with explicit caller
@@ -118,7 +144,7 @@ fn emit_with_owned_capabilities(
     codegen::validate_basic_owned_emission_with_capabilities(program, capabilities)?;
     let generated_mapping =
         owned_basic::render_public_basic_owned_capability_mapping(program, capabilities)?;
-    emit_mapping_files(generated_mapping, false)
+    composition::unit_artifacts(generated_mapping, false)
 }
 
 macro_rules! owned_presets {
@@ -162,34 +188,10 @@ owned_presets! {
     XmlMixedConstruction => emit_with_basic_owned_xml_mixed_construction;
 }
 
-fn emit_mapping_artifacts(
-    plan: &BoundaryEmissionPlan<'_>,
-    generated_mapping: String,
-) -> Result<ArtifactSet, EmitError> {
-    let dynamic_input_document_outputs = plan.xml().is_some_and(|xml| {
+fn dynamic_input_document_outputs(plan: &BoundaryEmissionPlan<'_>) -> bool {
+    plan.xml().is_some_and(|xml| {
         xml.mode() == codegen::XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments
-    });
-    emit_mapping_files(generated_mapping, dynamic_input_document_outputs)
-}
-
-fn emit_mapping_files(
-    generated_mapping: String,
-    dynamic_input_document_outputs: bool,
-) -> Result<ArtifactSet, EmitError> {
-    let mut files = Vec::with_capacity(
-        runtime::SOURCES.len() + 3 + usize::from(dynamic_input_document_outputs),
-    );
-    files.push(file("Ferrule.Generated.csproj", runtime::PROJECT)?);
-    files.push(file("GeneratedMapping.cs", generated_mapping)?);
-    files.push(file("GeneratedTargetBuilder.cs", runtime::TARGET_BUILDER)?);
-    for (path, source) in runtime::SOURCES {
-        files.push(file(path, source)?);
-    }
-    if dynamic_input_document_outputs {
-        let (path, source) = runtime::DYNAMIC_INPUT_DOCUMENT_OUTPUTS_SOURCE;
-        files.push(file(path, source)?);
-    }
-    Ok(ArtifactSet::new(files)?)
+    })
 }
 
 /// Emit flat CSV text/byte input and one X12 document through typed execution.
