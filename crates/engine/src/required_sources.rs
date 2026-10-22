@@ -307,6 +307,116 @@ impl<'a> Analysis<'a> {
     }
 }
 
+/// What one required-source analysis discovered: the static and dynamic
+/// source indexes it requires and its sorted root nodes before graph traversal.
+#[cfg(test)]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct AnalysisSnapshot {
+    required: BTreeSet<usize>,
+    dynamic: BTreeSet<usize>,
+    roots: Vec<NodeId>,
+}
+
+/// Runs the hand-written scope walk, or the shared scope-root visitor that is
+/// meant to replace it, over one selected target.
+#[cfg(test)]
+pub(crate) fn analysis_snapshot(
+    project: &Project,
+    selection: TargetSelection<'_>,
+    visitor: bool,
+) -> Result<AnalysisSnapshot, EngineError> {
+    let selected = selected_target(project, selection)?;
+    let root = selected.map_or(&project.root, |target| &target.root);
+    let mut analysis = Analysis::new(project);
+    if visitor {
+        analysis.inspect_scope_with_visitor(root);
+        analysis.inspect_failure_rules_with_visitor();
+    } else {
+        analysis.inspect_scope(root);
+        analysis.inspect_failure_rules();
+    }
+    let mut roots = analysis.pending.clone();
+    roots.sort_unstable();
+    analysis.inspect_graph();
+    Ok(AnalysisSnapshot {
+        required: analysis.required,
+        dynamic: analysis.inspected_dynamic,
+        roots,
+    })
+}
+
+#[cfg(test)]
+impl Analysis<'_> {
+    /// Collection inspection is unchanged; node roots come from the visitor.
+    /// The hand-written walk reads a sequence's `item` but not the reserved
+    /// item a composed sequence also owns, so that slot stays excluded.
+    fn inspect_scope_with_visitor(&mut self, scope: &Scope) {
+        match scope.source_selector() {
+            Some(mapping::SourceSelectorRef::Legacy(source)) => self.inspect_path(source),
+            Some(mapping::SourceSelectorRef::Owned(source)) => self.inspect_owner(&source.owner),
+            None => {}
+        }
+        if let Some(sequence) = scope.sequence() {
+            self.inspect_sequence_sources(sequence);
+        }
+        if let Some((_, join)) = scope.join() {
+            for source in join.sources() {
+                self.inspect_path(source.collection());
+            }
+        }
+        if let Some((_, join)) = scope.iteration.owned_join() {
+            for source in join.sources() {
+                self.inspect_owner(&source.collection().owner);
+            }
+        }
+        match &scope.construction {
+            ScopeConstruction::PathHierarchy { plan } => self.inspect_path(plan.collection()),
+            ScopeConstruction::OwnedPathHierarchy { plan } => {
+                self.inspect_owner(&plan.collection().owner)
+            }
+            ScopeConstruction::AdjacencyTree { plan } => self.inspect_path(plan.collection()),
+            ScopeConstruction::OwnedAdjacencyTree { plan } => {
+                self.inspect_owner(&plan.collection().owner)
+            }
+            _ => {}
+        }
+        let pending = &mut self.pending;
+        scope.visit_roots(&mut |root| {
+            if root.slot != mapping::ScopeRootSlot::SequenceReservedItem {
+                pending.push(root.node);
+            }
+        });
+        for (_, nested) in scope.nested_scopes() {
+            self.inspect_scope_with_visitor(nested);
+        }
+    }
+
+    fn inspect_failure_rules_with_visitor(&mut self) {
+        for rule in &self.project.failure_rules {
+            match &rule.iteration {
+                FailureIteration::Source { collection } => self.inspect_path(collection),
+                FailureIteration::Sequence { sequence } => self.inspect_sequence_sources(sequence),
+                FailureIteration::OwnedSource { source } => self.inspect_owner(&source.owner),
+            }
+            let pending = &mut self.pending;
+            rule.visit_roots(&mut |root| {
+                if root.slot != mapping::ScopeRootSlot::SequenceReservedItem {
+                    pending.push(root.node);
+                }
+            });
+        }
+    }
+
+    fn inspect_sequence_sources(&mut self, sequence: &SequenceExpr) {
+        if let SequenceExpr::RecursiveCollect { collection, .. } = sequence {
+            self.inspect_path(collection);
+        }
+        if let Some(source) = sequence.owned_source() {
+            self.inspect_owner(&source.owner);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ir::{ScalarType, SchemaNode};

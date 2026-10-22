@@ -795,7 +795,28 @@ fn scope_needs_owned(program: EvalProgram<'_>, scope: &Scope) -> bool {
     {
         return true;
     }
-    let mut pending: Vec<_> = scope
+    let mut pending = owned_probe_roots(scope);
+    let mut visited = HashSet::new();
+    while let Some(id) = pending.pop() {
+        if !visited.insert(id) {
+            continue;
+        }
+        if let Some(node) = program.graph.nodes.get(&id) {
+            if node.owned_source_kind().is_some() {
+                return true;
+            }
+            pending.extend(node.dependencies());
+        }
+    }
+    scope
+        .children
+        .iter()
+        .any(|child| scope_needs_owned(program, child))
+}
+
+/// The roots whose expressions decide whether a scope needs owned evaluation.
+pub(crate) fn owned_probe_roots(scope: &Scope) -> Vec<NodeId> {
+    scope
         .bindings
         .iter()
         .map(|binding| binding.node)
@@ -815,23 +836,7 @@ fn scope_needs_owned(program: EvalProgram<'_>, scope: &Scope) -> bool {
                 .copied()
                 .flat_map(|window| window.nodes()),
         )
-        .collect();
-    let mut visited = HashSet::new();
-    while let Some(id) = pending.pop() {
-        if !visited.insert(id) {
-            continue;
-        }
-        if let Some(node) = program.graph.nodes.get(&id) {
-            if node.owned_source_kind().is_some() {
-                return true;
-            }
-            pending.extend(node.dependencies());
-        }
-    }
-    scope
-        .children
-        .iter()
-        .any(|child| scope_needs_owned(program, child))
+        .collect()
 }
 
 /// Only the implicit First window may use bounded candidate retention.

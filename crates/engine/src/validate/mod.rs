@@ -16,6 +16,9 @@ mod scope;
 mod sequences;
 mod user_function;
 
+#[cfg(test)]
+pub(crate) use join::scope_join_roots;
+
 use graph::{validate_cycles, validate_graph};
 use options::{
     validate_csv_dialect_options, validate_external_source_options, validate_idoc_native_options,
@@ -153,6 +156,8 @@ pub(crate) fn validate_filter_map_contexts(project: &Project) -> Vec<ValidationI
 /// names and arities, and cycles without reading input data or evaluating
 /// expressions.
 pub fn validate(project: &Project) -> Vec<ValidationIssue> {
+    #[cfg(test)]
+    crate::scope_roots_check::assert_equivalent(project);
     let mut issues = Vec::new();
     if project.root.output_path().is_some() && project.target_path.is_some() {
         issues.push(
