@@ -111,7 +111,7 @@ fn the_owned_probe_reads_controls_bindings_and_a_scalar_value() {
 fn join_validation_reads_item_and_output_roots_in_legacy_order() {
     assert_eq!(
         roots(&every_slot(), join_validation),
-        [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 19, 20]
+        [1, 2, 3, 4, 5, 6, 8, 9, 12, 13, 14, 15, 16, 17, 19, 20]
     );
     assert!(roots(&presence(), join_validation).is_empty());
     assert!(roots(&composed_sequence(), join_validation).is_empty());
@@ -232,5 +232,69 @@ fn join_validation_reports_a_sort_key_before_the_output_path() {
             "join field node 1 references inactive join 99",
             "join field node 0 references inactive join 99",
         ]
+    );
+}
+
+/// A block size is validated with the parent roots, after windows; the
+/// other roots keep their issue order.
+#[test]
+fn join_validation_reports_a_block_size_with_the_parent_roots() {
+    let join_field = |field: &str| Node::JoinField {
+        join: JoinId::new(99),
+        collection: vec!["Rows".into()],
+        path: vec![field.into()],
+    };
+    let project = Project {
+        source: SchemaNode::group(
+            "Source",
+            vec![
+                SchemaNode::group("Rows", vec![SchemaNode::scalar("Id", ScalarType::String)])
+                    .repeating(),
+            ],
+        ),
+        target: SchemaNode::group("Target", Vec::new()),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: Graph {
+            nodes: [
+                (1, join_field("Filter")),
+                (2, join_field("Sort")),
+                (3, join_field("First")),
+                (4, join_field("Last")),
+                (5, join_field("Size")),
+                (6, join_field("Value")),
+            ]
+            .into(),
+        },
+        root: Scope {
+            iteration: ScopeIteration::Source(vec!["Rows".into()]),
+            filter: Some(1),
+            group_into_blocks: Some(5),
+            sort_by: Some(2),
+            windows: vec![SequenceWindow::FromTo { first: 3, last: 4 }],
+            bindings: vec![Binding {
+                target_field: "Value".into(),
+                node: 6,
+            }],
+            ..Scope::default()
+        },
+    };
+
+    let inactive: Vec<_> = crate::validate(&project)
+        .into_iter()
+        .map(|issue| issue.message)
+        .filter(|message| message.contains("references inactive join 99"))
+        .collect();
+
+    assert_eq!(
+        inactive,
+        [4, 3, 5, 6, 2, 1]
+            .map(|node| format!("join field node {node} references inactive join 99"))
     );
 }

@@ -514,3 +514,73 @@ fn named_and_active_parent_singletons_remain_valid() {
         .collect::<Vec<_>>();
     assert_eq!(matches, vec![Some(Value::Int(1)), Some(Value::Int(0))]);
 }
+
+/// Orders grouped into blocks whose size counts join 8's tuples over
+/// `singleton`, `Customer` and `Item`.
+fn order_blocks(singleton: &[String]) -> Project {
+    let mut graph = join_nodes(&path(&["Header", "CustomerNr"]));
+    graph.nodes.insert(
+        4,
+        Node::JoinAggregate {
+            function: mapping::AggregateOp::Count,
+            join: JoinId::new(8),
+            plan: plan(singleton, true, true),
+            expression: None,
+            arg: None,
+        },
+    );
+    project(
+        SchemaNode::group(
+            "Target",
+            vec![
+                SchemaNode::group("Block", vec![SchemaNode::scalar("Id", ScalarType::String)])
+                    .repeating(),
+            ],
+        ),
+        graph,
+        Scope {
+            children: vec![Scope {
+                target_field: "Block".into(),
+                iteration: ScopeIteration::Source(path(&["Orders"])),
+                group_into_blocks: Some(4),
+                bindings: vec![Binding {
+                    target_field: "Id".into(),
+                    node: 3,
+                }],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    )
+}
+
+#[test]
+fn block_size_singletons_resolve_from_the_parent_context() {
+    // The size is counted once at the root, before any order is active, so
+    // the relative `CustomerNr` finds no singleton there.
+    let input = source(&[("O1", "C1"), ("O2", "C2"), ("O3", "C1")]);
+    let relative = order_blocks(&path(&["CustomerNr"]));
+    assert_eq!(
+        messages(&relative),
+        vec![
+            "join 8 singleton collection `CustomerNr` does not resolve from the root source context; use a path from the source root or a named source"
+                .to_string()
+        ]
+    );
+    assert_eq!(
+        run(&relative, &input),
+        Err(EngineError::InvalidBlockSize { node: 4 })
+    );
+
+    let rooted = order_blocks(&path(&["Header", "CustomerNr"]));
+    assert!(validate(&rooted).is_empty(), "{:?}", validate(&rooted));
+    let output = run(&rooted, &input).unwrap();
+    let firsts = output
+        .field("Block")
+        .and_then(Instance::as_repeated)
+        .unwrap()
+        .iter()
+        .map(|block| block.field("Id").and_then(Instance::as_scalar).cloned())
+        .collect::<Vec<_>>();
+    assert_eq!(firsts, vec![Some(string("O1")), Some(string("O3"))]);
+}

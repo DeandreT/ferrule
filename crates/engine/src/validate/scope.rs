@@ -553,12 +553,16 @@ pub(super) fn validate_scope(
             ));
         }
     }
-    let mut parent_roots = scope
-        .windows
-        .iter()
-        .copied()
-        .flat_map(|window| window.nodes())
-        .collect::<Vec<_>>();
+    // A block size is evaluated in the parent context like these roots. Roots
+    // are validated last first, so leading with it keeps the others' order.
+    let mut parent_roots = scope.group_into_blocks.into_iter().collect::<Vec<_>>();
+    parent_roots.extend(
+        scope
+            .windows
+            .iter()
+            .copied()
+            .flat_map(|window| window.nodes()),
+    );
     if let Some(sequence) = scope.sequence() {
         parent_roots.extend(sequence.inputs());
     }
