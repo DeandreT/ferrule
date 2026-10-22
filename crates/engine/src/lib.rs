@@ -21,6 +21,7 @@ mod eval_expr;
 mod eval_scope;
 mod failure;
 mod filter_map;
+mod frame_view;
 mod grouping;
 mod iteration_output;
 mod join;
@@ -41,6 +42,8 @@ mod recursive_collect_owned;
 mod recursive_filter;
 mod required_sources;
 mod resolve;
+#[cfg(test)]
+mod scope_roots_check;
 mod sequence;
 mod source_iteration;
 mod source_ownership;
@@ -925,6 +928,8 @@ fn evaluate_run<R>(
     used_owned: bool,
     evaluate: impl FnOnce(eval_expr::EvalProgram<'_>, &[&Instance]) -> Result<R, EngineError>,
 ) -> Result<R, EngineError> {
+    #[cfg(test)]
+    scope_roots_check::assert_equivalent(project);
     project.validate_filter_map_v1()?;
     let issues = validate::validate_filter_map_contexts(project);
     if !issues.is_empty() {
@@ -1051,6 +1056,9 @@ mod filter_map_model_tests;
 #[cfg(test)]
 #[path = "tests/filter_map.rs"]
 mod filter_map_tests;
+#[cfg(test)]
+#[path = "tests/frame_view.rs"]
+mod frame_view_tests;
 #[cfg(test)]
 #[path = "tests/group_blocks.rs"]
 mod group_blocks_tests;
