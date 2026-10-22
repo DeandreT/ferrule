@@ -159,6 +159,15 @@ fn expanded_namespace(name: &str) -> Option<&str> {
 mod tests {
     use super::{expanded_namespace, local_name};
 
+    /// Removes a per-test directory on drop, including after a panic.
+    struct TempDir(std::path::PathBuf);
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
     fn database_xml_column_dependencies_use_the_mapping_resource_root()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -172,6 +181,7 @@ mod tests {
             ));
             let package = folder.join("package");
             std::fs::create_dir_all(&package)?;
+            let _cleanup = TempDir(folder.clone());
             std::fs::create_dir_all(folder.join("outside"))?;
             let mapping = package.join("mapping.mfd");
             std::fs::write(&mapping, "<mapping/>")?;

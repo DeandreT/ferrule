@@ -5,7 +5,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use format_xml::xsd;
 use ir::{ScalarType, SchemaKind};
 
+/// Removes the per-test fixture directory on drop, including after a panic.
 struct Fixture(PathBuf);
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 
 impl Fixture {
     fn new() -> Result<Self, std::io::Error> {

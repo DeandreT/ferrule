@@ -288,7 +288,7 @@ fn fixture(name: &str) -> &'static str {
 fn schema(version: &str) -> SchemaNode {
     serde_json::from_str(fixture(&format!("{version}-schema.json"))).unwrap()
 }
-fn evidence(label: &str) -> std::path::PathBuf {
+fn evidence(label: &str) -> TempDir {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
         "ferrule_x12_grouped_{label}_{}_{}_{}",
@@ -306,7 +306,7 @@ fn evidence(label: &str) -> std::path::PathBuf {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, contents).unwrap();
     }
-    root
+    TempDir(root)
 }
 fn identity(schema: &SchemaNode) -> Project {
     project(

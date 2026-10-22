@@ -45,6 +45,18 @@ fn expected_value(expected: &Json) -> Result<Instance, Box<dyn std::error::Error
     }))
 }
 
+/// Evidence under `FERRULE_JSON_SCALAR_TYPE_EVIDENCE_DIR` is retained; otherwise it is removed on drop,
+/// including after a panic.
+struct Evidence(std::path::PathBuf);
+
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_JSON_SCALAR_TYPE_EVIDENCE_DIR").is_none() {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
+
 #[test]
 fn redundant_scalar_type_siblings_complete_native_contract()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -62,6 +74,7 @@ fn redundant_scalar_type_siblings_complete_native_contract()
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&retained)?;
+    let _cleanup = Evidence(retained.clone());
     std::fs::write(retained.join("cases.json"), CORPUS)?;
     eprintln!("SCALAR_TYPES284_ORIGINALS={}", retained.display());
     let corpus: Json = serde_json::from_str(CORPUS)?;

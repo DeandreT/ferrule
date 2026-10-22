@@ -101,6 +101,33 @@ fn change(instance: &mut Instance, segment: &str, element: &str, value: &str) {
     *target = Instance::Scalar(Value::String(value.into()));
 }
 
+static EVIDENCE_USERS: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+
+/// Held by each test that writes evidence. The last holder removes the default per-process
+/// root on drop, including after a panic; `FERRULE_X12_ISA_EVIDENCE_DIR` is retained.
+struct EvidenceUse;
+
+impl EvidenceUse {
+    fn acquire() -> Self {
+        *EVIDENCE_USERS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) += 1;
+        Self
+    }
+}
+
+impl Drop for EvidenceUse {
+    fn drop(&mut self) {
+        let mut users = EVIDENCE_USERS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *users -= 1;
+        if *users == 0 && std::env::var_os("FERRULE_X12_ISA_EVIDENCE_DIR").is_none() {
+            let _ = std::fs::remove_dir_all(evidence_root());
+        }
+    }
+}
+
 fn evidence_root() -> std::path::PathBuf {
     std::env::var_os("FERRULE_X12_ISA_EVIDENCE_DIR")
         .map(std::path::PathBuf::from)
@@ -147,6 +174,7 @@ fn assert_physical_isa(output: &str, element: u8, component: u8, terminator: u8)
 
 #[test]
 fn complete_isa_unpadded_and_padded_inputs_match_independent_bytes() {
+    let _evidence = EvidenceUse::acquire();
     let (schema, mut instance) = example();
     for (name, padded) in [("unpadded-default", false), ("padded-default", true)] {
         if padded {
@@ -165,6 +193,7 @@ fn complete_isa_unpadded_and_padded_inputs_match_independent_bytes() {
 
 #[test]
 fn complete_isa_lf_input_and_custom_5010_preserve_selected_syntax() {
+    let _evidence = EvidenceUse::acquire();
     let (schema, mut instance) = example();
     change(&mut instance, "ISA", "16", ">");
     let lf = Separators {
@@ -207,6 +236,7 @@ fn complete_isa_lf_input_and_custom_5010_preserve_selected_syntax() {
 
 #[test]
 fn complete_isa_refuses_unrepresentable_fields_and_preserves_destination() {
+    let _evidence = EvidenceUse::acquire();
     for (name, field, value) in [
         ("authorization-overflow", "02", "ABCDEFGHIJK"),
         ("security-overflow", "04", "ABCDEFGHIJK"),
@@ -250,6 +280,7 @@ fn complete_isa_refuses_unrepresentable_fields_and_preserves_destination() {
 
 #[test]
 fn complete_isa_refuses_release_escaped_reserved_data_and_non_ascii_syntax() {
+    let _evidence = EvidenceUse::acquire();
     for (name, value) in [
         ("element-reserved", "S*ENDER"),
         ("component-reserved", "S:ENDER"),
@@ -290,6 +321,7 @@ fn complete_isa_refuses_release_escaped_reserved_data_and_non_ascii_syntax() {
 
 #[test]
 fn isa_partial_schema_keeps_existing_positional_output() {
+    let _evidence = EvidenceUse::acquire();
     let (schema, instance) = example();
     let SchemaKind::Group { mut children, .. } = schema.kind else {
         unreachable!();
@@ -354,6 +386,7 @@ fn completion() -> Autocomplete<'static> {
 
 #[test]
 fn numeric_iea02_is_zero_padded_like_isa13_with_and_without_completion() {
+    let _evidence = EvidenceUse::acquire();
     for (name, ty, value) in [
         (
             "iea02-string",
@@ -457,6 +490,7 @@ fn partial_isa_keeps_iea02_as_supplied() {
 
 #[test]
 fn non_numeric_or_full_width_iea02_remains_supplied_text() {
+    let _evidence = EvidenceUse::acquire();
     for (name, value) in [
         ("iea02-text", "CTRL321"),
         ("iea02-signed", "-321"),
@@ -493,6 +527,7 @@ fn non_numeric_or_full_width_iea02_remains_supplied_text() {
 
 #[test]
 fn complete_isa_autocomplete_keeps_its_existing_lexical_conversion() {
+    let _evidence = EvidenceUse::acquire();
     let (schema, mut instance) = example();
     change(&mut instance, "ISA", "09", "2026-10-09");
     change(&mut instance, "ISA", "10", "10:30:00");
@@ -538,6 +573,7 @@ fn complete_isa_autocomplete_keeps_its_existing_lexical_conversion() {
 
 #[test]
 fn autocomplete_rejects_present_invalid_dates_without_panicking_or_using_the_clock() {
+    let _evidence = EvidenceUse::acquire();
     for (segment, field, values) in [
         (
             "ISA",

@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -9,7 +9,24 @@ use mapping::ScopeConstruction;
 
 const EXTRA: &str = r#"<component name="Text" library="json" kind="31"><data><root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="string" inpkey="30"/></entry></entry></entry></root><json schema="text.schema.json"/></data></component>"#;
 
-fn fixture(extra: bool) -> Result<PathBuf, Box<dyn Error>> {
+/// Removes the per-test directory on drop, including after a panic.
+struct TempDir(PathBuf);
+
+impl std::ops::Deref for TempDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn fixture(extra: bool) -> Result<TempDir, Box<dyn Error>> {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let path = std::env::temp_dir().join(format!(
         "ferrule_constructed_admission_{}_{}_{}",
@@ -18,6 +35,7 @@ fn fixture(extra: bool) -> Result<PathBuf, Box<dyn Error>> {
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&path)?;
+    let path = TempDir(path);
     let design = format!(
         r#"<mapping><component name="map"><structure><children>
       <component name="Source" library="xml" kind="14"><data><root><entry name="Input" outkey="10"><entry name="Code" outkey="11"/></entry></root><document schema="input.xsd" instanceroot="{{}}Input"/></data></component>
@@ -79,7 +97,7 @@ fn observe(
 fn executable_import_refuses_preserved_named_scalar_group_construction()
 -> Result<(), Box<dyn Error>> {
     let path = fixture(true)?;
-    let options = mfd::ImportOptions::default().with_package_root(&path);
+    let options = mfd::ImportOptions::default().with_package_root(&*path);
     let imported = mfd::import_with_profile(
         &path.join("mapping.mfd"),
         &options,
@@ -125,7 +143,7 @@ fn executable_group_control_preserves_complete_native_value() -> Result<(), Box<
     let path = fixture(false)?;
     let imported = mfd::import_with_profile(
         &path.join("mapping.mfd"),
-        &mfd::ImportOptions::default().with_package_root(&path),
+        &mfd::ImportOptions::default().with_package_root(&*path),
         mfd::ImportProfile::Executable,
     );
     observe(&path, "executable-complete", &imported)?;

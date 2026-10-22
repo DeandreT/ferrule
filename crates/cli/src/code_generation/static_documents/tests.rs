@@ -8,7 +8,24 @@ fn project() -> Project {
     .unwrap()
 }
 
-fn evidence(topic: &str) -> std::path::PathBuf {
+/// Removes the per-test directory on drop, including after a panic.
+struct TempDir(std::path::PathBuf);
+
+impl std::ops::Deref for TempDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn evidence(topic: &str) -> TempDir {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
         "ferrule-static-documents-{topic}-{}-{}-{}",
@@ -20,7 +37,7 @@ fn evidence(topic: &str) -> std::path::PathBuf {
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&root).unwrap();
-    root
+    TempDir(root)
 }
 
 #[test]

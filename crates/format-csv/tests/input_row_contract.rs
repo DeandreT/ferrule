@@ -73,6 +73,15 @@ fn character(value: &Json) -> Result<Option<char>, Box<dyn Error>> {
     Ok(Some(first))
 }
 
+/// Removes a per-test directory on drop, including after a panic.
+struct TempDir(std::path::PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn complete_native_rows_match_independent_tags_bits_dialects_and_errors()
 -> Result<(), Box<dyn Error>> {
@@ -105,6 +114,7 @@ fn complete_native_rows_match_independent_tags_bits_dialects_and_errors()
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&root)?;
+    let _cleanup = TempDir(root.clone());
     std::fs::write(root.join("ORACLES-ORIGINAL.json"), ORACLES)?;
     std::fs::write(root.join("SCHEMA-ORIGINAL.txt"), format!("{schema:#?}\n"))?;
     eprintln!("CSV_INPUT275_NATIVE_ORIGINALS={}", root.display());

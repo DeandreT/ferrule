@@ -853,6 +853,15 @@ mod tests {
         );
     }
 
+    /// Removes a per-test directory on drop, including after a panic.
+    struct TempDir(std::path::PathBuf);
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
     fn output_lexical_formats_bound_converted_compact_time_width() {
         let cases = [
@@ -882,6 +891,7 @@ mod tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&retained).unwrap();
+        let _cleanup = TempDir(retained.clone());
         eprintln!(
             "compact-time width outcomes retained at {}",
             retained.display()

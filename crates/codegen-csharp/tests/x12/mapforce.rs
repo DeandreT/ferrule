@@ -128,7 +128,7 @@ fn isa_of(version: &str) -> String {
         .unwrap()
         .0
 }
-fn evidence(label: &str) -> std::path::PathBuf {
+fn evidence(label: &str) -> TempDir {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
         "ferrule_x12_mapforce_{label}_{}_{}_{}",
@@ -147,7 +147,7 @@ fn evidence(label: &str) -> std::path::PathBuf {
     for (name, contents) in FIXTURES {
         fs::write(root.join(name), contents).unwrap();
     }
-    root
+    TempDir(root)
 }
 pub(super) fn identity(schema: &SchemaNode) -> Project {
     project(

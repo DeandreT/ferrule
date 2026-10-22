@@ -6,6 +6,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 const CASES: &str =
     include_str!("../../format-json/tests/fixtures/nested_array_wrappers/cases.json");
 
+/// Removes a per-test directory on drop, including after a panic.
+struct TempDir(std::path::PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn nested_array_wrapper_descriptors_preserve_every_level_and_reject_unknown_versions() {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -19,6 +28,7 @@ fn nested_array_wrapper_descriptors_preserve_every_level_and_reject_unknown_vers
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&evidence).unwrap();
+    let _cleanup = TempDir(evidence.clone());
     std::fs::write(evidence.join("cases.json"), CASES).unwrap();
     let corpus: Value = serde_json::from_str(CASES).unwrap();
     for row in corpus["cases"].as_array().unwrap() {

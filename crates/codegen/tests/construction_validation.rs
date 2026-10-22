@@ -42,7 +42,24 @@ fn named(name: &str, scalar: bool) -> NamedTarget {
     }
 }
 
-fn evidence(label: &str, project: &Project) -> Result<PathBuf, Box<dyn Error>> {
+/// Removes the per-test evidence directory on drop, including after a panic.
+struct TempDir(PathBuf);
+
+impl std::ops::Deref for TempDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn evidence(label: &str, project: &Project) -> Result<TempDir, Box<dyn Error>> {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let path = std::env::temp_dir().join(format!(
         "ferrule_construction_{label}_{}_{}_{}",
@@ -51,6 +68,7 @@ fn evidence(label: &str, project: &Project) -> Result<PathBuf, Box<dyn Error>> {
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&path)?;
+    let path = TempDir(path);
     fs::write(
         path.join("project.json"),
         serde_json::to_vec_pretty(project)?,

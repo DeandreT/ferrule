@@ -166,7 +166,7 @@ fn constrained_completion() -> X12BoundaryOptions {
     ];
     selected
 }
-fn evidence(label: &str) -> std::path::PathBuf {
+fn evidence(label: &str) -> TempDir {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
         "ferrule_x12_profile_{label}_{}_{}_{}",
@@ -179,7 +179,7 @@ fn evidence(label: &str) -> std::path::PathBuf {
     ));
     fs::create_dir(&root).unwrap();
     eprintln!("complete authored X12 profile evidence: {}", root.display());
-    root
+    TempDir(root)
 }
 fn all_values(instance: &ir::Instance) -> serde_json::Value {
     use ir::{Instance, Value};

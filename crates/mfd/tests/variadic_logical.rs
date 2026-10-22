@@ -5,6 +5,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ir::{Instance, Value};
 use mapping::Node;
 
+/// Evidence under `FERRULE_LOGICAL_EVIDENCE_DIR` is retained; otherwise it is removed on drop,
+/// including after a panic.
+struct Evidence(std::path::PathBuf);
+
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_LOGICAL_EVIDENCE_DIR").is_none() {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
+
 #[test]
 fn authored_variadic_logical_mfds_retain_positions_and_complete_boolean_results()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -24,6 +36,7 @@ fn authored_variadic_logical_mfds_retain_positions_and_complete_boolean_results(
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&evidence)?;
+    let _cleanup = Evidence(evidence.clone());
     eprintln!("LOGICAL237_MFD_ORIGINALS={}", evidence.display());
     for entry in std::fs::read_dir(&fixtures)? {
         let path = entry?.path();

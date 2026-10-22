@@ -16,6 +16,29 @@ use mapping::{
     X12Separators,
 };
 
+/// Removes a per-test evidence directory on drop, including after a panic.
+struct TempDir(std::path::PathBuf);
+
+impl std::ops::Deref for TempDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for TempDir {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 const ORDER: &str = include_str!("x12/order-940.x12");
 const ORDER_EXPECTED: &str = include_str!("x12/order-expected.json");
 const SHIPMENT: &str = include_str!("x12/shipment-input.json");
@@ -506,6 +529,7 @@ fn synthetic_native_examples_match_independent_full_values_and_bytes() {
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&evidence).unwrap();
+    let _cleanup = TempDir(evidence.clone());
     eprintln!(
         "complete native X12 qualification artifacts: {}",
         evidence.display()

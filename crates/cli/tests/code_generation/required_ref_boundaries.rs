@@ -6,8 +6,19 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 include!("required_ref_boundaries/tree.rs.txt");
 
-// This finite cohort is retained after success and every failed attempt.
+/// Evidence under `FERRULE_CODEGEN_REQUIRED_REF_EVIDENCE_DIR` is retained; otherwise it is removed on drop,
+/// including after a panic, unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`.
 struct Evidence(PathBuf);
+
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_CODEGEN_REQUIRED_REF_EVIDENCE_DIR").is_none()
+            && !host_policy::keep_artifacts()
+        {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
 
 impl Evidence {
     fn new(label: &str) -> TestResult<Self> {

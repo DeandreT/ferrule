@@ -1031,6 +1031,17 @@ fn parse_runtime_parameters(values: &[String]) -> anyhow::Result<engine::Runtime
     Ok(parameters)
 }
 
+/// Removes a per-test directory on drop, including after a panic.
+#[cfg(test)]
+struct TempDir(std::path::PathBuf);
+
+#[cfg(test)]
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[cfg(test)]
 mod x12_envelope_flag_tests {
     use super::*;
@@ -1150,6 +1161,7 @@ mod x12_envelope_flag_tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         let output = root.join("absent-parent/output");
         let args = vec![
             OsString::from("ferrule"),
@@ -1253,6 +1265,7 @@ mod static_document_flag_tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         let input = root.join("absent-project.json");
         let output = root.join("absent-parent/output");
         let args = vec![
@@ -1371,6 +1384,7 @@ mod csv_x12_flag_tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         let output = root.join("absent-parent/output");
         let args = vec![
             OsString::from("ferrule"),
@@ -1435,6 +1449,7 @@ mod csv_x12_flag_tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         let output = root.join("absent-parent/output");
         let args = vec![
             OsString::from("ferrule"),
@@ -1506,6 +1521,7 @@ mod csv_json_flag_tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         let output = root.join("absent-parent/output");
         let args = vec![
             OsString::from("ferrule"),
@@ -1615,6 +1631,7 @@ mod pdf_evidence_flag_tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         for (key, input_stream) in [("stdin", true), ("stdout", false)] {
             let output = root.join(format!("{key}.xml"));
             std::fs::write(&output, b"sentinel").unwrap();

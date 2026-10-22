@@ -269,6 +269,15 @@ fn error_equals<T>(actual: &Result<T, JsonFormatError>, expected: &Negative) -> 
     }
 }
 
+/// Removes a per-test directory on drop, including after a panic.
+struct TempDir(std::path::PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn nested_wrapper_constraints_preserve_full_models_values_exports_and_errors()
 -> Result<(), Box<dyn Error>> {
@@ -280,8 +289,9 @@ fn nested_wrapper_constraints_preserve_full_models_values_exports_and_errors()
         suffix,
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
-    // create_dir refuses a preexisting evidence namespace; originals are never cleaned up.
+    // create_dir refuses a preexisting evidence namespace.
     fs::create_dir(&evidence)?;
+    let _cleanup = TempDir(evidence.clone());
     eprintln!("nested wrapper constraint evidence: {}", evidence.display());
     let setup = cases();
     retain(&evidence, "SETUP", &setup)?;

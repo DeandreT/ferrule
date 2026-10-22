@@ -626,7 +626,27 @@ mod tests {
 
     use super::*;
 
-    fn evidence(label: &str) -> std::path::PathBuf {
+    /// Evidence under `FERRULE_NESTED_CLONES_EVIDENCE_DIR` is retained; otherwise it is removed on drop,
+    /// including after a panic.
+    struct Evidence(std::path::PathBuf);
+
+    impl std::ops::Deref for Evidence {
+        type Target = std::path::Path;
+
+        fn deref(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl Drop for Evidence {
+        fn drop(&mut self) {
+            if std::env::var_os("FERRULE_NESTED_CLONES_EVIDENCE_DIR").is_none() {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+    }
+
+    fn evidence(label: &str) -> Evidence {
         let parent = std::env::var_os("FERRULE_NESTED_CLONES_EVIDENCE_DIR")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(std::env::temp_dir);
@@ -642,7 +662,7 @@ mod tests {
         ));
         std::fs::create_dir_all(&path).expect("retained guard evidence");
         eprintln!("NESTED_CLONES239_ORIGINALS={}", path.display());
-        path
+        Evidence(path)
     }
 
     fn bound(field: &str, node: NodeId) -> Binding {
