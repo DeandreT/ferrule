@@ -74,6 +74,9 @@ public enum FerruleRuntimeError
     AggregateUnsupportedScalar,
     DecimalConversion,
     AggregateDecimal,
+    MissingInvocationCounters,
+    InvocationCounterOperand,
+    InvocationCounter,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>

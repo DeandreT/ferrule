@@ -948,6 +948,15 @@ fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
             .map(|replacement| replacement.expression)
             .collect(),
         Expression::RuntimeParameterDefault { default, .. } => vec![*default],
+        Expression::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .into_iter()
+            .flatten()
+            .collect(),
         Expression::Call { args, .. } | Expression::UserFunctionCall { args, .. } => args.clone(),
         Expression::DelimitedTextField { input, .. } | Expression::ValueMap { input, .. } => {
             vec![*input]

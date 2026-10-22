@@ -99,6 +99,12 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
         | Node::JoinPosition { .. }
         | Node::XmlSerialize { .. } => vec![],
         Node::RuntimeParameterDefault { default, .. } => vec![Some(*default)],
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => vec![Some(*start), Some(*step), *restart],
         Node::Raise { message } => vec![*message],
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => {
             args.iter().copied().map(Some).collect()
@@ -248,6 +254,7 @@ fn node_title(node: &Node) -> String {
             format!("function parameter {}", parameter.get())
         }
         Node::RuntimeValue { value } => format!("runtime · {value:?}"),
+        Node::InvocationCounter { key, .. } => format!("counter · {key}"),
         Node::RuntimeParameter { name, ty, .. } => format!("runtime · {name}: {ty:?}"),
         Node::RuntimeParameterDefault { name, ty, .. } => {
             format!("optional input · {name}: {ty:?}")

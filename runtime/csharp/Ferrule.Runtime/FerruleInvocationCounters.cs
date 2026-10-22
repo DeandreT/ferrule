@@ -2,6 +2,40 @@ using System.Text;
 
 namespace Ferrule.Runtime;
 
+/// <summary>Immutable limits; the execution root creates the mutable table.</summary>
+public sealed class FerruleInvocationCounterLimits
+{
+    public FerruleInvocationCounterLimits(int maximumCount, long maximumTextBytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumCount);
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumTextBytes);
+        MaximumCount = maximumCount;
+        MaximumTextBytes = maximumTextBytes;
+    }
+    public int MaximumCount { get; }
+    public long MaximumTextBytes { get; }
+}
+
+public static class FerruleInvocationCounterOperands
+{
+    public static long RequireInteger(uint node, string operand, FerruleValue value)
+    {
+        if (value.Kind == FerruleValueKind.Int64) return value.Int64Value;
+        throw new FerruleRuntimeException(FerruleRuntimeError.InvocationCounterOperand,
+            $"counter {operand} requires an integer", node: node, detail: operand,
+            expectedScalarType: FerruleScalarType.Int64, foundKind: value.Kind);
+    }
+
+    public static string? RequireRestart(uint node, FerruleValue value)
+    {
+        if (value.Kind == FerruleValueKind.Null) return null;
+        if (value.Kind == FerruleValueKind.String) return value.StringValue;
+        throw new FerruleRuntimeException(FerruleRuntimeError.InvocationCounterOperand,
+            "counter restart requires a string or missing value", node: node, detail: "restart",
+            expectedScalarType: FerruleScalarType.String, foundKind: value.Kind);
+    }
+}
+
 public enum FerruleInvocationCounterFailure
 {
     CountLimit,

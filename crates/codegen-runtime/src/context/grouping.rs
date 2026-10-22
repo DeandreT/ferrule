@@ -11,6 +11,7 @@ pub struct GroupedItems<'a> {
 }
 
 struct OwnedGroup<'a> {
+    invocation_counters: Option<crate::invocation_counter::CounterState>,
     primary_source: &'a Instance,
     prefix: Vec<ScopeFrame<'a>>,
     named_inputs: &'a [NamedInput<'a>],
@@ -345,6 +346,7 @@ impl<'a> GroupedItems<'a> {
                     execution: group.execution,
                     dynamic_source_loader: group.dynamic_source_loader,
                     filter_map: group.filter_map.clone(),
+                    invocation_counters: group.invocation_counters.clone(),
                 }
             })
             .collect()
@@ -374,6 +376,7 @@ impl<'a> GroupedItems<'a> {
                         execution: group.first.execution,
                         dynamic_source_loader: group.first.dynamic_source_loader,
                         filter_map: group.first.filter_map.clone(),
+                        invocation_counters: group.first.invocation_counters.clone(),
                         wrapper,
                         members,
                         collection,

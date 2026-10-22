@@ -1152,6 +1152,15 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
             .map(|replacement| replacement.expression)
             .collect(),
         Expression::RuntimeParameterDefault { default, .. } => vec![*default],
+        Expression::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .into_iter()
+            .flatten()
+            .collect(),
         Expression::Call { args, .. } | Expression::UserFunctionCall { args, .. } => args.clone(),
         Expression::DelimitedTextField { input, .. } | Expression::ValueMap { input, .. } => {
             vec![*input]
@@ -2127,6 +2136,30 @@ fn render_expression_in_context_with_scalar_item_at(
                 scalar_type_name(*ty),
                 call_expression(*default, "context")
             ),
+            Expression::InvocationCounter {
+                key,
+                start,
+                step,
+                restart,
+            } => {
+                if let Some(function) = owner_function {
+                    return Err(ProgramValidationError::UnsupportedUserFunctionExpression {
+                        function: FunctionId::new(function),
+                        node: id,
+                    }
+                    .into());
+                }
+                let restart = restart.map_or_else(
+                    || "Value::Null".to_string(),
+                    |node| format!("{}?", call_expression(node, "context")),
+                );
+                format!(
+                    "{{\n        {legacy_context}.require_invocation_counters({id})?;\n        let start = codegen_runtime::invocation_counter_integer({id}, \"start\", {}?)?;\n        let step = codegen_runtime::invocation_counter_integer({id}, \"step\", {}?)?;\n        let restart = codegen_runtime::invocation_counter_restart({id}, {restart})?;\n        {legacy_context}.next_invocation_counter({id}, {}, start, step, restart.as_deref())\n    }}",
+                    call_expression(*start, "context"),
+                    call_expression(*step, "context"),
+                    rust_string(key)
+                )
+            }
             Expression::Call { function, args } => {
                 let mut body = String::from("{\n        let args = vec![\n");
                 for arg in args {
