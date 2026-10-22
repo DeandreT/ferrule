@@ -3,7 +3,6 @@
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::sync::Arc;
 
 use ir::{Instance, ScalarType, Value};
 use mapping::{FunctionId, FunctionParameterId, JoinId, NodeId, Project, RuntimeValue};
@@ -16,6 +15,7 @@ mod aggregate;
 mod context;
 mod debug;
 mod dynamic_field_owned;
+mod dynamic_source;
 mod dynamic_target;
 mod eval_expr;
 mod eval_scope;
@@ -61,6 +61,12 @@ pub use debug::{
     DebugSourceFieldProbe, DebugSourceFrame, PendingFunctionNodeFailure, PendingFunctionNodeInput,
     PendingFunctionNodeValue, PendingNodeFailure, PendingNodeInput, PendingNodeValue,
     PendingTargetWrite,
+};
+pub use dynamic_source::{
+    DynamicSourceCategory, DynamicSourceCause, DynamicSourceCodecKind, DynamicSourceDiagnostic,
+    DynamicSourceFault, DynamicSourceLoadFailure, DynamicSourceLoader, DynamicSourcePhase,
+    DynamicSourceRefusal, DynamicSourceResource, DynamicSourceResourceLimit,
+    LegacyDynamicSourceMessage, RestrictedDynamicSourceError,
 };
 pub use filter_map::{
     FilterMapBoundary, FilterMapBoundaryKind, FilterMapBudgetKind, FilterMapCancellation,
@@ -435,12 +441,14 @@ pub enum EngineError {
         path: String,
         message: String,
     },
-    #[error("dynamic source `{source_name}`: {refusal}")]
-    DynamicSourceRefused {
-        source_name: String,
-        #[source]
-        refusal: PolicyRefusal,
-    },
+    /// A tagged host failure. It renders the same text as
+    /// [`Self::DynamicSourceLoad`] and keeps the fault off the `source()` chain;
+    /// see [`DynamicSourceLoadFailure`].
+    #[error("{0}")]
+    DynamicSourceFailure(Box<DynamicSourceLoadFailure>),
+    /// A restricted-policy refusal; its `source()` is the typed [`PolicyRefusal`].
+    #[error(transparent)]
+    DynamicSourceRefused(Box<DynamicSourceRefusal>),
     #[error("restricted execution {kind:?} budget of {limit} is exhausted")]
     ExecutionBudgetExceeded {
         kind: ExecutionBudgetKind,
@@ -623,29 +631,6 @@ pub struct ExecutionContext<'a> {
     filter_map_limits: FilterMapLimits,
     filter_map_cancellation: Option<&'a dyn FilterMapCancellation>,
     policy: &'a ExecutionPolicy,
-}
-
-/// Host boundary for typed secondary sources whose path is computed during
-/// mapping execution. Implementations should cache by source name and path.
-pub trait DynamicSourceLoader {
-    fn load(&self, source: &str, path: &str) -> Result<Arc<Instance>, String>;
-
-    /// Restricted runs call this instead of [`Self::load`]. A loader must check
-    /// the resolved location against `policy` before acquiring it; the default
-    /// refuses because the engine cannot see where an unaware loader reads.
-    fn load_restricted(
-        &self,
-        source: &str,
-        path: &str,
-        policy: &RestrictedPolicy,
-    ) -> Result<Arc<Instance>, DynamicSourceLoadError> {
-        let _ = (source, path, policy);
-        Err(DynamicSourceLoadError::Refused(
-            PolicyRefusal::UnsupportedCapability {
-                capability: RestrictedCapability::UnconfinedDynamicSourceLoader,
-            },
-        ))
-    }
 }
 
 static TRUSTED: ExecutionPolicy = ExecutionPolicy::Trusted;
@@ -1038,6 +1023,9 @@ mod debug_tests;
 #[cfg(test)]
 #[path = "tests/dynamic_document_output.rs"]
 mod dynamic_document_output_tests;
+#[cfg(test)]
+#[path = "tests/dynamic_source_fault.rs"]
+mod dynamic_source_fault_tests;
 #[cfg(test)]
 #[path = "tests/dynamic_source.rs"]
 mod dynamic_source_tests;

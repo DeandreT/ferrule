@@ -1343,6 +1343,41 @@ and `resource`. The category tokens are `missing_loader`, `path_type`,
 runtimes use the same tokens. Tokens may be added but are never renamed. The
 projection never parses message text.
 
+### Interpreter host loaders
+
+The interpreter uses the same split for its own host loaders.
+`engine::DynamicSourceLoader` has provided `load_tagged` and
+`load_restricted_tagged` methods, which the engine calls. Their defaults adapt
+`load` and `load_restricted`, so a string loader behaves as before and its
+message reaches `EngineError::DynamicSourceLoad` unchanged. A loader with typed
+failures returns `engine::DynamicSourceFault`, which reaches
+`EngineError::DynamicSourceFailure`. Its `DynamicSourceLoadFailure` holds the
+source name, logical path and fault, and `DynamicSourceFault::find_cause` walks
+the original cause chain. The failure renders the legacy
+`DynamicSourceLoad` text, and `EngineError` does not report the fault as its
+`source()`, so CLI and GUI error text is unchanged. Request order and error
+precedence are unchanged.
+
+A restricted-policy refusal stays `EngineError::DynamicSourceRefused`. Its
+`DynamicSourceRefusal` holds the source name, logical path and typed
+`PolicyRefusal`, which remains the error's `source()`. `engine::DynamicSourceDiagnostic`
+uses the generated runtimes' tokens and projects a refusal as `acquisition` /
+`host`: generated libraries have no policy of their own, so the same refusal
+made by a confining host reaches them as an acquisition fault. The interpreter
+checks no path length, request count or byte totals for dynamic sources, so it
+reports only the `missing_loader` and `path_type` request categories itself.
+
+The CLI and GUI filesystem loader classifies each failed read from the typed
+errors in its cause chain and keeps the whole chain in
+`cli::DynamicSourceReadError`. A policy refusal or I/O error is acquisition.
+Invalid UTF-8 is an encoding fault, including the payload-free `InvalidData`
+error that `read_to_string` reports. Any other `InvalidData` error or format
+reader error is a document fault. A failure without typed evidence, such as a
+transport or configuration message, remains a host acquisition failure. A
+source the project does not declare is an `UndeclaredSource` codec fault. The
+payload loader decodes documents before execution. A logical path the host did
+not supply is an acquisition fault (`cli::UnsuppliedPayloadSource`).
+
 ## JSON Host Boundary
 
 Both generated libraries also expose schema-shaped JSON entry points. These

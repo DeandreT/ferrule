@@ -5,11 +5,15 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use engine::{ExecutionPolicy, RestrictedPolicy};
+use engine::{
+    DynamicSourceFault, DynamicSourceLoader, ExecutionPolicy, RestrictedDynamicSourceError,
+    RestrictedPolicy,
+};
 use ir::Instance;
 
 #[cfg(test)]
 use crate::FilesystemRunPolicy;
+use crate::dynamic_source_fault;
 use crate::execution_policy::{self, TRUSTED};
 use crate::{FilesystemPdfReader, TraceSink, http_url, read_instance_with_pdf_reader};
 
@@ -66,15 +70,13 @@ impl<'a> ProjectDynamicSourceLoader<'a> {
         self
     }
 
-    /// Loads one admitted location. A restricted check runs before the cache
-    /// so every request is authorized, not only the first.
-    fn load_checked(
+    /// Records one request and resolves its location. A relative path
+    /// resolves against the project directory.
+    fn request(
         &self,
         source_name: &str,
         path: &str,
-        policy: Option<&RestrictedPolicy>,
-    ) -> Result<Arc<Instance>, engine::DynamicSourceLoadError> {
-        use engine::DynamicSourceLoadError::{Failed, Refused};
+    ) -> (Option<&'a mapping::NamedSource>, PathBuf) {
         if let Some(sink) = self.trace_sink {
             sink.dynamic_source_load_requested(source_name, path);
         }
@@ -88,39 +90,42 @@ impl<'a> ProjectDynamicSourceLoader<'a> {
         } else {
             self.project_dir.join(resolved)
         };
-        if let (Some(policy), Some(source)) = (policy, source) {
-            policy
-                .authorize_read(execution_policy::read_location(&resolved, &source.options))
-                .map_err(Refused)?;
-        }
+        (source, resolved)
+    }
+
+    /// Loads one admitted location, reusing an earlier document for the same
+    /// source and path. Failures are not cached.
+    fn load_admitted(
+        &self,
+        source_name: &str,
+        path: &str,
+        source: Option<&mapping::NamedSource>,
+        resolved: &Path,
+    ) -> Result<Arc<Instance>, DynamicSourceFault> {
         let key = (source_name.to_string(), path.to_string());
         if let Some(instance) = self.cache.borrow().get(&key).cloned() {
             return Ok(instance);
         }
-        let source = source
-            .ok_or_else(|| Failed(format!("dynamic source `{source_name}` is not declared")))?;
+        let source = source.ok_or_else(|| dynamic_source_fault::undeclared(source_name))?;
         let instance = Arc::new(
             read_instance_with_pdf_reader(
-                &resolved,
+                resolved,
                 &source.schema,
                 &source.options,
                 self.reader,
                 self.policy,
             )
-            .map_err(|error| Failed(error.to_string()))?,
+            .map_err(dynamic_source_fault::read_fault)?,
         );
         self.cache.borrow_mut().insert(key, Arc::clone(&instance));
         Ok(instance)
     }
 }
 
-impl engine::DynamicSourceLoader for ProjectDynamicSourceLoader<'_> {
+impl DynamicSourceLoader for ProjectDynamicSourceLoader<'_> {
     fn load(&self, source_name: &str, path: &str) -> Result<Arc<Instance>, String> {
-        self.load_checked(source_name, path, None)
-            .map_err(|error| match error {
-                engine::DynamicSourceLoadError::Failed(message) => message,
-                engine::DynamicSourceLoadError::Refused(refusal) => refusal.to_string(),
-            })
+        self.load_tagged(source_name, path)
+            .map_err(DynamicSourceFault::into_message)
     }
 
     fn load_restricted(
@@ -129,6 +134,35 @@ impl engine::DynamicSourceLoader for ProjectDynamicSourceLoader<'_> {
         path: &str,
         policy: &RestrictedPolicy,
     ) -> Result<Arc<Instance>, engine::DynamicSourceLoadError> {
-        self.load_checked(source_name, path, Some(policy))
+        use engine::DynamicSourceLoadError::{Failed, Refused};
+        self.load_restricted_tagged(source_name, path, policy)
+            .map_err(|error| match error {
+                RestrictedDynamicSourceError::Refused(refusal) => Refused(refusal),
+                RestrictedDynamicSourceError::Fault(fault) => Failed(fault.into_message()),
+            })
+    }
+
+    fn load_tagged(
+        &self,
+        source_name: &str,
+        path: &str,
+    ) -> Result<Arc<Instance>, DynamicSourceFault> {
+        let (source, resolved) = self.request(source_name, path);
+        self.load_admitted(source_name, path, source, &resolved)
+    }
+
+    /// The policy check runs before the cache so every request is
+    /// authorized, not only the first.
+    fn load_restricted_tagged(
+        &self,
+        source_name: &str,
+        path: &str,
+        policy: &RestrictedPolicy,
+    ) -> Result<Arc<Instance>, RestrictedDynamicSourceError> {
+        let (source, resolved) = self.request(source_name, path);
+        if let Some(source) = source {
+            policy.authorize_read(execution_policy::read_location(&resolved, &source.options))?;
+        }
+        Ok(self.load_admitted(source_name, path, source, &resolved)?)
     }
 }
