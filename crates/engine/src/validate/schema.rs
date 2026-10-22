@@ -5,6 +5,9 @@ use super::{
     ValidationIssue, ValidationOwner, ValidationSchemaLocation, ValidationSchemaStep, own_issues,
 };
 
+/// Leading text of the issue reported for a malformed nested-array wrapper frame.
+pub(super) const WRAPPER_FRAME_ISSUE: &str = "JSON nested-array wrapper metadata";
+
 pub(super) fn validate_schema(
     root: &str,
     schema: &SchemaNode,
@@ -232,6 +235,15 @@ pub(super) fn validate_schema(
         issues.push(ValidationIssue::new(
             root,
             format!("arbitrary-JSON metadata{suffix} requires one non-repeating string scalar"),
+        ));
+    }
+    if let Err(error) = schema.check_json_array_wrapper_frame() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "{WRAPPER_FRAME_ISSUE}{suffix} requires a repeating group frame whose only child is a repeating `{}` array: {error}",
+                ir::JSON_ARRAY_ITEM_FIELD
+            ),
         ));
     }
     own_issues(

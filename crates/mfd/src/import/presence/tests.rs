@@ -330,31 +330,20 @@ fn engine_rejected_roles(node: &SchemaNode) -> bool {
         || !node.container_nullable_is_valid()
         || !node.json_object_item_nullable_is_valid()
         || !node.json_any_is_valid()
-}
-
-#[derive(Default)]
-struct Differences {
-    engine_rejected: usize,
-    malformed_wrapper_only: usize,
+        || !node.json_array_wrapper_is_valid()
 }
 
 /// Compares every site on one node. A valid node must match exactly; a
 /// contradictory one may only lose a proof.
-fn compare(node: &SchemaNode, differences: &mut Differences) {
+fn compare(node: &SchemaNode, engine_rejected: &mut usize) {
     for (site, current, legacy) in SITES {
         let (current, legacy) = (current(node), legacy(node));
         if current == legacy {
             continue;
         }
         assert!(!current, "{site} newly proves {node:?}");
-        if engine_rejected_roles(node) {
-            differences.engine_rejected += 1;
-        } else {
-            // Nested-array wrapper frames are validated by saved-project
-            // deserialization and every JSON reader and writer.
-            assert!(!node.json_array_wrapper_is_valid(), "{site}: {node:?}");
-            differences.malformed_wrapper_only += 1;
-        }
+        assert!(engine_rejected_roles(node), "{site}: {node:?}");
+        *engine_rejected += 1;
     }
 }
 
@@ -378,7 +367,7 @@ fn shapes() -> Vec<SchemaNode> {
 
 #[test]
 fn every_role_flag_combination_matches_or_conservatively_refuses() {
-    let mut differences = Differences::default();
+    let mut engine_rejected = 0;
     let mut nodes = 0;
     for shape in shapes() {
         for bits in 0u32..(1 << 10) {
@@ -395,7 +384,7 @@ fn every_role_flag_combination_matches_or_conservatively_refuses() {
                 node.json_array_wrapper = bits & 256 != 0;
                 node.json_any = bits & 512 != 0;
                 node.json_object_item_nullable = item;
-                compare(&node, &mut differences);
+                compare(&node, &mut engine_rejected);
                 nodes += 1;
             }
         }
@@ -403,8 +392,7 @@ fn every_role_flag_combination_matches_or_conservatively_refuses() {
     assert_eq!(nodes, 6 * 1024 * 3);
     // The retained readings proved some saved shapes whose roles contradict
     // each other; those are refused rather than proved.
-    assert!(differences.engine_rejected > 0);
-    assert!(differences.malformed_wrapper_only > 0);
+    assert!(engine_rejected > 0);
 }
 
 #[test]

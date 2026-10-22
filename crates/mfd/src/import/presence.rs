@@ -11,6 +11,8 @@ use ir::{
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wrapper_corpus_tests;
 
 /// No layer admits XML nil or an explicit JSON null, and the node is not a
 /// nested-array frame.

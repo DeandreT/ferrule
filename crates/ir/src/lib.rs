@@ -55,13 +55,13 @@ pub use source_origin::{
 pub use schema::{
     EffectiveCardinality, EffectiveNullability, EffectivePresence, EffectiveSchemaView,
     EffectiveViewError, EffectiveXmlView, IntegerRange, ItemCountRange, JsonAllowedValue,
-    JsonAllowedValues, JsonAllowedValuesError, JsonContainsConstraint, JsonContainsConstraints,
-    JsonContainsPredicate, JsonDependentSchemaConstraint, JsonDependentSchemaConstraints,
-    JsonFormatAnnotations, JsonFormatAnnotationsError, JsonMultipleOf, JsonMultipleOfConstraints,
-    JsonMultipleOfConstraintsError, JsonNullability, JsonPatternConstraints,
-    JsonPatternConstraintsError, JsonPatternPropertyNames, JsonPropertyDependencies,
-    JsonPropertyDependenciesError, JsonPropertyNameConstraints, JsonPropertyNameSet,
-    JsonPropertyNameSetError, JsonSchemaPredicate, MAX_DISTINCT_JSON_PATTERNS,
+    JsonAllowedValues, JsonAllowedValuesError, JsonArrayWrapperFrameError, JsonContainsConstraint,
+    JsonContainsConstraints, JsonContainsPredicate, JsonDependentSchemaConstraint,
+    JsonDependentSchemaConstraints, JsonFormatAnnotations, JsonFormatAnnotationsError,
+    JsonMultipleOf, JsonMultipleOfConstraints, JsonMultipleOfConstraintsError, JsonNullability,
+    JsonPatternConstraints, JsonPatternConstraintsError, JsonPatternPropertyNames,
+    JsonPropertyDependencies, JsonPropertyDependenciesError, JsonPropertyNameConstraints,
+    JsonPropertyNameSet, JsonPropertyNameSetError, JsonSchemaPredicate, MAX_DISTINCT_JSON_PATTERNS,
     MAX_JSON_ALLOWED_VALUE_STRING_BYTES, MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES,
     MAX_JSON_ALLOWED_VALUES, MAX_JSON_CONTAINS_CONSTRAINTS, MAX_JSON_DEPENDENT_SCHEMA_CONSTRAINTS,
     MAX_JSON_FORMAT_ANNOTATION_BYTES, MAX_JSON_FORMAT_ANNOTATION_TOTAL_BYTES,
@@ -2551,63 +2551,6 @@ impl SchemaNode {
         } else {
             self.container_nullable
         }
-    }
-
-    /// Validates the distinct array frame without copying its child tree.
-    pub fn json_array_wrapper_is_valid(&self) -> bool {
-        if !self.json_array_wrapper {
-            return true;
-        }
-        let SchemaKind::Group {
-            children,
-            alternatives,
-            required,
-            xml_restricted_alternatives,
-            dynamic,
-        } = &self.kind
-        else {
-            return false;
-        };
-        self.repeating
-            && matches!(children.as_slice(), [item] if item.name == JSON_ARRAY_ITEM_FIELD && item.repeating)
-            && alternatives.is_empty()
-            && required.is_empty()
-            && xml_restricted_alternatives.is_empty()
-            && dynamic.is_none()
-            && self.xml_namespace.is_none()
-            && self.xml_name_alternatives.is_empty()
-            && self.xml_wildcard_namespace.is_none()
-            && self.xml_wildcard_process_contents == XmlWildcardProcessContents::Skip
-            && self.recursive_ref.is_none()
-            && !self.attribute
-            && !self.text
-            && !self.nillable
-            && !self.xml_optional
-            && !self.xml_attribute_required
-            && !self.nullable
-            && self.json_object_item_nullable.is_none()
-            && !self.json_any
-            && self.fixed.is_none()
-            && self.json_allowed_values.is_none()
-            && self.numeric_range.is_none()
-            && self.json_multiple_of.is_none()
-            && self.json_dependent_schemas.is_none()
-            && self.property_count_range.is_none()
-            && self.json_property_dependencies.is_none()
-            && self.json_pattern_property_names.is_none()
-            && self.json_property_names.is_none()
-            && self.string_length_range.is_none()
-            && self.json_patterns.is_none()
-            && self.json_formats.is_empty()
-            && self.default.is_none()
-            && self.value_generation.is_none()
-            && self.alternative_mode == GroupAlternativeMode::Exclusive
-            && self.xml_alternative_kind == XmlAlternativeKind::XsiType
-            && !self.xml_type_alternatives
-            && self.xml_default_type.is_none()
-            && self.xml_repeating_sequences.is_empty()
-            && self.xml_repeating_choices.is_empty()
-            && self.database_relation.is_none()
     }
 
     /// The complete inner array schema of a validated distinct array frame.

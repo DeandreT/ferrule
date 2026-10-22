@@ -129,7 +129,11 @@ A ferrule project is plain JSON built from four main concepts:
    source paths derive those facts from the views, keeping object-item null
    separate from occurrence and array-container null. Consumers that combine
    these facts should use the views rather than re-reading the individual
-   flags.
+   flags. `check_json_array_wrapper_frame` is the single exact-shape check
+   for a nested-array wrapper frame and names its first departure from that
+   shape; saved-project deserialization, the JSON readers and writers and
+   JSON Schema export refuse a malformed frame, and engine validation reports
+   it at the frame's schema location.
 2. **Graph nodes** compute scalar values. Nodes read source fields and positions,
    hold constants, call built-in functions, branch lazily, translate value maps,
    perform lookups and joins, reduce collections, and access selected runtime

@@ -1,6 +1,7 @@
 mod effective;
 mod item_count_range;
 mod json_allowed_values;
+mod json_array_wrapper;
 mod json_contains_constraints;
 mod json_dependent_schema_constraints;
 mod json_format_annotations;
@@ -24,6 +25,7 @@ pub use json_allowed_values::{
     MAX_JSON_ALLOWED_VALUE_STRING_BYTES, MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES,
     MAX_JSON_ALLOWED_VALUES,
 };
+pub use json_array_wrapper::JsonArrayWrapperFrameError;
 pub use json_contains_constraints::{
     JsonContainsConstraint, JsonContainsConstraints, MAX_JSON_CONTAINS_CONSTRAINTS,
 };
