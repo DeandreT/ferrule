@@ -18,6 +18,7 @@ use rusqlite::types::ValueRef;
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use thiserror::Error;
 
+pub mod query;
 mod relational;
 
 #[cfg(test)]

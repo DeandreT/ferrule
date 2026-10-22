@@ -184,6 +184,12 @@ pub fn check_source_ownership_capability_with_observers(
     source_ownership::admit_project(project, selection).map(|_| ())
 }
 
+/// The typed-resolution step shared by graph evaluation of required runtime
+/// parameters and host acquisition bindings. Null stays Null.
+pub fn resolve_runtime_parameter(value: &Value, ty: ScalarType) -> Option<Value> {
+    eval_expr::coerce_value_map_input(value, ty)
+}
+
 pub const MAX_RUNTIME_PARAMETERS: usize = 1_024;
 pub const MAX_RUNTIME_PARAMETER_STRING_BYTES: usize = 8 * 1024 * 1024;
 
@@ -248,6 +254,14 @@ impl RuntimeParameters {
         }
         self.values.insert(name, value);
         Ok(())
+    }
+
+    /// Resolves one supplied value to a declared scalar type with the same
+    /// coercion graph evaluation applies to `Node::RuntimeParameter`. `None`
+    /// means the name was not supplied; `Err` returns the uncoercible value.
+    pub fn resolve(&self, name: &str, ty: ScalarType) -> Option<Result<Value, &Value>> {
+        let value = self.values.get(name)?;
+        Some(resolve_runtime_parameter(value, ty).ok_or(value))
     }
 
     fn iter(&self) -> impl Iterator<Item = (&str, &Value)> {

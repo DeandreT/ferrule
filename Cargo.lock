@@ -931,6 +931,7 @@ dependencies = [
  "mfd",
  "pdf-worker",
  "roxmltree",
+ "rusqlite",
  "rust_xlsxwriter",
  "rustix 1.1.4",
  "serde",
@@ -1892,7 +1893,9 @@ name = "format-db"
 version = "0.1.0"
 dependencies = [
  "ir",
+ "mapping",
  "rusqlite",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 

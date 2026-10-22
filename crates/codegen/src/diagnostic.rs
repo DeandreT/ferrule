@@ -35,6 +35,12 @@ pub enum Diagnostic {
         function: FunctionId,
         diagnostic: Box<Diagnostic>,
     },
+    /// A declared input acquisition profile has no generated host adapter.
+    /// `source` is `None` for the primary input.
+    UnsupportedInputProfile {
+        source: Option<String>,
+        profile: &'static str,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,6 +128,15 @@ impl fmt::Display for Diagnostic {
                 function,
                 diagnostic,
             } => write!(formatter, "user function {}: {diagnostic}", function.get()),
+            Self::UnsupportedInputProfile { source, profile } => write!(
+                formatter,
+                "{}: code generation does not support the `{profile}` input profile; supply a pre-acquired typed instance",
+                source
+                    .as_deref()
+                    .map_or("primary source".to_owned(), |name| format!(
+                        "source `{name}`"
+                    ))
+            ),
         }
     }
 }

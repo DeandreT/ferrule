@@ -8,5 +8,9 @@ description = "Database schema introspection and instance read/write"
 
 [dependencies]
 ir = { workspace = true }
-rusqlite = { workspace = true }
+mapping = { workspace = true }
+rusqlite = { workspace = true, features = ["hooks"] }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

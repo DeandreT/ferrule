@@ -604,6 +604,9 @@ fn validate_name(name: &str, label: &str) -> anyhow::Result<()> {
 }
 
 fn reject_stateful_options(options: &FormatOptions) -> anyhow::Result<()> {
+    if options.sqlite_read.is_some() {
+        bail!("pipeline preview does not support declared SQLite query inputs");
+    }
     if options.local_xml_file_set {
         bail!("pipeline preview does not support local XML file sets");
     }

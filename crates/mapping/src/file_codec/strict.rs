@@ -45,6 +45,9 @@ pub(super) struct Header {
     pub kind: String,
     pub version: u64,
     pub float_bits: FloatBits,
+    /// Version 3 only: the sorted file capabilities the document requires.
+    #[serde(default)]
+    pub capabilities: Option<Vec<String>>,
 }
 pub(super) struct FloatBits(pub BTreeMap<String, String>);
 impl<'de> Deserialize<'de> for FloatBits {

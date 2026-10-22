@@ -31,7 +31,7 @@ for a complete format standard or another product.
 | CSV | Yes | Yes | `.csv` or `.txt` | Delimited flat rows with a configurable delimiter, printable or disabled quoting, headers, optional present-empty text, and optional UTF-8 BOM output |
 | Fixed-width | Yes | Yes | `fixed_width` layout | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | `.xlsx` | Typed worksheets, flat, transposed, composite, worksheet-set, and grid source shapes, flat and hierarchical targets, and update-existing flat writes |
-| SQLite | Yes | Yes | `.db`, `.sqlite`, or `.sqlite3` | Read-only table introspection, typed reads, imported relational query shapes, validated declared relations, structured XML text columns, and idempotent full-replace writes |
+| SQLite | Yes | Yes | `.db`, `.sqlite`, or `.sqlite3` | Read-only table introspection, typed reads, imported relational query shapes, declared read-only single-table queries with typed named parameters, validated declared relations, structured XML text columns, and idempotent full-replace writes |
 | X12 / EDIFACT | Yes | Yes | `.edi`, `.x12`, or `.edifact` with a schema dialect, or `edi_kind` | Schema-guided interchange I/O, custom syntax separators, repetitions, qualifier loops, retained field lengths and code lists, optional lenient parsing, and bounded output validation that leaves the destination unchanged on failure |
 | HL7 v2 / TRADACOMS | Yes | Yes | `.hl7` or an EDI schema dialect | Bounded schema-guided message I/O, retained field lengths and code lists, HL7 escapes and subcomponents, and TRADACOMS release escaping |
 | SAP IDoc | Yes | Yes | `idoc` layout | Embedded fixed-record layouts with bounded byte-position parsing and deterministic output |
@@ -77,6 +77,7 @@ for a complete format standard or another product.
 | XLSX | Grid, worksheet-set, composite, and transposed output, which are input-only layouts |
 | XLSX | Update-existing writes for hierarchical output |
 | SQLite | Other database engines, general SQL mutation, and multi-database connections |
+| SQLite | SQL text, joins, views and declared queries on payload, stream, REST, pipeline, generated-code and MFD routes |
 | X12 / EDIFACT | Invisible or whitespace explicit X12 output separators, including LF |
 | SAP IDoc | `.idoc` input without an embedded layout |
 | SWIFT MT | SWIFT MT output |
@@ -490,10 +491,44 @@ can require or create shared-memory and WAL sidecars. Hosts that require an
 offline filesystem boundary must also confine readable resources and enforce
 read-only access to their input filesystem.
 
-The [declared read-only query proposal](design/sqlite-read-query-v1.md) specifies
-a separate typed single-table acquisition profile and prospective host fixtures.
-It is a design for review; it does not enable a query option or change existing
-table reads and imported query lowering.
+### Declared SQLite queries
+
+`source_options.sqlite_read`, or a static named source's `options.sqlite_read`,
+selects the closed `sqlite_read_v1` profile described in the
+[declared read design](design/sqlite-read-query-v1.md). It reads one ordinary
+rowid table in `main` into a repeating group of plain String, Int, Float or Bool
+fields through an ordered projection, a conjunction of `eq`, `ne`, `lt`, `le`,
+`gt` and `ge` comparisons with typed named parameters or explicit NULL tests,
+and an order that ends with the proved `INTEGER PRIMARY KEY` ascending. The
+descriptor carries no SQL text. It cannot be combined with other format options
+and never falls back to an ordinary table read. Existing table reads, imported
+query lowering and full-replace writes are unchanged.
+
+Each query parameter binds one required runtime parameter of exactly its
+declared type, supplied with `--param NAME=VALUE` or as a typed host value and
+resolved with the same coercion as graph evaluation. Duplicate and unknown
+bindings, then missing, NULL, wrong-type and non-finite values, refuse before
+any input is opened. String comparison and ordering use BINARY collation. SQL
+NULL becomes a present `Null` field, and zero rows produce an empty sequence.
+
+Acquisition opens the existing literal path read-only with a private cache,
+`query_only`, an untrusted schema and an authorizer limited to the admitted
+table columns. It admits table and key metadata and validates every referenced
+cell in key order within one read snapshot before running the SELECT, so a
+filter cannot hide malformed storage. A busy database refuses immediately.
+Cancellation, a 5-second deadline, and limits of 100,000 candidate and output
+rows, 1 MiB per cell, 64 MiB of decoded payload, 64 KiB of generated SQL and
+about 10 million VM instructions are cooperative and refuse rather than
+truncate. The connection closes before mapping evaluation. Failures are typed
+`format_db::query::QueryReadError` values carrying the phase, parameter,
+column, one-based row and SQLite codes, never parameter values.
+
+Filesystem `run` and `cli::preview_project_value_from_files` support primary
+and static named query inputs, and restricted policies confine the database
+path. Payload, standard-stream, REST JSON, pipeline, offline bundle,
+generated-code and MFD export routes refuse the profile before reading. Saved
+designs that carry it require the [`sqlite_read_v1` file
+capability](project-files.md#file-capabilities).
 
 ### Native X12 ISA encoding
 

@@ -58,6 +58,7 @@ pub(super) fn validate(
         xlsx_worksheet_set,
         xlsx_grid,
         xlsx_hierarchical,
+        sqlite_read,
     } = options;
     macro_rules! none { ($($field:ident),+ $(,)?) => { $(if $field.is_some() { return Err(Json5BoundaryPolicyError::FormatOption { side, field: stringify!($field) }); })+ }; }
     macro_rules! empty { ($($field:ident),+ $(,)?) => { $(if !$field.is_empty() { return Err(Json5BoundaryPolicyError::FormatOption { side, field: stringify!($field) }); })+ }; }
@@ -92,7 +93,8 @@ pub(super) fn validate(
         xlsx_composite,
         xlsx_worksheet_set,
         xlsx_grid,
-        xlsx_hierarchical
+        xlsx_hierarchical,
+        sqlite_read
     );
     empty!(
         edi_implied_decimals,

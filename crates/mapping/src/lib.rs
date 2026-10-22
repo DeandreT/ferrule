@@ -39,6 +39,7 @@ mod scope_roots;
 mod scope_serde;
 mod source_owner;
 mod source_scope;
+mod sqlite_read;
 mod swift;
 mod tabular;
 mod wsdl;
@@ -133,6 +134,16 @@ pub use source_owner::{
 pub use source_scope::{
     SourceScopeLocation, SourceScopeStep, SourceScopeTarget, first_owned_source_scope,
     first_project_owned_source_scope,
+};
+pub use sqlite_read::{
+    MAX_SQLITE_READ_COLUMNS, MAX_SQLITE_READ_IDENTIFIER_BYTES, MAX_SQLITE_READ_ORDER_TERMS,
+    MAX_SQLITE_READ_PARAMETER_NAME_BYTES, MAX_SQLITE_READ_PARAMETERS, MAX_SQLITE_READ_PREDICATES,
+    QueryProfileError, QueryProfileReason, SQLITE_READ_V1_CAPABILITY, SqliteReadComparison,
+    SqliteReadComparisonOp, SqliteReadDirection, SqliteReadInput, SqliteReadNullTest,
+    SqliteReadNulls, SqliteReadOrder, SqliteReadOwner, SqliteReadParameter, SqliteReadPredicate,
+    SqliteReadProfile, SqliteReadProjection, SqliteReadV1, ValidatedOrder, ValidatedParameter,
+    ValidatedPredicate, ValidatedPredicateTest, ValidatedProjection, ValidatedSqliteRead,
+    validate_sqlite_read_profile,
 };
 pub use swift::{
     SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtLayout, SwiftMtLayoutError,
