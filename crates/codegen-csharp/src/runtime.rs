@@ -185,6 +185,10 @@ pub(crate) const SOURCES: [(&str, &str); 86] = [
         ),
     ),
     (
+        "Runtime/Json/FerruleJson.Prepared.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJson.Prepared.cs"),
+    ),
+    (
         "Runtime/Json/FerruleJson.PropertyCounts.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJson.PropertyCounts.cs"),
     ),

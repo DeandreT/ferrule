@@ -4,16 +4,17 @@ use std::fmt;
 
 use ir::Instance;
 
-use super::{
-    ConstraintBoundary, JsonBoundaryError, check_input_size, unique_items,
-    without_boundary_constraints,
-};
+use super::{JsonBoundaryError, check_input_size, prepared};
 
 /// The original `format_json` failure behind [`JsonBoundaryError::InvalidDocument`].
 #[derive(Debug)]
 pub struct JsonDocumentError(format_json::JsonFormatError);
 
 impl JsonDocumentError {
+    pub(super) fn new(error: format_json::JsonFormatError) -> Self {
+        Self(error)
+    }
+
     pub fn format_error(&self) -> &format_json::JsonFormatError {
         &self.0
     }
@@ -38,10 +39,6 @@ impl PartialEq for JsonDocumentError {
     }
 }
 
-fn invalid_document(error: format_json::JsonFormatError) -> JsonBoundaryError {
-    JsonBoundaryError::InvalidDocument(JsonDocumentError(error))
-}
-
 /// Parses one bounded JSON document exactly as [`super::parse_json`] does, but
 /// retains a `format_json` failure as a typed cause instead of its message.
 /// Display text is unchanged; other boundary variants are identical.
@@ -50,16 +47,7 @@ pub fn parse_json_with_format_cause(
     document: &str,
 ) -> Result<Instance, JsonBoundaryError> {
     check_input_size(document.len())?;
-    let boundary = ConstraintBoundary::new();
-    let schema = boundary.parse_schema(schema)?;
-    if unique_items::schema_contains_assertion(&schema) {
-        format_json::json_schema::unique_items::validate_raw_json_unique_items(&schema, document)
-            .map_err(invalid_document)?;
-    }
-    let formatter_schema = without_boundary_constraints(schema.clone());
-    let instance = format_json::from_str(document, &formatter_schema).map_err(invalid_document)?;
-    boundary.validate_input(&schema, &instance)?;
-    Ok(instance)
+    prepared::shared(schema)?.parse_json_with_format_cause(document)
 }
 
 #[cfg(test)]

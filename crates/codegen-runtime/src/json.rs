@@ -23,6 +23,9 @@ mod object_item_nullability;
 mod output_normalization;
 #[cfg(test)]
 mod pattern_properties;
+mod prepared;
+#[cfg(test)]
+mod prepared_tests;
 #[cfg(test)]
 mod property_names;
 #[cfg(test)]
@@ -37,6 +40,8 @@ pub use document_cause::{JsonDocumentError, parse_json_with_format_cause};
 
 pub const MAX_EMBEDDED_JSON_SCHEMA_BYTES: usize = 1024 * 1024;
 pub const MAX_JSON_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
+
+pub use prepared::PreparedJsonSchema;
 
 /// Structured failure from a generated mapping's JSON document boundary.
 #[derive(Debug, PartialEq)]
@@ -106,144 +111,26 @@ impl From<RuntimeError> for JsonBoundaryError {
     }
 }
 
-/// Per-document portable-constraint state.
-#[derive(Debug)]
-struct ConstraintBoundary;
-
 #[derive(Clone, Copy)]
 enum JsonOutputFormat {
     Pretty,
     Compact,
 }
 
-impl ConstraintBoundary {
-    fn new() -> Self {
-        Self
-    }
-
-    /// Parses one bounded JSON document and applies embedded constraints
-    /// against the normalized typed instance.
-    fn parse_json(&self, schema: &str, document: &str) -> Result<Instance, JsonBoundaryError> {
-        check_input_size(document.len())?;
-        let schema = self.parse_schema(schema)?;
-        if unique_items::schema_contains_assertion(&schema) {
-            format_json::json_schema::unique_items::validate_raw_json_unique_items(
-                &schema, document,
-            )
-            .map_err(|error| JsonBoundaryError::InvalidInput {
-                message: error.to_string(),
-            })?;
-        }
-        let formatter_schema = without_boundary_constraints(schema.clone());
-        let instance = format_json::from_str(document, &formatter_schema).map_err(|error| {
-            JsonBoundaryError::InvalidInput {
-                message: error.to_string(),
-            }
-        })?;
-        self.validate_input(&schema, &instance)?;
-        Ok(instance)
-    }
-
-    /// Parses one bounded UTF-8 JSON payload.
-    fn parse_json_bytes(
-        &self,
-        schema: &str,
-        document: &[u8],
-    ) -> Result<Instance, JsonBoundaryError> {
-        check_input_size(document.len())?;
-        let document =
-            std::str::from_utf8(document).map_err(|error| JsonBoundaryError::InvalidInput {
-                message: format!("document is not UTF-8: {error}"),
-            })?;
-        self.parse_json(schema, document)
-    }
-
-    /// Serializes one instance and applies embedded constraints after all
-    /// JSON scalar normalization and coercion.
-    fn serialize_json(
-        &self,
-        schema: &str,
-        instance: &Instance,
-        format: JsonOutputFormat,
-    ) -> Result<String, JsonBoundaryError> {
-        let schema = self.parse_schema(schema)?;
-        let formatter_schema = without_boundary_constraints(schema.clone());
-        let value = format_json::to_value(&formatter_schema, instance).map_err(|error| {
-            JsonBoundaryError::InvalidOutput {
-                message: error.to_string(),
-            }
-        })?;
-        let mut document = match format {
-            JsonOutputFormat::Pretty => serde_json::to_string_pretty(&value),
-            JsonOutputFormat::Compact => serde_json::to_string(&value),
-        }
-        .map_err(|error| JsonBoundaryError::InvalidOutput {
-            message: error.to_string(),
-        })?;
-        if matches!(format, JsonOutputFormat::Pretty) {
-            document.push('\n');
-        }
-        if document.len() > MAX_JSON_DOCUMENT_BYTES {
-            return Err(JsonBoundaryError::OutputTooLarge {
-                bytes: document.len(),
-                max: MAX_JSON_DOCUMENT_BYTES,
-            });
-        }
-        // Validate normalized output values directly. Parsing the text again
-        // can move a float by one ULP with serde_json's default number reader,
-        // changing allowed-value, multiple-of, or structural-uniqueness results.
-        self.validate_output(&schema, &value)?;
-        Ok(document)
-    }
-
-    /// Serializes one instance as a bounded UTF-8 JSON payload.
-    fn serialize_json_bytes(
-        &self,
-        schema: &str,
-        instance: &Instance,
-    ) -> Result<Vec<u8>, JsonBoundaryError> {
-        self.serialize_json(schema, instance, JsonOutputFormat::Pretty)
-            .map(String::into_bytes)
-    }
-
-    fn parse_schema(&self, schema: &str) -> Result<SchemaNode, JsonBoundaryError> {
-        let schema = parse_schema(schema)?;
-        if !schema.json_pattern_budget_is_valid() {
-            return Err(JsonBoundaryError::InvalidEmbeddedSchema {
-                message:
-                    "schema-wide JSON pattern metadata, program, or fixed-value work budget is invalid"
-                        .to_string(),
-            });
-        }
-        Ok(schema)
-    }
-
-    fn validate_input(
-        &self,
-        schema: &SchemaNode,
-        instance: &Instance,
-    ) -> Result<(), JsonBoundaryError> {
-        validate_instance_document(schema, instance).map_err(constraint_input_error)
-    }
-
-    fn validate_output(
-        &self,
-        schema: &SchemaNode,
-        value: &serde_json::Value,
-    ) -> Result<(), JsonBoundaryError> {
-        unique_items::validate_document(schema, value).map_err(unique_items::output_error)?;
-        validate_json_document(schema, value).map_err(constraint_output_error)
-    }
-}
-
 /// Parses one bounded JSON document using an emitter-owned schema.
 pub fn parse_json(schema: &str, document: &str) -> Result<Instance, JsonBoundaryError> {
-    ConstraintBoundary::new().parse_json(schema, document)
+    check_input_size(document.len())?;
+    prepared::shared(schema)?.parse_json(document)
 }
 
 /// Parses one bounded UTF-8 JSON payload using an emitter-owned schema.
 pub fn parse_json_bytes(schema: &str, document: &[u8]) -> Result<Instance, JsonBoundaryError> {
-    ConstraintBoundary::new().parse_json_bytes(schema, document)
+    check_input_size(document.len())?;
+    let document =
+        std::str::from_utf8(document).map_err(|error| JsonBoundaryError::InvalidInput {
+            message: format!("document is not UTF-8: {error}"),
+        })?;
+    parse_json(schema, document)
 }
 
 /// Parses one bounded UTF-8 JSON payload, retaining a decoding failure as its cause.
@@ -272,7 +159,7 @@ fn check_input_size(bytes: usize) -> Result<(), JsonBoundaryError> {
 
 /// Serializes one instance as a bounded pretty-printed JSON document.
 pub fn serialize_json(schema: &str, instance: &Instance) -> Result<String, JsonBoundaryError> {
-    ConstraintBoundary::new().serialize_json(schema, instance, JsonOutputFormat::Pretty)
+    prepared::shared(schema)?.serialize_json(instance)
 }
 
 /// Serializes one instance as a bounded pretty-printed UTF-8 JSON payload.
@@ -280,7 +167,7 @@ pub fn serialize_json_bytes(
     schema: &str,
     instance: &Instance,
 ) -> Result<Vec<u8>, JsonBoundaryError> {
-    ConstraintBoundary::new().serialize_json_bytes(schema, instance)
+    prepared::shared(schema)?.serialize_json_bytes(instance)
 }
 
 /// Serializes one instance as bounded compact JSON without a trailing newline.
@@ -291,7 +178,7 @@ pub fn serialize_json_compact(
     schema: &str,
     instance: &Instance,
 ) -> Result<String, JsonBoundaryError> {
-    ConstraintBoundary::new().serialize_json(schema, instance, JsonOutputFormat::Compact)
+    prepared::shared(schema)?.serialize_json_compact(instance)
 }
 
 /// Serializes one instance as bounded compact UTF-8 JSON without a trailing newline.
