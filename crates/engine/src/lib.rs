@@ -21,6 +21,7 @@ mod eval_expr;
 mod eval_scope;
 mod failure;
 mod filter_map;
+mod frame_view;
 mod grouping;
 mod iteration_output;
 mod join;
@@ -1055,6 +1056,9 @@ mod filter_map_model_tests;
 #[cfg(test)]
 #[path = "tests/filter_map.rs"]
 mod filter_map_tests;
+#[cfg(test)]
+#[path = "tests/frame_view.rs"]
+mod frame_view_tests;
 #[cfg(test)]
 #[path = "tests/group_blocks.rs"]
 mod group_blocks_tests;
