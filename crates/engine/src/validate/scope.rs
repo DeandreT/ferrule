@@ -41,6 +41,44 @@ pub(super) fn validate_scope(
         format!("scope `{}`", path.join("/"))
     };
 
+    if scope.construction == ScopeConstruction::DocumentRows {
+        let body = scope.document_rows();
+        if !path.is_empty()
+            || !matches!(
+                scope.iteration,
+                mapping::ScopeIteration::DynamicDocuments { .. }
+            )
+            || scope.iteration_output != IterationOutput::Repeated
+            || !scope.bindings.is_empty()
+            || !scope.dynamic_bindings.is_empty()
+            || !scope.dynamic_children.is_empty()
+            || scope.merge_dynamic_fields
+            || body.is_none_or(|body| {
+                !matches!(body.iteration, mapping::ScopeIteration::Source(_))
+                    || body.iteration_output != IterationOutput::Repeated
+                    || body.construction != ScopeConstruction::Constructed
+                    || !body.children.is_empty()
+                    || !body.dynamic_bindings.is_empty()
+                    || !body.dynamic_children.is_empty()
+                    || body.merge_dynamic_fields
+            })
+        {
+            issues.push(ValidationIssue::new(&location,
+                "document-row construction requires a dynamic-document root and one unnamed repeated row scope"));
+        }
+        if target.is_none_or(|target| match &target.kind {
+            SchemaKind::Group { children, .. } => children
+                .iter()
+                .any(|child| !child.is_scalar() || child.repeating),
+            _ => true,
+        }) {
+            issues.push(ValidationIssue::new(
+                &location,
+                "document-row construction requires a flat group target schema",
+            ));
+        }
+    }
+
     if let Some(node) = scope.output_path() {
         if !path.is_empty() {
             issues.push(ValidationIssue::new(
@@ -874,7 +912,14 @@ pub(super) fn validate_scope(
         path.push(child.target_field.clone());
         let child_owner = schemas.owner.descendant(ValidationScopeStep::Child(index));
         let child_start = issues.len();
-        let child_target = target.and_then(|target| target.child(&child.target_field));
+        let child_target = if scope.construction == ScopeConstruction::DocumentRows
+            && index == 0
+            && child.target_field.is_empty()
+        {
+            target
+        } else {
+            target.and_then(|target| target.child(&child.target_field))
+        };
         match child_target {
             Some(node)
                 if matches!(node.kind, SchemaKind::Group { .. })

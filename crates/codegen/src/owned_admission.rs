@@ -676,6 +676,7 @@ impl<'a> Analysis<'a> {
             }
             // Exact endpoint reads never consume a legacy named alias.
             TargetConstruction::Group
+            | TargetConstruction::DocumentRows
             | TargetConstruction::CopyCurrentSource
             | TargetConstruction::XmlMixedContent { .. }
             | TargetConstruction::OwnedPathHierarchy { .. } => {}

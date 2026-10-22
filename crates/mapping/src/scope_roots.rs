@@ -154,6 +154,7 @@ impl Scope {
                 }
             }
             ScopeConstruction::Constructed
+            | ScopeConstruction::DocumentRows
             | ScopeConstruction::CopyCurrentSource
             | ScopeConstruction::XmlMixedContent { .. }
             | ScopeConstruction::PathHierarchy { .. }

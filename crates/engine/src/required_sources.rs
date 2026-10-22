@@ -146,6 +146,7 @@ impl<'a> Analysis<'a> {
                 self.pending.extend(plan.root());
             }
             ScopeConstruction::Constructed
+            | ScopeConstruction::DocumentRows
             | ScopeConstruction::CopyCurrentSource
             | ScopeConstruction::XmlMixedContent { .. } => {}
         }

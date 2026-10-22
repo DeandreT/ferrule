@@ -1,0 +1,31 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static FerruleInstance Source(params (string Order, string? Item)[] rows) =>
+    new FerruleGroup(new[] {new FerruleField("Rows", new FerruleRepeated(rows.Select(row => {
+        var fields = new List<FerruleField> {new("Order", new FerruleScalar(FerruleValue.FromString(row.Order)))};
+        if (row.Item is not null) fields.Add(new("Item", new FerruleScalar(FerruleValue.FromString(row.Item))));
+        return new FerruleGroup(fields);
+    })))});
+
+var execution = new FerruleExecutionContext("rows.ferrule")
+    .WithInvocationCounterLimits(new FerruleInvocationCounterLimits(1,16));
+for (int repeat=0; repeat<2; repeat++) {
+    var input = Source(("A","x"),("B","z"),("A","y"),("A","x"));
+    var documents = GeneratedMapping.ExecuteCsvDocuments(input, execution);
+    if (documents.Count!=2)
+        throw new InvalidOperationException("Document membership differs.");
+    var expected = new[] {("A.txt","x|1\r\ny|2\r\n"),("B.txt","z|3\r\n")};
+    for (int index=0; index<expected.Length; index++) {
+        var document=documents[index];
+        if (document.Path!=expected[index].Item1 || document.Document!=expected[index].Item2)
+            throw new InvalidOperationException("Complete document bytes differ.");
+    }
+    var bytes = GeneratedMapping.ExecuteCsvDocumentsBytes(input, execution);
+    if (bytes.Count!=expected.Length || bytes.Where((document,index) => document.Path!=expected[index].Item1 || !document.Document.SequenceEqual(System.Text.Encoding.UTF8.GetBytes(expected[index].Item2))).Any())
+        throw new InvalidOperationException("Complete UTF-8 bytes differ.");
+    var empty = GeneratedMapping.ExecuteCsvDocuments(Source(("A",null)),execution);
+    if (empty.Count!=1 || empty[0].Path!="A.txt" || empty[0].Document!="")
+        throw new InvalidOperationException("Empty document was lost.");
+}
+Console.WriteLine("PASS document row sets");

@@ -1,0 +1,28 @@
+use codegen_runtime::{ExecutionContext, Instance, InvocationCounterLimits, Value, group, repeated};
+use std::path::Path;
+
+fn source(rows: &[(&str, Option<&str>)]) -> Instance {
+    group([("Rows".into(), repeated(rows.iter().map(|(order, item)| {
+        let mut fields = vec![("Order".into(), Instance::Scalar(Value::String((*order).into())))];
+        if let Some(item) = item { fields.push(("Item".into(), Instance::Scalar(Value::String((*item).into())))); }
+        group(fields)
+    })))])
+}
+
+fn main() {
+    let execution = ExecutionContext::new(Path::new("rows.ferrule"))
+        .with_invocation_counter_limits(InvocationCounterLimits { max_counters: 1, max_text_bytes: 16 });
+    for _ in 0..2 {
+        let input = source(&[("A",Some("x")),("B",Some("z")),("A",Some("y")),("A",Some("x"))]);
+        let documents = document_rows_mapping::execute_csv_documents_with_context(&input, &execution).unwrap();
+        let actual = documents.iter().map(|doc| (doc.path.clone(),doc.document.clone())).collect::<Vec<_>>();
+        assert_eq!(actual, [("A.txt".into(),"x|1\r\ny|2\r\n".into()),("B.txt".into(),"z|3\r\n".into())]);
+        let bytes = document_rows_mapping::execute_csv_documents_bytes_with_context(&input, &execution).unwrap();
+        assert_eq!(bytes.iter().map(|doc| (doc.path.clone(),doc.document.clone())).collect::<Vec<_>>(), actual.iter().map(|(path,text)| (path.clone(),text.as_bytes().to_vec())).collect::<Vec<_>>());
+        let documents = document_rows_mapping::execute_csv_documents_with_context(&source(&[("A",None)]), &execution).unwrap();
+        assert_eq!(documents.len(),1);
+        assert_eq!(documents[0].path,"A.txt");
+        assert_eq!(documents[0].document,"");
+    }
+    println!("PASS document row sets");
+}

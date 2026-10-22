@@ -238,6 +238,7 @@ fn validate_scope(
         ScopeConstruction::AdjacencyTree { plan } => controls.extend(plan.root()),
         ScopeConstruction::OwnedAdjacencyTree { plan } => controls.extend(plan.root()),
         ScopeConstruction::Constructed
+        | ScopeConstruction::DocumentRows
         | ScopeConstruction::CopyCurrentSource
         | ScopeConstruction::XmlMixedContent { .. }
         | ScopeConstruction::PathHierarchy { .. }

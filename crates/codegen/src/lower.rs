@@ -844,6 +844,7 @@ fn lower_scope(
                 root: plan.root(),
             }
         }
+        ScopeConstruction::DocumentRows => crate::TargetConstruction::DocumentRows,
         ScopeConstruction::Constructed => crate::TargetConstruction::Group,
     };
 
@@ -895,13 +896,22 @@ fn lower_scope(
         .children
         .iter()
         .filter_map(|child| {
-            target_path.push(child.target_field.clone());
-            let Some(child_target) = target.child(&child.target_field) else {
+            let document_body = scope.construction == ScopeConstruction::DocumentRows;
+            if !document_body {
+                target_path.push(child.target_field.clone());
+            }
+            let Some(child_target) = (if document_body {
+                Some(target)
+            } else {
+                target.child(&child.target_field)
+            }) else {
                 diagnostics.push(Diagnostic::Validation {
                     location: display_target_scope(target_path),
                     message: "validated child scope is absent from its target schema".into(),
                 });
-                target_path.pop();
+                if !document_body {
+                    target_path.pop();
+                }
                 return None;
             };
             let lowered = lower_scope(
@@ -912,7 +922,9 @@ fn lower_scope(
                 diagnostics,
                 child_root_context,
             );
-            target_path.pop();
+            if !document_body {
+                target_path.pop();
+            }
             Some(lowered)
         })
         .collect();

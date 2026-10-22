@@ -8,6 +8,18 @@ const CSV_RUNTIME_SOURCE: &str =
 
 pub(crate) fn emit(program: &Program, policy: &CsvOutputPolicy) -> Result<ArtifactSet, EmitError> {
     codegen::validate_csv_output(program, policy)?;
+    emit_adapter(program, render(program, policy))
+}
+
+pub(crate) fn emit_document_set(
+    program: &Program,
+    policy: &CsvOutputPolicy,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_csv_document_set_output(program, policy)?;
+    emit_adapter(program, render_document_set(program, policy))
+}
+
+fn emit_adapter(program: &Program, adapter: String) -> Result<ArtifactSet, EmitError> {
     // Keep ordinary emission and its runtime registration untouched. CSV adds
     // one partial class and its runtime only after the shared boundary proof.
     let mut files = crate::emit(program)?.into_files();
@@ -38,12 +50,12 @@ pub(crate) fn emit(program: &Program, policy: &CsvOutputPolicy) -> Result<Artifa
             _ => {}
         }
     }
-    files.push(file("GeneratedMapping.Csv.cs", render(program, policy))?);
+    files.push(file("GeneratedMapping.Csv.cs", adapter)?);
     files.push(file("Runtime/FerruleCsv.cs", CSV_RUNTIME_SOURCE)?);
     Ok(ArtifactSet::new(files)?)
 }
 
-fn render(program: &Program, policy: &CsvOutputPolicy) -> String {
+fn render_policy(program: &Program, policy: &CsvOutputPolicy) -> String {
     let SchemaKind::Group { children, .. } = &program.target.kind else {
         unreachable!("shared CSV validation proves one flat group target")
     };
@@ -79,9 +91,13 @@ fn render(program: &Program, policy: &CsvOutputPolicy) -> String {
     output.push_str(boolean(policy.utf8_bom));
     output.push_str(",\n            RawDelimitedCrLf = ");
     output.push_str(boolean(policy.raw_delimited_crlf));
-    output.push_str(
-        ",\n        };\n\n    public static string ExecuteCsv(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        var primary = Execute(source);\n        return global::Ferrule.Runtime.FerruleCsv.Serialize(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n\n    public static string ExecuteCsv(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        var primary = Execute(source, executionContext);\n        return global::Ferrule.Runtime.FerruleCsv.Serialize(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n\n    public static byte[] ExecuteCsvBytes(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        var primary = Execute(source);\n        return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n\n    public static byte[] ExecuteCsvBytes(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        var primary = Execute(source, executionContext);\n        return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n}\n",
-    );
+    output.push_str(",\n        };\n");
+    output
+}
+
+fn render(program: &Program, policy: &CsvOutputPolicy) -> String {
+    let mut output = render_policy(program, policy);
+    output.push_str(ADAPTERS);
     if program
         .extra_sources
         .iter()
@@ -102,6 +118,74 @@ fn render(program: &Program, policy: &CsvOutputPolicy) -> String {
     }
     output
 }
+
+fn render_document_set(program: &Program, policy: &CsvOutputPolicy) -> String {
+    let mut output = render_policy(program, policy);
+    output.push_str(r#"
+    public sealed record CsvOutputDocument(string Path, string Document);
+    public sealed record CsvOutputBytesDocument(string Path, byte[] Document);
+
+    /// <summary>Materialize the mapping, then serialize each complete CSV document.</summary>
+    public static global::System.Collections.Generic.IReadOnlyList<CsvOutputDocument> ExecuteCsvDocuments(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::Ferrule.Runtime.FerruleExecutionContext executionContext)
+    {
+        if (Execute(source, executionContext) is not global::Ferrule.Runtime.FerruleDocumentSet documents)
+            throw new global::System.InvalidOperationException("Expected validated document-row output.");
+        var output = new global::System.Collections.Generic.List<CsvOutputDocument>(documents.Documents.Count);
+        foreach (var document in documents.Documents)
+            output.Add(new(document.Path, global::Ferrule.Runtime.FerruleCsv.Serialize(document.Value, CsvOutputFields, CsvOutputPolicy)));
+        return output.AsReadOnly();
+    }
+
+    public static global::System.Collections.Generic.IReadOnlyList<CsvOutputBytesDocument> ExecuteCsvDocumentsBytes(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::Ferrule.Runtime.FerruleExecutionContext executionContext)
+    {
+        if (Execute(source, executionContext) is not global::Ferrule.Runtime.FerruleDocumentSet documents)
+            throw new global::System.InvalidOperationException("Expected validated document-row output.");
+        var output = new global::System.Collections.Generic.List<CsvOutputBytesDocument>(documents.Documents.Count);
+        foreach (var document in documents.Documents)
+            output.Add(new(document.Path, global::Ferrule.Runtime.FerruleCsv.SerializeBytes(document.Value, CsvOutputFields, CsvOutputPolicy)));
+        return output.AsReadOnly();
+    }
+}
+"#);
+    output
+}
+
+const ADAPTERS: &str = r#"
+    public static string ExecuteCsv(
+        global::Ferrule.Runtime.FerruleInstance source)
+    {
+        var primary = Execute(source);
+        return global::Ferrule.Runtime.FerruleCsv.Serialize(primary, CsvOutputFields, CsvOutputPolicy);
+    }
+
+    public static string ExecuteCsv(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::Ferrule.Runtime.FerruleExecutionContext executionContext)
+    {
+        var primary = Execute(source, executionContext);
+        return global::Ferrule.Runtime.FerruleCsv.Serialize(primary, CsvOutputFields, CsvOutputPolicy);
+    }
+
+    public static byte[] ExecuteCsvBytes(
+        global::Ferrule.Runtime.FerruleInstance source)
+    {
+        var primary = Execute(source);
+        return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);
+    }
+
+    public static byte[] ExecuteCsvBytes(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::Ferrule.Runtime.FerruleExecutionContext executionContext)
+    {
+        var primary = Execute(source, executionContext);
+        return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);
+    }
+}
+"#;
 
 fn character(value: Option<char>) -> String {
     match value {

@@ -284,6 +284,8 @@ pub enum OwnedCapabilityContext {
 
 #[derive(Debug, Error, PartialEq)]
 pub enum EngineError {
+    #[error("invalid document-row construction: {reason}")]
+    DocumentRowsConstruction { reason: &'static str },
     #[error("filename clock at node {node} failed: {message}")]
     DocumentFilenameClock { node: NodeId, message: String },
     #[error("document streaming is unsupported: {reason}")]

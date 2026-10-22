@@ -11,8 +11,12 @@ use host_target::GeneratedHostCommand;
 
 #[path = "../../../conformance/invocation-counter-expressions/admission.rs"]
 mod admission;
+#[path = "../../../conformance/document-rows/project.rs"]
+mod document_rows;
 #[path = "../../../conformance/invocation-counter-expressions/expected.rs"]
 mod expected;
+#[path = "../../../conformance/document-rows/named.rs"]
+mod named_document_rows;
 #[path = "../../../conformance/invocation-counter-expressions/optional_presence.rs"]
 mod optional_presence;
 
@@ -67,11 +71,55 @@ fn generated_optional_presence_keeps_counter_evaluation_order() -> Result<(), Bo
     )
 }
 
+#[test]
+fn generated_document_rows_keep_grouped_files_and_counter_state() -> Result<(), Box<dyn Error>> {
+    run_fixture(
+        document_rows::project(),
+        "document_rows_mapping",
+        include_str!("../../../conformance/document-rows/Host.rs.txt"),
+        "PASS document row sets",
+    )
+}
+
+#[test]
+fn generated_document_visitor_stops_before_later_bodies_and_preserves_accepted_documents()
+-> Result<(), Box<dyn Error>> {
+    run_fixture_with_visitor(
+        document_rows::project(),
+        "document_visitor_mapping",
+        include_str!("../../../conformance/document-rows/VisitorHost.rs.txt"),
+        "PASS document visitors",
+        Some(None),
+    )
+}
+
+#[test]
+fn generated_document_visitor_selects_named_target_without_running_primary()
+-> Result<(), Box<dyn Error>> {
+    run_fixture_with_visitor(
+        named_document_rows::project(document_rows::project()),
+        "document_visitor_mapping",
+        include_str!("../../../conformance/document-rows/VisitorHost.rs.txt"),
+        "PASS document visitors",
+        Some(Some("selected")),
+    )
+}
+
 fn run_fixture(
     project: mapping::Project,
     package_name: &str,
     host: &str,
     expected: &str,
+) -> Result<(), Box<dyn Error>> {
+    run_fixture_with_visitor(project, package_name, host, expected, None)
+}
+
+fn run_fixture_with_visitor(
+    project: mapping::Project,
+    package_name: &str,
+    host: &str,
+    expected: &str,
+    visitor: Option<Option<&str>>,
 ) -> Result<(), Box<dyn Error>> {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
@@ -83,15 +131,29 @@ fn run_fixture(
     std::fs::create_dir(&root.0)?;
     let program = codegen::lower(&project)?;
     let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime");
-    let artifacts = codegen_rust::emit(
-        &program,
-        &codegen_rust::Options {
-            package_name: package_name.into(),
-            runtime_dependency: codegen_rust::RuntimeDependency::Path(
-                runtime.to_string_lossy().into_owned(),
-            ),
-        },
-    )?;
+    let options = codegen_rust::Options {
+        package_name: package_name.into(),
+        runtime_dependency: codegen_rust::RuntimeDependency::Path(
+            runtime.to_string_lossy().into_owned(),
+        ),
+    };
+    let artifacts = if let Some(target) = visitor {
+        codegen_rust::emit_with_document_visitor(&program, &options, target)?
+    } else if program.root.construction == codegen::TargetConstruction::DocumentRows {
+        codegen_rust::emit_with_csv_document_set_output(
+            &program,
+            &options,
+            &codegen::CsvOutputPolicy {
+                delimiter: Some('|'),
+                quote_disabled: true,
+                has_headers: false,
+                raw_delimited_crlf: true,
+                ..Default::default()
+            },
+        )?
+    } else {
+        codegen_rust::emit(&program, &options)?
+    };
     for file in artifacts.files() {
         let path = root.0.join(file.path.as_str());
         std::fs::create_dir_all(path.parent().unwrap())?;

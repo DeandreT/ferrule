@@ -254,7 +254,7 @@ fn scope_has_owned(scope: &TargetScope) -> bool {
         || scope.children.iter().any(scope_has_owned)
         || matches!(&scope.construction, TargetConstruction::DynamicGroup { children, .. } if children.iter().any(|child| scope_has_owned(&child.scope)))
 }
-fn has_owned(program: &Program) -> bool {
+pub(crate) fn has_owned(program: &Program) -> bool {
     program
         .expressions
         .iter()
@@ -1140,6 +1140,7 @@ impl<'a> Admission<'a> {
         }
         let construction_reason = match scope.construction {
             TargetConstruction::Group => None,
+            TargetConstruction::DocumentRows => Some(Capability::Document),
             TargetConstruction::OwnedAdjacencyTree { .. }
             | TargetConstruction::RecursiveFilter { .. }
                 if self.adjacency_tree.admits(scope) =>

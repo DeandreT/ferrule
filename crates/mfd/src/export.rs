@@ -313,6 +313,7 @@ struct PreparedExport {
 }
 
 fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdError> {
+    preflight::validate_document_rows(project)?;
     preflight::validate_text_selection_operations(project)?;
     preflight::validate_decimal_values(project)?;
     preflight::validate_invocation_counters(project)?;

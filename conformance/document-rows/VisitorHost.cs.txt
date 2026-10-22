@@ -1,0 +1,82 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static FerruleInstance Source(params (string Order, FerruleValue? Item)[] rows) =>
+    new FerruleGroup(new[] {new FerruleField("Rows", new FerruleRepeated(rows.Select(row => {
+        var fields = new List<FerruleField> {new("Order", new FerruleScalar(FerruleValue.FromString(row.Order)))};
+        if (row.Item is not null) fields.Add(new("Item", new FerruleScalar(row.Item.Value)));
+        return new FerruleGroup(fields);
+    })))});
+static void Check(FerruleDocument document, string path, params (string Item, long Line)[] expected) {
+    if (document.Path != path || document.Value is not FerruleRepeated rows || rows.Items.Count != expected.Length)
+        throw new InvalidOperationException("Document membership differs.");
+    for (int i=0; i<expected.Length; i++) {
+        if (rows.Items[i] is not FerruleGroup row || row.Fields.Count != 2 ||
+            row.Fields[0].Name != "Item" || ((FerruleScalar)row.Fields[0].Value).Value.StringValue != expected[i].Item ||
+            row.Fields[1].Name != "Line" || ((FerruleScalar)row.Fields[1].Value).Value.Int64Value != expected[i].Line)
+            throw new InvalidOperationException("Complete row value differs.");
+    }
+}
+var execution = new FerruleExecutionContext("rows.ferrule")
+    .WithInvocationCounterLimits(new FerruleInvocationCounterLimits(1,16));
+FerruleValue Text(string value) => FerruleValue.FromString(value);
+for (int repeat=0; repeat<2; repeat++) {
+    var kept = new List<FerruleDocument>();
+    var result = GeneratedMapping.VisitTargetDocuments(Source(("A",Text("x")),("B",Text("z")),("A",Text("y")),("A",Text("x"))),
+        Array.Empty<NamedInput>(),execution,null,document => { kept.Add(document); return GeneratedMapping.DocumentDecision<string>.Continue; });
+    if (!result.Completed || result.Accepted != 2) throw new InvalidOperationException("Completion differs.");
+    Check(kept[0],"A.txt",("x",1),("y",2));
+    Check(kept[1],"B.txt",("z",3));
+}
+var stopped = GeneratedMapping.VisitTargetDocuments(Source(("A",Text("x")),("B",FerruleValue.FromInt64(99))),
+    Array.Empty<NamedInput>(),execution,null,document => {
+        Check(document,"A.txt",("x",1)); return GeneratedMapping.DocumentDecision<string>.Break("full");
+    });
+if (stopped.Completed || stopped.Accepted != 0 || stopped.Reason != "full") throw new InvalidOperationException("Stop differs.");
+int offered=0;
+var stoppedLater = GeneratedMapping.VisitTargetDocuments(Source(("A",Text("x")),("B",Text("y")),("C",FerruleValue.FromInt64(99))),
+    Array.Empty<NamedInput>(),execution,null,document => ++offered == 2
+        ? GeneratedMapping.DocumentDecision<string>.Break("full") : GeneratedMapping.DocumentDecision<string>.Continue);
+if (stoppedLater.Completed || stoppedLater.Accepted != 1) throw new InvalidOperationException("Accepted prefix differs.");
+for (int index=0; index<3; index++) {
+    var rows = new[] {("A",(FerruleValue?)Text("x")),("B",(FerruleValue?)Text("y")),("C",(FerruleValue?)Text("z"))};
+    rows[index].Item2=FerruleValue.FromInt64(99);
+    var kept = new List<FerruleDocument>();
+    try {
+        GeneratedMapping.VisitTargetDocuments(Source(rows),Array.Empty<NamedInput>(),execution,null,document => {
+            kept.Add(document); return GeneratedMapping.DocumentDecision<string>.Continue;
+        });
+        throw new InvalidOperationException("Expected failed document.");
+    } catch (GeneratedMapping.DocumentVisitException error) {
+        if (error.Accepted != index || kept.Count != index || error.InnerException is not FerruleRuntimeException { Error: FerruleRuntimeError.AggregateUnsupportedScalar })
+            throw new InvalidOperationException("Failure prefix differs.");
+        for (int offset=0; offset<kept.Count; offset++) Check(kept[offset], rows[offset].Item1+".txt",(offset==0?"x":"y",offset+1));
+    }
+}
+try {
+    GeneratedMapping.VisitTargetDocuments<string>(Source(("A",Text("x")),("A",FerruleValue.FromInt64(99))),
+        Array.Empty<NamedInput>(),execution,null,_ => throw new InvalidOperationException("Partial body was offered."));
+    throw new InvalidOperationException("Expected rejected complete document.");
+} catch (GeneratedMapping.DocumentVisitException error) when (error.Accepted == 0 && error.InnerException is FerruleRuntimeException { Error: FerruleRuntimeError.AggregateUnsupportedScalar }) { }
+var filenameInput = new FerruleGroup(new[] {new FerruleField("Rows",new FerruleRepeated(new[] {
+    new FerruleGroup(new[] {new FerruleField("Order",new FerruleScalar(Text("A"))),new FerruleField("Item",new FerruleScalar(Text("x")))}),
+    new FerruleGroup(new[] {new FerruleField("Order",new FerruleScalar(FerruleValue.FromInt64(99))),new FerruleField("Item",new FerruleScalar(Text("y")))}),
+}))});
+try {
+    GeneratedMapping.VisitTargetDocuments(filenameInput,Array.Empty<NamedInput>(),execution,null,document => {
+        Check(document,"A.txt",("x",1)); return GeneratedMapping.DocumentDecision<string>.Continue;
+    });
+    throw new InvalidOperationException("Expected filename reduction failure.");
+} catch (GeneratedMapping.DocumentVisitException error) when (error.Accepted == 1 && error.InnerException is FerruleRuntimeException { Error: FerruleRuntimeError.AggregateUnsupportedScalar }) { }
+var empty = GeneratedMapping.VisitTargetDocuments(Source(("A",null)),Array.Empty<NamedInput>(),execution,null,document => {
+    Check(document,"A.txt"); return GeneratedMapping.DocumentDecision<string>.Continue;
+});
+if (!empty.Completed || empty.Accepted != 1) throw new InvalidOperationException("Empty file differs.");
+var none = GeneratedMapping.VisitTargetDocuments<string>(Source(),Array.Empty<NamedInput>(),execution,null,_ => throw new InvalidOperationException("No file expected."));
+if (!none.Completed || none.Accepted != 0) throw new InvalidOperationException("No-file input differs.");
+var sentinel = new FerruleRuntimeException(FerruleRuntimeError.MappingFailure,"consumer failure");
+try {
+    GeneratedMapping.VisitTargetDocuments<string>(Source(("A",Text("x"))),Array.Empty<NamedInput>(),execution,null,_ => throw sentinel);
+    throw new InvalidOperationException("Consumer exception swallowed.");
+} catch (FerruleRuntimeException error) when (ReferenceEquals(error,sentinel)) { }
+Console.WriteLine("PASS document visitors");
