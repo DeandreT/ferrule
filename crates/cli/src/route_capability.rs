@@ -30,6 +30,8 @@ pub enum HostRoute {
     /// Host-owned bytes in and serialized artifacts out, as used by preview.
     Payload,
     Generate,
+    /// `run-rest-json`: one approved JSON response mapped to one artifact.
+    RestJson,
 }
 
 /// The role of one acquired input.
@@ -56,6 +58,10 @@ pub enum PlannedAcquisition {
     Stdin { identity: PathBuf },
     /// Host-owned bytes with a logical identity; nothing is acquired.
     Payload { role: InputRole, identity: PathBuf },
+    /// The primary document fetched by one host-approved REST request, read
+    /// with the JSON format of `identity`. The host's request description and
+    /// header values are read only after preparation succeeds.
+    RestResponse { identity: PathBuf },
     /// A per-item named source resolved during evaluation. Each location is
     /// checked immediately before it is loaded.
     Dynamic { name: String },
@@ -244,6 +250,21 @@ pub fn select_run_route(args: &RunRouteArgs<'_>) -> Result<HostRoute, RouteRefus
     }
 }
 
+/// Prepares a filesystem `run` request, as [`run_project_value_with_options`]
+/// executes it, without acquiring anything. Hosts without standard streams use
+/// this route: a `-` path is an ordinary file name here.
+///
+/// [`run_project_value_with_options`]: crate::run_project_value_with_options
+pub fn plan_file_run(
+    project: &mapping::Project,
+    project_path: &Path,
+    request: RunRequest<'_>,
+) -> anyhow::Result<RoutePlan> {
+    Ok(PreparedFileRun::prepare(project, project_path, request)?
+        .plan()
+        .clone())
+}
+
 /// Prepares a `run` request for a loaded project without acquiring anything
 /// and reports its plan. `-` paths select standard streams as on the command
 /// line; the request's protected paths are the host artifacts it will publish.
@@ -261,9 +282,7 @@ pub fn plan_run(
         HostRoute::StandardStreams => PreparedStreamRun::prepare(project, project_path, request)?
             .plan()
             .clone(),
-        _ => PreparedFileRun::prepare(project, project_path, request)?
-            .plan()
-            .clone(),
+        _ => plan_file_run(project, project_path, request)?,
     })
 }
 

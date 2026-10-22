@@ -73,13 +73,14 @@ mod dynamic_source_load_tests;
 mod owned_observer_preflight_tests;
 
 pub use code_generation::{
-    GenerateOutcome, GenerateTarget, generate_project, generate_project_with_csv_document_adapters,
-    generate_project_with_csv_json_adapters, generate_project_with_csv_output,
-    generate_project_with_csv_x12_adapters, generate_project_with_csv_x12_envelope_profile,
-    generate_project_with_json5_adapters, generate_project_with_raw_delimited_document_adapters,
+    GenerateOutcome, GenerateProfile, GenerateTarget, check_generate_project, generate_project,
+    generate_project_with_csv_document_adapters, generate_project_with_csv_json_adapters,
+    generate_project_with_csv_output, generate_project_with_csv_x12_adapters,
+    generate_project_with_csv_x12_envelope_profile, generate_project_with_json5_adapters,
+    generate_project_with_profile, generate_project_with_raw_delimited_document_adapters,
     generate_project_with_static_document_adapters,
     generate_project_with_static_document_envelope_profiles, generate_project_with_x12_adapters,
-    generate_project_with_x12_envelope_profiles, plan_generate,
+    generate_project_with_x12_envelope_profiles, plan_generate, plan_generate_project,
 };
 pub use codegen::X12EnvelopeProfile;
 pub use engine::{
@@ -111,12 +112,12 @@ pub use rest_json::{
     MAX_REST_JSON_BODY_BYTES, MAX_REST_JSON_HEADER_BYTES, MAX_REST_JSON_HEADERS,
     MAX_REST_JSON_URL_BYTES, RestExecutionPolicy, RestJsonError, RestJsonHeader,
     RestJsonMappingOptions, RestJsonMethod, RestJsonRequest, RestJsonResponse, fetch_rest_json,
-    run_project_rest_json_request_file_payloads, run_project_value_rest_json_payloads,
-    run_project_value_rest_json_request_file_payloads,
+    plan_rest_json_run, run_project_rest_json_request_file_payloads,
+    run_project_value_rest_json_payloads, run_project_value_rest_json_request_file_payloads,
 };
 pub use route_capability::{
     HostRoute, InputRole, PlannedAcquisition, PlannedPublication, RoutePlan, RouteRefusal,
-    RunRouteArgs, plan_run, select_run_route,
+    RunRouteArgs, plan_file_run, plan_run, select_run_route,
 };
 pub use stdio::{PreparedStreamRun, StandardIoRunOptions, run_project_with_standard_streams};
 pub use trace_json::JsonTraceFile;

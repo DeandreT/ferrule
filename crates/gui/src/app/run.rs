@@ -352,11 +352,14 @@ impl FerruleApp {
         if self.pending_file_run.is_some() || self.pending_pipeline_run.is_some() {
             return;
         }
-        if let Err(error) = self.host_parameters.compile() {
-            self.status = "run blocked".into();
-            self.diagnostics.error("Run blocked", error);
-            return;
-        }
+        let runtime_parameters = match self.host_parameters.compile() {
+            Ok(parameters) => parameters,
+            Err(error) => {
+                self.status = "run blocked".into();
+                self.diagnostics.error("Run blocked", error);
+                return;
+            }
+        };
         if debug && let Err(error) = self.file_run_value_condition.compile() {
             self.status = "debug run blocked".into();
             self.diagnostics.error("Debug Run blocked", error);
@@ -391,6 +394,17 @@ impl FerruleApp {
         if !issues.is_empty() {
             self.status = format!("run blocked by {} validation issue(s)", issues.len());
             self.diagnostics.validation(&self.project, issues);
+            return;
+        }
+        // Refuse an unsupported route before saving or touching any input.
+        if let Err(error) = self.saved_run_preflight(&runtime_parameters) {
+            let title = if debug {
+                "Debug Run blocked"
+            } else {
+                "Run blocked"
+            };
+            self.status = title.to_lowercase();
+            self.diagnostics.error(title, format!("{error:#}"));
             return;
         }
         self.show_run_report = false;
@@ -972,7 +986,7 @@ impl FerruleApp {
     }
 }
 
-fn nonempty_path(value: &str) -> Option<PathBuf> {
+pub(super) fn nonempty_path(value: &str) -> Option<PathBuf> {
     (!value.trim().is_empty()).then(|| PathBuf::from(value.trim()))
 }
 
@@ -988,8 +1002,30 @@ mod file_run_ownership_tests;
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn close_during_publication_waits_for_worker_to_finish() {
         super::file_run_ownership_tests::close_during_publication();
+    }
+
+    #[test]
+    fn saved_run_preflight_declares_the_observers_the_worker_attaches() {
+        let (events, _events) = mpsc::channel();
+        let (_commands, commands) = mpsc::channel();
+        let control = FileRunControl {
+            events,
+            commands,
+            cancelled: Arc::new(AtomicBool::new(false)),
+        };
+        let parameters = engine::RuntimeParameters::new();
+        let trace = crate::run_report::TraceCollector::new();
+        let gate = || true;
+        // Debug Run adds only its hook, which cancellation already declares.
+        let options = control.run_options(&parameters, &trace, &gate, None);
+        assert_eq!(
+            options.request().observers,
+            super::super::route_preflight::SAVED_RUN_OBSERVERS
+        );
     }
 }

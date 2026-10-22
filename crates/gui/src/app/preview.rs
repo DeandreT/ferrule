@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, bail};
 
+use super::owned_worker::{OwnedWorker, WorkerExit};
 use super::*;
 use crate::preview::{
     BreakpointExpressionConditionDraft, BreakpointInputConditionDraft,
@@ -322,11 +323,13 @@ enum PreviewWorkerEvent {
     PausedFunctionInput(Box<engine::PendingFunctionNodeInput>),
     PausedFailure(Box<engine::PendingNodeFailure>),
     PausedFunctionFailure(Box<engine::PendingFunctionNodeFailure>),
-    Finished(
-        Result<cli::PayloadRunOutcome, PreviewRunError>,
-        crate::run_report::TraceReport,
-    ),
 }
+
+/// What the preview worker returns when its thread finishes.
+type PreviewCompletion = (
+    Result<cli::PayloadRunOutcome, PreviewRunError>,
+    crate::run_report::TraceReport,
+);
 
 enum PreviewRunError {
     Cancelled,
@@ -346,7 +349,10 @@ pub(super) enum PreviewPhase {
     Stopping,
 }
 
+/// A preview owned by its exact worker thread. Pause events arrive on
+/// `receiver`; the outcome is reported only after that thread was joined.
 pub(super) struct PendingPreview {
+    worker: OwnedWorker<PreviewCompletion>,
     receiver: Receiver<PreviewWorkerEvent>,
     commands: Sender<PreviewCommand>,
     cancelled: Arc<AtomicBool>,
@@ -374,439 +380,19 @@ impl PendingPreview {
 }
 
 impl Drop for PendingPreview {
+    /// Cancels, then drains the exact worker: the `worker` field is dropped
+    /// after this runs, while the command channel is still connected.
     fn drop(&mut self) {
         self.cancelled.store(true, Ordering::Release);
         let _ = self.commands.send(PreviewCommand::Cancel);
     }
 }
 
-struct PreviewDebugHook {
-    events: Sender<PreviewWorkerEvent>,
-    commands: Receiver<PreviewCommand>,
-    cancelled: Arc<AtomicBool>,
-    pause_each_write: std::cell::Cell<bool>,
-    pause_next_node: std::cell::Cell<bool>,
-    pause_next_input: std::cell::Cell<bool>,
-    breakpoint: Option<PreviewBreakpoint>,
-    value_condition: Option<DebugScalarCondition>,
-    position_condition: Option<DebugPositionCondition>,
-    source_condition: Option<DebugSourceCondition>,
-    node_condition: Option<DebugNodeCondition>,
-    expression_condition: Option<DebugExpressionCondition>,
-    input_condition: Option<DebugInputCondition>,
-    pause_on_failure: bool,
-}
-
-impl PreviewDebugHook {
-    fn after_failure(&self, event: PreviewWorkerEvent) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(PreviewCommand::Step | PreviewCommand::Continue | PreviewCommand::Pause) => {}
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-        if self.events.send(event).is_err() {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PreviewCommand::Continue) => return engine::DebugDecision::Resume,
-                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(PreviewCommand::Pause | PreviewCommand::Step)
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-            }
-        }
-    }
-}
-
-impl engine::DebugHook for PreviewDebugHook {
-    fn wants_node_values(&self) -> bool {
-        self.expression_condition.is_some()
-            || self.pause_next_node.get()
-            || self.cancelled.load(Ordering::Acquire)
-    }
-
-    fn wants_function_node_values(&self) -> bool {
-        self.expression_condition
-            .as_ref()
-            .is_some_and(DebugExpressionCondition::targets_function)
-            || self.pause_next_node.get()
-            || self.cancelled.load(Ordering::Acquire)
-    }
-
-    fn wants_node_inputs(&self) -> bool {
-        self.input_condition.is_some()
-            || self.pause_next_input.get()
-            || self.cancelled.load(Ordering::Acquire)
-    }
-
-    fn wants_function_node_inputs(&self) -> bool {
-        self.input_condition
-            .as_ref()
-            .is_some_and(DebugInputCondition::targets_function)
-            || self.pause_next_input.get()
-            || self.cancelled.load(Ordering::Acquire)
-    }
-
-    fn wants_node_failures(&self) -> bool {
-        self.pause_on_failure
-    }
-
-    fn wants_function_node_failures(&self) -> bool {
-        self.pause_on_failure
-    }
-
-    fn after_node_failure(&self, failure: &engine::PendingNodeFailure) -> engine::DebugDecision {
-        self.after_failure(PreviewWorkerEvent::PausedFailure(Box::new(failure.clone())))
-    }
-
-    fn after_function_node_failure(
-        &self,
-        failure: &engine::PendingFunctionNodeFailure,
-    ) -> engine::DebugDecision {
-        self.after_failure(PreviewWorkerEvent::PausedFunctionFailure(Box::new(
-            failure.clone(),
-        )))
-    }
-
-    fn source_field_probe(&self) -> Option<(usize, String)> {
-        self.source_condition
-            .as_ref()
-            .map(DebugSourceCondition::probe)
-    }
-
-    fn before_target_write(&self, write: &engine::PendingTargetWrite) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PreviewCommand::Pause | PreviewCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_selection = self
-            .breakpoint
-            .as_ref()
-            .is_none_or(|breakpoint| breakpoint.matches(write));
-        let matches_value = self
-            .value_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let matches_position = self
-            .position_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let matches_source = self
-            .source_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let matches_node = self
-            .node_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let has_breakpoint = self.breakpoint.is_some()
-            || self.value_condition.is_some()
-            || self.position_condition.is_some()
-            || self.source_condition.is_some()
-            || self.node_condition.is_some();
-        if !self.pause_each_write.get()
-            && !(has_breakpoint
-                && matches_selection
-                && matches_value
-                && matches_position
-                && matches_source
-                && matches_node)
-        {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(PreviewWorkerEvent::Paused(Box::new(write.clone())))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PreviewCommand::Step) => {
-                    self.pause_each_write.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Pause) | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_node_value(&self, value: &engine::PendingNodeValue) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PreviewCommand::Pause | PreviewCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_expression = self
-            .expression_condition
-            .as_ref()
-            .is_some_and(|condition| condition.matches(value));
-        if !self.pause_next_node.replace(false) && !matches_expression {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(PreviewWorkerEvent::PausedNode(Box::new(value.clone())))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PreviewCommand::Step) => {
-                    self.pause_next_node.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Pause) | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_function_node_value(
-        &self,
-        value: &engine::PendingFunctionNodeValue,
-    ) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PreviewCommand::Pause | PreviewCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_expression = self
-            .expression_condition
-            .as_ref()
-            .is_some_and(|condition| condition.matches_function(value));
-        if !self.pause_next_node.replace(false) && !matches_expression {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(PreviewWorkerEvent::PausedFunctionNode(Box::new(
-                value.clone(),
-            )))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PreviewCommand::Step) => {
-                    self.pause_next_node.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Pause) | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_node_input(&self, input: &engine::PendingNodeInput) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PreviewCommand::Pause | PreviewCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_pin = self
-            .input_condition
-            .as_ref()
-            .is_some_and(|condition| condition.matches(input));
-        if !self.pause_next_input.replace(false) && !matches_pin {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(PreviewWorkerEvent::PausedInput(Box::new(input.clone())))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PreviewCommand::Step) => {
-                    self.pause_next_input.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_next_input.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Pause) | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_function_node_input(
-        &self,
-        input: &engine::PendingFunctionNodeInput,
-    ) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PreviewCommand::Pause | PreviewCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_pin = self
-            .input_condition
-            .as_ref()
-            .is_some_and(|condition| condition.matches_function(input));
-        if !self.pause_next_input.replace(false) && !matches_pin {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(PreviewWorkerEvent::PausedFunctionInput(Box::new(
-                input.clone(),
-            )))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PreviewCommand::Step) => {
-                    self.pause_next_input.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_next_input.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Pause) | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
+#[cfg(test)]
+impl PendingPreview {
+    /// Every owner of the cancellation flag, including the worker's own.
+    pub(super) fn cancellation_for_test(&self) -> std::sync::Weak<AtomicBool> {
+        Arc::downgrade(&self.cancelled)
     }
 }
 
@@ -1256,7 +842,7 @@ impl FerruleApp {
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
         let pause_on_failure = debug && self.preview_pause_on_failure;
-        std::thread::spawn(move || {
+        let worker = OwnedWorker::spawn("ferrule-preview", move || {
             run_preview_worker(
                 project,
                 draft,
@@ -1274,9 +860,21 @@ impl FerruleApp {
                 event_tx,
                 command_rx,
                 worker_cancelled,
-            );
+            )
         });
+        let worker = match worker {
+            Ok(worker) => worker,
+            Err(error) => {
+                self.status = "preview failed".to_string();
+                self.diagnostics.error(
+                    "Preview failed",
+                    format!("Could not start the preview worker: {error}"),
+                );
+                return;
+            }
+        };
         self.pending_preview = Some(PendingPreview {
+            worker,
             receiver,
             commands,
             cancelled,
@@ -1311,29 +909,32 @@ impl FerruleApp {
         let Some(pending) = &mut self.pending_preview else {
             return;
         };
-        let event = match pending.receiver.try_recv() {
-            Ok(event) => event,
-            Err(TryRecvError::Empty) => {
-                if !matches!(
-                    pending.phase,
-                    PreviewPhase::Paused(_)
-                        | PreviewPhase::PausedNode(_)
-                        | PreviewPhase::PausedFunctionNode(_)
-                        | PreviewPhase::PausedInput(_)
-                        | PreviewPhase::PausedFunctionInput(_)
-                        | PreviewPhase::PausedFailure(_)
-                        | PreviewPhase::PausedFunctionFailure(_)
-                ) {
-                    ctx.request_repaint_after(Duration::from_millis(100));
+        // Pause events are relayed only while the exact worker runs; its
+        // outcome is the joined thread, never a message or a closed channel.
+        let event = if pending.worker.is_finished() {
+            None
+        } else {
+            pending.receiver.try_recv().ok()
+        };
+        let Some(event) = event else {
+            match pending.worker.poll() {
+                Some(exit) => self.finish_preview(exit),
+                None => {
+                    if !matches!(
+                        pending.phase,
+                        PreviewPhase::Paused(_)
+                            | PreviewPhase::PausedNode(_)
+                            | PreviewPhase::PausedFunctionNode(_)
+                            | PreviewPhase::PausedInput(_)
+                            | PreviewPhase::PausedFunctionInput(_)
+                            | PreviewPhase::PausedFailure(_)
+                            | PreviewPhase::PausedFunctionFailure(_)
+                    ) {
+                        ctx.request_repaint_after(Duration::from_millis(100));
+                    }
                 }
-                return;
             }
-            Err(TryRecvError::Disconnected) => PreviewWorkerEvent::Finished(
-                Err(PreviewRunError::Failed(
-                    "preview worker stopped unexpectedly".into(),
-                )),
-                crate::run_report::TraceReport::default(),
-            ),
+            return;
         };
         match event {
             PreviewWorkerEvent::Paused(write) => {
@@ -1416,40 +1017,53 @@ impl FerruleApp {
                 }
                 ctx.request_repaint();
             }
-            PreviewWorkerEvent::Finished(result, trace) => {
-                let pending = self.pending_preview.take().expect("preview worker exists");
-                if matches!(pending.phase, PreviewPhase::Stopping)
-                    || matches!(result, Err(PreviewRunError::Cancelled))
-                {
-                    self.status = "preview cancelled".into();
-                    self.preview_draft = None;
-                    self.diagnostics.clear();
-                    return;
-                }
-                match result {
-                    Ok(outcome) => {
-                        let report = crate::run_report::RunReport::from_payload_with_trace(
-                            outcome,
-                            pending.input_path.clone(),
-                            pending.started.elapsed(),
-                            trace,
-                        );
-                        self.status = format!(
-                            "previewed {} record(s) for {}",
-                            report.records_written, pending.target_label
-                        );
-                        self.run_report = Some(crate::run_report::RunReportView::new(report));
-                        self.show_run_report = true;
-                        self.preview_draft = None;
-                        self.diagnostics.clear();
-                    }
-                    Err(PreviewRunError::Failed(error)) => {
-                        self.status = "preview failed".to_string();
-                        self.diagnostics.error("Preview failed", error);
-                    }
-                    Err(PreviewRunError::Cancelled) => unreachable!("handled above"),
-                }
+        }
+    }
+
+    /// Applies the outcome of a joined preview worker.
+    fn finish_preview(&mut self, exit: WorkerExit<PreviewCompletion>) {
+        let Some(pending) = self.pending_preview.take() else {
+            return;
+        };
+        let (result, trace) = match exit {
+            WorkerExit::Reported(completion) => completion,
+            WorkerExit::Unreported | WorkerExit::Panicked => (
+                Err(PreviewRunError::Failed(
+                    "preview worker stopped unexpectedly".into(),
+                )),
+                crate::run_report::TraceReport::default(),
+            ),
+        };
+        if matches!(pending.phase, PreviewPhase::Stopping)
+            || matches!(result, Err(PreviewRunError::Cancelled))
+        {
+            self.status = "preview cancelled".into();
+            self.preview_draft = None;
+            self.diagnostics.clear();
+            return;
+        }
+        match result {
+            Ok(outcome) => {
+                let report = crate::run_report::RunReport::from_payload_with_trace(
+                    outcome,
+                    pending.input_path.clone(),
+                    pending.started.elapsed(),
+                    trace,
+                );
+                self.status = format!(
+                    "previewed {} record(s) for {}",
+                    report.records_written, pending.target_label
+                );
+                self.run_report = Some(crate::run_report::RunReportView::new(report));
+                self.show_run_report = true;
+                self.preview_draft = None;
+                self.diagnostics.clear();
             }
+            Err(PreviewRunError::Failed(error)) => {
+                self.status = "preview failed".to_string();
+                self.diagnostics.error("Preview failed", error);
+            }
+            Err(PreviewRunError::Cancelled) => {}
         }
     }
 
@@ -1467,118 +1081,6 @@ impl FerruleApp {
             .context("resolving the current directory for Preview")?
             .join(name))
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn run_preview_worker(
-    project: Project,
-    draft: PreviewDraft,
-    project_path: PathBuf,
-    saved_path: Option<PathBuf>,
-    runtime_parameters: engine::RuntimeParameters,
-    debug: bool,
-    value_condition: Option<DebugScalarCondition>,
-    position_condition: Option<DebugPositionCondition>,
-    source_condition: Option<DebugSourceCondition>,
-    node_condition: Option<DebugNodeCondition>,
-    expression_condition: Option<DebugExpressionCondition>,
-    input_condition: Option<DebugInputCondition>,
-    pause_on_failure: bool,
-    events: Sender<PreviewWorkerEvent>,
-    commands: Receiver<PreviewCommand>,
-    cancelled: Arc<AtomicBool>,
-) {
-    let trace = crate::run_report::TraceCollector::new();
-    let breakpoint = if debug {
-        draft.debug_breakpoint.clone()
-    } else {
-        None
-    };
-    let hook = PreviewDebugHook {
-        events: events.clone(),
-        commands,
-        cancelled: Arc::clone(&cancelled),
-        pause_each_write: std::cell::Cell::new(
-            debug
-                && breakpoint.is_none()
-                && value_condition.is_none()
-                && position_condition.is_none()
-                && source_condition.is_none()
-                && node_condition.is_none()
-                && expression_condition.is_none()
-                && input_condition.is_none()
-                && !pause_on_failure,
-        ),
-        pause_next_node: std::cell::Cell::new(false),
-        pause_next_input: std::cell::Cell::new(false),
-        breakpoint,
-        value_condition,
-        position_condition,
-        source_condition,
-        node_condition,
-        expression_condition,
-        input_condition,
-        pause_on_failure,
-    };
-    let result = run_preview_payload(
-        &project,
-        &draft,
-        &project_path,
-        saved_path.as_deref(),
-        &runtime_parameters,
-        &trace,
-        &hook,
-        &cancelled,
-    )
-    .map_err(|error| {
-        if error.chain().any(|cause| {
-            matches!(
-                cause.downcast_ref::<engine::EngineError>(),
-                Some(engine::EngineError::DebugCancelled)
-            )
-        }) {
-            PreviewRunError::Cancelled
-        } else {
-            PreviewRunError::Failed(format!("{error:#}"))
-        }
-    });
-    let _ = events.send(PreviewWorkerEvent::Finished(result, trace.finish()));
-}
-
-#[allow(clippy::too_many_arguments)]
-fn run_preview_payload(
-    project: &Project,
-    draft: &PreviewDraft,
-    project_path: &std::path::Path,
-    saved_path: Option<&std::path::Path>,
-    runtime_parameters: &engine::RuntimeParameters,
-    trace: &crate::run_report::TraceCollector,
-    debug_hook: &dyn engine::DebugHook,
-    cancelled: &AtomicBool,
-) -> anyhow::Result<cli::PayloadRunOutcome> {
-    if !draft.can_execute() {
-        bail!("preview input or logical format identity is invalid");
-    }
-    if cancelled.load(Ordering::Acquire) {
-        return Err(engine::EngineError::DebugCancelled.into());
-    }
-    let loaded_sources = crate::preview::load_required_sources(project, saved_path, &draft.target)?;
-    if cancelled.load(Ordering::Acquire) {
-        return Err(engine::EngineError::DebugCancelled.into());
-    }
-    let named_inputs = named_payload_inputs(&loaded_sources)?;
-    let input_path = PathBuf::from(draft.input_identity.trim());
-    let output_path = PathBuf::from(draft.output_identity.trim());
-    let primary = cli::PayloadDocument::new(&input_path, draft.input_text.as_bytes())?;
-    let options = cli::PayloadRunOptions::new(primary)
-        .with_execution_purpose(engine::ExecutionPurpose::Preview)
-        .with_extra_sources(&named_inputs)
-        .with_output_path(&output_path)
-        .with_target(draft.target.selection())
-        .with_runtime_parameters(runtime_parameters)
-        .with_trace_sink(trace)
-        .with_debug_hook(debug_hook);
-    cli::run_project_value_payloads(project, project_path, &options)
 }
 
 pub(super) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPhase, debug: bool) {
@@ -1902,18 +1404,6 @@ fn debug_value(value: &engine::DebugInstancePreview) -> String {
     }
 }
 
-fn named_payload_inputs<'a>(
-    sources: &'a [LoadedPreviewSource],
-) -> anyhow::Result<Vec<cli::NamedPayloadInput<'a>>> {
-    sources
-        .iter()
-        .map(|source| {
-            let document = cli::PayloadDocument::new(&source.path, &source.bytes)?;
-            cli::NamedPayloadInput::new(&source.name, document)
-        })
-        .collect()
-}
-
 fn nonempty_text(value: &str) -> Option<&str> {
     let value = value.trim();
     (!value.is_empty()).then_some(value)
@@ -2045,3 +1535,11 @@ mod root_annotation_render_tests {
         assert_eq!(fact, before);
     }
 }
+
+#[path = "preview_worker.rs"]
+mod preview_worker;
+use preview_worker::run_preview_worker;
+
+#[cfg(test)]
+#[path = "preview_worker_tests.rs"]
+mod preview_worker_tests;

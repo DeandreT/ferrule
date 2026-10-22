@@ -82,8 +82,11 @@ fn unsupported_preview_output_fails_before_host_file_read() -> anyhow::Result<()
     draft.outputs[0].preview_path = "database.sqlite".into();
 
     app.start_pipeline_preview();
-    wait_for_pipeline_completion(&mut app);
-    assert_eq!(app.status, "pipeline preview failed");
+    assert!(
+        app.pending_pipeline_run.is_none(),
+        "the preview is refused before a worker starts"
+    );
+    assert_eq!(app.status, "pipeline preview blocked");
     assert!(app.diagnostics.items().iter().any(|item| {
         item.message.contains("SQLite") && !item.message.contains("missing-input.json")
     }));
