@@ -1,8 +1,9 @@
 //! Route capability preflight for GUI actions. Run, Debug Run, pipeline runs
 //! and previews query the shared host preparation before they save the project
 //! or start a worker, so an unsupported combination is refused with nothing
-//! saved, read or written. Library generation uses the generation plan the
-//! same way (see `library_generation.rs`).
+//! saved, read or written. Library generation uses the generation plan and
+//! Run JSON request the REST JSON plan the same way (see
+//! `library_generation.rs` and `rest_run.rs`).
 
 use std::path::Path;
 use std::sync::atomic::AtomicBool;

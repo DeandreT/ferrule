@@ -3,10 +3,14 @@ use crate::test_ui::ContextExt as _;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::mpsc;
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use super::*;
+
+/// Bounds a test whose worker never finishes; heavy load must not shorten
+/// the window in which the endpoint accepts the request.
+const SAFETY_DEADLINE: Duration = Duration::from_secs(60);
 
 struct Files(PathBuf);
 impl Files {
@@ -65,10 +69,21 @@ fn app(files: &Files) -> FerruleApp {
 struct Endpoint {
     url: String,
     accepted: Receiver<()>,
+    done: Arc<AtomicBool>,
     worker: JoinHandle<Vec<Vec<u8>>>,
 }
 impl Endpoint {
-    fn new(body: &'static [u8], delay: Duration) -> Self {
+    fn new(body: &'static [u8]) -> Self {
+        Self::start(body, None)
+    }
+
+    /// Withholds the response until the returned sender releases it.
+    fn held(body: &'static [u8]) -> (Self, mpsc::Sender<()>) {
+        let (release, released) = mpsc::channel();
+        (Self::start(body, Some(released)), release)
+    }
+
+    fn start(body: &'static [u8], release: Option<Receiver<()>>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let url = format!(
@@ -76,10 +91,14 @@ impl Endpoint {
             listener.local_addr().unwrap()
         );
         let (signal, accepted) = mpsc::channel();
+        let done = Arc::new(AtomicBool::new(false));
+        let stop = Arc::clone(&done);
         let worker = thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(2);
+            // The app has received every response before `finish` sets
+            // `stop`; the deadline only bounds a test that never finishes.
+            let deadline = Instant::now() + SAFETY_DEADLINE;
             let mut originals = Vec::new();
-            while Instant::now() < deadline {
+            while !stop.load(Ordering::Acquire) && Instant::now() < deadline {
                 let mut stream = match listener.accept() {
                     Ok((stream, _)) => stream,
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
@@ -118,7 +137,9 @@ impl Endpoint {
                 }
                 originals.push(raw);
                 let _ = signal.send(());
-                thread::sleep(delay);
+                if let Some(release) = &release {
+                    let _ = release.recv_timeout(SAFETY_DEADLINE);
+                }
                 let head = format!(
                     "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                     body.len()
@@ -131,10 +152,12 @@ impl Endpoint {
         Self {
             url,
             accepted,
+            done,
             worker,
         }
     }
     fn finish(self) -> Vec<Vec<u8>> {
+        self.done.store(true, Ordering::Release);
         self.worker.join().unwrap()
     }
 }
@@ -277,7 +300,7 @@ fn grant_and_start(app: &mut FerruleApp, context: &egui::Context) -> [bool; 6] {
 }
 
 fn finish(app: &mut FerruleApp, context: &egui::Context) {
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + SAFETY_DEADLINE;
     while app.pending_rest_run.is_some() && Instant::now() < deadline {
         app.poll_rest_run(context);
         thread::sleep(Duration::from_millis(5));
@@ -352,7 +375,7 @@ fn transient_file_grant_maps_unsaved_snapshot_once_without_persisting_credential
         let files = Files::new();
         let mut app = app(&files);
         let context = context();
-        let endpoint = Endpoint::new(br#"{"Value":"remote"}"#, Duration::ZERO);
+        let endpoint = Endpoint::new(br#"{"Value":"remote"}"#);
         select_files(&mut app, &files, &endpoint, method);
         let project_before = mapping::project_file::encode_pretty(&app.project).unwrap();
         let snapshot_before =
@@ -440,14 +463,12 @@ fn pending_request_locks_ordinary_actions_and_close_waits_for_owned_worker() {
     let files = Files::new();
     let mut app = app(&files);
     let context = context();
-    let endpoint = Endpoint::new(br#"{"Value":"remote"}"#, Duration::from_millis(300));
+    let (endpoint, release) = Endpoint::held(br#"{"Value":"remote"}"#);
     select_files(&mut app, &files, &endpoint, "GET");
     let approval = grant_and_start(&mut app, &context);
-    let accepted = endpoint
-        .accepted
-        .recv_timeout(Duration::from_secs(2))
-        .is_ok();
+    let accepted = endpoint.accepted.recv_timeout(SAFETY_DEADLINE).is_ok();
     if !accepted || app.pending_rest_run.is_none() {
+        drop(release);
         finish(&mut app, &context);
         let raw = endpoint.finish();
         observe(&app, &raw);
@@ -488,6 +509,7 @@ fn pending_request_locks_ordinary_actions_and_close_waits_for_owned_worker() {
     app.save_with_continuation(None, &context);
     app.guard_app_close_requested(&context, true);
     let waiting_for_close = app.close_after_rest_run && app.pending_rest_run.is_some();
+    drop(release);
     finish(&mut app, &context);
     let raw = endpoint.finish();
     observe(&app, &raw);
@@ -526,7 +548,7 @@ fn malformed_response_has_redacted_gui_category_and_no_partial_result() {
     let files = Files::new();
     let mut app = app(&files);
     let context = context();
-    let endpoint = Endpoint::new(b"not JSON", Duration::ZERO);
+    let endpoint = Endpoint::new(b"not JSON");
     select_files(&mut app, &files, &endpoint, "POST");
     let approval = grant_and_start(&mut app, &context);
     finish(&mut app, &context);
@@ -647,4 +669,137 @@ fn result_preview_preserves_utf8_at_64k_boundary_and_complete_output() {
             assert_eq!(complete.len(), DISPLAY_LIMIT);
         }
     }
+}
+
+/// A design the REST JSON route refuses: a non-default boundary option.
+fn refuse_route(project: &mut Project) {
+    project.target_options.lenient_segments = true;
+    assert!(cli::validate(project).is_empty());
+}
+
+#[test]
+fn route_refusal_precedes_the_request_form() {
+    let files = Files::new();
+    let mut app = app(&files);
+    refuse_route(&mut app.project);
+    let saved = std::fs::read(files.path("mapping.json")).unwrap();
+    for saved_document in [true, false] {
+        if !saved_document {
+            app.document = DocumentLocation::untitled(files.path("untitled.json"));
+        }
+        app.begin_rest_run();
+        assert_eq!(app.status, "request blocked");
+        assert!(app.rest_run_draft.is_none(), "no form asks for host files");
+        let messages = app
+            .diagnostics
+            .items()
+            .iter()
+            .map(|d| d.message.as_str())
+            .collect::<String>();
+        // The route refusal, not the unsaved-identity requirement.
+        assert!(messages.contains("one strict JSON input"), "{messages}");
+    }
+    assert_eq!(std::fs::read(files.path("mapping.json")).unwrap(), saved);
+    assert!(!files.path("untitled.json").exists());
+    assert_eq!(
+        std::fs::read(files.path("output.json")).unwrap(),
+        b"untouched"
+    );
+}
+
+#[test]
+fn start_refuses_the_snapshot_before_any_request_is_sent() {
+    let files = Files::new();
+    let mut app = app(&files);
+    let context = context();
+    let endpoint = Endpoint::new(br#"{"Value":"remote"}"#);
+    select_files(&mut app, &files, &endpoint, "GET");
+    // Editing is locked while the form is open; a test seam stands in for a
+    // snapshot that no longer passes the route plan when Run is pressed.
+    refuse_route(&mut app.project);
+    let approval = grant_and_start(&mut app, &context);
+    let raw = endpoint.finish();
+    assert_eq!(approval, [false, false, false, true, true, true]);
+    assert!(raw.is_empty(), "no connection was made");
+    assert!(app.pending_rest_run.is_none(), "no worker started");
+    assert!(app.rest_run_draft.is_none(), "the grant was consumed");
+    assert_eq!(app.status, "request blocked");
+    assert_eq!(
+        std::fs::read(files.path("output.json")).unwrap(),
+        b"untouched"
+    );
+}
+
+#[test]
+fn dropping_a_live_request_cancels_and_tears_down_its_worker_before_returning() {
+    let files = Files::new();
+    let mut app = app(&files);
+    let context = context();
+    let (endpoint, release) = Endpoint::held(br#"{"Value":"remote"}"#);
+    select_files(&mut app, &files, &endpoint, "GET");
+    grant_and_start(&mut app, &context);
+    assert!(endpoint.accepted.recv_timeout(SAFETY_DEADLINE).is_ok());
+    let pending = app.pending_rest_run.take().expect("request is in flight");
+    let shared = pending.cancellation_for_test();
+    let flag = shared.upgrade().expect("pending request owns its flag");
+    assert!(
+        shared.strong_count() >= 3,
+        "the in-flight worker shares the flag"
+    );
+    drop(flag);
+    // The synchronous request cannot be interrupted, so drop waits for it.
+    let releaser = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(50));
+        let _ = release.send(());
+    });
+    drop(pending);
+    assert_eq!(
+        shared.strong_count(),
+        0,
+        "the worker thread exited and released its state before drop returned"
+    );
+    releaser.join().unwrap();
+    assert_eq!(endpoint.finish().len(), 1);
+    assert!(app.rest_run_result.is_none());
+    assert_eq!(
+        std::fs::read(files.path("output.json")).unwrap(),
+        b"untouched"
+    );
+}
+
+#[test]
+fn request_completion_waits_until_the_worker_thread_exited() {
+    let outcome = cli::PayloadRunOutcome {
+        records_written: 1,
+        artifacts: Vec::new(),
+    };
+    let (worker, release, exited) = OwnedWorker::held_after_report_for_test(Ok(outcome));
+    let mut app = FerruleApp {
+        pending_rest_run: Some(PendingRestRun {
+            worker,
+            cancelled: Arc::new(AtomicBool::new(false)),
+        }),
+        ..FerruleApp::default()
+    };
+    let context = context();
+    let held_until = Instant::now() + Duration::from_millis(100);
+    while Instant::now() < held_until {
+        app.poll_rest_run(&context);
+        assert!(
+            app.pending_rest_run.is_some(),
+            "a live worker is not complete"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!exited.load(Ordering::Acquire));
+
+    release.send(()).unwrap();
+    finish(&mut app, &context);
+    assert!(app.pending_rest_run.is_none());
+    assert!(
+        exited.load(Ordering::Acquire),
+        "completion followed thread exit"
+    );
+    assert_eq!(app.status, "live request complete (in memory)");
+    assert!(app.rest_run_result.is_some());
 }

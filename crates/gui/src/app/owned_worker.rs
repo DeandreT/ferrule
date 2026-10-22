@@ -6,10 +6,11 @@
 //! dropping an unfinished owner blocks until that exact thread exits.
 //!
 //! Library generation has no cooperative cancellation, so its drain waits for
-//! the bounded work rather than abandoning it mid-publication. Preview and
-//! pipeline owners request cancellation before the drain, which then waits for
-//! the worker's next control point. Cancellation cannot interrupt one
-//! synchronous parser or request, so the drain also waits for that call.
+//! the bounded work rather than abandoning it mid-publication. Preview,
+//! pipeline and live-request owners request cancellation before the drain,
+//! which then waits for the worker's next control point. Cancellation cannot
+//! interrupt one synchronous parser or request, so the drain also waits for
+//! that call.
 
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::JoinHandle;
