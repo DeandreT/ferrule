@@ -496,6 +496,144 @@ fn command_line_parameters_bind_through_the_shared_typed_resolution() {
     assert!(!dir.join("out.json").exists());
 }
 
+/// A table created by Ferrule's writer, introspected by `import-db` and
+/// queried by a Bool predicate, with no manual schema edits.
+#[test]
+fn written_tables_query_through_their_imported_schema() {
+    let dir = TempDir::new();
+    let plain = [
+        ("id", ir::ScalarType::Int),
+        ("label", ir::ScalarType::String),
+        ("active", ir::ScalarType::Bool),
+    ];
+    let table = |generated: bool| {
+        let fields = plain.iter().map(|(name, ty)| {
+            let field = ir::SchemaNode::scalar(*name, *ty);
+            if generated && *name == "id" {
+                field
+                    .with_value_generation(ir::ValueGeneration::MaxNumber)
+                    .unwrap()
+            } else {
+                field
+            }
+        });
+        ir::SchemaNode::group("orders", fields.collect()).repeating()
+    };
+    let rows = |ids: bool| {
+        [("alpha", true), ("beta", false), ("gamma", true)]
+            .into_iter()
+            .zip(1..)
+            .map(|((label, active), id)| {
+                let mut fields = vec![
+                    (
+                        "label".to_owned(),
+                        ir::Instance::Scalar(Value::String(label.into())),
+                    ),
+                    (
+                        "active".to_owned(),
+                        ir::Instance::Scalar(Value::Bool(active)),
+                    ),
+                ];
+                if ids {
+                    fields.push(("id".to_owned(), ir::Instance::Scalar(Value::Int(id))));
+                }
+                ir::Instance::Group(fields.into())
+            })
+            .collect::<Vec<_>>()
+    };
+    let import = |database: &Path| {
+        let output = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+            .args(["import-db", "--table", "orders", "--db"])
+            .arg(database)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        serde_json::from_slice::<Json>(&output.stdout).unwrap()
+    };
+    let project = |source: Json| -> mapping::Project {
+        let mut nodes = serde_json::Map::new();
+        let mut bindings = Vec::new();
+        for (id, (field, _)) in plain.iter().enumerate() {
+            nodes.insert(
+                id.to_string(),
+                json!({"kind": "source_field", "path": [field]}),
+            );
+            bindings.push(json!({"target_field": field, "node": id}));
+        }
+        nodes.insert(
+            "10".into(),
+            json!({"kind": "runtime_parameter", "name": "active", "ty": "bool"}),
+        );
+        let query = json!({
+            "kind": "sqlite_read_v1", "table": "orders", "key": "id",
+            "projection": [
+                {"field": "id", "column": "id"}, {"field": "label", "column": "label"},
+                {"field": "active", "column": "active"}
+            ],
+            "parameters": [{"name": "active", "type": "bool", "runtime_parameter": "active"}],
+            "all": [{"op": "eq", "column": "active", "type": "bool", "parameter": "active"}],
+            "order_by": [{"column": "id", "type": "int", "direction": "asc", "nulls": "last"}]
+        });
+        serde_json::from_value(json!({
+            "source": source,
+            "target": serde_json::to_value(table(false)).unwrap(),
+            "source_path": "orders.db",
+            "target_path": "out.json",
+            "source_options": {"sqlite_read": query},
+            "graph": {"nodes": nodes},
+            "root": {"source": [], "bindings": bindings},
+        }))
+        .unwrap()
+    };
+
+    let database = dir.join("orders.db");
+    format_db::write(&database, &table(true), &rows(false)).unwrap();
+    let imported = import(&database);
+    assert_eq!(imported, serde_json::to_value(table(true)).unwrap());
+    let project_path = dir.save(&project(imported));
+    let output = Command::new(env!("CARGO_BIN_EXE_ferrule"))
+        .arg("run")
+        .arg(&project_path)
+        .args(["--param", "active=true"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let written: Json =
+        serde_json::from_slice(&std::fs::read(dir.join("out.json")).unwrap()).unwrap();
+    assert_eq!(
+        written,
+        json!([
+            {"id": 1, "label": "alpha", "active": true},
+            {"id": 3, "label": "gamma", "active": true}
+        ])
+    );
+
+    // Without a generated key the writer declares none, and none is guessed.
+    std::fs::remove_file(dir.join("out.json")).unwrap();
+    std::fs::remove_file(&database).unwrap();
+    format_db::write(&database, &table(false), &rows(true)).unwrap();
+    let imported = import(&database);
+    assert_eq!(imported, serde_json::to_value(table(false)).unwrap());
+    let project_path = dir.save(&project(imported));
+    let mut parameters = engine::RuntimeParameters::new();
+    parameters.insert("active", Value::Bool(true)).unwrap();
+    let error = cli::run_project_with_options(
+        &project_path,
+        &cli::RunOptions::new().with_runtime_parameters(&parameters),
+    )
+    .unwrap_err();
+    let query = query_error(&error);
+    assert_eq!(
+        (query.phase, &query.kind, query.column.as_deref()),
+        (
+            QueryPhase::Metadata,
+            &QueryReadErrorKind::InvalidKey(format_db::query::KeyProblem::NotPrimaryKey),
+            Some("id")
+        )
+    );
+    assert!(!dir.join("out.json").exists());
+}
+
 #[test]
 fn missing_parameters_refuse_before_any_input_is_read() {
     let dir = TempDir::new();

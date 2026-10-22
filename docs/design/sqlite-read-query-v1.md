@@ -21,7 +21,10 @@ The source SchemaNode owns the resulting group/field names and scalar types.
 An ordered projection maps each schema field to exactly one physical column;
 aliases are schema names, never SQL expressions. The root must repeat; every
 child must be a distinct nonrepeating Scalar of String, Int, Float or Bool.
-Reject scalar unions, nested groups and unrelated format metadata. Every field
+Reject scalar unions, nested groups and unrelated format metadata. The one
+admitted annotation is the generated-key marker `import-db` records on a rowid
+alias: it may appear only on the Int field projected from the key, where a read
+ignores it, and the key proof below still applies. Every field
 is present in every returned row. SQL NULL becomes `Instance::Scalar(Value::Null)`;
 it never means absent, an omitted field or an empty repeated group. Zero rows
 produce `Instance::Repeated([])`. No new nullability flag is inferred from SQL
@@ -31,7 +34,11 @@ The physical table must have a proved rowid-alias `INTEGER PRIMARY KEY` column.
 Reject WITHOUT ROWID, composite keys and the `INTEGER PRIMARY KEY DESC` exception.
 Use the existing rowid-primary-key metadata proof as the starting point. Never
 fall back to physical scan order, `_rowid_`, a guessed key or an unqualified
-unique index. Reject missing or ambiguous case-insensitive table/column matches;
+unique index. When Ferrule's writer creates a table, it declares a sole
+generated column `INTEGER PRIMARY KEY`, so the introspected table carries a
+query without schema edits. A table it creates with no generated column, or with
+several, declares no key and refuses; an existing table keeps its declaration.
+Reject missing or ambiguous case-insensitive table/column matches;
 store canonical metadata spellings in the admitted plan. Identifiers are exact
 nonempty UTF-8 strings of at most 256 bytes, without NUL; quote them by doubling
 double quotes. Punctuation remains literal identifier content.
@@ -54,7 +61,10 @@ domain; projection field order must exactly match schema child order. Column
 reuse across projection/filter/order is allowed with one agreed scalar type.
 Every referenced physical column has a single compatible declared affinity:
 String/TEXT, Int/INTEGER, Bool/INTEGER and Float/REAL or INTEGER. An empty, NUMERIC
-or BLOB affinity refuses. Type conflicts are static errors. Types for unprojected
+or BLOB affinity refuses, except that Bool also admits the exact declared type
+`BOOLEAN` that Ferrule's writer creates. Its cells still require INTEGER 0/1
+storage; other NUMERIC spellings, including `BOOL`, refuse. Type conflicts are
+static errors. Types for unprojected
 predicate/order columns are explicit in their entries.
 
 Predicate grammar:

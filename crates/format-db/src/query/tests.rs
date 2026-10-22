@@ -10,6 +10,7 @@ use rusqlite::Connection;
 
 use super::*;
 
+mod ferrule_tables;
 mod refusals;
 
 const FIXTURES: &str = concat!(
