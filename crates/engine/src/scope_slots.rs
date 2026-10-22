@@ -51,10 +51,9 @@ pub(crate) fn owned_probe(slot: Slot) -> bool {
 }
 
 /// The roots whose join references are validated against a scope's own
-/// active joins. Presence, windows and sequence inputs are validated
-/// separately in the parent context; construction roots and generated items
-/// are not join-validated. A block size is validated here even though it
-/// evaluates in the parent context.
+/// active joins. Presence, windows, block sizes and sequence inputs are
+/// validated separately in the parent context; construction roots and
+/// generated items are not join-validated.
 pub(crate) fn join_validation(slot: Slot) -> bool {
     matches!(
         slot,
@@ -64,7 +63,6 @@ pub(crate) fn join_validation(slot: Slot) -> bool {
             | Slot::GroupAdjacentBy
             | Slot::GroupStartingWith
             | Slot::GroupEndingWith
-            | Slot::GroupIntoBlocks
             | Slot::SortBy
             | Slot::OutputPath
             | Slot::SortThenBy(_)
