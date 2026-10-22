@@ -516,6 +516,21 @@ internal static partial class Program
 
     private static void DateTimePictureFunctions()
     {
+        foreach (var (clock, expected) in new[]
+        {
+            ("2030-01-02T00:00:00", "2030010200000"),
+            ("2030-01-02T01:02:03", "2030010210203"),
+            ("2030-01-02T09:08:07", "2030010290807"),
+            ("2030-01-02T10:00:09", "20300102100009"),
+            ("2030-01-02T12:34:56", "20300102123456"),
+            ("2030-01-02T23:59:59", "20300102235959"),
+        })
+        {
+            CallEquals(Text(expected), "format_datetime", Text(clock), Text("[Y][M,2-2][D,2-2][H][m][s]"));
+        }
+        CallEquals(Text("1:02:03"), "format_time", Text("01:02:03"), Text("[H]:[m]:[s]"));
+        CallEquals(Text("01:02:03"), "parse_time", Text("1:2:3"), Text("[H]:[m]:[s]"));
+
         CallEquals(
             Text("2014-12-09"),
             "parse_date",
