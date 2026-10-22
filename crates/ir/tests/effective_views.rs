@@ -417,3 +417,38 @@ fn xml_layer_reports_declared_occurrence_and_nil_only() {
         Ok(JsonNullability::Occurrence { null: false })
     );
 }
+
+#[test]
+fn json_property_presence_comes_from_the_parent_required_list_only() {
+    use EffectivePresence::{Optional, Required};
+    let nullable = text("note").nullable().unwrap();
+    let object = SchemaNode::group("Order", vec![text("id"), nullable, text("memo")])
+        .with_required_fields(vec!["id".into(), "note".into()])
+        .unwrap();
+    assert_eq!(object.json_property_presence("id"), Some(Required));
+    // Presence and null admission stay independent facts.
+    assert_eq!(object.json_property_presence("note"), Some(Required));
+    assert_eq!(object.json_property_presence("memo"), Some(Optional));
+    assert_eq!(object.json_property_presence("missing"), Some(Optional));
+    // XML presence metadata is not JSON property presence.
+    let mut optional = text("id");
+    assert!(optional.set_xml_optional(true));
+    let element = SchemaNode::group("Order", vec![optional])
+        .with_required_fields(vec!["id".into()])
+        .unwrap();
+    assert_eq!(element.json_property_presence("id"), Some(Required));
+    assert_eq!(
+        SchemaNode::group("Order", vec![text("id")]).json_property_presence("id"),
+        Some(Optional)
+    );
+    assert_eq!(text("id").json_property_presence("id"), None);
+    // The legacy reading matches on every node.
+    for node in [&object, &element, &text("id")] {
+        for name in ["id", "note", "memo", "missing"] {
+            assert_eq!(
+                node.json_property_presence(name) == Some(Required),
+                node.required_fields().iter().any(|field| field == name)
+            );
+        }
+    }
+}

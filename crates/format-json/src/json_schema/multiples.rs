@@ -124,9 +124,8 @@ pub(crate) fn validate_json(
     let Some(constraints) = &schema.json_multiple_of else {
         return Ok(());
     };
-    if value.is_null() && schema.nullable {
-        return Ok(());
-    }
+    // `multipleOf` constrains numbers only; whether null is admitted is
+    // decided by the scalar decode.
     let matches = match value {
         serde_json::Value::Number(number)
             if schema.accepts_scalar_type(ScalarType::Int)
@@ -153,8 +152,11 @@ pub(crate) fn validate_json(
     })
 }
 
+/// Writes the `multipleOf` constraints; `value_null` is the scalar null layer
+/// derived from the effective JSON view.
 pub(super) fn render(
     node: &SchemaNode,
+    value_null: bool,
     out: &mut serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), JsonFormatError> {
     let Some(constraints) = &node.json_multiple_of else {
@@ -190,7 +192,7 @@ pub(super) fn render(
             branches.push(serde_json::Value::Object(branch));
         }
     }
-    if node.nullable {
+    if value_null {
         branches.push(serde_json::json!({ "type": "null" }));
     }
     append_all_of(out, serde_json::json!({ "anyOf": branches }));

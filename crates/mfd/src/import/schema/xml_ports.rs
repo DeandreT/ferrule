@@ -290,15 +290,13 @@ pub(super) fn refine_copied_fallback_target_groups(
     }
 }
 
-fn plain_entry_tree_leaf(node: &SchemaNode) -> bool {
+pub(in crate::import) fn plain_entry_tree_leaf(node: &SchemaNode) -> bool {
     node.xml_namespace.is_none()
         && !node.repeating
         && node.recursive_ref.is_none()
         && !node.attribute
         && !node.text
-        && !node.nillable
-        && !node.nullable
-        && !node.container_nullable
+        && crate::import::presence::plain_non_null(node)
         && !node.json_any
         && node.fixed.is_none()
         && node.default.is_none()

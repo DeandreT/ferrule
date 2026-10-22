@@ -218,7 +218,7 @@ fn fixtures(directory: &Path, found: &mut Vec<PathBuf>) {
     }
 }
 
-fn walk(node: &SchemaNode, visit: &mut impl FnMut(&SchemaNode)) {
+pub(super) fn walk(node: &SchemaNode, visit: &mut impl FnMut(&SchemaNode)) {
     visit(node);
     if let SchemaKind::Group {
         children, dynamic, ..
@@ -233,19 +233,20 @@ fn walk(node: &SchemaNode, visit: &mut impl FnMut(&SchemaNode)) {
     }
 }
 
-#[test]
-fn every_workspace_json_schema_fixture_matches_before_and_after_migration() {
+/// Every JSON Schema fixture in the workspace, plus the boundary schemas
+/// embedded in saved project fixtures.
+pub(super) fn workspace_fixture_schemas() -> Vec<(PathBuf, SchemaNode)> {
     let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let mut paths = Vec::new();
     fixtures(&crates, &mut paths);
-    let (mut schemas, mut nodes, mut nulls) = (0, 0, 0);
-    for path in &paths {
+    let mut schemas = Vec::new();
+    for path in paths {
         let mut found = Vec::new();
-        if let Ok(schema) = super::import(path) {
+        if let Ok(schema) = super::import(&path) {
             found.push(schema);
         }
         // Saved project fixtures embed their boundary schemas directly.
-        if let Ok(text) = std::fs::read_to_string(path)
+        if let Ok(text) = std::fs::read_to_string(&path)
             && let Ok(serde_json::Value::Object(project)) = serde_json::from_str(&text)
         {
             let mut embedded = vec![project.get("source"), project.get("target")];
@@ -261,22 +262,28 @@ fn every_workspace_json_schema_fixture_matches_before_and_after_migration() {
                     .filter_map(|value| serde_json::from_value::<SchemaNode>(value.clone()).ok()),
             );
         }
-        for schema in found {
-            schemas += 1;
-            walk(&schema, &mut |node| {
-                nodes += 1;
-                let legacy = legacy_layers(node);
-                nulls += usize::from(
-                    legacy.container_null || legacy.object_item_null || legacy.value_null,
-                );
-                assert_eq!(
-                    layers(node).unwrap(),
-                    legacy,
-                    "{}: {node:?}",
-                    path.display()
-                );
-            });
-        }
+        schemas.extend(found.into_iter().map(|schema| (path.clone(), schema)));
+    }
+    schemas
+}
+
+#[test]
+fn every_workspace_json_schema_fixture_matches_before_and_after_migration() {
+    let (mut schemas, mut nodes, mut nulls) = (0, 0, 0);
+    for (path, schema) in workspace_fixture_schemas() {
+        schemas += 1;
+        walk(&schema, &mut |node| {
+            nodes += 1;
+            let legacy = legacy_layers(node);
+            nulls +=
+                usize::from(legacy.container_null || legacy.object_item_null || legacy.value_null);
+            assert_eq!(
+                layers(node).unwrap(),
+                legacy,
+                "{}: {node:?}",
+                path.display()
+            );
+        });
     }
     assert!(schemas > 100, "{schemas}");
     assert!(nodes > 2_000, "{nodes}");

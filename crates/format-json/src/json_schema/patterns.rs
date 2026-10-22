@@ -143,7 +143,13 @@ fn is_tautology(constraints: &JsonPatternConstraints) -> bool {
         .any(|alternative| alternative.iter().all(String::is_empty))
 }
 
-pub(super) fn render(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json::Value>) {
+/// Writes the pattern constraints; `value_null` is the scalar null layer
+/// derived from the effective JSON view.
+pub(super) fn render(
+    node: &SchemaNode,
+    value_null: bool,
+    out: &mut serde_json::Map<String, serde_json::Value>,
+) {
     let Some(patterns) = &node.json_patterns else {
         return;
     };
@@ -208,7 +214,7 @@ pub(super) fn render(node: &SchemaNode, out: &mut serde_json::Map<String, serde_
         }
         SchemaKind::Group { .. } => return,
     }
-    if node.nullable {
+    if value_null {
         branches.push(serde_json::json!({ "type": "null" }));
     }
     branches.extend(alternatives.iter().map(|terms| {

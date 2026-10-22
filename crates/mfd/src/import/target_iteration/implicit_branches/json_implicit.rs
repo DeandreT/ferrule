@@ -72,12 +72,12 @@ pub(super) fn ordinary(component: &SchemaComponent, source: bool) -> bool {
 
 /// Comparing to a reconstructed plain node preserves required/repeating and
 /// explicit nonnull item facts without discarding any extra schema metadata.
-pub(super) fn plain_schema(node: &SchemaNode, depth: usize, remaining: &mut usize) -> bool {
-    if depth > MAX_DEPTH
-        || *remaining == 0
-        || node.container_nullable
-        || node.json_single_container_nullable()
-    {
+pub(in crate::import) fn plain_schema(
+    node: &SchemaNode,
+    depth: usize,
+    remaining: &mut usize,
+) -> bool {
+    if depth > MAX_DEPTH || *remaining == 0 || !presence::json_non_null(node) {
         return false;
     }
     *remaining -= 1;

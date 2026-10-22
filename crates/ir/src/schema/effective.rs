@@ -93,7 +93,8 @@ pub enum RepeatedItems {
 ///
 /// Elements are required unless `xml_optional`; attributes are optional unless
 /// `xml_attribute_required`; simple text content is required. JSON property
-/// presence is owned by the parent's required-property list instead. XML and
+/// presence is owned by the parent's required-property list instead
+/// ([`SchemaNode::json_property_presence`]). XML and
 /// JSON instance readers keep their lenient handling of missing occurrences;
 /// this is the declared presence consulted by schema export and mapping proofs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -299,6 +300,23 @@ impl SchemaNode {
                     self.nullable
                 },
             }
+        })
+    }
+
+    /// Declared JSON presence of this object's property `name`: required
+    /// when the object's required-property list names it, otherwise optional.
+    ///
+    /// Presence says nothing about null: a required property may still carry
+    /// an explicit JSON null admitted by its own
+    /// [`SchemaNode::effective_json_nullability`]. A scalar has no properties.
+    pub fn json_property_presence(&self, name: &str) -> Option<EffectivePresence> {
+        let SchemaKind::Group { required, .. } = &self.kind else {
+            return None;
+        };
+        Some(if required.iter().any(|field| field == name) {
+            EffectivePresence::Required
+        } else {
+            EffectivePresence::Optional
         })
     }
 
