@@ -14,6 +14,10 @@ use crate::{
     UserFunctionProgram, XmlMixedContentElement, XmlMixedContentReplacement, validate_program,
 };
 
+mod xml_request;
+
+use xml_request::XmlRequest;
+
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
     lower_with_validator(project, validate_program)
 }
@@ -86,219 +90,7 @@ fn lower_with_policy(
     if let Some(diagnostic) = owned_document_diagnostic(project, owned_joins) {
         return Err(LowerError::new(vec![diagnostic]));
     }
-    let primary_xml = project.source_options.xml_root_view_read_policy;
-    // Ordinary XML format identity does not make adapter support mandatory.
-    // Existing core-only generation survives an unproved ordinary schema.
-    let ordinary_xml_input = !project.source_options.xml_allow_inactive_root_type_members
-        && !primary_xml
-        && project.source_options
-            == (mapping::FormatOptions {
-                xml_document: true,
-                ..Default::default()
-            })
-        && ir::xml_structured_document_input_is_supported(&project.source);
-    // Literal hints belong to the optional XML adapter. An unsuitable named
-    // output removes that whole adapter without obstructing typed/JSON core.
-    let ordinary_xml = ordinary_xml_input
-        && project.extra_sources.len() < 4096
-        && project.extra_sources.iter().all(|source| {
-            source.options
-                == (mapping::FormatOptions {
-                    xml_document: true,
-                    ..Default::default()
-                })
-                && ir::xml_structured_document_input_is_supported(&source.schema)
-        })
-        && xml_document_output_options(&project.target_options)
-        && project
-            .extra_targets
-            .iter()
-            .all(|target| xml_document_output_options(&target.options));
-    let mut reader_diagnostics: Vec<_> = project
-        .extra_sources
-        .iter()
-        .filter(|source| source.options.xml_root_view_read_policy)
-        .map(|source| Diagnostic::Validation {
-            location: format!("extra source `{}` format options", source.name),
-            message: "code generation does not support named observed XML root-view input adapters"
-                .into(),
-        })
-        .collect();
-    for (location, options) in
-        std::iter::once(("source format options".to_owned(), &project.source_options)).chain(
-            project.extra_sources.iter().map(|source| {
-                (
-                    format!("extra source `{}` format options", source.name),
-                    &source.options,
-                )
-            }),
-        )
-    {
-        if options.xml_allow_inactive_root_type_members != options.xml_root_view_read_policy {
-            reader_diagnostics.push(Diagnostic::Validation {
-                location,
-                message: "generated XML input policy has incompatible observed profile flags"
-                    .into(),
-            });
-        }
-    }
-    // Preserve the historical static-input and static-output routes.
-    // The combined route below has its own complete admission proof.
-    let root_view_static_inputs = primary_xml
-        && !project.extra_sources.is_empty()
-        && project.extra_targets.is_empty()
-        && matches!(project.root.iteration, ScopeIteration::None)
-        && matches!(project.root.construction, ScopeConstruction::Constructed)
-        && !project.target.repeating
-        && project.extra_sources.iter().all(|source| {
-            source.dynamic_path.is_none()
-                && source.options
-                    == (mapping::FormatOptions {
-                        xml_document: true,
-                        ..Default::default()
-                    })
-                && ir::xml_structured_document_input_is_supported(&source.schema)
-        });
-    // The newly admitted plural route remains flat even when its expressions
-    // contain no primary-root reader. Preserve the existing one-output route.
-    let root_view_plural_roots_flat = project.extra_targets.len() == 1
-        || std::iter::once((&project.target, &project.root))
-            .chain(
-                project
-                    .extra_targets
-                    .iter()
-                    .map(|target| (&target.schema, &target.root)),
-            )
-            .all(|(schema, scope)| {
-                (scope.target_field.is_empty() || scope.target_field == schema.name)
-                    && scope.dynamic_bindings.is_empty()
-                    && scope.filter.is_none()
-                    && scope.post_group_filter.is_none()
-                    && !scope.has_grouping()
-                    && !scope.has_sort()
-                    && scope.windows.is_empty()
-                    && !scope.merge_dynamic_fields
-                    && scope.children.is_empty()
-                    && scope.dynamic_children.is_empty()
-                    && scope.concatenated().is_none()
-            });
-    let root_view_static_output = primary_xml
-        && project.extra_sources.is_empty()
-        && !project.extra_targets.is_empty()
-        && root_view_plural_roots_flat
-        && matches!(project.root.iteration, ScopeIteration::None)
-        && matches!(project.root.construction, ScopeConstruction::Constructed)
-        && !project.target.repeating
-        && matches!(project.target.kind, SchemaKind::Group { .. })
-        && xml_document_output_options(&project.target_options)
-        && project.extra_targets.iter().all(|target| {
-            matches!(target.root.iteration, ScopeIteration::None)
-                && matches!(target.root.construction, ScopeConstruction::Constructed)
-                && !target.schema.repeating
-                && matches!(target.schema.kind, SchemaKind::Group { .. })
-                && xml_document_output_options(&target.options)
-        });
-    // Unlike the historical input-only/one-output routes, every combined root
-    // must be flat even with one named output and no primary-root expressions.
-    let root_view_static_combined = primary_xml
-        && project.source_options
-            == (mapping::FormatOptions {
-                xml_document: true,
-                xml_allow_inactive_root_type_members: true,
-                xml_root_view_read_policy: true,
-                ..Default::default()
-            })
-        && !project.extra_sources.is_empty()
-        && !project.extra_targets.is_empty()
-        && project.extra_sources.iter().all(|source| {
-            source.dynamic_path.is_none()
-                && source.options
-                    == (mapping::FormatOptions {
-                        xml_document: true,
-                        ..Default::default()
-                    })
-                && ir::xml_structured_document_input_is_supported(&source.schema)
-        })
-        && std::iter::once((&project.target, &project.root, &project.target_options))
-            .chain(
-                project
-                    .extra_targets
-                    .iter()
-                    .map(|target| (&target.schema, &target.root, &target.options)),
-            )
-            .all(|(schema, scope, options)| {
-                !schema.repeating
-                    && matches!(schema.kind, SchemaKind::Group { .. })
-                    && (scope.target_field.is_empty() || scope.target_field == schema.name)
-                    && matches!(scope.iteration, ScopeIteration::None)
-                    && matches!(scope.construction, ScopeConstruction::Constructed)
-                    && scope.dynamic_bindings.is_empty()
-                    && scope.filter.is_none()
-                    && scope.post_group_filter.is_none()
-                    && !scope.has_grouping()
-                    && !scope.has_sort()
-                    && scope.windows.is_empty()
-                    && !scope.merge_dynamic_fields
-                    && scope.children.is_empty()
-                    && scope.dynamic_children.is_empty()
-                    && scope.concatenated().is_none()
-                    && xml_document_output_options(options)
-            });
-    if primary_xml
-        && (!project.extra_sources.is_empty() || !project.extra_targets.is_empty())
-        && !root_view_static_inputs
-        && !root_view_static_output
-        && !root_view_static_combined
-    {
-        reader_diagnostics.push(Diagnostic::Validation {
-            location: "source format options".into(),
-            message: "generated XML document adapters require one primary input and output; named and dynamic boundaries are unsupported".into(),
-        });
-    }
-    if primary_xml {
-        let supported = mapping::FormatOptions {
-            xml_document: project.target_options.xml_document,
-            xml_schema_hints: project.target_options.xml_schema_hints.clone(),
-            ..Default::default()
-        };
-        if project.target_options != supported {
-            reader_diagnostics.push(Diagnostic::Validation {
-                location: "target format options".into(),
-                message: "generated XML document output supports only primary XML format options"
-                    .into(),
-            });
-        }
-    }
-    if !reader_diagnostics.is_empty() {
-        return Err(LowerError::new(reader_diagnostics));
-    }
-
-    let mut hint_diagnostics = Vec::new();
-    for (location, options) in
-        std::iter::once(("target format options".to_string(), &project.target_options)).chain(
-            project.extra_targets.iter().map(|target| {
-                (
-                    format!("extra target `{}` format options", target.name),
-                    &target.options,
-                )
-            }),
-        )
-    {
-        if options.xml_schema_hints.is_some()
-            && !(ordinary_xml_input
-                || (primary_xml && location == "target format options")
-                || root_view_static_output
-                || root_view_static_combined)
-        {
-            hint_diagnostics.push(Diagnostic::Validation {
-                location,
-                message: "code generation does not support XML schema hints".into(),
-            });
-        }
-    }
-    if !hint_diagnostics.is_empty() {
-        return Err(LowerError::new(hint_diagnostics));
-    }
+    let xml_request = XmlRequest::classify(project)?;
     let mut diagnostics = Vec::new();
     let mut roots = Vec::new();
     let extra_sources = project
@@ -390,42 +182,7 @@ fn lower_with_policy(
         return Err(LowerError::new(diagnostics));
     }
     let mut program = Program {
-        xml_boundary: (primary_xml || ordinary_xml).then(|| crate::XmlBoundaryProgram {
-            input: crate::XmlInputPolicy {
-                allow_inactive_root_type_members: project
-                    .source_options
-                    .xml_allow_inactive_root_type_members,
-                root_view_policy: primary_xml,
-            },
-            extra_inputs: project
-                .extra_sources
-                .iter()
-                .map(|source| crate::NamedXmlInputPolicy {
-                    name: source.name.clone(),
-                    input: crate::XmlInputPolicy {
-                        allow_inactive_root_type_members: source
-                            .options
-                            .xml_allow_inactive_root_type_members,
-                        root_view_policy: source.options.xml_root_view_read_policy,
-                    },
-                })
-                .collect(),
-            output: crate::XmlOutputPolicy {
-                schema_hints: project.target_options.xml_schema_hints.clone(),
-                ..Default::default()
-            },
-            extra_outputs: project
-                .extra_targets
-                .iter()
-                .map(|target| crate::NamedXmlOutputPolicy {
-                    name: target.name.clone(),
-                    output: crate::XmlOutputPolicy {
-                        schema_hints: target.options.xml_schema_hints.clone(),
-                        ..Default::default()
-                    },
-                })
-                .collect(),
-        }),
+        xml_boundary: xml_request.boundary(project),
         source: project.source.clone(),
         extra_sources,
         target: project.target.clone(),
@@ -435,17 +192,19 @@ fn lower_with_policy(
         root,
         extra_targets,
     };
-    if ordinary_xml
+    let mut validation = validator(&program);
+    if xml_request.optional()
         && matches!(
-            validator(&program),
+            validation,
             Err(ProgramValidationError::InvalidXmlBoundary { .. })
         )
     {
         // This optional adapter is removed only for ordinary format identity.
         // Observed input policies above retain their strict typed refusal.
         program.xml_boundary = None;
+        validation = validator(&program);
     }
-    if let Err(error) = validator(&program) {
+    if let Err(error) = validation {
         let diagnostic = portable_context_error(&error).unwrap_or_else(|| Diagnostic::Validation {
             location: "code generation".into(),
             message: error.to_string(),
@@ -1398,15 +1157,6 @@ fn unsupported_function(node: NodeId, function: &str) -> Diagnostic {
         node,
         function: function.to_string(),
     }
-}
-
-fn xml_document_output_options(options: &mapping::FormatOptions) -> bool {
-    *options
-        == mapping::FormatOptions {
-            xml_document: true,
-            xml_schema_hints: options.xml_schema_hints.clone(),
-            ..Default::default()
-        }
 }
 
 fn owned_document_diagnostic(

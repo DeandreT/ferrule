@@ -45,6 +45,7 @@ pub use owned_sources::{
 };
 use sources::{SchemaCursor, SourceCatalog};
 use targets::TargetOwner;
+pub(crate) use xml::ProvedXmlBoundary;
 
 /// Validates invariants relied on by every source-code emitter.
 ///
@@ -68,7 +69,22 @@ pub fn validate_program_with_owned_capabilities(
     program: &Program,
     capabilities: crate::OwnedCapabilities,
 ) -> Result<(), ProgramValidationError> {
-    xml::validate_boundary(program)?;
+    validate_program_proving_xml(program, capabilities).map(|_| ())
+}
+
+/// [`validate_program`] that also returns the XML adapter classification its
+/// boundary proof established, so no caller re-derives it.
+pub(crate) fn validate_program_proving_xml_boundary(
+    program: &Program,
+) -> Result<Option<ProvedXmlBoundary>, ProgramValidationError> {
+    validate_program_proving_xml(program, crate::OwnedPreset::ControlFree.capabilities())
+}
+
+fn validate_program_proving_xml(
+    program: &Program,
+    capabilities: crate::OwnedCapabilities,
+) -> Result<Option<ProvedXmlBoundary>, ProgramValidationError> {
+    let xml = xml::validate_boundary(program)?;
     validate_schema_metadata("source", &program.source)?;
     for source in &program.extra_sources {
         validate_schema_metadata(&format!("extra source {:?}", source.name), &source.source)?;
@@ -118,7 +134,8 @@ pub fn validate_program_with_owned_capabilities(
     // that no target/failure root reaches in a directly constructed Program.
     sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)?;
     owned_sources::validate_structure(program)?;
-    owned_sources::validate_closed_contexts(program, capabilities)
+    owned_sources::validate_closed_contexts(program, capabilities)?;
+    Ok(xml)
 }
 
 fn validate_schema_metadata(
