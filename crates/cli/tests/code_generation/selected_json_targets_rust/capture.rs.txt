@@ -123,6 +123,8 @@ fn runtime_matches(actual: &RuntimeError, recipe: &Json) -> bool {
         ("MissingRuntimeParameter",RuntimeError::MissingRuntimeParameter{node,name})=>*node as u64==fields["node"].as_u64().unwrap() && name==fields["name"].as_str().unwrap(),
         ("MissingDynamicSourceLoader",RuntimeError::MissingDynamicSourceLoader{source})=>*source==fields["source"].as_str().unwrap(),
         ("DynamicSourceLoad",RuntimeError::DynamicSourceLoad{source,path,message})=>*source==fields["source"].as_str().unwrap() && path==fields["path"].as_str().unwrap() && message_matches(message,fields),
+        // Generated adapter refusals are tagged; their rendered fault is the frozen message.
+        ("DynamicSourceLoad",RuntimeError::DynamicSourceFailure(failure))=>failure.source==fields["source"].as_str().unwrap() && failure.path==fields["path"].as_str().unwrap() && message_matches(&failure.fault.to_string(),fields),
         ("FilterMapRuntime",RuntimeError::FilterMapRuntime{boundary:at,source})=>*at==boundary(&fields["boundary"]) && runtime_matches(source,&fields["source"]),
         ("FilterMapBudget",RuntimeError::FilterMapBudget{kind,used,requested,max})=>format!("{kind:?}")==fields["kind"].as_str().unwrap() && *used==fields["used"].as_u64().unwrap() as u128 && *requested==fields["requested"].as_u64().unwrap() as u128 && *max==fields["max"].as_u64().unwrap() as u128,
         ("FilterMapCancelled",RuntimeError::FilterMapCancelled)=>true,

@@ -2,6 +2,22 @@ use ir::{Instance, Value};
 
 use crate::{RuntimeError, ScopeContext};
 
+mod diagnostic;
+#[cfg(test)]
+mod failure_tests;
+mod fault;
+mod json_adapter;
+mod tagged;
+
+pub use diagnostic::{DynamicSourceCategory, DynamicSourceDiagnostic, DynamicSourcePhase};
+pub use fault::{
+    DynamicSourceCause, DynamicSourceCodecKind, DynamicSourceFault, DynamicSourceLoadFailure,
+    DynamicSourceResource, DynamicSourceResourceLimit, LegacyDynamicSourceMessage,
+    UndeclaredDynamicSource,
+};
+pub use json_adapter::JsonDynamicSourceAdapter;
+pub use tagged::{TaggedDynamicBytesLoader, TaggedDynamicSourceLoader, TaggedLoaderAdapter};
+
 /// Maximum number of per-driver documents one dynamic source may request.
 pub const MAX_DYNAMIC_SOURCE_LOADS: usize = 1_000_000;
 
@@ -19,8 +35,23 @@ pub const MAX_DYNAMIC_SOURCE_TOTAL_BYTES: usize = 256 * 1024 * 1024;
 /// Generated mappings never access a filesystem. The host resolves and
 /// confines `logical_path`, then returns exactly one instance matching the
 /// source's embedded schema.
+///
+/// Hosts with typed failures implement [`TaggedDynamicSourceLoader`] and pass
+/// it through [`TaggedLoaderAdapter`] instead.
 pub trait DynamicSourceLoader {
     fn load(&self, source: &str, logical_path: &str) -> Result<Instance, String>;
+
+    /// The tagged form generated mappings call. The default adapts [`Self::load`]:
+    /// its message becomes a legacy acquisition fault, and the original `String`
+    /// reaches [`RuntimeError::DynamicSourceLoad`] unchanged.
+    fn load_tagged(
+        &self,
+        source: &str,
+        logical_path: &str,
+    ) -> Result<Instance, DynamicSourceFault> {
+        self.load(source, logical_path)
+            .map_err(DynamicSourceFault::legacy)
+    }
 }
 
 /// Host boundary used by generated schema-shaped JSON entry points.
@@ -29,6 +60,13 @@ pub trait DynamicSourceLoader {
 /// document against the dynamic source's embedded schema.
 pub trait DynamicJsonSourceLoader {
     fn load(&self, source: &str, logical_path: &str) -> Result<Vec<u8>, String>;
+
+    /// The tagged form generated adapters call; the default adapts [`Self::load`]
+    /// exactly as [`DynamicSourceLoader::load_tagged`] does.
+    fn load_tagged(&self, source: &str, logical_path: &str) -> Result<Vec<u8>, DynamicSourceFault> {
+        self.load(source, logical_path)
+            .map_err(DynamicSourceFault::legacy)
+    }
 }
 
 /// Owns documents loaded for one dynamic source and retains the exact driver
@@ -80,13 +118,9 @@ impl<'a> DynamicSourceItems<'a> {
                     maximum: MAX_DYNAMIC_SOURCE_PATH_BYTES,
                 });
             }
-            let document = loader.load(source, &logical_path).map_err(|message| {
-                RuntimeError::DynamicSourceLoad {
-                    source,
-                    path: logical_path,
-                    message,
-                }
-            })?;
+            let document = loader
+                .load_tagged(source, &logical_path)
+                .map_err(|fault| fault.into_runtime_error(source, logical_path))?;
             drivers.push(candidate);
             documents.push(document);
         }

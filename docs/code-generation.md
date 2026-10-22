@@ -1293,6 +1293,56 @@ or request counts, and host load failures retain distinct runtime error
 categories with the source name, expression node where applicable, and logical
 path for load failures.
 
+### Tagged load failures
+
+A load failure has one of three phases. Acquisition failures belong to the
+host. Codec failures (`Encoding`, `Document`, `UndeclaredSource`) and resource
+failures (`DocumentBytes`, `TotalBytes`, `RequestCount`, with observed amount
+and limit) belong to the generated boundary that admitted the returned
+document. Each failure keeps the endpoint name, logical path and original cause.
+
+In Rust, `DynamicSourceFault` is the tagged failure. Generated mappings call
+`load_tagged` on `DynamicSourceLoader`, `DynamicJsonSourceLoader` and
+`DynamicXmlSourceLoader`. Its provided default adapts the existing string-returning
+`load` method, so existing hosts compile and behave as before: their original
+`String` reaches `RuntimeError::DynamicSourceLoad` unchanged. A host that reports
+typed failures implements `TaggedDynamicSourceLoader` or
+`TaggedDynamicBytesLoader` and passes `TaggedLoaderAdapter(&host)` to the
+generated method. Its faults reach `RuntimeError::DynamicSourceFailure`, whose
+`DynamicSourceLoadFailure` holds the source, path and fault, with the original
+cause available through `cause()` and the standard error chain. The adapter's
+string `load` methods render the same fault's message.
+
+In C#, a loader throws `FerruleDynamicSourceFault`, an
+`InvalidOperationException` built with `ForAcquisition`, `ForCodec`,
+`ForUndeclaredSource` or `ForResource`. Its inner exception is the original
+cause. Any other exception remains a host acquisition failure and stays the
+inner exception unchanged. Both forms are wrapped, as before, in
+`FerruleRuntimeException` with category `DynamicSourceLoad`, `SourceField` and
+`Detail` (the logical path).
+
+The generated JSON adapters (`JsonDynamicSourceAdapter` and
+`FerruleJsonDynamicSourceAdapter`) call the host first. They then check the
+64 MiB document limit, the 256 MiB execution total, strict UTF-8 and the
+endpoint schema, in that order. Host failures pass through unchanged. The
+adapters report their own refusals as tagged codec or resource faults and keep
+the original cause, such as the UTF-8 decoding error or the retained
+`format_json` failure in `JsonBoundaryError::InvalidDocument`. Rust message
+text matches the previous string messages. The generated XML adapter keeps its
+product-refusal recovery protocol. Tagged host faults pass through it as
+unowned `Mapping` failures with their original cause.
+
+`DynamicSourceDiagnostic` / `FerruleDynamicSourceDiagnostic` project any of
+these failures to a small stable record: phase, endpoint, category, optional
+path and optional resource limit. `find` / `Find` walk an error's cause chain,
+including generated JSON, CSV and XML boundary errors and recovered XML
+dynamic-input requests. The phase tokens are `request`, `acquisition`, `codec`
+and `resource`. The category tokens are `missing_loader`, `path_type`,
+`path_too_long`, `too_many_requests`, `host`, `encoding`, `document`,
+`undeclared_source`, `document_bytes`, `total_bytes` and `request_count`. Both
+runtimes use the same tokens. Tokens may be added but are never renamed. The
+projection never parses message text.
+
 ## JSON Host Boundary
 
 Both generated libraries also expose schema-shaped JSON entry points. These

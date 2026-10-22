@@ -248,10 +248,19 @@ internal static class Driver
             "MappingException" => new(FerruleRuntimeError.MappingException, $"node {fields["node"]}: mapping exception: {message}", node: fields["node"]!.GetValue<uint>(), mappingExceptionMessage: message),
             "MappingFailure" => new(FerruleRuntimeError.MappingFailure, $"mapping failure rule {fields["rule"]}: {message}", failureRule: fields["rule"]!.GetValue<int>(), mappingFailureMessage: message),
             "MissingDynamicSourceLoader" => new(FerruleRuntimeError.MissingDynamicSourceLoader, $"dynamic source '{source}' requires a host source loader", sourceField: source),
-            "DynamicSourceLoad" => new(FerruleRuntimeError.DynamicSourceLoad, $"dynamic source '{source}' could not load '{path}': {message}", new InvalidOperationException(message), detail: path, sourceField: source),
+            "DynamicSourceLoad" => new(FerruleRuntimeError.DynamicSourceLoad, $"dynamic source '{source}' could not load '{path}': {message}", DynamicSourceCause(message!), detail: path, sourceField: source),
             _ => throw new InvalidOperationException("Unknown frozen runtime error."),
         };
     }
+    // Host refusals stay the host's exception; generated adapter limits are tagged faults.
+    private static Exception DynamicSourceCause(string message) => message switch
+    {
+        "document exceeds the 67108864-byte dynamic-source limit" => FerruleDynamicSourceFault.ForResource(
+            FerruleDynamicSourceResource.DocumentBytes, 67108865, 67108864),
+        "documents exceed the 268435456-byte combined dynamic-source limit" => FerruleDynamicSourceFault.ForResource(
+            FerruleDynamicSourceResource.TotalBytes, 335544320, 268435456),
+        _ => new InvalidOperationException(message),
+    };
     private static JsonNode FilterExpected(JsonObject cause)
     {
         var fields = cause["fields"]!.AsObject(); var boundary = Boundary(fields["boundary"]!.AsObject());
@@ -290,7 +299,8 @@ internal static class Driver
             var details = cause["fields"]!.AsObject();
             var wanted = new FerruleRuntimeException(FerruleRuntimeError.DynamicSourceLoad, "unused framework-dependent display",
                 detail: details["path"]!.GetValue<string>(), sourceField: details["source"]!.GetValue<string>());
-            return actual is FerruleRuntimeException found && found.InnerException is DecoderFallbackException &&
+            return actual is FerruleRuntimeException found &&
+                found.InnerException is FerruleDynamicSourceFault { InnerException: DecoderFallbackException } &&
                 JsonNode.DeepEquals(Capture.Json(Capture.Error(found))!["runtime"], Capture.Json(Capture.Error(wanted))!["runtime"]) &&
                 found.Message.StartsWith($"dynamic source '{details["source"]!.GetValue<string>()}' could not load '{details["path"]!.GetValue<string>()}': ", StringComparison.Ordinal);
         }

@@ -95,7 +95,7 @@ pub fn execute_json_bytes_selected_target(
             ));
             if dynamic {
                 output.push_str(
-                    "    let loader = loader.map(|loader| GeneratedDynamicJsonSourceLoader { loader, total_bytes: std::cell::Cell::new(0) });\n    let loader = loader.as_ref().map(|loader| loader as &dyn DynamicSourceLoader);\n",
+                    "    let loader = loader.map(|loader| codegen_runtime::JsonDynamicSourceAdapter::new(loader, dynamic_source_json_schema));\n    let loader = loader.as_ref().map(|loader| loader as &dyn DynamicSourceLoader);\n",
                 );
             } else {
                 output.push_str("    let _ = loader;\n    let loader = None;\n");

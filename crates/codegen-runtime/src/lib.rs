@@ -63,8 +63,13 @@ pub use csv::{
 };
 pub use dynamic_document::dynamic_document;
 pub use dynamic_source::{
-    DynamicJsonSourceLoader, DynamicSourceItems, DynamicSourceLoader, MAX_DYNAMIC_SOURCE_BYTES,
+    DynamicJsonSourceLoader, DynamicSourceCategory, DynamicSourceCause, DynamicSourceCodecKind,
+    DynamicSourceDiagnostic, DynamicSourceFault, DynamicSourceItems, DynamicSourceLoadFailure,
+    DynamicSourceLoader, DynamicSourcePhase, DynamicSourceResource, DynamicSourceResourceLimit,
+    JsonDynamicSourceAdapter, LegacyDynamicSourceMessage, MAX_DYNAMIC_SOURCE_BYTES,
     MAX_DYNAMIC_SOURCE_LOADS, MAX_DYNAMIC_SOURCE_PATH_BYTES, MAX_DYNAMIC_SOURCE_TOTAL_BYTES,
+    TaggedDynamicBytesLoader, TaggedDynamicSourceLoader, TaggedLoaderAdapter,
+    UndeclaredDynamicSource,
 };
 pub use dynamic_target::{dynamic_property_name, insert_dynamic_field, merge_dynamic_fragments};
 pub use failure::{mapping_exception, mapping_failure};
@@ -109,9 +114,9 @@ pub use iteration::{
     sort_candidates,
 };
 pub use json::{
-    JsonBoundaryError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_JSON_DOCUMENT_BYTES, parse_json,
-    parse_json_bytes, parse_json_bytes_with_utf8_cause, serialize_json, serialize_json_bytes,
-    serialize_json_compact, serialize_json_compact_bytes,
+    JsonBoundaryError, JsonDocumentError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_JSON_DOCUMENT_BYTES,
+    parse_json, parse_json_bytes, parse_json_bytes_with_utf8_cause, parse_json_with_format_cause,
+    serialize_json, serialize_json_bytes, serialize_json_compact, serialize_json_compact_bytes,
 };
 pub use json_source::{
     JsonSourceDocuments, JsonSourceLoadError, JsonSourceOccurrence, MAX_JSON_SOURCE_DOCUMENTS,
@@ -348,6 +353,9 @@ pub enum RuntimeError {
         path: String,
         message: String,
     },
+    /// A tagged load failure retaining its original fault and cause.
+    /// Legacy string failures keep [`Self::DynamicSourceLoad`].
+    DynamicSourceFailure(DynamicSourceLoadFailure),
     /// A generated mapping failure selected at least one item. Rule numbers
     /// are one-based and follow declaration order.
     MappingFailure {
@@ -629,6 +637,7 @@ impl fmt::Display for RuntimeError {
                 formatter,
                 "dynamic source {source:?} could not load {path:?}: {message}"
             ),
+            Self::DynamicSourceFailure(failure) => failure.fmt(formatter),
             Self::MappingFailure { rule, message } => write!(
                 formatter,
                 "mapping failure rule {rule}: {}",
@@ -707,6 +716,7 @@ impl std::error::Error for RuntimeError {
             Self::BasicSourceBridgeAtNode { source, .. } => Some(source),
             Self::PrimaryRoot { source, .. } => Some(source),
             Self::Function(error) => Some(error),
+            Self::DynamicSourceFailure(failure) => Some(&failure.fault),
             Self::FilterMapBudget { .. }
             | Self::FilterMapValueType { .. }
             | Self::FilterMapNonFinite { .. }

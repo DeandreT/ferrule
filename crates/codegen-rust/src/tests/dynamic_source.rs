@@ -324,7 +324,11 @@ fn generated_per_driver_dynamic_sources_execute_typed_and_json_host_contracts() 
     fs::write(
         output.path().join("src/main.rs"),
         r##"use std::cell::RefCell;
-use codegen_runtime::{Instance, RuntimeError, Value, field, group, repeated, scalar};
+use codegen_runtime::{
+    DynamicSourceDiagnostic, DynamicSourceFault, DynamicSourcePhase, Instance, JsonBoundaryError,
+    RuntimeError, TaggedDynamicBytesLoader, TaggedLoaderAdapter, Value, field, group, repeated,
+    scalar,
+};
 use generated_per_driver_source::{
     DynamicJsonSourceLoader, DynamicSourceLoader,
 };
@@ -354,6 +358,58 @@ impl DynamicJsonSourceLoader for JsonLoader {
         assert_eq!(source, "Catalog");
         Ok(format!(r#"{{"Rows":[{{"value":"loaded:{path}"}}]}}"#).into_bytes())
     }
+}
+
+struct InvalidJsonLoader {
+    calls: RefCell<Vec<String>>,
+}
+
+impl DynamicJsonSourceLoader for InvalidJsonLoader {
+    fn load(&self, _: &str, path: &str) -> Result<Vec<u8>, String> {
+        self.calls.borrow_mut().push(path.to_string());
+        if path == "b.json" {
+            return Ok(vec![0xff]);
+        }
+        JsonLoader.load("Catalog", path)
+    }
+}
+
+struct TaggedJsonHost;
+
+impl TaggedDynamicBytesLoader for TaggedJsonHost {
+    fn load_tagged(&self, _: &str, _: &str) -> Result<Vec<u8>, DynamicSourceFault> {
+        Err(DynamicSourceFault::acquisition(std::io::Error::other("offline")))
+    }
+}
+
+fn check_tagged_json_failures() {
+    let invalid = InvalidJsonLoader { calls: RefCell::new(Vec::new()) };
+    let error = generated_per_driver_source::execute_json_with_dynamic_source_loader(
+        r#"{"Files":[{"path":"a.json"},{"path":"b.json"},{"path":"c.json"}]}"#,
+        &invalid,
+    )
+    .unwrap_err();
+    let JsonBoundaryError::Execution(RuntimeError::DynamicSourceFailure(failure)) = &error else {
+        panic!("generated JSON codec refusal must be tagged, got {error:?}");
+    };
+    assert!(failure.fault.cause().unwrap().is::<std::str::Utf8Error>());
+    let diagnostic = DynamicSourceDiagnostic::find(&error).unwrap();
+    assert_eq!(
+        (diagnostic.phase.as_str(), diagnostic.category.as_str(), diagnostic.endpoint, diagnostic.path.as_deref()),
+        ("codec", "encoding", "Catalog", Some("b.json")),
+    );
+    assert_eq!(invalid.calls.borrow().as_slice(), ["a.json", "b.json"]);
+
+    let error = generated_per_driver_source::execute_json_with_dynamic_source_loader(
+        r#"{"Files":[{"path":"a.json"}]}"#,
+        &TaggedLoaderAdapter(&TaggedJsonHost),
+    )
+    .unwrap_err();
+    let JsonBoundaryError::Execution(RuntimeError::DynamicSourceFailure(failure)) = &error else {
+        panic!("tagged JSON host fault must be retained, got {error:?}");
+    };
+    assert_eq!(failure.fault.phase(), DynamicSourcePhase::Acquisition);
+    assert!(failure.fault.cause().unwrap().is::<std::io::Error>());
 }
 
 fn main() {
@@ -398,6 +454,7 @@ fn main() {
         json,
         "{\n  \"Rows\": [\n    {\n      \"path\": \"a.json\",\n      \"value\": \"loaded:a.json\"\n    },\n    {\n      \"path\": \"b.json\",\n      \"value\": \"loaded:b.json\"\n    }\n  ]\n}\n",
     );
+    check_tagged_json_failures();
 }
 "##,
     )
