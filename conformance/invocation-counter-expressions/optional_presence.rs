@@ -8,9 +8,8 @@ pub fn project(mut project: Project) -> Project {
             id,
             Node::RuntimeParameter {
                 name: name.into(),
-                value_type: ScalarType::Bool,
-                optional: false,
-                default: None,
+                ty: ScalarType::Bool,
+                preview: None,
             },
         );
     }
