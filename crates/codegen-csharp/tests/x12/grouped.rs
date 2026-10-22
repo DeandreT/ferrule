@@ -538,6 +538,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "Runtime/FerruleFunctions.FormatNumber.cs",
         "Runtime/FerruleFunctions.Json.cs",
         "Runtime/FerruleFunctions.Numeric.cs",
+        "Runtime/FerruleFunctions.Decimal.cs",
         "Runtime/FerruleFunctions.Regex.cs",
         "Runtime/FerruleFunctions.Strings.cs",
         "Runtime/FerruleFunctions.cs",

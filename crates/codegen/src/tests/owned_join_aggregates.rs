@@ -232,6 +232,43 @@ fn the_owned_join_profile_lowers_joined_aggregates_and_older_routes_refuse() {
 }
 
 #[test]
+fn decimal_sum_stays_closed_for_owned_joined_aggregates() {
+    for reached in [true, false] {
+        let mut program = crate::lower_with_basic_owned_joins(&aggregate_project()).unwrap();
+        let expression = &mut program
+            .expressions
+            .iter_mut()
+            .find(|node| node.id == 1)
+            .unwrap()
+            .expression;
+        let Expression::OwnedJoinAggregate(aggregate) = expression else {
+            panic!("authored joined aggregate");
+        };
+        aggregate.function = AggregateOp::DecimalSum;
+        if !reached {
+            program
+                .root
+                .bindings
+                .retain(|binding| binding.expression != 1);
+        }
+        let error = crate::validate_basic_owned_joins_emission(&program).unwrap_err();
+        assert!(
+            matches!(error, ProgramValidationError::OwnedSource { diagnostic }
+            if matches!(diagnostic.as_ref(), crate::OwnedSourceDiagnostic::Capability {
+                location: crate::OwnedSourceDiagnosticLocation::Expression { node: 1, .. },
+                reason: crate::OwnedSourceCapabilityReason::Join, ..
+            }))
+        );
+    }
+    let mut project = aggregate_project();
+    let Node::OwnedJoinAggregate(aggregate) = project.graph.nodes.get_mut(&1).unwrap() else {
+        panic!("authored joined aggregate");
+    };
+    aggregate.function = AggregateOp::DecimalSum;
+    assert!(crate::lower_with_basic_owned_joins(&project).is_err());
+}
+
+#[test]
 fn tuple_expressions_admit_only_their_join_reads_and_pure_scalars() {
     let tuple_refusal =
         |request| capability(2, request, crate::OwnedSourceCapabilityReason::Join, 1);

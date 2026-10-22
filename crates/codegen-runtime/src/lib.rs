@@ -38,7 +38,7 @@ pub use adjacency_tree::{
     AdjacencyTreeFields, AdjacencyTreeRoot, OwnedAdjacencyTreeRoot, adjacency_tree,
     owned_adjacency_tree,
 };
-pub use aggregate::{AggregateFunction, aggregate};
+pub use aggregate::{AggregateFunction, aggregate, collect_aggregate_value};
 pub use context::{
     BasicGroupByControls, BasicGroupByMetadata, BasicGroupEndingWithControls,
     BasicGroupIntoBlocksControls, BasicGroupStartingWithControls, BasicNamedSourceDeclaration,
@@ -226,6 +226,10 @@ pub enum RuntimeError {
     AggregateUnsupportedScalar {
         function: AggregateFunction,
         found: &'static str,
+    },
+    AggregateDecimal {
+        function: AggregateFunction,
+        source: ir::DecimalError,
     },
     CopyCurrentSourceRequiresGroup {
         found: &'static str,
@@ -467,6 +471,9 @@ impl fmt::Display for RuntimeError {
                 formatter,
                 "{function:?} aggregate encountered or produced a non-finite number"
             ),
+            Self::AggregateDecimal { function, source } => {
+                write!(formatter, "{function:?} aggregate: {source}")
+            }
             Self::AggregateUnsupportedScalar { function, found } => write!(
                 formatter,
                 "{function:?} aggregate cannot accept a {found} value"
@@ -715,6 +722,7 @@ impl std::error::Error for RuntimeError {
             Self::BasicSourceBridgeAtNode { source, .. } => Some(source),
             Self::PrimaryRoot { source, .. } => Some(source),
             Self::Function(error) => Some(error),
+            Self::AggregateDecimal { source, .. } => Some(source),
             Self::FilterMapBudget { .. }
             | Self::FilterMapValueType { .. }
             | Self::FilterMapNonFinite { .. }

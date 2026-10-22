@@ -847,7 +847,7 @@ fn eval_expr_inner(
                         .cloned()
                         .unwrap_or(Value::Null)
                 };
-                values.push(item_value);
+                crate::aggregate::collect_value(*function, &mut values, item_value)?;
             }
             let arg_value = match arg {
                 Some(id) => Some(eval_node_input(

@@ -146,6 +146,25 @@ fn function<'a>(source: &'a str, start: &str) -> &'a str {
 }
 
 #[test]
+fn decimal_sum_stays_closed_for_owned_emission() {
+    let mut program = owned_aggregate_program();
+    let node = program
+        .expressions
+        .iter_mut()
+        .find(|node| node.id == 2)
+        .unwrap();
+    let codegen::Expression::OwnedAggregate(aggregate) = &mut node.expression else {
+        panic!("expected owned aggregate");
+    };
+    aggregate.function = mapping::AggregateOp::DecimalSum;
+    let result = crate::emit_with_basic_owned_collection_aggregates(&program);
+    assert!(
+        matches!(&result, Err(crate::EmitError::ProgramValidation(error)) if *error == closed_aggregate()),
+        "{result:?}"
+    );
+}
+
+#[test]
 fn owned_aggregates_render_kept_alive_cohorts_before_the_parent_argument() {
     let program = owned_aggregate_program();
     let artifacts = crate::emit_with_basic_owned_collection_aggregates(&program)

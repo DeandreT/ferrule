@@ -78,6 +78,8 @@ mod csv_output;
 mod csv_row_provenance;
 #[path = "code_generation/csv_x12_adapters.rs"]
 mod csv_x12_adapters;
+#[path = "code_generation/decimal_mapping.rs"]
+mod decimal_mapping;
 #[path = "code_generation/disconnected_inputs.rs"]
 mod disconnected_inputs;
 #[path = "code_generation/dynamic_properties.rs"]
@@ -869,6 +871,7 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "Runtime/FerruleFunctions.DateTimeAdd.cs",
         "Runtime/FerruleFunctions.DateTimeFormatting.cs",
         "Runtime/FerruleFunctions.DateTimePictures.cs",
+        "Runtime/FerruleFunctions.Decimal.cs",
         "Runtime/FerruleFunctions.EdifactDateTime.cs",
         "Runtime/FerruleFunctions.FormatNumber.cs",
         "Runtime/FerruleFunctions.Json.cs",
