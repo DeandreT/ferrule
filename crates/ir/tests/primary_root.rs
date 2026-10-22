@@ -346,3 +346,37 @@ fn children(schema: &mut SchemaNode) -> &mut Vec<SchemaNode> {
     };
     children
 }
+
+#[test]
+fn root_nil_admission_comes_from_the_effective_xml_view() {
+    let (mut supported, mut refused) = (0, 0);
+    for bits in 0u32..(1 << 6) {
+        let mut root = schema();
+        root.nillable = bits & 1 != 0;
+        root.xml_optional = bits & 2 != 0;
+        root.xml_attribute_required = bits & 4 != 0;
+        root.attribute = bits & 8 != 0;
+        // JSON-only null metadata is not XML nil.
+        root.container_nullable = bits & 16 != 0;
+        root.nullable = bits & 32 != 0;
+        let mut cleared = root.clone();
+        cleared.nillable = false;
+        // The previous `!nillable` reading gated the same predicate.
+        assert_eq!(
+            primary_root_schema_is_supported(&root),
+            !root.nillable && primary_root_schema_is_supported(&cleared),
+            "{root:?}"
+        );
+        if root.effective_xml_view().is_err() {
+            refused += 1;
+            assert!(!root.metadata_is_valid(), "{root:?}");
+            assert!(!primary_root_schema_is_supported(&root), "{root:?}");
+        }
+        supported += usize::from(primary_root_schema_is_supported(&root));
+    }
+    assert!(supported > 1 && refused > 10, "{supported} {refused}");
+    assert!(!primary_root_schema_is_supported(&schema().nillable()));
+    assert!(primary_root_schema_is_supported(
+        &schema().nullable_container().unwrap()
+    ));
+}
