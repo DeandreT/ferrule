@@ -97,5 +97,35 @@ fn generated_xml_text_preserves_carriage_returns_and_matches_interpreter() -> Te
             "exact_output": true,
         }));
     }
+    // Forbidden XML 1.0 characters in element text, simple text and attribute
+    // values refuse with the interpreter's node and message.
+    let valid = "ok";
+    for (plain_id, plain_value, simple_id, simple_text, node) in [
+        (valid, "a\u{1}", valid, valid, 1),
+        ("\u{b}", valid, valid, valid, 1),
+        (valid, valid, valid, "\u{1f}", 3),
+        (valid, valid, "\u{fffe}", valid, 3),
+        (valid, valid, valid, "\u{ffff}", 3),
+    ] {
+        let input = serde_json::json!({
+            "Plain": {"id": plain_id, "Value": plain_value},
+            "Simple": {"id": simple_id, "#text": simple_text},
+        })
+        .to_string();
+        let source = format_json::from_str(&input, &project.source)?;
+        let Err(engine::EngineError::XmlSerialization {
+            node: failed,
+            message,
+        }) = engine::run(&project, &source)
+        else {
+            panic!("expected an XML serialization failure for {input}");
+        };
+        assert_eq!(failed, node, "{input}");
+        assert!(message.contains("forbidden XML 1.0 character"), "{message}");
+        cases.push(serde_json::json!({
+            "input": input,
+            "xml_error": {"node": node, "message": message},
+        }));
+    }
     super::json_text_boundaries::run_generated_boundary_cases(&project, &cases, "xml_text")
 }

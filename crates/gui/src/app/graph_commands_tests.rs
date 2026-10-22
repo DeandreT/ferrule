@@ -5,7 +5,7 @@ use crate::graph_viewer::GraphViewer;
 use crate::path_picker::SourcePathCatalog;
 use crate::project_state::{project_keys_computed, project_snapshot_key};
 use crate::test_ui::ContextExt as _;
-use editor_ui::ScopeLocation;
+use editor_ui::{GraphAction, ScopeLocation};
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{Binding, NamedTarget, Node};
 use std::collections::BTreeSet;
@@ -111,14 +111,13 @@ fn key(app: &FerruleApp) -> String {
     project_snapshot_key(&app.project)
 }
 
-/// Removes graph nodes through the same viewer entry point the canvas uses,
-/// from the main canvas or one named target canvas.
-fn remove_nodes(
+/// Runs one edit through the viewer of the main canvas or one named target
+/// canvas, returning the typed edits it planned and any edit error.
+fn edit_canvas(
     app: &mut FerruleApp,
     document: MappingDocument,
-    nodes: &[NodeId],
-    ui: Option<&egui::Ui>,
-) -> Option<PlannedNodeRemoval> {
+    edit: impl FnOnce(&mut GraphViewer<'_>, &mut Snarl<CanvasNode>),
+) -> (Vec<PlannedGraphEdit>, Option<String>) {
     let source_blocks = project_source_blocks(&app.project);
     let source_paths = SourcePathCatalog::new(&app.project.source, &app.project.extra_sources)
         .with_primary_source_options(&app.project.source_options);
@@ -146,10 +145,6 @@ fn remove_nodes(
         MappingDocument::Function(_) => unreachable!("functions are not used here"),
     };
     let target_blocks = target_blocks(schema);
-    let selected = nodes
-        .iter()
-        .map(|&node| canvas_id(snarl, CanvasNode::Graph(node)))
-        .collect::<Vec<_>>();
     let mut scroll = crate::canvas_endpoints::EndpointScrollState::default();
     let mut viewer = GraphViewer {
         graph: &mut app.project.graph,
@@ -186,41 +181,72 @@ fn remove_nodes(
         camera_focus: None,
         canvas_transform: None,
         pin_interaction_ids: Vec::new(),
+        planned_edits: Vec::new(),
         error: None,
     };
-    let planned = match ui {
-        Some(ui) => {
-            viewer.remove_snarl_nodes_from_ui(ui, &selected, snarl);
-            None
-        }
-        None => viewer.remove_snarl_nodes_as_edit(&selected, snarl).1,
-    };
-    assert_eq!(viewer.error, None);
-    planned
+    edit(&mut viewer, snarl);
+    (viewer.planned_edits, viewer.error)
+}
+
+/// Removes graph nodes through the same viewer entry point the canvas uses.
+fn remove_nodes(
+    app: &mut FerruleApp,
+    document: MappingDocument,
+    nodes: &[NodeId],
+) -> Option<PlannedGraphEdit> {
+    let (mut planned, error) = edit_canvas(app, document, |viewer, snarl| {
+        let selected = nodes
+            .iter()
+            .map(|&node| canvas_id(snarl, CanvasNode::Graph(node)))
+            .collect::<Vec<_>>();
+        viewer.remove_snarl_nodes_recorded(&selected, snarl);
+    });
+    assert_eq!(error, None);
+    assert!(planned.len() <= 1);
+    planned.pop()
+}
+
+/// Queues one planned edit as its canvas host does and observes the frame,
+/// returning whether the observer recorded it as a command.
+pub(super) fn observe_planned(
+    app: &mut FerruleApp,
+    document: MappingDocument,
+    planned: PlannedGraphEdit,
+) -> bool {
+    let undo = app.history.undo_len();
+    app.queue_canvas_edits(document, vec![planned]);
+    app.observe_editor_history(std::time::Instant::now(), false);
+    app.history.undo_len() == undo + 1
+        && matches!(app.history.next_undo(), Some(HistoryRecord::Command(_)))
 }
 
 fn record_removal(app: &mut FerruleApp, document: MappingDocument, nodes: &[NodeId]) {
-    let planned = remove_nodes(app, document, nodes, None).expect("removal forms a typed edit");
-    assert!(app.record_node_removal(document, planned));
+    let planned = remove_nodes(app, document, nodes).expect("removal forms a typed edit");
+    assert!(observe_planned(app, document, planned));
 }
 
-fn next_undo_removal(app: &FerruleApp) -> &GraphNodeRemoval {
+pub(super) fn next_undo_command(app: &FerruleApp) -> &GraphCommand {
     match app.history.next_undo() {
-        Some(HistoryRecord::Command(record)) => record.removal(),
+        Some(HistoryRecord::Command(record)) => record.command(),
         _ => panic!("the next undo step is a command"),
     }
 }
 
-fn next_redo_removal(app: &FerruleApp) -> &GraphNodeRemoval {
+pub(super) fn next_redo_command(app: &FerruleApp) -> &GraphCommand {
     match app.history.next_redo() {
-        Some(HistoryRecord::Command(record)) => record.removal(),
+        Some(HistoryRecord::Command(record)) => record.command(),
         _ => panic!("the next redo step is a command"),
     }
 }
 
-fn assert_removal_identities(removal: &GraphNodeRemoval, document: GraphDocument) {
+fn assert_removal_identities(removal: &GraphCommand, document: GraphDocument) {
     assert_eq!(removal.document(), &document);
-    assert_eq!(removal.requested(), &BTreeSet::from([UPPER]));
+    assert_eq!(
+        removal.action(),
+        &GraphAction::RemoveNodes {
+            requested: BTreeSet::from([UPPER])
+        }
+    );
     let patch = removal.patch();
     assert_eq!(
         patch.removed_nodes().collect::<Vec<_>>(),
@@ -258,7 +284,7 @@ fn node_removal_is_one_command_with_complete_undo_and_redo() {
     assert_eq!(app.history.undo_len(), 2);
     assert_eq!(app.history.undo_label(), Some("Remove node"));
     assert_removal_identities(
-        next_undo_removal(&app),
+        next_undo_command(&app),
         GraphDocument::Target(TargetId::Primary),
     );
     assert!(matches!(
@@ -291,7 +317,7 @@ fn node_removal_is_one_command_with_complete_undo_and_redo() {
     assert!(!app.is_dirty() && !app.observed_dirty());
     assert_eq!(app.history.redo_label(), Some("Remove node"));
     assert_removal_identities(
-        next_redo_removal(&app),
+        next_redo_command(&app),
         GraphDocument::Target(TargetId::Primary),
     );
 
@@ -332,7 +358,7 @@ fn named_target_removals_record_the_target_identity() {
 
     record_removal(&mut app, MappingDocument::Target(0), &[UPPER]);
     assert_removal_identities(
-        next_undo_removal(&app),
+        next_undo_command(&app),
         GraphDocument::Target(TargetId::Named("audit".into())),
     );
     assert!(app.project.root.bindings.is_empty());
@@ -342,23 +368,6 @@ fn named_target_removals_record_the_target_identity() {
     assert_eq!(key(&app), saved);
     assert_eq!(app.project.extra_targets[0].root.bindings.len(), 2);
     assert!(!app.observed_dirty());
-}
-
-#[test]
-fn canvas_removals_reach_history_through_the_frame_journal() {
-    let mut app = app();
-    let context = egui::Context::default();
-    let _ = context.run_test_ui(egui::RawInput::default(), |ui| {
-        removal_journal::begin(ui.ctx());
-        assert!(remove_nodes(&mut app, MappingDocument::Main, &[UPPER], Some(&*ui)).is_none());
-        app.record_canvas_removals(MappingDocument::Main, ui.ctx());
-    });
-    assert_eq!(app.history.undo_len(), 1);
-    assert_removal_identities(
-        next_undo_removal(&app),
-        GraphDocument::Target(TargetId::Primary),
-    );
-    assert!(removal_journal::take(&context).is_empty());
 }
 
 #[test]
@@ -441,12 +450,12 @@ fn removals_sharing_a_frame_with_unobserved_edits_stay_snapshots() {
     let mut app = app();
     let saved = key(&app);
     app.project.graph.nodes.insert(SEPARATOR, separator("+"));
-    let planned = remove_nodes(&mut app, MappingDocument::Main, &[UPPER], None)
+    let planned = remove_nodes(&mut app, MappingDocument::Main, &[UPPER])
         .expect("removal forms a typed edit");
 
-    assert!(!app.record_node_removal(MappingDocument::Main, planned));
-    assert_eq!(app.history.undo_len(), 0);
-    app.observe_editor_history(std::time::Instant::now(), false);
+    assert!(!observe_planned(&mut app, MappingDocument::Main, planned));
+    assert_eq!(app.history.undo_len(), 1);
+    assert_eq!(app.history.undo_label(), Some("Edit mapping"));
     assert!(matches!(
         app.history.next_undo(),
         Some(HistoryRecord::Snapshot(_))
@@ -622,93 +631,8 @@ fn idle_observation_keys_the_project_once_and_never_refingerprints() {
     assert_eq!(project_keys_computed() - keys, 11);
 }
 
-fn canvas_frame(
-    app: &mut FerruleApp,
-    context: &egui::Context,
-    modifiers: egui::Modifiers,
-    mut events: Vec<egui::Event>,
-) -> egui::FullOutput {
-    events.insert(0, egui::Event::ModifiersChanged(modifiers));
-    let output = context.run_test_ui(
-        egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                egui::vec2(1200.0, 900.0),
-            )),
-            time: Some(context.cumulative_frame_nr() as f64 / 10.0),
-            events,
-            ..Default::default()
-        },
-        |ui| app.show_mapping_workspace_canvas(ui, true),
-    );
-    app.observe_editor_history(std::time::Instant::now(), false);
-    output
-}
+#[path = "graph_wire_commands_tests.rs"]
+mod wires;
 
-fn text_position(shape: &egui::epaint::Shape, wanted: &str) -> Option<egui::Pos2> {
-    match shape {
-        egui::epaint::Shape::Text(text) if text.galley.text().contains(wanted) => {
-            Some(text.visual_bounding_rect().center())
-        }
-        egui::epaint::Shape::Vec(shapes) => {
-            shapes.iter().find_map(|shape| text_position(shape, wanted))
-        }
-        _ => None,
-    }
-}
-
-#[test]
-fn deleting_a_selected_canvas_node_records_one_command_step() {
-    let mut app = app();
-    let context = egui::Context::default();
-    crate::icons::install(&context);
-    let mut output = canvas_frame(&mut app, &context, egui::Modifiers::NONE, Vec::new());
-    for _ in 0..3 {
-        output = canvas_frame(&mut app, &context, egui::Modifiers::NONE, Vec::new());
-    }
-    assert_eq!(app.history.undo_len(), 0, "rendering alone is not an edit");
-    let title = output
-        .shapes
-        .iter()
-        .find_map(|shape| text_position(&shape.shape, "Uppercase"))
-        .expect("the upper node title is rendered");
-    for pressed in [true, false] {
-        let _ = canvas_frame(
-            &mut app,
-            &context,
-            egui::Modifiers::SHIFT,
-            vec![
-                egui::Event::PointerMoved(title),
-                egui::Event::PointerButton {
-                    pos: title,
-                    button: egui::PointerButton::Primary,
-                    pressed,
-                    modifiers: egui::Modifiers::SHIFT,
-                },
-            ],
-        );
-    }
-    let saved = key(&app);
-    let _ = canvas_frame(
-        &mut app,
-        &context,
-        egui::Modifiers::NONE,
-        vec![egui::Event::Key {
-            key: egui::Key::Delete,
-            physical_key: None,
-            pressed: true,
-            repeat: false,
-            modifiers: egui::Modifiers::NONE,
-        }],
-    );
-
-    assert!(!app.project.graph.nodes.contains_key(&UPPER));
-    assert_eq!(app.history.undo_len(), 1);
-    assert_removal_identities(
-        next_undo_removal(&app),
-        GraphDocument::Target(TargetId::Primary),
-    );
-    app.undo_project();
-    assert_eq!(key(&app), saved);
-    assert!(!app.observed_dirty());
-}
+#[path = "graph_commands_canvas_tests.rs"]
+mod canvas;
