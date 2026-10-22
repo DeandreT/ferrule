@@ -30,6 +30,7 @@ fn held_pipeline_run(
         preview: false,
         phase,
         extraction: None,
+        service: None,
     };
     (pending, events, release, exited)
 }

@@ -98,6 +98,17 @@ impl<T: Send + 'static> OwnedWorker<T> {
 }
 
 impl<T> OwnedWorker<T> {
+    /// Moves the exact thread handle, its result queue and any received value
+    /// into a new owner, leaving this one empty so its drop does nothing.
+    pub(super) fn take_ownership(&mut self) -> Self {
+        let (_, empty) = mpsc::channel();
+        Self {
+            receiver: std::mem::replace(&mut self.receiver, empty),
+            handle: self.handle.take(),
+            reported: self.reported.take(),
+        }
+    }
+
     /// Whether the exact worker thread has finished; an outcome is then
     /// available from [`Self::poll`]. Hosts stop relaying a finished worker's
     /// queued interaction events, which no longer have a receiver waiting.

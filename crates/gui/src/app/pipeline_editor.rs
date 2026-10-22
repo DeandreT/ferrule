@@ -558,6 +558,20 @@ impl FerruleApp {
             }
             return;
         }
+        // A preview that may own a PDF worker, or one already handed to the
+        // preview service, defers closing until its thread has been joined.
+        let owned_preview = self
+            .pending_preview
+            .as_ref()
+            .is_some_and(preview_ui::PendingPreview::is_service_owned);
+        if owned_preview || self.preview_service.pending() > 0 {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.close_after_preview = true;
+            if owned_preview {
+                self.preview_command(preview_ui::PreviewCommand::Cancel);
+            }
+            return;
+        }
         if self
             .pipeline_editor
             .as_ref()

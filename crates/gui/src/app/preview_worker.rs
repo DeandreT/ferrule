@@ -1,6 +1,7 @@
-//! The preview worker's body: it runs one payload preview with the debug hook
-//! that relays pause events to the UI thread and waits for its commands. The
-//! worker returns its completion; [`super::PendingPreview`] owns the thread.
+//! The preview worker's body: it runs one payload or configured-file preview
+//! with the debug hook that relays pause events to the UI thread and waits
+//! for its commands. The worker returns its completion; [`super::PendingPreview`]
+//! owns the thread.
 
 use super::*;
 
@@ -22,6 +23,7 @@ pub(super) fn run_preview_worker(
     events: Sender<PreviewWorkerEvent>,
     commands: Receiver<PreviewCommand>,
     cancelled: Arc<AtomicBool>,
+    acquisition: super::preview_service::PreviewAcquisition,
 ) -> PreviewCompletion {
     let trace = crate::run_report::TraceCollector::new();
     let breakpoint = if debug {
@@ -55,16 +57,28 @@ pub(super) fn run_preview_worker(
         input_condition,
         pause_on_failure,
     };
-    let result = run_preview_payload(
-        &project,
-        &draft,
-        &project_path,
-        saved_path.as_deref(),
-        &runtime_parameters,
-        &trace,
-        &hook,
-        &cancelled,
-    )
+    let result = match acquisition.source {
+        super::preview_service::PreviewInputSource::EditorText => run_preview_payload(
+            &project,
+            &draft,
+            &project_path,
+            saved_path.as_deref(),
+            &runtime_parameters,
+            &trace,
+            &hook,
+            &cancelled,
+        ),
+        super::preview_service::PreviewInputSource::ConfiguredFiles => run_preview_files(
+            &project,
+            &draft,
+            &project_path,
+            &runtime_parameters,
+            &trace,
+            &hook,
+            &cancelled,
+            &acquisition,
+        ),
+    }
     .map_err(|error| {
         if error.chain().any(|cause| {
             matches!(
@@ -114,6 +128,51 @@ fn run_preview_payload(
         .with_trace_sink(trace)
         .with_debug_hook(debug_hook);
     cli::run_project_value_payloads(project, project_path, &options)
+}
+
+/// Previews the project's configured filesystem inputs. The primary is the
+/// draft's input path, or the stored source path when they are equal; only
+/// selected static sources and requested dynamic sources are read, and an
+/// opted-in owned reader extracts PDFs on this thread.
+#[allow(clippy::too_many_arguments)]
+fn run_preview_files(
+    project: &Project,
+    draft: &PreviewDraft,
+    project_path: &std::path::Path,
+    runtime_parameters: &engine::RuntimeParameters,
+    trace: &crate::run_report::TraceCollector,
+    debug_hook: &dyn engine::DebugHook,
+    cancelled: &AtomicBool,
+    acquisition: &super::preview_service::PreviewAcquisition,
+) -> anyhow::Result<cli::PayloadRunOutcome> {
+    if !draft.can_execute() {
+        bail!("preview input or output identity is invalid");
+    }
+    let input = draft.input_identity.trim();
+    let stored = project.source_path.as_deref().unwrap_or_default().trim();
+    let input_path = (input != stored).then(|| PathBuf::from(input));
+    let output_path = PathBuf::from(draft.output_identity.trim());
+    let mut options = cli::RunOptions::new()
+        .with_target(draft.target.selection())
+        .with_output_path(&output_path)
+        .with_runtime_parameters(runtime_parameters)
+        .with_trace_sink(trace)
+        .with_debug_hook(debug_hook)
+        .with_cancellation(cancelled);
+    if let Some(path) = input_path.as_deref() {
+        options = options.with_input_path(path);
+    }
+    let reader = acquisition.reader(cancelled);
+    cli::preview_project_value(
+        project,
+        project_path,
+        cli::ProjectPreviewInputs::Files {
+            options: &options,
+            pdf_reader: reader
+                .as_ref()
+                .map(|reader| reader as &dyn cli::FilesystemPdfReader),
+        },
+    )
 }
 
 struct PreviewDebugHook {

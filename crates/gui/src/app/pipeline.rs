@@ -133,6 +133,9 @@ pub(super) struct PendingPipelineRun {
     pub(super) phase: PipelineRunPhase,
     /// The opted-in owned PDF extraction's latest state, if any.
     pub(super) extraction: Option<Arc<super::pdf_extraction::ExtractionStatus>>,
+    /// Set for previews that may own a PDF worker: dropping this owner hands
+    /// the exact thread to the preview service instead of blocking on it.
+    pub(super) service: Option<super::PreviewServicePort>,
 }
 
 impl PendingPipelineRun {
@@ -166,6 +169,12 @@ impl Drop for PendingPipelineRun {
         if !matches!(self.phase, PipelineRunPhase::Publishing) {
             self.cancelled.store(true, Ordering::Release);
             let _ = self.commands.send(PipelineRunCommand::Cancel);
+        }
+        // A finished thread is joined at once by the field's own drop.
+        if let Some(service) = &self.service
+            && !self.worker.is_finished()
+        {
+            service.retain(Box::new(self.worker.take_ownership()));
         }
     }
 }
@@ -881,6 +890,7 @@ impl FerruleApp {
             .map(|status| (self.pdf_worker_package.clone(), Arc::clone(status)));
         #[cfg(test)]
         let reader_controls = self.pdf_reader_controls;
+        let service = (preview && extraction.is_some()).then(|| self.preview_service.clone());
         let worker = OwnedWorker::spawn("ferrule-pipeline-run", move || {
             let trace = crate::run_report::PipelineTraceCollector::new();
             let hook = PipelineRunHook {
@@ -977,9 +987,14 @@ impl FerruleApp {
             }
             let result: anyhow::Result<PipelineCompletion> = if preview {
                 (|| {
-                    let loaded = crate::pipeline_run::load_preview_hosts(&inputs, || {
-                        hook.cancelled.load(Ordering::Acquire)
-                    })?;
+                    // With the owned worker opted in, hosts are acquired once
+                    // each from their files; otherwise they become payloads.
+                    let loaded = match reader {
+                        Some(_) => Vec::new(),
+                        None => crate::pipeline_run::load_preview_hosts(&inputs, || {
+                            hook.cancelled.load(Ordering::Acquire)
+                        })?,
+                    };
                     let hosts = loaded
                         .iter()
                         .map(|host| {
@@ -987,7 +1002,13 @@ impl FerruleApp {
                             cli::PipelineHostPayload::new(&host.name, document)
                         })
                         .collect::<anyhow::Result<Vec<_>>>()?;
-                    let mut preview_options = cli::PipelinePreviewOptions::new(&hosts)
+                    let preview_options = match &reader {
+                        Some(reader) => {
+                            cli::PipelinePreviewOptions::from_files_with_pdf_reader(&inputs, reader)
+                        }
+                        None => cli::PipelinePreviewOptions::new(&hosts),
+                    };
+                    let mut preview_options = preview_options
                         .with_output_identities(&preview_identities)
                         .with_runtime_parameters(&runtime_parameters)
                         .with_stage_trace_sink(&stage_trace)
@@ -1082,6 +1103,7 @@ impl FerruleApp {
             preview,
             phase: PipelineRunPhase::Running,
             extraction,
+            service,
         });
         self.run_report = None;
         self.show_run_report = false;

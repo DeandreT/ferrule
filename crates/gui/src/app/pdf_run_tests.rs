@@ -17,8 +17,9 @@ use crate::test_ui::ContextExt;
 /// Generous for a heavily loaded host; the worker's own deadline is 30 s.
 const WAIT: Duration = Duration::from_secs(90);
 
-const HOLD: ReaderControls = ReaderControls {
+pub(super) const HOLD: ReaderControls = ReaderControls {
     hold_until_cancelled: true,
+    release_gate: None,
     cancel_when_starting: false,
     cancel_when_running: false,
     cancel_when_checked: false,

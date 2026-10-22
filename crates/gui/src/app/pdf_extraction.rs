@@ -137,6 +137,9 @@ impl ExtractionStatus {
 pub(crate) struct ReaderControls {
     /// Stop polling a started child before it is sent Start, until cancelled.
     pub(crate) hold_until_cancelled: bool,
+    /// Stop polling a started child, ignoring cancellation, until this gate
+    /// opens: an owner that is slow to observe a stop request.
+    pub(crate) release_gate: Option<&'static AtomicBool>,
     pub(crate) cancel_when_starting: bool,
     pub(crate) cancel_when_running: bool,
     /// After a closed, validated success and before it is returned.
@@ -189,6 +192,13 @@ impl<'a> OwnedPdfReader<'a> {
     fn test_control(&self, state: JobState) {
         let cancel = match state {
             JobState::Starting => {
+                while self
+                    .controls
+                    .release_gate
+                    .is_some_and(|gate| !gate.load(Ordering::Acquire))
+                {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
                 while self.controls.hold_until_cancelled && !self.observe_cancellation() {
                     std::thread::sleep(Duration::from_millis(5));
                 }

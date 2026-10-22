@@ -25,6 +25,8 @@ fn held_preview(
         target_label: "Primary".into(),
         debug: false,
         phase: PreviewPhase::Running,
+        extraction: None,
+        service: None,
     };
     (pending, release, exited)
 }
