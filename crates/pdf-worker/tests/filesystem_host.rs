@@ -227,7 +227,7 @@ fn frozen_real_filesystem_and_protocol_cases_serial() {
             other => panic!("{other:#?}"),
         }
     }
-    // B38: separate default success cleanup; qualification retention above is
+    // Separate default success cleanup; qualification retention above is
     // explicit, rather than an accidental change to the ordinary cleanup policy.
     let mut clean = manager(&root, "fixture-cleanup");
     clean.retain_successful_originals(false).unwrap();
