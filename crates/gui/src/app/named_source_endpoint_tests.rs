@@ -124,6 +124,7 @@ fn viewer<'a>(
         camera_focus: None,
         canvas_transform: None,
         pin_interaction_ids: Vec::new(),
+        planned_edits: Vec::new(),
         error: None,
     }
 }

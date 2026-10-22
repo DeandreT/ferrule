@@ -8,6 +8,7 @@
 mod command;
 mod document;
 mod edit_history;
+mod graph_command;
 mod graph_edit;
 mod revision;
 mod selection;
@@ -16,9 +17,9 @@ mod snapshot_history;
 pub use command::{EditorCommand, EditorTransaction};
 pub use document::{CommandOutcome, DocumentOrigin, EditorDocument, HistoryLimit, HistoryOutcome};
 pub use edit_history::{EditHistory, HistoryRecord};
+pub use graph_command::{CanvasPosition, GraphAction, GraphCommand, WireSink};
 pub use graph_edit::{
-    BindingsChange, GraphDocument, GraphEditError, GraphNodeRemoval, GraphPatch, NodeChange,
-    ScopeLocation, ScopeStep,
+    BindingsChange, GraphDocument, GraphEditError, GraphPatch, NodeChange, ScopeLocation, ScopeStep,
 };
 pub use revision::{
     ComponentChange, DocumentRevision, LayoutRevision, RevisionChange, RevisionKeyed,
