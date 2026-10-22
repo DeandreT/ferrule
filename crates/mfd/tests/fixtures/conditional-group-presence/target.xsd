@@ -1,0 +1,11 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Result"><xs:complexType><xs:sequence>
+    <xs:element name="Batch" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Record" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+        <xs:element name="Type" type="xs:string" minOccurs="0"/>
+        <xs:element name="Label" type="xs:string" minOccurs="0"/>
+        <xs:element name="Note" type="xs:string" minOccurs="0"/>
+      </xs:sequence></xs:complexType></xs:element>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>

@@ -1,0 +1,36 @@
+<mapping version="26"><component name="map"><structure><children>
+  <component name="source" library="json" kind="31"><data><root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object">
+    <entry name="Rows" type="json-property"><entry name="array" outkey="10"><entry name="item" type="json-item"><entry name="object">
+      <entry name="Flag" type="json-property"><entry name="boolean" outkey="11"/></entry>
+      <entry name="Label" type="json-property"><entry name="string" outkey="12"/></entry>
+      <entry name="Code" type="json-property"><entry name="integer" outkey="13"/></entry>
+      <entry name="Note" type="json-property"><entry name="string" outkey="14"/></entry>
+      <entry name="Other" type="json-property"><entry name="string" outkey="15"/></entry>
+    </entry></entry></entry></entry>
+  </entry></entry></entry></entry></root><json schema="source.schema.json" inputinstance="source.json"/></data></component>
+  <component name="report" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Result"><entry name="Batch" inpkey="40">
+    <entry name="Record" inpkey="50"><entry name="Type" inpkey="51"/><entry name="Label" inpkey="52"/><entry name="Note" inpkey="53"/></entry>
+    <entry name="Record" clone="1" inpkey="60"><entry name="Type" inpkey="61"/><entry name="Label" inpkey="62"/><entry name="Note" inpkey="63"/></entry>
+    <entry name="Record" clone="1" inpkey="70"><entry name="Type" inpkey="71"/><entry name="Label" inpkey="72"/><entry name="Note" inpkey="73"/></entry>
+  </entry></entry></root><document schema="target.xsd" outputinstance="report.xml" instanceroot="{}Result"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="101"/></targets><data><constant value="first" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="102"/></targets><data><constant value="second" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="103"/></targets><data><constant value="third" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="104"/></targets><data><constant value="zero" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="105"/></targets><data><constant value="0" datatype="integer"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="106"/></targets><data><constant value="0" datatype="integer"/></data></component>
+  <component name="if-else" library="core" kind="4"><sources><datapoint pos="0" key="111"/><datapoint pos="1" key="112"/><datapoint pos="2"/></sources><targets><datapoint pos="0" key="119"/></targets></component>
+  <component name="equal" library="core" kind="5"><sources><datapoint pos="0" key="131"/><datapoint pos="1" key="132"/></sources><targets><datapoint pos="0" key="139"/></targets></component>
+  <component name="if-else" library="core" kind="4"><sources><datapoint pos="0" key="121"/><datapoint pos="1" key="122"/><datapoint pos="2" key="123"/></sources><targets><datapoint pos="0" key="129"/></targets></component>
+  <component name="empty" library="lang" kind="5"><sources><datapoint pos="0" key="141"/></sources><targets><datapoint pos="0" key="149"/></targets></component>
+  <component name="if-else" library="core" kind="4"><sources><datapoint pos="0" key="161"/><datapoint pos="1" key="162"/><datapoint pos="2"/></sources><targets><datapoint pos="0" key="169"/></targets></component>
+  <component name="if-else" library="core" kind="4"><sources><datapoint pos="0" key="151"/><datapoint pos="1"/><datapoint pos="2" key="153"/></sources><targets><datapoint pos="0" key="159"/></targets></component>
+</children><connections>
+  <edge from="10" to="40"/>
+  <edge from="11" to="111"/><edge from="12" to="112"/><edge from="119" to="50"/>
+  <edge from="13" to="131"/><edge from="105" to="132"/><edge from="139" to="121"/><edge from="104" to="122"/><edge from="15" to="123"/><edge from="129" to="60"/>
+  <edge from="14" to="141"/><edge from="149" to="151"/><edge from="11" to="161"/><edge from="106" to="162"/><edge from="169" to="153"/><edge from="159" to="70"/>
+  <edge from="101" to="51"/><edge from="14" to="53"/>
+  <edge from="102" to="61"/><edge from="12" to="62"/>
+  <edge from="103" to="71"/><edge from="14" to="73"/>
+</connections></structure></component></mapping>

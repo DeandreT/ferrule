@@ -16,6 +16,8 @@ mod total_string_tests;
 pub(super) use parse_date::RawParseDateOwnership;
 mod group_by;
 pub(super) use group_by::RawGroupByOwnership;
+mod presence;
+pub(super) use presence::RawPresenceOperator;
 
 #[cfg(test)]
 #[path = "function/conditional_string_tests.rs"]
@@ -228,6 +230,9 @@ pub(super) struct FnComponent {
     pub(super) raw_count_signature_valid: bool,
     /// Dedicated raw owner and source-position proof for String group-by keys.
     pub(super) group_by_ownership: Option<RawGroupByOwnership>,
+    /// Exact raw pins of a group-presence operand operator, retaining keyless
+    /// `if-else` branches. Independent of `bounded_scalar_pins_valid`.
+    pub(super) presence_operator: Option<RawPresenceOperator>,
     /// Scalar coercion declared by a transparent kind=6 input parameter.
     pub(super) input_type: Option<ScalarType>,
     /// Public host parameter declaration of a kind=6 input component.
@@ -521,6 +526,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         raw_clock_signature_valid,
         raw_count_signature_valid,
         group_by_ownership: group_by::ownership(component),
+        presence_operator: presence::operator(component),
         input_type,
         input_parameter_name,
         input_preview,

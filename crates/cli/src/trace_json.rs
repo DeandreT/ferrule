@@ -637,6 +637,9 @@ fn iteration_value(iteration: &TraceIteration) -> JsonValue {
         TraceIteration::Concatenate { segments } => {
             json!({"kind": "concatenate", "segments": segments})
         }
+        TraceIteration::OptionalPresence { condition } => {
+            json!({"kind": "optional_presence", "condition": condition})
+        }
     }
 }
 

@@ -121,6 +121,12 @@ fn render_with_json_boundaries(
         if let Some(iteration) = scope.iteration {
             if iteration.concatenated().is_some() {
                 render_concatenated_scope(iteration, &scope.segments, &mut output);
+            } else if let Some(presence) = iteration.presence() {
+                // The condition and the constructed group share the parent context.
+                let condition = presence.condition();
+                output.push_str(&format!(
+                    "        if (!global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{condition}(context), {condition}U))\n        {{\n            return new global::Ferrule.Runtime.FerruleRepeated(global::System.Array.Empty<global::Ferrule.Runtime.FerruleInstance>());\n        }}\n        var item_{scope_index} = ScopeItem_{scope_index}(context);\n        return new global::Ferrule.Runtime.FerruleRepeated(new global::Ferrule.Runtime.FerruleInstance[] {{ item_{scope_index} }});\n"
+                ));
             } else {
                 render_iteration_scope(
                     program,
@@ -1305,7 +1311,8 @@ fn render_grouping_path(input: &IterationSource, output: &mut String) {
         IterationSource::Generated(_) => render_path(&[], output),
         IterationSource::InnerJoin(_)
         | IterationSource::OwnedInnerJoin(_)
-        | IterationSource::Concatenate(_) => {
+        | IterationSource::Concatenate(_)
+        | IterationSource::OptionalPresence(_) => {
             unreachable!("validated portable grouping cannot own an inner join")
         }
     }
@@ -1370,6 +1377,9 @@ fn render_iteration_candidates(
         IterationSource::OwnedInnerJoin(_) => unreachable!("owned join emission gate"),
         IterationSource::Concatenate(_) => {
             unreachable!("concatenated scopes render before candidate iteration")
+        }
+        IterationSource::OptionalPresence(_) => {
+            unreachable!("optional-presence scopes render before candidate iteration")
         }
     }
     Ok(())

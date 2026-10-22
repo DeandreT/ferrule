@@ -595,6 +595,11 @@ impl<'a> Analysis<'a> {
                 }
                 parent
             }
+            // The presence condition and the constructed group share the parent item.
+            IterationSource::OptionalPresence(presence) => {
+                self.queue(Namespace::Main, parent, presence.condition());
+                parent
+            }
         };
         self.optional(Namespace::Main, item, iteration.filter());
         if let Some(sort) = iteration.sort() {

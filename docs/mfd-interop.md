@@ -874,6 +874,32 @@ the same constant output, and retain the enclosing source-row context. Competing
 connectors within one occurrence and inputs shared ambiguously across cloned
 declarations remain refused.
 
+A declared clone of a repeating XML target group can instead be driven by a core
+kind-4 `if-else` over a plain JSON source. The clone is present when the lazily
+selected scalar exists: false, zero and the empty string are present, while Null
+is absent. A keyless `if-else` branch, saved as a `<datapoint/>` without a key at
+raw position 1 or 2, selects Null. Each conditional controls exactly one clone,
+which lowers to an optional-presence scope over `exists(selected)` in the
+unchanged enclosing frame; unconnected declarations add no occurrence, and
+clones keep saved declaration order. The conditional and every scalar binding of
+its clone are proved separately from the strict scalar-assignment proof: each
+operand is a valid scalar literal, a physical scalar field in the plain enclosing
+document or collection frame, a nested conditional, a core kind-5 `equal` of two
+compatible scalars, or a lang kind-5 `empty` of a String. Conditions are Boolean,
+branch and binding types match, and a walk permits at most 16 nested operators
+and 256 visited operands. Operators must have exact raw pins, optional empty
+`properties` and `view` metadata, and one raw declared producer for their output
+and for each connected input. A missing Boolean condition keeps the typed
+runtime error, and an unselected branch is never evaluated. Group-valued
+branches, cycles, malformed pins, priority contexts, competing producers,
+uniterated or foreign frames, controlled parents, clones without a conditional
+driver, user functions, aggregates, clocks and other computed operands refuse
+with one diagnostic before any import state changes; the ordinary repair draft
+is retained and the executable profile rejects the design. Physical EDI scalar
+inputs, JSON targets and uncloned target groups keep their existing behavior.
+Optional-presence scopes have no qualified `.mfd` export and the GUI shows them
+read-only.
+
 A closed, non-repeating JSON or compiled EDI variable record can also drive one
 repeating target group through its structural output. Require one connected
 target connector, a valid direct literal that establishes presence, and

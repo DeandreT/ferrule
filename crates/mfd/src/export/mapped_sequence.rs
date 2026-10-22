@@ -514,6 +514,11 @@ fn validate_first_outputs(
                     "first-item scope `{display_path}` cannot wrap a concatenated sequence"
                 ));
             }
+            mapping::ScopeIteration::OptionalPresence { .. } => {
+                return Err(format!(
+                    "first-item scope `{display_path}` cannot use optional presence"
+                ));
+            }
             mapping::ScopeIteration::None => {
                 return Err(format!(
                     "first-item scope `{display_path}` has no iterated source"

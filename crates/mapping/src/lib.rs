@@ -195,3 +195,7 @@ mod owned_recursive_filter_tests;
 #[cfg(test)]
 #[path = "tests/owned_dynamic_field.rs"]
 mod owned_dynamic_field_tests;
+
+#[cfg(test)]
+#[path = "tests/optional_presence.rs"]
+mod optional_presence_tests;
