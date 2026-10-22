@@ -1,8 +1,71 @@
 use ir::{
-    GroupAlternativeConstraintValue, GroupAlternativeMode, ScalarType, SchemaKind, SchemaNode,
+    EffectiveViewError, GroupAlternativeConstraintValue, GroupAlternativeMode, JsonNullability,
+    ScalarType, SchemaKind, SchemaNode,
 };
 
 use crate::JsonFormatError;
+
+/// Where one node's JSON Schema renders arrays and explicit JSON null.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct JsonLayers {
+    /// The whole object, array or nested array is `anyOf [..., null]`.
+    pub(super) container_null: bool,
+    /// The node renders as an array of its shape.
+    pub(super) array: bool,
+    /// Each object item of the array is `anyOf [..., null]`.
+    pub(super) object_item_null: bool,
+    /// The scalar value, or each scalar item, has `null` in its type list.
+    pub(super) value_null: bool,
+}
+
+/// Derives the rendered JSON layers from the effective JSON view, so scalar
+/// null, object null and array-container null stay distinct.
+pub(super) fn layers(node: &SchemaNode) -> Result<JsonLayers, JsonFormatError> {
+    let group = matches!(node.kind, SchemaKind::Group { .. });
+    let nullability = node
+        .effective_json_nullability()
+        .map_err(|error| match error {
+            EffectiveViewError::InvalidJsonArrayWrapper => {
+                JsonFormatError::InvalidArrayWrapperMetadata {
+                    name: node.name.clone(),
+                }
+            }
+            EffectiveViewError::ObjectItemNullOutsideObjectArray => {
+                JsonFormatError::InvalidObjectItemNullabilityMetadata {
+                    name: node.name.clone(),
+                }
+            }
+            reason => JsonFormatError::InvalidNullabilityMetadata {
+                name: node.name.clone(),
+                reason,
+            },
+        })?;
+    Ok(match nullability {
+        JsonNullability::Occurrence { null } => JsonLayers {
+            container_null: group && null,
+            array: false,
+            object_item_null: false,
+            value_null: !group && null,
+        },
+        JsonNullability::Array {
+            container_null,
+            item_null,
+        } => JsonLayers {
+            container_null,
+            array: true,
+            // Arbitrary JSON carries null as canonical text, not as a variant.
+            object_item_null: group && !node.json_any && item_null,
+            value_null: !group && item_null,
+        },
+        // Each nested array's nullability belongs to the wrapper's item child.
+        JsonNullability::NestedArrays { container_null } => JsonLayers {
+            container_null,
+            array: true,
+            object_item_null: false,
+            value_null: false,
+        },
+    })
+}
 
 /// Writes `node`'s shape (sans repetition) into `out`; repetition wraps it
 /// in an array schema.
@@ -10,9 +73,10 @@ pub(super) fn render(
     node: &SchemaNode,
     out: &mut serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), JsonFormatError> {
-    if node.container_nullable {
+    let layers = layers(node)?;
+    if layers.container_null {
         let mut content = serde_json::Map::new();
-        render_non_nullable(node, &mut content)?;
+        render_non_nullable(node, layers, &mut content)?;
         out.insert(
             "anyOf".into(),
             serde_json::Value::Array(vec![
@@ -22,50 +86,48 @@ pub(super) fn render(
         );
         return Ok(());
     }
-    render_non_nullable(node, out)
+    render_non_nullable(node, layers, out)
 }
 
 fn render_non_nullable(
     node: &SchemaNode,
+    layers: JsonLayers,
     out: &mut serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), JsonFormatError> {
-    if node.repeating {
+    if layers.array {
         out.insert("type".into(), "array".into());
         let mut items = serde_json::Map::new();
-        render_shape(node, &mut items)?;
+        render_shape(node, layers, &mut items)?;
         out.insert("items".into(), serde_json::Value::Object(items));
         super::item_counts::render(node, out);
         super::contains::render(node, out)?;
         super::unique_items::render(node, out);
     } else {
-        render_shape(node, out)?;
+        render_shape(node, layers, out)?;
     }
     Ok(())
 }
 
 fn render_shape(
     node: &SchemaNode,
+    layers: JsonLayers,
     out: &mut serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), JsonFormatError> {
-    if node.repeating
-        && matches!(node.kind, SchemaKind::Group { .. })
-        && !node.json_array_wrapper
-        && !node.json_any
-        && node.json_single_container_nullable()
-    {
+    if layers.object_item_null {
         let mut content = serde_json::Map::new();
-        render_non_nullable_shape(node, &mut content)?;
+        render_non_nullable_shape(node, layers, &mut content)?;
         out.insert(
             "anyOf".into(),
             serde_json::json!([serde_json::Value::Object(content), {"type": "null"}]),
         );
         return Ok(());
     }
-    render_non_nullable_shape(node, out)
+    render_non_nullable_shape(node, layers, out)
 }
 
 fn render_non_nullable_shape(
     node: &SchemaNode,
+    layers: JsonLayers,
     out: &mut serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), JsonFormatError> {
     if node.json_array_wrapper {
@@ -87,7 +149,7 @@ fn render_non_nullable_shape(
                 ScalarType::Float => "number",
                 ScalarType::Bool => "boolean",
             };
-            let ty = if node.nullable {
+            let ty = if layers.value_null {
                 serde_json::Value::Array(vec![name.into(), "null".into()])
             } else {
                 name.into()
@@ -109,7 +171,7 @@ fn render_non_nullable_shape(
                 .map(scalar_type_name)
                 .map(serde_json::Value::from)
                 .collect::<Vec<_>>();
-            if node.nullable {
+            if layers.value_null {
                 types.push("null".into());
             }
             out.insert("type".into(), types.into());

@@ -188,6 +188,11 @@ pub enum JsonFormatError {
     InvalidArrayWrapperMetadata { name: String },
     #[error("JSON object-item nullability metadata on `{name}` is invalid")]
     InvalidObjectItemNullabilityMetadata { name: String },
+    #[error("JSON nullability metadata on `{name}` is invalid: {reason}")]
+    InvalidNullabilityMetadata {
+        name: String,
+        reason: ir::EffectiveViewError,
+    },
     #[error(
         "recursive JSON schema reference `{node}` has no unique concrete group anchor `{anchor}`"
     )]
