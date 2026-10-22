@@ -96,6 +96,14 @@ pub enum MfdError {
         function: Option<mapping::FunctionId>,
         kind: &'static str,
     },
+    #[error(
+        "cannot export the declared SQLite query of {input}: no qualified interchange representation exists"
+    )]
+    UnsupportedInputProfile {
+        /// `primary source` or the named source.
+        input: String,
+        profile: &'static str,
+    },
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("xml parse error: {0}")]

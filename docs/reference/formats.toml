@@ -186,15 +186,19 @@ target = "yes"
 selection = "`.db`, `.sqlite`, or `.sqlite3`"
 summary = """
 Read-only table introspection, typed reads, imported relational query shapes,
-validated declared relations, structured XML text columns, and idempotent
-full-replace writes
+declared read-only single-table queries with typed named parameters, validated
+declared relations, structured XML text columns, and idempotent full-replace
+writes
 """
 evidence = [
     "crates/format-db/src/relational.rs",
+    "crates/format-db/src/query/mod.rs",
     "crates/format-db/tests/readonly_metadata.rs",
+    "crates/cli/tests/sqlite_read_query.rs",
 ]
 unsupported = [
     "Other database engines, general SQL mutation, and multi-database connections",
+    "SQL text, joins, views and declared queries on payload, stream, REST, pipeline, generated-code and MFD routes",
 ]
 
 [[format]]

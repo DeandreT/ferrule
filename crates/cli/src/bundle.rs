@@ -146,6 +146,9 @@ pub fn bundle_project(
     let text = std::str::from_utf8(&project_bytes).context("bundle project must be UTF-8")?;
     let mut project = mapping::project_file::decode_str(text).context("decoding bundle project")?;
     super::require_valid(&project)?;
+    if !project.sqlite_read_inputs().is_empty() {
+        bail!("offline bundles do not support declared SQLite query inputs");
+    }
     if project.source_options.http_get.is_some()
         || project
             .extra_sources

@@ -313,6 +313,15 @@ struct PreparedExport {
 }
 
 fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdError> {
+    if let Some(input) = project.sqlite_read_inputs().first() {
+        return Err(MfdError::UnsupportedInputProfile {
+            input: match input.owner {
+                mapping::SqliteReadOwner::Primary => "primary source".to_owned(),
+                mapping::SqliteReadOwner::Named(name) => format!("source `{name}`"),
+            },
+            profile: mapping::SQLITE_READ_V1_CAPABILITY,
+        });
+    }
     preflight::validate_optional_parser_input_provenance(project)?;
     preflight::validate_source_ownership(project)?;
     preflight::validate_optional_presence(project)?;

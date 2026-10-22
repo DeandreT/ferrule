@@ -41,6 +41,19 @@ non-finite values produce typed errors. NaN and infinity cannot be saved as
 JSON values without losing their identity; saving rejects them instead of
 turning them into null. Failed encoding occurs before file publication.
 
+### File capabilities
+
+Some options must never be silently ignored by a reader that predates them.
+A project or pipeline that uses one is always saved in a version-3 envelope
+whose header also lists the sorted `capabilities` the document requires.
+Readers without the envelope miss the project's required members, and
+version-2 readers refuse the version, so neither falls back to older behavior.
+Current readers require the declared set to match the features the document
+uses exactly: such an option in unmarked or version-2 JSON is refused, as are
+unknown or stale capabilities. The only capability is `sqlite_read_v1`, carried
+by a [declared SQLite query](formats.md#declared-sqlite-queries) anywhere in
+the project's format options.
+
 
 ## Primary XML root reads
 

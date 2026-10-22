@@ -75,6 +75,8 @@ fn preflight(
             ));
         }
     }
+    crate::sqlite_query::reject_query_inputs(project, HostRoute::RestJson)
+        .map_err(|refusal| RestJsonError::Mapping(refusal.into()))?;
     if !project.extra_sources.is_empty()
         || !project.extra_targets.is_empty()
         || has_document_list(&project.root)

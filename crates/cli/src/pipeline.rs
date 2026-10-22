@@ -621,6 +621,10 @@ fn prepare_pipeline<'a>(
                 .join("\n")
         );
     }
+    // Per-stage query acquisition context is not propagated yet.
+    for stage in &pipeline.stages {
+        crate::sqlite_query::reject_query_inputs(&stage.project, HostRoute::RunPipeline)?;
+    }
     let host_boundaries = infer_host_boundaries(pipeline)?;
     let paths = validate_host_inputs(&host_boundaries, inputs)?;
     let selected = select_outputs(pipeline, outputs)?;

@@ -44,6 +44,7 @@ mod pipeline_preview;
 mod project_paths;
 mod read_set;
 mod route_capability;
+mod sqlite_query;
 pub use bundle::{BundleCatalog, BundleCatalogKind, BundleOptions, BundleOutcome, bundle_project};
 pub use dynamic_source_fault::{
     DynamicSourceReadError, UndeclaredDynamicSource, UnsuppliedPayloadSource,
@@ -57,8 +58,9 @@ pub use execution_policy::{load_execution_policy_file, parse_execution_policy};
 #[cfg(test)]
 use file_run::run_project_value_with_filesystem_policy;
 pub use file_run::{
-    PreparedFileRun, RunObservers, RunOptions, RunOutcome, RunRequest, WrittenOutput, run_project,
-    run_project_value_with_options, run_project_value_with_options_and_filesystem_policy,
+    PreparedFileRun, RunObservers, RunOptions, RunOutcome, RunRequest, WrittenOutput,
+    preview_project_value_from_files, run_project, run_project_value_with_options,
+    run_project_value_with_options_and_filesystem_policy,
     run_project_value_with_options_and_pdf_reader, run_project_value_with_paths,
     run_project_value_with_paths_and_trace, run_project_with_options,
     run_project_with_options_and_filesystem_policy, run_project_with_options_and_pdf_reader,
@@ -532,6 +534,9 @@ fn write_output(
     options: &FormatOptions,
     current_datetime: &str,
 ) -> anyhow::Result<usize> {
+    if options.sqlite_read.is_some() {
+        bail!("`sqlite_read` is valid only for mapping sources");
+    }
     options
         .validate_xml_schema_hint_options(true)
         .map_err(anyhow::Error::msg)?;
@@ -775,6 +780,12 @@ fn read_instance_with_pdf_reader(
     reader: Option<&dyn FilesystemPdfReader>,
     execution_policy: &ExecutionPolicy,
 ) -> anyhow::Result<Instance> {
+    if options.sqlite_read.is_some() {
+        bail!(
+            "declared SQLite query input {} is acquired only by the filesystem run and preview routes",
+            path.display()
+        );
+    }
     execution_policy.authorize_read(execution_policy::read_location(path, options))?;
     options
         .validate_xml_schema_hint_options(false)

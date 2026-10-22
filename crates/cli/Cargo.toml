@@ -54,6 +54,7 @@ rustix = { workspace = true }
 [dev-dependencies]
 codegen-runtime = { workspace = true }
 roxmltree = { workspace = true }
+rusqlite = { workspace = true }
 rust_xlsxwriter = { workspace = true }
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]

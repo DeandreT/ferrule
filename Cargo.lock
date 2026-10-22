@@ -931,6 +931,7 @@ dependencies = [
  "mfd",
  "pdf-worker",
  "roxmltree",
+ "rusqlite",
  "rust_xlsxwriter",
  "rustix 1.1.4",
  "serde",
