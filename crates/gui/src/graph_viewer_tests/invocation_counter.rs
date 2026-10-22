@@ -109,3 +109,62 @@ fn invocation_counter_repaints_do_not_change_graph_values() {
     }
     assert_eq!(serde_json::to_value(&fx.graph).unwrap(), before);
 }
+
+#[test]
+fn invocation_counter_restart_disconnect_records_one_reversible_edit() {
+    let mut fx = counter_fixture();
+    fx.graph.nodes.insert(
+        1,
+        Node::Const {
+            value: Value::String("restart".into()),
+        },
+    );
+    fx.graph.nodes.insert(
+        NodeId::MAX,
+        Node::Const {
+            value: Value::Bool(true),
+        },
+    );
+    let mut snarl = std::mem::take(&mut fx.snarl);
+    let restart = snarl.insert_node(egui::pos2(0.0, 200.0), CanvasNode::Graph(1));
+    let from = snarl.out_pin(OutPinId {
+        node: restart,
+        output: 0,
+    });
+    let to = snarl.in_pin(InPinId {
+        node: fx.call,
+        input: 2,
+    });
+    let mut viewer = fx.viewer();
+    viewer.connect(&from, &to, &mut snarl);
+    assert!(viewer.error.is_none());
+    viewer.planned_edits.clear();
+    let before = serde_json::to_value(&*viewer.graph).unwrap();
+    viewer.disconnect(&from, &to, &mut snarl);
+    assert!(viewer.error.is_none());
+    assert_eq!(viewer.input_at(0, 2), None);
+    assert_eq!(viewer.planned_edits.len(), 1);
+    let edit = viewer.planned_edits.pop().unwrap();
+    assert_eq!(
+        edit.action,
+        editor_ui::GraphAction::DisconnectWire {
+            sink: editor_ui::WireSink::NodeInput { node: 0, input: 2 },
+        }
+    );
+    let after = serde_json::to_value(&*viewer.graph).unwrap();
+    edit.patch
+        .revert_on(&mut *viewer.graph, Some(&mut *viewer.root_scope))
+        .unwrap();
+    assert_eq!(serde_json::to_value(&*viewer.graph).unwrap(), before);
+    edit.patch
+        .apply_to(&mut *viewer.graph, Some(&mut *viewer.root_scope))
+        .unwrap();
+    assert_eq!(serde_json::to_value(&*viewer.graph).unwrap(), after);
+    assert!(
+        !viewer
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::Unconnected))
+    );
+}

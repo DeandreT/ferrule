@@ -10,6 +10,7 @@
 //! `target_field` chain matches the leaf's group chain), creating missing
 //! non-iterating scopes for nested target groups.
 
+use editor_ui::GraphAction;
 use egui::Ui;
 use egui_snarl::ui::{NodeLayout, PinInfo, SnarlViewer};
 use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, OutPinId, Snarl};
@@ -33,17 +34,21 @@ mod graph_node_ids;
 mod graph_node_presentation;
 #[path = "graph_node_properties.rs"]
 mod graph_node_properties;
+#[path = "graph_planned_edits.rs"]
+mod graph_planned_edits;
 #[path = "graph_references.rs"]
 mod graph_references;
 #[path = "graph_sequence.rs"]
 mod graph_sequence;
 #[path = "graph_sequence_ownership.rs"]
 mod graph_sequence_ownership;
+#[path = "graph_wire_edits.rs"]
+mod graph_wire_edits;
 #[path = "node_palette.rs"]
 mod node_palette;
 
 use graph_node_ids::NodeIdReservation;
-pub(crate) use graph_node_ids::{PlannedNodeRemoval, removal_journal};
+pub(crate) use graph_planned_edits::PlannedGraphEdit;
 use graph_references::node_inputs;
 pub(crate) use graph_references::{
     InactiveTargetScope, ProjectGraphReferences, inactive_target_scopes, project_sequence_item_ids,
@@ -358,6 +363,9 @@ pub struct GraphViewer<'a> {
     pub camera_focus: Option<(egui::Pos2, egui::Pos2, Option<f32>)>,
     pub canvas_transform: Option<egui::emath::TSTransform>,
     pub pin_interaction_ids: Vec<egui::Id>,
+    /// Edits this frame applied through typed patches, in order, for the
+    /// hosting document to record as commands.
+    pub(crate) planned_edits: Vec<PlannedGraphEdit>,
     /// Set when an interaction can't be completed (e.g. binding into a
     /// scope that doesn't exist yet); the app surfaces it in the status
     /// line.
@@ -2623,230 +2631,28 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     }
 
     fn connect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<CanvasNode>) {
-        self.error = None;
-        let from_node = snarl[from.id.node];
-        let to_node = snarl[to.id.node];
-        if let CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id) = to_node
-            && self
-                .graph
-                .nodes
-                .get(&to_id)
-                .is_some_and(|node| self.read_only_inputs(node))
-        {
-            self.error = Some(graph_sequence::READ_ONLY_INPUTS_MESSAGE.into());
-            return;
-        }
-        if let CanvasNode::SourceBlock(block) = from_node
-            && let Some(error) = self.source_block_connection_error(block)
-        {
-            self.error = Some(error);
-            return;
-        }
-        let mutation = (|| -> Result<Option<NodeId>, String> {
-            match (from_node, to_node) {
-                (
-                    CanvasNode::SourceBlock(source_block),
-                    CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id),
-                ) => {
-                    let source_leaf = self
-                        .source_leaf(source_block, from.id.output)
-                        .cloned()
-                        .ok_or_else(|| format!("source pin {} does not exist", from.id.output))?;
-                    let to_node = self
-                        .graph
-                        .nodes
-                        .get(&to_id)
-                        .ok_or_else(|| format!("mapping node {to_id} does not exist"))?;
-                    if to.id.input >= Self::input_count(to_node) {
-                        return Err(format!(
-                            "input {} does not exist on mapping node {to_id}",
-                            to.id.input
-                        ));
-                    }
-                    let displaced = self.input_at(to_id, to.id.input);
-                    // The graph retains independent ownership after this pin
-                    // catalog is rebuilt on the next UI frame.
-                    let field =
-                        self.source_field_for(source_leaf.frame.clone(), source_leaf.path.clone())?;
-                    if !self.set_input(to_id, to.id.input, field) {
-                        self.remove_orphaned_input(field, snarl);
-                        return Err(format!(
-                            "input {} could not be updated on mapping node {to_id}",
-                            to.id.input
-                        ));
-                    }
-                    Ok(displaced)
-                }
-                (CanvasNode::SourceBlock(source_block), CanvasNode::TargetBlock(target_block)) => {
-                    let source_leaf = self
-                        .source_leaf(source_block, from.id.output)
-                        .cloned()
-                        .ok_or_else(|| format!("source pin {} does not exist", from.id.output))?;
-                    let target_leaf = self
-                        .target_leaf(target_block, to.id.input)
-                        .cloned()
-                        .ok_or_else(|| format!("target pin {} does not exist", to.id.input))?;
-                    crate::scope_editor::check_static_binding(
-                        self.root_scope,
-                        &target_leaf.chain,
-                        &target_leaf.field,
-                    )?;
-                    let displaced = self.binding_node(&target_leaf);
-                    let field =
-                        self.source_field_for(source_leaf.frame.clone(), source_leaf.path.clone())?;
-                    self.set_binding(&target_leaf, field);
-                    Ok(displaced)
-                }
-                (
-                    CanvasNode::Graph(from_id) | CanvasNode::Placeholder(from_id),
-                    CanvasNode::TargetBlock(target_block),
-                ) => {
-                    if from.id.output != 0 || !self.graph.nodes.contains_key(&from_id) {
-                        return Err(format!(
-                            "output {} does not exist on mapping node {from_id}",
-                            from.id.output
-                        ));
-                    }
-                    let target_leaf = self
-                        .target_leaf(target_block, to.id.input)
-                        .cloned()
-                        .ok_or_else(|| format!("target pin {} does not exist", to.id.input))?;
-                    crate::scope_editor::check_static_binding(
-                        self.root_scope,
-                        &target_leaf.chain,
-                        &target_leaf.field,
-                    )?;
-                    crate::primary_root_authoring::check_binding(
-                        self.graph,
-                        from_id,
-                        self.primary_root_authoring && target_leaf.chain.is_empty(),
-                    )?;
-                    self.check_filter_map_connection(from_id, None)?;
-                    let displaced = self.binding_node(&target_leaf);
-                    self.set_binding(&target_leaf, from_id);
-                    Ok(displaced)
-                }
-                (
-                    CanvasNode::Graph(from_id) | CanvasNode::Placeholder(from_id),
-                    CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id),
-                ) => {
-                    if from.id.output != 0 || !self.graph.nodes.contains_key(&from_id) {
-                        return Err(format!(
-                            "output {} does not exist on mapping node {from_id}",
-                            from.id.output
-                        ));
-                    }
-                    let to_node = self
-                        .graph
-                        .nodes
-                        .get(&to_id)
-                        .ok_or_else(|| format!("mapping node {to_id} does not exist"))?;
-                    if to.id.input >= Self::input_count(to_node) {
-                        return Err(format!(
-                            "input {} does not exist on mapping node {to_id}",
-                            to.id.input
-                        ));
-                    }
-                    if self.depends_on(from_id, to_id) {
-                        return Err(format!(
-                            "connection from mapping node {from_id} to {to_id} would create a cycle"
-                        ));
-                    }
-                    self.check_primary_root_input(from_id, to_id)?;
-                    self.check_filter_map_connection(from_id, Some((to_id, to.id.input)))?;
-                    let displaced = self.input_at(to_id, to.id.input);
-                    if !self.set_input(to_id, to.id.input, from_id) {
-                        return Err(format!(
-                            "input {} could not be updated on mapping node {to_id}",
-                            to.id.input
-                        ));
-                    }
-                    Ok(displaced)
-                }
-                _ => Err("these canvas pins cannot be connected".to_string()),
-            }
-        })();
-        let displaced = match mutation {
-            Ok(displaced) => displaced,
-            Err(error) => {
-                self.error = Some(error);
-                return;
-            }
-        };
-        // Every input takes exactly one value, so replace any existing wire.
-        for &remote in &to.remotes {
-            snarl.disconnect(remote, to.id);
-        }
-        snarl.connect(from.id, to.id);
-        if let Some(displaced) = displaced {
-            self.remove_orphaned_input(displaced, snarl);
-        }
+        self.plan_edit(
+            |viewer| viewer.connect_in_place(from, to, snarl),
+            |viewer, connected| {
+                let (source, sink) = connected.clone()?;
+                (viewer.error.is_none() && viewer.sink_value(&sink) == Some(source))
+                    .then_some(GraphAction::ConnectWire { source, sink })
+            },
+        );
     }
 
     fn disconnect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<CanvasNode>) {
-        if let CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id) = snarl[to.id.node]
-            && self
-                .graph
-                .nodes
-                .get(&to_id)
-                .is_some_and(|node| self.read_only_inputs(node))
-        {
-            self.error = Some(graph_sequence::READ_ONLY_INPUTS_MESSAGE.into());
-            return;
-        }
-        let disconnected = match snarl[to.id.node] {
-            CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id) => {
-                self.input_at(to_id, to.id.input)
-            }
-            CanvasNode::TargetBlock(block) => self
-                .target_leaf(block, to.id.input)
-                .cloned()
-                .and_then(|leaf| self.binding_node(&leaf)),
-            CanvasNode::SourceBlock(_) => None,
-        };
-        match (snarl[from.id.node], snarl[to.id.node]) {
-            (_, CanvasNode::TargetBlock(block)) => {
-                if let Some(leaf) = self.target_leaf(block, to.id.input).cloned() {
-                    self.remove_binding(&leaf);
-                }
-            }
-            (_, CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id)) => {
-                if self.input_at(to_id, to.id.input).is_none() {
-                    self.error = Some(format!(
-                        "input {} does not exist on mapping node {to_id}",
-                        to.id.input
-                    ));
-                    return;
-                }
-                if self.clear_optional_input(to_id, to.id.input) {
-                    snarl.disconnect(from.id, to.id);
-                    if let Some(disconnected) = disconnected {
-                        self.remove_orphaned_input(disconnected, snarl);
-                    }
-                    return;
-                }
-                let unconnected = match self.fresh_unconnected() {
-                    Ok(id) => id,
-                    Err(error) => {
-                        self.error = Some(error);
-                        return;
-                    }
-                };
-                if !self.set_input(to_id, to.id.input, unconnected) {
-                    self.remove_orphaned_input(unconnected, snarl);
-                    return;
-                }
-                snarl.disconnect(from.id, to.id);
-                if let Some(disconnected) = disconnected {
-                    self.remove_orphaned_input(disconnected, snarl);
-                }
-                return;
-            }
-            _ => {}
-        }
-        snarl.disconnect(from.id, to.id);
-        if let Some(disconnected) = disconnected {
-            self.remove_orphaned_input(disconnected, snarl);
+        let earlier_error = self.error.take();
+        self.plan_edit(
+            |viewer| viewer.disconnect_in_place(from, to, snarl),
+            |viewer, disconnected| {
+                let sink = disconnected.clone()?;
+                (viewer.error.is_none() && viewer.sink_disconnected(&sink))
+                    .then_some(GraphAction::DisconnectWire { sink })
+            },
+        );
+        if self.error.is_none() {
+            self.error = earlier_error;
         }
     }
 
@@ -2872,11 +2678,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     .and_then(crate::filter_map_editor::default_stages)
                     .is_some(),
         ) {
-            self.error = self.insert_palette_node(snarl, pos, template).err();
+            self.error = self
+                .insert_palette_node_recorded(snarl, pos, template)
+                .err();
             ui.close();
         }
     }
-
     fn has_node_menu(&mut self, node: &CanvasNode) -> bool {
         matches!(node, CanvasNode::Graph(_) | CanvasNode::Placeholder(_))
     }
@@ -2924,7 +2731,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             .add_enabled(references.is_empty(), egui::Button::new("Remove"))
             .on_disabled_hover_text(format!("Used by: {}", references.join(", ")));
         if remove.clicked() {
-            self.remove_snarl_nodes_from_ui(ui, &[node], snarl);
+            self.remove_snarl_nodes_recorded(&[node], snarl);
             ui.close();
         }
     }

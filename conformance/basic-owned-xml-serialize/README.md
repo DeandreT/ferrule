@@ -23,7 +23,7 @@ failure is attributed to.
 
 | Model | Coverage |
 |---|---|
-| `X01-endpoints` | Colliding primary and named elements with different attributes, text and repeated children; compact, indented, declaration and namespace options; unsupplied and missing owners; empty and null children; writer type failures |
+| `X01-endpoints` | Colliding primary and named elements with different attributes, text and repeated children; compact, indented, declaration and namespace options; unsupplied and missing owners; empty and null children; writer type failures; forbidden XML 1.0 characters in text and attribute values, and the valid tab, LF, CR, BMP-edge and supplementary-plane boundary characters |
 | `X02-nested` | Pinned and unpinned reads in an owned order iteration, a foreign endpoint root inside it, a nested line iteration reading its enclosing frame, an absent second-row element, empty iterations and an unsupplied iterated endpoint |
 | `X03-frames` | Explicit empty root pins inside an active row, an inactive pinned frame and an uniterated repetition |
 | `X04-grouped` | Owned By groups: representative and pinned reads use the first member, member iteration reads each member, and an absent first-member element fails |
@@ -41,6 +41,3 @@ cargo test -p cli --test code_generation --features codegen-tests basic_xml_seri
 cargo test -p cli --test code_generation --features codegen-tests \
   basic_xml_serialize469_generated -- --ignored
 ```
-
-Forbidden XML 1.0 characters in serialized text are covered by the interpreter
-tests only: the generated C# node writer does not reject them.
