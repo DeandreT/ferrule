@@ -20,6 +20,7 @@ internal static partial class Program
             ("owned Starting R16 original By-Adjacent conservation", BasicOwnedStartingR16OldProfiles),
 #endif
             ("JSON source complete literal corpus", JsonSourceCorpus),
+            ("MapForce-style JSON5 complete byte corpus", MapForceJson5Writer),
             ("JSON source exact selection and bounded admission", JsonSourceSelectionAndLimits),
             ("JSON source complete occurrence document", JsonSourceOccurrenceDocument),
             ("JSON source exact occurrence identities", JsonSourceOccurrenceIdentity),

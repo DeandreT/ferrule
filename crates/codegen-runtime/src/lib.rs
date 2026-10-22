@@ -22,6 +22,7 @@ mod invocation_counter;
 mod iteration;
 mod json;
 mod json5;
+mod json5_writer;
 mod json_source;
 mod path_hierarchy;
 mod recursive_filter;
@@ -126,6 +127,10 @@ pub use json_source::{
 pub use json5::{
     Json5BoundaryError, Json5BoundaryResource, Json5SyntaxError, Json5SyntaxKind,
     Json5SyntaxResource, JsonFormatError, map_json5_bytes_with, map_json5_with,
+};
+pub use json5_writer::{
+    MapForceJson5Error, format_mapforce_json5_ascii_keys,
+    format_mapforce_json5_ascii_keys_with_limit,
 };
 pub use path_hierarchy::{
     MAX_PATH_HIERARCHY_DEPTH, MAX_PATH_HIERARCHY_ITEMS, owned_path_hierarchy, path_hierarchy,

@@ -1058,6 +1058,19 @@ inputs or outputs, root arrays, JSON Lines and dynamic routes are outside this
 companion profile. Physical resource-boundary qualification is separate from
 the small public-host tests.
 
+For a separately selected MapForce-style writer, Rust exposes
+`format_mapforce_json5_ascii_keys` and its `_with_limit` variant through
+`codegen-runtime`. The optional C# JSON5 runtime contains
+`FerruleMapForceJson5.FormatAsciiKeys`. These format one already formed strict
+JSON value; they do not execute a mapping or change the existing JSON5 companion.
+They retain object order and duplicates, use tabs and CRLF without a final
+newline, and escape control characters and UTF-16 surrogate units explicitly.
+Names are restricted to ASCII; non-ASCII names are refused rather than assigned
+an unqualified Unicode identifier policy. Numeric tokens use the 96-bit decimal
+domain and at most 17 fractional output digits, with midpoint rounding away
+from zero. Input and output are bounded to 64 MiB, with 64 container levels and
+one million input values; callers can lower the output limit.
+
 ## Flat CSV Output
 
 Add `--csv-output` to either generation command to include CSV output methods.
