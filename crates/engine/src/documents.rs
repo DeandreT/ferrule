@@ -4,13 +4,38 @@
 //! accepts a document with `Continue` or returns its own stop reason with
 //! `Break`. Existing materializing entry points remain unchanged.
 
+use std::collections::BTreeSet;
 use std::ops::ControlFlow;
 
 use ir::{DocumentMember, Instance};
-use mapping::{IterationOutput, Project, Scope, ScopeIteration};
+use mapping::{IterationOutput, Node, Project, Scope, ScopeIteration};
 use thiserror::Error;
 
 use crate::{EngineError, ExecutionContext, TargetSelection, TraceScope};
+
+/// Explicit host clock for reached date-time reads in a document filename.
+/// Body expressions keep the stable date-time in `ExecutionContext`.
+pub trait DocumentFilenameClock {
+    fn sample_datetime(&self) -> Result<String, String>;
+}
+
+impl<F: Fn() -> Result<String, String>> DocumentFilenameClock for F {
+    fn sample_datetime(&self) -> Result<String, String> {
+        self()
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct DocumentVisitOptions<'a> {
+    filename_clock: Option<&'a dyn DocumentFilenameClock>,
+}
+
+impl<'a> DocumentVisitOptions<'a> {
+    pub fn with_filename_clock(mut self, clock: &'a dyn DocumentFilenameClock) -> Self {
+        self.filename_clock = Some(clock);
+        self
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 #[must_use = "distinguish complete delivery from a consumer-requested stop"]
@@ -55,6 +80,40 @@ fn check_scope(scope: &Scope, stored_path: bool) -> Result<(), EngineError> {
     Ok(())
 }
 
+fn check_clock_path(project: &Project, root: &Scope) -> Result<(), EngineError> {
+    let mut pending = vec![root.output_path().expect("document scope checked")];
+    let mut visited = BTreeSet::new();
+    while let Some(id) = pending.pop() {
+        if !visited.insert(id) {
+            continue;
+        }
+        let node = project
+            .graph
+            .nodes
+            .get(&id)
+            .ok_or(EngineError::MissingNode(id))?;
+        match node {
+            Node::Const { .. }
+            | Node::RuntimeValue { .. }
+            | Node::RuntimeParameter { .. }
+            | Node::RuntimeParameterDefault { .. }
+            | Node::SourceField { .. }
+            | Node::SourceDocumentPath
+            | Node::Position { .. }
+            | Node::Call { .. }
+            | Node::If { .. }
+            | Node::Aggregate { .. } => {}
+            _ => {
+                return Err(EngineError::DocumentStreamUnsupported {
+                    reason: "filename clock sampling is limited to ordinary scalar graph expressions",
+                });
+            }
+        }
+        pending.extend(node.dependencies());
+    }
+    Ok(())
+}
+
 /// Visits complete documents of one selected target in evaluation order.
 ///
 /// A document's body and then its filename are evaluated before the consumer
@@ -71,6 +130,29 @@ pub fn visit_target_documents<B>(
     extras: Vec<(String, Instance)>,
     execution: &ExecutionContext<'_>,
     selection: TargetSelection<'_>,
+    consumer: impl FnMut(DocumentMember) -> ControlFlow<B>,
+) -> Result<DocumentVisit<B>, DocumentVisitError> {
+    visit_target_documents_with_options(
+        project,
+        source,
+        extras,
+        execution,
+        selection,
+        DocumentVisitOptions::default(),
+        consumer,
+    )
+}
+
+/// Like `visit_target_documents`, with explicit filename-only host services.
+/// A supplied clock is sampled only when a supported filename expression
+/// actually reaches a current-date-time node, after that document's body.
+pub fn visit_target_documents_with_options<B>(
+    project: &Project,
+    source: &Instance,
+    extras: Vec<(String, Instance)>,
+    execution: &ExecutionContext<'_>,
+    selection: TargetSelection<'_>,
+    options: DocumentVisitOptions<'_>,
     mut consumer: impl FnMut(DocumentMember) -> ControlFlow<B>,
 ) -> Result<DocumentVisit<B>, DocumentVisitError> {
     let before = |source| DocumentVisitError {
@@ -107,6 +189,9 @@ pub fn visit_target_documents<B>(
         }
     };
     check_scope(root, path).map_err(before)?;
+    if options.filename_clock.is_some() {
+        check_clock_path(project, root).map_err(before)?;
+    }
     let mut accepted = 0;
     let mut stopped = None;
     let result = {
@@ -128,7 +213,7 @@ pub fn visit_target_documents<B>(
             false,
             |program, context| {
                 crate::eval_scope::eval_scope_with_document_visitor(
-                    program,
+                    program.with_document_filename_clock(options.filename_clock),
                     root,
                     Some(schema),
                     context,

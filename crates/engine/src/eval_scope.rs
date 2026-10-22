@@ -2313,7 +2313,7 @@ impl ItemEvaluator<'_> {
             .map(|node| {
                 let mut in_progress = HashSet::new();
                 match eval_expr(
-                    self.program,
+                    self.program.for_document_filename(),
                     node,
                     context,
                     output_positions,

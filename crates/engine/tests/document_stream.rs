@@ -355,7 +355,7 @@ fn filtered_document_positions_do_not_depend_on_retaining_outputs() {
     project.root.filter = Some(7);
     project.root.bindings[0].node = 8;
     let mut seen = vec![];
-    engine::visit_target_documents(
+    let result = engine::visit_target_documents(
         &project,
         &source(&[false, true, false]),
         vec![],
@@ -367,5 +367,6 @@ fn filtered_document_positions_do_not_depend_on_retaining_outputs() {
         },
     )
     .unwrap();
+    assert_eq!(result, DocumentVisit::Complete { accepted: 2 });
     assert_eq!(seen, [("0.xml".into(), 1), ("2.xml".into(), 2)]);
 }
