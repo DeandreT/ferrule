@@ -115,8 +115,9 @@ pub use iteration::{
 };
 pub use json::{
     JsonBoundaryError, JsonDocumentError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_JSON_DOCUMENT_BYTES,
-    parse_json, parse_json_bytes, parse_json_bytes_with_utf8_cause, parse_json_with_format_cause,
-    serialize_json, serialize_json_bytes, serialize_json_compact, serialize_json_compact_bytes,
+    PreparedJsonSchema, parse_json, parse_json_bytes, parse_json_bytes_with_utf8_cause,
+    parse_json_with_format_cause, serialize_json, serialize_json_bytes, serialize_json_compact,
+    serialize_json_compact_bytes,
 };
 pub use json_source::{
     JsonSourceDocuments, JsonSourceLoadError, JsonSourceOccurrence, MAX_JSON_SOURCE_DOCUMENTS,
