@@ -728,3 +728,53 @@ fn computed_property_singular_scalar_descendants_and_maximum_ids_use_existing_ex
     assert!(!empty.is_dirty() && !empty.can_undo());
     retained.complete = true;
 }
+
+#[test]
+fn computed_property_rows_are_typed_commands_matching_snapshots() {
+    use super::typed_edit_oracle::{assert_typed_edit_matches_snapshots, newest_command};
+    use editor_ui::{GraphAction, ScopeLocation};
+    let mut retained = Retained::new();
+    let context = || {
+        let context = egui::Context::default();
+        crate::icons::install(&context);
+        context
+    };
+    let property = |key, value| DynamicBinding { key, value };
+    for document in [MappingDocument::Main, MappingDocument::Target(0)] {
+        let added = assert_typed_edit_matches_snapshots(
+            || setup(&retained, false, document).0,
+            |app| click_label(app, &context(), &retained, "+ property"),
+            "Add computed property",
+        );
+        assert!(matches!(
+            newest_command(&added).action(),
+            GraphAction::AddComputedProperty { scope, .. } if *scope == ScopeLocation::root()
+        ));
+        let edited = assert_typed_edit_matches_snapshots(
+            || setup(&retained, true, document).0,
+            |app| choose(app, &context(), &retained, 1, false, 2, "2: field ValueA"),
+            "Edit computed property",
+        );
+        assert_eq!(
+            newest_command(&edited).action(),
+            &GraphAction::EditComputedProperty {
+                scope: ScopeLocation::root(),
+                from: property(3, 4),
+                to: property(3, 2),
+            }
+        );
+        let removed = assert_typed_edit_matches_snapshots(
+            || setup(&retained, true, document).0,
+            |app| click_label(app, &context(), &retained, "Remove property 1"),
+            "Remove computed property",
+        );
+        assert_eq!(
+            newest_command(&removed).action(),
+            &GraphAction::RemoveComputedProperty {
+                scope: ScopeLocation::root(),
+                property: property(1, 2),
+            }
+        );
+    }
+    retained.complete = true;
+}

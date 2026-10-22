@@ -244,16 +244,16 @@ fn choose_lines_iteration(app: &mut FerruleApp, context: &egui::Context, labels:
         command.action(),
         &GraphAction::EditScope {
             scope: lines.clone(),
-            setting: editor_ui::ScopeSetting::SourceIteration,
+            setting: editor_ui::ScopeSetting::Iteration,
         }
     );
     let change = command
         .patch()
-        .setting(&lines, editor_ui::ScopeSetting::SourceIteration)
+        .setting(&lines, editor_ui::ScopeSetting::Iteration)
         .expect("the iteration change");
     assert!(matches!(
         change.after(),
-        editor_ui::ScopeSettingValue::SourceIteration(editor_ui::SourceIteration::Owned {
+        editor_ui::ScopeSettingValue::Iteration(editor_ui::Iteration::Owned {
             source,
             output_path: None,
         }) if source.owner == ref_owner()

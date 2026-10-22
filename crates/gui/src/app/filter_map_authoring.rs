@@ -55,8 +55,16 @@ fn compatible_scope(app: &FerruleApp) -> bool {
 }
 
 impl FerruleApp {
-    fn set_selected_filter_map(&mut self, sequence: SequenceExpr) {
-        let root = match self.mapping_workspace.active {
+    /// Makes the selected scope iterate `sequence`, recording the edit since
+    /// `before` as `action`.
+    fn set_selected_filter_map(
+        &mut self,
+        sequence: SequenceExpr,
+        before: &Project,
+        action: editor_ui::GraphAction,
+    ) {
+        let document = self.mapping_workspace.active;
+        let root = match document {
             MappingDocument::Main => &mut self.project.root,
             MappingDocument::Target(index) => {
                 let Some(target) = self.project.extra_targets.get_mut(index) else {
@@ -67,6 +75,8 @@ impl FerruleApp {
             _ => return,
         };
         scope_at_mut(root, &self.selected_scope).set_sequence(Some(sequence));
+        let path = self.selected_scope.clone();
+        self.queue_document_edit(document, before, action, Some(&path));
         self.rebuild_mapping_canvases_after_retirement();
     }
 
@@ -83,8 +93,14 @@ impl FerruleApp {
         let ids = crate::graph_viewer::reserve_project_node_ids(&self.project, 4)?;
         let (sequence, nodes) =
             crate::filter_map_editor::create(&ids, &self.project.user_functions)?;
+        let before = self.project.clone();
         self.project.graph.nodes.extend(nodes);
-        self.set_selected_filter_map(sequence);
+        let scope = editor_ui::ScopeLocation::of_children(&self.selected_scope);
+        self.set_selected_filter_map(
+            sequence,
+            &before,
+            editor_ui::GraphAction::UseFilterMap { scope },
+        );
         Ok(())
     }
 
@@ -139,7 +155,13 @@ impl FerruleApp {
             ui.weak("These stored settings are retained. Select an ordinary repeating target group to edit them.");
         }
         if current.as_ref() != Some(&staged) {
-            self.set_selected_filter_map(staged);
+            let before = self.project.clone();
+            let scope = editor_ui::ScopeLocation::of_children(&self.selected_scope);
+            self.set_selected_filter_map(
+                staged,
+                &before,
+                editor_ui::GraphAction::EditFilterMap { scope },
+            );
         }
     }
 }

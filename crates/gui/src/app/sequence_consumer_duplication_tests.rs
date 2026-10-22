@@ -1687,3 +1687,6 @@ fn request_is_one_canvas_one_frame_and_keyboard_history_restores_the_complete_co
         );
     }
 }
+
+#[path = "sequence_consumer_duplication_tests/typed_history.rs"]
+mod typed_history;

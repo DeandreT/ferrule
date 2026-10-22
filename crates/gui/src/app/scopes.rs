@@ -5,14 +5,28 @@ impl FerruleApp {
         &mut self,
         action: &crate::target_xml_type::Action,
     ) {
-        let target = match self.mapping_workspace.active {
+        let document = self.mapping_workspace.active;
+        let target = match document {
             MappingDocument::Main => None,
             MappingDocument::Target(index) => Some(index),
             MappingDocument::Function(_) => return,
         };
+        let before = self.project.clone();
         match crate::target_xml_type::apply(&mut self.project, target, &self.selected_scope, action)
         {
             Ok(true) => {
+                let scope = editor_ui::ScopeLocation::of_children(&self.selected_scope);
+                let typed = match action {
+                    crate::target_xml_type::Action::Infer => {
+                        Some(editor_ui::GraphAction::InferXmlType { scope })
+                    }
+                    crate::target_xml_type::Action::Declared(_) => self
+                        .selected_xml_type_node()
+                        .map(|node| editor_ui::GraphAction::SetXmlType { scope, node }),
+                };
+                if let Some(typed) = typed {
+                    self.queue_document_edit(document, &before, typed, None);
+                }
                 if let Some(index) = target {
                     let nodes = self
                         .mapping_workspace
@@ -35,17 +49,7 @@ impl FerruleApp {
                     self.rebuild_snarl_preserving_positions();
                 }
                 if matches!(action, crate::target_xml_type::Action::Declared(_)) {
-                    let root = target
-                        .and_then(|index| self.project.extra_targets.get(index))
-                        .map_or(&self.project.root, |target| &target.root);
-                    let expression = crate::auto_connect::scope_at(root, &self.selected_scope)
-                        .and_then(|scope| {
-                            scope
-                                .bindings
-                                .iter()
-                                .find(|binding| binding.target_field == ir::XML_TYPE_FIELD)
-                        })
-                        .map(|binding| binding.node);
+                    let expression = self.selected_xml_type_node();
                     let canvas = match target {
                         Some(index) => self.mapping_workspace.target_canvases.get_mut(&index),
                         None => Some(&mut self.main_canvas),
@@ -72,6 +76,19 @@ impl FerruleApp {
                 self.diagnostics.error("Target XML type edit failed", error);
             }
         }
+    }
+
+    /// The node bound to the XML type of the selected scope.
+    fn selected_xml_type_node(&self) -> Option<NodeId> {
+        let root = match self.mapping_workspace.active {
+            MappingDocument::Target(index) => &self.project.extra_targets.get(index)?.root,
+            MappingDocument::Main | MappingDocument::Function(_) => &self.project.root,
+        };
+        crate::auto_connect::scope_at(root, &self.selected_scope)?
+            .bindings
+            .iter()
+            .find(|binding| binding.target_field == ir::XML_TYPE_FIELD)
+            .map(|binding| binding.node)
     }
 
     pub(super) fn show_scope_controls(&mut self, ui: &mut egui::Ui) {
@@ -178,8 +195,22 @@ impl FerruleApp {
             return;
         }
 
-        let result = match (target_index, action) {
-            (Some(index), Some(ScopeAction::Add(target_field))) => {
+        if let Some(ScopeAction::Add(target_field)) = action {
+            self.add_selected_child_scope(&target_field);
+        }
+    }
+
+    /// Adds a static child scope for `target_field` below the selected scope
+    /// and selects it.
+    pub(super) fn add_selected_child_scope(&mut self, target_field: &str) {
+        // A function tab's Inspector edits the primary target's scopes.
+        let document = match self.mapping_workspace.active {
+            MappingDocument::Function(_) => MappingDocument::Main,
+            document => document,
+        };
+        let before = self.project.clone();
+        let result = match document {
+            MappingDocument::Target(index) => {
                 let Some(target) = self.project.extra_targets.get_mut(index) else {
                     return;
                 };
@@ -187,22 +218,23 @@ impl FerruleApp {
                     &mut target.root,
                     &target.schema,
                     &self.selected_scope,
-                    &target_field,
+                    target_field,
                 )
             }
-            (None, Some(ScopeAction::Add(target_field))) => create_static_child_scope(
+            MappingDocument::Main | MappingDocument::Function(_) => create_static_child_scope(
                 &mut self.project.root,
                 &self.project.target,
                 &self.selected_scope,
-                &target_field,
+                target_field,
             ),
-            (_, Some(ScopeAction::Expand | ScopeAction::Remove)) => {
-                unreachable!("structural actions handled above")
-            }
-            (_, None) => return,
         };
         match result {
             Ok(selection) => {
+                let action = editor_ui::GraphAction::AddScope {
+                    parent: editor_ui::ScopeLocation::of_children(&self.selected_scope),
+                    field: target_field.to_owned(),
+                };
+                self.queue_document_edit(document, &before, action, None);
                 self.selected_scope = selection;
                 self.rebuild_snarl_preserving_positions();
                 self.status = "scope tree updated".to_string();
@@ -217,7 +249,9 @@ impl FerruleApp {
     }
 
     pub(super) fn expand_selected_target_subtree(&mut self) {
-        let result = match self.mapping_workspace.active {
+        let document = self.mapping_workspace.active;
+        let before = self.project.clone();
+        let result = match document {
             MappingDocument::Target(index) => {
                 let Some(target) = self.project.extra_targets.get_mut(index) else {
                     return;
@@ -234,6 +268,10 @@ impl FerruleApp {
         match result {
             Ok(expansion) => {
                 if expansion.created > 0 {
+                    let action = editor_ui::GraphAction::ExpandScope {
+                        scope: editor_ui::ScopeLocation::of_children(&self.selected_scope),
+                    };
+                    self.queue_document_edit(document, &before, action, None);
                     self.rebuild_snarl_preserving_positions();
                     self.diagnostics.clear();
                 }

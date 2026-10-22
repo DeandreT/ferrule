@@ -44,7 +44,8 @@ fn retirement_items(project: &Project, removed: &Scope) -> Result<Vec<NodeId>, S
 
 impl FerruleApp {
     pub(super) fn remove_selected_target_scope(&mut self) {
-        let target_index = match self.mapping_workspace.active {
+        let document = self.mapping_workspace.active;
+        let target_index = match document {
             MappingDocument::Main => None,
             MappingDocument::Target(index) => Some(index),
             MappingDocument::Function(_) => return,
@@ -74,6 +75,7 @@ impl FerruleApp {
                 return;
             }
         };
+        let before = self.project.clone();
         let root = match target_index {
             Some(index) => &mut self.project.extra_targets[index].root,
             None => &mut self.project.root,
@@ -83,6 +85,10 @@ impl FerruleApp {
                 for item in items {
                     self.project.graph.nodes.remove(&item);
                 }
+                let action = editor_ui::GraphAction::RemoveScope {
+                    scope: editor_ui::ScopeLocation::of_children(&self.selected_scope),
+                };
+                self.queue_document_edit(document, &before, action, None);
                 self.selected_scope = selection;
                 self.rebuild_mapping_canvases_after_retirement();
                 self.status = "scope tree updated".into();

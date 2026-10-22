@@ -125,7 +125,7 @@ pub struct SortKey {
     pub descending: bool,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Scope {
     /// Name of the field this scope populates in its parent scope; ignored
     /// for a project's root scope.

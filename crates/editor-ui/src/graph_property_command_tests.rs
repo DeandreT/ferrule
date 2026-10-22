@@ -4,7 +4,7 @@
 use mapping::{OwnedSourceRef, ScopeIteration, SourceOwner};
 
 use super::*;
-use crate::{NodeProperty, ScopeFields, ScopeSetting, ScopeSettingValue, SourceIteration};
+use crate::{Iteration, NodeProperty, ScopeFields, ScopeSetting, ScopeSettingValue};
 
 fn rows_scope(project: &mut Project) -> &mut Scope {
     &mut project.root.children[1]
@@ -249,7 +249,7 @@ fn scope_settings_apply_revert_and_refuse_stale_state_atomically() {
 }
 
 #[test]
-fn only_source_backed_iterations_are_setting_values() {
+fn presence_iterations_have_no_setting_value() {
     let mut scope = Scope {
         iteration: ScopeIteration::OwnedSource {
             source: OwnedSourceRef {
@@ -261,18 +261,16 @@ fn only_source_backed_iterations_are_setting_values() {
         ..Scope::default()
     };
     assert!(matches!(
-        ScopeSettingValue::read(ScopeSetting::SourceIteration, &scope),
-        Some(ScopeSettingValue::SourceIteration(
-            SourceIteration::Owned { .. }
-        ))
+        ScopeSettingValue::read(ScopeSetting::Iteration, &scope),
+        Some(ScopeSettingValue::Iteration(Iteration::Owned { .. }))
     ));
     scope.iteration = ScopeIteration::OptionalPresence { condition: 1 };
     assert_eq!(
-        ScopeSettingValue::read(ScopeSetting::SourceIteration, &scope),
+        ScopeSettingValue::read(ScopeSetting::Iteration, &scope),
         None
     );
     let fields = ScopeFields::capture(&scope);
-    assert!(fields.setting(ScopeSetting::SourceIteration).is_none());
+    assert!(fields.setting(ScopeSetting::Iteration).is_none());
     assert!(fields.setting(ScopeSetting::Filter).is_some());
 
     // A change into a form without a value is not captured as a setting.

@@ -4,16 +4,17 @@
 use std::collections::BTreeMap;
 
 use mapping::{
-    Binding, IterationOutput, NodeId, OwnedSourceRef, Scope, ScopeIteration, SequenceWindow,
-    SortFilterOrder, SortKey,
+    Binding, DynamicBinding, IterationOutput, JoinId, JoinPlan, NodeId, OwnedSourceRef, Scope,
+    ScopeIteration, SequenceExpr, SequenceWindow, SortFilterOrder, SortKey,
 };
 
 /// One setting of a scope. Bindings, nested scopes, and the construction
-/// mode are not settings.
+/// mode are not settings. Joined and generated iterations and computed
+/// properties are settings that only their own graph actions change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ScopeSetting {
-    /// The source-backed iteration and its per-item output path.
-    SourceIteration,
+    /// The iteration form and its per-item output path.
+    Iteration,
     Filter,
     /// Every grouping expression and the filter applied after grouping.
     Grouping,
@@ -21,35 +22,40 @@ pub enum ScopeSetting {
     Sort,
     Windows,
     IterationOutput,
+    /// The ordered computed properties of an open target object.
+    ComputedProperties,
 }
 
 impl ScopeSetting {
-    pub const ALL: [Self; 6] = [
-        Self::SourceIteration,
+    pub const ALL: [Self; 7] = [
+        Self::Iteration,
         Self::Filter,
         Self::Grouping,
         Self::Sort,
         Self::Windows,
         Self::IterationOutput,
+        Self::ComputedProperties,
     ];
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::SourceIteration => "Change scope iteration",
+            Self::Iteration => "Change scope iteration",
             Self::Filter => "Change scope filter",
             Self::Grouping => "Change scope grouping",
             Self::Sort => "Change scope sort",
             Self::Windows => "Change scope windows",
             Self::IterationOutput => "Change scope output",
+            Self::ComputedProperties => "Change computed properties",
         }
     }
 }
 
-/// The source-backed iteration forms the scope editor authors. Generated,
-/// joined, concatenated, and presence iterations have no setting value, so
-/// edits that involve them are not expressed as scope settings.
+/// The iteration forms editors author: source-backed iterations, generated
+/// sequences, and joins over static collections. Owned joins, concatenated
+/// segments, and presence conditions have no setting value, so edits that
+/// involve them are not expressed as scope settings.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SourceIteration {
+pub enum Iteration {
     None,
     Source(Vec<String>),
     Owned {
@@ -60,9 +66,23 @@ pub enum SourceIteration {
         source: Vec<String>,
         output_path: NodeId,
     },
+    Generated(SequenceExpr),
+    Joined {
+        id: JoinId,
+        plan: JoinPlan,
+    },
 }
 
-impl SourceIteration {
+impl Iteration {
+    /// Whether this is one of the source-backed forms the scope editor's
+    /// iteration controls choose between.
+    pub fn is_source_backed(&self) -> bool {
+        matches!(
+            self,
+            Self::None | Self::Source(_) | Self::Owned { .. } | Self::DynamicDocuments { .. }
+        )
+    }
+
     fn of(iteration: &ScopeIteration) -> Option<Self> {
         Some(match iteration {
             ScopeIteration::None => Self::None,
@@ -81,9 +101,12 @@ impl SourceIteration {
                 source: source.clone(),
                 output_path: *output_path,
             },
-            ScopeIteration::Sequence(_)
-            | ScopeIteration::InnerJoin { .. }
-            | ScopeIteration::OwnedInnerJoin { .. }
+            ScopeIteration::Sequence(sequence) => Self::Generated(sequence.clone()),
+            ScopeIteration::InnerJoin { id, plan } => Self::Joined {
+                id: *id,
+                plan: plan.clone(),
+            },
+            ScopeIteration::OwnedInnerJoin { .. }
             | ScopeIteration::Concatenate(_)
             | ScopeIteration::OptionalPresence { .. } => return None,
         })
@@ -106,6 +129,11 @@ impl SourceIteration {
             } => ScopeIteration::DynamicDocuments {
                 source: source.clone(),
                 output_path: *output_path,
+            },
+            Self::Generated(sequence) => ScopeIteration::Sequence(sequence.clone()),
+            Self::Joined { id, plan } => ScopeIteration::InnerJoin {
+                id: *id,
+                plan: plan.clone(),
             },
         }
     }
@@ -133,12 +161,13 @@ pub struct Sorting {
 /// The value of one scope setting.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ScopeSettingValue {
-    SourceIteration(SourceIteration),
+    Iteration(Iteration),
     Filter(Option<NodeId>),
     Grouping(Grouping),
     Sort(Sorting),
     Windows(Vec<SequenceWindow>),
     IterationOutput(IterationOutput),
+    ComputedProperties(Vec<DynamicBinding>),
 }
 
 impl ScopeSettingValue {
@@ -146,9 +175,7 @@ impl ScopeSettingValue {
     /// a setting value.
     pub fn read(setting: ScopeSetting, scope: &Scope) -> Option<Self> {
         Some(match setting {
-            ScopeSetting::SourceIteration => {
-                Self::SourceIteration(SourceIteration::of(&scope.iteration)?)
-            }
+            ScopeSetting::Iteration => Self::Iteration(Iteration::of(&scope.iteration)?),
             ScopeSetting::Filter => Self::Filter(scope.filter),
             ScopeSetting::Grouping => Self::Grouping(Grouping {
                 by: scope.group_by,
@@ -166,24 +193,28 @@ impl ScopeSettingValue {
             }),
             ScopeSetting::Windows => Self::Windows(scope.windows.clone()),
             ScopeSetting::IterationOutput => Self::IterationOutput(scope.iteration_output),
+            ScopeSetting::ComputedProperties => {
+                Self::ComputedProperties(scope.dynamic_bindings.clone())
+            }
         })
     }
 
     pub fn setting(&self) -> ScopeSetting {
         match self {
-            Self::SourceIteration(_) => ScopeSetting::SourceIteration,
+            Self::Iteration(_) => ScopeSetting::Iteration,
             Self::Filter(_) => ScopeSetting::Filter,
             Self::Grouping(_) => ScopeSetting::Grouping,
             Self::Sort(_) => ScopeSetting::Sort,
             Self::Windows(_) => ScopeSetting::Windows,
             Self::IterationOutput(_) => ScopeSetting::IterationOutput,
+            Self::ComputedProperties(_) => ScopeSetting::ComputedProperties,
         }
     }
 
     /// Replaces this setting of `scope`, leaving every other field intact.
     pub(crate) fn write(&self, scope: &mut Scope) {
         match self {
-            Self::SourceIteration(iteration) => scope.iteration = iteration.iteration(),
+            Self::Iteration(iteration) => scope.iteration = iteration.iteration(),
             Self::Filter(filter) => scope.filter = *filter,
             Self::Grouping(grouping) => {
                 scope.group_by = grouping.by;
@@ -201,6 +232,7 @@ impl ScopeSettingValue {
             }
             Self::Windows(windows) => scope.windows = windows.clone(),
             Self::IterationOutput(output) => scope.iteration_output = *output,
+            Self::ComputedProperties(properties) => scope.dynamic_bindings = properties.clone(),
         }
     }
 }
