@@ -341,6 +341,20 @@ pub fn preview_project_value_from_files(
         .preview(&options.observers())
 }
 
+/// Like [`preview_project_value_from_files`], with a caller-owned reader for
+/// configured filesystem PDF inputs. The reader is used exactly where a file
+/// run would read a PDF: the primary once, selected static sources, and
+/// dynamic sources the mapping requests.
+pub fn preview_project_value_from_files_with_pdf_reader(
+    project: &mapping::Project,
+    project_path: &Path,
+    options: &RunOptions<'_>,
+    reader: &dyn FilesystemPdfReader,
+) -> anyhow::Result<PayloadRunOutcome> {
+    PreparedFileRun::prepare_preview(project, project_path, options.request())?
+        .preview_with_pdf_reader(&options.observers(), reader)
+}
+
 /// Loads a filesystem project with a caller-owned PDF reader.
 pub fn run_project_with_options_and_pdf_reader(
     project_path: &Path,
@@ -661,13 +675,30 @@ impl<'a> PreparedFileRun<'a> {
     /// Acquires and evaluates like [`Self::execute`], then renders every
     /// planned target in memory. Nothing is staged or published.
     pub fn preview(self, observers: &RunObservers<'_>) -> anyhow::Result<PayloadRunOutcome> {
+        self.preview_with_optional_pdf_reader(observers, None)
+    }
+
+    /// Previews with a caller-owned reader for configured filesystem PDF inputs.
+    pub fn preview_with_pdf_reader(
+        self,
+        observers: &RunObservers<'_>,
+        reader: &dyn FilesystemPdfReader,
+    ) -> anyhow::Result<PayloadRunOutcome> {
+        self.preview_with_optional_pdf_reader(observers, Some(reader))
+    }
+
+    fn preview_with_optional_pdf_reader(
+        self,
+        observers: &RunObservers<'_>,
+        reader: Option<&dyn FilesystemPdfReader>,
+    ) -> anyhow::Result<PayloadRunOutcome> {
         if self.delivery != Delivery::Preview {
             bail!("a prepared file run publishes its targets; use `prepare_preview`");
         }
         let project = self.project;
         let project_path = self.project_path;
         let output_path = self.request.output_path;
-        let (_, evaluated, current_datetime) = self.evaluate(observers, None)?;
+        let (_, evaluated, current_datetime) = self.evaluate(observers, reader)?;
         match &evaluated {
             Evaluated::Selected(output) => crate::payload::render_selected_outcome(
                 project,

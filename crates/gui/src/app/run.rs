@@ -136,6 +136,8 @@ pub(super) struct FileRunCore {
     pub(super) started: Instant,
     pub(super) debug: bool,
     pub(super) phase: FileRunPhase,
+    /// The opted-in owned PDF extraction's latest state, if any.
+    pub(super) extraction: Option<Arc<super::pdf_extraction::ExtractionStatus>>,
     pub(super) shutdown: ShutdownIntent,
 }
 
@@ -528,6 +530,14 @@ impl FerruleApp {
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
         let pause_on_failure = debug && self.file_run_pause_on_failure;
+        let extraction = self
+            .owned_pdf_worker
+            .then(|| Arc::new(super::pdf_extraction::ExtractionStatus::default()));
+        let pdf_worker = extraction
+            .as_ref()
+            .map(|status| (self.pdf_worker_package.clone(), Arc::clone(status)));
+        #[cfg(test)]
+        let reader_controls = self.pdf_reader_controls;
         let mut core = FileRunCore {
             receiver,
             worker: None,
@@ -537,6 +547,7 @@ impl FerruleApp {
             started: Instant::now(),
             debug,
             phase: FileRunPhase::Running,
+            extraction,
             shutdown: ShutdownIntent::default(),
         };
         core.worker = Some(std::thread::spawn(move || {
@@ -580,7 +591,22 @@ impl FerruleApp {
             if let Some(path) = output_path.as_deref() {
                 options = options.with_output_path(path);
             }
-            let result = cli::run_project_with_options(&project_path, &options).map_err(|error| {
+            // The owned reader lives on this thread and returns only after its
+            // extraction is closed, so the thread outlives any worker child.
+            let reader = pdf_worker.as_ref().map(|(package, status)| {
+                let reader =
+                    super::pdf_extraction::OwnedPdfReader::new(package, &control.cancelled, status);
+                #[cfg(test)]
+                let reader = reader.with_controls(reader_controls);
+                reader
+            });
+            let result = match &reader {
+                Some(reader) => {
+                    cli::run_project_with_options_and_pdf_reader(&project_path, &options, reader)
+                }
+                None => cli::run_project_with_options(&project_path, &options),
+            };
+            let result = result.map_err(|error| {
                 if error.chain().any(|cause| {
                     matches!(
                         cause.downcast_ref::<engine::EngineError>(),
@@ -818,6 +844,11 @@ impl FerruleApp {
         };
         let phase = pending.phase.clone();
         let debug = pending.debug;
+        let extraction = pending
+            .extraction
+            .as_ref()
+            .and_then(|status| status.progress_label());
+        let closing = self.close_after_file_run;
         let mut action = None;
         egui::Window::new(if debug { "Debug Run" } else { "Run" })
             .collapsible(false)
@@ -872,6 +903,12 @@ impl FerruleApp {
                             ui.strong("Stopping run");
                         });
                     }
+                }
+                if let Some(extraction) = &extraction {
+                    ui.weak(extraction);
+                }
+                if closing {
+                    ui.weak("The application closes after this run has stopped.");
                 }
                 ui.separator();
                 ui.horizontal(|ui| match &phase {

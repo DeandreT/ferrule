@@ -78,6 +78,15 @@ mod mfd_pipeline;
 #[path = "new_mapping.rs"]
 mod new_mapping_ui;
 mod owned_worker;
+mod pdf_extraction;
+mod preview_service;
+pub(crate) use preview_service::{PreviewService, PreviewServicePort};
+#[cfg(all(test, target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[path = "pdf_preview_tests.rs"]
+mod pdf_preview_tests;
+#[cfg(all(test, target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[path = "pdf_run_tests.rs"]
+mod pdf_run_tests;
 #[path = "pipeline_editor.rs"]
 mod pipeline_editor_ui;
 mod pipeline_stage_canvas;
@@ -469,6 +478,16 @@ pub struct FerruleApp {
     file_run_pause_on_failure: bool,
     pending_file_run: Option<run_ui::PendingFileRun>,
     file_run_teardown: SavedFileRunTeardownPort,
+    /// Session opt-in: filesystem PDF inputs of file runs and file-backed
+    /// previews are extracted by an owned packaged worker. Off by default.
+    owned_pdf_worker: bool,
+    pdf_worker_package: pdf_extraction::PdfWorkerPackage,
+    #[cfg(test)]
+    pdf_reader_controls: pdf_extraction::ReaderControls,
+    preview_input_source: preview_service::PreviewInputSource,
+    preview_service: PreviewServicePort,
+    /// Close the window once owned previews and the service have finished.
+    close_after_preview: bool,
     rest_run_draft: Option<rest_run::RestRunDraft>,
     pending_rest_run: Option<rest_run::PendingRestRun>,
     rest_run_result: Option<rest_run::RestRunResult>,
@@ -651,6 +670,13 @@ impl Default for FerruleApp {
             file_run_pause_on_failure: false,
             pending_file_run: None,
             file_run_teardown: SavedFileRunTeardownPort::default(),
+            owned_pdf_worker: false,
+            pdf_worker_package: pdf_extraction::PdfWorkerPackage::beside_current_executable(),
+            #[cfg(test)]
+            pdf_reader_controls: Default::default(),
+            preview_input_source: Default::default(),
+            preview_service: PreviewServicePort::default(),
+            close_after_preview: false,
             rest_run_draft: None,
             pending_rest_run: None,
             rest_run_result: None,
@@ -931,12 +957,14 @@ impl FerruleApp {
         }
     }
 
-    pub(crate) fn from_storage_with_saved_file_owner(
+    pub(crate) fn from_storage_with_owners(
         storage: Option<&dyn eframe::Storage>,
         owner: SavedFileRunTeardownPort,
+        preview_service: PreviewServicePort,
     ) -> Self {
         Self {
             file_run_teardown: owner,
+            preview_service,
             ..Self::from_storage(storage)
         }
     }
@@ -1424,6 +1452,7 @@ impl eframe::App for FerruleApp {
         self.poll_library_generation(ui.ctx());
         self.poll_pipeline_run(ui.ctx());
         self.poll_preview(ui.ctx());
+        self.poll_preview_service(ui.ctx());
         self.poll_file_run(ui.ctx());
         self.poll_rest_run(ui.ctx());
         if !self.guard_library_generation_close_requested(ui.ctx(), close_requested) {
