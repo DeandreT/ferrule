@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 
 use mapping::{FailureIteration, Graph, Node, NodeId, Project, Scope, ScopeConstruction};
 
-use super::graph::node_inputs;
+use super::node_inputs::node_inputs;
 use super::{
     ValidationEndpoint, ValidationIssue, ValidationOwner, ValidationScopeLocation,
     ValidationScopeStep,
