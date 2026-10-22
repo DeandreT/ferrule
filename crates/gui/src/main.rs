@@ -37,6 +37,7 @@ mod run_report;
 mod schema_scalar;
 mod schema_tree;
 mod scope_editor;
+mod source_ownership;
 mod target_xml_type;
 #[cfg(test)]
 mod test_ui;

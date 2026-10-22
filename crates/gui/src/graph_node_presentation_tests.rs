@@ -211,7 +211,7 @@ fn literal_output_text_is_distinct_from_the_output_node_marker() {
 }
 
 #[test]
-fn owned_source_headers_retain_the_complete_read_only_owner_and_frame_metadata() {
+fn owned_source_headers_retain_the_complete_owner_and_frame_metadata() {
     let node = Node::OwnedPosition(mapping::OwnedPosition {
         owner: mapping::SourceOwner::Named {
             name: "Authored source 資料".into(),
@@ -225,7 +225,7 @@ fn owned_source_headers_retain_the_complete_read_only_owner_and_frame_metadata()
     assert!(
         header
             .accessible_label
-            .contains("Read-only; source ownership execution is unavailable")
+            .contains("Counts exactly this input's active items")
     );
     assert!(!is_inline(&node));
     assert_eq!(serde_json::to_string(&node).unwrap(), before);

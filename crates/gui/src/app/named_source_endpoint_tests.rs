@@ -1,5 +1,5 @@
 //! Named boundary identity, canvas migration and conservative shadowing policy.
-//! Backend source ownership remains a separate concern (#432).
+//! Shadowed aliases are wired as exact owned reads (#929).
 
 use super::*;
 use crate::canvas::{SourceBlock, TargetBlock, project_source_blocks, source_blocks};
@@ -294,7 +294,7 @@ fn primary_legacy_unframed_field_is_not_redirected_by_equal_named_leaf_names() {
 }
 
 #[test]
-fn ambiguous_named_pin_is_visible_but_refuses_before_mutation_and_keeps_native_shadowing() {
+fn ambiguous_named_pin_authors_its_exact_owner_while_saved_shadowing_is_unchanged() {
     for repeating in [false, true] {
         let mut project = project();
         let mut value_schema = project.source.clone();
@@ -331,45 +331,70 @@ fn ambiguous_named_pin_is_visible_but_refuses_before_mutation_and_keeps_native_s
         let catalogs = Catalogs::new(&project);
         let snarl = build_snarl(&project);
         assert_eq!(catalogs.sources.len(), 2);
-        assert!(
-            snarl
-                .nodes()
-                .any(|node| *node == CanvasNode::SourceBlock(1))
-        );
         let wire = snarl.wires().next().unwrap();
         assert_eq!(snarl[wire.0.node], CanvasNode::SourceBlock(0));
-        let before = mapping::project_file::encode_pretty(&project).unwrap();
-        let error = connect(&mut project, 1, 0, &mut Default::default()).unwrap_err();
-        assert!(error.contains("catalog"));
-        assert!(error.contains("primary input"));
-        assert_eq!(
-            mapping::project_file::encode_pretty(&project).unwrap(),
-            before
-        );
+        let wrap = |value: &str| {
+            if repeating {
+                Instance::Repeated(vec![input(value)])
+            } else {
+                input(value)
+            }
+        };
+        let primary = Instance::Group(vec![("catalog".into(), wrap("primary-shadow"))].into());
+        let run = |project: &Project| {
+            engine::run_with_sources(project, &primary, vec![("catalog".into(), wrap("named"))])
+                .unwrap()
+        };
+        let expected = |value: &str| {
+            if repeating {
+                Instance::Repeated(vec![output(value)])
+            } else {
+                output(value)
+            }
+        };
         assert!(
             cli::validate(&project).is_empty(),
             "native shadowing remains admitted"
         );
-        let primary_value = if repeating {
-            Instance::Repeated(vec![input("primary-shadow")])
-        } else {
-            input("primary-shadow")
+        assert_eq!(run(&project), expected("primary-shadow"));
+
+        connect(&mut project, 1, 0, &mut Default::default()).unwrap();
+        let read = project.root.bindings[0].node;
+        let Node::OwnedSourceField(field) = &project.graph.nodes[&read] else {
+            panic!("the pin authors an owned field");
         };
-        let extra_value = if repeating {
-            Instance::Repeated(vec![input("named")])
-        } else {
-            input("named")
-        };
-        let primary = Instance::Group(vec![("catalog".into(), primary_value)].into());
-        let actual =
-            engine::run_with_sources(&project, &primary, vec![("catalog".into(), extra_value)])
-                .unwrap();
-        let expected = if repeating {
-            Instance::Repeated(vec![output("primary-shadow")])
-        } else {
-            output("primary-shadow")
-        };
-        assert_eq!(actual, expected);
+        assert_eq!(
+            field,
+            &mapping::OwnedSourceField {
+                source: mapping::OwnedSourceRef {
+                    owner: mapping::SourceOwner::Named {
+                        name: "catalog".into()
+                    },
+                    path: vec!["Value".into()],
+                },
+                frame: repeating.then(Vec::new),
+            }
+        );
+        assert!(
+            !project.graph.nodes.contains_key(&7),
+            "the displaced hidden legacy field is orphaned"
+        );
+        if repeating {
+            // The legacy scope path still names the primary collection; an
+            // owned row read needs the named rows to be iterated by owner.
+            project
+                .root
+                .set_source_selector(Some(mapping::SourceSelector::Owned(
+                    mapping::OwnedSourceRef {
+                        owner: mapping::SourceOwner::Named {
+                            name: "catalog".into(),
+                        },
+                        path: vec![],
+                    },
+                )));
+        }
+        assert!(cli::validate(&project).is_empty());
+        assert_eq!(run(&project), expected("named"));
     }
 }
 
@@ -438,12 +463,33 @@ fn nested_other_named_and_unknown_runtime_fields_conservatively_mark_alias_confl
         actual,
         Instance::Repeated(vec![output("inner-named-shadow")])
     );
-    let before = mapping::project_file::encode_pretty(&project).unwrap();
-    let error = connect(&mut project, 1, 0, &mut Default::default()).unwrap_err();
-    assert!(error.contains("named input"));
+    // Another input's field shadows the alias, so the pin reads it by owner.
+    connect(&mut project, 1, 0, &mut Default::default()).unwrap();
+    let read = project.root.bindings[0].node;
+    assert!(matches!(
+        &project.graph.nodes[&read],
+        Node::OwnedSourceField(field)
+            if field.source.owner == mapping::SourceOwner::Named { name: "catalog".into() }
+                && field.source.path == ["Value"]
+                && field.frame.is_none()
+    ));
+    assert!(cli::validate(&project).is_empty());
     assert_eq!(
-        mapping::project_file::encode_pretty(&project).unwrap(),
-        before
+        engine::run_with_sources(
+            &project,
+            &input("primary"),
+            vec![
+                ("catalog".into(), input("named-catalog")),
+                (
+                    "orders".into(),
+                    Instance::Repeated(vec![Instance::Group(
+                        vec![("catalog".into(), input("inner-named-shadow"))].into(),
+                    )]),
+                ),
+            ],
+        )
+        .unwrap(),
+        Instance::Repeated(vec![output("named-catalog")])
     );
     if let SchemaKind::Group { dynamic, .. } = &mut project.source.kind {
         *dynamic = Some(Box::new(original.clone()));

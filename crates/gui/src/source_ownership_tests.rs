@@ -1,0 +1,212 @@
+use super::*;
+use crate::canvas::project_source_blocks;
+use ir::ScalarType;
+
+fn value_group(name: &str) -> SchemaNode {
+    SchemaNode::group(name, vec![SchemaNode::scalar("Value", ScalarType::String)])
+}
+
+fn named(name: &str, schema: SchemaNode) -> NamedSource {
+    NamedSource {
+        name: name.into(),
+        path: format!("{name}.json"),
+        schema,
+        options: Default::default(),
+        dynamic_path: None,
+    }
+}
+
+fn project(primary: SchemaNode, sources: Vec<NamedSource>) -> Project {
+    Project {
+        source: primary,
+        target: value_group("Output"),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: sources,
+        extra_targets: vec![],
+        failure_rules: vec![],
+        user_functions: Default::default(),
+        graph: Default::default(),
+        root: Default::default(),
+    }
+}
+
+fn reads(project: &Project) -> Vec<Vec<PinRead>> {
+    let ownership = SourceOwnership::new(&project.source, &project.extra_sources)
+        .with_project_usage(project_uses_ownership(project));
+    project_source_blocks(project)
+        .iter()
+        .enumerate()
+        .map(|(block, section)| {
+            section
+                .leaves
+                .iter()
+                .map(|leaf| ownership.pin_read(block, leaf).unwrap())
+                .collect()
+        })
+        .collect()
+}
+
+fn owned(owner: SourceOwner, path: &[&str], frame: Option<&[&str]>) -> PinRead {
+    let strings = |parts: &[&str]| parts.iter().map(|part| (*part).to_owned()).collect();
+    PinRead::Owned(OwnedSourceField {
+        source: OwnedSourceRef {
+            owner,
+            path: strings(path),
+        },
+        frame: frame.map(strings),
+    })
+}
+
+fn ref_owner() -> SourceOwner {
+    SourceOwner::Named { name: "Ref".into() }
+}
+
+#[test]
+fn unambiguous_projects_keep_authoring_legacy_pins_and_collections() {
+    let mut rows = value_group("Rows");
+    rows.repeating = true;
+    let project = project(
+        SchemaNode::group("Input", vec![value_group("Order"), rows.clone()]),
+        vec![named("Ref", SchemaNode::group("Doc", vec![rows]))],
+    );
+    let ownership = SourceOwnership::new(&project.source, &project.extra_sources);
+    assert!(!ownership.active());
+    assert!(
+        reads(&project)
+            .iter()
+            .flatten()
+            .all(|read| *read == PinRead::Legacy)
+    );
+    assert!(ownership.connection_error(1).is_none());
+}
+
+#[test]
+fn primary_shadowing_makes_the_named_alias_owned_and_primary_alias_paths_owned() {
+    let mut rows = value_group("Rows");
+    rows.repeating = true;
+    let primary = SchemaNode::group(
+        "Input",
+        vec![
+            value_group("Ref"),
+            SchemaNode::scalar("Other", ScalarType::Int),
+        ],
+    );
+    let project = project(
+        primary,
+        vec![named(
+            "Ref",
+            SchemaNode::group("Doc", vec![value_group("Head"), rows]),
+        )],
+    );
+    assert!(SourceOwnership::new(&project.source, &project.extra_sources).active());
+    assert_eq!(
+        reads(&project),
+        [
+            vec![
+                owned(SourceOwner::Primary, &["Ref", "Value"], None),
+                PinRead::Legacy,
+            ],
+            vec![
+                owned(ref_owner(), &["Head", "Value"], None),
+                owned(ref_owner(), &["Rows", "Value"], Some(&["Rows"])),
+            ],
+        ]
+    );
+}
+
+#[test]
+fn repeating_named_roots_pin_the_root_frame_and_offer_owned_root_iteration() {
+    let mut rows = value_group("Rows");
+    rows.repeating = true;
+    let project = project(value_group("Ref"), vec![named("Ref", rows)]);
+    // A named schema containing its own alias shadows itself conservatively.
+    let mut shadowing = project.clone();
+    shadowing.source = SchemaNode::group("Input", vec![value_group("Ref")]);
+    let ownership = SourceOwnership::new(&shadowing.source, &shadowing.extra_sources);
+    assert_eq!(
+        reads(&shadowing)[1],
+        [owned(ref_owner(), &["Value"], Some(&[]))]
+    );
+    let labels = ownership
+        .collections()
+        .iter()
+        .map(|choice| choice.label.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(labels, ["primary: <rows>", "Ref: <rows>"]);
+    assert!(!SourceOwnership::new(&project.source, &project.extra_sources).active());
+}
+
+#[test]
+fn existing_ownership_makes_every_addressable_pin_owned() {
+    let mut project = project(
+        value_group("Input"),
+        vec![named("Lookup", value_group("Doc"))],
+    );
+    assert_eq!(
+        reads(&project),
+        [vec![PinRead::Legacy], vec![PinRead::Legacy]]
+    );
+    project.graph.nodes.insert(
+        3,
+        mapping::Node::OwnedPosition(OwnedPosition {
+            owner: SourceOwner::Primary,
+            collection: None,
+        }),
+    );
+    assert_eq!(
+        reads(&project),
+        [
+            vec![owned(SourceOwner::Primary, &["Value"], None)],
+            vec![owned(
+                SourceOwner::Named {
+                    name: "Lookup".into()
+                },
+                &["Value"],
+                None
+            )],
+        ]
+    );
+    let ownership =
+        SourceOwnership::new(&project.source, &project.extra_sources).with_project_usage(true);
+    assert!(ownership.palette_position().is_some());
+    assert!(
+        SourceOwnership::new(&project.source, &project.extra_sources)
+            .palette_position()
+            .is_none()
+    );
+}
+
+#[test]
+fn duplicate_and_dynamic_shadowed_aliases_stay_unavailable() {
+    let primary = SchemaNode::group("Input", vec![value_group("Ref")]);
+    let duplicate = project(
+        primary.clone(),
+        vec![
+            named("Ref", value_group("A")),
+            named(" Ref", value_group("B")),
+        ],
+    );
+    let ownership = SourceOwnership::new(&duplicate.source, &duplicate.extra_sources);
+    for block in [1, 2] {
+        assert!(!ownership.block_reads_owned(block));
+        let error = ownership.connection_error(block).unwrap();
+        assert!(error.contains("another named input"), "{error}");
+    }
+    let mut dynamic = named("Ref", value_group("A"));
+    dynamic.dynamic_path = Some(mapping::DynamicSourcePath {
+        node: 0,
+        iteration: vec![],
+    });
+    let dynamic = project(primary, vec![dynamic]);
+    let ownership = SourceOwnership::new(&dynamic.source, &dynamic.extra_sources);
+    assert!(
+        ownership
+            .connection_error(1)
+            .unwrap()
+            .contains("primary input")
+    );
+    assert_eq!(ownership.collections().len(), 1);
+}

@@ -5,7 +5,9 @@ use std::path::Path;
 
 use egui::Ui;
 use ir::{SchemaKind, SchemaNode};
-use mapping::NamedSource;
+use mapping::{NamedSource, OwnedSourceRef};
+
+use crate::source_ownership::SourceOwnership;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PathChoice {
@@ -36,6 +38,7 @@ pub struct SourcePathCatalog {
     open_scalar_objects: Vec<PathChoice>,
     primary_source_document_path: bool,
     xml_source_elements: Vec<XmlSourceElement>,
+    ownership: SourceOwnership,
 }
 
 impl SourcePathCatalog {
@@ -123,7 +126,46 @@ impl SourcePathCatalog {
             open_scalar_objects,
             primary_source_document_path: false,
             xml_source_elements,
+            ownership: SourceOwnership::new(source, extras),
         }
+    }
+
+    /// Records whether the project already holds owned forms, so every new
+    /// read stays owner-qualified once ownership is in use.
+    pub(crate) fn with_project_ownership(mut self, project: &mapping::Project) -> Self {
+        self.ownership = std::mem::take(&mut self.ownership)
+            .with_project_usage(crate::source_ownership::project_uses_ownership(project));
+        self
+    }
+
+    pub(crate) fn ownership(&self) -> &SourceOwnership {
+        &self.ownership
+    }
+
+    /// Offers owner-qualified collections. Returns a selector only after an
+    /// explicit click, so inspecting a legacy or owned scope never converts it.
+    pub(crate) fn show_owned_collection_picker(
+        &self,
+        ui: &mut Ui,
+        id_salt: impl std::hash::Hash + std::fmt::Debug,
+        current: &str,
+        selected: Option<&OwnedSourceRef>,
+    ) -> Option<OwnedSourceRef> {
+        let mut chosen = None;
+        egui::ComboBox::from_id_salt(id_salt)
+            .selected_text(current)
+            .width(170.0)
+            .show_ui(ui, |ui| {
+                for choice in self.ownership.collections() {
+                    if ui
+                        .selectable_label(selected == Some(&choice.source), &choice.label)
+                        .clicked()
+                    {
+                        chosen = Some(choice.source.clone());
+                    }
+                }
+            });
+        chosen
     }
 
     pub(crate) fn with_primary_source_options(mut self, options: &mapping::FormatOptions) -> Self {

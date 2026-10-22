@@ -2,12 +2,13 @@
 //! and insert entry points, which re-apply them as typed edits.
 
 use editor_ui::{CanvasPosition, GraphAction, WireSink};
-use egui_snarl::{InPin, NodeId as SnarlNodeId, OutPin, Snarl};
-use mapping::NodeId;
+use egui_snarl::{InPin, NodeId as SnarlNodeId, OutPin, OutPinId, Snarl};
+use mapping::{Node, NodeId};
 
 use super::node_palette::NodeTemplate;
-use super::{GraphViewer, graph_sequence};
-use crate::canvas::CanvasNode;
+use super::{GraphViewer, NodeIdReservation, graph_sequence};
+use crate::canvas::{CanvasNode, SourceLeaf};
+use crate::source_ownership::PinRead;
 
 impl GraphViewer<'_> {
     /// Connects a wire in place, returning the fed value and its sink.
@@ -36,8 +37,14 @@ impl GraphViewer<'_> {
             self.error = Some(error);
             return None;
         }
-        // Each arm yields the displaced value, the fed value, and the sink.
-        type Connected = (Option<NodeId>, NodeId, Option<WireSink>);
+        // Each arm yields the displaced value, the fed value, the sink, and
+        // the visible node that feeds the wire instead of the source pin.
+        type Connected = (
+            Option<NodeId>,
+            NodeId,
+            Option<WireSink>,
+            Option<SnarlNodeId>,
+        );
         let mutation = (|| -> Result<Connected, String> {
             match (from_node, to_node) {
                 (
@@ -60,10 +67,9 @@ impl GraphViewer<'_> {
                         ));
                     }
                     let displaced = self.input_at(to_id, to.id.input);
-                    // The graph retains independent ownership after this pin
-                    // catalog is rebuilt on the next UI frame.
-                    let field =
-                        self.source_field_for(source_leaf.frame.clone(), source_leaf.path.clone())?;
+                    let near = self.beside_source_block(source_block, from, snarl);
+                    let (field, shown) =
+                        self.source_read_for(source_block, &source_leaf, near, snarl)?;
                     if !self.set_input(to_id, to.id.input, field) {
                         self.remove_orphaned_input(field, snarl);
                         return Err(format!(
@@ -75,7 +81,7 @@ impl GraphViewer<'_> {
                         node: to_id,
                         input: to.id.input,
                     };
-                    Ok((displaced, field, Some(sink)))
+                    Ok((displaced, field, Some(sink), shown))
                 }
                 (CanvasNode::SourceBlock(source_block), CanvasNode::TargetBlock(target_block)) => {
                     let source_leaf = self
@@ -92,11 +98,12 @@ impl GraphViewer<'_> {
                         &target_leaf.field,
                     )?;
                     let displaced = self.binding_node(&target_leaf);
-                    let field =
-                        self.source_field_for(source_leaf.frame.clone(), source_leaf.path.clone())?;
+                    let near = self.beside_source_block(source_block, from, snarl);
+                    let (field, shown) =
+                        self.source_read_for(source_block, &source_leaf, near, snarl)?;
                     self.set_binding(&target_leaf, field);
                     let sink = self.binding_sink(&target_leaf.chain, &target_leaf.field);
-                    Ok((displaced, field, sink))
+                    Ok((displaced, field, sink, shown))
                 }
                 (
                     CanvasNode::Graph(from_id) | CanvasNode::Placeholder(from_id),
@@ -126,7 +133,7 @@ impl GraphViewer<'_> {
                     let displaced = self.binding_node(&target_leaf);
                     self.set_binding(&target_leaf, from_id);
                     let sink = self.binding_sink(&target_leaf.chain, &target_leaf.field);
-                    Ok((displaced, from_id, sink))
+                    Ok((displaced, from_id, sink, None))
                 }
                 (
                     CanvasNode::Graph(from_id) | CanvasNode::Placeholder(from_id),
@@ -167,12 +174,12 @@ impl GraphViewer<'_> {
                         node: to_id,
                         input: to.id.input,
                     };
-                    Ok((displaced, from_id, Some(sink)))
+                    Ok((displaced, from_id, Some(sink), None))
                 }
                 _ => Err("these canvas pins cannot be connected".to_string()),
             }
         })();
-        let (displaced, source, sink) = match mutation {
+        let (displaced, source, sink, shown) = match mutation {
             Ok(connected) => connected,
             Err(error) => {
                 self.error = Some(error);
@@ -183,11 +190,73 @@ impl GraphViewer<'_> {
         for &remote in &to.remotes {
             snarl.disconnect(remote, to.id);
         }
-        snarl.connect(from.id, to.id);
+        let feeding = shown.map_or(from.id, |node| OutPinId { node, output: 0 });
+        snarl.connect(feeding, to.id);
         if let Some(displaced) = displaced {
             self.remove_orphaned_input(displaced, snarl);
         }
         Some((source, sink?))
+    }
+
+    /// A new owned read sits just right of the endpoint block it reads.
+    fn beside_source_block(
+        &self,
+        block: usize,
+        from: &OutPin,
+        snarl: &Snarl<CanvasNode>,
+    ) -> egui::Pos2 {
+        let width = self
+            .node_sizes
+            .as_deref()
+            .and_then(|sizes| sizes.get(&CanvasNode::SourceBlock(block)))
+            .map_or(230.0, |size| size.x);
+        snarl
+            .get_node_info(from.id.node)
+            .map_or(egui::Pos2::ZERO, |info| {
+                info.pos + egui::vec2(width + 40.0, 0.0)
+            })
+    }
+
+    /// The value a source pin feeds: a reused or new hidden legacy field, or
+    /// an exact owned read shown as its own node with its owner.
+    fn source_read_for(
+        &mut self,
+        block: usize,
+        leaf: &SourceLeaf,
+        near: egui::Pos2,
+        snarl: &mut Snarl<CanvasNode>,
+    ) -> Result<(NodeId, Option<SnarlNodeId>), String> {
+        // The graph retains independent ownership after this pin catalog is
+        // rebuilt on the next UI frame.
+        match self.source_paths.ownership().pin_read(block, leaf)? {
+            PinRead::Legacy => Ok((
+                self.source_field_for(leaf.frame.clone(), leaf.path.clone())?,
+                None,
+            )),
+            PinRead::Owned(field) => {
+                let owned_items = self.owned_item_ids();
+                let existing = self.graph.nodes.iter().find_map(|(id, node)| {
+                    matches!(node, Node::OwnedSourceField(candidate) if *candidate == field)
+                        .then_some(*id)
+                        .filter(|id| !owned_items.contains(id))
+                });
+                let id = match existing {
+                    Some(id) => id,
+                    None => {
+                        let id = NodeIdReservation::new(self.graph, &owned_items).reserve(1)?[0];
+                        self.graph.nodes.insert(id, Node::OwnedSourceField(field));
+                        id
+                    }
+                };
+                let shown = snarl
+                    .node_ids()
+                    .find_map(|(snarl_id, &node)| {
+                        (node == CanvasNode::Graph(id)).then_some(snarl_id)
+                    })
+                    .unwrap_or_else(|| snarl.insert_node(near, CanvasNode::Graph(id)));
+                Ok((id, Some(shown)))
+            }
+        }
     }
 
     /// Disconnects a wire in place, returning the sink it changed.
