@@ -2529,12 +2529,9 @@ fn import_resolved(
         let dynamic_path = dynamic_source_inputs[index]
             .as_ref()
             .and_then(|(feed, driver)| {
-                builder
-                    .binding_node(*feed, &[])
-                    .map(|node| mapping::DynamicSourcePath {
-                        node,
-                        iteration: builder.context_path(driver),
-                    })
+                builder.binding_node(*feed, &[]).map(|node| {
+                    mapping::DynamicSourcePath::legacy(node, builder.context_path(driver))
+                })
             });
         if dynamic_path.is_none() && extra.input_instance.is_none() {
             builder.warnings.push(format!(

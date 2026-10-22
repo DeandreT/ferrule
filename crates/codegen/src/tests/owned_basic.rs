@@ -385,10 +385,7 @@ fn unused_stored_driver_conservatively_rechecks_a_primary_owned_node_after_its_b
         path: "unused.json".into(),
         schema: SchemaNode::group("Other", vec![scalar("Value")]),
         options: Default::default(),
-        dynamic_path: Some(mapping::DynamicSourcePath {
-            node: 20,
-            iteration: vec![],
-        }),
+        dynamic_path: Some(mapping::DynamicSourcePath::legacy(20, vec![])),
     });
     let baseline_result = lower(&baseline);
     eprintln!(

@@ -246,10 +246,7 @@ fn observed_one_static_named_root_admission_preserves_other_ownership_refusals()
                     vec![SchemaNode::scalar("Code", ScalarType::String)],
                 ),
                 options: Default::default(),
-                dynamic_path: (mutation == 18).then_some(DynamicSourcePath {
-                    node: 0,
-                    iteration: vec![],
-                }),
+                dynamic_path: (mutation == 18).then_some(DynamicSourcePath::legacy(0, vec![])),
             }),
             2 => {
                 let mut other = project.extra_targets[0].clone();
@@ -731,10 +728,8 @@ fn observed_combined_named_roots_do_not_grant_descendant_control_or_private_owne
             0 => invalid.extra_sources[0].options.xml_document = false,
             1 => invalid.extra_sources[0].schema = valid.source.clone(),
             2 => {
-                invalid.extra_sources[0].dynamic_path = Some(DynamicSourcePath {
-                    node: 3,
-                    iteration: Vec::new(),
-                })
+                invalid.extra_sources[0].dynamic_path =
+                    Some(DynamicSourcePath::legacy(3, Vec::new()))
             }
             3 => invalid.extra_targets[1].root.target_field = "Audit".into(),
             4 => invalid.extra_targets[1].root.filter = Some(2),

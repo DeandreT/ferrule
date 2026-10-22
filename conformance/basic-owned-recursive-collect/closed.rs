@@ -290,7 +290,7 @@ pub fn programs(
     // The audit binding becomes a constant dynamic path, so Lookup is dynamic.
     dynamic.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 3,
-        driver: codegen::SourceIteration::new(path(&["Dir"])),
+        driver: codegen::SourceIteration::new(path(&["Dir"])).into(),
     });
     vec![
         // Recursive path validation keeps its precedence for unresolved roots.

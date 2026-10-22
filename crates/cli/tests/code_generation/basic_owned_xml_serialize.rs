@@ -1027,10 +1027,10 @@ fn basic_xml_serialize469_closed_contexts_refuse_before_emission() -> TestResult
             value: Value::String("audit.json".into()),
         },
     );
-    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 90,
-        iteration: vec!["Orders".into(), "Order".into()],
-    });
+    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(
+        90,
+        vec!["Orders".into(), "Order".into()],
+    ));
     lowered_error(
         &dynamic,
         &refused(

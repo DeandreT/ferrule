@@ -247,6 +247,20 @@ impl<'a> Analysis<'a> {
                     .filter(|(_, source)| source.name == *name && source.dynamic_path.is_none())
                     .map(|(index, _)| index),
             );
+            // An owned dynamic owner loads through its own exact driver.
+            let project = self.project;
+            for (index, source) in project.extra_sources.iter().enumerate() {
+                let Some(dynamic) = source.dynamic_path.as_ref() else {
+                    continue;
+                };
+                if source.name == *name
+                    && let Some(driver) = dynamic.owned_driver()
+                    && self.inspected_dynamic.insert(index)
+                {
+                    self.pending.push(dynamic.node);
+                    self.inspect_owner(&driver.owner);
+                }
+            }
         }
     }
 
@@ -272,8 +286,13 @@ impl<'a> Analysis<'a> {
                 continue;
             }
             self.pending.push(dynamic.node);
-            if let Some(driver) = dynamic.iteration.first().cloned() {
-                self.inspect_path(&[driver]);
+            match &dynamic.iteration {
+                mapping::SourceSelector::Legacy(path) => {
+                    if let Some(driver) = path.first().cloned() {
+                        self.inspect_path(&[driver]);
+                    }
+                }
+                mapping::SourceSelector::Owned(driver) => self.inspect_owner(&driver.owner),
             }
         }
     }
@@ -395,10 +414,7 @@ mod tests {
     #[test]
     fn selected_dynamic_source_keeps_static_path_and_driver_dependencies() {
         let mut dynamic = source("dynamic");
-        dynamic.dynamic_path = Some(DynamicSourcePath {
-            node: 0,
-            iteration: vec!["driver_data".into()],
-        });
+        dynamic.dynamic_path = Some(DynamicSourcePath::legacy(0, vec!["driver_data".into()]));
         let project = Project {
             source: SchemaNode::group("Input", Vec::new()),
             target: SchemaNode::group("Primary", Vec::new()),

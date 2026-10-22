@@ -539,10 +539,10 @@ fn malformed_ownership_and_closed_contexts_are_refused() {
 
     // A dynamic named owner is a closed capability context.
     let mut dynamic_owner = project(vec![dynamic("Lookup", &["Props"], None, KEY_COLOR)], vec![]);
-    dynamic_owner.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: KEY_COLOR,
-        iteration: path(&["Rows"]),
-    });
+    dynamic_owner.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(
+        KEY_COLOR,
+        path(&["Rows"]),
+    ));
     assert!(matches!(
         run(&dynamic_owner, &primary(), inputs(Some(lookup()))),
         Err(EngineError::UnsupportedOwnedContext {

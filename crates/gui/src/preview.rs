@@ -1086,10 +1086,7 @@ mod tests {
     #[test]
     fn dynamic_sources_fail_preflight_instead_of_being_omitted() -> anyhow::Result<()> {
         let mut source = static_source("unused.json");
-        source.dynamic_path = Some(DynamicSourcePath {
-            node: 2,
-            iteration: Vec::new(),
-        });
+        source.dynamic_path = Some(DynamicSourcePath::legacy(2, Vec::new()));
         let mut project = project_with_source(source);
         project.graph.nodes.insert(
             2,

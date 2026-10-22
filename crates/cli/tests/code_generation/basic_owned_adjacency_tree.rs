@@ -568,10 +568,8 @@ fn basic_adjacency_tree466_closed_contexts_refuse_before_emission() -> TestResul
             value: Value::String("audit.json".into()),
         },
     );
-    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 0,
-        iteration: vec!["Batch".into()],
-    });
+    dynamic.extra_sources[0].dynamic_path =
+        Some(mapping::DynamicSourcePath::legacy(0, vec!["Batch".into()]));
     let expected = capability(
         root(Some((0, "audit")), &[]),
         request(Some("audit"), &["Rows", "Row"]),

@@ -281,7 +281,7 @@ fn named_outputs_and_named_drivers_remain_outside_static_input_adapter() {
     unused.name = "unused_dynamic".into();
     unused.dynamic = Some(DynamicSourceProgram {
         path: 0,
-        driver: SourceIteration::new(vec!["Row".into()]),
+        driver: SourceIteration::new(vec!["Row".into()]).into(),
     });
     dynamic.extra_sources.push(unused);
     dynamic

@@ -464,10 +464,7 @@ fn dynamic_source_project() -> Project {
                 ],
             ),
             options: json_options(),
-            dynamic_path: Some(DynamicSourcePath {
-                node: 0,
-                iteration: vec!["File".into()],
-            }),
+            dynamic_path: Some(DynamicSourcePath::legacy(0, vec!["File".into()])),
         }],
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
@@ -534,10 +531,7 @@ fn project_with_unavailable_unselected_payload_source() -> Project {
                 path: String::new(),
                 schema: target("DynamicLookup"),
                 options: json_options(),
-                dynamic_path: Some(DynamicSourcePath {
-                    node: 2,
-                    iteration: Vec::new(),
-                }),
+                dynamic_path: Some(DynamicSourcePath::legacy(2, Vec::new())),
             },
         ],
         extra_targets: vec![NamedTarget {

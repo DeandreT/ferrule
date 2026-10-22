@@ -298,10 +298,7 @@ fn failure_rules_and_demanded_dynamic_paths_are_admitted_before_loading() {
         crate::OwnedCapabilityContext::FailureRule,
     );
     project.failure_rules.clear();
-    project.extra_sources[0].dynamic_path = Some(DynamicSourcePath {
-        node: 2,
-        iteration: vec![],
-    });
+    project.extra_sources[0].dynamic_path = Some(DynamicSourcePath::legacy(2, vec![]));
     assert!(check_source_ownership_capability(&project, None).is_ok());
     project.graph.nodes.insert(
         3,
@@ -1108,10 +1105,7 @@ fn public_udf_failure_and_dynamic_loader_arguments_stay_closed_before_loading() 
     });
     refuse_context(&p, None, 2, crate::OwnedCapabilityContext::FailureRule);
     p.failure_rules.clear();
-    p.extra_sources[0].dynamic_path = Some(DynamicSourcePath {
-        node: 3,
-        iteration: vec![],
-    });
+    p.extra_sources[0].dynamic_path = Some(DynamicSourcePath::legacy(3, vec![]));
     p.graph.nodes.insert(
         4,
         Node::SourceField {
@@ -1280,10 +1274,7 @@ fn root_failure_scalar_call_arguments_are_admitted_without_opening_function_bodi
 #[test]
 fn root_failure_dynamic_legacy_demand_is_rejected_before_acquisition() {
     let mut p = project();
-    p.extra_sources[0].dynamic_path = Some(DynamicSourcePath {
-        node: 1,
-        iteration: vec![],
-    });
+    p.extra_sources[0].dynamic_path = Some(DynamicSourcePath::legacy(1, vec![]));
     p.graph.nodes.insert(
         3,
         Node::SourceField {
@@ -1402,10 +1393,7 @@ fn primary_failure_row_permission_has_distinct_root_and_sequence_visit_keys() {
         Err(primary_failure_admission_error(3))
     );
     p.failure_rules = vec![row];
-    p.extra_sources[0].dynamic_path = Some(DynamicSourcePath {
-        node: 3,
-        iteration: vec![],
-    });
+    p.extra_sources[0].dynamic_path = Some(DynamicSourcePath::legacy(3, vec![]));
     p.graph.nodes.insert(
         4,
         Node::SourceField {
@@ -1470,10 +1458,7 @@ fn primary_failure_row_admission_is_limited_to_one_static_primary_collection() {
         path: "rows.json".into(),
         schema: SchemaNode::group("Rows", vec![scalar("Value")]).repeating(),
         options: Default::default(),
-        dynamic_path: Some(DynamicSourcePath {
-            node: 7,
-            iteration: vec![],
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(7, vec![])),
     });
     assert_eq!(
         check_source_ownership_capability(&p, None),
@@ -1575,10 +1560,7 @@ fn primary_failure_row_named_reads_keep_root_only_pins_and_positions_closed() {
         })
     );
     p.extra_sources.pop();
-    p.extra_sources[0].dynamic_path = Some(DynamicSourcePath {
-        node: 1,
-        iteration: vec![],
-    });
+    p.extra_sources[0].dynamic_path = Some(DynamicSourcePath::legacy(1, vec![]));
     assert_eq!(
         check_source_ownership_capability(&p, None),
         Err(EngineError::UnsupportedOwnedContext {

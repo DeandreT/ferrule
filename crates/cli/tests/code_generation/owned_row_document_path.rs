@@ -146,10 +146,7 @@ fn row_metadata_keeps_dynamic_owner_and_failure_rule_admission_closed() {
             value: Value::String("not-loaded.json".into()),
         },
     );
-    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 5,
-        iteration: vec![],
-    });
+    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(5, vec![]));
     let actual = engine::run_with_sources(
         &dynamic,
         &endpoint("p", None),

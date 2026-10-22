@@ -55,8 +55,13 @@ pub(in crate::export) fn selector_context_warnings(
                     .iter()
                     .find(|source| source.name == *name)
             {
-                if let Some(dynamic) = &source.dynamic_path {
-                    self.record_source_frames(&dynamic.iteration, anchor, frames);
+                // Preflight refuses owned drivers before this audit runs.
+                if let Some(driver) = source
+                    .dynamic_path
+                    .as_ref()
+                    .and_then(mapping::DynamicSourcePath::legacy_driver)
+                {
+                    self.record_source_frames(driver, anchor, frames);
                 }
                 if let Some(export) = self
                     .sources
@@ -410,9 +415,11 @@ pub(in crate::export) fn selector_context_warnings(
         );
     }
     for source in &project.extra_sources {
-        if let Some(dynamic) = &source.dynamic_path {
+        if let Some(dynamic) = &source.dynamic_path
+            && let Some(driver) = dynamic.legacy_driver()
+        {
             let mut frames = Vec::new();
-            let anchor = audit.source_frames(&dynamic.iteration, &[], &mut frames);
+            let anchor = audit.source_frames(driver, &[], &mut frames);
             audit.check(
                 [dynamic.node],
                 &frames,

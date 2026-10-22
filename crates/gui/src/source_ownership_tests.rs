@@ -196,10 +196,7 @@ fn duplicate_and_dynamic_shadowed_aliases_stay_unavailable() {
         assert!(error.contains("another named input"), "{error}");
     }
     let mut dynamic = named("Ref", value_group("A"));
-    dynamic.dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 0,
-        iteration: vec![],
-    });
+    dynamic.dynamic_path = Some(mapping::DynamicSourcePath::legacy(0, vec![]));
     let dynamic = project(primary, vec![dynamic]);
     let ownership = SourceOwnership::new(&dynamic.source, &dynamic.extra_sources);
     assert!(
@@ -209,4 +206,58 @@ fn duplicate_and_dynamic_shadowed_aliases_stay_unavailable() {
             .contains("primary input")
     );
     assert_eq!(ownership.collections().len(), 1);
+}
+
+#[test]
+fn owned_dynamic_inputs_are_unaddressable_and_keep_their_driver() {
+    let primary = SchemaNode::group(
+        "Input",
+        vec![
+            SchemaNode::group(
+                "Files",
+                vec![SchemaNode::scalar("Path", ScalarType::String)],
+            )
+            .repeating(),
+        ],
+    );
+    let driver = OwnedSourceRef {
+        owner: SourceOwner::Primary,
+        path: vec!["Files".into()],
+    };
+    let mut docs = named("Docs", value_group("Doc"));
+    docs.dynamic_path = Some(mapping::DynamicSourcePath::owned(4, driver.clone()));
+    let mut legacy = named("Legacy", value_group("Doc"));
+    legacy.dynamic_path = Some(mapping::DynamicSourcePath::legacy(4, vec!["Files".into()]));
+    let project = project(primary, vec![docs, legacy]);
+    let ownership =
+        SourceOwnership::new(&project.source, &project.extra_sources).with_project_usage(true);
+    let error = ownership.connection_error(1).unwrap();
+    assert!(error.contains("owned dynamic driver"), "{error}");
+    assert!(!ownership.block_reads_owned(1));
+    assert!(ownership.connection_error(2).is_none());
+    let docs_owner = SourceOwner::Named {
+        name: "Docs".into(),
+    };
+    let saved = ownership.owned_dynamic_driver(&docs_owner).unwrap();
+    assert_eq!(saved.node, 4);
+    assert_eq!(saved.owned_driver(), Some(&driver));
+    assert!(
+        ownership
+            .owned_dynamic_driver(&SourceOwner::Named {
+                name: "Legacy".into()
+            })
+            .is_none()
+    );
+    assert!(
+        ownership
+            .owned_dynamic_driver(&SourceOwner::Primary)
+            .is_none()
+    );
+    // Neither dynamic endpoint is offered as an owned collection choice.
+    assert!(
+        ownership
+            .collections()
+            .iter()
+            .all(|choice| choice.source.owner == SourceOwner::Primary)
+    );
 }

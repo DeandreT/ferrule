@@ -323,10 +323,7 @@ fn scope_retirement_remaining_graph_target_and_failure_references_block_atomical
                         path: "input.json".into(),
                         schema: app.project.source.clone(),
                         options: FormatOptions::default(),
-                        dynamic_path: Some(mapping::DynamicSourcePath {
-                            node: item,
-                            iteration: vec![],
-                        }),
+                        dynamic_path: Some(mapping::DynamicSourcePath::legacy(item, vec![])),
                     });
                 }
                 5 => {

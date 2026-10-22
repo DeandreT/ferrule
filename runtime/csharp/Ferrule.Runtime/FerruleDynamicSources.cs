@@ -59,74 +59,20 @@ public sealed class FerruleDynamicSourceItems
         ArgumentNullException.ThrowIfNull(tail);
         ArgumentNullException.ThrowIfNull(path);
 
-        var loader = context.DynamicSourceLoader;
-        if (loader is null)
-        {
-            throw new FerruleRuntimeException(
-                FerruleRuntimeError.MissingDynamicSourceLoader,
-                $"dynamic source '{source}' requires a host source loader",
-                sourceField: source);
-        }
+        var loader = RequireLoader(context.DynamicSourceLoader, source);
         var candidates = context.IterateSource(driver);
-        if (candidates.Count > FerruleDynamicSourceLimits.MaximumLoads)
-        {
-            throw new FerruleRuntimeException(
-                FerruleRuntimeError.DynamicSourceTooMany,
-                $"dynamic source '{source}' requested more than " +
-                    $"{FerruleDynamicSourceLimits.MaximumLoads} documents",
-                maximumItems: (UInt128)FerruleDynamicSourceLimits.MaximumLoads,
-                sourceField: source);
-        }
+        RequireDriverCount(candidates.Count, source);
 
         var drivers = new List<ScopeContext>(candidates.Count);
         var documents = new List<FerruleInstance>(candidates.Count);
         foreach (var candidate in candidates)
         {
-            var pathValue = path(candidate);
-            if (pathValue.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
+            var logicalPath = LogicalPath(path(candidate), source, node);
+            if (logicalPath is null)
             {
                 continue;
             }
-            if (pathValue.Kind != FerruleValueKind.String)
-            {
-                throw new FerruleRuntimeException(
-                    FerruleRuntimeError.DynamicSourcePath,
-                    $"node {node}: dynamic source '{source}' path expected a string " +
-                        $"or absent value, got {pathValue.Kind}",
-                    node: node,
-                    foundKind: pathValue.Kind,
-                    sourceField: source);
-            }
-            var logicalPath = pathValue.StringValue;
-            if (global::System.Text.Encoding.UTF8.GetByteCount(logicalPath) >
-                FerruleDynamicSourceLimits.MaximumPathBytes)
-            {
-                throw new FerruleRuntimeException(
-                    FerruleRuntimeError.DynamicSourcePathTooLong,
-                    $"dynamic source '{source}' path exceeds the " +
-                        $"{FerruleDynamicSourceLimits.MaximumPathBytes}-byte limit",
-                    maximumItems: (UInt128)FerruleDynamicSourceLimits.MaximumPathBytes,
-                    sourceField: source);
-            }
-
-            FerruleInstance document;
-            try
-            {
-                document = loader.Load(source, logicalPath);
-                if (document is null)
-                {
-                    throw new InvalidOperationException("loader returned null");
-                }
-            }
-            catch (Exception error)
-            {
-                throw new FerruleRuntimeException(
-                    FerruleRuntimeError.DynamicSourceLoad,
-                    $"dynamic source '{source}' could not load '{logicalPath}': {error.Message}",
-                    error,
-                    detail: logicalPath,
-                    sourceField: source);
-            }
+            var document = LoadDocument(loader, source, logicalPath);
             drivers.Add(candidate);
             documents.Add(document);
         }
@@ -136,6 +82,80 @@ public sealed class FerruleDynamicSourceItems
             new ReadOnlyCollection<string>(tail.ToArray()),
             new ReadOnlyCollection<ScopeContext>(drivers),
             new ReadOnlyCollection<FerruleInstance>(documents));
+    }
+
+    /// <summary>A reached dynamic scope needs a loader, even for an empty driver walk.</summary>
+    internal static IFerruleDynamicSourceLoader RequireLoader(IFerruleDynamicSourceLoader? loader, string source) =>
+        loader ?? throw new FerruleRuntimeException(
+            FerruleRuntimeError.MissingDynamicSourceLoader,
+            $"dynamic source '{source}' requires a host source loader",
+            sourceField: source);
+
+    internal static void RequireDriverCount(int count, string source)
+    {
+        if (count > FerruleDynamicSourceLimits.MaximumLoads)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.DynamicSourceTooMany,
+                $"dynamic source '{source}' requested more than " +
+                    $"{FerruleDynamicSourceLimits.MaximumLoads} documents",
+                maximumItems: (UInt128)FerruleDynamicSourceLimits.MaximumLoads,
+                sourceField: source);
+        }
+    }
+
+    /// <summary>The logical path of one driver, or null when it is absent.</summary>
+    internal static string? LogicalPath(FerruleValue pathValue, string source, uint node)
+    {
+        if (pathValue.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
+        {
+            return null;
+        }
+        if (pathValue.Kind != FerruleValueKind.String)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.DynamicSourcePath,
+                $"node {node}: dynamic source '{source}' path expected a string " +
+                    $"or absent value, got {pathValue.Kind}",
+                node: node,
+                foundKind: pathValue.Kind,
+                sourceField: source);
+        }
+        var logicalPath = pathValue.StringValue;
+        if (global::System.Text.Encoding.UTF8.GetByteCount(logicalPath) >
+            FerruleDynamicSourceLimits.MaximumPathBytes)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.DynamicSourcePathTooLong,
+                $"dynamic source '{source}' path exceeds the " +
+                    $"{FerruleDynamicSourceLimits.MaximumPathBytes}-byte limit",
+                maximumItems: (UInt128)FerruleDynamicSourceLimits.MaximumPathBytes,
+                sourceField: source);
+        }
+        return logicalPath;
+    }
+
+    /// <summary>One host callback; every failure keeps its source and path.</summary>
+    internal static FerruleInstance LoadDocument(IFerruleDynamicSourceLoader loader, string source, string logicalPath)
+    {
+        try
+        {
+            var document = loader.Load(source, logicalPath);
+            if (document is null)
+            {
+                throw new InvalidOperationException("loader returned null");
+            }
+            return document;
+        }
+        catch (Exception error)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.DynamicSourceLoad,
+                $"dynamic source '{source}' could not load '{logicalPath}': {error.Message}",
+                error,
+                detail: logicalPath,
+                sourceField: source);
+        }
     }
 
     public IReadOnlyList<ScopeContext> Contexts()

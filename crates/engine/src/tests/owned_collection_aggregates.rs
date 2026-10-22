@@ -818,10 +818,7 @@ fn owned_aggregates_stay_closed_outside_basic_contexts() {
     }
     // A dynamic owner is unavailable before evaluation.
     let mut p = root_value(vec![(1, count()), (2, constant(string("ref.json")))]);
-    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 2,
-        iteration: Vec::new(),
-    });
+    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(2, Vec::new()));
     assert_eq!(
         crate::run_with_sources(&p, &primary_input(), inputs()),
         Err(EngineError::UnsupportedOwnedContext {

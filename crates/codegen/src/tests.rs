@@ -28,6 +28,7 @@ mod owned_adjacency_tree;
 mod owned_admission;
 mod owned_collection_aggregates;
 mod owned_dynamic_field;
+mod owned_dynamic_loading;
 mod owned_failure_sources;
 mod owned_group_adjacent_by;
 mod owned_group_by;
@@ -1804,10 +1805,7 @@ fn owned_lowering_called_function_and_dynamic_path_roots_preserve_namespace() {
         path: "unused.json".into(),
         schema: SchemaNode::group("Other", vec![scalar("Value")]),
         options: Default::default(),
-        dynamic_path: Some(mapping::DynamicSourcePath {
-            node: 99,
-            iteration: vec![],
-        }),
+        dynamic_path: Some(mapping::DynamicSourcePath::legacy(99, vec![])),
     });
     project
         .graph

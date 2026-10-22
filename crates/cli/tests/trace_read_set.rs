@@ -151,10 +151,7 @@ fn dynamic_project() -> Project {
         path: String::new(),
         schema: SchemaNode::group("Document", vec![value_schema("Item").repeating()]),
         options: FormatOptions::default(),
-        dynamic_path: Some(DynamicSourcePath {
-            node: 0,
-            iteration: vec!["File".into()],
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(0, vec!["File".into()])),
     }];
     project.graph = Graph {
         nodes: BTreeMap::from([

@@ -269,10 +269,7 @@ fn selected_secondary(dynamic: bool) -> Project {
             pdf: Some(layout()),
             ..FormatOptions::default()
         },
-        dynamic_path: dynamic.then_some(DynamicSourcePath {
-            node: 1,
-            iteration: Vec::new(),
-        }),
+        dynamic_path: dynamic.then_some(DynamicSourcePath::legacy(1, Vec::new())),
     });
     if dynamic {
         p.root.iteration = mapping::ScopeIteration::Source(vec!["document".into()]);
@@ -311,10 +308,7 @@ fn unused_secondary(dynamic: bool) -> Project {
             pdf: Some(layout()),
             ..FormatOptions::default()
         },
-        dynamic_path: dynamic.then_some(DynamicSourcePath {
-            node: 2,
-            iteration: Vec::new(),
-        }),
+        dynamic_path: dynamic.then_some(DynamicSourcePath::legacy(2, Vec::new())),
     });
     p.extra_targets.push(NamedTarget {
         name: "unused-target".into(),

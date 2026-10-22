@@ -181,7 +181,7 @@ fn complete_document_emission_keeps_shared_policy_refusals_and_named_ownership()
     let (mut program, policy) = fixture::mixed();
     program.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 1,
-        driver: codegen::SourceIteration::new(vec![]),
+        driver: codegen::SourceIteration::new(vec![]).into(),
     });
     assert!(matches!(
         codegen_csharp::emit_with_static_document_adapters(&program, &policy),

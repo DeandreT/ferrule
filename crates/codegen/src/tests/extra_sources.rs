@@ -56,10 +56,7 @@ fn lowers_each_dynamic_source_with_its_path_owner() {
         path: String::new(),
         schema: SchemaNode::group("CatalogDocument", Vec::new()),
         options: Default::default(),
-        dynamic_path: Some(DynamicSourcePath {
-            node: 40,
-            iteration: Vec::new(),
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(40, Vec::new())),
     });
 
     let program = lower(&project).expect("dynamic source loading lowers to a host contract");
@@ -70,7 +67,7 @@ fn lowers_each_dynamic_source_with_its_path_owner() {
             source: SchemaNode::group("CatalogDocument", Vec::new()),
             dynamic: Some(DynamicSourceProgram {
                 path: 40,
-                driver: SourceIteration::new(Vec::new()),
+                driver: SourceIteration::new(Vec::new()).into(),
             }),
         }]
     );
@@ -98,7 +95,7 @@ fn lowers_each_dynamic_source_with_its_path_owner() {
         .dynamic
         .as_mut()
         .expect("dynamic plan exists")
-        .driver = SourceIteration::new(vec!["Missing".into()]);
+        .driver = SourceIteration::new(vec!["Missing".into()]).into();
     assert!(matches!(
         validate_program(&invalid_driver),
         Err(ProgramValidationError::InvalidDynamicSourceDriver { source, driver })

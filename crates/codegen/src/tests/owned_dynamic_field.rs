@@ -256,10 +256,7 @@ fn malformed_directly_constructed_reads_are_structural_refusals() {
 fn closed_contexts_refuse_the_owned_read_in_the_new_profile() {
     // A dynamic named owner stays closed.
     let mut dynamic = project();
-    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 1,
-        iteration: Vec::new(),
-    });
+    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(1, Vec::new()));
     let error = lower_with_basic_owned_dynamic_field(&dynamic).unwrap_err();
     assert!(
         matches!(error.diagnostics(), [Diagnostic::OwnedSource { diagnostic }]

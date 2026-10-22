@@ -596,10 +596,7 @@ fn validation_and_admission_reject_unsupported_owned_iteration() {
             path: "dynamic.json".into(),
             schema: endpoint_schema("Dynamic"),
             options: Default::default(),
-            dynamic_path: Some(mapping::DynamicSourcePath {
-                node: 1,
-                iteration: vec!["Rows".into()],
-            }),
+            dynamic_path: Some(mapping::DynamicSourcePath::legacy(1, vec!["Rows".into()])),
         });
         p.failure_rules = vec![when_true(iteration, 1, None)];
         let found = issues(&p);

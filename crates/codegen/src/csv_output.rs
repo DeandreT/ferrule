@@ -461,7 +461,7 @@ mod tests {
         );
         candidate.extra_sources[0].dynamic = Some(crate::DynamicSourceProgram {
             path: 9,
-            driver: SourceIteration::new(Vec::new()),
+            driver: SourceIteration::new(Vec::new()).into(),
         });
         assert_eq!(
             validate_csv_output(&candidate, &CsvOutputPolicy::default()),
@@ -511,7 +511,7 @@ mod tests {
                 source: SchemaNode::group(name, Vec::new()),
                 dynamic: dynamic.then(|| crate::DynamicSourceProgram {
                     path: 9,
-                    driver: SourceIteration::new(Vec::new()),
+                    driver: SourceIteration::new(Vec::new()).into(),
                 }),
             });
         }
@@ -574,7 +574,7 @@ mod tests {
             source: SchemaNode::group("Dynamic", Vec::new()),
             dynamic: Some(crate::DynamicSourceProgram {
                 path: 9,
-                driver: SourceIteration::new(Vec::new()),
+                driver: SourceIteration::new(Vec::new()).into(),
             }),
         });
         assert_eq!(

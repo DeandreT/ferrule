@@ -251,6 +251,15 @@ a missing chosen property is Null and never borrowed from another owner or
 frame. Root paths, absent frames and explicit root pins keep their distinct
 owned-field meanings. See the [dynamic source-field contract](owned-dynamic-field.md).
 
+## Dynamic driver loading
+
+An owned dynamic driver names its collection by exact endpoint, beside the
+unchanged legacy driver path. A loading scope walks exactly that collection in
+its receiving context and roots each loaded document under its own driver row;
+nested loading, driver reads and positions never borrow another driver,
+document or endpoint, and legacy aliases never reach an owned dynamic source.
+See the [dynamic loading contract](owned-dynamic-loading.md).
+
 ## Generated-item reductions
 
 `SequenceAggregate` over the same four producers evaluates producer arguments in

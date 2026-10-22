@@ -148,7 +148,7 @@ fn embedded_schema_emission_preserves_primary_named_dynamic_and_expression_schem
         source: changed_schema("DynamicInput"),
         dynamic: Some(DynamicSourceProgram {
             path: 1,
-            driver: SourceIteration::new(vec!["Rows".into()]),
+            driver: SourceIteration::new(vec!["Rows".into()]).into(),
         }),
     });
     cases.push((dynamic, "DynamicInput"));
@@ -311,7 +311,7 @@ fn embedded_schema_emission_enforces_each_json_boundary_cap_before_artifacts() {
         source: padded_schema("DynamicInput", max + 1),
         dynamic: Some(DynamicSourceProgram {
             path: 1,
-            driver: SourceIteration::new(vec!["Rows".into()]),
+            driver: SourceIteration::new(vec!["Rows".into()]).into(),
         }),
     });
     cases.push((dynamic, "DynamicInput"));

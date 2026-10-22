@@ -391,10 +391,8 @@ fn closed_contexts_refuse_joined_aggregates_in_the_owned_join_profile() {
             value: Value::String("lookup.json".into()),
         },
     );
-    project.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 11,
-        iteration: Vec::new(),
-    });
+    project.extra_sources[0].dynamic_path =
+        Some(mapping::DynamicSourcePath::legacy(11, Vec::new()));
     let error = crate::lower_with_basic_owned_joins(&project).unwrap_err();
     assert!(
         matches!(error.diagnostics(), [Diagnostic::OwnedSource { diagnostic }]

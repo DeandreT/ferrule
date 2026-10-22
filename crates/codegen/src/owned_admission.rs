@@ -299,6 +299,16 @@ pub fn legacy_named_input_admission_plan_with_basic_owned_xml_mixed_construction
     Ok(admission_plan_with_profiles(program, true, true))
 }
 
+/// Plans the explicit owned dynamic-loading profile. Loaded owners stay
+/// reserved; a loading scope's path expression runs in its driver item, and
+/// the driver walk is demand-driven like every owned iteration.
+pub fn legacy_named_input_admission_plan_with_basic_owned_dynamic_loading(
+    program: &Program,
+) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
+    crate::validate_program_with_basic_owned_dynamic_loading(program)?;
+    Ok(admission_plan_with_profiles(program, true, true))
+}
+
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     admission_plan_with_primary_row_failures(program, false)
 }
@@ -526,10 +536,14 @@ impl<'a> Analysis<'a> {
         // schema field with this spelling does not remove the eager alias.
         for index in indices {
             if let Some(dynamic) = program.extra_sources[index].dynamic.as_ref() {
+                // An owned driver is never reached through a legacy alias.
+                let Some(driver) = dynamic.driver.legacy() else {
+                    continue;
+                };
                 if !self.inspected_dynamic.insert(index) {
                     continue;
                 }
-                let driver = dynamic.driver.path();
+                let driver = driver.path();
                 self.path(driver);
                 // One fixed per-declaration environment. D->E->D therefore
                 // revisits a finite context rather than extending caller ancestry.
@@ -568,6 +582,19 @@ impl<'a> Analysis<'a> {
     fn iteration(&mut self, parent: usize, iteration: &IterationPlan) -> usize {
         let item = match iteration.input() {
             IterationSource::OwnedSource(source) => {
+                // An owned dynamic endpoint's path runs once per driver item.
+                if let mapping::SourceOwner::Named { name } = &source.source().owner
+                    && let Some(dynamic) = self
+                        .program
+                        .extra_sources
+                        .iter()
+                        .find(|declaration| declaration.name == *name)
+                        .and_then(|declaration| declaration.dynamic.as_ref())
+                    && let Some(driver) = dynamic.driver.owned()
+                {
+                    let item = self.child(parent, Step::OwnedSource(driver.clone()));
+                    self.queue(Namespace::Main, item, dynamic.path);
+                }
                 self.child(parent, Step::OwnedSource(source.source().clone()))
             }
             IterationSource::Source(source) => {

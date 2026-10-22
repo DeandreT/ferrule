@@ -45,10 +45,7 @@ fn mapping() -> Project {
             path: String::new(),
             schema: SchemaNode::group("Catalog", vec![row]),
             options: value.source_options.clone(),
-            dynamic_path: Some(mapping::DynamicSourcePath {
-                node: 0,
-                iteration: vec!["Driver".into()],
-            }),
+            dynamic_path: Some(mapping::DynamicSourcePath::legacy(0, vec!["Driver".into()])),
         },
     ];
     value.extra_targets.clear();
