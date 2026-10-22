@@ -3,6 +3,8 @@ use super::*;
 mod alternatives;
 
 use alternatives::AlternativeExportPlan;
+#[cfg(test)]
+pub(super) use alternatives::optional_element;
 
 mod set;
 mod substitution;

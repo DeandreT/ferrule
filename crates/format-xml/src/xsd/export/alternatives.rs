@@ -420,10 +420,10 @@ impl<'a> AlternativeExportPlan<'a> {
         restricted_alternatives: &[String],
         reserved: &BTreeSet<String>,
     ) -> Result<(), XmlFormatError> {
-        for child in children
-            .iter()
-            .filter(|child| !child.attribute && !child.text && child.xml_optional)
-        {
+        for child in children {
+            if !optional_element(child)? {
+                continue;
+            }
             let profiles = alternatives
                 .iter()
                 .filter(|alternative| alternative.members.contains(&child.name))
@@ -894,6 +894,14 @@ fn write_simple_content_members(
         ));
     }
     Ok(())
+}
+
+/// Whether `child` is one optional element occurrence. Attributes and simple
+/// text content have no particle occurrence; contradictory XML roles are
+/// refused with the declaration's typed error.
+pub(in crate::xsd) fn optional_element(child: &SchemaNode) -> Result<bool, XmlFormatError> {
+    let declared = super::declaration(child)?;
+    Ok(!child.attribute && !declared.repeated && declared.optional)
 }
 
 fn ordered_subset_is_valid(children: &[SchemaNode], alternative: &GroupAlternative) -> bool {

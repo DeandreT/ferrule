@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::super::super::export::{XmlDeclaration, declaration};
+use super::super::super::export::{XmlDeclaration, declaration, optional_element};
 use super::super::super::*;
 
 /// The hand-derived element and attribute readings replaced by the view.
@@ -18,6 +18,23 @@ fn legacy_matches(node: &SchemaNode, declared: XmlDeclaration) -> bool {
         } else {
             declared.optional == node.xml_optional
         }
+}
+
+/// The alternative planner's hand-read optional-element filter.
+fn legacy_optional_element(node: &SchemaNode) -> bool {
+    !node.attribute && !node.text && node.xml_optional
+}
+
+/// The planner's filter matches on every interpretable node and refuses
+/// contradictory roles with the declaration's error.
+fn compare_optional_element(node: &SchemaNode) {
+    match (optional_element(node), declaration(node)) {
+        (Ok(optional), Ok(_)) => assert_eq!(optional, legacy_optional_element(node), "{node:?}"),
+        (Err(error), Err(expected)) => {
+            assert_eq!(format!("{error:?}"), format!("{expected:?}"), "{node:?}")
+        }
+        (result, expected) => panic!("{node:?}: {result:?} {expected:?}"),
+    }
 }
 
 fn shapes() -> Vec<SchemaNode> {
@@ -45,6 +62,7 @@ fn every_role_flag_combination_matches_or_refuses_contradictions() {
             // consulted by the XML boundary.
             node.nullable = bits & 64 != 0;
             node.container_nullable = bits & 128 != 0;
+            compare_optional_element(&node);
             match declaration(&node) {
                 Ok(declared) => {
                     matched += 1;
@@ -173,6 +191,7 @@ fn every_workspace_xml_schema_fixture_matches_before_and_after_migration() {
                 nodes += 1;
                 qualified +=
                     usize::from(node.nillable || node.xml_optional || node.xml_attribute_required);
+                compare_optional_element(node);
                 let declared = declaration(node).unwrap();
                 assert!(
                     legacy_matches(node, declared),
@@ -185,4 +204,41 @@ fn every_workspace_xml_schema_fixture_matches_before_and_after_migration() {
     assert!(schemas > 100, "{schemas}");
     assert!(nodes > 500, "{nodes}");
     assert!(qualified > 40, "{qualified}");
+}
+
+#[test]
+fn alternative_occurrence_conflicts_consider_only_optional_elements() {
+    let group = |child: SchemaNode| {
+        let member = child.name.clone();
+        let alternative = |name: &str, required: Vec<String>| ir::GroupAlternative {
+            name: name.into(),
+            members: vec![member.clone()],
+            required,
+            constraints: vec![],
+        };
+        let required = vec![member.clone()];
+        SchemaNode::group("Root", vec![child])
+            .with_alternatives(vec![alternative("A", vec![]), alternative("B", required)])
+            .unwrap()
+    };
+    let conflict = |child: SchemaNode| {
+        matches!(
+            export(&group(child)),
+            Err(XmlFormatError::UnsupportedXmlAlternativeOccurrence { .. })
+        )
+    };
+    let value = || SchemaNode::scalar("Value", ScalarType::String);
+    let mut optional = value().nillable();
+    assert!(optional.set_xml_optional(true));
+    assert!(conflict(optional));
+    // Required, repeated and attribute occurrences have no optional particle,
+    // even though an attribute is optional by default.
+    assert!(!conflict(value()));
+    assert!(!conflict(value().nillable()));
+    assert!(!conflict(value().repeating()));
+    assert!(!conflict(
+        SchemaNode::scalar("code", ScalarType::String).attribute()
+    ));
+    // JSON null is not XML optional occurrence.
+    assert!(!conflict(value().nullable().unwrap()));
 }
