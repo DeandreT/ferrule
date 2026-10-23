@@ -1,0 +1,38 @@
+using System.Text;
+using Ferrule.Runtime;
+using Ferrule.Generated;
+
+var parameters = new FerruleRuntimeParameters(new Dictionary<string, FerruleValue> { ["Input"] = FerruleValue.FromString("real-*.csv") });
+var execution = FerruleExecutionContext.WithParameters("fixture.mfd", parameters);
+int loads = 0, bodies = 0, files = 0;
+using var rows = GeneratedMapping.AcquirePrimaryCsv(execution, name => {
+    if (name != "real-*.csv") throw new Exception("preview filename used");
+    return new[] { "a.csv", "b.csv" };
+}, name => {
+    loads++;
+    return new FerruleCsvSourceData(Encoding.UTF8.GetBytes(name switch {
+        "a.csv" => "A,9007199254740993\nA,1.234567890123456785\n",
+        "b.csv" => "B,79228162514264337593543950335\n",
+        _ => throw new Exception("unexpected source"),
+    }));
+}, FerruleCsvByteDecodingPolicy.StrictUtf8, 2);
+if (loads != 0) throw new Exception("eager acquisition");
+var values = new List<FerruleInstance>();
+var origins = new List<string>();
+while (rows.MoveNext()) { values.Add(rows.Current.Value); origins.Add(rows.Current.Document.Path + ":" + rows.Current.Position); }
+if (!origins.SequenceEqual(new[] { "a.csv:1", "a.csv:2", "b.csv:1" })) throw new Exception("CSV acquisition origins");
+if (loads != 2) throw new Exception("source count");
+var input = new FerruleRepeated(values);
+const string expected = "{\r\n\tTime: \"body\",\r\n\tLines: [\r\n\t\t{\r\n\t\t\tQty: 9007199254740993\r\n\t\t},\r\n\t\t{\r\n\t\t\tQty: 1.23456789012345679\r\n\t\t},\r\n\t\t{\r\n\t\t\tQty: 79228162514264337593543950335\r\n\t\t}\r\n\t]\r\n}";
+var result = GeneratedMapping.VisitTargetDocumentsWithClocks(input, Array.Empty<NamedInput>(), execution, null,
+    () => { bodies++; return "body"; }, () => $"F{++files}-", document => {
+    if (document.Path != "F2-B" || bodies != 1 || files != 2) throw new Exception("document evaluation order");
+    if (GeneratedMapping.SerializeMapForceJson5Document(document.Value) != expected) throw new Exception("typed output bytes");
+    if (!GeneratedMapping.SerializeMapForceJson5DocumentBytes(document.Value).SequenceEqual(Encoding.UTF8.GetBytes(expected))) throw new Exception("typed UTF-8 output");
+    return GeneratedMapping.DocumentDecision<string>.Continue;
+});
+if (result.Accepted != 1) throw new Exception("accepted count");
+var empty = GeneratedMapping.VisitTargetDocumentsWithClocks<string>(new FerruleRepeated(Array.Empty<FerruleInstance>()), Array.Empty<NamedInput>(), execution, null,
+    () => { bodies++; return "body"; }, () => $"F{++files}-", _ => throw new Exception("empty output"));
+if (empty.Accepted != 0 || bodies != 1 || files != 2) throw new Exception("empty evaluation");
+Console.WriteLine("PASS mapped JSON5 documents");

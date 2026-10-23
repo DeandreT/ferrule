@@ -9,6 +9,8 @@
 //! never changes ordinary string fields.
 
 pub mod json5_profile;
+#[path = "json5_text_profile.rs"]
+pub mod mapforce_json5_profile;
 
 use ir::{SchemaKind, SchemaNode};
 use serde_json::{Number, Value};

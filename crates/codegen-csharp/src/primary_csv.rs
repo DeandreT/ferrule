@@ -34,9 +34,17 @@ pub fn emit_with_primary_csv_acquisition(
 ) -> Result<ArtifactSet, PrimaryCsvEmitError> {
     codegen::validate_primary_csv_acquisition(document.program(), policy)
         .map_err(PrimaryCsvEmitError::Input)?;
-    let mut files = crate::emit_with_primary_filename(document)
-        .map_err(PrimaryCsvEmitError::Emit)?
-        .into_files();
+    let artifacts =
+        crate::emit_with_primary_filename(document).map_err(PrimaryCsvEmitError::Emit)?;
+    append(artifacts, document, policy)
+}
+
+pub(crate) fn append(
+    artifacts: ArtifactSet,
+    document: &DocumentProgram,
+    policy: &CsvInputPolicy,
+) -> Result<ArtifactSet, PrimaryCsvEmitError> {
+    let mut files = artifacts.into_files();
     let project = files
         .iter_mut()
         .find(|file| file.path.as_str() == "Ferrule.Generated.csproj")

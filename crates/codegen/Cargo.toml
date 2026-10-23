@@ -15,3 +15,7 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 format-xml = { workspace = true }
+
+[[test]]
+name = "mapforce_json5_documents"
+path = "tests/json5_text_documents.rs"

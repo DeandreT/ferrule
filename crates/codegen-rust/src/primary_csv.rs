@@ -35,9 +35,17 @@ pub fn emit_with_primary_csv_acquisition(
 ) -> Result<ArtifactSet, PrimaryCsvEmitError> {
     codegen::validate_primary_csv_acquisition(document.program(), policy)
         .map_err(PrimaryCsvEmitError::Input)?;
-    let mut files = crate::emit_with_primary_filename(document, options)
-        .map_err(PrimaryCsvEmitError::Emit)?
-        .into_files();
+    let artifacts =
+        crate::emit_with_primary_filename(document, options).map_err(PrimaryCsvEmitError::Emit)?;
+    append(artifacts, document, policy)
+}
+
+pub(crate) fn append(
+    artifacts: ArtifactSet,
+    document: &DocumentProgram,
+    policy: &CsvInputPolicy,
+) -> Result<ArtifactSet, PrimaryCsvEmitError> {
+    let mut files = artifacts.into_files();
     let SchemaKind::Group { children, .. } = &document.program().source.kind else {
         unreachable!("validated row schema")
     };

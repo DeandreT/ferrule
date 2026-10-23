@@ -1,0 +1,43 @@
+use codegen_runtime::{CsvByteDecodingPolicy, CsvSourceData, ExecutionContext, Instance, RuntimeParameters, Value};
+use json5_documents::{acquire_primary_csv, serialize_mapforce_json5_document, serialize_mapforce_json5_document_bytes, visit_target_documents_with_clocks, DocumentVisit};
+use std::{cell::Cell, ops::ControlFlow};
+
+fn main() {
+    let mut parameters = RuntimeParameters::new();
+    parameters.insert("Input", Value::String("real-*.csv".into())).unwrap();
+    let execution = ExecutionContext::new(std::path::Path::new("fixture.mfd")).with_parameters(&parameters);
+    let loads = Cell::new(0);
+    let rows = acquire_primary_csv(&execution, |name| {
+        assert_eq!(name, "real-*.csv");
+        Ok(["a.csv", "b.csv"].into_iter().map(|name| Ok::<_, String>(name.into())))
+    }, |name| {
+        loads.set(loads.get() + 1);
+        Ok(CsvSourceData { bytes: match name {
+            "a.csv" => b"A,9007199254740993\nA,1.234567890123456785\n".to_vec(),
+            "b.csv" => b"B,79228162514264337593543950335\n".to_vec(),
+            _ => panic!("unexpected source"),
+        }, resolved_path: None })
+    }, CsvByteDecodingPolicy::StrictUtf8, 2).unwrap();
+    assert_eq!(loads.get(), 0);
+    let rows = rows.collect::<Result<Vec<_>, _>>().unwrap();
+    assert_eq!(rows.iter().map(|row| (row.document().path(), row.position())).collect::<Vec<_>>(), [("a.csv", 1), ("a.csv", 2), ("b.csv", 1)]);
+    let input = Instance::Repeated(rows.iter().map(|row| row.value().clone()).collect());
+    assert_eq!(loads.get(), 2);
+    let bodies = Cell::new(0);
+    let files = Cell::new(0);
+    let body = || { bodies.set(bodies.get()+1); Ok("body".into()) };
+    let filename = || { files.set(files.get()+1); Ok(format!("F{}-", files.get())) };
+    let expected = "{\r\n\tTime: \"body\",\r\n\tLines: [\r\n\t\t{\r\n\t\t\tQty: 9007199254740993\r\n\t\t},\r\n\t\t{\r\n\t\t\tQty: 1.23456789012345679\r\n\t\t},\r\n\t\t{\r\n\t\t\tQty: 79228162514264337593543950335\r\n\t\t}\r\n\t]\r\n}";
+    let result = visit_target_documents_with_clocks(&input, &[], Some(&execution), None, &body, &filename, |document| {
+        assert_eq!(document.path(), "F2-B");
+        assert_eq!((bodies.get(), files.get()), (1, 2));
+        assert_eq!(serialize_mapforce_json5_document(document.value()).unwrap(), expected);
+        assert_eq!(serialize_mapforce_json5_document_bytes(document.value()).unwrap(), expected.as_bytes());
+        ControlFlow::<()>::Continue(())
+    }).unwrap();
+    assert_eq!(result, DocumentVisit::Complete { accepted: 1 });
+    let empty = Instance::Repeated(vec![]);
+    assert_eq!(visit_target_documents_with_clocks(&empty, &[], Some(&execution), None, &body, &filename, |_| panic!("empty output")).unwrap(), DocumentVisit::<()>::Complete { accepted: 0 });
+    assert_eq!((bodies.get(), files.get()), (1, 2));
+    println!("PASS mapped JSON5 documents");
+}

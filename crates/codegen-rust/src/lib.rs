@@ -29,10 +29,14 @@ pub use csv_document::{
 };
 mod failure;
 mod json5_api;
+mod json5_text_documents;
 mod owned_basic;
 mod owned_json_api;
 mod primary_csv;
 mod primary_filename;
+pub use json5_text_documents::{
+    MapForceJson5DocumentEmitError, emit_csv_to_mapforce_json5_documents,
+};
 mod scalar_sequence;
 mod selected_json_api;
 
