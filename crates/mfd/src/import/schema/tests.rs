@@ -68,6 +68,15 @@ fn repeated_input_keys_keep_legacy_ancestry_but_refuse_unique_clone_ownership() 
     );
 }
 
+/// Removes a per-test directory on drop, including after a panic.
+struct TempDir(std::path::PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn marked_nested_json_array_ports_preserve_each_declared_level()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -84,6 +93,7 @@ fn marked_nested_json_array_ports_preserve_each_declared_level()
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&root)?;
+    let _cleanup = TempDir(root.clone());
     std::fs::write(
         root.join("schema.json"),
         format_json::json_schema::export(&project.source)?,

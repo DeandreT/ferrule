@@ -6,6 +6,7 @@ use std::io::Read;
 #[path = "../gnu_tool_path.rs"]
 mod gnu_tool_path;
 
+/// Removed on drop, including after a panic, unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`.
 pub(super) struct Originals {
     pub(super) path: PathBuf,
 }
@@ -23,10 +24,14 @@ impl Originals {
 }
 impl Drop for Originals {
     fn drop(&mut self) {
-        eprintln!(
-            "Retained combined XML output originals: {}",
-            self.path.display()
-        );
+        if host_policy::keep_artifacts() {
+            eprintln!(
+                "Retained combined XML output originals: {}",
+                self.path.display()
+            );
+        } else {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
     }
 }
 pub(super) fn json_file(path: &Path, value: &Json) -> io::Result<()> {

@@ -97,6 +97,15 @@ mod tests {
     use ir::ScalarType;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    /// Removes the per-test directory on drop, including after a panic.
+    struct TempDir(std::path::PathBuf);
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     fn schema() -> SchemaNode {
         SchemaNode::group(
             "Interchange",
@@ -162,6 +171,7 @@ mod tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         std::fs::write(root.join("OPTIONS.original.txt"), format!("{options:#?}")).unwrap();
         std::fs::write(root.join("SCHEMA.original.txt"), format!("{:#?}", schema())).unwrap();
         let result = boundary(&schema(), Some("input.txt"), &options, "source");
@@ -293,6 +303,7 @@ mod tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         let json = FormatOptions {
             json_document: true,
             ..Default::default()
@@ -362,6 +373,7 @@ mod tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         let output = root.join("absent-parent/unpublished");
         let target = crate::GenerateTarget::Rust {
             runtime_path: root.join("missing-runtime"),
@@ -401,6 +413,7 @@ mod tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         let input = root.join("project.json");
         let output = root.join("existing");
         std::fs::write(&input, project).unwrap();

@@ -41,7 +41,7 @@ fn source_options() -> X12BoundaryOptions {
         ..Default::default()
     }
 }
-fn evidence(label: &str) -> std::path::PathBuf {
+fn evidence(label: &str) -> TempDir {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
         "ferrule_x12_mapforce_ack_{label}_{}_{}_{}",
@@ -60,7 +60,7 @@ fn evidence(label: &str) -> std::path::PathBuf {
     for (name, contents) in FIXTURES {
         fs::write(root.join(name), contents).unwrap();
     }
-    root
+    TempDir(root)
 }
 
 /// Proves the native oracles and writes the derived cases for the host:

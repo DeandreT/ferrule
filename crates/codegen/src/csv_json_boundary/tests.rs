@@ -81,7 +81,24 @@ fn write_debug(path: impl AsRef<Path>, value: &impl std::fmt::Debug) -> Result<(
     Ok(())
 }
 
-fn evidence() -> Result<PathBuf, Box<dyn Error>> {
+/// Removes the per-test directory on drop, including after a panic.
+struct TempDir(PathBuf);
+
+impl std::ops::Deref for TempDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn evidence() -> Result<TempDir, Box<dyn Error>> {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let path = std::env::temp_dir().join(format!(
         "ferrule-csv-json-policy-{}-{}-{}",
@@ -92,7 +109,7 @@ fn evidence() -> Result<PathBuf, Box<dyn Error>> {
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&path)?;
-    Ok(path)
+    Ok(TempDir(path))
 }
 
 fn policy(value: &Json) -> Result<CsvJsonBoundaryPolicy, Box<dyn Error>> {

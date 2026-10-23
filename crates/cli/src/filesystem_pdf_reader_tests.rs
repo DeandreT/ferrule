@@ -155,14 +155,41 @@ fn expand_root(text: &str, root: &Path) -> String {
     )
 }
 
-fn fresh_evidence_root() -> PathBuf {
-    let base = match std::env::var_os("FERRULE_FILESYSTEM_PDF_READER_EVIDENCE_ROOT") {
+/// Evidence under the temporary directory is removed on drop, including after a panic;
+/// evidence under `FERRULE_FILESYSTEM_PDF_READER_EVIDENCE_ROOT` is retained.
+struct EvidenceRoot {
+    path: PathBuf,
+    retained: bool,
+}
+
+impl std::ops::Deref for EvidenceRoot {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for EvidenceRoot {
+    fn drop(&mut self) {
+        if !self.retained {
+            let _ = fs::remove_dir_all(&self.path);
+            // The shared parent stays while another process's cohort still uses it.
+            if let Some(parent) = self.path.parent() {
+                let _ = fs::remove_dir(parent);
+            }
+        }
+    }
+}
+
+fn fresh_evidence_root() -> EvidenceRoot {
+    let (base, retained) = match std::env::var_os("FERRULE_FILESYSTEM_PDF_READER_EVIDENCE_ROOT") {
         Some(root) => {
             let root = PathBuf::from(root);
             assert!(root.is_absolute(), "reader evidence base must be absolute");
-            root
+            (root, true)
         }
-        None => std::env::temp_dir(),
+        None => (std::env::temp_dir(), false),
     };
     let serial = NEXT_DYNAMIC_COHORT.fetch_add(1, Ordering::Relaxed);
     let root = base
@@ -170,7 +197,10 @@ fn fresh_evidence_root() -> PathBuf {
         .join(format!("pid-{}-cohort-{serial}", std::process::id()));
     fs::create_dir_all(root.parent().unwrap()).unwrap();
     fs::create_dir(&root).unwrap();
-    root
+    EvidenceRoot {
+        path: root,
+        retained,
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -422,5 +452,5 @@ fn frozen_c13_c16_private_borrowed_dynamic_loader_controls() {
         assert_eq!(case["expected"]["all_initial_files_unchanged"], json!(true));
         assert_eq!(case["model_bytes_preserved"], json!(true));
     }
-    // Keep the complete before/after evidence; no automatic cleanup is permitted here.
+    // Complete before/after evidence is kept only under the opt-in evidence root.
 }

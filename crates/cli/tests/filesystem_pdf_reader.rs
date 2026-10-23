@@ -53,26 +53,54 @@ fn save_json(path: &Path, value: &Value) {
     .expect("retain complete observation before comparison");
 }
 
-fn fresh_root() -> PathBuf {
-    let base = match std::env::var_os("FERRULE_FILESYSTEM_PDF_READER_EVIDENCE_ROOT") {
+/// Evidence under `FERRULE_FILESYSTEM_PDF_READER_EVIDENCE_ROOT` is retained; the default
+/// per-test base under the temporary directory is removed on drop, including after a panic.
+struct EvidenceRoot {
+    root: PathBuf,
+    owned_base: Option<PathBuf>,
+}
+
+impl std::ops::Deref for EvidenceRoot {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.root
+    }
+}
+
+impl Drop for EvidenceRoot {
+    fn drop(&mut self) {
+        if let Some(base) = &self.owned_base {
+            let _ = std::fs::remove_dir_all(base);
+        }
+    }
+}
+
+fn fresh_root() -> EvidenceRoot {
+    let (base, owned) = match std::env::var_os("FERRULE_FILESYSTEM_PDF_READER_EVIDENCE_ROOT") {
         Some(value) => {
             let base = PathBuf::from(value);
             assert!(
                 base.is_absolute(),
                 "root-selected evidence path must be absolute"
             );
-            base
+            (base, false)
         }
-        None => std::env::temp_dir().join(format!(
-            "ferrule-borrowed-pdf-reader-{}-{}",
-            std::process::id(),
-            NEXT_ROOT.fetch_add(1, Ordering::Relaxed)
-        )),
+        None => (
+            std::env::temp_dir().join(format!(
+                "ferrule-borrowed-pdf-reader-{}-{}",
+                std::process::id(),
+                NEXT_ROOT.fetch_add(1, Ordering::Relaxed)
+            )),
+            true,
+        ),
     };
     std::fs::create_dir_all(&base).expect("evidence parent");
     let root = base.join("public-routes");
-    std::fs::create_dir(&root).expect("exclusive fresh public-route evidence root");
-    root
+    let owned_base = owned.then(|| base.clone());
+    let evidence = EvidenceRoot { root, owned_base };
+    std::fs::create_dir(&evidence.root).expect("exclusive fresh public-route evidence root");
+    evidence
 }
 
 #[derive(Debug)]

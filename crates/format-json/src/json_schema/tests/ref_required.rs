@@ -10,10 +10,16 @@ use serde_json::{Map, Value as JsonValue, json};
 use crate::{JsonFormatError, json_schema};
 
 // Each public result and its independent oracle are retained before assertions.
-// These small authored fixtures are deliberately kept after success or failure.
+// The directory is removed on drop, including after a panic.
 struct Evidence {
     root: PathBuf,
     next: Cell<usize>,
+}
+
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
 }
 
 impl Evidence {

@@ -68,11 +68,21 @@ fn metadata(path: &Path) -> TestResult<JsonValue> {
     }
 }
 
+/// Physical originals under `FERRULE_NATIVE_JSON5_EVIDENCE_DIR` are retained; others are
+/// removed on drop, including after a panic.
 struct Originals {
     root: PathBuf,
+    retained: bool,
     maximum: usize,
     bytes: usize,
     files: usize,
+}
+impl Drop for Originals {
+    fn drop(&mut self) {
+        if !self.retained {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
 }
 impl Originals {
     fn new(label: &str, physical: bool) -> TestResult<Self> {
@@ -102,6 +112,7 @@ impl Originals {
         );
         Ok(Self {
             root,
+            retained: physical,
             maximum: if physical {
                 4 * (LIMIT + 1) + 16 * 1024 * 1024
             } else {

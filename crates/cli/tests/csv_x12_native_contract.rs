@@ -7,6 +7,15 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Removes a per-test directory on drop, including after a panic.
+struct TempDir(PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 const PROJECT: &[u8] = include_bytes!("csv_x12_native/fixtures/project.json");
 const CONTEXT: &[u8] = include_bytes!("csv_x12_native/fixtures/context.json");
 const CASES: &[u8] = include_bytes!("csv_x12_native/fixtures/cases.json");
@@ -126,6 +135,7 @@ fn complete_csv_rows_feed_one_x12_document_without_dropping_rows() -> Result<(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(root.join("fixtures"))?;
+    let _cleanup = TempDir(root.clone());
     for (name, body) in FIXTURES {
         std::fs::write(root.join("fixtures").join(name), body)?;
     }

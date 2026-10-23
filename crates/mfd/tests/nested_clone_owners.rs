@@ -15,7 +15,17 @@ struct Case {
     expected_json: serde_json::Value,
 }
 
+/// Evidence under `FERRULE_NESTED_CLONES_EVIDENCE_DIR` is retained; otherwise it is
+/// removed on drop, including after a panic.
 struct Evidence(PathBuf);
+
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_NESTED_CLONES_EVIDENCE_DIR").is_none() {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
 
 impl Evidence {
     fn new(label: &str) -> Result<Self, std::io::Error> {

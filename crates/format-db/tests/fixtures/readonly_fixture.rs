@@ -18,9 +18,23 @@ CREATE TABLE Records(Id INTEGER PRIMARY KEY AUTOINCREMENT,
     GroupId INTEGER REFERENCES Groups(GroupId), Label TEXT, Score REAL, Active BOOLEAN);
 INSERT INTO Groups VALUES(1, 'group');";
 
+/// The database directory is removed on drop, including after a panic. Evidence under
+/// `FERRULE_METADATA_EVIDENCE_DIR` is retained; default evidence is removed with it.
 pub struct Fixture {
     directory: PathBuf,
     evidence: PathBuf,
+    owned_evidence_root: Option<PathBuf>,
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.directory);
+        if let Some(root) = &self.owned_evidence_root {
+            let _ = fs::remove_dir_all(&self.evidence);
+            // The shared default root is removed once no other evidence remains in it.
+            let _ = fs::remove_dir(root);
+        }
+    }
 }
 
 impl Fixture {
@@ -40,17 +54,28 @@ impl Fixture {
         );
         let directory = std::env::temp_dir().join(&name);
         fs::create_dir(&directory).unwrap();
-        let root = std::env::var_os("FERRULE_METADATA_EVIDENCE_DIR")
+        let selected = std::env::var_os("FERRULE_METADATA_EVIDENCE_DIR");
+        let owned = selected.is_none();
+        let root = selected
             .map(PathBuf::from)
             .unwrap_or_else(|| std::env::temp_dir().join("ferrule-metadata-evidence"));
-        fs::create_dir_all(&root).unwrap();
         let evidence = root.join(name);
-        fs::create_dir(&evidence).unwrap();
-        eprintln!("metadata evidence={}", evidence.display());
-        Self {
+        let fixture = Self {
             directory,
             evidence,
+            owned_evidence_root: owned.then(|| root.clone()),
+        };
+        loop {
+            fs::create_dir_all(&root).unwrap();
+            match fs::create_dir(&fixture.evidence) {
+                Ok(()) => break,
+                // Another fixture removed the empty shared default root in between.
+                Err(error) if owned && error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => panic!("create metadata evidence: {error}"),
+            }
         }
+        eprintln!("metadata evidence={}", fixture.evidence.display());
+        fixture
     }
 
     pub fn directory(&self) -> &Path {

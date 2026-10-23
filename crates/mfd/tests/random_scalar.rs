@@ -19,7 +19,32 @@ fn unit_float(value: &Value) {
     assert!((0.0..1.0).contains(value));
 }
 
-fn retain(design: &Path, tag: &str) -> TestResult<PathBuf> {
+/// A copied design whose directory is removed on drop, including after a panic.
+struct RetainedDesign(PathBuf);
+
+impl std::ops::Deref for RetainedDesign {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for RetainedDesign {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for RetainedDesign {
+    fn drop(&mut self) {
+        if let Some(root) = self.0.parent() {
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+}
+
+fn retain(design: &Path, tag: &str) -> TestResult<RetainedDesign> {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
         "ferrule_random_mfd_{tag}_{}_{}_{}",
@@ -37,7 +62,9 @@ fn retain(design: &Path, tag: &str) -> TestResult<PathBuf> {
         std::fs::copy(entry.path(), root.join(entry.file_name()))?;
     }
     eprintln!("complete random MFD evidence: {}", root.display());
-    Ok(root.join(design.file_name().expect("fixture filename")))
+    Ok(RetainedDesign(
+        root.join(design.file_name().expect("fixture filename")),
+    ))
 }
 
 fn record(root: &Path, label: &str, outcome: &impl Debug) -> std::io::Result<()> {

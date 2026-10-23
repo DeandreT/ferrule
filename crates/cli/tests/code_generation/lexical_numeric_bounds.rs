@@ -5,7 +5,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const CASES: &str =
     include_str!("../../../format-json/tests/fixtures/lexical_numeric_bounds/compiled/corpus.json");
 
+/// Evidence under `FERRULE_LEXICAL_BOUNDS_EVIDENCE_DIR` is retained; otherwise it is
+/// removed on drop, including after a panic, unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`.
 struct Evidence(PathBuf);
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_LEXICAL_BOUNDS_EVIDENCE_DIR").is_none()
+            && !host_policy::keep_artifacts()
+        {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
 impl Evidence {
     fn new() -> TestResult<Self> {
         let parent = std::env::var_os("FERRULE_LEXICAL_BOUNDS_EVIDENCE_DIR")
@@ -140,24 +151,25 @@ fn lexical_numeric_bounds_compiled_complete_oracles() -> TestResult<()> {
     if !target.is_absolute() {
         return Err("generated host target must be absolute".into());
     }
-    let dotnet_temp = std::env::var_os("FERRULE_LEXICAL_BOUNDS_DOTNET_TMPDIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            static NEXT: AtomicUsize = AtomicUsize::new(0);
-            std::env::temp_dir().join(format!(
-                "flx-{}-{}-{}",
-                std::process::id(),
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ))
-        });
+    let selected_dotnet_temp = std::env::var_os("FERRULE_LEXICAL_BOUNDS_DOTNET_TMPDIR");
+    let owned_dotnet_temp = selected_dotnet_temp.is_none();
+    let dotnet_temp = selected_dotnet_temp.map(PathBuf::from).unwrap_or_else(|| {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        std::env::temp_dir().join(format!(
+            "flx-{}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ))
+    });
     if !dotnet_temp.is_absolute() {
         return Err(".NET temporary directory must be absolute".into());
     }
     std::fs::create_dir_all(&dotnet_temp)?;
+    let _dotnet_temp_cleanup = owned_dotnet_temp.then(|| TempDir(dotnet_temp.clone()));
     evidence.record("DOTNET-TEMPORARY-DIRECTORY", &dotnet_temp)?;
     let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../codegen-runtime")

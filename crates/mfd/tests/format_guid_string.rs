@@ -7,6 +7,15 @@ use std::{
 use ir::{Instance, Value};
 use mapping::Node;
 
+/// Removes a per-test directory on drop, including after a panic.
+struct TempDir(std::path::PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn standard_guid_formatter_imports_executes_and_round_trips()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -20,6 +29,7 @@ fn standard_guid_formatter_imports_executes_and_round_trips()
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&evidence)?;
+    let _cleanup = TempDir(evidence.clone());
     eprintln!("GUID269_MFD_ORIGINALS={}", evidence.display());
     for file in ["mapping.mfd", "source.xsd", "target.xsd"] {
         std::fs::copy(fixture.join(file), evidence.join(file))?;
@@ -104,6 +114,7 @@ fn canonical_ir_names_in_vendor_libraries_remain_unresolved()
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&evidence)?;
+    let _cleanup = TempDir(evidence.clone());
     eprintln!("GUID269_NAMESPACE_ORIGINALS={}", evidence.display());
     let mapping = std::fs::read_to_string(fixture.join("mapping.mfd"))?;
     let mut results = Vec::new();

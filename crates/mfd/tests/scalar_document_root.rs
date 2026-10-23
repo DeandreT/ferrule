@@ -33,7 +33,24 @@ fn record_import(
         }),
     )
 }
-fn package() -> Result<PathBuf, Box<dyn Error>> {
+/// Removes the per-test directory on drop, including after a panic.
+struct TempDir(PathBuf);
+
+impl std::ops::Deref for TempDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn package() -> Result<TempDir, Box<dyn Error>> {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
         "ferrule_scalar_root339_native_{}_{}",
@@ -41,6 +58,7 @@ fn package() -> Result<PathBuf, Box<dyn Error>> {
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&root)?;
+    let root = TempDir(root);
     for file in std::fs::read_dir(fixtures())? {
         let file = file?;
         std::fs::copy(file.path(), root.join(file.file_name()))?;
