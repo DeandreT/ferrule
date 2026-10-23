@@ -48,7 +48,9 @@ pub use primary_filename::emit_with_primary_filename;
 pub use primary_json::{
     PrimaryJsonEmitError, emit_with_mapforce_x12_writer, emit_with_primary_json_projection,
 };
+mod mapforce_x12_source;
 mod x12_api;
+pub use mapforce_x12_source::{MapForceSourceEmitError, emit_with_mapforce_x12_source};
 mod xml_api;
 pub use x12_api::{X12EmitError, emit_with_x12};
 

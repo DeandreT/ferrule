@@ -168,7 +168,7 @@ public static partial class FerruleX12
             throw Failure(FerruleX12Error.Syntax, "X12 separators must be distinct ASCII punctuation; the segment terminator may be LF.");
     }
 
-    private static List<Segment> Tokenize(string text, Syntax syntax, HashSet<string> repeatingIds)
+    private static List<Segment> Tokenize(string text, Syntax syntax, HashSet<string> repeatingIds, bool allowControls = false)
     {
         var segments = new List<Segment>();
         int start = 0;
@@ -192,7 +192,7 @@ public static partial class FerruleX12
                     position = index + 1;
                     componentSeparators = 0;
                 }
-                else if (char.IsControl(text[index]))
+                else if (!allowControls && char.IsControl(text[index]))
                     throw Failure(FerruleX12Error.Syntax, "X12 contains a control character inside a segment.", segments.Count);
                 else if (text[index] == syntax.Component && ++componentSeparators >= MaximumElements)
                     throw Limit("X12 component limit exceeded.");
@@ -671,6 +671,7 @@ public static partial class FerruleX12
         private int nodes;
         private int loops;
         private long outputBytes;
+        private long materializedNameBytes;
         internal long RemainingOutput => MaximumDocumentBytes - outputBytes;
         internal void Visit(int depth)
         {
@@ -679,6 +680,11 @@ public static partial class FerruleX12
         internal void Loop()
         {
             if (++loops > MaximumLoopInstances) throw Limit("X12 loop instance limit exceeded.");
+        }
+        internal void Name(string name)
+        {
+            materializedNameBytes += StrictUtf8.GetByteCount(name);
+            if (materializedNameBytes > MaximumDocumentBytes) throw Limit("X12 materialized name limit exceeded.");
         }
         internal void CheckOutput(long segmentBytes)
         {

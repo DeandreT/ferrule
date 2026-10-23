@@ -55,6 +55,19 @@ internal static partial class Program
         Equal("bad-date", ((FerruleScalar)Field(sourceGs, "E04")).Value.StringValue);
         Equal(FerruleValueKind.Null, ((FerruleScalar)Field(sourceGs, "E08")).Value.Kind);
         Throws<FerruleX12Exception>(() => FerruleX12.ParseEmbedded(boundary, text.Replace("20290304", "bad-date", StringComparison.Ordinal)));
+        var projectedDescriptor = System.Text.Json.Nodes.JsonNode.Parse(boundary)!;
+        projectedDescriptor["lexical_formats"] = JsonSerializer.SerializeToNode(new object[] {
+            new { path = new[] { "Interchange", "ISA", "E09" }, kind = (object)"compact_date6" },
+            new { path = new[] { "Interchange", "Group", "GS", "E04" }, kind = (object)"compact_date8" },
+            new { path = new[] { "Interchange", "Group", "GS", "E05" }, kind = (object)new { compact_time = new { min_digits = 4, max_digits = 8 } } },
+        });
+        var projected = FerruleX12.ParseMapForceSourceBytes(projectedDescriptor.ToJsonString(), Encoding.UTF8.GetBytes(text.Replace("20290304", "491399", StringComparison.Ordinal).Replace("*1617*", "*abCDef*", StringComparison.Ordinal)));
+        var projectedInterchange = ((FerruleRepeated)Field(projected, "Interchange")).Items[0];
+        var projectedGroup = ((FerruleRepeated)Field(projectedInterchange, "Group")).Items[0];
+        var projectedGs = ((FerruleRepeated)Field(projectedGroup, "GS")).Items[0];
+        Equal("2049-13-99", ((FerruleScalar)Field(projectedGs, "E04")).Value.StringValue);
+        Equal("ab:CD:ef", ((FerruleScalar)Field(projectedGs, "E05")).Value.StringValue);
+        Equal(FerruleValueKind.Null, ((FerruleScalar)Field(projectedGs, "E01")).Value.Kind);
         for (int fail = 1; fail <= 4; fail++)
         {
             int count = 0;

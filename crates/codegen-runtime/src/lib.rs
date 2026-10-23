@@ -164,9 +164,9 @@ pub use x12::{
     MAX_EMBEDDED_X12_SCHEMA_BYTES, MAX_X12_DOCUMENT_BYTES, MAX_X12_LOOP_INSTANCES,
     MAX_X12_MATERIALIZED_NAME_BYTES, MAX_X12_NODES, MAX_X12_PROJECTED_SCALAR_BYTES,
     MAX_X12_SEGMENTS, MapForceX12ClockField, MapForceX12WriteError, X12BoundaryError,
-    parse_lexical_x12_source, parse_x12, parse_x12_bytes, serialize_mapforce_x12_document,
-    serialize_mapforce_x12_document_with_clock, serialize_x12, serialize_x12_bytes,
-    write_mapforce_x12_document, write_mapforce_x12_document_with_clock,
+    parse_lexical_x12_source, parse_mapforce_x12_source, parse_x12, parse_x12_bytes,
+    serialize_mapforce_x12_document, serialize_mapforce_x12_document_with_clock, serialize_x12,
+    serialize_x12_bytes, write_mapforce_x12_document, write_mapforce_x12_document_with_clock,
 };
 pub use xml::{MAX_EMBEDDED_XML_SCHEMA_BYTES, MAX_SERIALIZED_XML_BYTES, serialize_xml};
 pub use xml_boundary::{

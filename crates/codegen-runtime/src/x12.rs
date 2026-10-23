@@ -29,10 +29,12 @@ pub use mapforce_writer::{
     serialize_mapforce_x12_document, serialize_mapforce_x12_document_with_clock,
 };
 mod source_lexical;
+mod source_mapforce;
 #[cfg(test)]
 mod tests;
 mod wire;
 pub use source_lexical::parse_lexical_x12_source;
+pub use source_mapforce::parse_mapforce_x12_source;
 
 pub const MAX_EMBEDDED_X12_SCHEMA_BYTES: usize = 1024 * 1024;
 pub const MAX_X12_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;

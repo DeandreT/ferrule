@@ -1089,6 +1089,25 @@ zero without binary floating point and retains `-0` when a nonzero negative
 fraction rounds to zero. An exact zero remains `0`. Ordinary `format_number`
 does not implicitly accept Decimal values.
 
+`parse_mapforce_x12_source` / `ParseMapForceSourceBytes` adds a separately selected
+native source value view. It removes ignored tab/CR/LF characters while retaining
+an LF segment terminator, treats empty physical values and empty composites as
+absent, and applies source date/time/number lexical normalization. Calendar checks
+and numeric conversion remain reached mapping operations; malformed unused values
+do not become a whole-input admission rule. The fixed two-digit-year window is
+1950–2049. Text field spaces remain data. UTF-16 time slicing is represented through
+the existing replacement-character wire carrier, not a lossless surrogate model.
+The raw lexical reader and ordinary strict reader are unchanged.
+
+Both backends expose `emit_with_mapforce_x12_source`. Supply the physical source
+schema/options and the message-owner path, in addition to the body program. The
+shared preparation verifies that the selected message's lexical schema is exactly
+the program's source. The generated `parse_primary_x12_source` /
+`ParsePrimaryX12Source` returns the complete physical source value view, **not** a
+single-message body input. The host must visit messages with one invocation context;
+file acquisition, filename/body clock phases, output serialization and publication
+remain separate contracts. Fractional implied-decimal source projection is refused.
+
 ## Explicit native JSON-to-X12 input
 
 The primary JSON projection companion retains ordered typed occurrences and
