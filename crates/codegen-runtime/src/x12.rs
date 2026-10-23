@@ -8,11 +8,13 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt;
+use std::sync::Arc;
 
 use ir::{Instance, SchemaKind, SchemaNode, Value};
 use mapping::{EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint, X12Autocomplete};
 use serde_json::Value as Json;
 
+use crate::descriptor_registry::DescriptorRegistry;
 use crate::{ExecutionContext, JsonBoundaryError, RuntimeError, RuntimeValue};
 use format_edi::x12::{SchemaCursor, SchemaRole};
 
@@ -146,6 +148,16 @@ struct Profile {
     lexical: Vec<EdiLexicalFormat>,
     constraints: BTreeMap<Vec<String>, EdiValueConstraint>,
     autocomplete: Option<X12Autocomplete>,
+}
+
+/// Profiles of the descriptor-taking boundaries, decoded once per descriptor
+/// and shared by input and output calls. Every call keeps its own document,
+/// segment, node, loop and name budgets.
+static PROFILES: DescriptorRegistry<Profile> =
+    DescriptorRegistry::new(4 * MAX_EMBEDDED_X12_SCHEMA_BYTES);
+
+fn profile(descriptor: &str) -> Result<Arc<Profile>, X12BoundaryError> {
+    PROFILES.get_or_prepare(descriptor, Profile::parse)
 }
 
 fn descriptor(message: impl Into<String>) -> X12BoundaryError {
@@ -287,7 +299,7 @@ pub fn parse_x12_bytes(descriptor: &str, document: &[u8]) -> Result<Instance, X1
 /// Parse a complete document, preserving native scalar tags and implied decimals.
 pub fn parse_x12(descriptor: &str, document: &str) -> Result<Instance, X12BoundaryError> {
     input_size(document.len())?;
-    let profile = Profile::parse(descriptor)?;
+    let profile = profile(descriptor)?;
     parse_admitted(
         &profile,
         document,
@@ -326,7 +338,7 @@ pub fn serialize_x12(
     document: &Instance,
     execution: Option<&ExecutionContext<'_>>,
 ) -> Result<String, X12BoundaryError> {
-    output::serialize(&Profile::parse(descriptor)?, document, execution)
+    output::serialize(&*profile(descriptor)?, document, execution)
 }
 
 pub fn serialize_x12_bytes(

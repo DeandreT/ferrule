@@ -36,7 +36,7 @@ public static partial class FerruleXml
                 FerruleXmlBoundaryErrorKind.Schema,
                 "XML input requires the explicit flat root annotation policy");
         }
-        var schema = ParseInputSchema(descriptor);
+        var schema = Prepared(PreparedFlatInputSchemas, descriptor, ParseInputSchema);
         try
         {
             return ReadFlatInput(xml, schema);

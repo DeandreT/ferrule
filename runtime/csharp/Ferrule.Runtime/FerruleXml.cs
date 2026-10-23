@@ -130,9 +130,18 @@ public static partial class FerruleXml
     {
         try
         {
+            if (descriptor is not null && PreparedNodeSchemas.TryGetValue(descriptor, out var prepared))
+            {
+                return SerializeCore(node, prepared.Payload, instance, declaration, indent,
+                    defaultNamespace, schemaHintsJson: null, documentBoundary: false, prepared.Schema);
+            }
+            // A null descriptor keeps Unwrap's original argument failure.
             var schema = FerruleEmbeddedSchema.Unwrap(
-                descriptor, MaximumEmbeddedSchemaBytes);
-            return Serialize(node, schema.Payload, instance, declaration, indent, defaultNamespace);
+                descriptor!, MaximumEmbeddedSchemaBytes);
+            return SerializeCore(node, schema.Payload, instance, declaration, indent,
+                defaultNamespace, schemaHintsJson: null, documentBoundary: false,
+                prepare: parsed => PreparedNodeSchemas.GetValue(descriptor!,
+                    _ => new PreparedNodeSchema(schema.Payload, parsed)).Schema);
         }
         catch (FerruleRuntimeException)
         {
@@ -165,10 +174,19 @@ public static partial class FerruleXml
         bool indent,
         string? defaultNamespace,
         string? schemaHintsJson,
-        bool documentBoundary) =>
+        bool documentBoundary,
+        XmlSchemaNode? prepared = null,
+        Func<XmlSchemaNode, XmlSchemaNode>? prepare = null) =>
         SerializeCore<FerruleValue>(node, schemaJson, instance, declaration, indent,
-            defaultNamespace, schemaHintsJson, documentBoundary, CompleteSerializedText);
+            defaultNamespace, schemaHintsJson, documentBoundary, CompleteSerializedText,
+            prepared, prepare);
 
+    /// <summary>
+    /// Serializes with <paramref name="prepared"/>, the schema already parsed
+    /// from <paramref name="schemaJson"/>, or parses it here and publishes it
+    /// through <paramref name="prepare"/>. Either way every check keeps its
+    /// original order.
+    /// </summary>
     private static T SerializeCore<T>(
         uint node,
         string schemaJson,
@@ -178,7 +196,9 @@ public static partial class FerruleXml
         string? defaultNamespace,
         string? schemaHintsJson,
         bool documentBoundary,
-        Func<XmlOutput, bool, T> complete)
+        Func<XmlOutput, bool, T> complete,
+        XmlSchemaNode? prepared = null,
+        Func<XmlSchemaNode, XmlSchemaNode>? prepare = null)
     {
         ArgumentNullException.ThrowIfNull(schemaJson);
         ArgumentNullException.ThrowIfNull(instance);
@@ -193,10 +213,8 @@ public static partial class FerruleXml
 
         try
         {
-            using var document = JsonDocument.Parse(
-                schemaJson,
-                new JsonDocumentOptions { MaxDepth = MaximumSchemaDepth });
-            var schema = XmlSchemaNode.Parse(document.RootElement, 0, documentBoundary);
+            var schema = prepared ?? ParseSerializerSchema(schemaJson, documentBoundary);
+            if (prepare is not null) schema = prepare(schema);
             if (schema.Repeating)
             {
                 throw new InvalidOperationException(

@@ -1,7 +1,11 @@
-use codegen_schema::json5_profile;
-use format_json::JsonFormatError;
+use std::sync::Arc;
+
+use codegen_schema::json5_profile::{self, Json5ProfileError};
 use format_json::json5_boundary::{MAX_ORIGINAL_BYTES, normalize};
+use format_json::{JsonFormatError, PreparedSchema};
 use ir::{Instance, SchemaNode};
+
+use crate::descriptor_registry::DescriptorRegistry;
 
 use super::{Json5BoundaryError, Json5BoundaryResource};
 
@@ -37,16 +41,33 @@ fn limit(
     }
 }
 
+/// Decoded JSON5 profile descriptors, shared by both sides of every call.
+/// Each call keeps its own document, normalization and output accounting.
+static PREPARED: DescriptorRegistry<PreparedSchema> =
+    DescriptorRegistry::new(4 * json5_profile::MAX_DESCRIPTOR_BYTES);
+
+fn prepare(descriptor: &str) -> Result<PreparedSchema, Json5ProfileError> {
+    json5_profile::decode_schema(descriptor).map(PreparedSchema::new)
+}
+
 pub(super) fn schemas(
     source: &str,
     target: &str,
-) -> Result<(SchemaNode, SchemaNode), Json5BoundaryError> {
-    let source = json5_profile::decode_schema(source).map_err(Json5BoundaryError::SourceSchema)?;
-    let target = json5_profile::decode_schema(target).map_err(Json5BoundaryError::TargetSchema)?;
+) -> Result<(Arc<PreparedSchema>, Arc<PreparedSchema>), Json5BoundaryError> {
+    let source = PREPARED
+        .get_or_prepare(source, prepare)
+        .map_err(Json5BoundaryError::SourceSchema)?;
+    let target = PREPARED
+        .get_or_prepare(target, prepare)
+        .map_err(Json5BoundaryError::TargetSchema)?;
     Ok((source, target))
 }
 
-pub(super) fn project(schema: &SchemaNode, document: &str) -> Result<Instance, Json5BoundaryError> {
+pub(super) fn project(
+    prepared: &PreparedSchema,
+    document: &str,
+) -> Result<Instance, Json5BoundaryError> {
+    let schema = prepared.schema();
     // Complete normalization rejects all finite-token/syntax failures, even in
     // fields that schema projection would otherwise discard.
     let normalized = normalize(document).map_err(Json5BoundaryError::Syntax)?;
@@ -58,26 +79,31 @@ pub(super) fn project(schema: &SchemaNode, document: &str) -> Result<Instance, J
             root_kind(&normalized),
         )));
     }
-    format_json::from_str(&normalized, schema).map_err(Json5BoundaryError::Input)
+    prepared
+        .from_str(&normalized)
+        .map_err(Json5BoundaryError::Input)
 }
 
 pub(super) fn serialize(
-    schema: &SchemaNode,
+    prepared: &PreparedSchema,
     output: &Instance,
 ) -> Result<String, Json5BoundaryError> {
+    let schema = prepared.schema();
     // Use the exact existing strict writer normalization without reparsing floats.
-    let value = format_json::to_value(schema, output).map_err(Json5BoundaryError::Output)?;
+    let value = prepared
+        .to_value(output)
+        .map_err(Json5BoundaryError::Output)?;
     if !value.is_object() {
         return Err(Json5BoundaryError::Output(shape(
             schema,
             value_kind(&value),
         )));
     }
-    let mut document =
-        serde_json::to_string_pretty(&value).map_err(Json5BoundaryError::OutputSerialization)?;
-    document.push('\n');
-    check_output_size(document.len())?;
-    Ok(document)
+    crate::json::text::pretty_with_limit(
+        &value,
+        Json5BoundaryError::OutputSerialization,
+        check_output_size,
+    )
 }
 
 fn shape(schema: &SchemaNode, got: &'static str) -> JsonFormatError {

@@ -49,7 +49,7 @@ public static partial class FerruleXml
             bytes = StructuredLargeUtf8ByteCount(xml);
         }
         RequireInputSize(bytes);
-        var schema = ParseStructuredSchema(descriptor);
+        var schema = Prepared(PreparedStructuredSchemas, descriptor, ParseStructuredSchema);
         try
         {
             StructuredParserBudget.CheckRawReservation(xml);

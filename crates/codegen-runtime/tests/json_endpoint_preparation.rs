@@ -7,106 +7,14 @@
 //! to see the table; `docs/performance/json-endpoint-preparation.md` records
 //! the observations and how to read them.
 
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::cell::Cell;
-use std::hint::black_box;
-use std::time::Instant;
+mod support;
 
 use codegen_runtime::{
     MAX_EMBEDDED_JSON_SCHEMA_BYTES, PreparedJsonSchema, parse_json, serialize_json,
     serialize_json_bytes,
 };
 use ir::{IntegerRange, JsonPatternConstraints, NumericRange, ScalarType, SchemaNode};
-
-struct Counting;
-
-thread_local! {
-    static ALLOCATIONS: Cell<u64> = const { Cell::new(0) };
-    static ALLOCATED: Cell<u64> = const { Cell::new(0) };
-    static LIVE: Cell<i64> = const { Cell::new(0) };
-    static PEAK: Cell<i64> = const { Cell::new(0) };
-}
-
-fn record_allocation(bytes: usize) {
-    let _ = ALLOCATIONS.try_with(|count| count.set(count.get() + 1));
-    let _ = ALLOCATED.try_with(|total| total.set(total.get() + bytes as u64));
-    adjust_live(bytes as i64);
-}
-
-fn adjust_live(delta: i64) {
-    let _ = LIVE.try_with(|live| {
-        let next = live.get() + delta;
-        live.set(next);
-        let _ = PEAK.try_with(|peak| peak.set(peak.get().max(next)));
-    });
-}
-
-// SAFETY: every operation delegates to the system allocator unchanged; the
-// thread-local counters never allocate.
-unsafe impl GlobalAlloc for Counting {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        record_allocation(layout.size());
-        // SAFETY: forwarded with the caller's layout.
-        unsafe { System.alloc(layout) }
-    }
-
-    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        record_allocation(layout.size());
-        // SAFETY: forwarded with the caller's layout.
-        unsafe { System.alloc_zeroed(layout) }
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        adjust_live(-(layout.size() as i64));
-        // SAFETY: forwarded with the caller's pointer and layout.
-        unsafe { System.dealloc(ptr, layout) }
-    }
-
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        record_allocation(new_size);
-        adjust_live(-(layout.size() as i64));
-        // SAFETY: forwarded with the caller's pointer, layout, and size.
-        unsafe { System.realloc(ptr, layout, new_size) }
-    }
-}
-
-#[global_allocator]
-static GLOBAL: Counting = Counting;
-
-#[derive(Clone, Copy, Debug)]
-struct Cost {
-    allocations: u64,
-    allocated: u64,
-    peak: i64,
-    micros: f64,
-}
-
-fn measure<T>(iterations: u32, mut call: impl FnMut() -> T) -> Cost {
-    drop(black_box(call()));
-    let mut allocations = 0;
-    let mut allocated = 0;
-    let mut peak = 0;
-    let started = Instant::now();
-    for _ in 0..iterations {
-        let (count, total, live) = (
-            ALLOCATIONS.with(Cell::get),
-            ALLOCATED.with(Cell::get),
-            LIVE.with(Cell::get),
-        );
-        PEAK.with(|value| value.set(live));
-        drop(black_box(call()));
-        allocations += ALLOCATIONS.with(Cell::get) - count;
-        allocated += ALLOCATED.with(Cell::get) - total;
-        peak = peak.max(PEAK.with(Cell::get) - live);
-    }
-    let micros = started.elapsed().as_secs_f64() * 1e6 / f64::from(iterations);
-    Cost {
-        allocations: allocations / u64::from(iterations),
-        allocated: allocated / u64::from(iterations),
-        peak,
-        micros,
-    }
-}
+use support::allocation::{header, measure, retained, row};
 
 fn patterned(name: &str, pattern: &str) -> SchemaNode {
     let Ok(patterns) = JsonPatternConstraints::new([[pattern]]) else {
@@ -187,13 +95,6 @@ fn order_document(lines: usize) -> String {
     .to_string()
 }
 
-fn row(label: &str, cost: Cost) {
-    println!(
-        "| {label} | {} | {} | {} | {:.1} |",
-        cost.allocations, cost.allocated, cost.peak, cost.micros
-    );
-}
-
 #[test]
 fn json_endpoint_per_call_cost_attribution() {
     let schema = order_schema();
@@ -223,8 +124,7 @@ fn json_endpoint_per_call_cost_attribution() {
         large.len(),
         rendered.len()
     );
-    println!("| Operation | Allocations | Allocated bytes | Peak live bytes | Mean µs |");
-    println!("| --- | ---: | ---: | ---: | ---: |");
+    header();
     let decode = measure(200, || {
         codegen_schema::decode(&descriptor, MAX_EMBEDDED_JSON_SCHEMA_BYTES)
     });
@@ -233,14 +133,11 @@ fn json_endpoint_per_call_cost_attribution() {
         "`PreparedJsonSchema::prepare`",
         measure(200, || PreparedJsonSchema::prepare(&descriptor)),
     );
-    let live = LIVE.with(Cell::get);
-    let Ok(prepared) = PreparedJsonSchema::prepare(&descriptor) else {
+    let (prepared, live) = retained(|| PreparedJsonSchema::prepare(&descriptor));
+    let Ok(prepared) = prepared else {
         panic!("fixture descriptor prepares");
     };
-    println!(
-        "| live bytes retained by one `PreparedJsonSchema` | | | {} | |",
-        LIVE.with(Cell::get) - live
-    );
+    println!("| live bytes retained by one `PreparedJsonSchema` | | | {live} | |");
     row(
         "decoded schema clone (`SchemaNode::clone`)",
         measure(200, || schema.clone()),
@@ -295,6 +192,10 @@ fn json_endpoint_per_call_cost_attribution() {
     row(
         "pretty text from that value",
         measure(3, || serde_json::to_string_pretty(&value)),
+    );
+    row(
+        "measuring pass over that value (`io::sink`)",
+        measure(3, || serde_json::to_writer_pretty(std::io::sink(), &value)),
     );
 
     // Repeated calls share the prepared descriptor: a small document costs
