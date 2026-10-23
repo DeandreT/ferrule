@@ -126,7 +126,13 @@ A ferrule project is plain JSON built from four main concepts:
    scalar value layer. The JSON instance reader and writers accept and emit
    object, array-container, object-item and scalar null from the same JSON
    layers and refuse a schema whose JSON null metadata has no view before any
-   value is read or written. The XML instance readers and writer admit
+   value is read or written; generated Rust boundaries use the same reader and
+   writers, and the generated C# runtime derives identical layers from its
+   embedded descriptors and refuses the same contradictions when it parses
+   them. JSON Schema import reads these layers when it intersects `allOf`
+   branches, composes nullable arrays and alternatives and compares imported
+   shapes, and the JSON5 generation profile refuses a group whose JSON null
+   has no view. The XML instance readers and writer admit
    `xsi:nil` from the XML layer, and the structured XML input profile and the
    primary-root gate read root presence and nil from it. XSD import compares
    complex-content restrictions, xsi:type member profiles and
@@ -138,8 +144,8 @@ A ferrule project is plain JSON built from four main concepts:
    and array-container null; `.mfd` export proofs read XML nil, scalar and
    container JSON null and attribute use from the same facts. Consumers that
    combine these facts should use the views rather than re-reading the
-   individual flags. `check_json_array_wrapper_frame` is the single exact-shape check
-   for a nested-array wrapper frame and names its first departure from that
+   individual flags. `check_json_array_wrapper_frame` is the single exact-shape
+   check for a nested-array wrapper frame and names its first departure from that
    shape; saved-project deserialization, the JSON readers and writers and
    JSON Schema export refuse a malformed frame, and engine validation reports
    it at the frame's schema location.

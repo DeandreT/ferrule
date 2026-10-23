@@ -189,7 +189,7 @@ public static partial class FerruleJson
         FerruleValue value)
     {
         if (schema.JsonMultipleOf is null ||
-            value.Kind == FerruleValueKind.JsonNull && schema.Nullable)
+            value.Kind == FerruleValueKind.JsonNull && schema.NullLayers.Value)
         {
             return;
         }
