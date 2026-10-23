@@ -23,5 +23,9 @@ internal static partial class Program
         }
         var normal = FerruleFunctions.Call("format_datetime", new[] { FerruleValue.FromString("2026-01-02T03:04:05.1234567"), FerruleValue.FromString(picture) });
         if (normal.StringValue != "2026-01-02T03:04:05.1234567Z") throw new InvalidOperationException("Ordinary formatter changed.");
+        const string adjacent = "[Y,2-4][M,1-2][D,1-2]";
+        Equal("2024-02-29", FerruleFunctions.Call("parse_date", new[] { FerruleValue.FromString("20240229"), FerruleValue.FromString(adjacent) }).StringValue);
+        foreach (var invalid in new[] { "20260229", "20271331", "2027011", "202710310", "abcdefgh" })
+            Throws<FerruleRuntimeException>(() => FerruleFunctions.Call("parse_date", new[] { FerruleValue.FromString(invalid), FerruleValue.FromString(adjacent) }));
     }
 }

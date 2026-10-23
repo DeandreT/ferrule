@@ -956,7 +956,20 @@ fn component_width(component: &Component, following: &[Part], value: &str) -> Op
     } else if following.is_empty() {
         value.chars().count()
     } else {
-        return None;
+        // Adjacent variable-width components are unambiguous when the input
+        // fills every remaining component to its maximum admitted width.
+        let maximum = following
+            .iter()
+            .try_fold(component.max_width, |sum, part| {
+                let Part::Component(next) = part else {
+                    return None;
+                };
+                sum.checked_add(next.fixed_width.unwrap_or(next.max_width))
+            })?;
+        if value.chars().count() != maximum {
+            return None;
+        }
+        component.max_width
     };
     (width >= component.min_width && width <= component.max_width).then_some(width)
 }

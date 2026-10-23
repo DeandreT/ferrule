@@ -18,6 +18,12 @@ internal static partial class Program
 
     private static void JsonSourceProjection()
     {
+        var firstNonempty = FerruleAggregateOperation.FirstNonemptyText;
+        Equal(FerruleValue.Null, FerruleAggregates.Apply(firstNonempty, Array.Empty<FerruleValue>()));
+        Equal(FerruleValue.FromString(" "), FerruleAggregates.Apply(firstNonempty,
+            new[] { FerruleValue.Null, FerruleValue.FromString(""), FerruleValue.FromString(" "), FerruleValue.FromString("later") }));
+        Throws<FerruleRuntimeException>(() => FerruleAggregates.Apply(firstNonempty,
+            new[] { FerruleValue.FromString("first"), FerruleValue.FromInt64(2) }));
         using var corpus = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "json-source-projection.json")));
         var shape = FerruleJsonSourceProjection.Parse(corpus.RootElement.GetProperty("shape").GetRawText());
         foreach (var item in corpus.RootElement.GetProperty("cases").EnumerateArray())

@@ -1,0 +1,11 @@
+<Config><Elements>
+  <Data name="F1" type="string"/><Data name="F2" type="decimal"/>
+  <Data name="F143" type="string"/>
+  <Segment name="ISA"><Data ref="F1"/></Segment>
+  <Segment name="GS"><Data ref="F1"/></Segment>
+  <Segment name="ST"><Data ref="F143"/></Segment>
+  <Segment name="LIN"><Data ref="F1"/><Data ref="F2"/></Segment>
+  <Segment name="SE"><Data ref="F1"/></Segment>
+  <Segment name="GE"><Data ref="F1"/></Segment>
+  <Segment name="IEA"><Data ref="F1"/></Segment>
+</Elements></Config>
