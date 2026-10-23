@@ -687,6 +687,7 @@ fn compiled_profile_public_apis_match_complete_authored_oracles() {
             &format!("{name}-build"),
             Command::new("dotnet")
                 .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+                .dotnet_temp(&root)
                 .args([
                     "build",
                     &format!("{name}/Ferrule.Generated.csproj"),
@@ -724,6 +725,7 @@ fn compiled_profile_public_apis_match_complete_authored_oracles() {
         "host-build",
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "build",
                 "Harness/Harness.csproj",
@@ -749,6 +751,7 @@ fn compiled_profile_public_apis_match_complete_authored_oracles() {
         "host-run",
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "run",
                 "--project",

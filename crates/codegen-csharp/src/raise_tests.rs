@@ -1,3 +1,4 @@
+use crate::dotnet_temp::DotnetTemp;
 use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -31,6 +32,7 @@ fn generated_raise_preserves_lazy_messages_and_item_error_order() {
     fs::write(harness.join("Program.cs"), HOST).unwrap();
     let built = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(&directory)
         .args([
             "build",
             "Harness.csproj",
@@ -73,6 +75,7 @@ fn generated_raise_preserves_lazy_messages_and_item_error_order() {
     );
     let launched = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(&directory)
         .arg(&assembly)
         .current_dir(&harness)
         .output();

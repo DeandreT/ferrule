@@ -1,3 +1,7 @@
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+use dotnet_temp::DotnetTemp;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -200,6 +204,7 @@ fn rust_encoded_float_metadata_executes_in_generated_csharp()
     write_harness(directory.path(), &descriptors)?;
     let build = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "build",
             "-warnaserror",
@@ -212,6 +217,7 @@ fn rust_encoded_float_metadata_executes_in_generated_csharp()
     assert_succeeded("generated C# build", &build);
     let run = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "run",
             "--project",

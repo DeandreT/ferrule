@@ -10,6 +10,10 @@ use cli::{GenerateOutcome, GenerateTarget, generate_project};
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, FunctionId, Graph, Node, Project, Scope, ScopeIteration, UserFunction};
 
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+use dotnet_temp::DotnetTemp;
+
 #[path = "code_generation/adjacency_tree.rs"]
 mod adjacency_tree;
 #[path = "code_generation/aggregates.rs"]
@@ -308,10 +312,8 @@ fn dotnet_command(sandbox: &Path) -> Command {
 fn dotnet_command_at(program: &OsStr, sandbox: &Path) -> Command {
     let home = sandbox.join(".dotnet-home");
     let packages = sandbox.join(".nuget-packages");
-    let temp = sandbox.join(".tmp");
     let _ = std::fs::create_dir_all(&home);
     let _ = std::fs::create_dir_all(&packages);
-    let _ = std::fs::create_dir_all(&temp);
 
     let mut command = Command::new(program);
     command
@@ -321,7 +323,7 @@ fn dotnet_command_at(program: &OsStr, sandbox: &Path) -> Command {
         .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
         .env("DOTNET_NOLOGO", "1")
         .env("NUGET_PACKAGES", packages)
-        .env("TMPDIR", temp);
+        .dotnet_temp(sandbox);
     command
 }
 

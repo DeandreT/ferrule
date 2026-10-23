@@ -1,5 +1,9 @@
 //! Independent, invented 004010 fixtures. Complete artifacts and outcomes are
 //! retained before comparison; these examples are not trading-partner certification.
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+use dotnet_temp::DotnetTemp;
+
 use std::{
     collections::BTreeMap,
     fs,
@@ -811,6 +815,7 @@ fn generated_raw_x12_examples_match_complete_oracles_and_error_fixtures() {
             &format!("{name}-build"),
             Command::new("dotnet")
                 .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+                .dotnet_temp(&root)
                 .args([
                     "build",
                     &format!("{name}/Ferrule.Generated.csproj"),
@@ -848,6 +853,7 @@ fn generated_raw_x12_examples_match_complete_oracles_and_error_fixtures() {
         "build",
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "build",
                 "Harness/Harness.csproj",
@@ -879,6 +885,7 @@ fn generated_raw_x12_examples_match_complete_oracles_and_error_fixtures() {
         "host",
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "run",
                 "--project",

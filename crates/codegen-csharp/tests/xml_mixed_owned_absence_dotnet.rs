@@ -1,5 +1,8 @@
 //! Generated C# mixed-content lookups owned by an active repeated item treat
 //! its absent optional group as authoritative, matching the interpreter.
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+use dotnet_temp::DotnetTemp;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -254,6 +257,7 @@ fn generated_mixed_content_keeps_owned_absence_like_the_interpreter() {
 
     let build = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "build",
             "-warnaserror",
@@ -267,6 +271,7 @@ fn generated_mixed_content_keeps_owned_absence_like_the_interpreter() {
     assert_command_succeeded("dotnet build", &build);
     let run = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "run",
             "--project",

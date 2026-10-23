@@ -657,6 +657,7 @@ fn run_csharp_host(
         )
     };
     let build = Command::new(dotnet)
+        .dotnet_temp(root)
         .args([
             "build",
             "--configuration",
@@ -679,6 +680,7 @@ fn run_csharp_host(
     }
     let results = root.join(format!("csharp-model{index}-results.json"));
     let run = Command::new(dotnet)
+        .dotnet_temp(root)
         .arg(artifacts.join("bin/Host/release/Host.dll"))
         .arg(root.join("controls.json"))
         .arg(index.to_string())
