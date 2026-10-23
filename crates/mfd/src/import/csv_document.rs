@@ -1,4 +1,5 @@
-//! Opt-in filename retention. This is not an executable document profile.
+//! Opt-in filename retention and explicit physical CSV document profiles.
+//! Ordinary Project import does not implicitly select these execution boundaries.
 
 use std::{
     collections::BTreeSet,
@@ -15,6 +16,54 @@ use super::{
 use crate::MfdError;
 
 mod grouped;
+mod json;
+
+/// Result of the explicit file-set CSV to JSON document profile. The execution
+/// source wraps unchanged CSV row fields with physical-file metadata; it is not
+/// an ordinary flat CSV Project input.
+pub struct ImportedCsvJsonDocument {
+    pub document: DocumentProject,
+    /// The original physical CSV row schema, without the file-set execution wrapper.
+    pub row_schema: ir::SchemaNode,
+    pub source_options: mapping::FormatOptions,
+    pub mapping_path: PathBuf,
+}
+
+/// Admit one CSV source and two conditionally selected JSON targets while
+/// retaining the physical row schema and file-set execution view separately.
+pub fn import_csv_json_document_with_options(
+    path: &Path,
+    options: &ImportOptions,
+) -> Result<ImportedCsvJsonDocument, MfdError> {
+    if options.item_ordered_exceptions {
+        return Err(MfdError::UnsupportedImport(
+            "CSV/JSON documents do not admit the exception-order profile".into(),
+        ));
+    }
+    let resources = super::resolved_resources(path, options)?;
+    let result = (|| {
+        let lowered = super::import_resolved(&resources, StageSelection::Ordinary, false, true)?;
+        let filename = lowered
+            .primary_filename
+            .ok_or_else(|| unsupported("missing retained filename"))?;
+        let row_schema = lowered.imported.project.source.clone();
+        let source_options = lowered.imported.project.source_options.clone();
+        let document = json::lower(
+            &resources.read_design()?,
+            lowered.imported.project,
+            filename,
+            &lowered.imported.warnings,
+        )?;
+        Ok(ImportedCsvJsonDocument {
+            document,
+            row_schema,
+            source_options,
+            mapping_path: lowered.imported.mapping_path,
+        })
+    })();
+    resources.finish_bindings()?;
+    result
+}
 
 /// A repair-oriented document import. Warnings still describe omitted or
 /// unsupported behavior; this result does not authorize document execution.

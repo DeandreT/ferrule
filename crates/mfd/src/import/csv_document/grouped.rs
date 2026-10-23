@@ -27,11 +27,12 @@ struct Function {
     preview: Option<String>,
 }
 
-struct Endpoint {
-    name: String,
-    filename: u32,
-    rows: u32,
-    fields: Vec<(String, u32)>,
+pub(super) struct Endpoint {
+    pub(super) name: String,
+    pub(super) filename: u32,
+    pub(super) filename_output: Option<u32>,
+    pub(super) rows: u32,
+    pub(super) fields: Vec<(String, u32)>,
 }
 
 #[derive(Clone, Copy)]
@@ -367,7 +368,10 @@ fn role(roles: &mut BTreeMap<u32, bool>, key: u32, output: bool) -> Result<(), M
     Ok(())
 }
 
-fn pins(component: roxmltree::Node<'_, '_>, side: &str) -> Result<Vec<Option<u32>>, MfdError> {
+pub(super) fn pins(
+    component: roxmltree::Node<'_, '_>,
+    side: &str,
+) -> Result<Vec<Option<u32>>, MfdError> {
     let lists = component
         .children()
         .filter(|node| node.has_tag_name(side))
@@ -414,7 +418,7 @@ fn pins(component: roxmltree::Node<'_, '_>, side: &str) -> Result<Vec<Option<u32
     Ok(result)
 }
 
-fn validate_function_data(component: roxmltree::Node<'_, '_>) -> Result<(), MfdError> {
+pub(super) fn validate_function_data(component: roxmltree::Node<'_, '_>) -> Result<(), MfdError> {
     if component.attributes().any(|attribute| {
         attribute.namespace().is_some()
             || !matches!(
@@ -521,6 +525,22 @@ fn endpoint(
     component: roxmltree::Node<'_, '_>,
     schema: &SchemaNode,
     source: bool,
+) -> Result<Endpoint, MfdError> {
+    endpoint_inner(component, schema, source, false)
+}
+
+pub(super) fn file_set_source(
+    component: roxmltree::Node<'_, '_>,
+    schema: &SchemaNode,
+) -> Result<Endpoint, MfdError> {
+    endpoint_inner(component, schema, true, true)
+}
+
+fn endpoint_inner(
+    component: roxmltree::Node<'_, '_>,
+    schema: &SchemaNode,
+    source: bool,
+    filename_output: bool,
 ) -> Result<Endpoint, MfdError> {
     if component.attribute("kind") != Some("16")
         || !attributes(component, &["name", "library", "uid", "kind"])
@@ -650,7 +670,8 @@ fn endpoint(
     if wrapper.attribute("name") != Some("FileInstance")
         || wrapper.attributes().any(|attribute| {
             attribute.namespace().is_some()
-                || !matches!(attribute.name(), "name" | "ns" | "inpkey" | "expanded")
+                || !(matches!(attribute.name(), "name" | "ns" | "inpkey" | "expanded")
+                    || filename_output && attribute.name() == "outkey")
         })
     {
         return Err(refuse("unqualified CSV FileInstance"));
@@ -708,11 +729,19 @@ fn endpoint(
             ))
         })
         .collect::<Result<Vec<_>, MfdError>>()?;
-    if fields
-        .iter()
-        .map(|(name, _)| name.as_str())
-        .ne(children.iter().map(|field| field.name.as_str()))
-    {
+    let ordered = if filename_output {
+        let positions = fields
+            .iter()
+            .map(|(name, _)| children.iter().position(|child| child.name == *name))
+            .collect::<Option<Vec<_>>>();
+        positions.is_some_and(|positions| positions.windows(2).all(|pair| pair[0] < pair[1]))
+    } else {
+        fields
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .eq(children.iter().map(|field| field.name.as_str()))
+    };
+    if !ordered {
         return Err(refuse(
             "target/source declaration order differs from its CSV schema",
         ));
@@ -755,15 +784,15 @@ fn endpoint(
         .children()
         .filter(roxmltree::Node::is_element)
         .collect::<Vec<_>>();
-    if declared.len() != fields.len()
+    if declared.len() != children.len()
         || declared
             .iter()
-            .zip(&fields)
+            .zip(children)
             .enumerate()
-            .any(|(index, (node, (name, _)))| {
+            .any(|(index, (node, field))| {
                 node.tag_name().name() != format!("field{index}")
                     || !attributes(*node, &["name", "type"])
-                    || node.attribute("name") != Some(name.as_str())
+                    || node.attribute("name") != Some(field.name.as_str())
                     || node.attribute("type") != Some("string")
             })
     {
@@ -772,6 +801,10 @@ fn endpoint(
     Ok(Endpoint {
         name: schema.name.clone(),
         filename: number(wrapper.attribute("inpkey"))?,
+        filename_output: wrapper
+            .attribute("outkey")
+            .map(|key| number(Some(key)))
+            .transpose()?,
         rows: rows_port,
         fields,
     })

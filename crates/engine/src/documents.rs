@@ -123,6 +123,11 @@ fn check_clock_path(project: &Project, root: &Scope) -> Result<(), EngineError> 
             | Node::Call { .. }
             | Node::If { .. }
             | Node::Aggregate { .. }
+            | Node::CollectionFind { .. }
+            | Node::SequenceItemAt {
+                sequence: mapping::SequenceExpr::TokenizeRegex { .. },
+                ..
+            }
             | Node::DistinctTextMapLast { .. } => {}
             _ => {
                 return Err(EngineError::DocumentStreamUnsupported {
@@ -155,6 +160,11 @@ fn check_body_clock(project: &Project) -> Result<(), EngineError> {
                 | Node::Call { .. }
                 | Node::If { .. }
                 | Node::Aggregate { .. }
+                | Node::CollectionFind { .. }
+                | Node::SequenceItemAt {
+                    sequence: mapping::SequenceExpr::TokenizeRegex { .. },
+                    ..
+                }
                 | Node::InvocationCounter { .. }
                 | Node::DistinctTextMapLast { .. }
         ) {
