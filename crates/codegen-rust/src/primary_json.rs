@@ -32,7 +32,7 @@ pub fn emit_with_mapforce_x12_writer(
             .map_err(PrimaryJsonEmitError::Writer)?;
     let mut files = emit_with_primary_json_projection(document, options, shape)?.into_files();
     let source = format!(
-        "\npub fn serialize_mapforce_x12_document(value: &Instance, execution: &ExecutionContext<'_>) -> Result<Vec<u8>, codegen_runtime::X12BoundaryError> {{\n    codegen_runtime::serialize_mapforce_x12_document({}, value, execution)\n}}\n",
+        "\npub fn serialize_mapforce_x12_document(value: &Instance, execution: &ExecutionContext<'_>) -> Result<Vec<u8>, codegen_runtime::X12BoundaryError> {{\n    codegen_runtime::serialize_mapforce_x12_document({0}, value, execution)\n}}\npub fn write_mapforce_x12_document(value: &Instance, execution: &ExecutionContext<'_>, output: &mut dyn std::io::Write) -> Result<(), codegen_runtime::MapForceX12WriteError> {{\n    codegen_runtime::write_mapforce_x12_document({0}, value, execution, output)\n}}\n",
         rust_string(&descriptor)
     );
     files
@@ -63,6 +63,7 @@ pub fn emit_with_primary_json_projection(
         rust_string(&descriptor)
     );
     code.push_str("\n/// Explicit wire-compatible byte decoding. Lone UTF-16 escapes become U+FFFD;\n/// separately qualify string operations and encoding. Strict parsing is unchanged.\npub fn parse_primary_json_source(identity: &str, bytes: &[u8]) -> Result<codegen_runtime::JsonSourceDocument, codegen_runtime::NativeJsonSourceError> {\n    codegen_runtime::parse_native_json_source(identity, bytes, primary_json_projection(), codegen_runtime::JsonSourceLimits::default())\n}\n");
+    code.push_str("\n/// Sample the body clock only at reached current-dateTime nodes.\n/// Source acquisition and filename clocks remain host-owned separate calls.\npub fn execute_primary_json_with_body_clock<'a>(source: &'a Instance, execution: &ExecutionContext<'a>, clock: &'a dyn codegen_runtime::DocumentBodyClock) -> Result<Instance, RuntimeError> {\n    let context = ScopeContext::with_execution_context(source, execution).with_document_body_clock(Some(clock));\n    Ok(execute_outputs_from_context(&context)?.primary)\n}\n");
     files
         .iter_mut()
         .find(|file| file.path.as_str() == "src/lib.rs")

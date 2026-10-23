@@ -29,6 +29,7 @@ internal static partial class Program
             ("JSON source explicit decimal selection", JsonSourceDecimalNumbers),
             ("JSON source typed occurrence projection", JsonSourceProjection),
             ("MapForce EDI scalar formatting", MapForceEdiScalars),
+            ("MapForce UTF-16 stream boundaries", MapForceStream),
             ("Native JSON source decoding and strings", NativeJsonSource),
             ("JSON source complete occurrence document", JsonSourceOccurrenceDocument),
             ("JSON source exact occurrence identities", JsonSourceOccurrenceIdentity),

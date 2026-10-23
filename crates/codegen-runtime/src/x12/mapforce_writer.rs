@@ -7,6 +7,19 @@ pub fn serialize_mapforce_x12_document(
     document: &Instance,
     execution: &ExecutionContext<'_>,
 ) -> Result<Vec<u8>, X12BoundaryError> {
+    Ok(
+        render_mapforce_x12_document(descriptor_text, document, execution)?
+            .encode_utf16()
+            .map(super::latin1_best_fit::unit)
+            .collect(),
+    )
+}
+
+pub(super) fn render_mapforce_x12_document(
+    descriptor_text: &str,
+    document: &Instance,
+    execution: &ExecutionContext<'_>,
+) -> Result<String, X12BoundaryError> {
     if descriptor_text.len() > 2 * MAX_EMBEDDED_X12_SCHEMA_BYTES {
         return Err(descriptor("MapForce writer descriptor too large"));
     }
@@ -106,10 +119,7 @@ pub fn serialize_mapforce_x12_document(
         &format!("{}\r\n", syntax.segment),
     );
     output_size(text.len())?;
-    Ok(text
-        .encode_utf16()
-        .map(super::latin1_best_fit::unit)
-        .collect())
+    Ok(text)
 }
 
 fn collect_group_times(node: SchemaCursor<'_>, value: &Instance, flags: &mut Vec<bool>) {

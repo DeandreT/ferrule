@@ -51,7 +51,7 @@ pub fn emit_with_mapforce_x12_writer(
         files.push(crate::file(path, contents.to_string()).map_err(PrimaryJsonEmitError::Emit)?);
     }
     let code = format!(
-        "\npublic static partial class GeneratedMapping\n{{\n    public static byte[] SerializeMapForceX12Document(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution) => global::Ferrule.Runtime.FerruleX12.SerializeMapForceDocumentBytes({}, value, execution);\n}}\n",
+        "\npublic static partial class GeneratedMapping\n{{\n    public static byte[] SerializeMapForceX12Document(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution) => global::Ferrule.Runtime.FerruleX12.SerializeMapForceDocumentBytes({0}, value, execution);\n    public static void WriteMapForceX12Document(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.IO.Stream output) => global::Ferrule.Runtime.FerruleX12.WriteMapForceDocument({0}, value, execution, output);\n}}\n",
         literal::string(&descriptor)
     );
     files
@@ -80,6 +80,7 @@ pub fn emit_with_primary_json_projection(
         literal::string(&descriptor)
     );
     code.push_str(&format!("\npublic static partial class GeneratedMapping\n{{\n    public static global::Ferrule.Runtime.FerruleJsonSourceDocument ParsePrimaryJsonSource(string identity, byte[] bytes) => global::Ferrule.Runtime.FerruleNativeJsonSource.Parse(identity, bytes, {});\n}}\n",literal::string(&descriptor)));
+    code.push_str("\npublic static partial class GeneratedMapping\n{\n    /// <summary>Sample only reached body current-dateTime nodes; source acquisition and filename clocks remain separate.</summary>\n    public static global::Ferrule.Runtime.FerruleInstance ExecutePrimaryJsonWithBodyClock(global::Ferrule.Runtime.FerruleInstance source, global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.Func<string> clock)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(clock);\n        return ExecuteOutputs(global::Ferrule.Runtime.ScopeContext.FromSource(source, execution).WithDocumentBodyClock(clock)).Primary;\n    }\n}\n");
     files
         .iter_mut()
         .find(|file| file.path.as_str() == "GeneratedMapping.cs")
