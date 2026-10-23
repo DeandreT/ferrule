@@ -64,6 +64,8 @@ mod basic_owned_xml_mixed_construction;
 mod basic_owned_xml_mixed_content;
 #[path = "code_generation/basic_owned_xml_serialize.rs"]
 mod basic_owned_xml_serialize;
+#[path = "code_generation/boundary_emission_plan.rs"]
+mod boundary_emission_plan;
 #[path = "code_generation/collection_find.rs"]
 mod collection_find;
 #[path = "code_generation/conditional_group_presence.rs"]
@@ -124,6 +126,8 @@ mod legacy_artifact_policy;
 mod owned_capability_presets;
 #[path = "code_generation/owned_row_document_path.rs"]
 mod owned_row_document_path;
+#[path = "code_generation/typed_only_companions.rs"]
+mod typed_only_companions;
 
 #[path = "code_generation/edi_structure_variables.rs"]
 mod edi_structure_variables;

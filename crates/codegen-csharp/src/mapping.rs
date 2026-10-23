@@ -24,6 +24,9 @@ mod owned_recursive_filter;
 mod selected_json_api;
 mod xml_api;
 
+/// Shared JSON document input/output records of the JSON companions.
+const JSON_RECORDS: &str = "public sealed record NamedJsonInput(\n    string Name,\n    string Document);\n\npublic sealed record NamedJsonBytesInput(\n    string Name,\n    byte[] Document);\n\npublic sealed record NamedJsonOutput(\n    string Name,\n    string Document);\n\npublic sealed record NamedJsonBytesOutput(\n    string Name,\n    byte[] Document);\n\npublic sealed record JsonExecutionOutputs(\n    string Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedJsonOutput> Extras);\n\npublic sealed record JsonBytesExecutionOutputs(\n    byte[] Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedJsonBytesOutput> Extras);\n\n";
+
 struct ScopePlan<'a> {
     repeating: bool,
     iteration: Option<&'a IterationPlan>,
@@ -42,12 +45,22 @@ struct BindingPlan<'a> {
     values: Vec<usize>,
 }
 
-pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
-    render_with_json_boundaries(program, true)
+/// Renders under the complete companion selection, preparing its plan.
+#[cfg(test)]
+pub(crate) fn render_complete(program: &Program) -> Result<String, EmitError> {
+    render(
+        program,
+        &codegen::prepare_boundary_emission(program, codegen::CompanionSelection::Complete)?,
+    )
 }
 
+/// Renders the typed entry points alone, preparing their plan.
+#[cfg(test)]
 pub(crate) fn render_typed(program: &Program) -> Result<String, EmitError> {
-    render_with_json_boundaries(program, false)
+    render(
+        program,
+        &codegen::prepare_boundary_emission(program, codegen::CompanionSelection::TypedOnly)?,
+    )
 }
 
 pub(crate) fn append_basic_owned_json_api(
@@ -57,9 +70,41 @@ pub(crate) fn append_basic_owned_json_api(
     owned_json_api::render(program, output)
 }
 
-fn render_with_json_boundaries(
+/// Whether the shared JSON document input/output records are declared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JsonRecords {
+    Declared,
+    Omitted,
+}
+
+/// Renders the mapping and the companions `plan` selects. The XML adapter
+/// renders from the plan's proved classification; typed-only libraries
+/// declare no JSON type.
+pub(crate) fn render(
     program: &Program,
-    json_boundaries: bool,
+    plan: &codegen::BoundaryEmissionPlan<'_>,
+) -> Result<String, EmitError> {
+    let records = if plan.json_companions() {
+        JsonRecords::Declared
+    } else {
+        JsonRecords::Omitted
+    };
+    render_mapping(program, plan, records)
+}
+
+/// [`render`] that keeps the JSON records for the CSV adapters' typed
+/// libraries, whose artifacts predate typed-only selection.
+pub(crate) fn render_with_json_records(
+    program: &Program,
+    plan: &codegen::BoundaryEmissionPlan<'_>,
+) -> Result<String, EmitError> {
+    render_mapping(program, plan, JsonRecords::Declared)
+}
+
+fn render_mapping(
+    program: &Program,
+    plan: &codegen::BoundaryEmissionPlan<'_>,
+    records: JsonRecords,
 ) -> Result<String, EmitError> {
     codegen::validate_owned_emission(program)?;
     let has_filter_map = !program.filter_map_v1_sequences().is_empty();
@@ -82,22 +127,28 @@ fn render_with_json_boundaries(
         .collect::<Vec<_>>();
 
     let mut output = String::from(
-        "namespace Ferrule.Generated;\n\npublic sealed record NamedInput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record NamedOutput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record ExecutionOutputs(\n    global::Ferrule.Runtime.FerruleInstance Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedOutput> Extras);\n\npublic sealed record NamedJsonInput(\n    string Name,\n    string Document);\n\npublic sealed record NamedJsonBytesInput(\n    string Name,\n    byte[] Document);\n\npublic sealed record NamedJsonOutput(\n    string Name,\n    string Document);\n\npublic sealed record NamedJsonBytesOutput(\n    string Name,\n    byte[] Document);\n\npublic sealed record JsonExecutionOutputs(\n    string Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedJsonOutput> Extras);\n\npublic sealed record JsonBytesExecutionOutputs(\n    byte[] Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedJsonBytesOutput> Extras);\n\npublic static class GeneratedMapping\n{\n",
+        "namespace Ferrule.Generated;\n\npublic sealed record NamedInput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record NamedOutput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record ExecutionOutputs(\n    global::Ferrule.Runtime.FerruleInstance Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedOutput> Extras);\n\n",
     );
+    if records == JsonRecords::Declared {
+        output.push_str(JSON_RECORDS);
+    }
+    output.push_str("public static class GeneratedMapping\n{\n");
     let type_position = output
         .find("public static class GeneratedMapping")
         .expect("generated mapping header");
     output.insert_str(type_position, SELECTED_TARGET_OUTPUT_TYPES);
-    if json_boundaries {
+    if plan.json_companions() {
         output.insert_str(type_position, selected_json_api::OUTPUT_TYPES);
     }
-    output.insert_str(type_position, xml_api::render_types(program)?);
+    output.insert_str(type_position, xml_api::types(plan.xml()));
     render_entry_points(program, primary_scope, &extra_scopes, &mut output);
-    if json_boundaries {
+    if plan.json_companions() {
         render_json_entry_points(program, &mut output)?;
         selected_json_api::render(program, &mut output);
     }
-    xml_api::render(program, &mut output)?;
+    if let Some(xml) = plan.xml() {
+        xml_api::render_plan(program, xml, &mut output)?;
+    }
     failures::render(&program.failure_rules, &mut output)?;
     for function in &program.user_functions {
         render_user_function(function, &functions, has_filter_map, &mut output)?;

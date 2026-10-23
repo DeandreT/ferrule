@@ -1,24 +1,16 @@
 //! Dynamic XML inputs and optional statics feed primary-first named document lists.
 use super::output_arguments;
 use crate::{EmitError, literal};
-use codegen::{Program, ProgramValidationError};
+use codegen::{Program, ProgramValidationError, XmlEmissionPlan};
 
 pub(super) const TYPES: &str = super::input_document_outputs::TYPES;
 
-pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitError> {
-    if program.xml_output_mode()?
-        != Some(codegen::XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments)
-    {
-        return Err(ProgramValidationError::InvalidXmlBoundary {
-            reason: "dynamic input mixed XML outputs require their checked adapter mode".into(),
-        }
-        .into());
-    }
-    let policy = program.xml_boundary.as_ref().ok_or_else(|| {
-        ProgramValidationError::InvalidXmlBoundary {
-            reason: "XML document outputs require a boundary".into(),
-        }
-    })?;
+pub(super) fn render(
+    program: &Program,
+    plan: &XmlEmissionPlan<'_>,
+    output: &mut String,
+) -> Result<(), EmitError> {
+    let policy = plan.policy();
     if policy.extra_outputs.len() != program.extra_targets.len()
         || program
             .extra_targets

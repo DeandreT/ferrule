@@ -8,7 +8,7 @@ mod named_document_outputs;
 mod named_inputs;
 
 use crate::{EmitError, rust_string};
-use codegen::{Program, XmlOutputPolicy};
+use codegen::{Program, XmlDocumentInputs, XmlEmissionPlan, XmlOutputMode, XmlOutputPolicy};
 
 fn output_arguments(policy: &XmlOutputPolicy) -> Result<String, EmitError> {
     let namespace = policy
@@ -30,42 +30,51 @@ fn output_arguments(policy: &XmlOutputPolicy) -> Result<String, EmitError> {
     ))
 }
 
+/// Renders the proved XML adapter. Every route reads its classification and
+/// policies from `plan` instead of re-deriving them from the Program.
+pub(crate) fn render_plan(
+    program: &Program,
+    plan: &XmlEmissionPlan<'_>,
+) -> Result<String, EmitError> {
+    match plan.mode() {
+        XmlOutputMode::StaticPrimaryMixedNamedXmlOutputs => {
+            mixed_named_outputs::render(program, plan)
+        }
+        XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments => {
+            dynamic_input_document_outputs::render(program, plan)
+        }
+        XmlOutputMode::DynamicNamedInputDynamicPrimaryDocuments => {
+            dynamic_input_document_sets::render(program, plan)
+        }
+        XmlOutputMode::StaticNamedInputsStaticPrimaryDynamicNamedDocuments => {
+            input_document_outputs::render(program, plan)
+        }
+        XmlOutputMode::StaticNamedInputsDynamicPrimaryDocuments => {
+            input_document_sets::render(program, plan)
+        }
+        XmlOutputMode::DynamicPrimaryDocuments => render_dynamic_documents(program, plan),
+        XmlOutputMode::StaticPrimaryDynamicNamedDocuments => {
+            named_document_outputs::render(program, plan)
+        }
+        XmlOutputMode::SingleDocument => render_single_document(program, plan),
+    }
+}
+
+/// Prepares the complete boundary plan, then renders its XML adapter, if any.
+#[cfg(test)]
 pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
-    if program.xml_output_mode()? == Some(codegen::XmlOutputMode::StaticPrimaryMixedNamedXmlOutputs)
-    {
-        return mixed_named_outputs::render(program);
+    let plan = codegen::prepare_boundary_emission(program, codegen::CompanionSelection::Complete)?;
+    match plan.xml() {
+        Some(xml) => render_plan(program, xml),
+        None => Ok(String::new()),
     }
-    if program.xml_output_mode()?
-        == Some(codegen::XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments)
-    {
-        return dynamic_input_document_outputs::render(program);
-    }
-    if program.xml_output_mode()?
-        == Some(codegen::XmlOutputMode::DynamicNamedInputDynamicPrimaryDocuments)
-    {
-        return dynamic_input_document_sets::render(program);
-    }
-    if program.xml_output_mode()?
-        == Some(codegen::XmlOutputMode::StaticNamedInputsStaticPrimaryDynamicNamedDocuments)
-    {
-        return input_document_outputs::render(program);
-    }
-    if program.xml_output_mode()?
-        == Some(codegen::XmlOutputMode::StaticNamedInputsDynamicPrimaryDocuments)
-    {
-        return input_document_sets::render(program);
-    }
-    if program.xml_output_mode()? == Some(codegen::XmlOutputMode::DynamicPrimaryDocuments) {
-        return render_dynamic_documents(program);
-    }
-    if program.xml_output_mode()?
-        == Some(codegen::XmlOutputMode::StaticPrimaryDynamicNamedDocuments)
-    {
-        return named_document_outputs::render(program);
-    }
-    let Some(policy) = &program.xml_boundary else {
-        return Ok(String::new());
-    };
+}
+
+fn render_single_document(
+    program: &Program,
+    plan: &XmlEmissionPlan<'_>,
+) -> Result<String, EmitError> {
+    let policy = plan.policy();
     let source = codegen::serialize_embedded_schema(
         &program.source,
         codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES,
@@ -99,13 +108,10 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
         "const EXTRA_XML_OUTPUT_NAMES: &[&str] = &[{names}];\n"
     ));
     output.push_str("\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct NamedXmlOutput { pub name: &'static str, pub document: String }\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct XmlExecutionOutputs { pub primary: String, pub extras: Vec<NamedXmlOutput> }\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct NamedXmlBytesOutput { pub name: &'static str, pub document: Vec<u8> }\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct XmlBytesExecutionOutputs { pub primary: Vec<u8>, pub extras: Vec<NamedXmlBytesOutput> }\n\n");
-    let named_input_route = policy.input.profile() == Some(codegen::XmlInputProfile::Structured)
-        || (policy.input.profile() == Some(codegen::XmlInputProfile::RootView)
-            && !program.extra_sources.is_empty());
-    if named_input_route {
-        output.push_str(&named_inputs::render(program)?);
+    if plan.inputs() != XmlDocumentInputs::RootViewPrimary {
+        output.push_str(&named_inputs::render(program, plan)?);
     }
-    if policy.input.profile() == Some(codegen::XmlInputProfile::Structured) {
+    if plan.inputs() == XmlDocumentInputs::Structured {
         output.push_str(&dynamic_inputs::render(program));
     }
     for bytes in [false, true] {
@@ -127,7 +133,8 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             "serialize_xml_outputs"
         };
         for context in [false, true] {
-            if named_input_route {
+            // Named-input routes render their own complete entry points.
+            if plan.inputs() != XmlDocumentInputs::RootViewPrimary {
                 continue;
             }
             let suffix = if context { "_with_context" } else { "" };
@@ -144,35 +151,15 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             } else {
                 "execute_outputs"
             };
-            let (parser, input_args) = match policy.input.profile() {
-                Some(codegen::XmlInputProfile::RootView) => (
-                    if bytes {
-                        "parse_xml_bytes"
-                    } else {
-                        "parse_xml"
-                    },
-                    format!(
-                        ", {}, {}",
-                        policy.input.allow_inactive_root_type_members,
-                        policy.input.root_view_policy
-                    ),
-                ),
-                Some(codegen::XmlInputProfile::Structured) => (
-                    if bytes {
-                        "parse_structured_xml_bytes"
-                    } else {
-                        "parse_structured_xml"
-                    },
-                    String::new(),
-                ),
-                None => {
-                    return Err(EmitError::InvalidProgram(
-                        codegen::ProgramValidationError::InvalidXmlBoundary {
-                            reason: "mixed XML input profile flags".into(),
-                        },
-                    ));
-                }
+            let parser = if bytes {
+                "parse_xml_bytes"
+            } else {
+                "parse_xml"
             };
+            let input_args = format!(
+                ", {}, {}",
+                policy.input.allow_inactive_root_type_members, policy.input.root_view_policy
+            );
             output.push_str(&format!("pub fn {name}(source: {source_type}{context_arg}) -> Result<{result_type}, codegen_runtime::XmlOutputSetError> {{\n    let parsed = codegen_runtime::{parser}(SOURCE_XML_SCHEMA, source{input_args}).map_err(codegen_runtime::XmlOutputSetError::from)?;\n    let mapped = {execute}(&parsed{context_call}).map_err(codegen_runtime::XmlBoundaryError::from).map_err(codegen_runtime::XmlOutputSetError::from)?;\n    {helper}(mapped)\n}}\n\npub fn {singular}(source: {source_type}{context_arg}) -> Result<{scalar_type}, codegen_runtime::XmlBoundaryError> {{\n    {name}(source{context_call}).map(|outputs| outputs.primary).map_err(codegen_runtime::XmlOutputSetError::into_boundary)\n}}\n\n"));
         }
         output.push_str(&format!("fn {helper}(mapped: ExecutionOutputs) -> Result<{result_type}, codegen_runtime::XmlOutputSetError> {{\n    if mapped.extras.len() != EXTRA_XML_OUTPUT_NAMES.len() || mapped.extras.iter().zip(EXTRA_XML_OUTPUT_NAMES).any(|(target, name)| target.name != *name) {{\n        return Err(codegen_runtime::XmlOutputSetError::alignment(\"XML mapped outputs do not match declared target names/order\"));\n    }}\n    let mut budget = codegen_runtime::XmlOutputSetBudget::new(mapped.extras.len() + 1)?;\n"));
@@ -210,12 +197,11 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
 
 // This branch has no named inputs or outputs. The checked neutral mode owns
 // admission; eager mapping completes before the document-list counters run.
-fn render_dynamic_documents(program: &Program) -> Result<String, EmitError> {
-    let policy = program.xml_boundary.as_ref().ok_or_else(|| {
-        codegen::ProgramValidationError::InvalidXmlBoundary {
-            reason: "dynamic XML document mode requires a boundary".into(),
-        }
-    })?;
+fn render_dynamic_documents(
+    program: &Program,
+    plan: &XmlEmissionPlan<'_>,
+) -> Result<String, EmitError> {
+    let policy = plan.policy();
     let source = codegen::serialize_embedded_schema(
         &program.source,
         codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES,

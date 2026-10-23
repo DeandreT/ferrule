@@ -328,11 +328,11 @@ impl Fnv {
     }
 }
 
-fn digest(text: &str) -> String {
+pub(super) fn digest(text: &str) -> String {
     Fnv::new().bytes(text.as_bytes()).finish()
 }
 
-fn refusal(error: &(impl Debug + Display)) -> String {
+pub(super) fn refusal(error: &(impl Debug + Display)) -> String {
     let debug = format!("{error:?}");
     // The owned capability reason, or the start of the message, names the cause.
     let summary = match debug.split_once("reason: ") {
@@ -351,14 +351,17 @@ fn refusal(error: &(impl Debug + Display)) -> String {
     format!("err:{} {summary}", digest(&debug))
 }
 
-fn accepted<T, E: Debug + Display>(result: &Result<T, E>, value: impl Fn(&T) -> String) -> String {
+pub(super) fn accepted<T, E: Debug + Display>(
+    result: &Result<T, E>,
+    value: impl Fn(&T) -> String,
+) -> String {
     match result {
         Ok(value_) => value(value_),
         Err(error) => refusal(error),
     }
 }
 
-fn artifacts(set: &codegen::ArtifactSet) -> String {
+pub(super) fn artifacts(set: &codegen::ArtifactSet) -> String {
     let mut hash = Fnv::new();
     for file in set.files() {
         let path = file.path.as_str();
@@ -986,7 +989,7 @@ mod frozen {
     }
 }
 
-fn corpora() -> TestResult<Vec<(&'static str, Corpus)>> {
+pub(super) fn corpora() -> TestResult<Vec<(&'static str, Corpus)>> {
     Ok(vec![
         ("basic-owned-filter", json_corpus("basic-owned-filter")?),
         ("basic-owned-sort", json_corpus("basic-owned-sort")?),

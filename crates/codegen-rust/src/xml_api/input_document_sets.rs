@@ -1,20 +1,10 @@
 //! Separate static-input admission and dynamic-primary document-list renderer.
 use super::output_arguments;
 use crate::{EmitError, rust_string};
-use codegen::{Program, ProgramValidationError, XmlOutputMode};
+use codegen::{Program, XmlEmissionPlan};
 
-pub(super) fn render(program: &Program) -> Result<String, EmitError> {
-    if program.xml_output_mode()? != Some(XmlOutputMode::StaticNamedInputsDynamicPrimaryDocuments) {
-        return Err(ProgramValidationError::InvalidXmlBoundary {
-            reason: "static XML input document lists require their checked adapter mode".into(),
-        }
-        .into());
-    }
-    let policy = program.xml_boundary.as_ref().ok_or_else(|| {
-        ProgramValidationError::InvalidXmlBoundary {
-            reason: "missing static-input document-list XML boundary".into(),
-        }
-    })?;
+pub(super) fn render(program: &Program, plan: &XmlEmissionPlan<'_>) -> Result<String, EmitError> {
+    let policy = plan.policy();
     let source = codegen::serialize_embedded_schema(
         &program.source,
         codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES,
@@ -114,7 +104,7 @@ mod tests {
     }
     #[test]
     fn emits_only_four_with_sources_list_apis_and_original_input_owners() {
-        let output = render(&program()).unwrap();
+        let output = super::super::render(&program()).unwrap();
         let functions = output
             .lines()
             .filter_map(|line| {
@@ -143,7 +133,7 @@ mod tests {
     fn invalid_later_input_policy_refuses_and_old_modes_use_unchanged_dispatch() {
         let mut invalid = program();
         invalid.xml_boundary.as_mut().unwrap().extra_inputs[1].name = "wrong".into();
-        assert!(render(&invalid).is_err());
+        assert!(super::super::render(&invalid).is_err());
         invalid.xml_boundary = None;
         assert!(super::super::render(&invalid).unwrap().is_empty());
         let project: ::mapping::Project = serde_json::from_str(include_str!(

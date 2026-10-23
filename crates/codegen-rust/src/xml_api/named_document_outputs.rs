@@ -1,16 +1,12 @@
 use super::output_arguments;
 use crate::{EmitError, rust_string};
-use codegen::{Program, ProgramValidationError};
+use codegen::{Program, ProgramValidationError, XmlEmissionPlan};
 
-pub(super) fn render(program: &Program) -> Result<String, EmitError> {
+pub(super) fn render(program: &Program, plan: &XmlEmissionPlan<'_>) -> Result<String, EmitError> {
     if program.extra_targets.len() > 1 {
-        return render_multiple(program);
+        return render_multiple(program, plan);
     }
-    let policy = program.xml_boundary.as_ref().ok_or_else(|| {
-        ProgramValidationError::InvalidXmlBoundary {
-            reason: "XML document outputs require a boundary".into(),
-        }
-    })?;
+    let policy = plan.policy();
     let named = program.extra_targets.first().ok_or_else(|| {
         ProgramValidationError::InvalidXmlBoundary {
             reason: "XML document outputs require one named target".into(),
@@ -132,12 +128,8 @@ pub(super) fn render(program: &Program) -> Result<String, EmitError> {
     Ok(output)
 }
 
-fn render_multiple(program: &Program) -> Result<String, EmitError> {
-    let policy = program.xml_boundary.as_ref().ok_or_else(|| {
-        ProgramValidationError::InvalidXmlBoundary {
-            reason: "XML document outputs require a boundary".into(),
-        }
-    })?;
+fn render_multiple(program: &Program, plan: &XmlEmissionPlan<'_>) -> Result<String, EmitError> {
+    let policy = plan.policy();
     if policy.extra_outputs.len() != program.extra_targets.len()
         || program
             .extra_targets

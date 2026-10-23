@@ -1,6 +1,6 @@
 use super::output_arguments;
 use crate::{EmitError, rust_string};
-use codegen::{Program, ProgramValidationError, XmlOutputMode};
+use codegen::{Program, ProgramValidationError, XmlDocumentCardinality, XmlEmissionPlan};
 
 const TYPES: &str = r#"
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,18 +67,8 @@ fn mixed_xml_error(owner: XmlMixedOutputOwner, boundary: codegen_runtime::XmlBou
 
 "#;
 
-pub(super) fn render(program: &Program) -> Result<String, EmitError> {
-    if program.xml_output_mode()? != Some(XmlOutputMode::StaticPrimaryMixedNamedXmlOutputs) {
-        return Err(ProgramValidationError::InvalidXmlBoundary {
-            reason: "mixed named XML renderer requires its exact validated mode".into(),
-        }
-        .into());
-    }
-    let policy = program.xml_boundary.as_ref().ok_or_else(|| {
-        ProgramValidationError::InvalidXmlBoundary {
-            reason: "missing mixed XML boundary".into(),
-        }
-    })?;
+pub(super) fn render(program: &Program, plan: &XmlEmissionPlan<'_>) -> Result<String, EmitError> {
+    let policy = plan.policy();
     let source = codegen::serialize_embedded_schema(
         &program.source,
         codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES,
@@ -104,17 +94,12 @@ pub(super) fn render(program: &Program) -> Result<String, EmitError> {
     }
     output.push_str(TYPES);
     let named_count = program.extra_targets.len();
-    let dynamic_indices = program
-        .extra_targets
+    let dynamic_indices = plan
+        .named_outputs()
         .iter()
         .enumerate()
-        .filter_map(|(index, target)| {
-            target
-                .root
-                .iteration
-                .as_ref()
-                .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
-                .then_some(index)
+        .filter_map(|(index, documents)| {
+            (*documents == XmlDocumentCardinality::List).then_some(index)
         })
         .collect::<Vec<_>>();
     let dynamic_index =
