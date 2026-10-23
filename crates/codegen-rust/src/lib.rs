@@ -18,10 +18,17 @@ use codegen::{CsvOutputError, CsvOutputPolicy, validate_csv_output};
 use ir::{ScalarType, Value};
 use mapping::{FunctionId, FunctionParameterId, NodeId};
 
+mod compatibility;
 mod csv_api;
 mod csv_document;
+pub use compatibility::Generator;
 pub use csv_document::{CsvDocumentEmitError, emit_with_csv_document_adapters};
 mod failure;
+mod identity;
+pub use identity::{
+    MAX_PACKAGE_NAME_BYTES, PackageName, RUNTIME_IDENTITY, RuntimeBindingError, runtime_identity,
+    runtime_identity_at, verify_runtime_path,
+};
 mod json5_api;
 mod json_api;
 mod owned_basic;
@@ -67,6 +74,7 @@ pub enum EmitError {
     EmbeddedSchema(codegen::EmbeddedSchemaError),
     ArtifactPath(ArtifactPathError),
     ArtifactSet(ArtifactSetError),
+    Manifest(codegen::ManifestError),
 }
 
 impl fmt::Display for EmitError {
@@ -78,15 +86,17 @@ impl fmt::Display for EmitError {
             ),
             Self::CsvOutput(error) => error.fmt(formatter),
             Self::InvalidProgram(error) => error.fmt(formatter),
-            Self::InvalidPackageName(name) => {
-                write!(formatter, "invalid generated Rust package name {name:?}")
-            }
+            Self::InvalidPackageName(name) => match PackageName::new(name) {
+                Err(error) => error.fmt(formatter),
+                Ok(_) => write!(formatter, "invalid generated Rust package name {name:?}"),
+            },
             Self::SchemaSerialization(message) => {
                 write!(formatter, "cannot serialize embedded schema: {message}")
             }
             Self::EmbeddedSchema(error) => error.fmt(formatter),
             Self::ArtifactPath(error) => error.fmt(formatter),
             Self::ArtifactSet(error) => error.fmt(formatter),
+            Self::Manifest(error) => error.fmt(formatter),
         }
     }
 }
@@ -99,6 +109,7 @@ impl std::error::Error for EmitError {
             Self::EmbeddedSchema(error) => Some(error),
             Self::ArtifactPath(error) => Some(error),
             Self::ArtifactSet(error) => Some(error),
+            Self::Manifest(error) => Some(error),
             Self::UnsupportedFilterMapV1 { .. }
             | Self::InvalidPackageName(_)
             | Self::SchemaSerialization(_) => None,
@@ -268,14 +279,7 @@ pub fn emit_with_csv_output(
 }
 
 fn valid_package_name(name: &str) -> bool {
-    !name.is_empty()
-        && name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-        && name
-            .bytes()
-            .next()
-            .is_some_and(|byte| byte.is_ascii_alphabetic())
+    PackageName::new(name).is_ok()
 }
 
 fn render_manifest(options: &Options) -> String {

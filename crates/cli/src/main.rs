@@ -8,6 +8,8 @@ use clap::error::ErrorKind;
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use serde_json::json;
 
+mod generate_args;
+
 #[derive(Parser)]
 #[command(name = "ferrule", version, about = "Run ferrule data mapping projects")]
 struct Cli {
@@ -240,6 +242,8 @@ enum Command {
         /// Write unescaped target fields and CRLF records; target quoting must be disabled.
         #[arg(long, requires = "csv_document_adapters")]
         raw_delimited_crlf: bool,
+        #[command(flatten)]
+        identity: generate_args::GenerateIdentityArgs,
     },
     /// Import an XSD file's root element as a SchemaNode, printed as JSON --
     /// a starting point for hand-authoring a project file's schema.
@@ -796,6 +800,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             csv_json_adapters,
             csv_document_adapters,
             raw_delimited_crlf,
+            identity,
         } => {
             if csv_json_adapters && matches!(language, CodegenLanguage::Rust) {
                 bail!("--csv-json-adapters requires --language csharp");
@@ -819,46 +824,38 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     cli::GenerateTarget::CSharp
                 }
             };
-            let outcome = if csv_document_adapters {
+            let settings = identity.settings(matches!(language, CodegenLanguage::Rust))?;
+            let profile = if csv_document_adapters {
                 if raw_delimited_crlf {
-                    cli::generate_project_with_raw_delimited_document_adapters(
-                        &project, &out, target,
-                    )?
+                    cli::GenerateProfile::RawDelimitedDocument
                 } else {
-                    cli::generate_project_with_csv_document_adapters(&project, &out, target)?
+                    cli::GenerateProfile::CsvDocument
                 }
             } else if csv_json_adapters {
-                cli::generate_project_with_csv_json_adapters(&project, &out, target)?
+                cli::GenerateProfile::CsvJson
             } else if csv_x12_adapters {
-                cli::generate_project_with_csv_x12_envelope_profile(
-                    &project,
-                    &out,
-                    target,
-                    csv_x12_target_envelope_profile.map(Into::into),
-                )?
+                cli::GenerateProfile::CsvX12 {
+                    target_envelope: csv_x12_target_envelope_profile.map(Into::into),
+                }
             } else if static_document_adapters {
-                cli::generate_project_with_static_document_envelope_profiles(
-                    &project,
-                    &out,
-                    target,
-                    x12_source_envelope_profile.map(Into::into),
-                    x12_target_envelope_profile.map(Into::into),
-                )?
+                cli::GenerateProfile::StaticDocuments {
+                    source_envelope: x12_source_envelope_profile.map(Into::into),
+                    target_envelope: x12_target_envelope_profile.map(Into::into),
+                }
             } else if x12_adapters {
-                cli::generate_project_with_x12_envelope_profiles(
-                    &project,
-                    &out,
-                    target,
-                    x12_source_envelope_profile.map(Into::into),
-                    x12_target_envelope_profile.map(Into::into),
-                )?
+                cli::GenerateProfile::X12 {
+                    source_envelope: x12_source_envelope_profile.map(Into::into),
+                    target_envelope: x12_target_envelope_profile.map(Into::into),
+                }
             } else if json5_adapters {
-                cli::generate_project_with_json5_adapters(&project, &out, target)?
+                cli::GenerateProfile::Json5
             } else if csv_output {
-                cli::generate_project_with_csv_output(&project, &out, target)?
+                cli::GenerateProfile::CsvOutput
             } else {
-                cli::generate_project(&project, &out, target)?
+                cli::GenerateProfile::Ordinary
             };
+            let outcome =
+                cli::generate_project_with_settings(&project, &out, target, profile, &settings)?;
             println!(
                 "generated {} file(s) in {}",
                 outcome.files_written,

@@ -2,8 +2,10 @@ use std::fmt;
 
 use codegen::{ArtifactSet, Json5BoundaryPolicyError, Program};
 
+use crate::Options;
 use crate::composition::ClassPart;
 use crate::{EmitError, literal, runtime};
+use codegen::GenerationProfile;
 
 /// Errors from explicitly selected JSON5 emission. Ordinary emission is unchanged.
 #[derive(Debug)]
@@ -43,7 +45,7 @@ impl From<EmitError> for Json5EmitError {
     }
 }
 
-pub(crate) fn emit(program: &Program) -> Result<ArtifactSet, Json5EmitError> {
+pub(crate) fn emit(program: &Program, options: &Options) -> Result<ArtifactSet, Json5EmitError> {
     // Both descriptors and the complete shared program profile precede artifacts.
     let profile = codegen::prepare_json5_boundary(program).map_err(Json5EmitError::Policy)?;
     let mut library = crate::library(program)?;
@@ -52,7 +54,9 @@ pub(crate) fn emit(program: &Program) -> Result<ArtifactSet, Json5EmitError> {
         render(&profile.source_descriptor, &profile.target_descriptor),
     );
     library.add_runtime(&runtime::JSON5_SOURCES);
-    library.into_artifacts().map_err(Json5EmitError::from)
+    library
+        .into_artifacts_with(options, GenerationProfile::Json5)
+        .map_err(Json5EmitError::from)
 }
 
 fn render(source: &str, target: &str) -> ClassPart {

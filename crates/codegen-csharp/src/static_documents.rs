@@ -18,8 +18,10 @@ use codegen::{
     StaticDocumentBoundaryError, StaticDocumentBoundaryPolicy, StaticDocumentBoundaryProfile,
 };
 
+use crate::Options;
 use crate::composition::ClassPart;
 use crate::{EmitError, literal};
+use codegen::GenerationProfile;
 
 /// Failures from complete static JSON/X12 document companions.
 #[derive(Debug)]
@@ -66,6 +68,7 @@ impl From<EmitError> for StaticDocumentEmitError {
 pub(crate) fn emit(
     program: &Program,
     policy: &StaticDocumentBoundaryPolicy,
+    options: &Options,
 ) -> Result<ArtifactSet, StaticDocumentEmitError> {
     let profile = codegen::prepare_static_document_boundary(program, policy)
         .map_err(StaticDocumentEmitError::Policy)?;
@@ -73,7 +76,7 @@ pub(crate) fn emit(
     library.add_companion("GeneratedMapping.Documents.cs", render(&profile));
     library.add_runtime(&crate::x12_output::X12_SOURCES);
     library
-        .into_artifacts()
+        .into_artifacts_with(options, GenerationProfile::StaticDocuments)
         .map_err(StaticDocumentEmitError::from)
 }
 

@@ -104,6 +104,8 @@ mod failure_rules;
 mod filter_map_csharp;
 #[path = "code_generation/format_guid_string.rs"]
 mod format_guid_string;
+#[path = "code_generation/generated_identities.rs"]
+mod generated_identities;
 #[path = "code_generation/generated_sequences.rs"]
 mod generated_sequences;
 #[path = "code_generation/grouping.rs"]

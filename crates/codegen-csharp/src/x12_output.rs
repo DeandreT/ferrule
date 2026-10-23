@@ -2,8 +2,10 @@ use std::fmt;
 
 use codegen::{ArtifactSet, Program, X12BoundaryPolicy, X12BoundaryPolicyError};
 
+use crate::Options;
 use crate::composition::ClassPart;
 use crate::{EmitError, literal};
+use codegen::GenerationProfile;
 
 /// Failures from explicitly selected generated raw X12 adapters.
 #[derive(Debug)]
@@ -50,6 +52,7 @@ impl From<EmitError> for X12EmitError {
 pub(crate) fn emit(
     program: &Program,
     policy: &X12BoundaryPolicy,
+    options: &Options,
 ) -> Result<ArtifactSet, X12EmitError> {
     let profile = codegen::prepare_x12_boundary(program, policy).map_err(X12EmitError::Policy)?;
     // Validate the complete optional boundary before ordinary artifacts exist.
@@ -64,7 +67,9 @@ pub(crate) fn emit(
         ),
     );
     library.add_runtime(&X12_SOURCES);
-    library.into_artifacts().map_err(X12EmitError::from)
+    library
+        .into_artifacts_with(options, GenerationProfile::X12)
+        .map_err(X12EmitError::from)
 }
 
 pub(crate) const X12_SOURCES: [(&str, &str); 8] = [

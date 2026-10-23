@@ -1146,6 +1146,123 @@ Per-driver sources use `execute_with_dynamic_source_loader`,
 variants. The host implements `DynamicSourceLoader` and returns one
 schema-shaped `Instance` for each source-name/logical-path request.
 
+## Library Identities and Compatibility Manifests
+
+Each generation request can name the generated library and ask for a
+compatibility manifest. Omitted settings keep the names generation has always
+used, so existing calls produce byte-identical artifacts.
+
+```sh
+cargo run -p cli -- generate --project orders.json --language csharp \
+  --out generated-orders \
+  --csharp-assembly-name Acme.Orders \
+  --csharp-namespace Acme.Orders \
+  --csharp-class OrderMapping \
+  --compatibility-manifest
+
+cargo run -p cli -- generate --project invoices.json --language rust \
+  --out generated-invoices \
+  --rust-runtime-path crates/codegen-runtime \
+  --rust-package-name invoices-mapping \
+  --compatibility-manifest
+```
+
+The library API takes the same settings: `codegen_csharp::Options` holds an
+`Identity` and a `ManifestSelection` for `codegen_csharp::Generator`, and
+`codegen_rust::Generator` adds a `ManifestSelection` to the existing
+`codegen_rust::Options`, whose `package_name` names the crate. Each generator
+method runs the free emitter function of the same name; under default settings
+it returns exactly that function's artifacts. The CLI passes its settings
+through `cli::generate_project_with_settings` and `cli::GenerateSettings`. The
+Basic owned emitters keep the default identity.
+
+### Identities
+
+| Setting | Default | Rules |
+| --- | --- | --- |
+| C# assembly name | `Ferrule.Generated` | Dotted segments of ASCII letters, digits, `_` and `-`, each starting with a letter or `_`; at most 128 bytes; not a Windows device name or `Ferrule.Runtime`. Also names the project file, `<assembly>.csproj`. |
+| C# root namespace | `Ferrule.Generated` | Dotted ASCII C# identifiers, none a C# keyword; at most 128 bytes. The first segment may not be `Ferrule`, `System`, `Microsoft` or `global`, or any name spelled in the vendored runtime sources, which would hide that name from the runtime's own lookups. |
+| C# mapping class | `GeneratedMapping` | An ASCII C# identifier that is not a keyword, ends with `Mapping` (and is longer than it) and differs from every namespace segment. No other generated member or top-level type ends with `Mapping`. |
+| Rust package name | `ferrule-generated-mapping` | ASCII letters, digits, `-` and `_`, starting with a letter; at most 64 bytes; the derived crate name is not a Rust keyword, `std`, `core`, `alloc`, `test`, `proc_macro`, a Cargo artifact directory name, a Windows device name or `codegen_runtime`. |
+
+Each refusal is a typed `codegen::IdentityError` naming the setting, the value
+and the violated rule, raised before anything is rendered or written. Language
+mismatches, such as a C# identity for a Rust target, are refused as well.
+
+### Hosting several mappings
+
+One process can host any number of generated mappings with distinct
+identities:
+
+- C#: each library is its own assembly with its own root namespace and mapping
+  class. Every library vendors its runtime under the `Ferrule.Runtime`
+  namespace, so runtime types are distinct per assembly. A host that only uses
+  the string or byte document methods references the libraries directly. A
+  host that names runtime types, such as `FerruleInstance`, of more than one
+  library gives each further reference an `extern alias`
+  (`<ProjectReference ... Aliases="Invoices" />`, then
+  `Invoices::Ferrule.Runtime.FerruleInstance`). Instances are not exchanged
+  between libraries; exchange documents instead.
+- Rust: each library is its own crate, and every generated item is scoped by
+  the crate. Crates with distinct package names build together in one Cargo
+  build and share one bound `codegen-runtime`.
+
+### Compatibility manifests
+
+`--compatibility-manifest` (`ManifestSelection::Included`) is opt-in because
+its files would otherwise change every existing artifact inventory. It adds
+`ferrule-manifest.json`, a typed record (`codegen::CompatibilityManifest`)
+with:
+
+- `format` and `format_version` (`ferrule-generated-library`, version 1);
+- `generator`: name and version;
+- `runtime`: package, version, source `identity` (`sha256:` and 64 hex digits)
+  and `binding`: `vendored`, `path`, `version` or `git`;
+- `profile`: the selected companion profile, such as `complete`, `typed_only`,
+  `csv_output`, `json5` or `x12`;
+- `library`: the C# assembly, namespace and class, or the Rust package and
+  crate names.
+
+`CompatibilityManifest::from_json` refuses another format or format version
+before reading the rest of the record, and `require_runtime` refuses a library
+generated for another runtime identity.
+
+The generated library carries the same record and checks it:
+
+- C#: `Runtime/FerruleRuntimeIdentity.cs` records the identity of the vendored
+  runtime sources, `ferrule-manifest.json` is an embedded resource, and
+  `GeneratedMapping.Compatibility.cs` declares the `CompatibilityManifest` and
+  `RuntimeIdentity` constants and a static constructor of the mapping class.
+  Before the class is first used, `FerruleCompatibility.Verify` refuses a
+  vendored runtime with another identity, an embedded manifest that differs
+  from the compiled record, or a manifest of another format, version or
+  runtime. The refusal is a `TypeInitializationException` whose inner
+  exception is a `FerruleCompatibilityException` naming the failed `Field`.
+- Rust: `src/ferrule_compatibility.rs` exports `COMPATIBILITY_MANIFEST` and
+  `RUNTIME_IDENTITY` and is declared at the end of `src/lib.rs`. Constant
+  assertions make compilation fail when the bound `codegen-runtime` reports
+  another `codegen_runtime::RUNTIME_IDENTITY`, or when
+  `ferrule-manifest.json` differs from the embedded record.
+
+The C# runtime identity hashes every vendored `Runtime/` source except the
+identity file, each as its path, a NUL, its little-endian 64-bit length and its
+bytes, in path order. The Rust runtime identity hashes the `codegen-runtime`
+package sources the same way: `Cargo.toml`, `build.rs`, `identity.rs` and every
+file under `src/`. The runtime's build script exports it, and the generator
+records the identity of the runtime it was built with.
+
+### Rust runtime binding
+
+C# output stays vendored and package-free. Generated Rust crates bind
+`codegen-runtime` through a Cargo dependency: a local path by default, or a
+version or Git revision through the library API. Without a manifest the path is
+used as given. With a manifest the binding is explicit: the recorded runtime
+identity is checked when the crate compiles, whichever source Cargo resolves,
+and the CLI also refuses a declared runtime path whose sources have another
+identity (`codegen_rust::RuntimeBindingError::Mismatch`) before anything is
+written. A versioned shared runtime package remains optional; the same recorded
+identity applies to it.
+
 ## Prepared Boundary Emission and Typed-Only Libraries
 
 Both emitters validate a Program once through

@@ -5,8 +5,10 @@ use codegen::{
 };
 use ir::ScalarType;
 
+use crate::Options;
 use crate::composition::ClassPart;
 use crate::{EmitError, literal};
+use codegen::GenerationProfile;
 
 const INPUT_SOURCE: &str =
     include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvInput.cs");
@@ -54,6 +56,7 @@ impl From<EmitError> for CsvJsonEmitError {
 pub(crate) fn emit(
     program: &Program,
     policy: &CsvJsonBoundaryPolicy,
+    options: &Options,
 ) -> Result<ArtifactSet, CsvJsonEmitError> {
     let profile = codegen::prepare_csv_json_boundary(program, policy)
         .map_err(|error| CsvJsonEmitError::Policy(Box::new(error)))?;
@@ -66,7 +69,9 @@ pub(crate) fn emit(
             include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs"),
         ),
     ]);
-    library.into_artifacts().map_err(CsvJsonEmitError::from)
+    library
+        .into_artifacts_with(options, GenerationProfile::CsvJson)
+        .map_err(CsvJsonEmitError::from)
 }
 
 fn character(value: Option<char>) -> String {

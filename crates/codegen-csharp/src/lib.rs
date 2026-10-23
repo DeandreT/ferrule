@@ -12,6 +12,8 @@ mod document_output_types;
 mod error;
 #[cfg(test)]
 mod filter_map_guard_tests;
+mod generator;
+mod identity;
 mod json5_output;
 mod literal;
 mod mapping;
@@ -47,6 +49,8 @@ mod xml_input_tests;
 pub use csv_json::CsvJsonEmitError;
 pub use csv_x12::CsvX12EmitError;
 pub use error::EmitError;
+pub use generator::Generator;
+pub use identity::{Identity, MAPPING_CLASS_SUFFIX, MAX_IDENTITY_BYTES, Options};
 pub use json5_output::Json5EmitError;
 pub use primary_csv::{PrimaryCsvEmitError, emit_with_primary_csv_acquisition};
 pub use primary_filename::emit_with_primary_filename;
@@ -79,7 +83,7 @@ pub fn emit_with_companions(
     program: &Program,
     companions: CompanionSelection,
 ) -> Result<ArtifactSet, EmitError> {
-    library_with_companions(program, companions)?.into_artifacts()
+    Generator::new(&Options::default()).emit_with_companions(program, companions)
 }
 
 /// The complete ordinary library, which companion emitters extend.
@@ -200,7 +204,7 @@ pub fn emit_with_csv_x12_adapters(
     program: &Program,
     policy: &codegen::CsvX12BoundaryPolicy,
 ) -> Result<ArtifactSet, CsvX12EmitError> {
-    csv_x12::emit(program, policy)
+    csv_x12::emit(program, policy, &Options::default())
 }
 
 /// Emit full-row CSV input and explicitly selected own strict JSON documents.
@@ -208,7 +212,7 @@ pub fn emit_with_csv_json_adapters(
     program: &Program,
     policy: &codegen::CsvJsonBoundaryPolicy,
 ) -> Result<ArtifactSet, CsvJsonEmitError> {
-    csv_json::emit(program, policy)
+    csv_json::emit(program, policy, &Options::default())
 }
 
 /// Emit an explicitly selected flat primary CSV output adapter.
@@ -221,7 +225,7 @@ pub fn emit_with_csv_output(
     program: &Program,
     policy: &codegen::CsvOutputPolicy,
 ) -> Result<ArtifactSet, EmitError> {
-    csv_output::emit(program, policy)
+    csv_output::emit(program, policy, &Options::default())
 }
 
 /// Emit explicit singular closed-object JSON5 input companions.
@@ -229,7 +233,7 @@ pub fn emit_with_csv_output(
 /// All four overloads retain strict JSON output and execute the mapping once.
 /// Shared optional-profile admission precedes artifacts; ordinary [`emit`] is unchanged.
 pub fn emit_with_json5(program: &Program) -> Result<ArtifactSet, Json5EmitError> {
-    json5_output::emit(program)
+    json5_output::emit(program, &Options::default())
 }
 
 /// Emit explicitly selected singular X12 004010 text and strict UTF-8 adapters.
@@ -241,7 +245,7 @@ pub fn emit_with_x12(
     program: &Program,
     policy: &codegen::X12BoundaryPolicy,
 ) -> Result<ArtifactSet, X12EmitError> {
-    x12_output::emit(program, policy)
+    x12_output::emit(program, policy, &Options::default())
 }
 
 /// Emit complete static JSON/X12 document input and selected-output companions.
@@ -253,7 +257,7 @@ pub fn emit_with_static_document_adapters(
     program: &Program,
     policy: &codegen::StaticDocumentBoundaryPolicy,
 ) -> Result<ArtifactSet, StaticDocumentEmitError> {
-    static_documents::emit(program, policy)
+    static_documents::emit(program, policy, &Options::default())
 }
 
 fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitError> {

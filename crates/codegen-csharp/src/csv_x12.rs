@@ -5,8 +5,10 @@ use codegen::{
 };
 use ir::ScalarType;
 
+use crate::Options;
 use crate::composition::ClassPart;
 use crate::{EmitError, literal};
+use codegen::GenerationProfile;
 
 const INPUT_SOURCE: &str =
     include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvInput.cs");
@@ -56,6 +58,7 @@ impl From<EmitError> for CsvX12EmitError {
 pub(crate) fn emit(
     program: &Program,
     policy: &CsvX12BoundaryPolicy,
+    options: &Options,
 ) -> Result<ArtifactSet, CsvX12EmitError> {
     let profile = codegen::prepare_csv_x12_boundary(program, policy)
         .map_err(|error| CsvX12EmitError::Policy(Box::new(error)))?;
@@ -69,7 +72,9 @@ pub(crate) fn emit(
         ),
     ]);
     library.add_runtime(&crate::x12_output::X12_SOURCES);
-    library.into_artifacts().map_err(CsvX12EmitError::from)
+    library
+        .into_artifacts_with(options, GenerationProfile::CsvX12)
+        .map_err(CsvX12EmitError::from)
 }
 
 fn render(profile: &CsvX12BoundaryProfile) -> ClassPart {
