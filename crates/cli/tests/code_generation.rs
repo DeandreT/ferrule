@@ -70,6 +70,8 @@ mod basic_owned_sequence_exists;
 mod basic_owned_sequence_item_at;
 #[path = "code_generation/basic_owned_sort.rs"]
 mod basic_owned_sort;
+#[path = "code_generation/basic_owned_windows.rs"]
+mod basic_owned_windows;
 #[path = "code_generation/basic_owned_xml_mixed_construction.rs"]
 mod basic_owned_xml_mixed_construction;
 #[path = "code_generation/basic_owned_xml_mixed_content.rs"]
