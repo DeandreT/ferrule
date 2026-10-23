@@ -60,6 +60,26 @@ pub fn format_mapforce_json5_ascii_keys_with_limit(
     document: &str,
     maximum: usize,
 ) -> Result<String, MapForceJson5Error> {
+    format_with_mode(document, maximum, false)
+}
+
+/// Strict quoted-key JSON using the native tab/CRLF and decimal writer rules.
+pub fn format_mapforce_json_ascii_keys(document: &str) -> Result<String, MapForceJson5Error> {
+    format_mapforce_json_ascii_keys_with_limit(document, MAX_JSON_DOCUMENT_BYTES)
+}
+
+pub fn format_mapforce_json_ascii_keys_with_limit(
+    document: &str,
+    maximum: usize,
+) -> Result<String, MapForceJson5Error> {
+    format_with_mode(document, maximum, true)
+}
+
+fn format_with_mode(
+    document: &str,
+    maximum: usize,
+    quote_keys: bool,
+) -> Result<String, MapForceJson5Error> {
     if maximum > MAX_JSON_DOCUMENT_BYTES {
         return Err(MapForceJson5Error::InvalidLimit);
     }
@@ -68,6 +88,7 @@ pub fn format_mapforce_json5_ascii_keys_with_limit(
     let mut output = Output {
         text: String::new(),
         maximum,
+        quote_keys,
     };
     output.value(source.root(), 0)?;
     Ok(output.text)
@@ -88,6 +109,31 @@ pub fn serialize_mapforce_json5_ascii_keys_with_limit(
     instance: &Instance,
     maximum: usize,
 ) -> Result<String, MapForceJson5Error> {
+    serialize_with_mode(descriptor, instance, maximum, false)
+}
+
+/// Serialize exact Decimal values as strict native JSON, not JSON5.
+pub fn serialize_mapforce_json_ascii_keys(
+    descriptor: &str,
+    instance: &Instance,
+) -> Result<String, MapForceJson5Error> {
+    serialize_mapforce_json_ascii_keys_with_limit(descriptor, instance, MAX_JSON_DOCUMENT_BYTES)
+}
+
+pub fn serialize_mapforce_json_ascii_keys_with_limit(
+    descriptor: &str,
+    instance: &Instance,
+    maximum: usize,
+) -> Result<String, MapForceJson5Error> {
+    serialize_with_mode(descriptor, instance, maximum, true)
+}
+
+fn serialize_with_mode(
+    descriptor: &str,
+    instance: &Instance,
+    maximum: usize,
+    quote_keys: bool,
+) -> Result<String, MapForceJson5Error> {
     if maximum > MAX_JSON_DOCUMENT_BYTES {
         return Err(MapForceJson5Error::InvalidLimit);
     }
@@ -97,6 +143,7 @@ pub fn serialize_mapforce_json5_ascii_keys_with_limit(
     let mut output = Output {
         text: String::new(),
         maximum,
+        quote_keys,
     };
     let mut remaining = crate::MAX_JSON_SOURCE_VALUES;
     output.instance(&schema, instance, 0, false, &mut remaining)?;
@@ -106,6 +153,7 @@ pub fn serialize_mapforce_json5_ascii_keys_with_limit(
 struct Output {
     text: String,
     maximum: usize,
+    quote_keys: bool,
 }
 
 impl Output {
@@ -148,7 +196,8 @@ impl Output {
         if !key.is_ascii() {
             return Err(MapForceJson5Error::NonAsciiProperty);
         }
-        if key.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
+        if !self.quote_keys
+            && key.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
             && key.bytes().all(|byte| byte.is_ascii_alphanumeric())
         {
             self.push(key)
@@ -426,6 +475,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn strict_mode_quotes_all_keys_without_changing_json5_defaults() {
+        let input = r#"{"alpha":1,"a1":2,"_x":"\n\u0085🙂","alpha":3}"#;
+        let expected = "{\r\n\t\"alpha\": 1,\r\n\t\"a1\": 2,\r\n\t\"_x\": \"\\u000A\\u0085\\uD83D\\uDE42\",\r\n\t\"alpha\": 3\r\n}";
+        assert_eq!(format_mapforce_json_ascii_keys(input).unwrap(), expected);
+        assert!(
+            format_mapforce_json5_ascii_keys(input)
+                .unwrap()
+                .contains("\talpha: 1")
+        );
+        assert!(format_mapforce_json_ascii_keys_with_limit(input, expected.len()).is_ok());
+        assert!(matches!(
+            format_mapforce_json_ascii_keys_with_limit(input, expected.len() - 1),
+            Err(MapForceJson5Error::OutputBytes { .. })
+        ));
+        let mut schema = SchemaNode::scalar("value", ScalarType::String);
+        schema.json_any = true;
+        let encoded =
+            codegen_schema::encode(&schema, crate::MAX_EMBEDDED_JSON_SCHEMA_BYTES).unwrap();
+        assert_eq!(
+            serialize_mapforce_json_ascii_keys(
+                &encoded,
+                &Instance::Scalar(Value::String(input.into()))
+            )
+            .unwrap(),
+            expected
+        );
+    }
+
+    #[test]
     fn full_literal_writer_corpus_matches_complete_bytes() {
         let cases: serde_json::Value =
             serde_json::from_str(include_str!("../../../conformance/json5-writer/cases.json"))
@@ -609,6 +687,7 @@ mod tests {
         let mut output = Output {
             text: String::new(),
             maximum: 1024,
+            quote_keys: false,
         };
         assert!(matches!(
             output.instance(&schema, &value, 0, false, &mut 1),
