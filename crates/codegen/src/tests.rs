@@ -648,6 +648,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "parse_time",
         "format_date",
         "format_datetime",
+        "format_datetime_milliseconds",
         "format_time",
         "datetime_add",
         "edifact_to_datetime",
