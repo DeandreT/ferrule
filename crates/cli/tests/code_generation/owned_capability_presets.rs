@@ -900,7 +900,7 @@ pub(super) fn corpora() -> TestResult<Vec<(&'static str, Corpus)>> {
         ("basic-owned-windows", json_corpus("basic-owned-windows")?),
         (
             "basic-owned-nested-alias",
-            json_corpus("basic-owned-nested-alias")?,
+            super::basic_owned_nested_alias::capability_corpus(),
         ),
         (
             "basic-owned-occurrence",

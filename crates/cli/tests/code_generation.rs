@@ -46,6 +46,8 @@ mod basic_owned_joins;
 mod basic_owned_json_adapters;
 #[path = "code_generation/basic_owned_lookup_find.rs"]
 mod basic_owned_lookup_find;
+#[path = "code_generation/basic_owned_nested_alias.rs"]
+mod basic_owned_nested_alias;
 #[path = "code_generation/basic_owned_nested_phases.rs"]
 mod basic_owned_nested_phases;
 #[path = "code_generation/basic_owned_occurrence.rs"]
