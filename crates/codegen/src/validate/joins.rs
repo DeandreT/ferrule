@@ -389,6 +389,9 @@ pub(super) fn validate_expression(
                     )?;
                 }
             }
+            Expression::DistinctTextMapLast { expression, .. } => {
+                validate_expression(*expression, expressions, sources, None, active_joins, false)?;
+            }
             Expression::OwnedAggregate(aggregate) => {
                 if let Some(value) = aggregate.expression() {
                     validate_expression(value, expressions, sources, None, active_joins, false)?;

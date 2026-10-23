@@ -1054,6 +1054,12 @@ pub enum Expression {
         predicate: NodeId,
         value: NodeId,
     },
+    /// Stable first-occurrence text-key selection before any mapped evaluation.
+    DistinctTextMapLast {
+        collection: Vec<String>,
+        key: Vec<String>,
+        expression: NodeId,
+    },
     /// Reduces a source collection. The value expression executes once per
     /// item, while `arg` executes once afterward in the parent context.
     Aggregate {

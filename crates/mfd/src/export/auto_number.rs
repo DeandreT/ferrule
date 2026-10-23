@@ -177,7 +177,8 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         } => vec![*condition, *then, *else_],
         Node::ValueMap { input, .. } => vec![*input],
         Node::Lookup { matches, .. } => vec![*matches],
-        Node::OwnedLookup(_)
+        Node::DistinctTextMapLast { .. }
+        | Node::OwnedLookup(_)
         | Node::OwnedAggregate(_)
         | Node::OwnedCollectionFind(_)
         | Node::OwnedJoinField(_)

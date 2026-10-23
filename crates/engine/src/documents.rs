@@ -121,7 +121,8 @@ fn check_clock_path(project: &Project, root: &Scope) -> Result<(), EngineError> 
             | Node::Position { .. }
             | Node::Call { .. }
             | Node::If { .. }
-            | Node::Aggregate { .. } => {}
+            | Node::Aggregate { .. }
+            | Node::DistinctTextMapLast { .. } => {}
             _ => {
                 return Err(EngineError::DocumentStreamUnsupported {
                     reason: "filename clock sampling is limited to ordinary scalar graph expressions",
@@ -153,6 +154,7 @@ fn check_body_clock(project: &Project) -> Result<(), EngineError> {
                 | Node::If { .. }
                 | Node::Aggregate { .. }
                 | Node::InvocationCounter { .. }
+                | Node::DistinctTextMapLast { .. }
         ) {
             return Err(EngineError::DocumentStreamUnsupported {
                 reason: "body clock sampling is limited to ordinary scalar graph expressions",

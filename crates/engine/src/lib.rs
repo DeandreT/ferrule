@@ -284,6 +284,18 @@ pub enum OwnedCapabilityContext {
 
 #[derive(Debug, Error, PartialEq)]
 pub enum EngineError {
+    #[error("distinct text map node {node}: {phase} must be text or absent, got {found}")]
+    DistinctTextMapKind {
+        node: NodeId,
+        phase: &'static str,
+        found: &'static str,
+    },
+    #[error("distinct text map node {node}: {resource} exceeds {maximum}")]
+    DistinctTextMapLimit {
+        node: NodeId,
+        resource: &'static str,
+        maximum: usize,
+    },
     #[error("invalid document-row construction: {reason}")]
     DocumentRowsConstruction { reason: &'static str },
     #[error("filename clock at node {node} failed: {message}")]

@@ -18,6 +18,7 @@ mod datetime;
 mod datetime_add;
 mod decimal;
 mod decimal_value;
+mod distinct_text_keys;
 mod filepath;
 mod flextext;
 mod format_number;
@@ -28,6 +29,9 @@ mod scalar;
 pub use catalog::{
     BuiltinArity, BuiltinCategory, BuiltinDefinition, BuiltinExposure, BuiltinNames,
     BuiltinParameter, ScalarDomain, catalog as builtin_catalog, find as builtin,
+};
+pub use distinct_text_keys::{
+    DistinctTextKeyError, DistinctTextKeys, MAX_DISTINCT_TEXT_KEY_BYTES, MAX_DISTINCT_TEXT_KEYS,
 };
 pub use invocation_counters::{
     InvocationCounterError, InvocationCounterLimits, InvocationCounters,

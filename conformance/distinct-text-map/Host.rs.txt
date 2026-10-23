@@ -1,0 +1,34 @@
+use std::{cell::Cell,ops::ControlFlow,path::Path};
+use codegen_runtime::{DocumentMember,ExecutionContext,Instance,RuntimeError,Value,group};
+use distinct_text_mapping::{DocumentVisit,visit_target_documents_with_clocks as visit};
+fn row(key:Option<Value>,marker:&str,skip:bool,invalid:bool,fail:bool)->Instance{
+ let mut values=vec![("Marker".into(),Instance::Scalar(Value::String(marker.into()))),("Skip".into(),Instance::Scalar(Value::Bool(skip))),("Invalid".into(),Instance::Scalar(Value::Bool(invalid))),("Fail".into(),Instance::Scalar(Value::Bool(fail)))];
+ if let Some(key)=key{values.push(("Key".into(),Instance::Scalar(key)));}group(values)
+}
+fn k(value:&str)->Option<Value>{Some(Value::String(value.into()))}
+fn input(rows:Vec<Vec<Instance>>)->Instance{Instance::DocumentSet(rows.into_iter().enumerate().map(|(i,rows)|DocumentMember::new(format!("{i}.xml"),group([("Rows".into(),Instance::Repeated(rows))])).unwrap()).collect())}
+fn selected(document:&DocumentMember)->Option<&str>{match document.value().field("Selected").and_then(Instance::as_scalar){Some(Value::String(value))=>Some(value),None|Some(Value::Null)=>None,_=>panic!("not text")}}
+fn check(rows:Vec<Instance>,value:Option<&str>,path:&str,count:usize){
+ let source=input(vec![rows]);let execution=ExecutionContext::new(Path::new("mapping")).with_current_datetime("stable");
+ let body_calls=Cell::new(0);let file_calls=Cell::new(0);
+ let body=||{body_calls.set(body_calls.get()+1);Ok(format!("B{}",body_calls.get()))};let file=||{file_calls.set(file_calls.get()+1);Ok(format!("F{}",file_calls.get()))};
+ let mut documents=vec![];let result=visit(&source,&[],Some(&execution),None,&body,&file,|doc|{documents.push(doc);ControlFlow::<()>::Continue(())}).unwrap();
+ assert_eq!(result,DocumentVisit::Complete{accepted:1});assert_eq!((body_calls.get(),file_calls.get()),(count,count));assert_eq!(selected(&documents[0]),value);assert_eq!(documents[0].path(),path);
+}
+fn main(){
+ check(vec![row(k("A"),"A",false,false,false),row(k("B"),"B",false,false,false),row(k("A"),"ignored",false,false,true)],Some("B@2:B2"),"out-B@2:F2.txt",2);
+ check(vec![row(None,"missing",false,false,true),row(k(""),"empty",false,false,false),row(k(" "),"space",true,false,false)],Some("empty@2:B1"),"out-empty@2:F1.txt",1);
+ check(vec![row(k("A"),"skip",true,false,false),row(k("A"),"ignored",false,false,true),row(k("B"),"B",false,false,false)],Some("B@3:B1"),"out-B@3:F1.txt",1);
+ check(vec![row(k("A"),"A",false,false,false),row(k("B"),"skip",true,false,false)],Some("A@1:B1"),"out-A@1:F1.txt",1);
+ check(vec![row(None,"missing",false,false,true)],None,"out-.txt",0);
+ check([""," ","A","a","é","e\u{301}"].into_iter().map(|key|row(k(key),"last",false,false,false)).collect(),Some("last@6:B6"),"out-last@6:F6.txt",6);
+ let execution=ExecutionContext::new(Path::new("mapping")).with_current_datetime("stable");let calls=Cell::new(0);let clock=||{calls.set(calls.get()+1);Ok("t".into())};
+ let bad=input(vec![vec![row(k("A"),"first",false,false,true),row(Some(Value::Int(3)),"bad",false,false,false)]]);
+ let error=visit::<()>(&bad,&[],Some(&execution),None,&clock,&clock,|_|panic!("invalid key delivered")).unwrap_err();assert_eq!(error.accepted,0);assert!(matches!(error.source,RuntimeError::DistinctTextMapKind{node:50,phase:"key",found:"int"}));assert_eq!(calls.get(),0);
+ let bad=input(vec![vec![row(k("A"),"A",false,false,false),row(k("B"),"bad",false,true,false),row(k("C"),"C",false,false,false)]]);
+ let error=visit::<()>(&bad,&[],Some(&execution),None,&clock,&clock,|_|panic!("invalid value delivered")).unwrap_err();assert!(matches!(error.source,RuntimeError::DistinctTextMapKind{node:50,phase:"mapped value",found:"int"}));assert_eq!(calls.get(),1);
+ let source=input(vec![vec![row(k("A"),"first",false,false,false)],vec![row(k("A"),"second",false,false,false)]]);calls.set(0);let mut values=vec![];
+ let result=visit(&source,&[],Some(&execution),None,&clock,&clock,|d|{values.push(d);ControlFlow::<()>::Continue(())}).unwrap();assert_eq!(result,DocumentVisit::Complete{accepted:2});assert_eq!(calls.get(),4);assert_eq!(selected(&values[1]),Some("second@1:t"));
+ calls.set(0);let stopped=visit(&source,&[],Some(&execution),None,&clock,&clock,|_|ControlFlow::Break("stop")).unwrap();assert_eq!(stopped,DocumentVisit::Stopped{accepted:0,reason:"stop"});assert_eq!(calls.get(),2);
+ println!("PASS distinct text map");
+}

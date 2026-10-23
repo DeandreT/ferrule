@@ -66,6 +66,7 @@ impl GraphViewer<'_> {
                     node,
                     Node::Call { .. }
                         | Node::Aggregate { .. }
+                        | Node::DistinctTextMapLast { .. }
                         | Node::SequenceExists { .. }
                         | Node::SequenceItemAt { .. }
                         | Node::SequenceAggregate { .. }
@@ -506,6 +507,28 @@ impl GraphViewer<'_> {
                         ui.label(namespace.as_str())
                             .on_hover_text("default namespace");
                     }
+                }
+                Node::DistinctTextMapLast {
+                    collection, key, ..
+                } => {
+                    ui.label("Map each first-seen text key, then keep the last present result.");
+                    ui.horizontal(|ui| {
+                        ui.label("collection");
+                        self.source_paths.show_collection_picker(
+                            ui,
+                            ui.scope_id().with("distinct_text_collection"),
+                            collection,
+                        );
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("key");
+                        self.source_paths.show_value_picker(
+                            ui,
+                            ui.scope_id().with("distinct_text_key"),
+                            collection,
+                            key,
+                        );
+                    });
                 }
                 Node::CollectionFind { collection, .. } => {
                     ui.horizontal(|ui| {

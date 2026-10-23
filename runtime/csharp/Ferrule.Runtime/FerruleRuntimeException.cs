@@ -79,6 +79,9 @@ public enum FerruleRuntimeError
     InvocationCounter,
     DocumentFilenameClock,
     DocumentBodyClock,
+    DistinctTextMapKey,
+    DistinctTextMapValue,
+    DistinctTextMapLimit,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>

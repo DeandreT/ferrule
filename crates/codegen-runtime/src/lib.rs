@@ -57,8 +57,9 @@ pub use context::{
     OwnedSourceLimitKind, OwnedSourceLimits, SourceOwnerRef, SourceRoots,
 };
 pub use context::{
-    GeneratedItems, GroupedItems, InnerJoinKey, InnerJoinStage, InstanceKind, NamedInput,
-    ScopeContext, SourcePathError, clone_scalar, resolve_scalar,
+    GeneratedItems, GroupedItems, InnerJoinKey, InnerJoinStage, InstanceKind,
+    MAX_DISTINCT_TEXT_KEY_BYTES, MAX_DISTINCT_TEXT_KEYS, NamedInput, ScopeContext, SourcePathError,
+    clone_scalar, resolve_scalar,
 };
 pub use csv::{
     CsvBoundaryError, CsvDocumentError, MAX_CSV_DOCUMENT_BYTES, serialize_csv, serialize_csv_bytes,
@@ -182,6 +183,16 @@ pub enum TargetSelection<'a> {
 /// Failure produced while executing generated mapping code.
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
+    DistinctTextMapKind {
+        node: u32,
+        phase: &'static str,
+        found: &'static str,
+    },
+    DistinctTextMapLimit {
+        node: u32,
+        resource: &'static str,
+        maximum: usize,
+    },
     MissingInvocationCounters {
         node: u32,
     },
@@ -454,6 +465,18 @@ impl RuntimeError {
 impl fmt::Display for RuntimeError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::DistinctTextMapKind { node, phase, found } => write!(
+                formatter,
+                "distinct text map node {node}: {phase} must be text or absent, got {found}"
+            ),
+            Self::DistinctTextMapLimit {
+                node,
+                resource,
+                maximum,
+            } => write!(
+                formatter,
+                "distinct text map node {node}: {resource} exceeds {maximum}"
+            ),
             Self::FilterMapRuntime { boundary, source } => {
                 write!(formatter, "filter/map {boundary:?}: {source}")
             }
@@ -771,6 +794,7 @@ impl fmt::Display for RuntimeError {
 impl std::error::Error for RuntimeError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::DistinctTextMapKind { .. } | Self::DistinctTextMapLimit { .. } => None,
             Self::FilterMapRuntime { source, .. } => Some(source.as_ref()),
             Self::SourcePath(error) => Some(error),
             Self::OwnedSource(error) => Some(error),

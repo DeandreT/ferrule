@@ -89,6 +89,53 @@ fn fixture() -> Fixture {
     }
 }
 
+#[test]
+fn distinct_text_map_keeps_one_expression_pin_and_stages_path_edits() {
+    let mut fx = fixture();
+    fx.graph.nodes.insert(
+        0,
+        Node::DistinctTextMapLast {
+            collection: vec!["Rows".into()],
+            key: vec!["Key".into()],
+            expression: 1,
+        },
+    );
+    fx.graph.nodes.insert(
+        1,
+        Node::Const {
+            value: ir::Value::String("first".into()),
+        },
+    );
+    fx.graph.nodes.insert(
+        2,
+        Node::Const {
+            value: ir::Value::String("second".into()),
+        },
+    );
+    assert!(graph_node_presentation::has_properties(&fx.graph.nodes[&0]));
+    assert_eq!(GraphViewer::input_count(&fx.graph.nodes[&0]), 1);
+    assert_eq!(graph_references::node_inputs(&fx.graph.nodes[&0]), [1]);
+    let mut viewer = fx.viewer();
+    assert!(viewer.set_input(0, 0, 2));
+    assert!(!viewer.set_input(0, 1, 1));
+    assert_eq!(viewer.graph.nodes[&0].dependencies(), [2]);
+    let changed = Node::DistinctTextMapLast {
+        collection: vec!["Rows".into()],
+        key: vec!["Other".into()],
+        expression: 2,
+    };
+    assert_eq!(
+        viewer
+            .commit_node_property_edit(0, changed, false, false)
+            .unwrap(),
+        0
+    );
+    assert!(
+        matches!(&viewer.graph.nodes[&0],Node::DistinctTextMapLast{key,expression:2,..} if key==&["Other"])
+    );
+    assert_eq!(viewer.graph.nodes.len(), 3);
+}
+
 impl Fixture {
     fn viewer(&mut self) -> GraphViewer<'_> {
         GraphViewer {

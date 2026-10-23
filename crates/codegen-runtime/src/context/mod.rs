@@ -1,5 +1,6 @@
 mod basic;
 mod basic_json_inputs;
+mod distinct_text;
 mod named_input_admission;
 
 #[cfg(test)]
@@ -34,6 +35,7 @@ pub use basic_json_inputs::{
     BasicJsonDocumentRef, BasicJsonInputAdmission, BasicJsonParsedInputs,
     BasicNamedJsonDocumentRef, admit_basic_json_inputs,
 };
+pub use distinct_text::{MAX_DISTINCT_TEXT_KEY_BYTES, MAX_DISTINCT_TEXT_KEYS};
 pub use grouping::GroupedItems;
 pub use join::{InnerJoinKey, InnerJoinStage};
 pub use named_input_admission::{

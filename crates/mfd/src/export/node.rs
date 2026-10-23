@@ -320,6 +320,9 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                     "explicit invocation counters have no qualified .mfd representation".into(),
                 ));
             }
+            Node::DistinctTextMapLast { .. } => {
+                return Err(MfdError::Unsupported("distinct text mapping has no qualified .mfd export representation".into()));
+            }
             Node::Raise { .. } => {
                 return Err(MfdError::Unsupported(format!(
                     "raise node {id} requires an item-owned exception branch for native export"

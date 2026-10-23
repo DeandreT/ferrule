@@ -151,6 +151,14 @@ impl fmt::Display for ProgramValidationError {
                 "user function {} exceeds the maximum call depth of {limit}",
                 function.get()
             ),
+            Self::InvalidDistinctTextKey {
+                node,
+                collection,
+                key,
+            } => write!(
+                formatter,
+                "node {node} distinct key {key:?} is not a String scalar under collection {collection:?}"
+            ),
             Self::InvalidAggregateCollection { node, collection } => write!(
                 formatter,
                 "compiled mapping aggregate expression {node} collection {} matches no source path",
