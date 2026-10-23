@@ -34,9 +34,9 @@ fn string(node: &SchemaNode) -> bool {
             ty: ScalarType::String
         }
     ) && !node.repeating
-        && !node.nillable
+        && crate::import::presence::xml_non_nil(node)
         && !node.attribute
-        && !node.nullable
+        && crate::import::presence::json_value_non_null(node)
         && node.fixed.is_none()
         && node.recursive_ref.is_none()
 }
@@ -46,7 +46,7 @@ fn single_text(node: &SchemaNode) -> bool {
         if alternatives.is_empty() && dynamic.is_none() && children.len() == 1
             && children[0].name == XML_TEXT_FIELD && children[0].text && string(&children[0]))
         && !node.repeating
-        && !node.nillable
+        && crate::import::presence::xml_non_nil(node)
         && !node.attribute
         && node.recursive_ref.is_none()
 }
@@ -169,7 +169,7 @@ impl Planner<'_, '_> {
                     .schema_node_at(&absolute[..len])
                     .is_some_and(|node| {
                         node.repeating
-                            || node.nillable
+                            || !crate::import::presence::xml_non_nil(node)
                             || node.attribute
                             || node.recursive_ref.is_some()
                             || !node.alternatives().is_empty()

@@ -392,7 +392,10 @@ struct PartitionedShape {
 
 impl PartitionedShape {
     fn new(head: &SchemaNode) -> Result<Self, XmlFormatError> {
-        if head.nillable || head.fixed.is_some() || head.default.is_some() {
+        if crate::declaration::declaration(head)?.nil
+            || head.fixed.is_some()
+            || head.default.is_some()
+        {
             return Err(unsupported(
                 head,
                 &node_identity(head),
