@@ -144,6 +144,7 @@ impl FerruleApp {
             return;
         }
         let owned_items = crate::graph_viewer::project_sequence_item_ids(&self.project);
+        let before = self.project.clone();
         let result = match pending.target {
             AutoConnectTarget::Primary => {
                 let Some(scope) = scope_at_mut(&mut self.project.root, &pending.scope_path) else {
@@ -173,6 +174,15 @@ impl FerruleApp {
             }
         };
         if applied > 0 {
+            let document = match pending.target {
+                AutoConnectTarget::Primary => MappingDocument::Main,
+                AutoConnectTarget::Named(index) => MappingDocument::Target(index),
+            };
+            let action = editor_ui::GraphAction::AutoConnect {
+                scope: editor_ui::ScopeLocation::of_children(&pending.scope_path),
+                connected: applied,
+            };
+            self.queue_document_edit(document, &before, action, None);
             self.rebuild_auto_connected_canvas(pending.target);
         }
         self.status = format!(

@@ -10,6 +10,8 @@ mod document;
 mod edit_history;
 mod graph_command;
 mod graph_edit;
+mod project_command;
+mod project_edit;
 mod revision;
 mod scope_command;
 mod scope_setting;
@@ -26,6 +28,7 @@ pub use graph_edit::{
     BindingsChange, ChildrenChange, GraphDocument, GraphEditError, GraphPatch, NodeChange,
     ScopeLocation, ScopeStep, SettingChange,
 };
+pub use project_edit::{PartChange, ProjectPart, ProjectParts};
 pub use revision::{
     ComponentChange, DocumentRevision, LayoutRevision, RevisionChange, RevisionKeyed,
     RevisionTracker, SemanticRevision,

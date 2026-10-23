@@ -272,18 +272,19 @@ function canvases. Compact glyphs keep closed nodes small; full hover identities
 pin semantics, and property/details popovers retain the information needed to
 edit them. Layout is adjacent metadata rather than mapping behavior.
 Editor history is one linear sequence of typed commands, which name the node,
-scope, binding, scope-setting, and child-scope identities they change and apply
-or invert atomically, and snapshots of edits still applied in place. Node
-removal, wire connection and disconnection, palette insertion, node property
-edits, binding panel additions, retargets, and removals, scope-setting edits
-(source iteration, filter, grouping, sort, windows, and output), computed
-property rows, child scope addition, subtree expansion, and scope removal, join
-creation, key edits, and joined outputs, filter/map creation and stage edits,
-XML type selection and inference, and sequence consumer duplication are
-commands, including those made in a pipeline stage's embedded editor. A frame's
-commands form one history step only when together they explain the frame's
-change, and the frame becomes a snapshot otherwise; continued typing or
-dragging in one property or setting extends its step. Separate semantic and
+scope, binding, scope-setting, child-scope, and project-part identities they
+change and apply or invert atomically. Canvas edits (node removal, wires,
+palette insertion, node properties, and sequence consumer duplication), the
+Inspector's binding, scope-setting, computed-property, child-scope, join,
+filter/map, and XML type edits, auto-connect, failure rules, named source and
+target management, primary source format options, and user-function creation
+are commands, including those made in a pipeline stage's embedded editor.
+Project-part commands edit a project document whose parts (failure rules,
+named sources and targets, source options, and function definitions) are
+validated against their exact recorded content. A frame's commands form one
+history step only when together they explain the frame's change; any frame
+they do not explain is retained as a snapshot. Continued typing or dragging in
+one property, setting, or rule extends its step. Separate semantic and
 layout revisions track the save point, so a layout-only change never marks
 mapping content as changed.
 

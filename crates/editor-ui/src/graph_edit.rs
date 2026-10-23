@@ -5,7 +5,9 @@ use std::fmt;
 
 use mapping::{Binding, FunctionId, Graph, Node, NodeId, Scope};
 
-use crate::{ScopeFields, ScopeSetting, ScopeSettingValue, TargetId, WireSink};
+use crate::{
+    ProjectPart, ProjectParts, ScopeFields, ScopeSetting, ScopeSettingValue, TargetId, WireSink,
+};
 
 /// The graph and target scope tree that one mapping canvas edits.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -14,6 +16,10 @@ pub enum GraphDocument {
     Target(TargetId),
     /// One user-function body, which has no target scope.
     Function(FunctionId),
+    /// The shared project graph with the project parts outside any target
+    /// scope: failure rules, named sources and targets, the primary
+    /// source's format options, and user-function definitions.
+    Project,
 }
 
 /// One step from a scope to a nested scope.
@@ -267,6 +273,18 @@ pub enum GraphEditError {
     NotDuplicated {
         duplicate: NodeId,
     },
+    /// A project part differs from the state the edit replaces.
+    ProjectPartDiffers {
+        part: ProjectPart,
+    },
+    /// Project parts were addressed to a graph without its project.
+    ProjectPartsNeedProject,
+    /// The edit does not change `part` as its action describes.
+    ProjectPartNotChanged {
+        part: ProjectPart,
+    },
+    /// Project actions edit the project document, and only they do.
+    WrongDocument,
 }
 
 impl fmt::Display for GraphEditError {
@@ -365,6 +383,16 @@ impl fmt::Display for GraphEditError {
                     "the edit does not add duplicate mapping node {duplicate}"
                 )
             }
+            Self::ProjectPartDiffers { part } => write!(f, "{part} changed since the edit"),
+            Self::ProjectPartsNeedProject => {
+                f.write_str("project parts can only change with their project")
+            }
+            Self::ProjectPartNotChanged { part } => {
+                write!(f, "the edit does not change {part} as described")
+            }
+            Self::WrongDocument => {
+                f.write_str("the action does not edit the document the command names")
+            }
         }
     }
 }
@@ -384,6 +412,8 @@ pub struct GraphPatch {
     /// Never nested: no key lies inside another, and no binding or setting
     /// key lies inside a key of this map.
     children: BTreeMap<ScopeLocation, ChildrenChange>,
+    /// Applied only with the whole project, by a command.
+    project: ProjectParts,
 }
 
 impl GraphPatch {
@@ -414,25 +444,24 @@ impl GraphPatch {
         Ok(patch)
     }
 
-    fn diff(
-        before: (&Graph, &Scope),
-        after: (&Graph, &Scope),
+    /// Captures the node differences between two states of one graph.
+    pub fn of_nodes(
+        before: &Graph,
+        after: &Graph,
         same_node: impl Fn(&Node, &Node) -> bool,
-        children: Option<&mut BTreeMap<ScopeLocation, ChildrenChange>>,
-    ) -> Result<Self, GraphEditError> {
+    ) -> Self {
         let ids = before
-            .0
             .nodes
             .keys()
-            .chain(after.0.nodes.keys())
+            .chain(after.nodes.keys())
             .copied()
             .collect::<BTreeSet<_>>();
         let nodes = ids
             .into_iter()
             .filter_map(|id| {
                 let change = NodeChange {
-                    before: before.0.nodes.get(&id).cloned(),
-                    after: after.0.nodes.get(&id).cloned(),
+                    before: before.nodes.get(&id).cloned(),
+                    after: after.nodes.get(&id).cloned(),
                 };
                 let unchanged = match (&change.before, &change.after) {
                     (Some(before), Some(after)) => same_node(before, after),
@@ -441,6 +470,29 @@ impl GraphPatch {
                 (!unchanged).then_some((id, change))
             })
             .collect();
+        Self {
+            nodes,
+            ..Self::default()
+        }
+    }
+
+    /// Adds project part changes, which only a command applies.
+    pub fn with_project_parts(mut self, parts: ProjectParts) -> Self {
+        self.project = parts;
+        self
+    }
+
+    pub fn project_parts(&self) -> &ProjectParts {
+        &self.project
+    }
+
+    fn diff(
+        before: (&Graph, &Scope),
+        after: (&Graph, &Scope),
+        same_node: impl Fn(&Node, &Node) -> bool,
+        children: Option<&mut BTreeMap<ScopeLocation, ChildrenChange>>,
+    ) -> Result<Self, GraphEditError> {
+        let nodes = Self::of_nodes(before.0, after.0, same_node).nodes;
         let mut bindings = BTreeMap::new();
         diff_scopes(
             &ScopeLocation::root(),
@@ -522,7 +574,7 @@ impl GraphPatch {
     /// per changed setting, so each can form its own command. Returns the
     /// patch unchanged as its only part when it changes nodes.
     pub fn into_scope_parts(self) -> Vec<Self> {
-        if !self.nodes.is_empty() || !self.children.is_empty() {
+        if !self.nodes.is_empty() || !self.children.is_empty() || !self.project.is_empty() {
             return vec![self];
         }
         let bindings = self.bindings.into_iter().map(|(location, change)| Self {
@@ -540,6 +592,7 @@ impl GraphPatch {
     /// when `next` does not start from the state this edit leads to.
     /// Identities the combined edit leaves unchanged are dropped.
     pub fn then(&self, next: &Self, same_node: impl Fn(&Node, &Node) -> bool) -> Option<Self> {
+        let project = self.project.then(&next.project, &same_node)?;
         let same_presence = |left: Option<&Node>, right: Option<&Node>| match (left, right) {
             (Some(left), Some(right)) => same_node(left, right),
             (left, right) => left.is_none() && right.is_none(),
@@ -585,6 +638,7 @@ impl GraphPatch {
             bindings,
             settings,
             children,
+            project,
         })
     }
 
@@ -593,6 +647,7 @@ impl GraphPatch {
             && self.bindings.is_empty()
             && self.settings.is_empty()
             && self.children.is_empty()
+            && self.project.is_empty()
     }
 
     /// Every node identity the edit adds, removes, or changes.
@@ -646,6 +701,11 @@ impl GraphPatch {
 
     /// Whether the edit changes nothing besides nodes.
     pub(crate) fn only_nodes(&self) -> bool {
+        self.scope_free() && self.project.is_empty()
+    }
+
+    /// Whether the edit changes no target scope.
+    pub(crate) fn scope_free(&self) -> bool {
         self.bindings.is_empty() && self.settings.is_empty() && self.children.is_empty()
     }
 
@@ -706,6 +766,21 @@ impl GraphPatch {
     }
 
     fn exchange(
+        &self,
+        graph: &mut Graph,
+        scope: Option<&mut Scope>,
+        target: Side,
+        same_node: &dyn Fn(&Node, &Node) -> bool,
+    ) -> Result<(), GraphEditError> {
+        if !self.project.is_empty() {
+            return Err(GraphEditError::ProjectPartsNeedProject);
+        }
+        self.exchange_graph(graph, scope, target, same_node)
+    }
+
+    /// Exchanges the graph and scope parts only; project parts are the
+    /// caller's to validate first and write afterwards.
+    pub(crate) fn exchange_graph(
         &self,
         graph: &mut Graph,
         scope: Option<&mut Scope>,
@@ -794,7 +869,7 @@ impl GraphPatch {
 }
 
 #[derive(Clone, Copy)]
-enum Side {
+pub(crate) enum Side {
     Before,
     After,
 }
@@ -844,7 +919,7 @@ impl Side {
         self.opposite().children(change)
     }
 
-    fn opposite(self) -> Self {
+    pub(crate) fn opposite(self) -> Self {
         match self {
             Self::Before => Self::After,
             Self::After => Self::Before,

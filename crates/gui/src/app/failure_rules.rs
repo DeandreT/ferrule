@@ -288,6 +288,9 @@ impl FerruleApp {
             }
         }
         if *rule != before {
+            let mut previous = self.project.clone();
+            previous.failure_rules[index] = before;
+            self.queue_project_edit(&previous, editor_ui::GraphAction::EditFailureRule { index });
             self.clear_diagnostic_navigation();
             self.selected_failure_rule = Some(index);
         }
@@ -298,6 +301,7 @@ impl FerruleApp {
         if !editing_enabled || !self.ui_project_editing_enabled() {
             return;
         }
+        let before = self.project.clone();
         let selected = match action {
             RuleAction::Add => {
                 self.project.failure_rules.push(FailureRule {
@@ -480,6 +484,19 @@ impl FerruleApp {
                 Some(to)
             }
         };
+        let typed = match action {
+            RuleAction::Add | RuleAction::AddSequence(_) => {
+                editor_ui::GraphAction::AddFailureRule {
+                    index: before.failure_rules.len(),
+                }
+            }
+            RuleAction::EnableRegexFlags(index) => {
+                editor_ui::GraphAction::EditFailureRule { index }
+            }
+            RuleAction::Remove(index) => editor_ui::GraphAction::RemoveFailureRule { index },
+            RuleAction::Move { from, to } => editor_ui::GraphAction::MoveFailureRule { from, to },
+        };
+        self.queue_project_edit(&before, typed);
         self.clear_diagnostic_navigation();
         self.selected_failure_rule = selected;
         self.pending_failure_rule_scroll = selected.is_some();

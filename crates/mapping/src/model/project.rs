@@ -181,7 +181,7 @@ pub struct Project {
 /// A named secondary input. `path` is the instance file or typed HTTP GET URL
 /// to load. Files are resolved relative to the project directory when not
 /// absolute; URLs remain absolute.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NamedSource {
     pub name: String,
     pub path: String,
@@ -200,7 +200,7 @@ pub struct NamedSource {
 /// A legacy path array keeps its primary-relative meaning and wire form. An
 /// owned driver object names exactly one endpoint and an endpoint-relative
 /// collection; readers that know only path arrays refuse it.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DynamicSourcePath {
     pub node: NodeId,
     pub iteration: SourceSelector,
@@ -241,7 +241,7 @@ impl DynamicSourcePath {
 }
 
 /// One additional output document produced by a project.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NamedTarget {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
