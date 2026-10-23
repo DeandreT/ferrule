@@ -869,6 +869,11 @@ impl<'a> Admission<'a> {
                         Some(id),
                         None,
                     )?,
+                    // Document metadata exists only for a static document-set
+                    // endpoint; a loaded document carries no member location.
+                    Node::OwnedSourceDocumentPath(path) => {
+                        self.static_owner(&path.owner, &[], None, Some(id), None)?
+                    }
                     // The object is an exact owned read; its key stays a
                     // Basic parent-context scalar.
                     Node::OwnedDynamicSourceField(field) => {
@@ -1116,6 +1121,7 @@ fn root_failure_node_is_static(project: &Project, node: &Node) -> bool {
     match node {
         Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_)
         | Node::Position { .. }
         | Node::OwnedDynamicSourceField(_)
         | Node::OwnedLookup(_)
@@ -1159,7 +1165,8 @@ fn primary_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
         | Node::OwnedLookup(_)
         | Node::OwnedCollectionFind(_)
         | Node::OwnedAggregate(_)
-        | Node::OwnedRowDocumentPath(_) => false,
+        | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_) => false,
         Node::OwnedPosition(position) => matches!(position.owner, SourceOwner::Primary),
         Node::OwnedSourceField(field) => match &field.source.owner {
             SourceOwner::Primary => true,
@@ -1192,7 +1199,8 @@ fn owned_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
         Node::OwnedLookup(_)
         | Node::OwnedCollectionFind(_)
         | Node::OwnedAggregate(_)
-        | Node::OwnedRowDocumentPath(_) => false,
+        | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_) => false,
         Node::UserFunctionCall { .. } | Node::OwnedDynamicSourceField(_) => false,
         // Owned XML operators are target-context operators only.
         Node::OwnedXmlSerialize(_) | Node::OwnedXmlMixedContent(_) => false,

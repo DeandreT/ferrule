@@ -38,7 +38,7 @@ pub(crate) fn owned_construction_item<'a>(
             (OccurrenceKind::GroupMembers, Instance::Repeated(members)) => members.first(),
             _ => Some(frame.item),
         }),
-        None if source.path.is_empty() => state.roots.root(key).map(Some),
+        None if source.path.is_empty() => state.endpoint_root(key).map(Some),
         None => Err(OwnedSourceError::InactiveSourceFrame {
             owner: source.owner.clone(),
             collection: Some(source.path.clone()),

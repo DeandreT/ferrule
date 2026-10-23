@@ -52,6 +52,7 @@ fn render_basic_owned_mapping_profile(
         capabilities.controls.windows,
         capabilities.grouping,
         capabilities.dynamic_loading,
+        capabilities.document_sets,
     )?;
     let mut output = String::from(
         "namespace Ferrule.Generated;\n\npublic sealed record NamedOutput(string Name, global::Ferrule.Runtime.FerruleInstance Instance);\npublic sealed record ExecutionOutputs(global::Ferrule.Runtime.FerruleInstance Primary, global::System.Collections.Generic.IReadOnlyList<NamedOutput> Extras);\n\n",
@@ -170,6 +171,9 @@ fn expression_refusal(node: NodeId, expression: &Expression, reason: Reason) -> 
         Expression::OwnedRowDocumentPath(path) => Some(Request::RowDocumentPath {
             owner: (&path.owner).into(),
             collection: path.collection.clone(),
+        }),
+        Expression::OwnedSourceDocumentPath(path) => Some(Request::DocumentPath {
+            owner: (&path.owner).into(),
         }),
         Expression::OwnedXmlSerialize(serializer) => Some(Request::XmlElement {
             owner: (&serializer.source.owner).into(),
@@ -473,6 +477,7 @@ fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
+        | Expression::OwnedSourceDocumentPath(_)
         | Expression::OwnedXmlSerialize(_)
         | Expression::OwnedJoinField(_)
         | Expression::OwnedJoinSourcePosition(_)
@@ -582,6 +587,8 @@ fn validate_private_inventory(
                 continue;
             }
             Expression::OwnedDynamicSourceField(_) if capabilities.dynamic_fields => continue,
+            Expression::OwnedSourceDocumentPath(_) if capabilities.document_sets => continue,
+            Expression::OwnedSourceDocumentPath(_) => Reason::Document,
             Expression::OwnedXmlSerialize(_) if capabilities.xml >= OwnedXml::Serialize => continue,
             Expression::OwnedXmlMixedContent(_) if capabilities.xml >= OwnedXml::MixedContent => {
                 continue;
@@ -730,6 +737,11 @@ pub(super) fn render_owned_leaf(
             output.push_str(", ");
             mapping::render_optional_path(position.collection.as_deref(), output);
             output.push_str(")));\n");
+        }
+        Expression::OwnedSourceDocumentPath(path) => {
+            output.push_str(" =>\n        context.OwnedDocumentPath(");
+            render_owner(&path.owner, output);
+            output.push_str(");\n");
         }
         Expression::OwnedRowDocumentPath(path) => {
             output.push_str(" =>\n        context.OwnedRowDocumentPath(");
@@ -990,6 +1002,7 @@ fn expression_needs_owned_sources(program: &Program, root: NodeId) -> bool {
                 Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
                 | Expression::OwnedRowDocumentPath(_)
+                | Expression::OwnedSourceDocumentPath(_)
                 | Expression::OwnedLookup(_)
                 | Expression::OwnedCollectionFind(_)
                 | Expression::OwnedDynamicSourceField(_)

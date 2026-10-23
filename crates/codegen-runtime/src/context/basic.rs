@@ -19,6 +19,9 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
+#[path = "basic_document_set.rs"]
+mod document_set;
+
 #[path = "basic_dynamic_field.rs"]
 mod dynamic_field;
 
@@ -2357,7 +2360,7 @@ impl<'ctx> OwnedWalkObserver<'ctx> for BasicOwnedObserver<'_, 'ctx> {
         // the terminal occurrence of a walk.
         let terminal_index = owned.frames.iter().rposition(|frame| {
             frame.owner == self.key
-                && frame.kind != super::OwnedOccurrenceKind::Document
+                && !matches!(frame.kind, super::OwnedOccurrenceKind::Document { .. })
                 && frame
                     .collection
                     .iter()

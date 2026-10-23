@@ -263,7 +263,7 @@ pub(crate) fn render_public_basic_owned_capability_source(
             {
                 group_by::render_basic_group_by_scope(&body, scope, &children)
             } else {
-                render_window_scope(&body, scope, &children)
+                render_window_scope(&body, scope, &children, capabilities.document_sets)
             });
         } else {
             let legacy_name = format!("legacy_{name}");
@@ -402,6 +402,7 @@ fn local_owned(program: &Program, scope: &TargetScope) -> bool {
                 Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
                 | Expression::OwnedRowDocumentPath(_)
+                | Expression::OwnedSourceDocumentPath(_)
                 | Expression::OwnedLookup(_)
                 | Expression::OwnedCollectionFind(_)
                 | Expression::OwnedDynamicSourceField(_)
@@ -453,25 +454,21 @@ pub(super) fn mark_basic_scopes(
     }
 }
 
-fn render_window_scope(name: &str, scope: &TargetScope, children: &[String]) -> String {
+fn render_window_scope(
+    name: &str,
+    scope: &TargetScope,
+    children: &[String],
+    documents: bool,
+) -> String {
     let Some(iteration) = &scope.iteration else {
-        return render_basic_scope(name, scope, children, true);
+        return render_basic_scope(name, scope, children, true, documents);
     };
     if iteration.windows().is_empty() && iteration.output() == IterationOutput::Repeated {
-        return render_basic_sort_scope(name, scope, children);
+        return render_basic_sort_scope(name, scope, children, documents);
     }
-    let walk = match iteration.input() {
-        IterationSource::Source(input) => format!(
-            "context.walk_source_cohort(&[{}])?",
-            render_string_path(input.path())
-        ),
-        IterationSource::OwnedSource(input) => format!(
-            "context.walk_owned_source_cohort({}, &[{}])?",
-            owner_literal(&input.source().owner),
-            render_string_path(&input.source().path)
-        ),
-        _ => unreachable!("explicit Basic window inventory checked before rendering"),
-    };
+    let walk = render_scope_walk(iteration.input(), documents).unwrap_or_else(|| {
+        unreachable!("explicit Basic window inventory checked before rendering")
+    });
     let keys = iteration
         .sort()
         .map(|sort| sort.keys().collect::<Vec<_>>())

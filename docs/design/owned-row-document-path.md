@@ -8,7 +8,9 @@ The optional collection selector has three distinct meanings:
 
 - Omitted: select the latest active frame of that owner, or its root when no
   frame is active.
-- Empty `[]`: select the immutable registered root, even inside nested rows.
+- Empty `[]`: select the owner's root, even inside nested rows: its active
+  [document-set member](owned-document-path.md) inside a document walk,
+  otherwise the immutable registered root.
 - Nonempty: require an active frame with that exact endpoint-local collection.
 
 The selected instance must be an annotated group. Its origin returns the

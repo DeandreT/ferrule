@@ -27,6 +27,8 @@ use crate::trace::{
 };
 use crate::{DynamicSourceLoader, EngineError};
 
+#[path = "eval_scope/owned_document_set.rs"]
+mod owned_document_set;
 #[path = "eval_scope/owned_dynamic_loading.rs"]
 mod owned_dynamic_loading;
 #[path = "eval_scope/owned_join_scope.rs"]
@@ -1019,6 +1021,31 @@ fn eval_basic_owned_scope<'a>(
     let (extensions, budget, own, candidates, replay) = match scope.source_selector() {
         Some(mapping::SourceSelectorRef::Owned(source)) => {
             let (owner, base, prefix, tail, budget) = state.select(source).map_err(access)?;
+            // Only the endpoint root of an owner with no active document can
+            // be a set; grouped scopes keep refusing it in the walk below.
+            if let Instance::DocumentSet(members) = base
+                && prefix.is_empty()
+                && !state.roots.loaded(owner)
+                && !scope.has_grouping()
+                && scope.post_group_filter.is_none()
+            {
+                return owned_document_set::eval_document_set_scope(
+                    receiving_program,
+                    scope,
+                    target,
+                    context,
+                    positions,
+                    extra_sources,
+                    source_loader,
+                    trace_scope,
+                    source,
+                    owned_document_set::Members {
+                        key: owner,
+                        members,
+                        budget,
+                    },
+                );
+            }
             let request = ObservedWalkRequest {
                 base,
                 path: tail,

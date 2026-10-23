@@ -211,6 +211,7 @@ fn evaluate_body_node_inner(
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_)
         | Node::OwnedDynamicSourceField(_)
         | Node::OwnedLookup(_)
         | Node::OwnedCollectionFind(_)

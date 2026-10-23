@@ -264,6 +264,19 @@ nested loading, driver reads and positions never borrow another driver,
 document or endpoint, and legacy aliases never reach an owned dynamic source.
 See the [dynamic loading contract](owned-dynamic-loading.md).
 
+## Document-set paths
+
+An ungrouped owned scope selecting a document-set endpoint with no active
+document walks each member in set order; the member's document roots its
+owner, so nested scopes and reads of that owner see it and never re-enter the
+set, while other owners keep their own roots and documents. A strict
+`owned_source_document_path` returns the location of exactly its owner's
+active member and fails with a typed `MissingDocumentPath` otherwise: another
+owner's document, an uniterated set and an ancestor never answer it. Grouped
+scopes and every other owned walker keep refusing document sets, and dynamic
+owners and the XML document-set boundary adapters stay closed. See the
+[document-path contract](owned-document-path.md).
+
 ## Generated-item reductions
 
 `SequenceAggregate` over the same four producers evaluates producer arguments in
@@ -356,7 +369,7 @@ Reuse these existing scopes; the capability column concerns **explicit ownership
 | [#448](https://github.com/DeandreT/ferrule/issues/448) join wire/identity | [#447](https://github.com/DeandreT/ferrule/issues/447) | owner+collection and separate JoinId; execution closed |
 | [#449](https://github.com/DeandreT/ferrule/issues/449) join tuples | [#448](https://github.com/DeandreT/ferrule/issues/448) | source-row versus flattened tuple positions |
 | [#450](https://github.com/DeandreT/ferrule/issues/450) joined aggregates/correlation | [#449](https://github.com/DeandreT/ferrule/issues/449) | active-source and argument phases |
-| [#451](https://github.com/DeandreT/ferrule/issues/451) document-path metadata | [#450](https://github.com/DeandreT/ferrule/issues/450) | exact owned-frame metadata; excludes dynamic loading/XML routes |
+| [#451](https://github.com/DeandreT/ferrule/issues/451) document-path metadata | [#450](https://github.com/DeandreT/ferrule/issues/450) | exact owned document-set member and physical row metadata; excludes dynamic loading/XML routes |
 | [#452](https://github.com/DeandreT/ferrule/issues/452) specialized matrix | Coordination | Defines focused operator contracts and semantic prerequisites |
 
 ## Specialized follow-on issues

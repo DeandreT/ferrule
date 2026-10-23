@@ -135,6 +135,7 @@ fn validate_body(
             Node::OwnedSourceField(_)
             | Node::OwnedPosition(_)
             | Node::OwnedRowDocumentPath(_)
+            | Node::OwnedSourceDocumentPath(_)
             | Node::OwnedXmlSerialize(_) => {
                 super::schema::validate_owned_source_node(project, node, &node_location, issues)
             }

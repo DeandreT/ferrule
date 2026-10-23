@@ -11,7 +11,8 @@ pub use graph::{
     AggregateOp, Binding, DynamicBinding, DynamicChild, Graph, MAX_RUNTIME_PARAMETER_NAME_BYTES,
     Node, NodeId, OwnedAggregate, OwnedAggregateValue, OwnedCollectionFind, OwnedJoinAggregate,
     OwnedJoinField, OwnedJoinSourcePosition, OwnedLookup, OwnedPosition, OwnedRowDocumentPath,
-    OwnedSourceField, RuntimeValue, SequenceExpr, XmlMixedContentReplacement,
+    OwnedSourceDocumentPath, OwnedSourceField, RuntimeValue, SequenceExpr,
+    XmlMixedContentReplacement,
 };
 pub use project::{
     DynamicSourcePath, FailureIteration, FailureRule, FailureSelection, FunctionId,

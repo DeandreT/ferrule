@@ -284,7 +284,8 @@ A portable Basic cohort separates three contracts:
 `cases.json` trees use the lossless recipe codec shared by the hosts:
 `["Null"]`, `["JsonNull"]`, `["XmlNil"]`, `["Bool", b]`, `["Int", n]`,
 `["String", s]`, `["Float", "<16 hex digits of the IEEE-754 bits>"]`,
-`["Repeated", [items]]` and `["Group", [[name, tree], ...], origin]`, where
+`["Repeated", [items]]`, `["DocumentSet", [[path, resolved or null, tree], ...]]`
+and `["Group", [[name, tree], ...], origin]`, where
 `origin` is the XML type origin (`{"kind": "Unknown", ...}` for ordinary
 groups). An expected outcome is `{"Ok": [[target, tree], ...]}`, with `null`
 naming the primary target, or `{"Err": recipe}` with a typed error recipe that
@@ -296,9 +297,10 @@ the C# host must reproduce for that many leading exceptions.
 The [`basic-owned-occurrence/`](basic-owned-occurrence/),
 [`basic-owned-filter/`](basic-owned-filter/),
 [`basic-owned-nested-alias/`](basic-owned-nested-alias/),
-[`basic-owned-sort/`](basic-owned-sort/) and
-[`basic-owned-windows/`](basic-owned-windows/) cohorts follow this layout with a
-JSON oracle; the SequenceExists and SequenceAggregate cohorts share the same
+[`basic-owned-sort/`](basic-owned-sort/),
+[`basic-owned-windows/`](basic-owned-windows/) and
+[`basic-owned-document-path/`](basic-owned-document-path/) cohorts follow this
+layout with a JSON oracle; the SequenceExists and SequenceAggregate cohorts share the same
 bindings with `cases.rs`. Each cohort README lists its cases and expected
 outcomes. Run one cohort, including its generated hosts, with its harness
 filter, for example:
