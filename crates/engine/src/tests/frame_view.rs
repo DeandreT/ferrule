@@ -817,3 +817,106 @@ fn grouped_members_and_receiving_start_match_legacy_position_lookup() {
     });
     assert!(grouped > 5, "{grouped} bases matched grouped members");
 }
+
+use crate::owned_context::{OccurrenceKind, OwnerKey, SourceFrame};
+
+/// `OwnedContext::position_slot` and its caller's lookup as they read a
+/// slot before the frame view: the latest matching frame, then its slot.
+fn legacy_owned_position<'p>(
+    frames: &[SourceFrame<'_>],
+    positions: &'p [PositionFrame],
+    owner: OwnerKey,
+    collection: Option<&[String]>,
+) -> Option<Option<&'p PositionFrame>> {
+    let slot = frames
+        .iter()
+        .rev()
+        .find(|frame| {
+            frame.owner == owner && collection.is_none_or(|path| frame.collection == path)
+        })
+        .map(|frame| frame.position_slot)?;
+    Some(positions.get(slot))
+}
+
+/// The owned join tuple's identity position as it read a slot before the
+/// frame view.
+fn legacy_join_identity(
+    frames: &[SourceFrame<'_>],
+    positions: &[PositionFrame],
+    owner: OwnerKey,
+    collection: &[String],
+) -> usize {
+    frames
+        .iter()
+        .rev()
+        .find(|frame| {
+            frame.owner == owner
+                && frame.collection == collection
+                && frame.kind == OccurrenceKind::Item
+        })
+        .and_then(|frame| positions.get(frame.position_slot))
+        .map_or(1, |position| position.index)
+}
+
+#[test]
+fn owned_frames_read_the_position_their_slot_names() {
+    let item = record(Vec::new());
+    let owners = [OwnerKey::Primary, OwnerKey::Named(0), OwnerKey::Named(1)];
+    let collections = [path(&["A"]), path(&["A", "B"]), Vec::new()];
+    // Owners, collections and kinds interleave, and the later slots run past
+    // every position list below, so some selected frames name no position.
+    let frames: Vec<_> = (0..9)
+        .map(|index| SourceFrame {
+            owner: owners[index % owners.len()],
+            collection: collections[(index / 2) % collections.len()].clone(),
+            item: &item,
+            position_slot: index,
+            kind: if index % 4 == 3 {
+                OccurrenceKind::GroupMembers
+            } else {
+                OccurrenceKind::Item
+            },
+        })
+        .collect();
+    let positions: Vec<_> = (0..6)
+        .map(|index| position(&["P"], index + 1, false))
+        .collect();
+    let pointer = |found: Option<&PositionFrame>| found.map(std::ptr::from_ref);
+    let mut checked = 0;
+    let mut unbound = 0;
+    for length in 0..=frames.len() {
+        let frames = &frames[..length];
+        for count in 0..=positions.len() {
+            let positions = &positions[..count];
+            for owner in owners {
+                for collection in &collections {
+                    for pinned in [Some(collection.as_slice()), None] {
+                        let selected =
+                            crate::frame_view::latest_owned(frames, positions, |frame| {
+                                frame.owner == owner
+                                    && pinned.is_none_or(|path| frame.collection == path)
+                            })
+                            .map(|(_, position)| position);
+                        let legacy = legacy_owned_position(frames, positions, owner, pinned);
+                        assert_eq!(selected.map(pointer), legacy.map(pointer));
+                        unbound += usize::from(matches!(selected, Some(None)));
+                        checked += 1;
+                    }
+                    let identity = crate::frame_view::latest_owned(frames, positions, |frame| {
+                        frame.owner == owner
+                            && frame.collection == *collection
+                            && frame.kind == OccurrenceKind::Item
+                    })
+                    .and_then(|(_, position)| position)
+                    .map_or(1, |position| position.index);
+                    assert_eq!(
+                        identity,
+                        legacy_join_identity(frames, positions, owner, collection)
+                    );
+                }
+            }
+        }
+    }
+    assert!(checked > 1000, "checked {checked} lookups");
+    assert!(unbound > 100, "{unbound} selected frames named no position");
+}

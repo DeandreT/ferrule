@@ -584,3 +584,139 @@ fn block_size_singletons_resolve_from_the_parent_context() {
         .collect::<Vec<_>>();
     assert_eq!(firsts, vec![Some(string("O1")), Some(string("O3"))]);
 }
+
+/// The root binds a `Customer` lookup whose needle joins join 7's `Name`
+/// values over `singleton` and `Customer`.
+fn needle_lookup(singleton: &[String]) -> Project {
+    let mut graph = join_nodes(singleton);
+    graph.nodes.insert(
+        4,
+        Node::JoinAggregate {
+            function: mapping::AggregateOp::Join,
+            join: JOIN,
+            plan: plan(singleton, true, false),
+            expression: Some(1),
+            arg: None,
+        },
+    );
+    graph.nodes.insert(
+        5,
+        Node::Lookup {
+            collection: path(&["Customer"]),
+            key: path(&["Name"]),
+            matches: 4,
+            value: path(&["Number"]),
+        },
+    );
+    project(
+        SchemaNode::group(
+            "Target",
+            vec![SchemaNode::scalar("Number", ScalarType::String)],
+        ),
+        graph,
+        Scope {
+            bindings: vec![Binding {
+                target_field: "Number".into(),
+                node: 5,
+            }],
+            ..Scope::default()
+        },
+    )
+}
+
+#[test]
+fn a_lookup_needle_resolves_its_singletons_from_the_consumer_context() {
+    // The needle is evaluated once at the root, before any order is active,
+    // so the relative `CustomerNr` finds no singleton there.
+    let input = source(&[("O1", "C1")]);
+    let relative = needle_lookup(&path(&["CustomerNr"]));
+    assert_eq!(
+        messages(&relative),
+        vec![
+            "join 7 singleton collection `CustomerNr` does not resolve from the root source context; use a path from the source root or a named source"
+                .to_string()
+        ]
+    );
+
+    let rooted = needle_lookup(&path(&["Header", "CustomerNr"]));
+    assert!(validate(&rooted).is_empty(), "{:?}", validate(&rooted));
+    let output = run(&rooted, &input).unwrap();
+    assert_eq!(
+        output.field("Number").and_then(Instance::as_scalar),
+        Some(&string("C2"))
+    );
+}
+
+/// An owned search's predicate sees each candidate order as its latest frame,
+/// so a join whose singleton is the order's relative `CustomerNr` correlates
+/// with that order even when the search itself is bound at the root.
+#[test]
+fn an_owned_search_resolves_singletons_from_its_candidate() {
+    let relative = path(&["CustomerNr"]);
+    let mut graph = join_nodes(&relative);
+    graph.nodes.extend([
+        (
+            4,
+            Node::JoinAggregate {
+                function: mapping::AggregateOp::Count,
+                join: JoinId::new(8),
+                plan: plan(&relative, true, false),
+                expression: None,
+                arg: None,
+            },
+        ),
+        (
+            5,
+            Node::Const {
+                value: Value::Int(1),
+            },
+        ),
+        (
+            6,
+            Node::Call {
+                function: "equal".into(),
+                args: vec![4, 5],
+            },
+        ),
+        (
+            7,
+            Node::OwnedSourceField(mapping::OwnedSourceField {
+                source: mapping::OwnedSourceRef {
+                    owner: mapping::SourceOwner::Primary,
+                    path: path(&["Orders", "Id"]),
+                },
+                frame: None,
+            }),
+        ),
+        (
+            8,
+            Node::OwnedCollectionFind(mapping::OwnedCollectionFind {
+                collection: mapping::OwnedSourceRef {
+                    owner: mapping::SourceOwner::Primary,
+                    path: path(&["Orders"]),
+                },
+                predicate: 6,
+                value: 7,
+            }),
+        ),
+    ]);
+    let found = project(
+        SchemaNode::group("Target", vec![SchemaNode::scalar("Id", ScalarType::String)]),
+        graph,
+        Scope {
+            bindings: vec![Binding {
+                target_field: "Id".into(),
+                node: 8,
+            }],
+            ..Scope::default()
+        },
+    );
+
+    assert!(validate(&found).is_empty(), "{:?}", validate(&found));
+    // `O1` names no customer; `O2`'s customer `C1` joins exactly once.
+    let output = run(&found, &source(&[("O1", "C9"), ("O2", "C1")])).unwrap();
+    assert_eq!(
+        output.field("Id").and_then(Instance::as_scalar),
+        Some(&string("O2"))
+    );
+}
