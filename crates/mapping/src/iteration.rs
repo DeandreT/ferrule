@@ -265,7 +265,7 @@ fn validate_left_collections<'a>(
 
 /// The mutually-exclusive way a target scope obtains iteration items.
 /// A non-empty ordered composition of independently evaluated target scopes.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct ScopeSequence {
     segments: Vec<Scope>,
@@ -312,7 +312,7 @@ impl<'de> Deserialize<'de> for ScopeSequence {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum ScopeIteration {
     #[default]
     None,

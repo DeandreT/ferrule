@@ -3,7 +3,11 @@
 //! Canvases apply node removals, wire connections and disconnections,
 //! palette insertions, and node property edits through a
 //! [`editor_ui::GraphPatch`]; the scope editor describes binding and setting
-//! changes of its scope the same way. Hosts queue each edit with its graph
+//! changes of its scope the same way. Inspector actions and canvas menus
+//! that change a project in place (child scope construction, joins,
+//! filter/map sequences, XML types, and sequence consumer duplication) name
+//! their action and derive its patch from the project before the edit.
+//! Hosts queue each edit with its graph
 //! identity, and the frame observer records the queued commands as one step
 //! when together they exactly explain the frame's project change. Repeated
 //! edits of one property while typing or dragging extend that step. Undo and
@@ -11,10 +15,10 @@
 //! canvases from the retained layout, which stays outside the project.
 
 use editor_ui::{
-    GraphCommand, GraphDocument, GraphEditError, HistoryRecord, ScopeFields, ScopeLocation,
-    TargetBinding, TargetId,
+    GraphAction, GraphCommand, GraphDocument, GraphEditError, GraphPatch, HistoryRecord,
+    ScopeFields, ScopeLocation, ScopeSetting, TargetBinding, TargetId,
 };
-use mapping::{Node, Project};
+use mapping::{Node, Project, Scope};
 
 use super::{CanvasLayout, EditorSnapshot, FerruleApp, HISTORY_COALESCE_DELAY, MappingDocument};
 use crate::graph_viewer::PlannedGraphEdit;
@@ -57,20 +61,24 @@ fn step_label(commands: &[GraphCommand]) -> String {
 }
 
 /// Typed commands for one scope editor pass over the scope at `location`:
-/// one per changed binding list or setting. A binding change that is not a
-/// single addition, removal, or retarget forms no command.
+/// one per changed binding list or setting. A binding or computed property
+/// change that is not a single addition, removal, or replacement forms no
+/// command.
 pub(super) fn scope_edit_commands(
     document: &GraphDocument,
     location: &ScopeLocation,
     before: &ScopeFields,
     after: &ScopeFields,
 ) -> Vec<GraphCommand> {
-    editor_ui::GraphPatch::of_scope(location, before, after)
+    GraphPatch::of_scope(location, before, after)
         .into_scope_parts()
         .into_iter()
         .filter_map(|patch| {
             let action = match patch.settings().next() {
-                Some((scope, setting, _)) => editor_ui::GraphAction::EditScope {
+                Some((scope, ScopeSetting::ComputedProperties, change)) => {
+                    computed_property_action(scope, change.before(), change.after())?
+                }
+                Some((scope, setting, _)) => GraphAction::EditScope {
                     scope: scope.clone(),
                     setting,
                 },
@@ -81,39 +89,74 @@ pub(super) fn scope_edit_commands(
         .collect()
 }
 
-/// Names a binding list change as the one addition, removal, or retarget
-/// the binding panel performs; the command validates the exact shape.
+/// One item appended to, removed from, or replaced in an ordered list.
+enum ListChange<T> {
+    Add(T),
+    Remove(T),
+    Replace(T, T),
+}
+
+/// Names a list change as the one addition, removal, or replacement an
+/// editor row performs; the command validates the exact shape.
+fn list_change<T: Clone + PartialEq>(before: &[T], after: &[T]) -> Option<ListChange<T>> {
+    let first_difference = before
+        .iter()
+        .zip(after)
+        .position(|(before, after)| before != after);
+    Some(match after.len().cmp(&before.len()) {
+        std::cmp::Ordering::Greater => ListChange::Add(after.last()?.clone()),
+        std::cmp::Ordering::Less => {
+            ListChange::Remove(before[first_difference.unwrap_or(after.len())].clone())
+        }
+        std::cmp::Ordering::Equal => {
+            let index = first_difference?;
+            ListChange::Replace(before[index].clone(), after[index].clone())
+        }
+    })
+}
+
 fn binding_action(
     scope: &ScopeLocation,
     before: &[mapping::Binding],
     after: &[mapping::Binding],
-) -> Option<editor_ui::GraphAction> {
+) -> Option<GraphAction> {
     let scope = scope.clone();
-    let differs = |left: &mapping::Binding, right: &mapping::Binding| {
-        TargetBinding::of(left) != TargetBinding::of(right)
-    };
-    let first_difference = before
-        .iter()
-        .zip(after)
-        .position(|(before, after)| differs(before, after));
-    Some(match after.len().cmp(&before.len()) {
-        std::cmp::Ordering::Greater => editor_ui::GraphAction::AddBinding {
-            scope,
-            binding: TargetBinding::of(after.last()?),
-        },
-        std::cmp::Ordering::Less => editor_ui::GraphAction::RemoveBinding {
-            scope,
-            binding: TargetBinding::of(&before[first_difference.unwrap_or(after.len())]),
-        },
-        std::cmp::Ordering::Equal => {
-            let index = first_difference?;
-            editor_ui::GraphAction::RetargetBinding {
-                scope,
-                from: TargetBinding::of(&before[index]),
-                to: TargetBinding::of(&after[index]),
-            }
-        }
+    let targets =
+        |bindings: &[mapping::Binding]| bindings.iter().map(TargetBinding::of).collect::<Vec<_>>();
+    Some(match list_change(&targets(before), &targets(after))? {
+        ListChange::Add(binding) => GraphAction::AddBinding { scope, binding },
+        ListChange::Remove(binding) => GraphAction::RemoveBinding { scope, binding },
+        ListChange::Replace(from, to) => GraphAction::RetargetBinding { scope, from, to },
     })
+}
+
+fn computed_property_action(
+    scope: &ScopeLocation,
+    before: &editor_ui::ScopeSettingValue,
+    after: &editor_ui::ScopeSettingValue,
+) -> Option<GraphAction> {
+    use editor_ui::ScopeSettingValue::ComputedProperties;
+    let (ComputedProperties(before), ComputedProperties(after)) = (before, after) else {
+        return None;
+    };
+    let scope = scope.clone();
+    Some(match list_change(before, after)? {
+        ListChange::Add(property) => GraphAction::AddComputedProperty { scope, property },
+        ListChange::Remove(property) => GraphAction::RemoveComputedProperty { scope, property },
+        ListChange::Replace(from, to) => GraphAction::EditComputedProperty { scope, from, to },
+    })
+}
+
+/// The target scope tree a mapping document edits; function bodies have
+/// none.
+fn document_root(project: &Project, document: MappingDocument) -> Option<&Scope> {
+    match document {
+        MappingDocument::Main => Some(&project.root),
+        MappingDocument::Target(index) => {
+            project.extra_targets.get(index).map(|target| &target.root)
+        }
+        MappingDocument::Function(_) => None,
+    }
 }
 
 impl FerruleApp {
@@ -147,11 +190,67 @@ impl FerruleApp {
         );
     }
 
+    /// Queues `action` for an edit made in place since `before` to the
+    /// target document `document`. The patch holds the node, binding, and
+    /// child-scope differences of the document, with the setting differences
+    /// of the scope at `settings_at`. The frame observer still checks that
+    /// the queued commands explain the frame, so an edit the patch misses
+    /// leaves the frame a snapshot.
+    pub(super) fn queue_document_edit(
+        &mut self,
+        document: MappingDocument,
+        before: &Project,
+        action: GraphAction,
+        settings_at: Option<&[usize]>,
+    ) {
+        let Some(graph) = self.graph_document(document) else {
+            return;
+        };
+        let (Some(before_root), Some(after_root)) = (
+            document_root(before, document),
+            document_root(&self.project, document),
+        ) else {
+            return;
+        };
+        let Ok(mut patch) = GraphPatch::between_reshaped(
+            (&before.graph, before_root),
+            (&self.project.graph, after_root),
+            same_node,
+        ) else {
+            return;
+        };
+        if let Some(path) = settings_at {
+            let scopes = (
+                crate::auto_connect::scope_at(before_root, path),
+                crate::auto_connect::scope_at(after_root, path),
+            );
+            let (Some(before), Some(after)) = scopes else {
+                return;
+            };
+            let location = ScopeLocation::of_children(path);
+            let Ok(with_settings) = patch.with_scope_settings(
+                &location,
+                &ScopeFields::capture(before),
+                &ScopeFields::capture(after),
+            ) else {
+                return;
+            };
+            patch = with_settings;
+        }
+        if let Ok(command) = GraphCommand::new(graph, action, patch) {
+            self.frame_commands.push(command);
+        }
+    }
+
     /// Takes the frame's queued commands and returns them when together, in
     /// order, they lead from the observed state to `current`. Otherwise other
     /// edits made in place share the frame.
     pub(super) fn take_frame_commands(&mut self, current: &Project) -> Option<Vec<GraphCommand>> {
         let commands = std::mem::take(&mut self.frame_commands);
+        #[cfg(test)]
+        if self.snapshot_oracle {
+            return None;
+        }
         if commands.is_empty() {
             return None;
         }

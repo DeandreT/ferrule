@@ -38,6 +38,17 @@ impl ScopeLocation {
         &self.0
     }
 
+    /// The scope one step above this one, and that step; `None` at the root.
+    pub fn parent(&self) -> Option<(Self, ScopeStep)> {
+        let (&last, rest) = self.0.split_last()?;
+        Some((Self(rest.to_vec()), last))
+    }
+
+    /// Whether this scope lies strictly inside the scope at `ancestor`.
+    pub fn is_below(&self, ancestor: &Self) -> bool {
+        self.0.len() > ancestor.0.len() && self.0.starts_with(&ancestor.0)
+    }
+
     /// Locates a scope by the indices of the static children leading to it.
     pub fn of_children(path: &[usize]) -> Self {
         Self(path.iter().copied().map(ScopeStep::Child).collect())
@@ -59,13 +70,13 @@ impl ScopeLocation {
         Some(Self(steps))
     }
 
-    fn join(&self, step: ScopeStep) -> Self {
+    pub fn join(&self, step: ScopeStep) -> Self {
         let mut steps = self.0.clone();
         steps.push(step);
         Self(steps)
     }
 
-    fn resolve<'s>(&self, root: &'s Scope) -> Option<&'s Scope> {
+    pub(crate) fn resolve<'s>(&self, root: &'s Scope) -> Option<&'s Scope> {
         self.0.iter().try_fold(root, |scope, step| match *step {
             ScopeStep::Child(index) => scope.children.get(index),
             ScopeStep::Segment(index) => scope.concatenated()?.iter().nth(index),
@@ -117,6 +128,24 @@ impl BindingsChange {
     }
 
     pub fn after(&self) -> &[Binding] {
+        &self.after
+    }
+}
+
+/// The ordered static child scopes of one scope on both sides of an edit
+/// that adds, removes, or restructures them.
+#[derive(Clone, Debug)]
+pub struct ChildrenChange {
+    before: Vec<Scope>,
+    after: Vec<Scope>,
+}
+
+impl ChildrenChange {
+    pub fn before(&self) -> &[Scope] {
+        &self.before
+    }
+
+    pub fn after(&self) -> &[Scope] {
         &self.after
     }
 }
@@ -206,6 +235,38 @@ pub enum GraphEditError {
     /// The edit also changes identities its action neither names nor
     /// depends on.
     UnrelatedChanges,
+    /// A scope's child scopes differ from the state the edit replaces.
+    ChildrenDiffer {
+        location: ScopeLocation,
+    },
+    /// A scope setting change lies inside child scopes the edit replaces.
+    SettingInsideReplacedScopes {
+        location: ScopeLocation,
+    },
+    /// The edit does not add, expand, or remove child scopes at one scope as
+    /// its action describes.
+    ScopeTreeNotChanged {
+        location: ScopeLocation,
+    },
+    /// The edit does not change the iteration of one scope as its action
+    /// describes.
+    IterationNotChanged {
+        location: ScopeLocation,
+    },
+    /// The edit does not change the computed properties of one scope as its
+    /// action describes.
+    ComputedPropertiesNotChanged {
+        location: ScopeLocation,
+    },
+    /// The edit does not set or clear the XML type of one scope as its
+    /// action describes.
+    XmlTypeNotChanged {
+        location: ScopeLocation,
+    },
+    /// The edit does not add `duplicate` beside an unchanged original.
+    NotDuplicated {
+        duplicate: NodeId,
+    },
 }
 
 impl fmt::Display for GraphEditError {
@@ -262,14 +323,56 @@ impl fmt::Display for GraphEditError {
             Self::UnrelatedChanges => {
                 f.write_str("the edit changes identities its action does not name")
             }
+            Self::ChildrenDiffer { location } => {
+                write!(
+                    f,
+                    "child scopes of scope {location:?} changed since the edit"
+                )
+            }
+            Self::SettingInsideReplacedScopes { location } => {
+                write!(
+                    f,
+                    "scope {location:?} lies inside child scopes the edit replaces"
+                )
+            }
+            Self::ScopeTreeNotChanged { location } => {
+                write!(
+                    f,
+                    "the edit does not change the child scopes of scope {location:?} as described"
+                )
+            }
+            Self::IterationNotChanged { location } => {
+                write!(
+                    f,
+                    "the edit does not change the iteration of scope {location:?} as described"
+                )
+            }
+            Self::ComputedPropertiesNotChanged { location } => {
+                write!(
+                    f,
+                    "the edit does not change the computed properties of scope {location:?} as described"
+                )
+            }
+            Self::XmlTypeNotChanged { location } => {
+                write!(
+                    f,
+                    "the edit does not change the XML type of scope {location:?} as described"
+                )
+            }
+            Self::NotDuplicated { duplicate } => {
+                write!(
+                    f,
+                    "the edit does not add duplicate mapping node {duplicate}"
+                )
+            }
         }
     }
 }
 
 impl std::error::Error for GraphEditError {}
 
-/// Node, binding, and scope-setting differences of one graph edit, keyed by
-/// identity.
+/// Node, binding, scope-setting, and child-scope differences of one graph
+/// edit, keyed by identity.
 ///
 /// Applying or reverting validates every affected identity before changing
 /// anything, so a stale patch fails without partial effects.
@@ -278,6 +381,9 @@ pub struct GraphPatch {
     nodes: BTreeMap<NodeId, NodeChange>,
     bindings: BTreeMap<ScopeLocation, BindingsChange>,
     settings: BTreeMap<(ScopeLocation, ScopeSetting), SettingChange>,
+    /// Never nested: no key lies inside another, and no binding or setting
+    /// key lies inside a key of this map.
+    children: BTreeMap<ScopeLocation, ChildrenChange>,
 }
 
 impl GraphPatch {
@@ -290,6 +396,29 @@ impl GraphPatch {
         before: (&Graph, &Scope),
         after: (&Graph, &Scope),
         same_node: impl Fn(&Node, &Node) -> bool,
+    ) -> Result<Self, GraphEditError> {
+        Self::diff(before, after, same_node, None)
+    }
+
+    /// Like [`Self::between`], but a scope whose static child scopes differ
+    /// in number or target fields has its complete child list captured
+    /// instead of failing; nothing inside a captured list is diffed.
+    pub fn between_reshaped(
+        before: (&Graph, &Scope),
+        after: (&Graph, &Scope),
+        same_node: impl Fn(&Node, &Node) -> bool,
+    ) -> Result<Self, GraphEditError> {
+        let mut children = BTreeMap::new();
+        let mut patch = Self::diff(before, after, same_node, Some(&mut children))?;
+        patch.children = children;
+        Ok(patch)
+    }
+
+    fn diff(
+        before: (&Graph, &Scope),
+        after: (&Graph, &Scope),
+        same_node: impl Fn(&Node, &Node) -> bool,
+        children: Option<&mut BTreeMap<ScopeLocation, ChildrenChange>>,
     ) -> Result<Self, GraphEditError> {
         let ids = before
             .0
@@ -313,11 +442,56 @@ impl GraphPatch {
             })
             .collect();
         let mut bindings = BTreeMap::new();
-        diff_scopes(&ScopeLocation::root(), before.1, after.1, &mut bindings)?;
+        diff_scopes(
+            &ScopeLocation::root(),
+            before.1,
+            after.1,
+            &mut bindings,
+            children,
+        )?;
         Ok(Self {
             nodes,
             bindings,
-            settings: BTreeMap::new(),
+            ..Self::default()
+        })
+    }
+
+    /// Adds the setting differences of the scope at `location` between two
+    /// captures of its fields. Bindings in the captures are ignored; the
+    /// scope must not lie inside child scopes the patch replaces.
+    pub fn with_scope_settings(
+        mut self,
+        location: &ScopeLocation,
+        before: &ScopeFields,
+        after: &ScopeFields,
+    ) -> Result<Self, GraphEditError> {
+        if self
+            .children
+            .keys()
+            .any(|replaced| location.is_below(replaced))
+        {
+            return Err(GraphEditError::SettingInsideReplacedScopes {
+                location: location.clone(),
+            });
+        }
+        self.settings
+            .extend(Self::setting_changes(location, before, after));
+        Ok(self)
+    }
+
+    fn setting_changes<'a>(
+        location: &'a ScopeLocation,
+        before: &'a ScopeFields,
+        after: &'a ScopeFields,
+    ) -> impl Iterator<Item = ((ScopeLocation, ScopeSetting), SettingChange)> + 'a {
+        before.changed_settings(after).map(|(before, after)| {
+            (
+                (location.clone(), before.setting()),
+                SettingChange {
+                    before: before.clone(),
+                    after: after.clone(),
+                },
+            )
         })
     }
 
@@ -336,22 +510,11 @@ impl GraphPatch {
                 },
             );
         }
-        let settings = before
-            .changed_settings(after)
-            .map(|(before, after)| {
-                (
-                    (location.clone(), before.setting()),
-                    SettingChange {
-                        before: before.clone(),
-                        after: after.clone(),
-                    },
-                )
-            })
-            .collect();
+        let settings = Self::setting_changes(location, before, after).collect();
         Self {
-            nodes: BTreeMap::new(),
             bindings,
             settings,
+            ..Self::default()
         }
     }
 
@@ -359,7 +522,7 @@ impl GraphPatch {
     /// per changed setting, so each can form its own command. Returns the
     /// patch unchanged as its only part when it changes nodes.
     pub fn into_scope_parts(self) -> Vec<Self> {
-        if !self.nodes.is_empty() {
+        if !self.nodes.is_empty() || !self.children.is_empty() {
             return vec![self];
         }
         let bindings = self.bindings.into_iter().map(|(location, change)| Self {
@@ -408,15 +571,28 @@ impl GraphPatch {
         .into_iter()
         .filter(|(_, change)| change.before != change.after)
         .collect();
+        let children = compose(&self.children, &next.children, |first, second| {
+            (first.after == second.before).then(|| ChildrenChange {
+                before: first.before.clone(),
+                after: second.after.clone(),
+            })
+        })?
+        .into_iter()
+        .filter(|(_, change)| change.before != change.after)
+        .collect();
         Some(Self {
             nodes,
             bindings,
             settings,
+            children,
         })
     }
 
     pub fn is_empty(&self) -> bool {
-        self.nodes.is_empty() && self.bindings.is_empty() && self.settings.is_empty()
+        self.nodes.is_empty()
+            && self.bindings.is_empty()
+            && self.settings.is_empty()
+            && self.children.is_empty()
     }
 
     /// Every node identity the edit adds, removes, or changes.
@@ -456,6 +632,21 @@ impl GraphPatch {
         self.settings
             .iter()
             .map(|((location, setting), change)| (location, *setting, change))
+    }
+
+    /// Every scope whose child scopes the edit replaces.
+    pub fn children(&self) -> impl Iterator<Item = (&ScopeLocation, &ChildrenChange)> {
+        self.children.iter()
+    }
+
+    /// The child-scope change of one scope, if the edit affects it.
+    pub fn children_of(&self, location: &ScopeLocation) -> Option<&ChildrenChange> {
+        self.children.get(location)
+    }
+
+    /// Whether the edit changes nothing besides nodes.
+    pub(crate) fn only_nodes(&self) -> bool {
+        self.bindings.is_empty() && self.settings.is_empty() && self.children.is_empty()
     }
 
     /// The change of one scope setting, if the edit affects it.
@@ -536,7 +727,7 @@ impl GraphPatch {
                 _ => {}
             }
         }
-        if !self.bindings.is_empty() || !self.settings.is_empty() {
+        if !self.bindings.is_empty() || !self.settings.is_empty() || !self.children.is_empty() {
             let root = scope.as_deref().ok_or(GraphEditError::NoTargetScope)?;
             let resolve = |location: &ScopeLocation| {
                 location
@@ -564,6 +755,13 @@ impl GraphPatch {
                     });
                 }
             }
+            for (location, change) in &self.children {
+                if resolve(location)?.children != target.replaced_children(change) {
+                    return Err(GraphEditError::ChildrenDiffer {
+                        location: location.clone(),
+                    });
+                }
+            }
         }
 
         // Every identity was validated above; the mutations below cannot fail.
@@ -582,6 +780,12 @@ impl GraphPatch {
             for ((location, _), change) in &self.settings {
                 if let Some(current) = location.resolve_mut(root) {
                     target.setting(change).write(current);
+                }
+            }
+            // No binding or setting key lies inside a replaced child list.
+            for (location, change) in &self.children {
+                if let Some(current) = location.resolve_mut(root) {
+                    current.children = target.children(change).to_vec();
                 }
             }
         }
@@ -629,6 +833,17 @@ impl Side {
         self.opposite().setting(change)
     }
 
+    fn children(self, change: &ChildrenChange) -> &[Scope] {
+        match self {
+            Self::Before => &change.before,
+            Self::After => &change.after,
+        }
+    }
+
+    fn replaced_children(self, change: &ChildrenChange) -> &[Scope] {
+        self.opposite().children(change)
+    }
+
     fn opposite(self) -> Self {
         match self {
             Self::Before => Self::After,
@@ -669,6 +884,7 @@ fn diff_scopes(
     before: &Scope,
     after: &Scope,
     changes: &mut BTreeMap<ScopeLocation, BindingsChange>,
+    mut reshaped: Option<&mut BTreeMap<ScopeLocation, ChildrenChange>>,
 ) -> Result<(), GraphEditError> {
     if !same_bindings(&before.bindings, &after.bindings) {
         changes.insert(
@@ -682,18 +898,38 @@ fn diff_scopes(
     let shape_changed = || GraphEditError::ScopeShapeChanged {
         location: location.clone(),
     };
-    if before.children.len() != after.children.len()
-        || before.dynamic_children.len() != after.dynamic_children.len()
-    {
+    if before.dynamic_children.len() != after.dynamic_children.len() {
         return Err(shape_changed());
     }
-    for (index, (before, after)) in before.children.iter().zip(&after.children).enumerate() {
-        diff_scopes(
-            &location.join(ScopeStep::Child(index)),
-            before,
-            after,
-            changes,
-        )?;
+    let children_reshaped = before.children.len() != after.children.len()
+        || before
+            .children
+            .iter()
+            .zip(&after.children)
+            .any(|(before, after)| before.target_field != after.target_field);
+    match reshaped.as_deref_mut() {
+        Some(reshaped) if children_reshaped => {
+            reshaped.insert(
+                location.clone(),
+                ChildrenChange {
+                    before: before.children.clone(),
+                    after: after.children.clone(),
+                },
+            );
+        }
+        None if before.children.len() != after.children.len() => return Err(shape_changed()),
+        _ => {
+            for (index, (before, after)) in before.children.iter().zip(&after.children).enumerate()
+            {
+                diff_scopes(
+                    &location.join(ScopeStep::Child(index)),
+                    before,
+                    after,
+                    changes,
+                    reshaped.as_deref_mut(),
+                )?;
+            }
+        }
     }
     match (before.concatenated(), after.concatenated()) {
         (None, None) => {}
@@ -704,6 +940,7 @@ fn diff_scopes(
                     before,
                     after,
                     changes,
+                    reshaped.as_deref_mut(),
                 )?;
             }
         }
@@ -720,6 +957,7 @@ fn diff_scopes(
             &before.scope,
             &after.scope,
             changes,
+            reshaped.as_deref_mut(),
         )?;
     }
     Ok(())

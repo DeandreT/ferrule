@@ -2752,3 +2752,6 @@ fn join_key_edit_unsaved_preview_uses_applied_three_keys_and_publishes_no_files(
 
 #[path = "join_authoring_tests/nary.rs"]
 mod nary;
+
+#[path = "join_authoring_tests/typed_history.rs"]
+mod typed_history;

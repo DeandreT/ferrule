@@ -7,7 +7,5 @@ repository = "https://github.com/DeandreT/ferrule"
 description = "Platform-neutral editor document, selection, and history state"
 
 [dependencies]
-mapping = { workspace = true }
-
-[dev-dependencies]
 ir = { workspace = true }
+mapping = { workspace = true }

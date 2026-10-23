@@ -1333,7 +1333,12 @@ impl FerruleApp {
             .map_err(DuplicationError::FilterMapAdmission)?;
         // No fallible checks remain after this point. Existing canvas camera,
         // search, selection, scroll, tabs, saved marker and history stay intact.
-        self.project = project;
+        let before = std::mem::replace(&mut self.project, project);
+        let action = editor_ui::GraphAction::DuplicateSequenceConsumer {
+            original: node,
+            duplicate: plan.duplicate,
+        };
+        self.queue_document_edit(document, &before, action, None);
         self.main_canvas.snarl = main.snarl;
         self.main_canvas.node_sizes = main.sizes;
         for (index, canvas) in targets {

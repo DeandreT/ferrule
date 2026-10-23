@@ -919,7 +919,11 @@ impl FerruleApp {
         }
         match self.stage_join_draft(draft) {
             Ok((project, node)) => {
-                self.project = project;
+                let before = std::mem::replace(&mut self.project, project);
+                if let Some(action) = self.join_action(draft, node) {
+                    let owner = &draft.owner;
+                    self.queue_document_edit(owner.document, &before, action, Some(&owner.path));
+                }
                 self.join_authoring_draft = None;
                 self.clear_diagnostic_navigation();
                 // Key-only changes retain graph nodes, target bindings and every
@@ -952,6 +956,33 @@ impl FerruleApp {
                 self.diagnostics.error("Join edit failed", error);
             }
         }
+    }
+
+    /// The typed action an applied join draft performed on its scope.
+    fn join_action(
+        &self,
+        draft: &JoinAuthoringDraft,
+        node: Option<NodeId>,
+    ) -> Option<editor_ui::GraphAction> {
+        let scope = editor_ui::ScopeLocation::of_children(&draft.owner.path);
+        Some(match &draft.edit {
+            Edit::Create { .. } => {
+                let (root, _) = target_root(&self.project, draft.owner.document).ok()?;
+                let (join, _) = crate::auto_connect::scope_at(root, &draft.owner.path)?.join()?;
+                editor_ui::GraphAction::CreateJoin { scope, join }
+            }
+            Edit::Keys { join, .. } | Edit::NaryKeys { join, .. } => {
+                editor_ui::GraphAction::EditJoinKeys { scope, join: *join }
+            }
+            Edit::Project { join, target, .. } => editor_ui::GraphAction::AddJoinedOutput {
+                scope,
+                join: *join,
+                binding: editor_ui::TargetBinding {
+                    field: target.clone(),
+                    node: node?,
+                },
+            },
+        })
     }
 
     fn stage_join_draft(

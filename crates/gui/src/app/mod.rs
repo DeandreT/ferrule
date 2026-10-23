@@ -578,6 +578,10 @@ pub struct FerruleApp {
     /// When the newest step was recorded or extended as one coalescing
     /// command during continuing input.
     command_coalescing: Option<std::time::Instant>,
+    /// Records every edit as a snapshot, as before typed commands, so tests
+    /// can compare typed history against that path.
+    #[cfg(test)]
+    snapshot_oracle: bool,
 }
 
 struct PendingHistory {
@@ -762,6 +766,8 @@ impl Default for FerruleApp {
             pending_history: None,
             frame_commands: Vec::new(),
             command_coalescing: None,
+            #[cfg(test)]
+            snapshot_oracle: false,
         }
     }
 }
@@ -1652,3 +1658,9 @@ mod typed_value_map_cell_tests;
 
 #[cfg(test)]
 mod named_source_endpoint_tests;
+
+#[cfg(test)]
+mod typed_edit_oracle;
+
+#[cfg(test)]
+mod inspector_commands_tests;

@@ -4,9 +4,7 @@
 use super::canvas::{pointer, press_key, text_position};
 use super::wires::{args, ids};
 use super::*;
-use editor_ui::{
-    NodeProperty, ScopeSetting, ScopeSettingValue, Sorting, SourceIteration, TargetBinding,
-};
+use editor_ui::{Iteration, NodeProperty, ScopeSetting, ScopeSettingValue, Sorting, TargetBinding};
 use mapping::{ScopeIteration, SequenceWindow};
 use std::time::{Duration, Instant};
 
@@ -490,10 +488,10 @@ fn scope_setting_edits_are_typed_commands_naming_scope_and_setting() {
     click(&mut app, &context, "iterates", Some(0));
     assert_eq!(app.history.undo_label(), Some("Change scope iteration"));
     assert_eq!(
-        setting_change(&app, ScopeSetting::SourceIteration),
+        setting_change(&app, ScopeSetting::Iteration),
         (
-            ScopeSettingValue::SourceIteration(SourceIteration::Source(vec!["Rows".into()])),
-            ScopeSettingValue::SourceIteration(SourceIteration::None)
+            ScopeSettingValue::Iteration(Iteration::Source(vec!["Rows".into()])),
+            ScopeSettingValue::Iteration(Iteration::None)
         )
     );
     states.push(key(&app));
