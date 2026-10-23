@@ -18,6 +18,8 @@ internal static class Driver
             return new FerruleGroup(recipe[1]!.AsArray().Select(field => new FerruleField(field![0]!.GetValue<string>(), Decode(field[1]!))));
         }
         if (tag == "Repeated") return new FerruleRepeated(recipe[1]!.AsArray().Select(item => Decode(item!)));
+        if (tag == "DocumentSet") return new FerruleDocumentSet(recipe[1]!.AsArray().Select(member => new FerruleDocument(
+            member![0]!.GetValue<string>(), Decode(member[2]!), member[1]?.GetValue<string>())));
         return new FerruleScalar(tag switch {
             "Null" => FerruleValue.Null, "JsonNull" => FerruleValue.JsonNull, "XmlNil" => FerruleValue.XmlNil,
             "String" => FerruleValue.FromString(recipe[1]!.GetValue<string>()), "Bool" => FerruleValue.FromBoolean(recipe[1]!.GetValue<bool>()),
@@ -31,6 +33,8 @@ internal static class Driver
         if (instance is FerruleGroup group) return new JsonArray(Json("Group"), Json(group.Fields.Select(field => new JsonArray(Json(field.Name), Encode(field.Value))).ToArray()),
             Json(new { kind = group.XmlTypeOrigin.Kind.ToString(), identity = group.XmlTypeOrigin.Identity, literal = group.XmlTypeOrigin.Literal }));
         if (instance is FerruleRepeated repeated) return new JsonArray(Json("Repeated"), Json(repeated.Items.Select(Encode).ToArray()));
+        if (instance is FerruleDocumentSet documents) return new JsonArray(Json("DocumentSet"), Json(documents.Documents.Select(document =>
+            new JsonArray(Json(document.Path), Json(document.ResolvedSourcePath), Encode(document.Value))).ToArray()));
         if (instance is not FerruleScalar scalar) throw new InvalidOperationException("Closed authored tree kind.");
         var value = scalar.Value;
         return value.Kind switch {
@@ -136,7 +140,7 @@ internal static class Driver
         if (kind != "OwnedSource") throw new InvalidOperationException("Closed authored error recipe.");
         var owner = recipe["owner"]!.GetValue<string>(); var name = owner == "Primary" ? null : owner;
         var cause = recipe["cause"]!.GetValue<string>(); var traversal = cause is "CannotTraverse" or "ExpectedScalar";
-        var path = cause is "SourceUnavailable" or "InactiveSourceFrame" ? null : recipe["path"]!.DeepClone();
+        var path = cause is "SourceUnavailable" or "InactiveSourceFrame" or "MissingDocumentPath" ? null : recipe["path"]!.DeepClone();
         var segment = recipe["segment"]?.GetValue<int>().ToString(CultureInfo.InvariantCulture); var found = recipe["found"]?.GetValue<string>();
         // Translate only the authored portable kind; retain actual enum names.
         if (found == "scalar") found = FerruleOwnedSourceInstanceKind.Scalar.ToString();

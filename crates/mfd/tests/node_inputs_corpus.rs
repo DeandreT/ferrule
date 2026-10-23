@@ -19,6 +19,7 @@ fn legacy_dependencies(node: &Node) -> Vec<NodeId> {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_)
         | Node::OwnedXmlSerialize(_)
         | Node::OwnedJoinField(_)
         | Node::OwnedJoinSourcePosition(_)
@@ -169,6 +170,7 @@ fn legacy_auto_number(node: &Node) -> Vec<NodeId> {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_)
         | Node::OwnedXmlSerialize(_)
         | Node::SourceField { .. }
         | Node::SourceDocumentPath
@@ -194,6 +196,7 @@ fn legacy_recursive(node: &Node) -> Vec<NodeId> {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_)
         | Node::OwnedXmlSerialize(_)
         | Node::SourceField { .. }
         | Node::SourceDocumentPath
@@ -335,6 +338,7 @@ fn legacy_join(node: &Node) -> Vec<NodeId> {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_)
         | Node::OwnedXmlSerialize(_)
         | Node::SourceField { .. }
         | Node::SourceDocumentPath
@@ -358,6 +362,7 @@ fn legacy_graph_references(node: &Node) -> Vec<NodeId> {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_)
         | Node::OwnedXmlSerialize(_)
         | Node::SourceField { .. }
         | Node::SourceDocumentPath
@@ -433,6 +438,7 @@ fn legacy_canvas(node: &Node) -> Vec<NodeId> {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_)
         | Node::OwnedXmlSerialize(_)
         | Node::SourceField { .. }
         | Node::SourceDocumentPath
@@ -509,6 +515,7 @@ fn legacy_dynamic_json(node: &Node) -> Vec<NodeId> {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_)
         | Node::OwnedXmlSerialize(_)
         | Node::SourceField { .. }
         | Node::SourceDocumentPath
@@ -640,6 +647,7 @@ fn legacy_position(node: &Node) -> Vec<NodeId> {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_)
         | Node::OwnedXmlSerialize(_)
         | Node::SourceField { .. }
         | Node::SourceDocumentPath

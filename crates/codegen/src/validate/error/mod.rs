@@ -62,6 +62,8 @@ pub enum OwnedSourceDiagnosticRequest {
         owner: OwnedSourceDiagnosticOwner,
         collection: Option<Vec<String>>,
     },
+    /// An owned document-set member location read.
+    DocumentPath { owner: OwnedSourceDiagnosticOwner },
     Iteration {
         owner: OwnedSourceDiagnosticOwner,
         path: Vec<String>,

@@ -1386,6 +1386,7 @@ impl GraphViewer<'_> {
             Node::OwnedSourceField(_)
             | Node::OwnedPosition(_)
             | Node::OwnedRowDocumentPath(_)
+            | Node::OwnedSourceDocumentPath(_)
             | Node::OwnedXmlSerialize(_)
             | Node::OwnedJoinField(_)
             | Node::OwnedJoinSourcePosition(_)
@@ -1566,6 +1567,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             .unwrap_or_default()
                     ),
                     Some(Node::OwnedRowDocumentPath(_)) => "Owned row document path".into(),
+                    Some(Node::OwnedSourceDocumentPath(_)) => "Owned document path".into(),
                     Some(Node::OwnedLookup(lookup)) => {
                         format!("Owned lookup: {}", lookup.collection.path.join("/"))
                     }

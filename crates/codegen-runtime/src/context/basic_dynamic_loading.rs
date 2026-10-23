@@ -186,7 +186,7 @@ impl<'ctx> OwnedDynamicDocuments<'ctx> {
                 collection: Vec::new(),
                 instance: document,
                 index: 0,
-                kind: super::super::OwnedOccurrenceKind::Document,
+                kind: super::super::OwnedOccurrenceKind::Document { location: None },
             });
             entries.push(LoadedEntry {
                 context,

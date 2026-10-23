@@ -98,7 +98,7 @@ pub(super) fn execute_owned<'a>(
             source
                 .path
                 .is_empty()
-                .then(|| state.roots.root(owner).ok())
+                .then(|| state.endpoint_root(owner).ok())
                 .flatten()
         })
         .ok_or(EngineError::RecursiveFilterRequiresGroup {

@@ -102,7 +102,13 @@ fn render_basic_owned_source_with_nodes(
         source.push_str(&failure::render_basic(program)?);
     }
     for (name, scope, children, _) in scopes {
-        source.push_str(&render_basic_scope(&name, scope, &children, filter_only));
+        source.push_str(&render_basic_scope(
+            &name,
+            scope,
+            &children,
+            filter_only,
+            false,
+        ));
     }
     Ok(source)
 }
@@ -356,6 +362,7 @@ fn check_inventory(program: &Program, filter_only: bool) -> Result<(), EmitError
             Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
                 | Expression::OwnedRowDocumentPath(_)
+                | Expression::OwnedSourceDocumentPath(_)
                 | Expression::SourceField { .. }
                 | Expression::Position { .. }
                 | Expression::Const { .. }
@@ -447,6 +454,10 @@ pub(super) fn render_owned_access(expression: &Expression) -> Option<String> {
                 "{{ let position = context.owned_position({owner}, {collection})?; Ok(Value::Int(position as i64)) }}"
             ))
         }
+        Expression::OwnedSourceDocumentPath(path) => Some(format!(
+            "context.owned_document_path({})",
+            owner_literal(&path.owner)
+        )),
         Expression::OwnedRowDocumentPath(path) => {
             let owner = owner_literal(&path.owner);
             let collection = path.collection.as_ref().map_or_else(
@@ -551,28 +562,37 @@ pub(super) fn render_owned_xml_mixed_content(
     )
 }
 
+/// The cohort walk of one ordinary or owned Basic selector. With `documents`,
+/// an owned selector also walks the members of a document-set endpoint.
+fn render_scope_walk(input: &IterationSource, documents: bool) -> Option<String> {
+    match input {
+        IterationSource::Source(input) => Some(format!(
+            "context.walk_source_cohort(&[{}])?",
+            render_string_path(input.path())
+        )),
+        IterationSource::OwnedSource(input) => Some(format!(
+            "context.walk_owned_{}source_cohort({}, &[{}])?",
+            if documents { "document_" } else { "" },
+            owner_literal(&input.source().owner),
+            render_string_path(&input.source().path)
+        )),
+        _ => None,
+    }
+}
+
 fn render_basic_scope(
     name: &str,
     scope: &TargetScope,
     children: &[String],
     filter_only: bool,
+    documents: bool,
 ) -> String {
     let mut source = format!(
         "fn {name}(context: &BasicScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n"
     );
     if let Some(iteration) = &scope.iteration {
-        let walk = match iteration.input() {
-            IterationSource::Source(input) => format!(
-                "context.walk_source_cohort(&[{}])?",
-                render_string_path(input.path())
-            ),
-            IterationSource::OwnedSource(input) => format!(
-                "context.walk_owned_source_cohort({}, &[{}])?",
-                owner_literal(&input.source().owner),
-                render_string_path(&input.source().path)
-            ),
-            _ => unreachable!("private Basic inventory checked before rendering"),
-        };
+        let walk = render_scope_walk(iteration.input(), documents)
+            .unwrap_or_else(|| unreachable!("private Basic inventory checked before rendering"));
         if filter_only && let Some(predicate) = iteration.filter() {
             source.push_str(&format!("    let cohort = {walk};\n    let mut outputs = Vec::new();\n    context.visit_filtered_source_cohort(\n        &cohort,\n        |predicate_context| {{\n            let value = expression_{predicate}(predicate_context)?;\n            require_bool({predicate}, value)\n        }},\n        |item_context| {{\n"));
             source.push_str(&render_scope_item(
@@ -873,6 +893,7 @@ fn render_public_basic_owned_source_with_filters(
             Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
                 | Expression::OwnedRowDocumentPath(_)
+                | Expression::OwnedSourceDocumentPath(_)
         )
     }) {
         render_checked_basic_owned_source_with_nodes(program, true, filter_only)?
@@ -1007,7 +1028,7 @@ fn render_basic_owned_sort_source(
         source.push_str(&failure::render_basic(program)?);
     }
     for (name, scope, children, _) in scopes {
-        source.push_str(&render_basic_sort_scope(&name, scope, &children));
+        source.push_str(&render_basic_sort_scope(&name, scope, &children, false));
     }
     Ok(source)
 }
@@ -1197,6 +1218,7 @@ fn check_sort_inventory(program: &Program) -> Result<(), EmitError> {
             Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
                 | Expression::OwnedRowDocumentPath(_)
+                | Expression::OwnedSourceDocumentPath(_)
                 | Expression::SourceField { .. }
                 | Expression::Position { .. }
                 | Expression::Const { .. }
@@ -1223,25 +1245,21 @@ fn check_sort_inventory(program: &Program) -> Result<(), EmitError> {
     Ok(())
 }
 
-fn render_basic_sort_scope(name: &str, scope: &TargetScope, children: &[String]) -> String {
+fn render_basic_sort_scope(
+    name: &str,
+    scope: &TargetScope,
+    children: &[String],
+    documents: bool,
+) -> String {
     let Some(iteration) = &scope.iteration else {
-        return render_basic_scope(name, scope, children, true);
+        return render_basic_scope(name, scope, children, true, documents);
     };
     let Some(sort) = iteration.sort() else {
-        return render_basic_scope(name, scope, children, true);
+        return render_basic_scope(name, scope, children, true, documents);
     };
-    let walk = match iteration.input() {
-        IterationSource::Source(input) => format!(
-            "context.walk_source_cohort(&[{}])?",
-            render_string_path(input.path())
-        ),
-        IterationSource::OwnedSource(input) => format!(
-            "context.walk_owned_source_cohort({}, &[{}])?",
-            owner_literal(&input.source().owner),
-            render_string_path(&input.source().path)
-        ),
-        _ => unreachable!("explicit Basic sorting inventory checked before rendering"),
-    };
+    let walk = render_scope_walk(iteration.input(), documents).unwrap_or_else(|| {
+        unreachable!("explicit Basic sorting inventory checked before rendering")
+    });
     let before =
         iteration.filter().is_none() || sort.filter_order() == SortFilterOrder::FilterThenSort;
     let keys = sort.keys().collect::<Vec<_>>();
@@ -1323,6 +1341,7 @@ pub(crate) fn render_public_basic_owned_sort_source(
             Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
                 | Expression::OwnedRowDocumentPath(_)
+                | Expression::OwnedSourceDocumentPath(_)
         )
     });
     let mut source = render_checked_basic_owned_sort_source(program, owned_leaf_nodes)?;

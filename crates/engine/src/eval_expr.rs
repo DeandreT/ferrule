@@ -336,6 +336,20 @@ fn eval_expr_inner(
                 kind: "owned_row_document_path",
             }),
         },
+        Node::OwnedSourceDocumentPath(path) => match program.owned_context {
+            Some(context) => context.document_path(&path.owner).map_err(|source| {
+                EngineError::OwnedSourceAccess {
+                    node: Some(node_id),
+                    scope: None,
+                    source,
+                }
+            }),
+            None => Err(EngineError::UnsupportedSourceOwnership {
+                node: node_id,
+                function: None,
+                kind: "owned_source_document_path",
+            }),
+        },
         Node::OwnedLookup(lookup) => crate::owned_search::eval_owned_lookup(
             program,
             node_id,

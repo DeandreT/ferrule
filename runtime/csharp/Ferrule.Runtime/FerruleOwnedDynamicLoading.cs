@@ -103,8 +103,8 @@ public sealed partial class FerruleBasicScopeContext
     internal FerruleBasicScopeContext WithLoading(FerruleOwnedDynamicDocuments.Loaded loading) =>
         new(Roots, LegacyView, _owned, _origins, _legacyContainers) { _loading = loading };
 
-    internal FerruleBasicScopeContext WithDocument(int key, FerruleInstance document) =>
-        new(Roots, LegacyView, _owned.WithDocument(key, document), _origins, _legacyContainers);
+    internal FerruleBasicScopeContext WithDocument(int key, FerruleInstance document, string? location = null) =>
+        new(Roots, LegacyView, _owned.WithDocument(key, document, location), _origins, _legacyContainers);
 }
 
 public sealed partial class FerruleOwnedScopeContext
@@ -119,24 +119,27 @@ public sealed partial class FerruleOwnedScopeContext
         return key;
     }
 
-    /// <summary>The owner's supplied root, or its active loaded document.</summary>
-    internal FerruleInstance RootOf(int key) =>
-        Roots.SuppliedInstance(key) ?? _frames[LoadedDocument(key)].Item;
+    /// <summary>The owner's active document, or else its supplied root.</summary>
+    internal FerruleInstance RootOf(int key)
+    {
+        var document = LoadedDocument(key);
+        return document >= 0 ? _frames[document].Item : Roots.Instance(key);
+    }
 
-    private int LoadedDocument(int key)
+    internal int LoadedDocument(int key)
     {
         for (var i = _frames.Length - 1; i >= 0; i--)
             if (_frames[i].Owner == key && _frames[i].Document) return i;
         return -1;
     }
 
-    internal FerruleOwnedScopeContext WithDocument(int key, FerruleInstance document)
+    internal FerruleOwnedScopeContext WithDocument(int key, FerruleInstance document, string? location = null)
     {
         OwnedSourceAccounting.Limit((nuint)_frames.Length, 1, Roots.Limits.MaxActiveFrames,
             FerruleOwnedSourceLimitKind.Frames);
         var copy = new Occurrence[_frames.Length + 1];
         Array.Copy(_frames, copy, _frames.Length);
-        copy[^1] = new(key, Array.Empty<string>(), document, 0, Document: true);
+        copy[^1] = new(key, Array.Empty<string>(), document, 0, Document: true, Location: location);
         return new(Roots, copy);
     }
 }
@@ -162,6 +165,106 @@ public sealed partial class FerruleRetainedSourceCohort
                     result.ReserveOutput(budget);
                     // A row's newest repetition is its document walk's own, or its driver row's.
                     result.Append(row.Context, row.Cursor ?? entry.Cursor, budget,
+                        row.GroupTerminal ?? throw BasicPhaseAdmission.Invalid((nuint)i));
+                }
+            }
+            result._sealed = true;
+            result._witness.Seal(result._count);
+            return result;
+        }
+        finally { result._witness.ReleaseScratch(); }
+    }
+}
+
+// Owned scopes over one document-set endpoint. An ungrouped owned scope
+// selecting a document-set endpoint with no active document walks each member
+// in set order. The member's document roots its owner, with the member's
+// location, and the selector path is walked from it as from a supplied root.
+// Documents are not positions; nested scopes and reads of the same owner see
+// the current document and never re-enter the set, while other owners keep
+// their own roots and documents.
+
+public sealed partial class FerruleBasicScopeContext
+{
+    /// <summary>
+    /// The location of the selected owner's latest active document-set member;
+    /// another owner's document never supplies it.
+    /// </summary>
+    public FerruleValue OwnedDocumentPath(FerruleOwnedSourceOwner owner)
+    {
+        try
+        {
+            var budget = Begin();
+            return _owned.BasicDocumentPath(owner, Query(budget, owner, Array.Empty<string>()));
+        }
+        catch (FerruleOwnedSourceException error) { throw FerruleRuntimeException.FromOwnedSource(error); }
+        catch (FerruleBasicSourceBridgeException error) { throw FerruleRuntimeException.FromBasicSourceBridge(error); }
+    }
+
+    /// <summary>
+    /// Walks an owned scope selector like <see cref="WalkOwnedSourceCohort"/>,
+    /// except that a document-set endpoint with no active document walks each
+    /// member as its owner's root, in set order, as one cohort of this view.
+    /// </summary>
+    public FerruleRetainedSourceCohort WalkOwnedDocumentSourceCohort(FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> path)
+    {
+        try { return FerruleRetainedSourceCohort.WalkDocuments(this, owner, path); }
+        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+    }
+
+    /// <summary>The document set this view's walk of <paramref name="owner"/> enters, if any.</summary>
+    internal (int Key, FerruleDocumentSet Set)? DocumentSetFor(FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> path)
+    {
+        if (LoadingFor(owner) is not null) return null;
+        var budget = Begin();
+        var key = _owned.Resolve(owner, Query(budget, owner, path));
+        return _owned.UnenteredDocumentSet(key, path) is { } set ? (key, set) : null;
+    }
+}
+
+public sealed partial class FerruleOwnedScopeContext
+{
+    internal FerruleValue BasicDocumentPath(FerruleOwnedSourceOwner owner, OwnedQuery admittedQuery)
+    {
+        var key = Resolve(owner, admittedQuery);
+        var document = LoadedDocument(key);
+        if (document < 0 || _frames[document].Location is not { } location)
+            throw admittedQuery.Error(FerruleOwnedSourceErrorKind.MissingDocumentPath);
+        return FerruleValue.FromString(location);
+    }
+
+    /// <summary>The owner's supplied document set when no document or
+    /// same-owner occurrence of <paramref name="path"/> is active.</summary>
+    internal FerruleDocumentSet? UnenteredDocumentSet(int key, IReadOnlyList<string> path) =>
+        LoadedDocument(key) < 0 && Match(key, path, false) < 0 ? Roots.SuppliedInstance(key) as FerruleDocumentSet : null;
+}
+
+public sealed partial class FerruleRetainedSourceCohort
+{
+    /// <summary>One walk of every member of a document-set endpoint, in set
+    /// order, as a single cohort of the receiving view.</summary>
+    internal static FerruleRetainedSourceCohort WalkDocuments(FerruleBasicScopeContext parent,
+        FerruleOwnedSourceOwner owner, IReadOnlyList<string> path)
+    {
+        if (parent.DocumentSetFor(owner, path) is not { } documents) return Walk(parent, path, owner);
+        var budget = parent.Begin();
+        budget.Charge(2); // original holder and shared per-walk witness
+        var result = new FerruleRetainedSourceCohort(parent, budget);
+        try
+        {
+            foreach (var member in documents.Set.Documents)
+            {
+                var context = parent.WithDocument(documents.Key, member.Value,
+                    member.ResolvedSourcePath ?? member.Path);
+                var rows = Walk(context, path, owner);
+                for (var i = 0; i < rows.Count; i++)
+                {
+                    var row = rows[i];
+                    result.ReserveOutput(budget);
+                    result.Append(row.Context, row.Cursor, budget,
                         row.GroupTerminal ?? throw BasicPhaseAdmission.Invalid((nuint)i));
                 }
             }

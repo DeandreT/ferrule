@@ -325,6 +325,7 @@ pub(super) fn validate_owned_source_node(
         ),
         Node::OwnedPosition(position) => (&position.owner, None, position.collection.as_deref()),
         Node::OwnedRowDocumentPath(path) => (&path.owner, None, path.collection.as_deref()),
+        Node::OwnedSourceDocumentPath(path) => (&path.owner, None, None),
         Node::OwnedXmlSerialize(serializer) => {
             // Document-level checks are independent of the owner's schema.
             if serializer.schema.repeating {

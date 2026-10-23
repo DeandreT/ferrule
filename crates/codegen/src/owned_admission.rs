@@ -514,6 +514,7 @@ impl<'a> Analysis<'a> {
                 Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
                 | Expression::OwnedRowDocumentPath(_)
+                | Expression::OwnedSourceDocumentPath(_)
                 | Expression::OwnedJoinField(_)
                 | Expression::OwnedJoinSourcePosition(_) => {}
                 Expression::OwnedXmlSerialize(_) => {}

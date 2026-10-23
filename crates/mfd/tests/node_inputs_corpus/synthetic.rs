@@ -7,10 +7,10 @@ use mapping::{
     JoinId, JoinKey, JoinPlan, JoinSource, Node, NodeId, OwnedAggregate, OwnedAggregateValue,
     OwnedCollectionFind, OwnedDynamicSourceField, OwnedJoinAggregate, OwnedJoinConditions,
     OwnedJoinField, OwnedJoinKey, OwnedJoinPlan, OwnedJoinSource, OwnedJoinSourcePosition,
-    OwnedLookup, OwnedPosition, OwnedRecursiveCollect, OwnedRowDocumentPath, OwnedSourceField,
-    OwnedSourceRef, OwnedXmlMixedContent, OwnedXmlMixedContentContext,
-    OwnedXmlMixedContentReplacement, OwnedXmlSerialize, RuntimeValue, SequenceExpr, SourceOwner,
-    XmlMixedContentReplacement,
+    OwnedLookup, OwnedPosition, OwnedRecursiveCollect, OwnedRowDocumentPath,
+    OwnedSourceDocumentPath, OwnedSourceField, OwnedSourceRef, OwnedXmlMixedContent,
+    OwnedXmlMixedContentContext, OwnedXmlMixedContentReplacement, OwnedXmlSerialize, RuntimeValue,
+    SequenceExpr, SourceOwner, XmlMixedContentReplacement,
 };
 
 /// Every node kind, numbered; adding a kind fails to compile here until the
@@ -57,9 +57,10 @@ pub(crate) fn kind(node: &Node) -> usize {
         Node::SequenceAggregate { .. } => 37,
         Node::Aggregate { .. } => 38,
         Node::JoinAggregate { .. } => 39,
+        Node::OwnedSourceDocumentPath(_) => 40,
     }
 }
-pub(crate) const KINDS: usize = 40;
+pub(crate) const KINDS: usize = 41;
 
 pub(crate) fn sequence_kind(sequence: &SequenceExpr) -> usize {
     match sequence {
@@ -210,6 +211,9 @@ fn nodes(ids: &mut Ids, present: bool) -> Vec<Node> {
         Node::OwnedRowDocumentPath(OwnedRowDocumentPath {
             owner: SourceOwner::Primary,
             collection: None,
+        }),
+        Node::OwnedSourceDocumentPath(OwnedSourceDocumentPath {
+            owner: SourceOwner::Primary,
         }),
         Node::OwnedLookup(OwnedLookup {
             collection: owned(&["Rows"]),

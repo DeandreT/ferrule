@@ -55,6 +55,9 @@ fn request(expression: &Expression) -> Option<Request> {
             owner: (&path.owner).into(),
             collection: path.collection.clone(),
         }),
+        Expression::OwnedSourceDocumentPath(path) => Some(Request::DocumentPath {
+            owner: (&path.owner).into(),
+        }),
         Expression::OwnedDynamicSourceField(field) => Some(dynamic_field::request(field)),
         // A consumer of an owned producer requests that root collection.
         Expression::SequenceExists { sequence, .. }
@@ -192,6 +195,7 @@ fn check_request(program: &Program, query: &Request) -> Result<(), Structure> {
             }
             Ok(())
         }
+        Request::DocumentPath { owner } => endpoint(program, owner).map(|_| ()),
         Request::Iteration { owner, path } => collection(endpoint(program, owner)?, path),
         Request::DynamicField {
             owner,
@@ -493,6 +497,7 @@ fn loaded_owner(program: &Program, query: &Request, loaded: bool) -> Option<Clos
         Request::Field { owner, .. }
         | Request::Position { owner, .. }
         | Request::RowDocumentPath { owner, .. }
+        | Request::DocumentPath { owner }
         | Request::Iteration { owner, .. }
         | Request::DynamicField { owner, .. }
         | Request::XmlElement { owner, .. } => owner,

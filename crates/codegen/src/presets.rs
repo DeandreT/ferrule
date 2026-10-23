@@ -156,4 +156,8 @@ owned_presets! {
         validate_program_with_basic_owned_xml_mixed_construction,
         validate_basic_owned_xml_mixed_construction_emission,
         legacy_named_input_admission_plan_with_basic_owned_xml_mixed_construction;
+    DocumentPaths => lower_with_basic_owned_document_paths,
+        validate_program_with_basic_owned_document_paths,
+        validate_basic_owned_document_path_emission,
+        legacy_named_input_admission_plan_with_basic_owned_document_paths;
 }
