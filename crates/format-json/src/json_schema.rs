@@ -640,10 +640,14 @@ fn parse_array_schema(
     nullable: bool,
 ) -> Result<SchemaNode, JsonFormatError> {
     if let Some(mut node) = positional_items::normalize(name, schema, doc, active_refs)? {
-        let object_item_nullable = (matches!(node.kind, SchemaKind::Group { .. })
+        let object_item_nullable = if matches!(node.kind, SchemaKind::Group { .. })
             && !node.json_array_wrapper
-            && !node.json_any)
-            .then(|| node.json_single_container_nullable());
+            && !node.json_any
+        {
+            Some(crate::null_layers::single_null(&node)?)
+        } else {
+            None
+        };
         node.container_nullable = nullable;
         if let Some(item_nullable) = object_item_nullable {
             node.json_object_item_nullable = (nullable || item_nullable).then_some(item_nullable);
@@ -682,8 +686,11 @@ fn parse_array_schema(
         name
     };
     let item = parse(item_name, items, doc, active_refs)?;
-    let object_item_nullable = (!item.repeating && matches!(item.kind, SchemaKind::Group { .. }))
-        .then_some(item.container_nullable);
+    let object_item_nullable = if !item.repeating && matches!(item.kind, SchemaKind::Group { .. }) {
+        Some(crate::null_layers::container_null(&item)?)
+    } else {
+        None
+    };
     let mut node = if item.repeating {
         if !nested_array {
             return Err(unsupported_union(

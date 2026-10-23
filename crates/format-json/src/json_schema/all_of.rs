@@ -476,16 +476,7 @@ fn intersect(
             "allOf branches have incompatible nested array wrapper levels",
         ));
     }
-    let explicit_object_items =
-        target.json_object_item_nullable.is_some() || branch.json_object_item_nullable.is_some();
-    let object_items_nullable =
-        target.json_single_container_nullable() && branch.json_single_container_nullable();
-    target.nullable &= branch.nullable;
-    target.container_nullable &= branch.container_nullable;
-    if explicit_object_items {
-        target.json_object_item_nullable =
-            (target.container_nullable || object_items_nullable).then_some(object_items_nullable);
-    }
+    intersect_null_admission(target, &branch)?;
     target.item_count_range =
         item_counts::intersect(name, target.item_count_range, branch.item_count_range)?;
     target.json_contains = contains::merge(
@@ -537,6 +528,31 @@ fn intersect(
             "allOf propertyNames constraints reject an unconditionally required property or conflict with cardinality",
         ))
     }
+}
+
+/// Intersects the null admission of two `allOf` branches: each layer admits
+/// null only where both branches admit it. An explicit object-item override
+/// is retained when either branch carried one.
+pub(super) fn intersect_null_admission(
+    target: &mut SchemaNode,
+    branch: &SchemaNode,
+) -> Result<(), JsonFormatError> {
+    let explicit_object_items =
+        target.json_object_item_nullable.is_some() || branch.json_object_item_nullable.is_some();
+    // Each null layer of the intersection admits null only where both do.
+    let object_items_nullable =
+        crate::null_layers::single_null(target)? && crate::null_layers::single_null(branch)?;
+    let value_null =
+        crate::null_layers::value_null(target)? && crate::null_layers::value_null(branch)?;
+    let container_null =
+        crate::null_layers::container_null(target)? && crate::null_layers::container_null(branch)?;
+    target.nullable = value_null;
+    target.container_nullable = container_null;
+    if explicit_object_items {
+        target.json_object_item_nullable =
+            (container_null || object_items_nullable).then_some(object_items_nullable);
+    }
+    Ok(())
 }
 
 fn intersect_scalar(
@@ -818,8 +834,14 @@ fn intersect_named_property(
 }
 
 fn schemas_are_provably_disjoint(left: &SchemaNode, right: &SchemaNode) -> bool {
-    if (left.nullable || left.container_nullable) && (right.nullable || right.container_nullable) {
-        return false;
+    // Shapes that both admit a value or container null overlap on it; a shape
+    // without an effective JSON view is never provably disjoint.
+    let admits_null = |node| {
+        crate::null_layers::layers(node).map(|layers| layers.value_null || layers.container_null)
+    };
+    match (admits_null(left), admits_null(right)) {
+        (Ok(left), Ok(right)) if !(left && right) => {}
+        _ => return false,
     }
     if left.json_any || right.json_any {
         return false;

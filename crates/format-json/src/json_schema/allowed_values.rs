@@ -320,7 +320,7 @@ fn admitted_by_node(node: &SchemaNode, value: &JsonAllowedValue) -> bool {
         }
         JsonAllowedValue::Float(_) => node.accepts_scalar_type(ScalarType::Float),
         JsonAllowedValue::Bool(_) => node.accepts_scalar_type(ScalarType::Bool),
-        JsonAllowedValue::JsonNull => node.nullable,
+        JsonAllowedValue::JsonNull => crate::null_layers::value_null(node).unwrap_or(false),
     }
 }
 

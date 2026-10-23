@@ -470,7 +470,7 @@ pub(super) fn parse_scalar_domain_array_any_of(
     }
     let mut node = reduce_array_any_of(name, arrays)?;
     ensure_annotation_or_range_only(name, schema, "anyOf")?;
-    set_container_nullable(&mut node, nullable);
+    set_container_nullable(&mut node, nullable)?;
     ranges::validate_ignored(name, schema)?;
     item_counts::apply(name, schema, &mut node, false)?;
     contains::apply(name, schema, &mut node, doc, active_refs, false)?;
@@ -478,22 +478,36 @@ pub(super) fn parse_scalar_domain_array_any_of(
     Ok(Some(node))
 }
 
-fn set_container_nullable(node: &mut SchemaNode, nullable: bool) {
-    let object_item_nullable = (node.repeating
+fn set_container_nullable(node: &mut SchemaNode, nullable: bool) -> Result<(), JsonFormatError> {
+    // Each object item keeps its own null admission when the container's
+    // changes.
+    let object_item_nullable = if node.repeating
         && matches!(node.kind, ir::SchemaKind::Group { .. })
-        && !node.json_array_wrapper)
-        .then(|| node.json_single_container_nullable());
+        && !node.json_array_wrapper
+    {
+        Some(crate::null_layers::single_null(node)?)
+    } else {
+        None
+    };
     node.container_nullable = nullable;
     if let Some(item_nullable) = object_item_nullable {
         node.json_object_item_nullable = (nullable || item_nullable).then_some(item_nullable);
     }
+    Ok(())
 }
 
 fn scalar_array_domain_contains(superset: &SchemaNode, subset: &SchemaNode) -> bool {
+    // A shape without an effective JSON view contains nothing.
+    let (Ok(superset_null), Ok(subset_null)) = (
+        crate::null_layers::layers(superset),
+        crate::null_layers::layers(subset),
+    ) else {
+        return false;
+    };
     if !superset.repeating
         || !subset.repeating
-        || (subset.nullable && !superset.nullable)
-        || superset.container_nullable != subset.container_nullable
+        || (subset_null.value_null && !superset_null.value_null)
+        || superset_null.container_null != subset_null.container_null
         || (superset.json_unique_items && !subset.json_unique_items)
         || !item_count_domain_contains(superset.item_count_range, subset.item_count_range)
         || !contains_domain_contains(
@@ -893,16 +907,18 @@ pub(super) fn parse_nullable_composition(
         }
         return Ok(Some(node));
     }
-    if keyword == "oneOf" && (node.nullable || node.container_nullable) {
+    if keyword == "oneOf"
+        && (crate::null_layers::value_null(&node)? || crate::null_layers::container_null(&node)?)
+    {
         // The retained composition already accepts null, so the outer exact
         // null branch makes null match twice. Its non-null domain is unchanged.
         node.nullable = false;
-        set_container_nullable(&mut node, false);
+        set_container_nullable(&mut node, false)?;
         check_scalar_type_sibling(name, outer_type, &node, true)?;
         return Ok(Some(node));
     }
     if node.repeating || matches!(node.kind, ir::SchemaKind::Group { .. }) {
-        set_container_nullable(&mut node, true);
+        set_container_nullable(&mut node, true)?;
     } else if node.is_scalar() {
         node.nullable = true;
     } else {
@@ -1067,9 +1083,12 @@ fn exact_scalar_from_node(parsed: SchemaNode) -> ExactScalarAlternative {
     let SchemaKind::Scalar { ty } = parsed.kind else {
         return ExactScalarAlternative::Other;
     };
+    let Ok(nullable) = crate::null_layers::value_null(&parsed) else {
+        return ExactScalarAlternative::Other;
+    };
     ExactScalarAlternative::Scalar {
         ty,
-        nullable: parsed.nullable,
+        nullable,
         formats: parsed.json_formats,
         numeric_range: parsed.numeric_range,
         multiple_of: parsed.json_multiple_of,
@@ -1335,10 +1354,11 @@ fn check_scalar_type_sibling(
     let Some(domain) = outer_type else {
         return Ok(());
     };
+    let layers = crate::null_layers::layers(node)?;
     let contained = !node.repeating
         && !node.json_any
-        && !node.container_nullable
-        && (!node.nullable || domain.0 & 16 != 0)
+        && !layers.container_null
+        && (!layers.value_null || domain.0 & 16 != 0)
         && match node.kind {
             SchemaKind::Scalar { ty } => domain.contains_type(ty),
             SchemaKind::ScalarUnion { types } => types.iter().all(|ty| domain.contains_type(ty)),
@@ -1825,7 +1845,13 @@ fn merge_exact_constrained_nullability(
     incoming_constraints: &[GroupAlternativeConstraint],
     previous: &[GroupAlternative],
 ) -> bool {
-    if existing.nullable == incoming.nullable
+    let (Ok(existing_null), Ok(incoming_null)) = (
+        crate::null_layers::value_null(existing),
+        crate::null_layers::value_null(incoming),
+    ) else {
+        return false;
+    };
+    if existing_null == incoming_null
         || !incoming_constraints
             .iter()
             .any(|constraint| constraint.member == incoming.name)
@@ -2091,10 +2117,12 @@ fn scalar_constraints(
             }
             let constraint = match child.kind {
                 SchemaKind::Scalar { ty } => {
-                    constraint_value(union_name, member, value, ty, child.nullable)
+                    let nullable = crate::null_layers::value_null(child)?;
+                    constraint_value(union_name, member, value, ty, nullable)
                 }
                 SchemaKind::ScalarUnion { types } => {
-                    union_constraint_value(union_name, member, value, types, child.nullable)
+                    let nullable = crate::null_layers::value_null(child)?;
+                    union_constraint_value(union_name, member, value, types, nullable)
                 }
                 SchemaKind::Group { .. } => Err(unsupported_union(
                     union_name,
