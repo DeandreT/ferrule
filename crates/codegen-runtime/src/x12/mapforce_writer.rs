@@ -67,7 +67,7 @@ pub fn serialize_mapforce_x12_document(
         (None, _) => None,
         _ => return Err(descriptor("completion requires a clock value")),
     };
-    let text = format_edi::x12::to_document_string_with_syntax(
+    let text = format_edi::x12::to_mapforce_document_string_with_syntax(
         &schema,
         &view,
         syntax,

@@ -224,6 +224,37 @@ pub(crate) fn x12(
     request_acknowledgement: bool,
     transaction_set: Option<&str>,
 ) -> Result<Vec<Segment>, EdiFormatError> {
+    x12_with_policy(
+        segments,
+        current_datetime,
+        request_acknowledgement,
+        transaction_set,
+        false,
+    )
+}
+
+pub(crate) fn x12_mapforce(
+    segments: Vec<Segment>,
+    current_datetime: &str,
+    request_acknowledgement: bool,
+    transaction_set: Option<&str>,
+) -> Result<Vec<Segment>, EdiFormatError> {
+    x12_with_policy(
+        segments,
+        current_datetime,
+        request_acknowledgement,
+        transaction_set,
+        true,
+    )
+}
+
+fn x12_with_policy(
+    segments: Vec<Segment>,
+    current_datetime: &str,
+    request_acknowledgement: bool,
+    transaction_set: Option<&str>,
+    permissive_widths: bool,
+) -> Result<Vec<Segment>, EdiFormatError> {
     bounded_input(&segments, "X12")?;
     let timestamp = Timestamp::parse(current_datetime, "X12")?;
     let mut output = Vec::with_capacity(segments.len().saturating_add(12));
@@ -241,7 +272,12 @@ pub(crate) fn x12(
                 finish_x12_group(&mut output, &mut group, &mut interchange, None)?;
                 finish_x12_interchange(&mut output, &mut interchange, None)?;
                 interchange_ordinal = checked_increment(interchange_ordinal, "X12")?;
-                complete_x12_header(&mut segment, &timestamp, request_acknowledgement)?;
+                complete_x12_header(
+                    &mut segment,
+                    &timestamp,
+                    request_acknowledgement,
+                    permissive_widths,
+                )?;
                 let reference = ensure_value(&mut segment, 12, "000000000");
                 interchange = Some(Interchange {
                     reference,
@@ -490,6 +526,7 @@ fn complete_x12_header(
     segment: &mut Segment,
     timestamp: &Timestamp,
     request_acknowledgement: bool,
+    permissive_widths: bool,
 ) -> Result<(), EdiFormatError> {
     let defaults = [
         "00",
@@ -514,8 +551,22 @@ fn complete_x12_header(
     }
     normalize_x12_date(segment, 8, true)?;
     normalize_x12_time(segment, 9, true)?;
-    for (index, width) in [(1, 10), (3, 10), (5, 15), (7, 15)] {
-        pad_x12_element(segment, index, width)?;
+    for (index, width) in [(1usize, 10usize), (3, 10), (5, 15), (7, 15)] {
+        if permissive_widths {
+            let value = ensure_value(segment, index, "");
+            let count = value.encode_utf16().count();
+            segment.elements[index][0][0] = value + &" ".repeat(width.saturating_sub(count));
+        } else {
+            pad_x12_element(segment, index, width)?;
+        }
+    }
+    if permissive_widths {
+        let value = ensure_value(segment, 12, "000000000");
+        let (sign, digits) = value
+            .strip_prefix('-')
+            .map_or(("", value.as_str()), |s| ("-", s));
+        segment.elements[12][0][0] = format!("{sign}{digits:0>9}");
+        return Ok(());
     }
     pad_x12_numeric_element(segment, 12, 9)?;
     for (index, width) in [

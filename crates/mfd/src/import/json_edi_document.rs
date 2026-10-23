@@ -605,7 +605,7 @@ impl Builder {
             ("core", "concat") => ("concat", f.inputs.len()),
             ("core", "equal") => ("equal", 2),
             ("core", "logical-and") => ("and", 2),
-            ("core", "string-length") => ("length", 1),
+            ("core", "string-length") => ("length_utf16", 1),
             ("lang", "left") => {
                 self.require_wire_left(feed)?;
                 ("left_utf16_lossy", 2)
@@ -672,6 +672,22 @@ impl Builder {
         } else {
             self.compile(feed, None, anchor)?
         };
+        if self.functions.get(&feed).is_some_and(|function| {
+            function.parsed.kind == 6 && function.parsed.input_type == Some(ScalarType::String)
+        }) {
+            let present = self.call("exists", vec![node])?;
+            let message = self.constant(Value::String(
+                "native mapped String parameter cannot be Null".into(),
+            ))?;
+            let missing = self.alloc(Node::Raise {
+                message: Some(message),
+            })?;
+            node = self.alloc(Node::If {
+                condition: present,
+                then: node,
+                else_: missing,
+            })?;
+        }
         if self
             .functions
             .get(&feed)
@@ -696,9 +712,10 @@ impl Builder {
             if ty == ScalarType::String {
                 node = self.call("string", vec![node])?;
             }
-            if ty == ScalarType::Float && dependency.is_some() {
+            if ty == ScalarType::Float {
                 let condition = self.call("exists", vec![node])?;
-                let converted = self.call("decimal_from_nullable_text", vec![node])?;
+                let lexical = self.call("string", vec![node])?;
+                let converted = self.call("decimal_from_nullable_text", vec![lexical])?;
                 let absent = self.constant(Value::Null)?;
                 node = self.alloc(Node::If {
                     condition,

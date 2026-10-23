@@ -38,6 +38,18 @@ pub(super) fn call_builtin(
             s.trim_end_matches([' ', '\t', '\r', '\n']).to_string()
         }),
         BuiltinId::Length => length(args),
+        BuiltinId::LengthUtf16 => match args {
+            [Value::String(value)] => Ok(Value::Int(value.encode_utf16().count() as i64)),
+            [value] => Err(FunctionError::TypeMismatch {
+                function: "length_utf16",
+                got: value.type_name(),
+            }),
+            _ => Err(FunctionError::ArityMismatch {
+                function: "length_utf16",
+                expected: 1,
+                got: args.len(),
+            }),
+        },
         BuiltinId::StartsWith => binary_scalar_string(args, "starts_with", |a, b| a.starts_with(b)),
         BuiltinId::EndsWith => binary_scalar_string(args, "ends_with", |a, b| a.ends_with(b)),
         BuiltinId::Contains => binary_scalar_string(args, "contains", |a, b| a.contains(b)),

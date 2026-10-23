@@ -101,6 +101,46 @@ fn change(instance: &mut Instance, segment: &str, element: &str, value: &str) {
     *target = Instance::Scalar(Value::String(value.into()));
 }
 
+#[test]
+fn explicit_mapforce_completion_does_not_inherit_strict_control_width_rejections() {
+    for control in ["-1", "1000000000", "9223372036854775807"] {
+        let (schema, mut value) = example();
+        change(&mut value, "ISA", "13", control);
+        change(&mut value, "ISA", "15", "TEST");
+        change(&mut value, "GS", "05", "103000");
+        change(&mut value, "IEA", "02", "");
+        let completion = Some(Autocomplete {
+            current_datetime: "2026-10-09T10:30:00",
+            request_acknowledgement: false,
+            transaction_set: Some("940"),
+        });
+        assert!(
+            to_document_string_with_syntax(
+                &schema,
+                &value,
+                Separators::default(),
+                Some("00401"),
+                completion
+            )
+            .is_err()
+        );
+        let text = to_mapforce_document_string_with_syntax(
+            &schema,
+            &value,
+            Separators::default(),
+            Some("00401"),
+            completion,
+        )
+        .unwrap();
+        assert!(text.contains("*TEST*:~"));
+        assert!(text.contains(if control == "-1" {
+            "-000000001"
+        } else {
+            control
+        }));
+    }
+}
+
 fn evidence_root() -> std::path::PathBuf {
     std::env::var_os("FERRULE_X12_ISA_EVIDENCE_DIR")
         .map(std::path::PathBuf::from)

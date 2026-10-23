@@ -2,6 +2,14 @@ use ir::Value;
 
 #[test]
 fn explicit_utf16_prefix_keeps_ordinary_character_slicing_unchanged() {
+    assert_eq!(
+        functions::call("length_utf16", &[Value::String("20😀1234".into())]).unwrap(),
+        Value::Int(8)
+    );
+    assert_eq!(
+        functions::call("length", &[Value::String("20😀1234".into())]).unwrap(),
+        Value::Int(7)
+    );
     for (input, count, expected) in [
         ("😀A", 2, "😀"),
         ("😀A", 1, "�"),
