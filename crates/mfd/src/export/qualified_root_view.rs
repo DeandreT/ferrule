@@ -173,7 +173,7 @@ impl RootTypeViewPlan {
                 return Err(unsupported("false branch must be absent Null"));
             }
             let source = selected_member(&project.source, canonical_type, source_name)?;
-            if *required != source.xml_attribute_required {
+            if Some(*required) != crate::import::presence::attribute_required(source) {
                 return Err(unsupported(
                     "primary field requirement must equal its physical source use",
                 ));

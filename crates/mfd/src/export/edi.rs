@@ -462,7 +462,7 @@ fn validate_schema_node(
     if node.recursive_ref.is_some() {
         return Err("recursive schema references are not representable");
     }
-    if node.attribute || node.text || node.nillable {
+    if node.attribute || node.text || !crate::import::presence::xml_non_nil(node) {
         return Err("XML-only attribute, text, or nillable metadata is present");
     }
     match &node.kind {

@@ -87,6 +87,8 @@ pub(super) fn project(
             .schema
             .child(source_name)
             .ok_or_else(|| reject("source leaf has no exact physical declaration"))?;
+        let required = crate::import::presence::attribute_required(source)
+            .ok_or_else(|| reject("source leaf has no effective XML declaration"))?;
         let target = plan
             .target
             .schema
@@ -103,7 +105,7 @@ pub(super) fn project(
                     id,
                     Node::SourceRootField {
                         path: feed.source.path.clone(),
-                        required: source.xml_attribute_required,
+                        required,
                     },
                 );
                 id

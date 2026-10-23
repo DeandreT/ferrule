@@ -2,6 +2,8 @@ use super::super::*;
 use crate::{from_str, to_string};
 use ir::{Instance, SchemaKind, Value, XML_TYPE_FIELD, XmlNamespace, XmlRepeatingChoice};
 
+mod effective_declarations;
+
 #[test]
 fn imports_utf16_schemas_with_or_without_a_bom() {
     let text = r#"<?xml version="1.0" encoding="UTF-16"?>
