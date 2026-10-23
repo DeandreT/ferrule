@@ -28,6 +28,8 @@ mod basic_owned_dynamic_field;
 mod basic_owned_dynamic_loading;
 #[path = "code_generation/basic_owned_failure_sources.rs"]
 mod basic_owned_failure_sources;
+#[path = "code_generation/basic_owned_filter.rs"]
+mod basic_owned_filter;
 #[path = "code_generation/basic_owned_group_adjacent_by.rs"]
 mod basic_owned_group_adjacent_by;
 #[path = "code_generation/basic_owned_group_by.rs"]
@@ -44,6 +46,8 @@ mod basic_owned_joins;
 mod basic_owned_json_adapters;
 #[path = "code_generation/basic_owned_lookup_find.rs"]
 mod basic_owned_lookup_find;
+#[path = "code_generation/basic_owned_nested_alias.rs"]
+mod basic_owned_nested_alias;
 #[path = "code_generation/basic_owned_nested_phases.rs"]
 mod basic_owned_nested_phases;
 #[path = "code_generation/basic_owned_occurrence.rs"]
@@ -64,6 +68,10 @@ mod basic_owned_sequence_aggregate;
 mod basic_owned_sequence_exists;
 #[path = "code_generation/basic_owned_sequence_item_at.rs"]
 mod basic_owned_sequence_item_at;
+#[path = "code_generation/basic_owned_sort.rs"]
+mod basic_owned_sort;
+#[path = "code_generation/basic_owned_windows.rs"]
+mod basic_owned_windows;
 #[path = "code_generation/basic_owned_xml_mixed_construction.rs"]
 mod basic_owned_xml_mixed_construction;
 #[path = "code_generation/basic_owned_xml_mixed_content.rs"]

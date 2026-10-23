@@ -27,6 +27,14 @@ fn models() -> Vec<Project> {
         .collect()
 }
 
+pub(super) fn capability_corpus() -> super::owned_capability_presets::Corpus {
+    super::owned_capability_presets::projects(
+        projects::PROGRAMS
+            .iter()
+            .map(|program| (*program, projects::project(program))),
+    )
+}
+
 /// The portable cases with each model name resolved to its host index.
 fn controls() -> TestResult<Json> {
     let mut cases: Json = serde_json::from_str(include_str!(

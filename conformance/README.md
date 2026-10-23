@@ -286,99 +286,26 @@ groups). An expected outcome is `{"Ok": [[target, tree], ...]}`, with `null`
 naming the primary target, or `{"Err": recipe}` with a typed error recipe that
 each executor converts to its own error value before comparing. Human error
 wording is not part of that typed comparison; a recipe may list the exact C#
-exception messages separately.
+exception messages separately in `csharp_messages`, outermost first, which
+the C# host must reproduce for that many leading exceptions.
 
-[`basic-owned-occurrence/`](basic-owned-occurrence/) follows this layout with a
+The [`basic-owned-occurrence/`](basic-owned-occurrence/),
+[`basic-owned-filter/`](basic-owned-filter/),
+[`basic-owned-nested-alias/`](basic-owned-nested-alias/),
+[`basic-owned-sort/`](basic-owned-sort/) and
+[`basic-owned-windows/`](basic-owned-windows/) cohorts follow this layout with a
 JSON oracle; the SequenceExists and SequenceAggregate cohorts share the same
-bindings with `cases.rs`. Run one cohort, including its generated hosts, with
-its harness filter, for example:
+bindings with `cases.rs`. Each cohort README lists its cases and expected
+outcomes. Run one cohort, including its generated hosts, with its harness
+filter, for example:
 
 ```sh
 cargo test -p cli --test code_generation --features codegen-tests occurrence640 -- --include-ignored
 ```
 
-The filter, nested-alias, sort and windows cohorts still use `prepare.py`
-command plans bound to earlier qualification records, as described for windows
-below.
-
-## Ordinary Basic owned windows
-
-[`basic-owned-windows/`](basic-owned-windows/) is a portable, self-authored finite
-corpus for the explicit Basic-window lowering/emission APIs. Its ten genuine
-`mapping::Project` models produce twelve calls per backend: one `All` call per
-model, plus `Primary` and named-target selections for the operator model. The
-native engine and compiled public Rust/C# callers use typed instances, not JSON
-codecs or a replacement evaluator. All phase-sensitive scopes have explicit
-`OwnedSource` iteration; the nested identity control has proved owned ancestry.
-Unrelated wholly legacy identity routes and the singleton gap are outside this
-corpus.
-
-The frozen models cover all five window operators, composition order, parent
-bounds versus colliding item fields, nested positions/identity, stable ties under
-both filter/sort orders, zero/oversized/reversed windows, explicit repeated
-Scalar construction, and implicit `First` on nonrepeating Group targets. Scalar
-cardinality `First` remains invalid. Failure controls retain node zero and
-`u32::MAX`, eager bounds over empty/emptied cohorts, and predicate/key/bound/target
-priority.
-
-`expected.json` contains independent contract derivations and complete typed
-trees/errors. Its local `$ref` entries only deduplicate literal expected trees;
-the preparer expands them into explicit per-backend rows before execution. It
-never derives an oracle from a subject return. Backend-specific display text and
-CLR `FoundKind` are explicit rather than normalized away. Current native
-calibration is mandatory: even a generated/native agreement is not sufficient
-unless all three independently match these expectations. Review the source
-contract and all expanded expectations before running the corpus.
-
-Python 3.11+, the repository's Rust toolchain, and .NET 10 are required. Use the
-assigned serialized compiler lane and existing shared Cargo target. Preparation
-does not compile or run mappings; only the explicit `run` command executes its
-25-step plan. All paths below are absolute except the preparer:
-
-```sh
-P=conformance/basic-owned-windows/prepare.py
-python3 "$P" check
-python3 "$P" snapshot --source-root "$PWD" --out "$EVIDENCE/source.json"
-```
-
-Take the snapshot after the backend sources are stable, before their focused
-qualifications. Each successful qualification supplies a JSON receipt with
-`issue` (702 or 703), `qualified: true`, `source_fingerprint` from that snapshot,
-`checks: ["generated_windows", "preserved_sort_filter", "runtime"]`, and
-`commands` containing each actual `argv`, zero `exit_code`, and absolute
-`stdout`/`stderr` file paths. Include the complete current runtime tests (C#
-smoke tests as well as Rust runtime tests). The C# receipt additionally records
-`runtime_dll_sha256` for the freshly built matching `Ferrule.Runtime.dll`.
-Never substitute historical qualification results or a stale DLL.
-
-```sh
-python3 "$P" bind --snapshot "$EVIDENCE/source.json" \
-  --rust-evidence "$EVIDENCE/rust-qualified.json" \
-  --csharp-evidence "$EVIDENCE/csharp-qualified.json" \
-  --runtime-dll "$RUNTIME_DLL" --out "$EVIDENCE/binding.json"
-python3 "$P" prepare --out "$EVIDENCE/window36" --binding "$EVIDENCE/binding.json" \
-  --cargo "$CARGO" --dotnet "$DOTNET" --target "$CARGO_TARGET_DIR"
-python3 "$P" run --plan "$EVIDENCE/window36/COMMAND_PLAN.json"
-```
-
-The binding hashes the current transitive local Rust source closure and complete
-C# runtime/smoke sources, records retained qualification commands, and pins the
-fresh DLL. The runner checks source, fixture, tool and DLL pins before each
-step. Generated artifacts, real Project/Program representations, public
-admission/lowering/emission results, complete stdout/stderr and command receipts
-remain in the new output directory. Typed mapping errors are successful capture
-records, not harness failures; compiler/emission/launcher failures retain the
-reached results and explicitly list later unrun steps.
-
-No caller compares early. The final classifier first seals all 36 original
-capture descriptors in `ALL36_BEFORE_COMPARISON.json`, then compares complete
-outputs and typed error envelopes, including original causes and absent CLR
-metadata. `WINDOW36_CLASSIFICATION.json` separately reports native calibration
-and cross-backend differences. Missing captures cannot qualify. C# exception
-stack/assembly details are retained verbatim, not treated as portable literal
-oracles. Results qualify only this finite ordinary Basic cohort; full window,
-full-error and total-parity flags remain false and the canonical inventory is
-unchanged. Output directories are exclusive: use a fresh directory for each run.
+The owned preset admission record
+(`crates/cli/tests/code_generation/owned_capability_presets.rs`) reads these
+cohorts' models from the same `projects.rs` builders.
 
 ## Basic primary-row failures
 
