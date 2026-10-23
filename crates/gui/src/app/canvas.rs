@@ -13,76 +13,7 @@ use crate::canvas_endpoints::EndpointScrollState;
 use crate::canvas_layout::arrange_snarl;
 
 fn node_inputs(node: &Node) -> Vec<NodeId> {
-    match node {
-        Node::OwnedSourceField(_)
-        | Node::OwnedPosition(_)
-        | Node::OwnedRowDocumentPath(_)
-        | Node::OwnedXmlSerialize(_)
-        | Node::SourceField { .. }
-        | Node::SourceDocumentPath
-        | Node::SourceRootXmlTypeEquals { .. }
-        | Node::SourceRootField { .. }
-        | Node::Position { .. }
-        | Node::JoinField { .. }
-        | Node::JoinPosition { .. }
-        | Node::Unconnected
-        | Node::Const { .. }
-        | Node::FunctionParameter { .. }
-        | Node::RuntimeValue { .. }
-        | Node::RuntimeParameter { .. }
-        | Node::XmlSerialize { .. } => vec![],
-        Node::Raise { message } => message.iter().copied().collect(),
-        Node::RuntimeParameterDefault { default, .. } => vec![*default],
-        Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
-        Node::If {
-            condition,
-            then,
-            else_,
-        } => vec![*condition, *then, *else_],
-        Node::ValueMap { input, .. } | Node::Lookup { matches: input, .. } => vec![*input],
-        Node::OwnedLookup(_)
-        | Node::OwnedAggregate(_)
-        | Node::OwnedCollectionFind(_)
-        | Node::OwnedJoinField(_)
-        | Node::OwnedJoinSourcePosition(_)
-        | Node::OwnedXmlMixedContent(_)
-        | Node::OwnedJoinAggregate(_) => node.dependencies(),
-        Node::DynamicSourceField { key, .. } => vec![*key],
-        Node::OwnedDynamicSourceField(field) => vec![field.key],
-        Node::XmlMixedContent { replacements, .. } => replacements
-            .iter()
-            .map(|replacement| replacement.expression)
-            .collect(),
-        Node::CollectionFind {
-            predicate, value, ..
-        } => vec![*predicate, *value],
-        Node::SequenceExists {
-            sequence,
-            predicate,
-        } => sequence.inputs().into_iter().chain([*predicate]).collect(),
-        Node::SequenceItemAt { sequence, index } => {
-            sequence.inputs().into_iter().chain([*index]).collect()
-        }
-        Node::SequenceAggregate {
-            sequence,
-            predicate,
-            expression,
-            arg,
-            ..
-        } => sequence
-            .inputs()
-            .into_iter()
-            .chain(predicate.iter().copied())
-            .chain(expression.iter().copied())
-            .chain(arg.iter().copied())
-            .collect(),
-        Node::Aggregate {
-            expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
-        } => expression.iter().chain(arg).copied().collect(),
-    }
+    node.evaluated_inputs()
 }
 
 /// Builds the isolated graph canvas for one user-defined function.

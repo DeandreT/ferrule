@@ -235,9 +235,25 @@ impl Node {
     /// Graph nodes whose outputs must be available to evaluate this node,
     /// in [`Node::visit_inputs`] order and whatever their role.
     pub fn dependencies(&self) -> Vec<NodeId> {
-        let mut dependencies = Vec::new();
-        self.visit_inputs(&mut |input| dependencies.push(input.node));
-        dependencies
+        self.inputs_where(|_| true)
+    }
+
+    /// The inputs this node evaluates, in [`Node::visit_inputs`] order: every
+    /// input except a generated sequence's item identities, which the node
+    /// declares rather than evaluates.
+    pub fn evaluated_inputs(&self) -> Vec<NodeId> {
+        self.inputs_where(|input| input.role != NodeInputRole::ItemIdentity)
+    }
+
+    /// The inputs admitted by `admit`, in [`Node::visit_inputs`] order.
+    pub fn inputs_where(&self, admit: impl Fn(&NodeInput) -> bool) -> Vec<NodeId> {
+        let mut inputs = Vec::new();
+        self.visit_inputs(&mut |input| {
+            if admit(&input) {
+                inputs.push(input.node);
+            }
+        });
+        inputs
     }
 }
 
