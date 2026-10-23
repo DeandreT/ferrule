@@ -70,6 +70,19 @@ directory or invoke a shell. Native filesystem paths need not become UTF-8 wire
 identities. This is process/resource isolation, not a filesystem, network or
 malicious-code sandbox.
 
+The packaged worker is `ferrule-pdf-worker` in the directory of the running
+`ferrule` or `ferrule-gui` executable. Admission requires a regular single-link
+file, owned by the user or root, executable and not writable by group or others,
+in a directory whose every ancestor is owned by the user or root and is not
+writable by group or others (a root-owned sticky directory excepted). Cargo
+hard-links each built binary between `target/<profile>/` and
+`target/<profile>/deps/`, so a build directory is refused. Development builds use
+[`scripts/dev/stage-pdf-worker-package.sh`](../scripts/dev/stage-pdf-worker-package.sh),
+which builds the front ends and the worker and copies them into a private package
+directory to run from; see [Development](development.md#run-the-pdf-worker-from-a-build).
+Staging is an ordinary package to admission: no development path, environment
+variable or relaxed check selects or admits a worker.
+
 One owner runs one worker at a time per mapping run. Each PDF load has its own
 request; the existing dynamic-source cache and target/source selection rules
 stay in the parent. A per-extraction deadline is not a deadline for the whole

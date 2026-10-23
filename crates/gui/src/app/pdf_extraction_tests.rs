@@ -47,6 +47,16 @@ pub(crate) struct WorkerRoot {
 
 impl WorkerRoot {
     pub(crate) fn new(name: &str) -> Self {
+        Self::create(name, false)
+    }
+
+    /// Also lays out `build/` as `cargo build` leaves it: each front end and
+    /// the worker live in `build/deps/` and are hard-linked into `build/`.
+    fn with_cargo_build(name: &str) -> Self {
+        Self::create(name, true)
+    }
+
+    fn create(name: &str, cargo_build: bool) -> Self {
         let path = std::env::temp_dir().join(format!(
             "ferrule-gui-pdf-{}-{}-{name}",
             std::process::id(),
@@ -60,6 +70,18 @@ impl WorkerRoot {
             let _copying = SPAWN.write().unwrap_or_else(|poison| poison.into_inner());
             std::fs::copy(built_worker(), path.join("package/ferrule-pdf-worker"))
                 .expect("packaged worker copy");
+            if cargo_build {
+                private_dir(&path.join("build"));
+                private_dir(&path.join("build/deps"));
+                // Admission reads only the front end's directory, so the
+                // worker build stands in for both front ends.
+                for name in ["ferrule", "ferrule-gui", "ferrule-pdf-worker"] {
+                    let built = path.join(format!("build/deps/{name}-0123456789abcdef"));
+                    std::fs::copy(built_worker(), &built).expect("build output copy");
+                    std::fs::hard_link(&built, path.join("build").join(name))
+                        .expect("uplifted build output");
+                }
+            }
         }
         Self {
             path,
@@ -288,6 +310,64 @@ fn refused_admission_never_falls_back_to_the_in_process_parser() {
     }));
     assert_eq!(status.snapshot(), ExtractionSnapshot::default());
     assert_eq!(std::fs::read(root.work("out.json")).unwrap(), SENTINEL);
+}
+
+#[test]
+fn a_staged_development_package_is_admitted_where_its_cargo_build_is_refused() {
+    let root = WorkerRoot::with_cargo_build("development");
+    root.write("input.pdf", HELLO_PDF);
+    let build = root.path.join("build");
+    let cancelled = AtomicBool::new(false);
+
+    let package = PdfWorkerPackage::for_test(build.join("ferrule-gui"), root.scratch());
+    let status = ExtractionStatus::default();
+    let reader = OwnedPdfReader::new(&package, &cancelled, &status);
+    let error = run_fixture(&root, "simple.json", &reader, &cancelled).expect_err("refused");
+    assert!(
+        error.chain().any(|cause| {
+            cause
+                .downcast_ref::<pdf_worker::host::Failure>()
+                .is_some_and(|failure| {
+                    failure.kind == pdf_worker::host::FailureKind::UnsupportedHost
+                        && failure.operation == "open packaged worker"
+                })
+        }),
+        "{error:#}"
+    );
+    assert_eq!(status.snapshot(), ExtractionSnapshot::default());
+    assert_eq!(std::fs::read(root.work("out.json")).unwrap(), SENTINEL);
+
+    let staged = root.path.join("staged");
+    let output = std::process::Command::new("bash")
+        .arg(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../scripts/dev/stage-pdf-worker-package.sh"
+        ))
+        .arg("--build-dir")
+        .arg(&build)
+        .arg("--dest")
+        .arg(&staged)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("staging script");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let package = PdfWorkerPackage::for_test(staged.join("ferrule-gui"), root.scratch());
+    let status = ExtractionStatus::default();
+    let reader = OwnedPdfReader::new(&package, &cancelled, &status);
+    run_fixture(&root, "simple.json", &reader, &cancelled).expect("staged owned run");
+    assert_eq!(std::fs::read(root.work("out.json")).unwrap(), HELLO_JSON);
+    assert_eq!(
+        (
+            status.snapshot().jobs_started,
+            status.snapshot().jobs_closed
+        ),
+        (1, 1)
+    );
+    assert!(root.scratch_entries().is_empty());
 }
 
 #[test]

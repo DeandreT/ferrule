@@ -93,6 +93,28 @@ are generated from [shared technical references](reference/README.md). Edit
 their TOML source and run `cargo run -p reference-docs`;
 `cargo test -p reference-docs` fails while a generated region is stale.
 
+### Run the PDF worker from a build
+
+`ferrule run --pdf-worker` and the GUI's PDF worker option admit only a
+single-link `ferrule-pdf-worker` beside the running executable, so they refuse
+Cargo's hard-linked build outputs. Stage a private package and run from it:
+
+```sh
+scripts/dev/stage-pdf-worker-package.sh            # dev profile; add --release
+target/debug/pdf-worker-package/ferrule-gui
+target/debug/pdf-worker-package/ferrule run --project project.json --pdf-worker
+```
+
+The script builds `ferrule`, `ferrule-pdf-worker` and `ferrule-gui` with
+`cargo build --locked`, honouring `CARGO_TARGET_DIR`, and copies them into
+`<build directory>/pdf-worker-package` (or `--dest DIR`) with mode `0700`.
+`--cli-only` skips the GUI, and `--build-dir DIR` stages existing binaries
+without building. The destination and its ancestors must be owned by you or root
+and not writable by group or others. Run the script again after each rebuild;
+the staged copies do not follow the build directory. See the
+[PDF worker contract](pdf-worker-contract.md#eligible-host-and-compatibility)
+for the admission rules.
+
 ### Reuse generated CLI host builds
 
 The `extra_targets`, `failure_rules` and `static_sources` regressions honor
