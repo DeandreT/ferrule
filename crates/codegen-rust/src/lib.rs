@@ -34,6 +34,7 @@ mod owned_basic;
 mod owned_json_api;
 mod primary_csv;
 mod primary_filename;
+mod primary_json;
 pub use mapforce_json5_documents::{
     MapForceJson5DocumentEmitError, emit_csv_file_set_to_mapforce_json5_documents,
     emit_csv_to_mapforce_json5_documents,
@@ -44,6 +45,7 @@ mod selected_json_api;
 pub use json5_api::{Json5EmitError, emit_with_json5};
 pub use primary_csv::{PrimaryCsvEmitError, emit_with_primary_csv_acquisition};
 pub use primary_filename::emit_with_primary_filename;
+pub use primary_json::{PrimaryJsonEmitError, emit_with_primary_json_projection};
 mod x12_api;
 mod xml_api;
 pub use x12_api::{X12EmitError, emit_with_x12};

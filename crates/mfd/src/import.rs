@@ -50,6 +50,7 @@ mod join;
 mod json_parser;
 mod json_parser_object;
 mod json_serializer;
+mod json_source_projection;
 mod json_variable;
 mod lazy_string_substitution;
 mod materialize;
@@ -81,6 +82,9 @@ pub use csv_document::{
     ImportedCsvJsonDocument, ImportedDocument, import_csv_document,
     import_csv_document_with_options, import_csv_json_document_with_options,
     import_grouped_csv_document, import_grouped_csv_document_with_options,
+};
+pub use json_source_projection::{
+    ImportedJsonSourceProjection, import_json_source_projection_with_options,
 };
 pub use schema::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
 

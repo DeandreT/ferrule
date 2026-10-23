@@ -27,6 +27,7 @@ internal static partial class Program
             ("Explicit millisecond date-time formatting", MillisecondDateTime),
             ("JSON source exact selection and bounded admission", JsonSourceSelectionAndLimits),
             ("JSON source explicit decimal selection", JsonSourceDecimalNumbers),
+            ("JSON source typed occurrence projection", JsonSourceProjection),
             ("JSON source complete occurrence document", JsonSourceOccurrenceDocument),
             ("JSON source exact occurrence identities", JsonSourceOccurrenceIdentity),
             ("JSON source reached host failures", JsonSourceReachedFailures),

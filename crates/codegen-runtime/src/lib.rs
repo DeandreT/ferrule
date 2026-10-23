@@ -21,9 +21,17 @@ mod generated_sequence;
 mod invocation_counter;
 mod iteration;
 mod json;
+mod json_acquisition;
+pub use json_acquisition::{JsonAcquisitionError, JsonSourceAcquisition};
 mod json5;
 mod json5_writer;
+mod json_projection;
 mod json_source;
+pub use json_projection::{
+    JsonProjectionError, JsonProjectionLimits, MAX_JSON_PROJECTED_NAME_BYTES,
+    MAX_JSON_PROJECTED_VALUES, parse_json_projection_shape, project_json_source_document,
+};
+pub use mapping::JsonSourceShape;
 mod path_hierarchy;
 mod recursive_filter;
 mod runtime_value;

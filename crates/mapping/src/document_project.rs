@@ -33,6 +33,8 @@ pub struct DocumentProject {
     format: DocumentProjectFormat,
     project: Project,
     primary_source: PrimarySourcePlan,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    json_source_projection: Option<crate::JsonSourceShape>,
 }
 
 /// A source-independent filename. The parameter's retained preview is not a
@@ -80,6 +82,7 @@ impl DocumentProject {
             format: DocumentProjectFormat::V1,
             project,
             primary_source,
+            json_source_projection: None,
         }
     }
 
@@ -89,6 +92,23 @@ impl DocumentProject {
 
     pub fn primary_source(&self) -> &PrimarySourcePlan {
         &self.primary_source
+    }
+
+    /// Bind typed selection semantics separately from the String-based
+    /// execution view. Number and String projections can have the same schema.
+    pub fn with_json_source_projection(
+        mut self,
+        shape: crate::JsonSourceShape,
+    ) -> Result<Self, crate::JsonProjectionPlanError> {
+        if self.project.source != shape.document_set_schema()? {
+            return Err(crate::JsonProjectionPlanError::SourceView);
+        }
+        self.json_source_projection = Some(shape);
+        Ok(self)
+    }
+
+    pub fn json_source_projection(&self) -> Option<&crate::JsonSourceShape> {
+        self.json_source_projection.as_ref()
     }
 
     /// Classifies the initial literal/global-parameter profile without executing
