@@ -4,9 +4,11 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
-use mapping::{DynamicBinding, Graph, JoinId, Node, NodeId, Project, Scope};
+use mapping::{DynamicBinding, FunctionId, Graph, JoinId, Node, NodeId, Project, Scope};
 
-use crate::graph_edit::same_bindings;
+use crate::graph_edit::{Side, same_bindings};
+use crate::project_command::{self, NamedEdit};
+use crate::project_edit::SameNode;
 use crate::scope_command::{self, ListEdit};
 use crate::{
     EditorCommand, EditorTransaction, GraphDocument, GraphEditError, GraphPatch, ScopeLocation,
@@ -199,6 +201,34 @@ pub enum GraphAction {
     /// Adds `duplicate`, a copy of the sequence consumer `original`, with
     /// the private expressions it owns.
     DuplicateSequenceConsumer { original: NodeId, duplicate: NodeId },
+    /// Binds `connected` matched target fields at or below `scope`, adding
+    /// only source field reads and the empty child scopes they need.
+    AutoConnect {
+        scope: ScopeLocation,
+        connected: usize,
+    },
+    /// Appends a failure rule at `index`, with only the expressions it owns.
+    AddFailureRule { index: usize },
+    /// Removes the failure rule at `index` with the generated item it owns.
+    RemoveFailureRule { index: usize },
+    /// Swaps the adjacent failure rules at `from` and `to`.
+    MoveFailureRule { from: usize, to: usize },
+    /// Changes the failure rule at `index`, adding only expressions it reads.
+    EditFailureRule { index: usize },
+    /// Appends the named source `name`.
+    AddNamedSource { name: String },
+    /// Removes the named source `name`.
+    RemoveNamedSource { name: String },
+    /// Appends the named target `name`.
+    AddNamedTarget { name: String },
+    /// Replaces the named target `name`, which may be renamed `renamed`.
+    EditNamedTarget { name: String, renamed: String },
+    /// Removes the named target `name` with its target scope.
+    RemoveNamedTarget { name: String },
+    /// Changes the primary source's format options.
+    EditSourceOptions,
+    /// Defines the new user function `function`.
+    CreateFunction { function: FunctionId },
 }
 
 impl GraphAction {
@@ -228,7 +258,38 @@ impl GraphAction {
             Self::SetXmlType { .. } => "Set XML type",
             Self::InferXmlType { .. } => "Use XML type inference",
             Self::DuplicateSequenceConsumer { .. } => "Duplicate sequence consumer",
+            Self::AutoConnect { .. } => "Auto-connect fields",
+            Self::AddFailureRule { .. } => "Add failure rule",
+            Self::RemoveFailureRule { .. } => "Remove failure rule",
+            Self::MoveFailureRule { .. } => "Move failure rule",
+            Self::EditFailureRule { .. } => "Edit failure rule",
+            Self::AddNamedSource { .. } => "Add named source",
+            Self::RemoveNamedSource { .. } => "Remove named source",
+            Self::AddNamedTarget { .. } => "Add named target",
+            Self::EditNamedTarget { .. } => "Edit named target",
+            Self::RemoveNamedTarget { .. } => "Remove named target",
+            Self::EditSourceOptions => "Change source format options",
+            Self::CreateFunction { .. } => "Create function",
         }
+    }
+
+    /// Whether this action changes project parts outside any target scope,
+    /// which only commands on [`GraphDocument::Project`] do.
+    pub fn edits_project(&self) -> bool {
+        matches!(
+            self,
+            Self::AddFailureRule { .. }
+                | Self::RemoveFailureRule { .. }
+                | Self::MoveFailureRule { .. }
+                | Self::EditFailureRule { .. }
+                | Self::AddNamedSource { .. }
+                | Self::RemoveNamedSource { .. }
+                | Self::AddNamedTarget { .. }
+                | Self::EditNamedTarget { .. }
+                | Self::RemoveNamedTarget { .. }
+                | Self::EditSourceOptions
+                | Self::CreateFunction { .. }
+        )
     }
 
     /// Whether consecutive commands performing this same action, such as
@@ -236,7 +297,11 @@ impl GraphAction {
     pub fn coalesces(&self) -> bool {
         matches!(
             self,
-            Self::EditNode { .. } | Self::EditScope { .. } | Self::EditFilterMap { .. }
+            Self::EditNode { .. }
+                | Self::EditScope { .. }
+                | Self::EditFilterMap { .. }
+                | Self::EditFailureRule { .. }
+                | Self::EditSourceOptions
         )
     }
 
@@ -421,6 +486,44 @@ impl GraphAction {
                 original,
                 duplicate,
             } => scope_command::validate_duplicate(patch, *original, *duplicate),
+            Self::AutoConnect { scope, connected } => {
+                project_command::validate_auto_connect(patch, scope, *connected)
+            }
+            Self::AddFailureRule { index } => {
+                project_command::validate_add_failure_rule(patch, *index)
+            }
+            Self::RemoveFailureRule { index } => {
+                project_command::validate_remove_failure_rule(patch, *index)
+            }
+            Self::MoveFailureRule { from, to } => {
+                project_command::validate_move_failure_rule(patch, *from, *to)
+            }
+            Self::EditFailureRule { index } => {
+                project_command::validate_edit_failure_rule(patch, *index)
+            }
+            Self::AddNamedSource { name } => {
+                project_command::validate_named_sources(patch, NamedEdit::Add(name))
+            }
+            Self::RemoveNamedSource { name } => {
+                project_command::validate_named_sources(patch, NamedEdit::Remove(name))
+            }
+            Self::AddNamedTarget { name } => {
+                project_command::validate_named_targets(patch, NamedEdit::Add(name))
+            }
+            Self::EditNamedTarget { name, renamed } => project_command::validate_named_targets(
+                patch,
+                NamedEdit::Replace {
+                    from: name,
+                    to: renamed,
+                },
+            ),
+            Self::RemoveNamedTarget { name } => {
+                project_command::validate_named_targets(patch, NamedEdit::Remove(name))
+            }
+            Self::EditSourceOptions => project_command::validate_source_options(patch),
+            Self::CreateFunction { function } => {
+                project_command::validate_create_function(patch, *function)
+            }
         }
     }
 }
@@ -495,6 +598,12 @@ impl GraphCommand {
         action: GraphAction,
         patch: GraphPatch,
     ) -> Result<Self, GraphEditError> {
+        if action.edits_project() != (document == GraphDocument::Project) {
+            return Err(GraphEditError::WrongDocument);
+        }
+        if !action.edits_project() && !patch.project_parts().is_empty() {
+            return Err(GraphEditError::UnrelatedChanges);
+        }
         action.validate(&patch)?;
         Ok(Self {
             document,
@@ -532,13 +641,11 @@ impl GraphCommand {
     }
 
     pub fn apply_to(&self, project: &mut Project) -> Result<(), GraphEditError> {
-        let (graph, scope) = document_parts(project, &self.document)?;
-        self.patch.apply_to(graph, scope)
+        self.exchange(project, Side::After, None)
     }
 
     pub fn revert_on(&self, project: &mut Project) -> Result<(), GraphEditError> {
-        let (graph, scope) = document_parts(project, &self.document)?;
-        self.patch.revert_on(graph, scope)
+        self.exchange(project, Side::Before, None)
     }
 
     /// Applies the command only if every node it replaces still matches its
@@ -548,8 +655,7 @@ impl GraphCommand {
         project: &mut Project,
         same_node: impl Fn(&Node, &Node) -> bool,
     ) -> Result<(), GraphEditError> {
-        let (graph, scope) = document_parts(project, &self.document)?;
-        self.patch.apply_to_matching(graph, scope, same_node)
+        self.exchange(project, Side::After, Some(&same_node))
     }
 
     /// Reverts the command with the content check of
@@ -559,8 +665,24 @@ impl GraphCommand {
         project: &mut Project,
         same_node: impl Fn(&Node, &Node) -> bool,
     ) -> Result<(), GraphEditError> {
+        self.exchange(project, Side::Before, Some(&same_node))
+    }
+
+    /// Validates every project part and identity the patch replaces, then
+    /// writes `target`'s side, so a stale command changes nothing.
+    fn exchange(
+        &self,
+        project: &mut Project,
+        target: Side,
+        same_node: Option<SameNode<'_>>,
+    ) -> Result<(), GraphEditError> {
+        let parts = self.patch.project_parts();
+        parts.validate(project, target, same_node)?;
         let (graph, scope) = document_parts(project, &self.document)?;
-        self.patch.revert_on_matching(graph, scope, same_node)
+        self.patch
+            .exchange_graph(graph, scope, target, same_node.unwrap_or(&|_, _| true))?;
+        parts.write(project, target);
+        Ok(())
     }
 }
 
@@ -597,6 +719,7 @@ fn document_parts<'p>(
             let function = project.user_functions.get_mut(id).ok_or_else(missing)?;
             Ok((&mut function.body, None))
         }
+        GraphDocument::Project => Ok((&mut project.graph, None)),
     }
 }
 

@@ -34,7 +34,7 @@ fn only_children<'p>(
     Ok((change.before(), change.after()))
 }
 
-fn empty_scope(field: &str) -> Scope {
+pub(crate) fn empty_scope(field: &str) -> Scope {
     Scope {
         target_field: field.to_owned(),
         ..Scope::default()

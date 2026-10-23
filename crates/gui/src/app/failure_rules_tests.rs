@@ -728,3 +728,6 @@ fn source_failure_rule_sequence_owners_and_stale_navigation_survive_list_changes
         owners
     );
 }
+
+#[path = "failure_rules_tests/typed_history.rs"]
+mod typed_history;

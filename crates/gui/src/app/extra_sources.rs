@@ -414,6 +414,10 @@ impl FerruleApp {
         };
         match draft.clone().build(&self.project.extra_sources) {
             Ok(source) => {
+                let before = self.project.clone();
+                let action = editor_ui::GraphAction::AddNamedSource {
+                    name: source.name.clone(),
+                };
                 let previous_names = self
                     .project
                     .extra_sources
@@ -421,6 +425,7 @@ impl FerruleApp {
                     .map(|source| source.name.clone())
                     .collect::<Vec<_>>();
                 self.project.extra_sources.push(source);
+                self.queue_project_edit(&before, action);
                 self.refresh_source_canvases(&previous_names);
                 self.extra_source_draft = None;
                 self.status = "extra source added".to_string();
@@ -441,9 +446,14 @@ impl FerruleApp {
             .iter()
             .map(|source| source.name.clone())
             .collect::<Vec<_>>();
+        let before = self.project.clone();
         let removed = remove_extra_source(&mut self.project.extra_sources, index);
         self.pending_extra_source_removal = None;
         if let Some(source) = removed {
+            let action = editor_ui::GraphAction::RemoveNamedSource {
+                name: source.name.clone(),
+            };
+            self.queue_project_edit(&before, action);
             self.refresh_source_canvases(&previous_names);
             self.status = format!("removed extra source {}", source.name);
             let issues = cli::validate(&self.project);

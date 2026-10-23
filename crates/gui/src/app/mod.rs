@@ -1664,3 +1664,6 @@ mod typed_edit_oracle;
 
 #[cfg(test)]
 mod inspector_commands_tests;
+
+#[cfg(test)]
+mod project_commands_tests;

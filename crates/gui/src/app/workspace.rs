@@ -660,6 +660,8 @@ impl FerruleApp {
                 }
             });
         });
+        let options_before = crate::graph_viewer::frame_has_edit_input(ui.ctx())
+            .then(|| self.project.source_options.clone());
         super::primary_xml_input::show(
             ui,
             &self.project.source,
@@ -667,6 +669,13 @@ impl FerruleApp {
             &mut self.project.source_options,
             editing_enabled,
         );
+        if let Some(options) = options_before
+            && options != self.project.source_options
+        {
+            let mut before = self.project.clone();
+            before.source_options = options;
+            self.queue_project_edit(&before, editor_ui::GraphAction::EditSourceOptions);
+        }
         show_schema_search_input(ui, "source_schema_search", &mut self.source_schema_explorer);
         let source_matches = self
             .source_schema_explorer
