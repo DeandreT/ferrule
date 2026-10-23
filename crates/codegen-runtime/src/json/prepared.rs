@@ -1,13 +1,13 @@
-use std::collections::BTreeMap;
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::Arc;
 
 use ir::{Instance, SchemaNode};
 
+use crate::descriptor_registry::DescriptorRegistry;
+
 use super::{
-    JsonBoundaryError, JsonDocumentError, JsonOutputFormat, MAX_EMBEDDED_JSON_SCHEMA_BYTES,
-    MAX_JSON_DOCUMENT_BYTES, check_input_size, constraint_input_error, constraint_output_error,
-    parse_schema, unique_items, validate_instance_document, validate_json_document,
-    without_boundary_constraints,
+    JsonBoundaryError, JsonDocumentError, JsonOutputFormat, MAX_JSON_DOCUMENT_BYTES,
+    check_input_size, constraint_input_error, constraint_output_error, parse_schema, text,
+    unique_items, validate_instance_document, validate_json_document, without_boundary_constraints,
 };
 
 /// One embedded JSON schema descriptor, decoded and validated once.
@@ -141,22 +141,18 @@ impl PreparedJsonSchema {
                 message: error.to_string(),
             }
         })?;
-        let mut document = match format {
-            JsonOutputFormat::Pretty => serde_json::to_string_pretty(&value),
-            JsonOutputFormat::Compact => serde_json::to_string(&value),
-        }
-        .map_err(|error| JsonBoundaryError::InvalidOutput {
+        let invalid = |error: serde_json::Error| JsonBoundaryError::InvalidOutput {
             message: error.to_string(),
-        })?;
-        if matches!(format, JsonOutputFormat::Pretty) {
-            document.push('\n');
-        }
-        if document.len() > MAX_JSON_DOCUMENT_BYTES {
+        };
+        // The byte limit applies to the measured text before it is written.
+        let bytes = text::measure(&value, format).map_err(invalid)?;
+        if bytes > MAX_JSON_DOCUMENT_BYTES {
             return Err(JsonBoundaryError::OutputTooLarge {
-                bytes: document.len(),
+                bytes,
                 max: MAX_JSON_DOCUMENT_BYTES,
             });
         }
+        let document = text::render(&value, format, bytes).map_err(invalid)?;
         // Validate normalized output values directly. Parsing the text again
         // can move a float by one ULP with serde_json's default number reader,
         // changing allowed-value, multiple-of, or structural-uniqueness results.
@@ -167,59 +163,14 @@ impl PreparedJsonSchema {
     }
 }
 
-/// Process-wide prepared schemas for the descriptor-taking functions.
-///
-/// Generated mappings pass their finite set of emitter-owned descriptor
-/// constants to those functions, so each descriptor is prepared once per
-/// process. Only successful preparations are retained: a rejected descriptor
-/// is decoded again by every call and returns its original error. The
-/// registry holds at most [`MAX_SHARED_SCHEMAS`] descriptors totalling
-/// [`MAX_SHARED_DESCRIPTOR_BYTES`]; admitting one more starts it over. These
-/// bounds count descriptor text, not the memory of the prepared schemas,
-/// which is typically an order of magnitude larger.
-struct Registry {
-    entries: BTreeMap<Box<str>, Arc<PreparedJsonSchema>>,
-    descriptor_bytes: usize,
-}
+/// Process-wide prepared schemas for the descriptor-taking functions, which
+/// generated mappings call with their descriptor constants.
+static REGISTRY: DescriptorRegistry<PreparedJsonSchema> =
+    DescriptorRegistry::new(MAX_SHARED_DESCRIPTOR_BYTES);
 
-const MAX_SHARED_SCHEMAS: usize = 64;
 const MAX_SHARED_DESCRIPTOR_BYTES: usize = 4 * 1024 * 1024;
-
-static REGISTRY: RwLock<Registry> = RwLock::new(Registry {
-    entries: BTreeMap::new(),
-    descriptor_bytes: 0,
-});
 
 /// Returns the shared preparation of `descriptor`, preparing it on first use.
 pub(super) fn shared(descriptor: &str) -> Result<Arc<PreparedJsonSchema>, JsonBoundaryError> {
-    if descriptor.len() > MAX_EMBEDDED_JSON_SCHEMA_BYTES {
-        // Rejected before any decoding; never retained.
-        return PreparedJsonSchema::prepare(descriptor).map(Arc::new);
-    }
-    if let Some(prepared) = REGISTRY
-        .read()
-        .unwrap_or_else(PoisonError::into_inner)
-        .entries
-        .get(descriptor)
-    {
-        return Ok(Arc::clone(prepared));
-    }
-    // Prepare outside the lock. Concurrent first calls may both prepare; the
-    // first inserted value is the one every later call shares.
-    let prepared = Arc::new(PreparedJsonSchema::prepare(descriptor)?);
-    let mut registry = REGISTRY.write().unwrap_or_else(PoisonError::into_inner);
-    if let Some(existing) = registry.entries.get(descriptor) {
-        return Ok(Arc::clone(existing));
-    }
-    if registry.entries.len() >= MAX_SHARED_SCHEMAS
-        || registry.descriptor_bytes + descriptor.len() > MAX_SHARED_DESCRIPTOR_BYTES
-    {
-        registry.entries.clear();
-        registry.descriptor_bytes = 0;
-    }
-    registry.descriptor_bytes += descriptor.len();
-    registry
-        .entries
-        .insert(descriptor.into(), Arc::clone(&prepared));
-    Ok(prepared)
+    REGISTRY.get_or_prepare(descriptor, PreparedJsonSchema::prepare)
 }

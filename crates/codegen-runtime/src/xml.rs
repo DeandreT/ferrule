@@ -1,9 +1,29 @@
-use format_xml::XmlWriteOptions;
+use std::sync::Arc;
 
+use codegen_schema::CodecError;
+use format_xml::XmlWriteOptions;
+use ir::SchemaNode;
+
+use crate::descriptor_registry::DescriptorRegistry;
 use crate::{Instance, RuntimeError, Value};
 
 pub const MAX_EMBEDDED_XML_SCHEMA_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_SERIALIZED_XML_BYTES: usize = 64 * 1024 * 1024;
+
+/// Decoded XML schema descriptors, shared by the expression-node serializer
+/// and every XML document boundary. Each caller still applies its own byte
+/// limit first and its own schema checks to the shared schema, so their
+/// errors and precedence are unchanged; every call keeps its own document and
+/// output accounting. One maximal descriptor fits the registry's budget.
+static SCHEMAS: DescriptorRegistry<SchemaNode> =
+    DescriptorRegistry::new(MAX_EMBEDDED_XML_SCHEMA_BYTES);
+
+/// Returns the shared decoded schema of an embedded XML descriptor.
+pub(crate) fn shared_schema(descriptor: &str) -> Result<Arc<SchemaNode>, CodecError> {
+    SCHEMAS.get_or_prepare(descriptor, |descriptor| {
+        codegen_schema::decode(descriptor, MAX_EMBEDDED_XML_SCHEMA_BYTES)
+    })
+}
 
 /// Serializes one already-resolved structured source with its generated,
 /// immutable schema snapshot.
@@ -24,7 +44,7 @@ pub fn serialize_xml(
             ),
         ));
     }
-    let schema = codegen_schema::decode(schema_json, MAX_EMBEDDED_XML_SCHEMA_BYTES)
+    let schema = shared_schema(schema_json)
         .map_err(|source| error(node, format!("embedded schema is invalid: {source}")))?;
     let options = XmlWriteOptions {
         declaration,
