@@ -29,6 +29,7 @@ internal static partial class Program
             ("JSON source explicit decimal selection", JsonSourceDecimalNumbers),
             ("JSON source typed occurrence projection", JsonSourceProjection),
             ("EDI scalar formatting", EdiScalarFormatting),
+            ("Exact native Decimal integer picture", DecimalIntegerFormat),
             ("UTF-16 interchange stream boundaries", InterchangeStream),
             ("Independently reached interchange writer clocks", InterchangeClocks),
             ("Native JSON source decoding and strings", NativeJsonSource),

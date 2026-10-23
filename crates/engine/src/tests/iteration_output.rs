@@ -141,6 +141,42 @@ fn department(people: Vec<Instance>) -> Instance {
 }
 
 #[test]
+fn mapped_scalar_xml_elements_preserve_declared_schema_cardinality() {
+    let mut project = project_with_output(IterationOutput::MappedSequence);
+    let SchemaKind::Group { children, .. } = &mut project.target.kind else {
+        panic!("root")
+    };
+    let SchemaKind::Group { children, .. } = &mut children[0].kind else {
+        panic!("department")
+    };
+    *children.iter_mut().find(|n| n.name == "Selected").unwrap() =
+        SchemaNode::scalar("Selected", ScalarType::String);
+    let selected = &mut project.root.children[0].children[0];
+    selected.bindings.clear();
+    selected.construction = mapping::ScopeConstruction::Scalar { value: 0 };
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+    let source = Instance::Group(
+        vec![(
+            "Department".into(),
+            Instance::Repeated(vec![department(vec![
+                person("one", true),
+                person("two", true),
+            ])]),
+        )]
+        .into(),
+    );
+    let output = run(&project, &source).unwrap();
+    let department = &output.field("Department").unwrap().as_repeated().unwrap()[0];
+    assert_eq!(
+        department.field("Selected"),
+        Some(&Instance::MappedSequence(vec![
+            Instance::Scalar(Value::String("one".into())),
+            Instance::Scalar(Value::String("two".into()))
+        ]))
+    );
+}
+
+#[test]
 fn first_output_applies_filter_and_window_and_preserves_nested_positions() {
     let project = project();
     assert!(validate(&project).is_empty(), "{:?}", validate(&project));

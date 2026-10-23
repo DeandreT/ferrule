@@ -1239,7 +1239,15 @@ fn write_node<W: std::io::Write>(
         return Ok(());
     }
     if let Instance::MappedSequence(items) = instance {
-        if is_root || schema.repeating || !matches!(&schema.kind, SchemaKind::Group { .. }) {
+        if is_root
+            || schema.repeating
+            || !matches!(
+                &schema.kind,
+                SchemaKind::Group { .. } | SchemaKind::Scalar { .. }
+            )
+            || schema.name.starts_with(['@', '#', '\u{1f}'])
+            || schema.name == ir::XML_ATTRIBUTES_FIELD
+        {
             let expected = if is_root {
                 "one document root"
             } else {

@@ -740,7 +740,9 @@ public static partial class FerruleXml
             schema = Resolve(schema, rootSchema, recursionDepth);
             if (instance is FerruleMappedSequence mapped)
             {
-                if (isRoot || schema.Repeating || schema.ScalarType is not null)
+                if (isRoot || schema.Repeating || schema.Name.StartsWith('@')
+                    || schema.Name.StartsWith('#') || schema.Name.StartsWith('\u001f')
+                    || schema.Name == "attribute()")
                 {
                     throw Shape(schema, "one non-repeating element group", instance);
                 }

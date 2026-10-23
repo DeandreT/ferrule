@@ -2,6 +2,30 @@ use ir::Value;
 
 use crate::FunctionError;
 
+pub(super) fn format_decimal_integer(args: &[Value]) -> Result<Value, FunctionError> {
+    let value = match args {
+        [Value::Decimal(value)] => value,
+        [value] => {
+            return Err(FunctionError::TypeMismatch {
+                function: "format_decimal_integer",
+                got: value.type_name(),
+            });
+        }
+        _ => {
+            return Err(FunctionError::ArityMismatch {
+                function: "format_decimal_integer",
+                expected: 1,
+                got: args.len(),
+            });
+        }
+    };
+    let divisor = 10_u128.pow(u32::from(value.scale()));
+    let magnitude =
+        value.coefficient() / divisor + u128::from((value.coefficient() % divisor) * 2 >= divisor);
+    let sign = if value.is_negative() { "-" } else { "" };
+    Ok(Value::String(format!("{sign}{magnitude}")))
+}
+
 pub(super) fn format_number(args: &[Value]) -> Result<Value, FunctionError> {
     let (value, format, decimal_point, grouping_separator) = match args {
         [value, Value::String(format)] => (value, format.as_str(), '.', ','),
