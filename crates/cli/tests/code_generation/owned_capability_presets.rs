@@ -533,105 +533,6 @@ fn json_corpus(name: &str) -> TestResult<Corpus> {
     Ok(projects(models))
 }
 
-/// The two owned occurrence programs of `conformance/basic-owned-occurrence`.
-fn occurrence_corpus() -> Corpus {
-    use mapping::{NamedSource, OwnedPosition, OwnedSourceField, OwnedSourceRef, SourceOwner};
-    let root = || {
-        SchemaNode::group(
-            "Input",
-            vec![SchemaNode::scalar("Value", ScalarType::String)],
-        )
-    };
-    projects(["primary", "named"].map(|program| {
-        let owner = if program == "primary" {
-            SourceOwner::Primary
-        } else {
-            SourceOwner::Named { name: "Ref".into() }
-        };
-        let mut graph = Graph::default();
-        graph.nodes.insert(
-            1,
-            Node::OwnedSourceField(OwnedSourceField {
-                source: OwnedSourceRef {
-                    owner: owner.clone(),
-                    path: vec!["Value".into()],
-                },
-                frame: Some(vec![]),
-            }),
-        );
-        graph.nodes.insert(
-            2,
-            Node::OwnedPosition(OwnedPosition {
-                owner: owner.clone(),
-                collection: Some(vec![]),
-            }),
-        );
-        let (source, extra_sources) = if program == "primary" {
-            (root(), vec![])
-        } else {
-            (
-                SchemaNode::group(
-                    "Primary",
-                    vec![
-                        SchemaNode::scalar("Value", ScalarType::String),
-                        SchemaNode::group(
-                            "Ref",
-                            vec![SchemaNode::scalar("Value", ScalarType::String)],
-                        ),
-                    ],
-                ),
-                vec![NamedSource {
-                    name: "Ref".into(),
-                    path: "unused-basic-occurrence-input.json".into(),
-                    schema: root(),
-                    options: Default::default(),
-                    dynamic_path: None,
-                }],
-            )
-        };
-        let project = Project {
-            source,
-            target: SchemaNode::group(
-                "Output",
-                vec![
-                    SchemaNode::scalar("Value", ScalarType::String),
-                    SchemaNode::scalar("Position", ScalarType::Int),
-                ],
-            ),
-            source_path: None,
-            target_path: None,
-            source_options: Default::default(),
-            target_options: Default::default(),
-            extra_sources,
-            extra_targets: vec![],
-            failure_rules: vec![],
-            user_functions: BTreeMap::new(),
-            graph,
-            root: Scope {
-                iteration: ScopeIteration::OwnedSource {
-                    source: OwnedSourceRef {
-                        owner,
-                        path: vec![],
-                    },
-                    output_path: None,
-                },
-                bindings: vec![
-                    Binding {
-                        target_field: "Value".into(),
-                        node: 1,
-                    },
-                    Binding {
-                        target_field: "Position".into(),
-                        node: 2,
-                    },
-                ],
-                ..Scope::default()
-            },
-        };
-        (program, project)
-    }))
-}
-
 /// Declared `sqlite_read_v1` query inputs, which code generation refuses
 /// before any owned admission: a primary query, a named query beside an
 /// ordinary primary, and a named query walked by an owned iteration.
@@ -991,14 +892,20 @@ mod frozen {
 
 pub(super) fn corpora() -> TestResult<Vec<(&'static str, Corpus)>> {
     Ok(vec![
-        ("basic-owned-filter", json_corpus("basic-owned-filter")?),
+        (
+            "basic-owned-filter",
+            super::basic_owned_filter::capability_corpus(),
+        ),
         ("basic-owned-sort", json_corpus("basic-owned-sort")?),
         ("basic-owned-windows", json_corpus("basic-owned-windows")?),
         (
             "basic-owned-nested-alias",
             json_corpus("basic-owned-nested-alias")?,
         ),
-        ("basic-owned-occurrence", occurrence_corpus()),
+        (
+            "basic-owned-occurrence",
+            super::basic_owned_occurrence::capability_corpus(),
+        ),
         ("sqlite-read-v1", sqlite_read_corpus()?),
         ("json-undeclared-members", json_undeclared_members_corpus()?),
         (
