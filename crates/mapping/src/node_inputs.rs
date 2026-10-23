@@ -241,31 +241,21 @@ impl Node {
     }
 }
 
-/// A sequence's inputs, then the item identities it owns, as in
-/// [`SequenceExpr::owned_items`].
+/// A sequence's inputs at every composition level, then the item
+/// identities its outermost level owns, as in [`SequenceExpr::owned_items`].
 fn visit_sequence_inputs(
     sequence: &SequenceExpr,
     input: &mut impl FnMut(NodeId, NodeInputSlot, NodeInputRole),
 ) {
-    for (index, node) in sequence.inputs().into_iter().enumerate() {
-        input(
-            node,
-            NodeInputSlot::SequenceInput(index),
-            NodeInputRole::Parent,
-        );
-    }
-    if let SequenceExpr::FilterMapV1(composition) = sequence {
-        input(
-            composition.source.item(),
-            NodeInputSlot::SequenceReservedItem,
-            NodeInputRole::ItemIdentity,
-        );
-    }
-    input(
-        sequence.item(),
-        NodeInputSlot::SequenceItem,
-        NodeInputRole::ItemIdentity,
-    );
+    sequence.visit_level_inputs(&mut |declared| {
+        if declared.level == 0 || declared.input.role == NodeInputRole::Parent {
+            input(
+                declared.input.node,
+                declared.input.slot,
+                declared.input.role,
+            );
+        }
+    });
 }
 
 #[cfg(test)]
