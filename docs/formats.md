@@ -367,8 +367,11 @@ for a complete format standard or another product.
   of nullable objects accepts `[null]` and rejects `null`. The optional
   `json_object_item_nullable` schema field carries the item setting on genuine
   repeated object groups. When absent, existing schemas retain their legacy
-  item behavior. Positional nested arrays and unsupported structured
-  predicates remain outside this subset. `$ref` siblings follow the dialect declared by their physical schema
+  item behavior. Arrays of scalars keep the array's nullability separate from
+  the items' own `nullable` domain: a nullable array of nonnullable integers
+  accepts `null` and `[1]` but rejects `[null]` and `[1,null]`. Positional
+  nested arrays and unsupported structured predicates remain outside this
+  subset. `$ref` siblings follow the dialect declared by their physical schema
   resource: Draft 4, 6, and 7 ignore them, while Draft 2019-09, 2020-12, and
   schemas without `$schema` apply Ferrule's supported numeric, `multipleOf`,
   item-count, string-length, and annotation metadata. Concrete string-capable scalar
