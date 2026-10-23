@@ -930,6 +930,7 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "Runtime/FerruleXml.Output.cs",
         "Runtime/FerruleXml.OutputSet.cs",
         "Runtime/FerruleXml.Owned.cs",
+        "Runtime/FerruleXml.Prepared.cs",
         "Runtime/FerruleXml.cs",
         "Runtime/FerruleXmlMixedContent.Owned.cs",
         "Runtime/FerruleXmlMixedContent.cs",

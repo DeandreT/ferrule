@@ -33,7 +33,7 @@ public static partial class FerruleX12
     {
         ArgumentNullException.ThrowIfNull(document);
         RequireUtf8(document, MaximumDocumentBytes, "X12 input");
-        Profile profile = ParseProfile(descriptor, input: true);
+        Profile profile = PreparedProfile(descriptor, input: true);
         Syntax syntax = DiscoverSyntax(document, profile);
         if (profile.Separators is { } selected && (selected.Element != syntax.Element
             || selected.Component != syntax.Component || selected.Segment != syntax.Segment
@@ -50,24 +50,48 @@ public static partial class FerruleX12
     }
 
     public static byte[] SerializeEmbeddedBytes(string descriptor, FerruleInstance document)
-        => StrictUtf8.GetBytes(SerializeEmbedded(descriptor, document));
+        => EncodeOutput(SerializeOutput(descriptor, document, null));
 
     public static byte[] SerializeEmbeddedBytes(string descriptor, FerruleInstance document, FerruleExecutionContext executionContext)
-        => StrictUtf8.GetBytes(SerializeEmbedded(descriptor, document, executionContext));
+    {
+        ArgumentNullException.ThrowIfNull(executionContext);
+        return EncodeOutput(SerializeOutput(descriptor, document, executionContext));
+    }
 
     public static string SerializeEmbedded(string descriptor, FerruleInstance document)
-        => SerializeOutput(descriptor, document, null);
+        => SerializeOutput(descriptor, document, null).Text.ToString();
 
     public static string SerializeEmbedded(string descriptor, FerruleInstance document, FerruleExecutionContext executionContext)
     {
         ArgumentNullException.ThrowIfNull(executionContext);
-        return SerializeOutput(descriptor, document, executionContext);
+        return SerializeOutput(descriptor, document, executionContext).Text.ToString();
     }
 
-    private static string SerializeOutput(string descriptor, FerruleInstance document, FerruleExecutionContext? executionContext)
+    /// <summary>Complete output text and its UTF-8 length, counted while it was written.</summary>
+    private readonly record struct CompletedOutput(StringBuilder Text, long Bytes);
+
+    /// <summary>
+    /// Encodes completed output directly from its builder into one array of its
+    /// counted length, without first materializing the UTF-16 string. Every
+    /// appended piece was strictly counted, so the text is well-formed; the
+    /// encoder carries a surrogate pair split across two builder chunks.
+    /// </summary>
+    private static byte[] EncodeOutput(CompletedOutput output)
+    {
+        var bytes = new byte[output.Bytes];
+        var encoder = StrictUtf8.GetEncoder();
+        var written = 0;
+        foreach (ReadOnlyMemory<char> chunk in output.Text.GetChunks())
+            written += encoder.GetBytes(chunk.Span, bytes.AsSpan(written), flush: false);
+        written += encoder.GetBytes(ReadOnlySpan<char>.Empty, bytes.AsSpan(written), flush: true);
+        if (written != bytes.Length) throw Failure(FerruleX12Error.Encoding, "X12 output encoding changed its counted length.");
+        return bytes;
+    }
+
+    private static CompletedOutput SerializeOutput(string descriptor, FerruleInstance document, FerruleExecutionContext? executionContext)
     {
         ArgumentNullException.ThrowIfNull(document);
-        Profile profile = ParseProfile(descriptor, input: false);
+        Profile profile = PreparedProfile(descriptor, input: false);
         Syntax syntax = profile.OutputSyntax;
         FerruleInstance outputView = HasOutputLexical(profile.Root)
             ? FormatOutputView(profile.Root, document, [], new Budget(), 0)
@@ -121,7 +145,7 @@ public static partial class FerruleX12
             // LF is already a segment terminator; other syntax uses one segment per line.
             if (syntax.Segment != '\n') Add("\n");
         }
-        return output.ToString();
+        return new CompletedOutput(output, bytes);
 
         void Add(string text)
         {
