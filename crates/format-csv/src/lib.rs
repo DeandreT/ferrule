@@ -34,7 +34,9 @@ pub use bounded_read::{
     from_bytes_with_decoding_policy_bounded, from_bytes_with_options_bounded,
     from_str_with_options_bounded,
 };
-pub use byte_decoding::CsvByteDecodingPolicy;
+pub use byte_decoding::{
+    CsvByteDecodingPolicy, decode_non_flushing as decode_bom_aware_non_flushing,
+};
 pub use source_document::{
     CsvDocumentRows, CsvRowOccurrence, CsvSourceDocument, CsvSourceError, CsvSourceLoadError,
     CsvSourceRows, MAX_CSV_SOURCE_DOCUMENTS, MAX_CSV_SOURCE_PATH_BYTES,

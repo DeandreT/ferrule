@@ -75,10 +75,11 @@ pub fn emit_with_primary_json_projection(
     let mut files = crate::emit_with_primary_filename(document)
         .map_err(PrimaryJsonEmitError::Emit)?
         .into_files();
-    let code = format!(
+    let mut code = format!(
         "\npublic static partial class GeneratedMapping\n{{\n    private static readonly global::Ferrule.Runtime.FerruleJsonSourceProjection PrimaryJsonProjection = global::Ferrule.Runtime.FerruleJsonSourceProjection.Parse({});\n\n    /// <summary>Lazy typed document acquisition. Callbacks own transport, parsing and cleanup.</summary>\n    public static global::System.Collections.Generic.IEnumerable<global::Ferrule.Runtime.FerruleInstance> AcquirePrimaryJson(\n        global::Ferrule.Runtime.FerruleExecutionContext execution,\n        global::System.Func<string, global::System.Collections.Generic.IEnumerable<string>> select,\n        global::System.Func<string, global::Ferrule.Runtime.FerruleJsonSourceDocument> load,\n        global::Ferrule.Runtime.FerruleJsonProjectionLimits limits, int maximum)\n    {{\n        global::System.ArgumentNullException.ThrowIfNull(execution);\n        return PrimaryJsonProjection.Acquire(() => EvaluatePrimaryFilename(execution), select, load, maximum, limits);\n    }}\n}}\n",
         literal::string(&descriptor)
     );
+    code.push_str(&format!("\npublic static partial class GeneratedMapping\n{{\n    public static global::Ferrule.Runtime.FerruleJsonSourceDocument ParsePrimaryJsonSource(string identity, byte[] bytes) => global::Ferrule.Runtime.FerruleNativeJsonSource.Parse(identity, bytes, {});\n}}\n",literal::string(&descriptor)));
     files
         .iter_mut()
         .find(|file| file.path.as_str() == "GeneratedMapping.cs")

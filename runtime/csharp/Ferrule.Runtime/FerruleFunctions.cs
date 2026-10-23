@@ -30,6 +30,7 @@ public static partial class FerruleFunctions
                 arguments,
                 static value => value[..^CountTrailingXmlWhitespace(value)]),
             "length" => Length(arguments),
+            "length_utf16" => LengthUtf16(arguments),
             "sql_like" => BinaryString(function, arguments, SqlLike),
             "pad_string_left" => PadString(function, arguments, left: true),
             "pad_string_right" => PadString(function, arguments, left: false),

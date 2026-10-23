@@ -29,6 +29,7 @@ internal static partial class Program
             ("JSON source explicit decimal selection", JsonSourceDecimalNumbers),
             ("JSON source typed occurrence projection", JsonSourceProjection),
             ("EDI scalar formatting", EdiScalarFormatting),
+            ("Native JSON source decoding and strings", NativeJsonSource),
             ("JSON source complete occurrence document", JsonSourceOccurrenceDocument),
             ("JSON source exact occurrence identities", JsonSourceOccurrenceIdentity),
             ("JSON source reached host failures", JsonSourceReachedFailures),

@@ -58,10 +58,11 @@ pub fn emit_with_primary_json_projection(
     let mut files = crate::emit_with_primary_filename(document, options)
         .map_err(PrimaryJsonEmitError::Emit)?
         .into_files();
-    let code = format!(
+    let mut code = format!(
         "\nfn primary_json_projection() -> &'static codegen_runtime::JsonSourceShape {{\n    static SHAPE: std::sync::OnceLock<codegen_runtime::JsonSourceShape> = std::sync::OnceLock::new();\n    SHAPE.get_or_init(|| codegen_runtime::parse_json_projection_shape({}).expect(\"generation-validated JSON projection\"))\n}}\n\n/// Lazily acquire one typed document at a time. Host callbacks own I/O and parsing.\npub fn acquire_primary_json<'a, E: 'a, I: Iterator<Item = Result<String, E>> + 'a>(\n    execution: &'a ExecutionContext<'a>,\n    select: impl FnOnce(&str) -> Result<I, E> + 'a,\n    load: impl FnMut(&str) -> Result<codegen_runtime::JsonSourceDocument, E> + 'a,\n    limits: codegen_runtime::JsonProjectionLimits, maximum: usize,\n) -> Result<codegen_runtime::JsonSourceAcquisition<'a, codegen_runtime::RuntimeError, E>, codegen_runtime::JsonAcquisitionError<codegen_runtime::RuntimeError, E>> {{\n    codegen_runtime::JsonSourceAcquisition::new(move || evaluate_primary_filename(execution), select, load, primary_json_projection(), limits, maximum)\n}}\n",
         rust_string(&descriptor)
     );
+    code.push_str("\n/// Explicit wire-compatible byte decoding. Lone UTF-16 escapes become U+FFFD;\n/// separately qualify string operations and encoding. Strict parsing is unchanged.\npub fn parse_primary_json_source(identity: &str, bytes: &[u8]) -> Result<codegen_runtime::JsonSourceDocument, codegen_runtime::NativeJsonSourceError> {\n    codegen_runtime::parse_native_json_source(identity, bytes, primary_json_projection(), codegen_runtime::JsonSourceLimits::default())\n}\n");
     files
         .iter_mut()
         .find(|file| file.path.as_str() == "src/lib.rs")
