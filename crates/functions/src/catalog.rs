@@ -200,6 +200,7 @@ pub(crate) enum BuiltinId {
     Exists,
     Round,
     DateFromDatetime,
+    FormatDatetimeMilliseconds,
     YearFromDatetime,
     MonthFromDatetime,
     DayFromDatetime,
@@ -924,6 +925,19 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Authoring,
         "Extracts an ISO date."
+    ),
+    builtin!(
+        FormatDatetimeMilliseconds,
+        "format_datetime_milliseconds",
+        "Format DateTime with millisecond precision",
+        DateTime,
+        &[parameter("value", DateTime), parameter("picture", String)],
+        BuiltinArity::fixed(2),
+        String,
+        true,
+        true,
+        Internal,
+        "Formats a date-time with exactly three truncated fractional-second digits for the explicit MapForce document profile."
     ),
     builtin!(
         YearFromDatetime,

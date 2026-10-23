@@ -24,6 +24,7 @@ internal static partial class Program
             ("MapForce-style JSON5 typed decimal output", MapForceJson5Typed),
             ("Exact source row document paths", SourceRowDocumentPaths),
             ("CSV file sets retain empty files", CsvFileSet),
+            ("Explicit millisecond date-time formatting", MillisecondDateTime),
             ("JSON source exact selection and bounded admission", JsonSourceSelectionAndLimits),
             ("JSON source complete occurrence document", JsonSourceOccurrenceDocument),
             ("JSON source exact occurrence identities", JsonSourceOccurrenceIdentity),
