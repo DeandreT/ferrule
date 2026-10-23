@@ -56,3 +56,9 @@ every case:
 ```sh
 cargo test -p cli --test code_generation --features codegen-tests primary_filename_documents -- --include-ignored
 ```
+
+The ignored test generates model 1 through `ferrule generate
+--primary-csv-documents` under a configured identity with the compatibility
+manifest. [`primary_document_run.rs`](../../crates/cli/tests/primary_document_run.rs)
+runs every case through `ferrule run-document` and the CLI document run
+library and compares them with the interpreter.

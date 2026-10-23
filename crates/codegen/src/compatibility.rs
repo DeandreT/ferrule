@@ -160,6 +160,10 @@ pub enum GenerationProfile {
     StaticDocuments,
     CsvX12,
     CsvJson,
+    /// Primary filename document runs with complete CSV documents.
+    PrimaryCsvDocument,
+    /// Primary filename document runs with unescaped CRLF text output.
+    PrimaryRawDelimitedDocument,
 }
 
 /// The names a generated library is hosted under.

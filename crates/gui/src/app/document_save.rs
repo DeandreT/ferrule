@@ -27,7 +27,12 @@ impl FerruleApp {
         let relocated = cli::project_paths_relocate(&previous_path, path)?;
         let mut project = self.project.clone();
         cli::rebase_project_paths(&mut project, &previous_path, path)?;
-        let json = mapping::project_file::encode_pretty(&project)?;
+        let json = match &self.primary_document {
+            Some(session) => {
+                mapping::document_project_file::encode_pretty(&session.document(&project))?
+            }
+            None => mapping::project_file::encode_pretty(&project)?,
+        };
         let layout =
             CanvasLayout::capture(&project, &self.main_canvas.snarl, &self.mapping_workspace);
         crate::document_file::replace(path, json.as_bytes())?;
