@@ -1614,6 +1614,13 @@ pub(super) fn read_edi_component(
     )
 }
 
+pub(super) fn read_edi_writer_minimums(
+    component: &roxmltree::Node<'_, '_>,
+    resources: &ResourceResolver,
+) -> Result<Vec<mapping::MapForceEdiMinimum>, String> {
+    edi::writer_minimums(component, resources)
+}
+
 /// Reads an internal structured UDF parameter as a schema declaration only.
 /// These components are not independent runtime boundaries, so their EDI and
 /// database configuration diagnostics belong to the caller's real component.

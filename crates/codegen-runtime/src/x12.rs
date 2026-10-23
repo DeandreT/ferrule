@@ -16,7 +16,10 @@ use serde_json::Value as Json;
 use crate::{ExecutionContext, JsonBoundaryError, RuntimeError, RuntimeValue};
 use format_edi::x12::{SchemaCursor, SchemaRole};
 
+mod latin1_best_fit;
+mod mapforce_writer;
 mod output;
+pub use mapforce_writer::serialize_mapforce_x12_document;
 #[cfg(test)]
 mod tests;
 mod wire;
@@ -36,6 +39,10 @@ const MAX_ELEMENTS: usize = 1024;
 /// Original causes remain inspectable through their variants and Error::source.
 #[derive(Debug)]
 pub enum X12BoundaryError {
+    MapForceScalar {
+        path: String,
+        source: crate::MapForceEdiScalarError,
+    },
     Descriptor(String),
     Schema(codegen_schema::CodecError),
     Encoding(std::str::Utf8Error),
@@ -77,6 +84,7 @@ pub enum X12BoundaryError {
 impl fmt::Display for X12BoundaryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::MapForceScalar { path, source } => write!(f, "X12 field {path}: {source}"),
             Self::Descriptor(message) => write!(f, "invalid embedded X12 descriptor: {message}"),
             Self::Schema(error) => error.fmt(f),
             Self::Encoding(error) => error.fmt(f),
@@ -113,6 +121,7 @@ impl fmt::Display for X12BoundaryError {
 impl Error for X12BoundaryError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::MapForceScalar { source, .. } => Some(source),
             Self::Schema(error) => Some(error),
             Self::Encoding(error) => Some(error),
             Self::Native(error) => Some(error),

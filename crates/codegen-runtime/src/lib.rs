@@ -26,6 +26,9 @@ pub use json_acquisition::{JsonAcquisitionError, JsonSourceAcquisition};
 mod json5;
 mod json5_writer;
 mod json_projection;
+mod mapforce_edi_scalar;
+pub use mapforce_edi_scalar::{MapForceEdiScalarError, format_mapforce_edi_scalar};
+pub use mapping::{MapForceEdiScalar, MapForceEdiScalarKind};
 mod json_source;
 pub use json_projection::{
     JsonProjectionError, JsonProjectionLimits, MAX_JSON_PROJECTED_NAME_BYTES,
@@ -158,8 +161,8 @@ pub use value_map::{value_map, value_map_user_function};
 pub use x12::{
     MAX_EMBEDDED_X12_SCHEMA_BYTES, MAX_X12_DOCUMENT_BYTES, MAX_X12_LOOP_INSTANCES,
     MAX_X12_MATERIALIZED_NAME_BYTES, MAX_X12_NODES, MAX_X12_PROJECTED_SCALAR_BYTES,
-    MAX_X12_SEGMENTS, X12BoundaryError, parse_x12, parse_x12_bytes, serialize_x12,
-    serialize_x12_bytes,
+    MAX_X12_SEGMENTS, X12BoundaryError, parse_x12, parse_x12_bytes,
+    serialize_mapforce_x12_document, serialize_x12, serialize_x12_bytes,
 };
 pub use xml::{MAX_EMBEDDED_XML_SCHEMA_BYTES, MAX_SERIALIZED_XML_BYTES, serialize_xml};
 pub use xml_boundary::{

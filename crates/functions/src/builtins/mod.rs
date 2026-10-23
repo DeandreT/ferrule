@@ -29,6 +29,7 @@ pub(super) fn call_builtin(
         BuiltinId::IsEmpty => unary_string_predicate(args, "is_empty", str::is_empty),
         BuiltinId::Trim => unary_string(args, "trim", |s| s.trim().to_string()),
         BuiltinId::Left => edge_chars(args, "left", true),
+        BuiltinId::LeftUtf16Lossy => edge_chars(args, "left_utf16_lossy", true),
         BuiltinId::Right => edge_chars(args, "right", false),
         BuiltinId::LeftTrim => unary_string(args, "left_trim", |s| {
             s.trim_start_matches([' ', '\t', '\r', '\n']).to_string()
@@ -573,6 +574,13 @@ fn edge_chars(args: &[Value], name: &'static str, left: bool) -> Result<Value, F
     };
     if count <= 0 {
         return Ok(Value::String(String::new()));
+    }
+
+    if name == "left_utf16_lossy" {
+        let count = usize::try_from(count).unwrap_or(usize::MAX);
+        return Ok(Value::String(String::from_utf16_lossy(
+            &value.encode_utf16().take(count).collect::<Vec<_>>(),
+        )));
     }
 
     let length = value.chars().count();

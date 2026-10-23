@@ -602,6 +602,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "Runtime/Json/FerruleJson.cs",
         "Runtime/Json/FerruleJsonSourceDocument.cs",
         "Runtime/Json/FerruleJsonSourceOccurrence.cs",
+        "Runtime/Json/FerruleJsonSourceProjection.cs",
         "Runtime/ScalarPathResolver.cs",
         "Runtime/ScopeContext.CollectionFind.cs",
         "Runtime/ScopeContext.cs",

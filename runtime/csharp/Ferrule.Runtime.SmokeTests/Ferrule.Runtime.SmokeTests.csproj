@@ -15,6 +15,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Include="../../../conformance/mapforce-edi-scalars.json" Link="mapforce-edi-scalars.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../../conformance/json5-writer/cases.json" Link="json5-writer-cases.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../../conformance/json5-writer/typed-schema.json" Link="json5-typed-schema.json" CopyToOutputDirectory="PreserveNewest" />
     <Compile Remove="BasicOwnershipGroupStartingWithTests.cs" />
