@@ -24,7 +24,7 @@ const UPDATE: &str = "FERRULE_UPDATE_CSHARP_COMPOSITION";
 /// generated node declarations that emitted C# is composed from.
 const MARKERS: &str = "public static class GeneratedMapping\n{\n    <Compile Include=\"GeneratedMapping.cs\" />\n\n    private static global::Ferrule.Runtime.FerruleValue Node_1(\n    private static global::Ferrule.Runtime.FerruleValue UserFunction_1_Node_\n}\n";
 
-const PROFILES: [(&str, GenerateProfile); 9] = [
+pub(super) const PROFILES: [(&str, GenerateProfile); 9] = [
     ("ordinary", GenerateProfile::Ordinary),
     ("csv_output", GenerateProfile::CsvOutput),
     ("csv_document", GenerateProfile::CsvDocument),
@@ -388,7 +388,7 @@ fn x12_project(source_path: &str, target_path: &str) -> Project {
 
 /// Saved-project subjects: authored in-memory fixtures and every tracked
 /// project file of the generation tests, the codegen boundaries and examples.
-fn saved_subjects() -> TestResult<Vec<(String, Project)>> {
+pub(super) fn saved_subjects() -> TestResult<Vec<(String, Project)>> {
     let mut subjects = Vec::new();
     let csv_options = [
         ("default", FormatOptions::default()),

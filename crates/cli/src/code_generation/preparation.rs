@@ -10,7 +10,7 @@ use std::path::Path;
 use anyhow::{Context, bail};
 use codegen::{ArtifactSet, X12EnvelopeProfile};
 
-use super::{GenerateTarget, csv_json, csv_x12, static_documents, x12};
+use super::{GenerateSettings, GenerateTarget, csv_json, csv_x12, static_documents, x12};
 use crate::route_capability::{HostRoute, PlannedPublication, RoutePlan, RouteRefusal};
 use crate::{extension_for_dispatch, load_project, validate_tabular_fallback};
 
@@ -79,19 +79,34 @@ struct PreparedDesign {
     policy: ProfilePolicy,
 }
 
+/// The package name of generated Rust libraries unless a request names one.
+const DEFAULT_RUST_PACKAGE_NAME: &str = "ferrule-generated-mapping";
+
 /// The backend a prepared design is emitted for.
 enum Backend {
     Rust { runtime_dependency: String },
     CSharp,
 }
 
-fn require_backend(target: &GenerateTarget, profile: GenerateProfile) -> anyhow::Result<()> {
+fn require_backend(
+    target: &GenerateTarget,
+    profile: GenerateProfile,
+    settings: &GenerateSettings,
+) -> anyhow::Result<()> {
     if let Some(message) = profile.csharp_requirement()
         && *target != GenerateTarget::CSharp
     {
         bail!("{message}");
     }
-    Ok(())
+    match target {
+        GenerateTarget::Rust { .. } if settings.csharp_identity.is_some() => {
+            bail!("a generated C# identity applies only to the C# backend")
+        }
+        GenerateTarget::CSharp if settings.rust_package_name.is_some() => {
+            bail!("a generated Rust package name applies only to the Rust backend")
+        }
+        _ => Ok(()),
+    }
 }
 
 fn lower(project: &mapping::Project) -> anyhow::Result<codegen::Program> {
@@ -228,37 +243,53 @@ fn resolve_runtime_path(runtime_path: &Path) -> anyhow::Result<String> {
         .to_owned())
 }
 
-fn resolve_backend(target: &GenerateTarget) -> anyhow::Result<Backend> {
+/// Resolves the backend. A Rust runtime bound by a compatibility manifest
+/// must have the runtime identity this generator emits code for.
+fn resolve_backend(
+    target: &GenerateTarget,
+    settings: &GenerateSettings,
+) -> anyhow::Result<Backend> {
     Ok(match target {
-        GenerateTarget::Rust { runtime_path } => Backend::Rust {
-            runtime_dependency: resolve_runtime_path(runtime_path)?,
-        },
+        GenerateTarget::Rust { runtime_path } => {
+            let runtime_dependency = resolve_runtime_path(runtime_path)?;
+            if settings.manifest == codegen::ManifestSelection::Included {
+                codegen_rust::verify_runtime_path(Path::new(&runtime_dependency))?;
+            }
+            Backend::Rust { runtime_dependency }
+        }
         GenerateTarget::CSharp => Backend::CSharp,
     })
 }
 
-fn emit(design: &PreparedDesign, backend: &Backend) -> anyhow::Result<ArtifactSet> {
+fn emit(
+    design: &PreparedDesign,
+    backend: &Backend,
+    settings: &GenerateSettings,
+) -> anyhow::Result<ArtifactSet> {
     let program = &design.program;
     Ok(match backend {
         Backend::Rust { runtime_dependency } => {
             let options = codegen_rust::Options {
-                package_name: "ferrule-generated-mapping".to_string(),
+                package_name: settings
+                    .rust_package_name
+                    .as_ref()
+                    .map_or(DEFAULT_RUST_PACKAGE_NAME, codegen_rust::PackageName::as_str)
+                    .to_string(),
                 runtime_dependency: codegen_rust::RuntimeDependency::Path(
                     runtime_dependency.clone(),
                 ),
             };
+            let generator = codegen_rust::Generator::new(&options).with_manifest(settings.manifest);
             match &design.policy {
                 ProfilePolicy::CsvDocument(policy) => {
-                    codegen_rust::emit_with_csv_document_adapters(program, &options, policy)?
+                    generator.emit_with_csv_document_adapters(program, policy)?
                 }
-                ProfilePolicy::X12(policy) => {
-                    codegen_rust::emit_with_x12(program, &options, policy)?
-                }
-                ProfilePolicy::Json5 => codegen_rust::emit_with_json5(program, &options)?,
+                ProfilePolicy::X12(policy) => generator.emit_with_x12(program, policy)?,
+                ProfilePolicy::Json5 => generator.emit_with_json5(program)?,
                 ProfilePolicy::CsvOutput(policy) => {
-                    codegen_rust::emit_with_csv_output(program, &options, policy)?
+                    generator.emit_with_csv_output(program, policy)?
                 }
-                ProfilePolicy::Ordinary => codegen_rust::emit(program, &options)?,
+                ProfilePolicy::Ordinary => generator.emit(program)?,
                 ProfilePolicy::StaticDocuments(_)
                 | ProfilePolicy::CsvX12(_)
                 | ProfilePolicy::CsvJson(_) => {
@@ -267,26 +298,33 @@ fn emit(design: &PreparedDesign, backend: &Backend) -> anyhow::Result<ArtifactSe
                 }
             }
         }
-        Backend::CSharp => match &design.policy {
-            ProfilePolicy::CsvDocument(policy) => {
-                codegen_csharp::emit_with_csv_document_adapters(program, policy)?
+        Backend::CSharp => {
+            let options = codegen_csharp::Options {
+                identity: settings.csharp_identity.clone().unwrap_or_default(),
+                manifest: settings.manifest,
+            };
+            let generator = codegen_csharp::Generator::new(&options);
+            match &design.policy {
+                ProfilePolicy::CsvDocument(policy) => {
+                    generator.emit_with_csv_document_adapters(program, policy)?
+                }
+                ProfilePolicy::CsvJson(policy) => {
+                    generator.emit_with_csv_json_adapters(program, policy)?
+                }
+                ProfilePolicy::CsvX12(policy) => {
+                    generator.emit_with_csv_x12_adapters(program, policy)?
+                }
+                ProfilePolicy::StaticDocuments(policy) => {
+                    generator.emit_with_static_document_adapters(program, policy)?
+                }
+                ProfilePolicy::X12(policy) => generator.emit_with_x12(program, policy)?,
+                ProfilePolicy::Json5 => generator.emit_with_json5(program)?,
+                ProfilePolicy::CsvOutput(policy) => {
+                    generator.emit_with_csv_output(program, policy)?
+                }
+                ProfilePolicy::Ordinary => generator.emit(program)?,
             }
-            ProfilePolicy::CsvJson(policy) => {
-                codegen_csharp::emit_with_csv_json_adapters(program, policy)?
-            }
-            ProfilePolicy::CsvX12(policy) => {
-                codegen_csharp::emit_with_csv_x12_adapters(program, policy)?
-            }
-            ProfilePolicy::StaticDocuments(policy) => {
-                codegen_csharp::emit_with_static_document_adapters(program, policy)?
-            }
-            ProfilePolicy::X12(policy) => codegen_csharp::emit_with_x12(program, policy)?,
-            ProfilePolicy::Json5 => codegen_csharp::emit_with_json5(program)?,
-            ProfilePolicy::CsvOutput(policy) => {
-                codegen_csharp::emit_with_csv_output(program, policy)?
-            }
-            ProfilePolicy::Ordinary => codegen_csharp::emit(program)?,
-        },
+        }
     })
 }
 
@@ -296,11 +334,12 @@ pub(super) fn generate_artifacts(
     project_path: &Path,
     target: &GenerateTarget,
     profile: GenerateProfile,
+    settings: &GenerateSettings,
 ) -> anyhow::Result<ArtifactSet> {
-    require_backend(target, profile)?;
+    require_backend(target, profile, settings)?;
     let project = load_project(project_path)?;
     let design = prepare_design(&project, profile)?;
-    emit(&design, &resolve_backend(target)?)
+    emit(&design, &resolve_backend(target, settings)?, settings)
 }
 
 /// Admits one generation of an in-memory design without reading or writing
@@ -313,7 +352,8 @@ pub fn check_generate_project(
     target: &GenerateTarget,
     profile: GenerateProfile,
 ) -> anyhow::Result<()> {
-    require_backend(target, profile)?;
+    let settings = GenerateSettings::default();
+    require_backend(target, profile, &settings)?;
     let design = prepare_design(project, profile)?;
     let backend = match target {
         GenerateTarget::Rust { runtime_path } => Backend::Rust {
@@ -324,7 +364,7 @@ pub fn check_generate_project(
         },
         GenerateTarget::CSharp => Backend::CSharp,
     };
-    emit(&design, &backend).map(drop)
+    emit(&design, &backend, &settings).map(drop)
 }
 
 /// Reports what generating an in-memory design at `project_path` reads and
@@ -338,9 +378,10 @@ pub fn plan_generate_project(
     target: &GenerateTarget,
     profile: GenerateProfile,
 ) -> anyhow::Result<RoutePlan> {
-    require_backend(target, profile)?;
+    let settings = GenerateSettings::default();
+    require_backend(target, profile, &settings)?;
     let design = prepare_design(project, profile)?;
-    emit(&design, &resolve_backend(target)?)?;
+    emit(&design, &resolve_backend(target, &settings)?, &settings)?;
     reject_existing_output(output_directory)?;
     let mut plan = RoutePlan::new(HostRoute::Generate, project_path);
     plan.publish(PlannedPublication::GeneratedTree(
@@ -356,7 +397,7 @@ pub fn plan_generate(
     target: &GenerateTarget,
     profile: GenerateProfile,
 ) -> anyhow::Result<RoutePlan> {
-    require_backend(target, profile)?;
+    require_backend(target, profile, &GenerateSettings::default())?;
     let project = load_project(project_path)?;
     plan_generate_project(&project, project_path, output_directory, target, profile)
 }
