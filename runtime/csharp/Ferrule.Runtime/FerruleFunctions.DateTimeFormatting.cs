@@ -47,13 +47,20 @@ public static partial class FerruleFunctions
     private static FerruleValue FormatDateTime(IReadOnlyList<FerruleValue> arguments) =>
         FormatDateTimePictureValue(arguments, "format_datetime", DateTimePictureInput.DateTime);
 
+    private static FerruleValue FormatDateTimeMilliseconds(IReadOnlyList<FerruleValue> arguments)
+    {
+        if (arguments.Count != 2) throw Arity("format_datetime_milliseconds", 2, arguments.Count);
+        return FormatDateTimePictureValue(arguments, "format_datetime_milliseconds", DateTimePictureInput.DateTime, true);
+    }
+
     private static FerruleValue FormatTime(IReadOnlyList<FerruleValue> arguments) =>
         FormatDateTimePictureValue(arguments, "format_time", DateTimePictureInput.Time);
 
     private static FerruleValue FormatDateTimePictureValue(
         IReadOnlyList<FerruleValue> arguments,
         string function,
-        DateTimePictureInput input)
+        DateTimePictureInput input,
+        bool milliseconds = false)
     {
         var (value, picture) = FormatDateTimePictureArguments(arguments, function);
         FormattableDateTimePicture fields;
@@ -90,6 +97,7 @@ public static partial class FerruleFunctions
             SetDateTimePictureTime(fields, value, function);
         }
 
+        if (milliseconds) fields.Fraction = (fields.Fraction ?? string.Empty).PadRight(3, '0')[..3];
         return FerruleValue.FromString(RenderDateTimePicture(fields, picture, function));
     }
 
