@@ -190,7 +190,15 @@ public static partial class FerruleFunctions
         }
         else
         {
-            return null;
+            long maximum = component.MaximumWidth;
+            foreach (var part in following)
+            {
+                if (part is not DateTimePictureComponent next) return null;
+                maximum += next.FixedWidth ?? next.MaximumWidth;
+                if (maximum > int.MaxValue) return null;
+            }
+            if (DateTimePictureRuneCount(value) != maximum) return null;
+            width = component.MaximumWidth;
         }
         return width >= component.MinimumWidth && width <= component.MaximumWidth
             ? width

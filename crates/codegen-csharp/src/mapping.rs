@@ -1677,6 +1677,7 @@ pub(crate) const fn aggregate_function_name(function: AggregateFunction) -> &'st
         AggregateFunction::DecimalSum => "DecimalSum",
         AggregateFunction::LastPresentText => "LastPresentText",
         AggregateFunction::LastDistinctText => "LastDistinctText",
+        AggregateFunction::FirstNonemptyText => "FirstNonemptyText",
         AggregateFunction::Avg => "Avg",
         AggregateFunction::Min => "Min",
         AggregateFunction::Max => "Max",

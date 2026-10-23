@@ -15,6 +15,7 @@ public enum FerruleAggregateOperation
     DecimalSum,
     LastPresentText,
     LastDistinctText,
+    FirstNonemptyText,
 }
 
 /// <summary>Applies one scalar reduction over an already-evaluated item sequence.</summary>
@@ -45,7 +46,7 @@ public static class FerruleAggregates
         return operation switch
         {
             FerruleAggregateOperation.DecimalSum => DecimalSum(values, argument),
-            FerruleAggregateOperation.LastPresentText or FerruleAggregateOperation.LastDistinctText =>
+            FerruleAggregateOperation.LastPresentText or FerruleAggregateOperation.LastDistinctText or FerruleAggregateOperation.FirstNonemptyText =>
                 SelectText(operation, values, argument),
             FerruleAggregateOperation.Count => FerruleValue.FromInt64(values.Count),
             FerruleAggregateOperation.Sum => Sum(values),
@@ -63,8 +64,8 @@ public static class FerruleAggregates
         IReadOnlyList<FerruleValue> values,
         FerruleValue? argument)
     {
-        var function = operation == FerruleAggregateOperation.LastPresentText
-            ? "last_present_text" : "last_distinct_text";
+        var function = operation == FerruleAggregateOperation.FirstNonemptyText ? "first_nonempty_text" :
+            operation == FerruleAggregateOperation.LastPresentText ? "last_present_text" : "last_distinct_text";
         if (argument.HasValue)
             throw new FerruleRuntimeException(FerruleRuntimeError.FunctionInvalidArgument,
                 $"`{function}` does not accept an argument.", function: function);
@@ -79,7 +80,12 @@ public static class FerruleAggregates
                 throw new FerruleRuntimeException(FerruleRuntimeError.AggregateUnsupportedScalar,
                     $"{operation} aggregate cannot accept a {value.Kind} value.",
                     foundKind: value.Kind, aggregateOperation: operation);
-            if (!distinct || seen.Add(value.StringValue))
+            if (operation == FerruleAggregateOperation.FirstNonemptyText)
+            {
+                if (selected.Kind == FerruleValueKind.Null && value.StringValue.Length != 0)
+                    selected = value;
+            }
+            else if (!distinct || seen.Add(value.StringValue))
                 selected = value;
         }
         return selected;

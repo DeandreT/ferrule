@@ -802,6 +802,9 @@ pub enum AggregateOp {
     LastPresentText,
     /// Final first-seen distinct string, with exact ordinal string identity.
     LastDistinctText,
+    /// First nonempty String after evaluating every candidate in source order.
+    /// Missing values and empty strings do not select; whitespace remains data.
+    FirstNonemptyText,
 }
 
 /// The mapping graph for one project: every node that can be wired into a

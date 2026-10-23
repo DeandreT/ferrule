@@ -47,6 +47,7 @@ mod group_projection;
 mod instance_path;
 mod iteration;
 mod join;
+mod json_edi_document;
 mod json_parser;
 mod json_parser_object;
 mod json_serializer;
@@ -83,6 +84,7 @@ pub use csv_document::{
     import_csv_document_with_options, import_csv_json_document_with_options,
     import_grouped_csv_document, import_grouped_csv_document_with_options,
 };
+pub use json_edi_document::{ImportedJsonEdiDocument, import_json_edi_document_with_options};
 pub use json_source_projection::{
     ImportedJsonSourceProjection, import_json_source_projection_with_options,
 };

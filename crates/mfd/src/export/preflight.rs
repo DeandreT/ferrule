@@ -224,17 +224,20 @@ pub(super) fn validate_text_selection_operations(project: &Project) -> Result<()
                 mapping::Node::DistinctTextMapLast { .. }
                     | mapping::Node::Aggregate {
                         function: mapping::AggregateOp::LastPresentText
-                            | mapping::AggregateOp::LastDistinctText,
+                            | mapping::AggregateOp::LastDistinctText
+                            | mapping::AggregateOp::FirstNonemptyText,
                         ..
                     }
                     | mapping::Node::SequenceAggregate {
                         function: mapping::AggregateOp::LastPresentText
-                            | mapping::AggregateOp::LastDistinctText,
+                            | mapping::AggregateOp::LastDistinctText
+                            | mapping::AggregateOp::FirstNonemptyText,
                         ..
                     }
                     | mapping::Node::JoinAggregate {
                         function: mapping::AggregateOp::LastPresentText
-                            | mapping::AggregateOp::LastDistinctText,
+                            | mapping::AggregateOp::LastDistinctText
+                            | mapping::AggregateOp::FirstNonemptyText,
                         ..
                     }
             ) {

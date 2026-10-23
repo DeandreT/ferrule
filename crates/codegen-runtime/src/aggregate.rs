@@ -13,6 +13,7 @@ pub enum AggregateFunction {
     DecimalSum,
     LastPresentText,
     LastDistinctText,
+    FirstNonemptyText,
 }
 
 /// Append an ordinary aggregate operand, or advance a decimal fold immediately.
@@ -41,10 +42,14 @@ pub fn aggregate(
     arg: Option<Value>,
 ) -> Result<Value, RuntimeError> {
     match function {
-        AggregateFunction::LastPresentText | AggregateFunction::LastDistinctText => {
+        AggregateFunction::LastPresentText
+        | AggregateFunction::LastDistinctText
+        | AggregateFunction::FirstNonemptyText => {
             if arg.is_some() {
                 return Err(crate::FunctionError::InvalidArgument {
-                    function: if function == AggregateFunction::LastPresentText {
+                    function: if function == AggregateFunction::FirstNonemptyText {
+                        "first_nonempty_text"
+                    } else if function == AggregateFunction::LastPresentText {
                         "last_present_text"
                     } else {
                         "last_distinct_text"
@@ -66,7 +71,11 @@ pub fn aggregate(
                         found: value.type_name(),
                     });
                 };
-                if !distinct || seen.insert(text.as_str()) {
+                if function == AggregateFunction::FirstNonemptyText {
+                    if selected.is_none() && !text.is_empty() {
+                        selected = Some(text.clone());
+                    }
+                } else if !distinct || seen.insert(text.as_str()) {
                     selected = Some(text.clone());
                 }
             }
