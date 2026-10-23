@@ -185,7 +185,7 @@ fn retain_command(root: &Path, label: &str, command: &mut Command) -> std::proce
 
 #[test]
 #[ignore = "explicit package-free C# JSON5 cohort; root runs serial after source admission"]
-fn generated_json5_all_four_routes_match17_literals_and6_mapping_context_cases() {
+fn generated_json5_all_four_routes_match18_literals_and6_mapping_context_cases() {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
         "ferrule_json5_cohort_{}_{}_{}",

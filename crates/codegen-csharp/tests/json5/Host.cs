@@ -136,8 +136,8 @@ foreach (var fixture in cases.RootElement.GetProperty("fixtures").EnumerateArray
     }
     finally { loading.Unload(); }
 }
-File.WriteAllText(Path.Combine(root, "COMPLETE_CALL_COUNT.json"), JsonSerializer.Serialize(new { total, expected = 92, argumentControls, expectedArgumentControls = 6 }) + "\n");
-Check(total == 92, "incomplete public cohort");
+File.WriteAllText(Path.Combine(root, "COMPLETE_CALL_COUNT.json"), JsonSerializer.Serialize(new { total, expected = 96, argumentControls, expectedArgumentControls = 6 }) + "\n");
+Check(total == 96, "incomplete public cohort");
 Check(argumentControls == 6, "incomplete C#-only argument controls");
 
 static object? Property(object value, string name) => value.GetType().GetProperty(name)?.GetValue(value);
