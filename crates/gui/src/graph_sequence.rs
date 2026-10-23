@@ -20,10 +20,6 @@ pub(super) fn inputs_are_read_only(node: &Node) -> bool {
     )
 }
 
-pub(super) fn input_at(sequence: &SequenceExpr, index: usize) -> Option<NodeId> {
-    sequence.inputs().get(index).copied()
-}
-
 pub(super) fn set_input(sequence: &mut SequenceExpr, index: usize, node: NodeId) {
     match sequence {
         SequenceExpr::FilterMapV1(value) => {

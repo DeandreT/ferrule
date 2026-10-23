@@ -1185,80 +1185,15 @@ impl GraphViewer<'_> {
         Ok(())
     }
 
+    /// The node wired to input pin `idx`. Pins follow the node's evaluated
+    /// inputs, in the order the canvas draws them.
     fn input_at(&self, node_id: NodeId, idx: usize) -> Option<NodeId> {
-        match self.graph.nodes.get(&node_id)? {
-            Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.get(idx).copied(),
-            Node::Raise { message } => (idx == 0).then_some(*message).flatten(),
-            Node::RuntimeParameterDefault { default, .. } => (idx == 0).then_some(*default),
-            Node::If {
-                condition,
-                then,
-                else_,
-            } => [*condition, *then, *else_].get(idx).copied(),
-            Node::ValueMap { input, .. } => (idx == 0).then_some(*input),
-            Node::Lookup { matches, .. } => (idx == 0).then_some(*matches),
-            Node::OwnedLookup(lookup) => (idx == 0).then_some(lookup.matches),
-            Node::OwnedJoinField(_) | Node::OwnedJoinSourcePosition(_) => None,
-            Node::OwnedCollectionFind(find) => [find.predicate, find.value].get(idx).copied(),
-            Node::OwnedAggregate(aggregate) => aggregate.inputs().get(idx).copied(),
-            Node::OwnedJoinAggregate(aggregate) => aggregate.inputs().get(idx).copied(),
-            Node::DynamicSourceField { key, .. } => (idx == 0).then_some(*key),
-            Node::OwnedDynamicSourceField(field) => (idx == 0).then_some(field.key),
-            Node::XmlMixedContent { replacements, .. } => replacements
-                .get(idx)
-                .map(|replacement| replacement.expression),
-            Node::OwnedXmlMixedContent(mixed) => mixed
-                .replacements
-                .get(idx)
-                .map(|replacement| replacement.expression),
-            Node::CollectionFind {
-                predicate, value, ..
-            } => [*predicate, *value].get(idx).copied(),
-            Node::SequenceExists {
-                sequence,
-                predicate,
-            } => graph_sequence::input_at(sequence, idx)
-                .or_else(|| (idx == sequence.inputs().len()).then_some(*predicate)),
-            Node::SequenceItemAt { sequence, index } => graph_sequence::input_at(sequence, idx)
-                .or_else(|| (idx == sequence.inputs().len()).then_some(*index)),
-            Node::SequenceAggregate {
-                sequence,
-                predicate,
-                expression,
-                arg,
-                ..
-            } => graph_sequence::input_at(sequence, idx).or_else(|| {
-                predicate
-                    .iter()
-                    .chain(expression)
-                    .chain(arg)
-                    .nth(idx.saturating_sub(sequence.inputs().len()))
-                    .copied()
-            }),
-            Node::Aggregate {
-                expression, arg, ..
-            }
-            | Node::JoinAggregate {
-                expression, arg, ..
-            } => expression.iter().chain(arg).nth(idx).copied(),
-            Node::OwnedSourceField(_)
-            | Node::OwnedPosition(_)
-            | Node::OwnedRowDocumentPath(_)
-            | Node::OwnedXmlSerialize(_)
-            | Node::SourceField { .. }
-            | Node::SourceDocumentPath
-            | Node::SourceRootXmlTypeEquals { .. }
-            | Node::SourceRootField { .. }
-            | Node::Position { .. }
-            | Node::JoinField { .. }
-            | Node::JoinPosition { .. }
-            | Node::Unconnected
-            | Node::Const { .. }
-            | Node::FunctionParameter { .. }
-            | Node::RuntimeValue { .. }
-            | Node::RuntimeParameter { .. }
-            | Node::XmlSerialize { .. } => None,
-        }
+        self.graph
+            .nodes
+            .get(&node_id)?
+            .evaluated_inputs()
+            .get(idx)
+            .copied()
     }
 
     fn scope_for_chain<'s>(scope: &'s mut Scope, chain: &[String]) -> Option<&'s mut Scope> {
