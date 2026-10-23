@@ -234,6 +234,7 @@ pub(in crate::export) fn selector_context_warnings(
                 }
                 Node::SourceField { .. }
                 | Node::SourceDocumentPath
+                | Node::SourceRowDocumentPath { .. }
                 | Node::SourceRootXmlTypeEquals { .. }
                 | Node::SourceRootField { .. }
                 | Node::JoinField { .. }

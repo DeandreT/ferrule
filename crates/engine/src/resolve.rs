@@ -187,6 +187,23 @@ pub(crate) fn source_document_path<'a>(
         })
 }
 
+pub(crate) fn source_row_path<'a>(
+    context: &[&'a Instance],
+    positions: &[PositionFrame],
+    collection: &[String],
+) -> Result<&'a str, ir::SourceRowPathError> {
+    let index = positions
+        .iter()
+        .rposition(|position| position.collection == collection)
+        .ok_or(ir::SourceRowPathError::InactiveFrame)?;
+    let row = context_for_position(context, positions, index)
+        .ok_or(ir::SourceRowPathError::InactiveFrame)?;
+    if positions[index].grouped {
+        return Err(ir::SourceRowPathError::GroupedFrame);
+    }
+    ir::source_row_document_path(row)
+}
+
 pub(crate) fn dynamic_scalar(
     context: &[&Instance],
     positions: &[PositionFrame],

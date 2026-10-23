@@ -425,6 +425,13 @@ pub enum EngineError {
     UserFunctionDepth { limit: usize },
     #[error("no source field found at path `{0}`")]
     MissingSourceField(String),
+    #[error("node {node}: source row path for {collection:?}: {source}")]
+    SourceRowDocumentPath {
+        node: NodeId,
+        collection: Vec<String>,
+        #[source]
+        source: ir::SourceRowPathError,
+    },
     #[error("primary-root node {node}: {source}")]
     PrimaryRoot {
         node: NodeId,

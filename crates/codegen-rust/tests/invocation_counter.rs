@@ -345,6 +345,22 @@ fn generated_json5_documents_preserve_decimal_origins_and_clocks() -> Result<(),
 }
 
 #[test]
+fn generated_source_row_paths_keep_physical_ownership() -> Result<(), Box<dyn Error>> {
+    for named in [false, true] {
+        run_fixture_with_document(
+            json5_documents::with_row_paths(json5_documents::project(named)),
+            "json5_documents",
+            include_str!("../../../conformance/mapforce-json5-documents/RowPathHost.rs.txt"),
+            "PASS source row paths",
+            Some((named.then_some("selected"), true)),
+            true,
+            Some(90),
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
 fn owned_emitters_refuse_reachable_and_unused_counters() {
     let emitters = [
         codegen_rust::emit_with_basic_owned_sources,

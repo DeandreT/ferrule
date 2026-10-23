@@ -110,8 +110,8 @@ pub use invocation_counter::{invocation_counter_integer, invocation_counter_rest
 pub use ir::SchemaNode;
 pub use ir::{
     DocumentMember, Instance, InstanceGroup, MAX_SOURCE_ORIGIN_PATH_BYTES, PrimaryRootError,
-    ScalarType, SourceDocumentOrigin, SourceOriginError, SourceRowOrigin, Value, XmlTypeOrigin,
-    XmlTypeOriginError,
+    ScalarType, SourceDocumentOrigin, SourceOriginError, SourceRowOrigin, SourceRowPathError,
+    Value, XmlTypeOrigin, XmlTypeOriginError,
 };
 pub use iteration::{
     SequenceWindow, SortDirection, apply_sequence_windows, item_count, positive_block_size,
@@ -237,6 +237,11 @@ pub enum RuntimeError {
         found: usize,
     },
     SourcePath(SourcePathError),
+    SourceRowDocumentPath {
+        node: u32,
+        collection: Vec<String>,
+        source: ir::SourceRowPathError,
+    },
     OwnedSource(OwnedSourceError),
     BasicSourceBridge(BasicSourceBridgeError),
     /// An owned source failure reached by one public generated expression.
@@ -513,6 +518,14 @@ impl fmt::Display for RuntimeError {
                 "user function {function} expected {expected} arguments, found {found}"
             ),
             Self::SourcePath(error) => error.fmt(formatter),
+            Self::SourceRowDocumentPath {
+                node,
+                collection,
+                source,
+            } => write!(
+                formatter,
+                "node {node}: source row path for {collection:?}: {source}"
+            ),
             Self::OwnedSource(error) => error.fmt(formatter),
             Self::BasicSourceBridge(error) => error.fmt(formatter),
             Self::OwnedSourceAtNode { node, source } => write!(formatter, "node {node}: {source}"),
@@ -798,6 +811,7 @@ impl std::error::Error for RuntimeError {
             Self::DistinctTextMapKind { .. } | Self::DistinctTextMapLimit { .. } => None,
             Self::FilterMapRuntime { source, .. } => Some(source.as_ref()),
             Self::SourcePath(error) => Some(error),
+            Self::SourceRowDocumentPath { source, .. } => Some(source),
             Self::OwnedSource(error) => Some(error),
             Self::BasicSourceBridge(error) => Some(error),
             Self::OwnedSourceAtNode { source, .. } => Some(source),

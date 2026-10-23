@@ -211,6 +211,26 @@ public sealed partial class ScopeContext
             detail: "<document-path>");
     }
 
+    /// <summary>Read only the exact active row frame; no outward or first-row fallback.</summary>
+    public FerruleValue ResolveSourceRowDocumentPath(uint node, IReadOnlyList<string> path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ValidatePath(path);
+        FerruleSourceRowPathError failure = FerruleSourceRowPathError.InactiveFrame;
+        for (int index = _collections.Count - 1; index >= 0; index--)
+        {
+            var collection = _collections[index];
+            if (!collection.Path.SequenceEqual(path, StringComparer.Ordinal)) continue;
+            if (collection.Grouped || collection.Item is FerruleRepeated) failure = FerruleSourceRowPathError.GroupedFrame;
+            else if (collection.Item is FerruleGroup { SourceOrigin: { } origin })
+                return FerruleValue.FromString(origin.Document.SourcePath);
+            else failure = FerruleSourceRowPathError.MissingOrigin;
+            break;
+        }
+        var cause = new FerruleSourceRowPathException(failure, path);
+        throw new FerruleRuntimeException(FerruleRuntimeError.SourceRowDocumentPath, cause.Message, cause, node: node);
+    }
+
     /// <summary>
     /// Reads one runtime-named scalar field from an open source object.
     /// Missing objects/properties, structural values, inactive frames, and

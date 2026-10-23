@@ -136,6 +136,25 @@ fn distinct_text_map_keeps_one_expression_pin_and_stages_path_edits() {
     assert_eq!(viewer.graph.nodes.len(), 3);
 }
 
+#[test]
+fn source_row_document_path_is_a_read_only_leaf_without_phantom_inputs() {
+    let mut fx = fixture();
+    fx.graph.nodes.insert(
+        0,
+        Node::SourceRowDocumentPath {
+            collection: vec!["Rows".into(), " Exact ".into()],
+        },
+    );
+    let before = serde_json::to_vec(&fx.graph.nodes[&0]).unwrap();
+    assert!(graph_node_presentation::has_properties(&fx.graph.nodes[&0]));
+    assert_eq!(GraphViewer::input_count(&fx.graph.nodes[&0]), 0);
+    assert!(graph_references::node_inputs(&fx.graph.nodes[&0]).is_empty());
+    let mut viewer = fx.viewer();
+    assert_eq!(viewer.input_at(0, 0), None);
+    assert!(!viewer.set_input(0, 0, 999));
+    assert_eq!(serde_json::to_vec(&viewer.graph.nodes[&0]).unwrap(), before);
+}
+
 impl Fixture {
     fn viewer(&mut self) -> GraphViewer<'_> {
         GraphViewer {

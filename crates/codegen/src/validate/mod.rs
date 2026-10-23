@@ -410,6 +410,28 @@ fn validate_program_with_owned_joins(
     sources::validate_names(&program.extra_sources)?;
     let sources = SourceCatalog::new(&program.source, &program.extra_sources);
     let expressions = collect_expressions(program)?;
+    for (&node, expression) in &expressions {
+        if let Expression::SourceRowDocumentPath { collection } = expression {
+            let reason = if !program.extra_sources.is_empty() {
+                Some("requires the ordinary primary-only source profile")
+            } else if !sources
+                .path_targets(collection)
+                .into_iter()
+                .any(|cursor| matches!(cursor.node().kind, SchemaKind::Group { .. }))
+            {
+                Some("collection must identify a source group")
+            } else {
+                None
+            };
+            if let Some(reason) = reason {
+                return Err(ProgramValidationError::InvalidSourceRowPath {
+                    node,
+                    collection: collection.clone(),
+                    reason,
+                });
+            }
+        }
+    }
     validate_dependencies(&expressions)?;
     validate_cycles(&expressions)?;
     primary_root::validate(program, &expressions)?;

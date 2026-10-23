@@ -81,12 +81,14 @@ fn sequence_pin_label(sequence: &mapping::SequenceExpr, index: usize) -> String 
 /// The wired inputs a graph node has (pin order).
 fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
     match node {
+        Node::DistinctTextMapLast { expression, .. } => vec![Some(*expression)],
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
         | Node::OwnedXmlSerialize(_)
         | Node::SourceField { .. }
         | Node::SourceDocumentPath
+        | Node::SourceRowDocumentPath { .. }
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }
         | Node::Unconnected
@@ -228,6 +230,16 @@ fn node_title(node: &Node) -> String {
         ),
         Node::SourceField { path, .. } => format!("field · {}", path.join("/")),
         Node::SourceDocumentPath => "source document path".to_string(),
+        Node::DistinctTextMapLast {
+            collection, key, ..
+        } => format!(
+            "last distinct text · {} / {}",
+            collection.join("/"),
+            key.join("/")
+        ),
+        Node::SourceRowDocumentPath { collection } => {
+            format!("source row path · {}", collection.join("/"))
+        }
         Node::SourceRootXmlTypeEquals { .. } => "primary XML annotation equality".to_string(),
         Node::SourceRootField { path, required } => {
             let title = if *required {

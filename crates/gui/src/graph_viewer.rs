@@ -1276,6 +1276,7 @@ impl GraphViewer<'_> {
             | Node::OwnedXmlSerialize(_)
             | Node::SourceField { .. }
             | Node::SourceDocumentPath
+            | Node::SourceRowDocumentPath { .. }
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }
             | Node::Position { .. }
@@ -1491,6 +1492,7 @@ impl GraphViewer<'_> {
             | Node::OwnedJoinSourcePosition(_)
             | Node::SourceField { .. }
             | Node::SourceDocumentPath
+            | Node::SourceRowDocumentPath { .. }
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }
             | Node::Position { .. }
@@ -1736,6 +1738,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         compact_graph_title(&format!("Source: {owner}{}", path.join("/")))
                     }
                     Some(Node::SourceDocumentPath) => "Source document path".to_string(),
+                    Some(Node::SourceRowDocumentPath { .. }) => {
+                        "Source row document path".to_string()
+                    }
                     Some(Node::SourceRootXmlTypeEquals { .. }) => {
                         "Primary XML annotation equality".to_string()
                     }
