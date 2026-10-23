@@ -110,9 +110,7 @@ fn diagnostic_categories_hide_sample_specific_identifiers() {
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn survey_generated_backends() -> Result<(), Box<dyn Error>> {
     let samples_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLES_DIR);
-    if !survey_gate::corpus_available(&samples_dir)? {
-        return Ok(());
-    }
+    survey_gate::require_corpus(&samples_dir)?;
 
     let import_context = SurveyResourceSelection::from_environment().resolve(&samples_dir)?;
     let paths = discover_sample_paths(&samples_dir)?;

@@ -1572,9 +1572,7 @@ fn dynamic_document_paths_reject_escape_duplicates_and_ancestor_overlap() {
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
     let samples_root = Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLES_DIR);
-    if !survey_gate::corpus_available(&samples_root)? {
-        return Ok(());
-    }
+    survey_gate::require_corpus(&samples_root)?;
     let import_context = SurveyResourceSelection::from_environment().resolve(&samples_root)?;
     let paths = discover_sample_paths(&samples_root)?;
 

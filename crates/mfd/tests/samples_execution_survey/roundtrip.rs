@@ -420,9 +420,7 @@ fn print_drifts(outcomes: &[RoundtripOutcome]) {
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn survey_export_reimport_execution() -> Result<(), Box<dyn Error>> {
     let samples_root = Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLES_DIR);
-    if !super::survey_gate::corpus_available(&samples_root)? {
-        return Ok(());
-    }
+    super::survey_gate::require_corpus(&samples_root)?;
     let import_context = SurveyResourceSelection::from_environment().resolve(&samples_root)?;
     let paths = discover_sample_paths(&samples_root)?;
 
