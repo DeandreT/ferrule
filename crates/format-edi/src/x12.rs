@@ -428,6 +428,14 @@ pub fn from_str(
     from_str_with_separators(text, schema, lenient, None)
 }
 
+/// Explicit lexical source view, not the strict typed X12 boundary. This checks
+/// tokenization and schema ownership but leaves scalar/date/value validation to
+/// the mapping's reached conversions. Present empty fields are preserved.
+pub fn from_str_lexical(text: &str, schema: &SchemaNode) -> Result<Instance, EdiFormatError> {
+    let (segments, component) = tokenize_with_component_separator(text, None)?;
+    crate::segments::read_lexical_segments(schema, &segments, component)
+}
+
 /// Reads X12 using retained boundary syntax. Declared separators are checked
 /// against the ISA envelope, and the optional release character is decoded.
 pub fn read_with_separators(

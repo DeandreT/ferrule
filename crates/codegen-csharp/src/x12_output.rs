@@ -90,7 +90,11 @@ pub(crate) fn emit(
         .map_err(X12EmitError::from)
 }
 
-pub(crate) const X12_SOURCES: [(&str, &str); 8] = [
+pub(crate) const X12_SOURCES: [(&str, &str); 9] = [
+    (
+        "Runtime/X12/FerruleX12.SourceLexical.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/X12/FerruleX12.SourceLexical.cs"),
+    ),
     (
         "Runtime/X12/FerruleX12.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/X12/FerruleX12.cs"),

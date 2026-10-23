@@ -63,7 +63,7 @@ fn static_document_artifacts_preserve_ordinary_runtime_and_complete_own_descript
     evidence.artifacts("artifacts", &emitted);
     let ordinary = ordinary.unwrap();
     let emitted = emitted.unwrap();
-    assert_eq!(emitted.len(), ordinary.len() + 9);
+    assert_eq!(emitted.len(), ordinary.len() + 10);
     let extra: BTreeSet<_> = emitted
         .files()
         .iter()
@@ -77,6 +77,7 @@ fn static_document_artifacts_preserve_ordinary_runtime_and_complete_own_descript
             "Runtime/X12/FerruleX12.cs",
             "Runtime/X12/FerruleX12.Schema.cs",
             "Runtime/X12/FerruleX12.Reader.cs",
+            "Runtime/X12/FerruleX12.SourceLexical.cs",
             "Runtime/X12/FerruleX12.Numeric.cs",
             "Runtime/X12/FerruleX12.Writer.cs",
             "Runtime/X12/FerruleX12.Completion.cs",

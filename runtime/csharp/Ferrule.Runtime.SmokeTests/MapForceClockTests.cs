@@ -46,6 +46,15 @@ internal static partial class Program
         Equal(true, text.Contains("*270102*0405*", StringComparison.Ordinal));
         Equal(true, text.Contains("GS****20290304*1617*", StringComparison.Ordinal));
         Equal(true, calls.SequenceEqual(Enum.GetValues<FerruleMapForceX12ClockField>()));
+        var source = FerruleX12.ParseLexicalSourceBytes(boundary, Encoding.UTF8.GetBytes(text.Replace("20290304", "bad-date", StringComparison.Ordinal)));
+        static FerruleInstance Field(FerruleInstance value, string name) => ((FerruleGroup)value).Fields.Single(f => f.Name == name).Value;
+        var sourceInterchange = ((FerruleRepeated)Field(source, "Interchange")).Items[0];
+        var sourceGroup = ((FerruleRepeated)Field(sourceInterchange, "Group")).Items[0];
+        var sourceGs = ((FerruleRepeated)Field(sourceGroup, "GS")).Items[0];
+        Equal("", ((FerruleScalar)Field(sourceGs, "E01")).Value.StringValue);
+        Equal("bad-date", ((FerruleScalar)Field(sourceGs, "E04")).Value.StringValue);
+        Equal(FerruleValueKind.Null, ((FerruleScalar)Field(sourceGs, "E08")).Value.Kind);
+        Throws<FerruleX12Exception>(() => FerruleX12.ParseEmbedded(boundary, text.Replace("20290304", "bad-date", StringComparison.Ordinal)));
         for (int fail = 1; fail <= 4; fail++)
         {
             int count = 0;

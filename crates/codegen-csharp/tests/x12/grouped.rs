@@ -612,6 +612,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "Runtime/X12/FerruleX12.Lexical.cs",
         "Runtime/X12/FerruleX12.Numeric.cs",
         "Runtime/X12/FerruleX12.Reader.cs",
+        "Runtime/X12/FerruleX12.SourceLexical.cs",
         "Runtime/X12/FerruleX12.Schema.cs",
         "Runtime/X12/FerruleX12.Writer.cs",
         "Runtime/X12/FerruleX12.cs",
