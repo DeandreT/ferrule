@@ -997,6 +997,9 @@ fn node_label(node: &mapping::Node) -> String {
         ),
         mapping::Node::SourceField { path, .. } => format!("field {}", display_path(path)),
         mapping::Node::SourceDocumentPath => "source document path".to_string(),
+        mapping::Node::SourceRowDocumentPath { collection } => {
+            format!("source row path {}", display_path(collection))
+        }
         mapping::Node::SourceRootXmlTypeEquals { .. } => {
             "primary XML annotation equality".to_string()
         }

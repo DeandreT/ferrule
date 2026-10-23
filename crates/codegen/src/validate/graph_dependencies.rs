@@ -15,6 +15,7 @@ pub(crate) fn of(expression: &Expression) -> Vec<NodeId> {
         | Expression::SourceRootField { .. }
         | Expression::XmlSerialize { .. }
         | Expression::SourceDocumentPath
+        | Expression::SourceRowDocumentPath { .. }
         | Expression::Position { .. }
         | Expression::JoinField { .. }
         | Expression::JoinPosition { .. }

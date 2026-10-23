@@ -171,6 +171,11 @@ pub enum OwnedSourceDiagnostic {
 /// A malformed backend-neutral program that an emitter must not publish.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProgramValidationError {
+    InvalidSourceRowPath {
+        node: NodeId,
+        collection: Vec<String>,
+        reason: &'static str,
+    },
     OwnedSource {
         diagnostic: Box<OwnedSourceDiagnostic>,
     },

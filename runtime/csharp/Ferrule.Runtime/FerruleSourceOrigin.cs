@@ -2,6 +2,20 @@ using System.Text;
 
 namespace Ferrule.Runtime;
 
+public enum FerruleSourceRowPathError { InactiveFrame, GroupedFrame, MissingOrigin }
+
+public sealed class FerruleSourceRowPathException : Exception
+{
+    public FerruleSourceRowPathException(FerruleSourceRowPathError error, IReadOnlyList<string> collection)
+        : base($"Source row path for [{string.Join('/', collection)}]: {error}")
+    {
+        Error = error;
+        Collection = Array.AsReadOnly(collection.ToArray());
+    }
+    public FerruleSourceRowPathError Error { get; }
+    public IReadOnlyList<string> Collection { get; }
+}
+
 /// <summary>One reader/host-created physical source identity, not inferred from a path.</summary>
 public sealed class FerruleSourceDocumentOrigin
 {

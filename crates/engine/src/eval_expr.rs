@@ -440,6 +440,15 @@ fn eval_expr_inner(
         Node::SourceDocumentPath => source_document_path(context, positions)
             .map(|path| Value::String(path.to_string()))
             .ok_or_else(|| EngineError::MissingSourceField("<document-path>".into())),
+        Node::SourceRowDocumentPath { collection } => {
+            crate::resolve::source_row_path(context, positions, collection)
+                .map(|path| Value::String(path.into()))
+                .map_err(|source| EngineError::SourceRowDocumentPath {
+                    node: node_id,
+                    collection: collection.clone(),
+                    source,
+                })
+        }
         Node::Position { collection } => Ok(Value::Int(position(positions, collection) as i64)),
         Node::JoinField {
             join,

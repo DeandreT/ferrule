@@ -1012,6 +1012,7 @@ fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
         | Expression::SourceRootField { .. }
         | Expression::XmlSerialize { .. }
         | Expression::SourceDocumentPath
+        | Expression::SourceRowDocumentPath { .. }
         | Expression::Position { .. }
         | Expression::JoinField { .. }
         | Expression::JoinPosition { .. }
@@ -1200,7 +1201,9 @@ fn validate_private_inventory(
             Expression::SourceRootXmlTypeEquals { .. }
             | Expression::XmlSerialize { .. }
             | Expression::XmlMixedContent { .. } => Reason::XmlOperator,
-            Expression::SourceDocumentPath => Reason::Document,
+            Expression::SourceDocumentPath | Expression::SourceRowDocumentPath { .. } => {
+                Reason::Document
+            }
             Expression::DynamicSourceField { .. } => Reason::DynamicLoader,
             Expression::JoinField { .. }
             | Expression::JoinPosition { .. }

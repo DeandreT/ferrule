@@ -5,6 +5,39 @@ use std::{error::Error, fmt, sync::Arc};
 pub const MAX_SOURCE_ORIGIN_PATH_BYTES: usize = 4096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceRowPathError {
+    InactiveFrame,
+    GroupedFrame,
+    MissingOrigin,
+}
+
+impl fmt::Display for SourceRowPathError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::InactiveFrame => "the exact source collection frame is not active",
+            Self::GroupedFrame => "a grouped collection does not identify one physical source row",
+            Self::MissingOrigin => "the selected row has no physical source provenance",
+        })
+    }
+}
+impl Error for SourceRowPathError {}
+
+/// Inspect only the selected row. Equal contents, an enclosing row or a
+/// document wrapper cannot supply missing provenance.
+pub fn source_row_document_path(row: &crate::Instance) -> Result<&str, SourceRowPathError> {
+    if matches!(row, crate::Instance::Repeated(_)) {
+        return Err(SourceRowPathError::GroupedFrame);
+    }
+    let crate::Instance::Group(group) = row else {
+        return Err(SourceRowPathError::MissingOrigin);
+    };
+    group
+        .source_origin()
+        .map(|origin| origin.document().source_path())
+        .ok_or(SourceRowPathError::MissingOrigin)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceOriginError {
     Path { resolved: bool },
     ZeroPosition,

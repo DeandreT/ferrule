@@ -1,0 +1,36 @@
+use codegen_runtime::{CsvByteDecodingPolicy, CsvSourceData, ExecutionContext, Instance, RuntimeError, RuntimeParameters, SourceRowPathError, Value};
+use json5_documents::{acquire_primary_csv, serialize_mapforce_json5_document, visit_target_documents_with_clocks, DocumentVisit};
+use std::{cell::Cell, ops::ControlFlow};
+
+fn main() {
+    let mut parameters = RuntimeParameters::new();
+    parameters.insert("Input", Value::String("actual-*.csv".into())).unwrap();
+    let execution = ExecutionContext::new(std::path::Path::new("fixture.mfd")).with_parameters(&parameters);
+    let rows = acquire_primary_csv(&execution, |name| {
+        assert_eq!(name, "actual-*.csv");
+        Ok(["a.csv", "b.csv"].into_iter().map(|name| Ok::<_, String>(name.into())))
+    }, |name| Ok(CsvSourceData {
+        bytes: if name == "a.csv" { b"A,9007199254740993\n".to_vec() } else { b"B,1.25\n".to_vec() },
+        resolved_path: Some(format!(" resolved/{name} ")),
+    }), CsvByteDecodingPolicy::StrictUtf8, 2).unwrap();
+    let input = Instance::Repeated(rows.map(|row| row.unwrap().value().clone()).collect());
+    let bodies = Cell::new(0); let files = Cell::new(0);
+    let body = || { bodies.set(bodies.get()+1); Ok("B".into()) };
+    let filename = || { files.set(files.get()+1); Ok(format!("F{}-",files.get())) };
+    const EXPECTED: &str = "{\r\n\tTime: \"B\",\r\n\tLines: [\r\n\t\t{\r\n\t\t\tQty: 9007199254740993,\r\n\t\t\tPath: \" resolved/a.csv \"\r\n\t\t},\r\n\t\t{\r\n\t\t\tQty: 1.25,\r\n\t\t\tPath: \" resolved/b.csv \"\r\n\t\t}\r\n\t]\r\n}";
+    let result = visit_target_documents_with_clocks(&input,&[],Some(&execution),None,&body,&filename,|document| {
+        assert_eq!(document.path(),"F2-B");
+        assert_eq!(serialize_mapforce_json5_document(document.value()).unwrap(),EXPECTED);
+        ControlFlow::<()>::Continue(())
+    }).unwrap();
+    assert_eq!(result,DocumentVisit::Complete { accepted:1 });
+    let mut broken = input.clone();
+    let Instance::Repeated(items) = &mut broken else { unreachable!() };
+    let Instance::Group(fields) = &mut items[1] else { unreachable!() };
+    fields.push(("changed".into(),Instance::Scalar(Value::Bool(true))));
+    let error = visit_target_documents_with_clocks(&broken,&[],Some(&execution),None,&body,&filename,|_| ControlFlow::<()>::Continue(())).unwrap_err();
+    assert_eq!(error.accepted,0);
+    assert!(matches!(error.source,RuntimeError::SourceRowDocumentPath { node:4,source:SourceRowPathError::MissingOrigin,.. }));
+    assert_eq!((bodies.get(),files.get()),(2,2));
+    println!("PASS source row paths");
+}

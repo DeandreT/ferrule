@@ -1467,7 +1467,9 @@ fn node_context(node: &Node) -> OwnedCapabilityContext {
         | Node::XmlMixedContent { .. }
         | Node::SourceRootXmlTypeEquals { .. } => OwnedCapabilityContext::XmlOperator,
         Node::DynamicSourceField { .. } => OwnedCapabilityContext::DynamicTarget,
-        Node::SourceDocumentPath => OwnedCapabilityContext::Document,
+        Node::SourceDocumentPath | Node::SourceRowDocumentPath { .. } => {
+            OwnedCapabilityContext::Document
+        }
         _ => OwnedCapabilityContext::Basic,
     }
 }

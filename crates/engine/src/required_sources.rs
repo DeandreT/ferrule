@@ -208,6 +208,7 @@ impl<'a> Analysis<'a> {
                 self.inspect_path(frame.as_deref().unwrap_or(path));
             }
             Node::Position { collection }
+            | Node::SourceRowDocumentPath { collection }
             | Node::JoinField { collection, .. }
             | Node::Lookup { collection, .. }
             | Node::CollectionFind { collection, .. }

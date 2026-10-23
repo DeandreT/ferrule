@@ -89,6 +89,7 @@ fn graph_node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::OwnedXmlSerialize(_)
         | Node::SourceField { .. }
         | Node::SourceDocumentPath
+        | Node::SourceRowDocumentPath { .. }
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }
         | Node::Position { .. }

@@ -913,6 +913,7 @@ impl<'a> Analysis<'a> {
                 Expression::SourceRootXmlTypeEquals { .. }
                 | Expression::SourceRootField { .. }
                 | Expression::SourceDocumentPath
+                | Expression::SourceRowDocumentPath { .. }
                 | Expression::JoinPosition { .. }
                 | Expression::Const { .. }
                 | Expression::FunctionParameter { .. }

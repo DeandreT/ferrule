@@ -2105,6 +2105,13 @@ fn render_expression(
         Expression::SourceDocumentPath => {
             output.push_str(" =>\n        context.ResolveSourceDocumentPath();\n");
         }
+        Expression::SourceRowDocumentPath { collection } => {
+            output.push_str(&format!(
+                " =>\n        {legacy_receiver}.ResolveSourceRowDocumentPath({node}u, "
+            ));
+            render_path(collection, output);
+            output.push_str(");\n");
+        }
         Expression::Position { collection } => {
             output.push_str(&format!(
                 " =>\n        global::Ferrule.Runtime.FerruleValue.FromInt64(context.{position_reader}(",

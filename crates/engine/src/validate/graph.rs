@@ -207,6 +207,22 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
             Node::RuntimeParameter { name, .. } | Node::RuntimeParameterDefault { name, .. } => {
                 validate_runtime_parameter_name(&location, name, issues);
             }
+            Node::SourceRowDocumentPath { collection } => {
+                if !project.extra_sources.is_empty() {
+                    issues.push(ValidationIssue::new(
+                        &location,
+                        "row document paths require the ordinary primary-only source profile",
+                    ));
+                }
+                if !source_path_matches(project, collection, |schema| {
+                    matches!(schema.kind, SchemaKind::Group { .. })
+                }) {
+                    issues.push(ValidationIssue::new(
+                        &location,
+                        "row document path collection must identify a source group",
+                    ));
+                }
+            }
             Node::Position { collection } if !collection.is_empty() => {
                 validate_collection_path(project, &location, collection, "position", issues);
             }
@@ -861,6 +877,7 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
             }
         }
         Node::SourceDocumentPath
+        | Node::SourceRowDocumentPath { .. }
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }
         | Node::JoinPosition { .. }
@@ -1398,6 +1415,7 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }
         | Node::SourceDocumentPath
+        | Node::SourceRowDocumentPath { .. }
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }

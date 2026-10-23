@@ -1266,6 +1266,7 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
         | Expression::SourceRootField { .. }
         | Expression::XmlSerialize { .. }
         | Expression::SourceDocumentPath
+        | Expression::SourceRowDocumentPath { .. }
         | Expression::Position { .. }
         | Expression::JoinField { .. }
         | Expression::JoinPosition { .. }
@@ -2125,6 +2126,10 @@ fn render_expression_in_context_with_scalar_item_at(
             Expression::SourceDocumentPath => {
                 "context.source_document_path().map_err(RuntimeError::from)".into()
             }
+            Expression::SourceRowDocumentPath { collection } => format!(
+                "{legacy_context}.source_row_document_path({id}, &[{}])",
+                render_string_path(collection)
+            ),
             Expression::Position { collection } if basic => {
                 // Only actual control-free Vec-backed walks or legacy fallback1
                 // create these positions; no caller-injected phase is admitted.

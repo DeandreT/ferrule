@@ -2174,7 +2174,9 @@ fn validate_basic_owned_with_joins(
             Expression::SourceRootXmlTypeEquals { .. }
             | Expression::XmlSerialize { .. }
             | Expression::XmlMixedContent { .. } => Capability::XmlOperator,
-            Expression::SourceDocumentPath => Capability::Document,
+            Expression::SourceDocumentPath | Expression::SourceRowDocumentPath { .. } => {
+                Capability::Document
+            }
             Expression::DynamicSourceField { .. } => Capability::DynamicLoader,
             Expression::JoinField { .. } | Expression::JoinPosition { .. } => Capability::Join,
             Expression::Lookup { .. }

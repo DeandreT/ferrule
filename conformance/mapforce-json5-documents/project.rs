@@ -134,3 +134,34 @@ pub fn project(named: bool) -> Project {
     }
     project
 }
+
+#[allow(dead_code)] // Shared fixtures select this extension only for row-origin tests.
+pub fn with_row_paths(mut project: Project) -> Project {
+    project
+        .graph
+        .nodes
+        .insert(4, Node::SourceRowDocumentPath { collection: vec![] });
+    fn extend(schema: &mut SchemaNode, scope: &mut Scope) {
+        let ir::SchemaKind::Group { children, .. } = &mut schema.kind else {
+            unreachable!()
+        };
+        let ir::SchemaKind::Group { children, .. } = &mut children
+            .iter_mut()
+            .find(|child| child.name == "Lines")
+            .unwrap()
+            .kind
+        else {
+            unreachable!()
+        };
+        children.push(SchemaNode::scalar("Path", ScalarType::String));
+        scope.children[0].bindings.push(Binding {
+            target_field: "Path".into(),
+            node: 4,
+        });
+    }
+    extend(&mut project.target, &mut project.root);
+    for target in &mut project.extra_targets {
+        extend(&mut target.schema, &mut target.root);
+    }
+    project
+}
