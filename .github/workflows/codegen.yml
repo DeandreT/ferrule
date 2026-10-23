@@ -79,6 +79,24 @@ jobs:
           -p codegen-rust
           -p codegen-csharp
           -- --test-threads=${{ runner.environment == 'self-hosted' && '1' || '2' }}
+      - name: C# runtime smoke tests
+        if: matrix.suite == 'crates'
+        run: |
+          set -euo pipefail
+          artifacts="$RUNNER_TEMP/csharp-runtime-smoke"
+          mkdir -p "$artifacts"
+          dotnet build runtime/csharp/Ferrule.Runtime.SmokeTests --configuration Release \
+            --artifacts-path "$artifacts" -nodeReuse:false -p:UseSharedCompilation=false --verbosity quiet
+          status=0
+          dotnet "$artifacts/bin/Ferrule.Runtime.SmokeTests/release/Ferrule.Runtime.SmokeTests.dll" \
+            > "$artifacts/smoke.log" 2>&1 || status=$?
+          # The suite prints every raw observation; keep the job log bounded.
+          if (( status == 0 )); then
+            tail -n 1 "$artifacts/smoke.log"
+          else
+            tail -c 65536 "$artifacts/smoke.log"
+          fi
+          exit "$status"
       - name: generated Rust and C# parity tests
         if: matrix.suite == 'mappings'
         env:

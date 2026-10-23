@@ -16,10 +16,13 @@ use super::*;
 use serde_json::{Value as Json, json};
 use std::fs;
 
-use super::basic_owned_sequence_item_at::run_native_with_input_after;
+use super::basic_owned_sequence_item_at::{codec, run_native_with_input_after};
 
 /// Bytes of host stdout/stderr quoted in one failure message.
 const FAILURE_EXCERPT: usize = 32 * 1024;
+
+/// The public lowering of one explicit generation profile.
+pub(super) type Lower = fn(&Project) -> Result<codegen::Program, codegen::LowerError>;
 
 /// The public emitters of one explicit generation profile.
 #[derive(Clone, Copy)]
@@ -29,6 +32,101 @@ pub(super) struct Emitters {
         &codegen_rust::Options,
     ) -> Result<codegen::ArtifactSet, codegen_rust::EmitError>,
     pub csharp: fn(&codegen::Program) -> Result<codegen::ArtifactSet, codegen_csharp::EmitError>,
+}
+
+/// Parse a cohort's `cases.json`, resolving each case's model name to its
+/// index in `models`, the order the generated hosts receive.
+pub(super) fn controls(cases: &str, models: &[&str]) -> TestResult<Json> {
+    let mut controls: Json = serde_json::from_str(cases)?;
+    if controls["version"] != 1 {
+        return Err("unknown cases version".into());
+    }
+    for case in controls["cases"].as_array_mut().ok_or("cases")? {
+        let model = models
+            .iter()
+            .position(|model| case["model"] == *model)
+            .ok_or_else(|| format!("{}: unknown model {}", case["id"], case["model"]))?;
+        case["model"] = json!(model);
+    }
+    Ok(controls)
+}
+
+fn recipe_round_trips(tree: &Json) -> bool {
+    codec::encode(&codec::decode(tree)) == *tree
+}
+
+/// Check the shape of resolved controls: unique case ids, lossless source,
+/// input and output recipes, and exactly one expected outcome per call.
+/// Returns the case ids in order.
+pub(super) fn check_case_recipes(controls: &Json) -> TestResult<Vec<String>> {
+    let mut ids = Vec::new();
+    for case in controls["cases"].as_array().ok_or("cases")? {
+        let id = case["id"].as_str().ok_or("case id")?.to_owned();
+        if ids.contains(&id) {
+            return Err(format!("duplicate case {id}").into());
+        }
+        if !recipe_round_trips(&case["source"]) {
+            return Err(format!("{id}: source recipe").into());
+        }
+        for input in case["inputs"].as_array().ok_or("inputs")? {
+            if !input[0].is_string() || !recipe_round_trips(&input[1]) {
+                return Err(format!("{id}: input recipe").into());
+            }
+        }
+        let calls = case["calls"].as_array().ok_or("calls")?;
+        if calls.is_empty() {
+            return Err(format!("{id}: no calls").into());
+        }
+        for call in calls {
+            if !call["selection"].is_string() {
+                return Err(format!("{id}: selection").into());
+            }
+            match (call["expected"].get("Ok"), call["expected"].get("Err")) {
+                (Some(outputs), None) => {
+                    for output in outputs.as_array().ok_or("outputs")? {
+                        if !(output[0].is_null() || output[0].is_string())
+                            || !recipe_round_trips(&output[1])
+                        {
+                            return Err(format!("{id}: output recipe").into());
+                        }
+                    }
+                }
+                (None, Some(error)) if error["kind"].is_string() => {}
+                _ => return Err(format!("{id}: one expected outcome per call").into()),
+            }
+        }
+        ids.push(id);
+    }
+    Ok(ids)
+}
+
+/// Every model validates without issues, passes owned-source admission,
+/// lowers with `lower` and emits with `emitters`, leaving its Project unchanged.
+pub(super) fn check_emission(
+    tag: &str,
+    names: &[&str],
+    models: &[Project],
+    lower: Lower,
+    emitters: Emitters,
+) -> TestResult<()> {
+    let runtime = runtime_path()?;
+    for (index, (name, project)) in names.iter().zip(models).enumerate() {
+        let before = mapping::project_file::encode_pretty(project)?;
+        let issues = engine::validate(project);
+        if !issues.is_empty() {
+            return Err(format!("{name}: {issues:?}").into());
+        }
+        engine::check_source_ownership_capability(project, None)
+            .map_err(|error| format!("{name}: {error}"))?;
+        let program = lower(project).map_err(|error| format!("{name}: {error}"))?;
+        let options = rust_options(&format!("{tag}-model{index}"), &runtime);
+        (emitters.rust)(&program, &options).map_err(|error| format!("{name}: {error}"))?;
+        (emitters.csharp)(&program).map_err(|error| format!("{name}: {error}"))?;
+        if mapping::project_file::encode_pretty(project)? != before {
+            return Err(format!("{name}: lowering changed the Project").into());
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn runtime_path() -> TestResult<PathBuf> {
@@ -167,8 +265,8 @@ fn host_result(output: &Path, calls: usize, run: &Output) -> Result<(), String> 
 }
 
 /// C# exception wording is outside the shared typed comparison. A call whose
-/// expected error lists `csharp_messages` also requires the retained outer and
-/// inner messages.
+/// expected error lists `csharp_messages` also requires the retained messages
+/// of that many leading exceptions: the outer one, then each inner one.
 fn csharp_messages(controls: &Json, model: usize, output: &Path) -> Result<(), String> {
     let cases = controls["cases"].as_array().ok_or("cases")?;
     for (ordinal, case) in cases.iter().enumerate() {
@@ -187,12 +285,19 @@ fn csharp_messages(controls: &Json, model: usize, output: &Path) -> Result<(), S
                 .map_err(|error| error.to_string())
                 .and_then(|bytes| serde_json::from_slice(&bytes).map_err(|e| e.to_string()))
                 .map_err(|error| format!("{}: {error}", path.display()))?;
-            let error = &record["record"]["actual"]["Err"];
-            let actual = json!([error["message"], error["inner"]["message"]]);
+            let expected = expected.as_array().ok_or("csharp_messages")?;
+            let mut error = &record["record"]["actual"]["Err"];
+            let mut actual = Vec::new();
+            for _ in expected {
+                actual.push(error["message"].clone());
+                error = &error["inner"];
+            }
             if actual != *expected {
                 return Err(format!(
-                    "{}: messages {actual} != {expected}",
-                    path.display()
+                    "{}: messages {} != {}",
+                    path.display(),
+                    Json::from(actual),
+                    Json::from(expected.clone())
                 ));
             }
         }

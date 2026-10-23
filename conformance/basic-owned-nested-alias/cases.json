@@ -1,0 +1,59 @@
+{
+ "version": 1,
+ "cases": [
+  {
+   "id": "C01",
+   "model": "outer_suffix",
+   "source": ["Group", [["Ref", ["Group", [["Rows", ["Repeated", [["Group", [["Value", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "P2"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Ref", ["Group", [["Rows", ["Repeated", [["Group", [["Value", ["String", "N1"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "N2"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "N3"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Repeated", [["Group", [["OuterValue", ["String", "P1"]], ["OuterPosition", ["Int", 1]], ["Items", ["Repeated", [["Group", [["InnerValue", ["String", "N2"]], ["LongPinValue", ["String", "N2"]], ["LegacyOuter", ["Int", 1]], ["LegacyInner", ["Int", 1]], ["LegacyNearest", ["Int", 1]], ["ExactOwnedOuter", ["Int", 1]], ["ExactOwnedInner", ["Int", 1]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["InnerValue", ["String", "N3"]], ["LongPinValue", ["String", "N3"]], ["LegacyOuter", ["Int", 1]], ["LegacyInner", ["Int", 2]], ["LegacyNearest", ["Int", 2]], ["ExactOwnedOuter", ["Int", 1]], ["ExactOwnedInner", ["Int", 2]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["OuterValue", ["String", "P2"]], ["OuterPosition", ["Int", 2]], ["Items", ["Repeated", [["Group", [["InnerValue", ["String", "N2"]], ["LongPinValue", ["String", "N2"]], ["LegacyOuter", ["Int", 2]], ["LegacyInner", ["Int", 1]], ["LegacyNearest", ["Int", 1]], ["ExactOwnedOuter", ["Int", 2]], ["ExactOwnedInner", ["Int", 1]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["InnerValue", ["String", "N3"]], ["LongPinValue", ["String", "N3"]], ["LegacyOuter", ["Int", 2]], ["LegacyInner", ["Int", 2]], ["LegacyNearest", ["Int", 2]], ["ExactOwnedOuter", ["Int", 2]], ["ExactOwnedInner", ["Int", 2]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}}
+   ]
+  },
+  {
+   "id": "C02",
+   "model": "nested_rows",
+   "source": ["Group", [], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Ref", ["Group", [["Rows", ["Repeated", [["Group", [["Value", ["String", "N1"]], ["Rows", ["Repeated", [["Group", [["Value", ["String", "I11"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "I12"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "N2"]], ["Rows", ["Repeated", [["Group", [["Value", ["String", "I21"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "I22"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "I23"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Repeated", [["Group", [["OuterValue", ["String", "N1"]], ["OuterPosition", ["Int", 1]], ["Items", ["Repeated", [["Group", [["InnerValue", ["String", "I12"]], ["ShortPinValue", ["String", "N1"]], ["LongPinValue", ["String", "I12"]], ["LegacyShort", ["Int", 1]], ["LegacyLong", ["Int", 1]], ["ExactOwnedOuter", ["Int", 1]], ["ExactOwnedInner", ["Int", 1]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["OuterValue", ["String", "N2"]], ["OuterPosition", ["Int", 2]], ["Items", ["Repeated", [["Group", [["InnerValue", ["String", "I22"]], ["ShortPinValue", ["String", "N2"]], ["LongPinValue", ["String", "I22"]], ["LegacyShort", ["Int", 1]], ["LegacyLong", ["Int", 1]], ["ExactOwnedOuter", ["Int", 2]], ["ExactOwnedInner", ["Int", 1]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["InnerValue", ["String", "I23"]], ["ShortPinValue", ["String", "N2"]], ["LongPinValue", ["String", "I23"]], ["LegacyShort", ["Int", 2]], ["LegacyLong", ["Int", 2]], ["ExactOwnedOuter", ["Int", 2]], ["ExactOwnedInner", ["Int", 2]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}}
+   ]
+  },
+  {
+   "id": "C03",
+   "model": "empty_root",
+   "source": ["Group", [], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Ref", ["Repeated", [["Null"], ["Group", [["Value", ["String", "N2"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["JsonNull"], ["Group", [["Value", ["String", "N4"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Repeated", [["Group", [["OwnedValue", ["String", "N2"]], ["LegacyPinnedValue", ["String", "N2"]], ["OwnedPosition", ["Int", 1]], ["LegacyNearest", ["Int", 1]], ["LegacyAliasPosition", ["Int", 1]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["OwnedValue", ["String", "N4"]], ["LegacyPinnedValue", ["String", "N4"]], ["OwnedPosition", ["Int", 2]], ["LegacyNearest", ["Int", 2]], ["LegacyAliasPosition", ["Int", 1]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}}
+   ]
+  },
+  {
+   "id": "C04",
+   "model": "same_owner",
+   "source": ["Group", [], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Ref", ["Group", [["Rows", ["Repeated", [["Group", [["Value", ["String", "N1"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "N2"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "N3"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Repeated", [["Group", [["OuterValue", ["String", "N2"]], ["OuterPosition", ["Int", 1]], ["Items", ["Repeated", []]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["OuterValue", ["String", "N3"]], ["OuterPosition", ["Int", 2]], ["Items", ["Repeated", [["Group", [["SameValue", ["String", "N3"]], ["LegacyPosition", ["Int", 2]], ["OwnedPosition", ["Int", 2]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}}
+   ]
+  },
+  {
+   "id": "C05",
+   "model": "singleton",
+   "source": ["Group", [["Rows", ["Repeated", [["Group", [["Value", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "P2"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "P3"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Ref", ["Group", [["Value", ["String", "S"]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Repeated", [["Group", [["OuterValue", ["String", "P2"]], ["OuterPosition", ["Int", 1]], ["Items", ["Repeated", [["Group", [["OwnedSingleton", ["String", "S"]], ["RelativeSingleton", ["String", "P2"]], ["FramedOuter", ["String", "P2"]], ["LegacyNearest", ["Int", 1]], ["LegacyAliasPosition", ["Int", 1]], ["ExactOwnedOuter", ["Int", 1]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["OuterValue", ["String", "P3"]], ["OuterPosition", ["Int", 2]], ["Items", ["Repeated", [["Group", [["OwnedSingleton", ["String", "S"]], ["RelativeSingleton", ["String", "P3"]], ["FramedOuter", ["String", "P3"]], ["LegacyNearest", ["Int", 2]], ["LegacyAliasPosition", ["Int", 1]], ["ExactOwnedOuter", ["Int", 2]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}}
+   ]
+  },
+  {
+   "id": "C06",
+   "model": "raw_compact",
+   "source": ["Group", [], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Ref", ["Group", [["Rows", ["Repeated", [["Null"], ["Group", [["Value", ["String", "N2"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["JsonNull"], ["Group", [["Value", ["String", "N4"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Repeated", [["Group", [["Value", ["String", "N4"]], ["OwnedPosition", ["Int", 1]], ["LegacyPosition", ["Int", 1]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}}
+   ]
+  }
+ ]
+}

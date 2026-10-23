@@ -1,0 +1,113 @@
+{
+ "version": 1,
+ "cases": [
+  {
+   "id": "F01",
+   "model": "phases",
+   "source": ["Group", [["Value", ["String", "P.root"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 999]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 30]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 10]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 20]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Ref", ["Group", [["Value", ["String", "N.root"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 999]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]], ["Rows", ["Repeated", [["Null"], ["Group", [["Value", ["Int", 3]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["JsonNull"], ["Group", [["Value", ["Int", 1]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 2]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Repeated", [["Group", [["Value", ["Int", 10]], ["OwnedPosition", ["Int", 1]], ["LegacyPosition", ["Int", 1]], ["Root", ["String", "P.root"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 20]], ["OwnedPosition", ["Int", 2]], ["LegacyPosition", ["Int", 2]], ["Root", ["String", "P.root"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]], ["Filtered", ["Repeated", [["Group", [["Value", ["Int", 1]], ["OwnedPosition", ["Int", 1]], ["LegacyPosition", ["Int", 1]], ["Root", ["String", "N.root"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 2]], ["OwnedPosition", ["Int", 2]], ["LegacyPosition", ["Int", 2]], ["Root", ["String", "N.root"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}}
+   ]
+  },
+  {
+   "id": "F02",
+   "model": "phases",
+   "source": ["Group", [["Value", ["String", "P.root"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 999]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 30]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 10]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 20]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [],
+   "calls": [
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Repeated", [["Group", [["Value", ["Int", 10]], ["OwnedPosition", ["Int", 1]], ["LegacyPosition", ["Int", 1]], ["Root", ["String", "P.root"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 20]], ["OwnedPosition", ["Int", 2]], ["LegacyPosition", ["Int", 2]], ["Root", ["String", "P.root"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}}
+   ]
+  },
+  {
+   "id": "F03",
+   "model": "phases",
+   "source": ["Group", [["Value", ["String", "P.root"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 999]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 30]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 10]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 20]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Ref", ["Group", [["Value", ["String", "N.root"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 999]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]], ["Rows", ["Repeated", [["Null"], ["Group", [["Value", ["Int", 3]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["JsonNull"], ["Group", [["Value", ["Int", 1]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 2]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "Filtered", "expected": {"Ok": [["Filtered", ["Repeated", [["Group", [["Value", ["Int", 1]], ["OwnedPosition", ["Int", 1]], ["LegacyPosition", ["Int", 1]], ["Root", ["String", "N.root"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 2]], ["OwnedPosition", ["Int", 2]], ["LegacyPosition", ["Int", 2]], ["Root", ["String", "N.root"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}}
+   ]
+  },
+  {
+   "id": "F04",
+   "model": "phases",
+   "source": ["Group", [["Value", ["String", "P.root"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 999]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 30]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Null"], ["Group", [["Value", ["Int", 10]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["JsonNull"], ["Group", [["Value", ["Int", 20]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [],
+   "calls": [
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Repeated", [["Group", [["Value", ["Int", 10]], ["OwnedPosition", ["Int", 1]], ["LegacyPosition", ["Int", 1]], ["Root", ["String", "P.root"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 20]], ["OwnedPosition", ["Int", 2]], ["LegacyPosition", ["Int", 2]], ["Root", ["String", "P.root"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}}
+   ]
+  },
+  {
+   "id": "F05",
+   "model": "phases",
+   "source": ["Group", [["Value", ["String", "P.root"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 999]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]], ["Rows", ["Repeated", []]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [],
+   "calls": [
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Repeated", []]]]}}
+   ]
+  },
+  {
+   "id": "F06",
+   "model": "nested_identity",
+   "source": ["Group", [["Value", ["String", "P.root"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 999]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]], ["Rows", ["Repeated", [["Null"], ["Group", [["Value", ["Int", 10]], ["Flag", ["Bool", true]], ["Rows", ["Repeated", [["Null"], ["Group", [["Value", ["Int", 101]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["JsonNull"], ["Group", [["Value", ["Int", 102]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 20]], ["Flag", ["Bool", true]], ["Rows", ["Repeated", [["Null"], ["Group", [["Value", ["Int", 201]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["JsonNull"], ["Group", [["Value", ["Int", 202]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Repeated", [["Group", [["Value", ["Int", 10]], ["OwnedPosition", ["Int", 1]], ["LegacyPosition", ["Int", 1]], ["Root", ["String", "P.root"]], ["Kids", ["Repeated", [["Group", [["Value", ["Int", 101]], ["Position", ["Int", 1]], ["ParentPosition", ["Int", 1]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 102]], ["Position", ["Int", 2]], ["ParentPosition", ["Int", 1]]], {"kind": "Unknown", "identity": null, "literal": null}]]]], ["Identity", ["Repeated", [["Group", [["Value", ["Int", 10]], ["ParentPosition", ["Int", 1]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 20]], ["OwnedPosition", ["Int", 2]], ["LegacyPosition", ["Int", 2]], ["Root", ["String", "P.root"]], ["Kids", ["Repeated", [["Group", [["Value", ["Int", 201]], ["Position", ["Int", 1]], ["ParentPosition", ["Int", 2]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 202]], ["Position", ["Int", 2]], ["ParentPosition", ["Int", 2]]], {"kind": "Unknown", "identity": null, "literal": null}]]]], ["Identity", ["Repeated", [["Group", [["Value", ["Int", 20]], ["ParentPosition", ["Int", 2]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}}
+   ]
+  },
+  {
+   "id": "F07",
+   "model": "lazy_false",
+   "source": ["Group", [["Value", ["String", "P.root"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 999]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 30]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 10]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 20]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Repeated", []]]]}}
+   ]
+  },
+  {
+   "id": "F08",
+   "model": "non_bool",
+   "source": ["Group", [["Value", ["String", "P.root"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 999]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 30]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "NotABool", "node": 0, "found": "int", "csharp_messages": ["Graph node 0 expected a bool, found int."]}}}
+   ]
+  },
+  {
+   "id": "F09",
+   "model": "order",
+   "source": ["Group", [["Value", ["String", "P.root"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 999]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 30]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 10]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "MappingException", "node": 6, "message": "target first", "csharp_messages": ["node 6: mapping exception: target first"]}}}
+   ]
+  },
+  {
+   "id": "F10",
+   "model": "order",
+   "source": ["Group", [["Value", ["String", "P.root"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 999]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 30]], ["Flag", ["Bool", false]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 10]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "MappingException", "node": 4, "message": "later predicate", "csharp_messages": ["node 4: mapping exception: later predicate"]}}}
+   ]
+  },
+  {
+   "id": "F11",
+   "model": "global_rules",
+   "source": ["Group", [["Value", ["String", "P.root"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 999]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 30]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 10]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 20]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "MappingFailure", "rule": 2, "message": "10", "csharp_messages": ["mapping failure rule 2: 10"]}}}
+   ]
+  },
+  {
+   "id": "F12",
+   "model": "global_rules",
+   "source": ["Group", [["Value", ["String", "P.root"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 999]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]], ["Rows", ["Repeated", [["Group", [["Value", ["Int", 30]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 10]], ["Flag", ["Bool", false]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 20]], ["Flag", ["Bool", true]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Repeated", [["Group", [["Value", ["Int", 10]], ["OwnedPosition", ["Int", 1]], ["LegacyPosition", ["Int", 1]], ["Root", ["String", "P.root"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["Int", 20]], ["OwnedPosition", ["Int", 2]], ["LegacyPosition", ["Int", 2]], ["Root", ["String", "P.root"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}}
+   ]
+  }
+ ]
+}
