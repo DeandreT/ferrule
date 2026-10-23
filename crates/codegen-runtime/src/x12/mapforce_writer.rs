@@ -20,6 +20,29 @@ pub(super) fn render_mapforce_x12_document(
     document: &Instance,
     execution: &ExecutionContext<'_>,
 ) -> Result<String, X12BoundaryError> {
+    render_with_clock(descriptor_text, document, execution, None)
+}
+
+pub fn serialize_mapforce_x12_document_with_clock(
+    descriptor_text: &str,
+    document: &Instance,
+    execution: &ExecutionContext<'_>,
+    clock: &mut dyn FnMut(super::MapForceX12ClockField) -> Result<String, String>,
+) -> Result<Vec<u8>, X12BoundaryError> {
+    Ok(
+        render_with_clock(descriptor_text, document, execution, Some(clock))?
+            .encode_utf16()
+            .map(super::latin1_best_fit::unit)
+            .collect(),
+    )
+}
+
+pub(super) fn render_with_clock(
+    descriptor_text: &str,
+    document: &Instance,
+    execution: &ExecutionContext<'_>,
+    clock: Option<&mut dyn FnMut(super::MapForceX12ClockField) -> Result<String, String>>,
+) -> Result<String, X12BoundaryError> {
     if descriptor_text.len() > 2 * MAX_EMBEDDED_X12_SCHEMA_BYTES {
         return Err(descriptor("MapForce writer descriptor too large"));
     }
@@ -53,8 +76,30 @@ pub(super) fn render_mapforce_x12_document(
     if syntax.segment == '\n' || syntax.release.is_some() {
         return Err(descriptor("unqualified MapForce output syntax"));
     }
+    let clock_defaults = if let Some(clock) = clock.filter(|_| profile.autocomplete.is_some()) {
+        let raw = adapt(
+            SchemaCursor::root(&profile.schema),
+            Some(document),
+            &profile,
+            &minimum,
+            &mut vec![],
+            false,
+            &mut WriterBudget::default(),
+            0,
+            None,
+            false,
+        )?
+        .ok_or_else(|| descriptor("missing output root"))?;
+        Some(super::mapforce_clock::sample(
+            SchemaCursor::root(&profile.schema),
+            &raw,
+            clock,
+        )?)
+    } else {
+        None
+    };
     let mut budget = WriterBudget::default();
-    let view = adapt(
+    let mut view = adapt(
         SchemaCursor::root(&profile.schema),
         Some(document),
         &profile,
@@ -64,13 +109,21 @@ pub(super) fn render_mapforce_x12_document(
         &mut budget,
         0,
         None,
+        true,
     )?
     .ok_or_else(|| descriptor("missing output root"))?;
     let mut schema = profile.schema.clone();
     string_schema(&mut schema);
-    let clock = execution.value(RuntimeValue::CurrentDateTime);
+    let clock = if clock_defaults.is_some() {
+        Some(Value::String("2000-01-01T00:00:00".into()))
+    } else {
+        execution.value(RuntimeValue::CurrentDateTime)
+    };
     let mut automatic = Vec::new();
     collect_group_times(SchemaCursor::root(&profile.schema), &view, &mut automatic);
+    if let Some(defaults) = clock_defaults {
+        view = super::mapforce_clock::apply(SchemaCursor::root(&profile.schema), &view, &defaults)?;
+    }
     let completion = match (&profile.autocomplete, &clock) {
         (Some(completion), Some(Value::String(clock))) => Some(format_edi::x12::Autocomplete {
             current_datetime: clock,
@@ -194,6 +247,7 @@ fn adapt(
     budget: &mut WriterBudget,
     depth: usize,
     allowed: Option<char>,
+    format_scalars: bool,
 ) -> Result<Option<Instance>, X12BoundaryError> {
     budget.node(depth)?;
     let node = cursor.schema();
@@ -227,6 +281,7 @@ fn adapt(
                 budget,
                 depth + 1,
                 allowed,
+                format_scalars,
             )? {
                 output.push(value);
             }
@@ -245,6 +300,9 @@ fn adapt(
             || matches!(raw,Value::String(s) if s.is_empty())
         {
             return Ok(Some(Instance::Scalar(Value::String(String::new()))));
+        }
+        if !format_scalars {
+            return Ok(Some(Instance::Scalar(raw.clone())));
         }
         let constraint = profile.constraints.get(path);
         let min = constraint.map_or(0, |c| c.min_chars());
@@ -338,6 +396,7 @@ fn adapt(
             budget,
             depth + 1,
             allowed,
+            format_scalars,
         )? {
             output.push((name, value));
         }
@@ -451,6 +510,71 @@ mod tests {
         let text = String::from_utf8(bytes).unwrap();
         assert!(text.contains("GS*PO*ALPHA*BETA*20300615*0945*42*X*004010~\r\n"));
         assert!(text.contains("LIN~\r\nSE*3*0001~\r\n"));
+        let mut calls = Vec::new();
+        let mut clock = |field| {
+            calls.push(field);
+            Ok(match field {
+                MapForceX12ClockField::InterchangeDate => "2027-01-02T10:20:30",
+                MapForceX12ClockField::InterchangeTime => "2028-02-03T04:05:06",
+                MapForceX12ClockField::GroupDate => "2029-03-04T13:14:15",
+                MapForceX12ClockField::GroupTime => "2030-04-05T16:17:18",
+            }
+            .to_string())
+        };
+        let sampled = serialize_mapforce_x12_document_with_clock(
+            &descriptor_text(),
+            &body,
+            &execution,
+            &mut clock,
+        )
+        .unwrap();
+        let sampled = String::from_utf8(sampled).unwrap();
+        assert!(sampled.contains("*270102*0405*"));
+        assert!(sampled.contains("GS*PO*ALPHA*BETA*20290304*1617*42*X*004010~\r\n"));
+        assert_eq!(
+            calls,
+            [
+                MapForceX12ClockField::InterchangeDate,
+                MapForceX12ClockField::InterchangeTime,
+                MapForceX12ClockField::GroupDate,
+                MapForceX12ClockField::GroupTime
+            ]
+        );
+        for fail_at in 1..=4 {
+            let mut count = 0;
+            let result = serialize_mapforce_x12_document_with_clock(
+                &descriptor_text(),
+                &body,
+                &execution,
+                &mut |_| {
+                    count += 1;
+                    if count == fail_at {
+                        Err("injected".into())
+                    } else {
+                        Ok("2027-01-02T03:04:05".into())
+                    }
+                },
+            );
+            assert!(matches!(
+                result,
+                Err(X12BoundaryError::CompletionClock { .. })
+            ));
+            assert_eq!(count, fail_at);
+        }
+        let mut count = 0;
+        assert!(
+            serialize_mapforce_x12_document_with_clock(
+                &descriptor_text(),
+                &group(vec![("Interchange", Instance::Repeated(vec![]))]),
+                &execution,
+                &mut |_| {
+                    count += 1;
+                    Ok("2027-01-02T03:04:05".into())
+                }
+            )
+            .is_err()
+        );
+        assert_eq!(count, 0);
         assert!(
             serialize_mapforce_x12_document(
                 &descriptor_text(),

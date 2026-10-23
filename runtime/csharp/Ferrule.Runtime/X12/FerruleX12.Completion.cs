@@ -409,9 +409,9 @@ public static partial class FerruleX12
     // per-owner SE01/GE01/IEA01 counts and creation of absent trailers.
     // Nonempty supplied text is retained for final envelope validation.
     private static List<Segment> CompleteMapForceSegments(Profile profile, List<Segment> segments,
-        FerruleExecutionContext? executionContext)
+        FerruleExecutionContext? executionContext, bool clockDefaultsProvided = false)
     {
-        CompletionTimestamp timestamp = ReadCompletionTimestamp(executionContext?.CurrentDateTime);
+        CompletionTimestamp timestamp = ReadCompletionTimestamp(clockDefaultsProvided ? "2000-01-01T00:00:00" : executionContext?.CurrentDateTime);
         Autocomplete selected = profile.Autocomplete!;
         var output = new List<Segment>(segments.Count + 8);
         bool interchangeOpen = false, groupOpen = false, transactionOpen = false;

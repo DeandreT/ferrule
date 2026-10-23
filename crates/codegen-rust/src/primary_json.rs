@@ -31,10 +31,11 @@ pub fn emit_with_mapforce_x12_writer(
         codegen::prepare_mapforce_x12_writer(document.program(), target_options, minimums)
             .map_err(PrimaryJsonEmitError::Writer)?;
     let mut files = emit_with_primary_json_projection(document, options, shape)?.into_files();
-    let source = format!(
+    let mut source = format!(
         "\npub fn serialize_mapforce_x12_document(value: &Instance, execution: &ExecutionContext<'_>) -> Result<Vec<u8>, codegen_runtime::X12BoundaryError> {{\n    codegen_runtime::serialize_mapforce_x12_document({0}, value, execution)\n}}\npub fn write_mapforce_x12_document(value: &Instance, execution: &ExecutionContext<'_>, output: &mut dyn std::io::Write) -> Result<(), codegen_runtime::MapForceX12WriteError> {{\n    codegen_runtime::write_mapforce_x12_document({0}, value, execution, output)\n}}\n",
         rust_string(&descriptor)
     );
+    source.push_str(&format!("\npub fn serialize_mapforce_x12_document_with_clock(value: &Instance, execution: &ExecutionContext<'_>, clock: &mut dyn FnMut(codegen_runtime::MapForceX12ClockField) -> Result<String, String>) -> Result<Vec<u8>, codegen_runtime::X12BoundaryError> {{\n    codegen_runtime::serialize_mapforce_x12_document_with_clock({0}, value, execution, clock)\n}}\npub fn write_mapforce_x12_document_with_clock(value: &Instance, execution: &ExecutionContext<'_>, clock: &mut dyn FnMut(codegen_runtime::MapForceX12ClockField) -> Result<String, String>, output: &mut dyn std::io::Write) -> Result<(), codegen_runtime::MapForceX12WriteError> {{\n    codegen_runtime::write_mapforce_x12_document_with_clock({0}, value, execution, clock, output)\n}}\n",rust_string(&descriptor)));
     files
         .iter_mut()
         .find(|f| f.path.as_str() == "src/lib.rs")

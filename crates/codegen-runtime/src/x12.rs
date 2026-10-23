@@ -17,11 +17,17 @@ use crate::{ExecutionContext, JsonBoundaryError, RuntimeError, RuntimeValue};
 use format_edi::x12::{SchemaCursor, SchemaRole};
 
 mod latin1_best_fit;
+mod mapforce_clock;
 mod mapforce_stream;
 mod mapforce_writer;
 mod output;
-pub use mapforce_stream::{MapForceX12WriteError, write_mapforce_x12_document};
-pub use mapforce_writer::serialize_mapforce_x12_document;
+pub use mapforce_clock::MapForceX12ClockField;
+pub use mapforce_stream::{
+    MapForceX12WriteError, write_mapforce_x12_document, write_mapforce_x12_document_with_clock,
+};
+pub use mapforce_writer::{
+    serialize_mapforce_x12_document, serialize_mapforce_x12_document_with_clock,
+};
 #[cfg(test)]
 mod tests;
 mod wire;
@@ -41,6 +47,10 @@ const MAX_ELEMENTS: usize = 1024;
 /// Original causes remain inspectable through their variants and Error::source.
 #[derive(Debug)]
 pub enum X12BoundaryError {
+    CompletionClock {
+        field: MapForceX12ClockField,
+        message: String,
+    },
     MapForceScalar {
         path: String,
         source: crate::MapForceEdiScalarError,
@@ -86,6 +96,9 @@ pub enum X12BoundaryError {
 impl fmt::Display for X12BoundaryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::CompletionClock { field, message } => {
+                write!(f, "X12 completion clock {field:?}: {message}")
+            }
             Self::MapForceScalar { path, source } => write!(f, "X12 field {path}: {source}"),
             Self::Descriptor(message) => write!(f, "invalid embedded X12 descriptor: {message}"),
             Self::Schema(error) => error.fmt(f),
