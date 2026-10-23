@@ -221,19 +221,22 @@ pub(super) fn validate_text_selection_operations(project: &Project) -> Result<()
         for (node, value) in &graph.nodes {
             if matches!(
                 value,
-                mapping::Node::Aggregate {
-                    function: mapping::AggregateOp::LastPresentText
-                        | mapping::AggregateOp::LastDistinctText,
-                    ..
-                } | mapping::Node::SequenceAggregate {
-                    function: mapping::AggregateOp::LastPresentText
-                        | mapping::AggregateOp::LastDistinctText,
-                    ..
-                } | mapping::Node::JoinAggregate {
-                    function: mapping::AggregateOp::LastPresentText
-                        | mapping::AggregateOp::LastDistinctText,
-                    ..
-                }
+                mapping::Node::DistinctTextMapLast { .. }
+                    | mapping::Node::Aggregate {
+                        function: mapping::AggregateOp::LastPresentText
+                            | mapping::AggregateOp::LastDistinctText,
+                        ..
+                    }
+                    | mapping::Node::SequenceAggregate {
+                        function: mapping::AggregateOp::LastPresentText
+                            | mapping::AggregateOp::LastDistinctText,
+                        ..
+                    }
+                    | mapping::Node::JoinAggregate {
+                        function: mapping::AggregateOp::LastPresentText
+                            | mapping::AggregateOp::LastDistinctText,
+                        ..
+                    }
             ) {
                 return Err(MfdError::Unsupported(format!(
                     "ordered text selection at node {node} has no admitted .mfd export profile"

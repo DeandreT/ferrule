@@ -1057,7 +1057,8 @@ impl<'a> Admission<'a> {
                 | Node::JoinField { collection, .. }
                 | Node::Lookup { collection, .. }
                 | Node::CollectionFind { collection, .. }
-                | Node::Aggregate { collection, .. } => self.path(collection),
+                | Node::Aggregate { collection, .. }
+                | Node::DistinctTextMapLast { collection, .. } => self.path(collection),
                 Node::XmlMixedContent {
                     path,
                     frame,
@@ -1441,9 +1442,10 @@ fn node_context(node: &Node) -> OwnedCapabilityContext {
     match node {
         // Arguments execute in the caller; function() visits the body separately.
         Node::UserFunctionCall { .. } => OwnedCapabilityContext::Basic,
-        Node::Aggregate { .. } | Node::Lookup { .. } | Node::CollectionFind { .. } => {
-            OwnedCapabilityContext::AggregateLookup
-        }
+        Node::Aggregate { .. }
+        | Node::Lookup { .. }
+        | Node::CollectionFind { .. }
+        | Node::DistinctTextMapLast { .. } => OwnedCapabilityContext::AggregateLookup,
         Node::JoinField { .. }
         | Node::JoinPosition { .. }
         | Node::JoinAggregate { .. }

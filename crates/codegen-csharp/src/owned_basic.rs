@@ -978,6 +978,7 @@ fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
         Expression::Aggregate { value, arg, .. } => {
             value.expression().into_iter().chain(*arg).collect()
         }
+        Expression::DistinctTextMapLast { expression, .. } => vec![*expression],
         Expression::JoinAggregate {
             expression, arg, ..
         } => expression.iter().copied().chain(*arg).collect(),

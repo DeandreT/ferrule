@@ -535,6 +535,7 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
             },
         ),
         Node::CollectionFind { .. } => (Icon::Search, "find".into()),
+        Node::DistinctTextMapLast { .. } => (Icon::ListOrdered, "last distinct map".into()),
         Node::SequenceExists { .. } => (Icon::ListChecks, "any".into()),
         Node::SequenceItemAt { .. } => (Icon::ListOrdered, "item at".into()),
         Node::Aggregate { function, .. }
@@ -795,6 +796,7 @@ pub(super) fn has_properties(node: &Node) -> bool {
             | Node::RuntimeParameterDefault { .. }
             | Node::InvocationCounter { .. }
             | Node::Aggregate { .. }
+            | Node::DistinctTextMapLast { .. }
             | Node::CollectionFind { .. }
             | Node::SequenceExists { .. }
             | Node::SequenceItemAt { .. }

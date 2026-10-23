@@ -211,7 +211,8 @@ impl<'a> Analysis<'a> {
             | Node::JoinField { collection, .. }
             | Node::Lookup { collection, .. }
             | Node::CollectionFind { collection, .. }
-            | Node::Aggregate { collection, .. } => self.inspect_path(collection),
+            | Node::Aggregate { collection, .. }
+            | Node::DistinctTextMapLast { collection, .. } => self.inspect_path(collection),
             Node::XmlMixedContent {
                 path,
                 frame,

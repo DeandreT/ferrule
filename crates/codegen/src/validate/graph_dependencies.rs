@@ -60,6 +60,7 @@ pub(crate) fn of(expression: &Expression) -> Vec<NodeId> {
         Expression::CollectionFind {
             predicate, value, ..
         } => vec![*predicate, *value],
+        Expression::DistinctTextMapLast { expression, .. } => vec![*expression],
         Expression::Aggregate { value, arg, .. } => {
             value.expression().into_iter().chain(*arg).collect()
         }

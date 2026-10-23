@@ -1078,6 +1078,12 @@ impl GraphViewer<'_> {
                 1 => *value = from_id,
                 _ => return false,
             },
+            Node::DistinctTextMapLast { expression, .. } => {
+                if idx != 0 {
+                    return false;
+                }
+                *expression = from_id;
+            }
             Node::SequenceExists {
                 sequence,
                 predicate,
@@ -1236,6 +1242,7 @@ impl GraphViewer<'_> {
             Node::CollectionFind {
                 predicate, value, ..
             } => [*predicate, *value].get(idx).copied(),
+            Node::DistinctTextMapLast { expression, .. } => (idx == 0).then_some(*expression),
             Node::SequenceExists {
                 sequence,
                 predicate,
@@ -1507,6 +1514,7 @@ impl GraphViewer<'_> {
             Node::OwnedXmlMixedContent(mixed) => mixed.replacements.len(),
             Node::CollectionFind { .. } | Node::OwnedCollectionFind(_) => 2,
             Node::OwnedLookup(_) => 1,
+            Node::DistinctTextMapLast { .. } => 1,
             Node::OwnedAggregate(aggregate) => aggregate.inputs().len(),
             Node::OwnedJoinAggregate(aggregate) => aggregate.inputs().len(),
             Node::SequenceExists {
@@ -1824,6 +1832,15 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     }
                     Some(Node::CollectionFind { collection, .. }) => {
                         format!("Find: {}", collection.join("/"))
+                    }
+                    Some(Node::DistinctTextMapLast {
+                        collection, key, ..
+                    }) => {
+                        format!(
+                            "Last distinct map: {} by {}",
+                            collection.join("/"),
+                            key.join("/")
+                        )
                     }
                     Some(Node::SequenceExists { sequence, .. }) => {
                         format!("Exists: {}", graph_sequence::label(sequence))
@@ -2315,6 +2332,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     Some(Node::Lookup { .. }) => "match/key".to_string(),
                     Some(Node::DynamicSourceField { .. }) => "property name".to_string(),
                     Some(Node::CollectionFind { .. }) => ["predicate", "value"][idx].to_string(),
+                    Some(Node::DistinctTextMapLast { .. }) => "mapped value".to_string(),
                     Some(Node::SequenceExists { sequence, .. }) => {
                         graph_sequence::pin_label(sequence, idx).to_string()
                     }

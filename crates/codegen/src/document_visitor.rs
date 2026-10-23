@@ -108,6 +108,7 @@ pub fn validate_document_filename_clock(
                 | Expression::Call { .. }
                 | Expression::If { .. }
                 | Expression::Aggregate { .. }
+                | Expression::DistinctTextMapLast { .. }
         ) {
             return Err(DocumentVisitorBoundaryError::Unsupported(
                 "filename clock sampling is limited to ordinary scalar graph expressions",
@@ -144,6 +145,7 @@ pub fn validate_document_clocks(
                 | Expression::If { .. }
                 | Expression::Aggregate { .. }
                 | Expression::InvocationCounter { .. }
+                | Expression::DistinctTextMapLast { .. }
         ) {
             return Err(DocumentVisitorBoundaryError::Unsupported(
                 "body clock sampling is limited to ordinary scalar graph expressions",

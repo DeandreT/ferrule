@@ -11,6 +11,8 @@ use host_target::GeneratedHostCommand;
 
 #[path = "../../../conformance/invocation-counter-expressions/admission.rs"]
 mod admission;
+#[path = "../../../conformance/distinct-text-map/project.rs"]
+mod distinct_text_map;
 #[path = "../../../conformance/document-body-clocks/project.rs"]
 mod document_body_clocks;
 #[path = "../../../conformance/document-clocks/project.rs"]
@@ -144,6 +146,19 @@ fn generated_document_body_clocks_keep_the_unselected_primary_inactive()
         include_str!("../../../conformance/document-body-clocks/Host.rs.txt"),
         "PASS document body clocks",
         Some((Some("selected"), true)),
+        true,
+    )
+}
+
+#[test]
+fn generated_distinct_text_map_preserves_key_phase_and_mapped_effects() -> Result<(), Box<dyn Error>>
+{
+    run_fixture_with_options(
+        distinct_text_map::project(document_clocks::project()),
+        "distinct_text_mapping",
+        include_str!("../../../conformance/distinct-text-map/Host.rs.txt"),
+        "PASS distinct text map",
+        Some((None, true)),
         true,
     )
 }
