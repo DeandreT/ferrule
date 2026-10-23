@@ -1,3 +1,4 @@
+use crate::dotnet_temp::DotnetTemp;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -25,6 +26,7 @@ fn generated_dotnet_mapping_matches_ordered_dynamic_target_semantics() {
 
     let run = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args(["run", "--project", "Harness.csproj", "--nologo"])
         .current_dir(&harness)
         .env("DOTNET_CLI_HOME", directory.path().join(".dotnet-home"))

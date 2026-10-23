@@ -1,3 +1,4 @@
+use crate::dotnet_temp::DotnetTemp;
 use std::{fs, process::Command};
 
 use ::mapping::{OwnedSourceField, OwnedSourceRef, SourceOwner};
@@ -331,6 +332,7 @@ fn basic_owned_json520_generated_consumer_checks_capture_compact_bytes_and_polic
         .arg(assembly)
         .current_dir(evidence.path())
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(evidence.path())
         .env("DOTNET_PROCESSOR_COUNT", "2")
         .output();
     evidence.debug("RUN.original.txt", &run);
@@ -444,6 +446,7 @@ fn consumer_build_command(evidence: &Evidence, project: &str) -> Command {
         .current_dir(evidence.path())
         .env("DOTNET_CLI_HOME", evidence.path().join(".dotnet-home"))
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(evidence.path())
         .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")
         .env("DOTNET_CLI_UI_LANGUAGE", "en-US")
         .env("DOTNET_CLI_USE_MSBUILD_SERVER", "0")

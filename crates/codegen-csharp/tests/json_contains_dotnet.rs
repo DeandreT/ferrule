@@ -1,3 +1,7 @@
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+use dotnet_temp::DotnetTemp;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -240,6 +244,7 @@ fn emitted_package_enforces_contains_across_json_boundaries()
 
     let build = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "build",
             "-warnaserror",
@@ -253,6 +258,7 @@ fn emitted_package_enforces_contains_across_json_boundaries()
 
     let run = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "run",
             "--project",

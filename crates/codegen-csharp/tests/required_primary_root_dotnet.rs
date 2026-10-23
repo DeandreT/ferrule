@@ -1,3 +1,7 @@
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+use dotnet_temp::DotnetTemp;
+
 #[path = "../../mapping/tests/support/primary_root_project.rs"]
 mod fixture;
 
@@ -163,7 +167,9 @@ fn generated_rust_and_csharp_required_root_reads_match_lazy_typed_failures() {
     std::fs::write(host.join("Harness.csproj"), CSHARP_PROJECT).unwrap();
     std::fs::write(host.join("Program.cs"), CSHARP_HOST).unwrap();
     let mut command = Command::new("dotnet");
-    command.env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false");
+    command
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(&output.path);
     command.args([
         "build",
         "--configuration",
@@ -173,7 +179,9 @@ fn generated_rust_and_csharp_required_root_reads_match_lazy_typed_failures() {
     ]);
     checked_command(&csharp, "actual-build", command);
     let mut command = Command::new("dotnet");
-    command.env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false");
+    command
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(&output.path);
     command.args([
         "run",
         "--project",

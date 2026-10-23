@@ -1,3 +1,7 @@
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+use dotnet_temp::DotnetTemp;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -244,6 +248,7 @@ fn generated_scope_sequences_match_engine_order_controls_and_nested_content() {
     write_harness(directory.path());
     let build = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "build",
             "-warnaserror",
@@ -257,6 +262,7 @@ fn generated_scope_sequences_match_engine_order_controls_and_nested_content() {
     assert_command_succeeded("dotnet build", &build);
     let run = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "run",
             "--project",

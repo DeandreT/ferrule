@@ -1,3 +1,7 @@
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+use dotnet_temp::DotnetTemp;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -239,6 +243,7 @@ fn generated_dynamic_source_fields_execute_exact_null_semantics() {
 
     let build = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "build",
             "-warnaserror",
@@ -253,6 +258,7 @@ fn generated_dynamic_source_fields_execute_exact_null_semantics() {
 
     let run = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "run",
             "--project",
@@ -283,6 +289,7 @@ fn generated_per_driver_dynamic_sources_execute_typed_and_json_host_contracts() 
 
     let build = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "build",
             "-warnaserror",
@@ -297,6 +304,7 @@ fn generated_per_driver_dynamic_sources_execute_typed_and_json_host_contracts() 
 
     let run = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "run",
             "--project",
