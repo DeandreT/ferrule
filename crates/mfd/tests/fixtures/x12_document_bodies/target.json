@@ -1,0 +1,1 @@
+{"type":"object","properties":{"header":{"type":"object","properties":{"kind":{"type":"string"}}},"orders":{"type":"array","items":{"type":"object","properties":{"number":{"type":"string"},"lines":{"type":"array","items":{"type":"object","properties":{"line":{"type":"number"},"sku":{"type":"string"},"qty":{"type":"number"}}}}}}}}}
