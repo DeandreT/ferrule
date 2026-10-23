@@ -10,7 +10,9 @@ pub enum CsvByteDecodingPolicy {
     BomAwareNonFlushingReplacement,
 }
 
-pub(super) fn decode_non_flushing(bytes: &[u8]) -> String {
+/// Decode a caller-bounded text buffer using BOM detection and non-flushing
+/// replacement. This is also used by the explicit native JSON source profile.
+pub fn decode_non_flushing(bytes: &[u8]) -> String {
     if let Some(bytes) = bytes.strip_prefix(&[0xff, 0xfe, 0x00, 0x00]) {
         utf32(bytes, false)
     } else if let Some(bytes) = bytes.strip_prefix(&[0x00, 0x00, 0xfe, 0xff]) {

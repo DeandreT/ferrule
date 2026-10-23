@@ -100,6 +100,12 @@ public static partial class FerruleFunctions
         return FerruleValue.FromString(result.ToString());
     }
 
+    private static FerruleValue LengthUtf16(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("length_utf16", arguments, 1);
+        return FerruleValue.FromInt64(RequireString(arguments[0], "length_utf16").Length);
+    }
+
     private static FerruleValue Substring(IReadOnlyList<FerruleValue> arguments)
     {
         if (arguments.Count > 0 && arguments[0].Kind != FerruleValueKind.String)

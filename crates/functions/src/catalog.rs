@@ -163,6 +163,7 @@ pub(crate) enum BuiltinId {
     LeftTrim,
     RightTrim,
     Length,
+    LengthUtf16,
     StartsWith,
     EndsWith,
     Contains,
@@ -419,6 +420,19 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Authoring,
         "Counts Unicode characters."
+    ),
+    builtin!(
+        LengthUtf16,
+        "length_utf16",
+        "UTF-16 Length",
+        String,
+        &[parameter("value", String)],
+        BuiltinArity::fixed(1),
+        Integer,
+        true,
+        true,
+        Internal,
+        "Counts UTF-16 code units without changing the ordinary Unicode length operation."
     ),
     builtin!(
         StartsWith,

@@ -1071,6 +1071,34 @@ domain and at most 17 fractional output digits, with midpoint rounding away
 from zero. Input and output are bounded to 64 MiB, with 64 container levels and
 one million input values; callers can lower the output limit.
 
+## Explicit native JSON-to-X12 input
+
+The primary JSON projection companion retains ordered typed occurrences and
+physical-document identities separately from the ordinary schema-shaped reader.
+Its `parse_primary_json_source` / `ParsePrimaryJsonSource` byte entry point uses
+BOM-aware UTF-8/16/32 decoding with replacement and no terminal decoder flush.
+Raw control characters inside strings are escaped before strict grammar parsing;
+comments, trailing commas and malformed number syntax remain errors.
+
+This byte entry point is a wire-compatibility profile, not a lossless general JSON
+reader. Lone escaped UTF-16 surrogates become U+FFFD, so it requires ASCII projected
+property names and separately qualified string operations and output encoding.
+The ordinary strict reader is unchanged. Physical input bytes, decoded text and
+normalized JSON remain bounded by the supplied document limits.
+
+The JSON-to-EDI importer uses internal `length_utf16` for native string-length
+expressions; ordinary `length` still counts Unicode scalar values. Decimal target
+fields retain Decimal conversion instead of passing large integer parameters
+through binary floating point. Direct mapped String parameters reject Null when
+reached, while an empty string remains available for the writer's defaulting rules.
+
+The explicit MapForce X12 writer pads short envelope identifiers without applying
+the strict writer's width and ASCII rejections to overlong values. Negative
+control numbers retain the sign before zero padding. This reproduces a wire
+format; it does not certify that the resulting interchange meets a trading
+partner's EDI requirements. Acquisition order, reached clocks and physical output
+publication are separate host contracts.
+
 ## Flat CSV Output
 
 Add `--csv-output` to either generation command to include CSV output methods.

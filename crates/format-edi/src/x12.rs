@@ -519,6 +519,7 @@ pub fn to_string_with_syntax(
         interchange_version,
         None,
         false,
+        false,
     )
 }
 
@@ -539,6 +540,7 @@ pub fn to_document_string_with_syntax(
         interchange_version,
         autocomplete,
         true,
+        false,
     )
 }
 
@@ -581,6 +583,7 @@ pub fn to_string_with_syntax_and_autocomplete(
         interchange_version,
         Some(autocomplete),
         false,
+        false,
     )
 }
 
@@ -591,6 +594,7 @@ fn to_string_with_syntax_inner(
     interchange_version: Option<&str>,
     autocomplete: Option<Autocomplete<'_>>,
     document_root: bool,
+    mapforce: bool,
 ) -> Result<String, EdiFormatError> {
     validate_instance_shape(schema, instance)?;
     let mut options = separators.write_options()?;
@@ -607,16 +611,17 @@ fn to_string_with_syntax_inner(
     };
     // IEA02 repeats ISA13, which is fixed-width only when the schema declares
     // a complete ISA; partial schemas keep both controls as supplied.
-    let encode: fn(&str, &mut [String], &WriteOptions) -> Result<(), EdiFormatError> =
-        if if document_root {
-            SchemaCursor::root(schema).segments().any(|node| node.segment_id() == Some("ISA") && matches!(&node.schema.kind, SchemaKind::Group { children, .. } if children.len() == 16))
-        } else {
-            declares_complete_isa(schema)
-        } {
-            encode_envelope_controls
-        } else {
-            encode_isa_controls
-        };
+    let encode: fn(&str, &mut [String], &WriteOptions) -> Result<(), EdiFormatError> = if mapforce {
+        encode_mapforce_controls
+    } else if if document_root {
+        SchemaCursor::root(schema).segments().any(|node| node.segment_id() == Some("ISA") && matches!(&node.schema.kind, SchemaKind::Group { children, .. } if children.len() == 16))
+    } else {
+        declares_complete_isa(schema)
+    } {
+        encode_envelope_controls
+    } else {
+        encode_isa_controls
+    };
     // Completion consumes the mapped lexicals before physical encoding. Its
     // existing date/time/control normalization must run before width checks.
     let mut out = if autocomplete.is_some() {
@@ -626,15 +631,72 @@ fn to_string_with_syntax_inner(
     };
     if let Some(autocomplete) = autocomplete {
         let (segments, _) = tokenize_with_component_separator(&out, Some(separators))?;
-        let completed = envelope::x12(
-            segments,
-            autocomplete.current_datetime,
-            autocomplete.request_acknowledgement,
-            autocomplete.transaction_set,
-        )?;
+        let completed = if mapforce {
+            envelope::x12_mapforce(
+                segments,
+                autocomplete.current_datetime,
+                autocomplete.request_acknowledgement,
+                autocomplete.transaction_set,
+            )?
+        } else {
+            envelope::x12(
+                segments,
+                autocomplete.current_datetime,
+                autocomplete.request_acknowledgement,
+                autocomplete.transaction_set,
+            )?
+        };
         out = serialize_segments_with_encoding(&completed, &options, Some(encode))?;
     }
     Ok(out)
+}
+
+/// MapForce field values have already been formatted by the explicit writer.
+/// Complete counts and missing headers without imposing the strict ISA widths.
+pub fn to_mapforce_document_string_with_syntax(
+    schema: &SchemaNode,
+    instance: &Instance,
+    separators: Separators,
+    interchange_version: Option<&str>,
+    autocomplete: Option<Autocomplete<'_>>,
+) -> Result<String, EdiFormatError> {
+    to_string_with_syntax_inner(
+        schema,
+        instance,
+        separators,
+        interchange_version,
+        autocomplete,
+        true,
+        true,
+    )
+}
+
+fn encode_mapforce_controls(
+    segment: &str,
+    elements: &mut [String],
+    _syntax: &WriteOptions,
+) -> Result<(), EdiFormatError> {
+    if segment == "ISA" && elements.len() == 16 {
+        for index in [1, 3, 5, 7] {
+            let width = if index == 1 || index == 3 {
+                10usize
+            } else {
+                15usize
+            };
+            let padding = width.saturating_sub(elements[index].encode_utf16().count());
+            elements[index].extend(std::iter::repeat_n(' ', padding));
+        }
+    }
+    if segment == "IEA" && elements.len() > 1 {
+        let text = &elements[1];
+        let (sign, digits) = text
+            .strip_prefix('-')
+            .map_or(("", text.as_str()), |s| ("-", s));
+        if digits.bytes().all(|b| b.is_ascii_digit()) {
+            elements[1] = format!("{sign}{digits:0>9}");
+        }
+    }
+    Ok(())
 }
 
 /// Encodes fixed-width interchange controls immediately before a segment is
