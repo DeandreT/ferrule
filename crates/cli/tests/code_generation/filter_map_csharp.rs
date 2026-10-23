@@ -56,7 +56,7 @@ impl Evidence {
     }
 }
 
-fn fixtures() -> Vec<(String, Project, serde_json::Value)> {
+pub(super) fn fixtures() -> Vec<(String, Project, serde_json::Value)> {
     let corpus = projects::corpus();
     let mut fixtures = Vec::new();
     for case in corpus["cases"]

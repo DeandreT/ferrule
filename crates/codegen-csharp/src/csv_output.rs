@@ -1,54 +1,32 @@
 use codegen::{ArtifactSet, CsvOutputPolicy, Program};
 use ir::{ScalarType, SchemaKind};
 
-use crate::{EmitError, file, literal};
+use crate::composition::{ClassPart, Library};
+use crate::{EmitError, literal};
 
 const CSV_RUNTIME_SOURCE: &str =
     include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsv.cs");
 
 pub(crate) fn emit(program: &Program, policy: &CsvOutputPolicy) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_csv_output(program, policy)?;
-    // Keep ordinary emission and its runtime registration untouched. CSV adds
-    // one partial class and its runtime only after the shared boundary proof.
-    let mut files = crate::emit(program)?.into_files();
-    for generated in &mut files {
-        match generated.path.as_str() {
-            "GeneratedMapping.cs" => {
-                let source = std::str::from_utf8(&generated.contents)
-                    .expect("ordinary generated mapping is UTF-8");
-                generated.contents = source
-                    .replacen(
-                        "public static class GeneratedMapping\n{",
-                        "public static partial class GeneratedMapping\n{",
-                        1,
-                    )
-                    .into_bytes();
-            }
-            "Ferrule.Generated.csproj" => {
-                let project = std::str::from_utf8(&generated.contents)
-                    .expect("ordinary generated project is UTF-8");
-                generated.contents = project
-                    .replacen(
-                        "    <Compile Include=\"GeneratedMapping.cs\" />\n",
-                        "    <Compile Include=\"GeneratedMapping.cs\" />\n    <Compile Include=\"GeneratedMapping.Csv.cs\" />\n",
-                        1,
-                    )
-                    .into_bytes();
-            }
-            _ => {}
-        }
-    }
-    files.push(file("GeneratedMapping.Csv.cs", render(program, policy))?);
-    files.push(file("Runtime/FerruleCsv.cs", CSV_RUNTIME_SOURCE)?);
-    Ok(ArtifactSet::new(files)?)
+    library(program, policy)?.into_artifacts()
 }
 
-fn render(program: &Program, policy: &CsvOutputPolicy) -> String {
+/// The ordinary library plus one partial class and its runtime, added only
+/// after the shared boundary proof.
+pub(crate) fn library(program: &Program, policy: &CsvOutputPolicy) -> Result<Library, EmitError> {
+    codegen::validate_csv_output(program, policy)?;
+    let mut library = crate::library(program)?;
+    library.add_companion("GeneratedMapping.Csv.cs", render(program, policy));
+    library.add_runtime(&[("Runtime/FerruleCsv.cs", CSV_RUNTIME_SOURCE)]);
+    Ok(library)
+}
+
+fn render(program: &Program, policy: &CsvOutputPolicy) -> ClassPart {
     let SchemaKind::Group { children, .. } = &program.target.kind else {
         unreachable!("shared CSV validation proves one flat group target")
     };
     let mut output = String::from(
-        "namespace Ferrule.Generated;\n\npublic static partial class GeneratedMapping\n{\n    private static readonly global::Ferrule.Runtime.FerruleCsvField[] CsvOutputFields =\n        new global::Ferrule.Runtime.FerruleCsvField[]\n        {\n",
+        "    private static readonly global::Ferrule.Runtime.FerruleCsvField[] CsvOutputFields =\n        new global::Ferrule.Runtime.FerruleCsvField[]\n        {\n",
     );
     for field in children {
         let SchemaKind::Scalar { ty } = &field.kind else {
@@ -80,27 +58,23 @@ fn render(program: &Program, policy: &CsvOutputPolicy) -> String {
     output.push_str(",\n            RawDelimitedCrLf = ");
     output.push_str(boolean(policy.raw_delimited_crlf));
     output.push_str(
-        ",\n        };\n\n    public static string ExecuteCsv(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        var primary = Execute(source);\n        return global::Ferrule.Runtime.FerruleCsv.Serialize(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n\n    public static string ExecuteCsv(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        var primary = Execute(source, executionContext);\n        return global::Ferrule.Runtime.FerruleCsv.Serialize(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n\n    public static byte[] ExecuteCsvBytes(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        var primary = Execute(source);\n        return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n\n    public static byte[] ExecuteCsvBytes(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        var primary = Execute(source, executionContext);\n        return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n}\n",
+        ",\n        };\n\n    public static string ExecuteCsv(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        var primary = Execute(source);\n        return global::Ferrule.Runtime.FerruleCsv.Serialize(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n\n    public static string ExecuteCsv(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        var primary = Execute(source, executionContext);\n        return global::Ferrule.Runtime.FerruleCsv.Serialize(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n\n    public static byte[] ExecuteCsvBytes(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        var primary = Execute(source);\n        return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n\n    public static byte[] ExecuteCsvBytes(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        var primary = Execute(source, executionContext);\n        return global::Ferrule.Runtime.FerruleCsv.SerializeBytes(primary, CsvOutputFields, CsvOutputPolicy);\n    }\n",
     );
     if program
         .extra_sources
         .iter()
         .any(|source| source.dynamic.is_none())
     {
-        output.truncate(output.len() - 2); // Retain every existing method before the class close.
         output.push_str(NAMED_ADAPTERS);
-        output.push_str("}\n");
     }
     if program
         .extra_sources
         .iter()
         .any(|source| source.dynamic.is_some())
     {
-        output.truncate(output.len() - 2);
         output.push_str(DYNAMIC_ADAPTERS);
-        output.push_str("}\n");
     }
-    output
+    ClassPart::members(output)
 }
 
 fn character(value: Option<char>) -> String {

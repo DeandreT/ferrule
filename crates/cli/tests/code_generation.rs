@@ -72,6 +72,8 @@ mod collection_find;
 mod conditional_group_presence;
 #[path = "code_generation/copy_current_source.rs"]
 mod copy_current_source;
+#[path = "code_generation/csharp_composition.rs"]
+mod csharp_composition;
 #[path = "code_generation/csv_byte_decoding.rs"]
 mod csv_byte_decoding;
 #[path = "code_generation/csv_document_adapters.rs"]

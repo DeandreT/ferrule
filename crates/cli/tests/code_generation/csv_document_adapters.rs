@@ -1,7 +1,7 @@
 use super::*;
 use mapping::{AggregateOp, FormatOptions, TabularBoundaryKind};
 
-fn document_project(grouped: bool, unquoted: bool) -> Project {
+pub(super) fn document_project(grouped: bool, unquoted: bool) -> Project {
     let field = |name: &str| Node::SourceField {
         path: vec![name.into()],
         frame: None,

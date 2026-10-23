@@ -1,4 +1,5 @@
-use crate::{EmitError, file, literal};
+use crate::composition::ClassPart;
+use crate::{EmitError, literal};
 use codegen::{ArtifactSet, CsvInputBoundaryError, CsvInputPolicy, DocumentProgram};
 use ir::{ScalarType, SchemaKind};
 use std::fmt;
@@ -7,6 +8,7 @@ use std::fmt;
 pub enum PrimaryCsvEmitError {
     Input(CsvInputBoundaryError),
     Emit(EmitError),
+    /// Retained for API compatibility; structural composition never produces it.
     ArtifactInvariant,
 }
 impl fmt::Display for PrimaryCsvEmitError {
@@ -34,31 +36,13 @@ pub fn emit_with_primary_csv_acquisition(
 ) -> Result<ArtifactSet, PrimaryCsvEmitError> {
     codegen::validate_primary_csv_acquisition(document.program(), policy)
         .map_err(PrimaryCsvEmitError::Input)?;
-    let mut files = crate::emit_with_primary_filename(document)
-        .map_err(PrimaryCsvEmitError::Emit)?
-        .into_files();
-    let project = files
-        .iter_mut()
-        .find(|file| file.path.as_str() == "Ferrule.Generated.csproj")
-        .ok_or(PrimaryCsvEmitError::ArtifactInvariant)?;
-    let text = std::str::from_utf8(&project.contents)
-        .map_err(|_| PrimaryCsvEmitError::ArtifactInvariant)?;
-    let entry = "    <Compile Include=\"GeneratedMapping.cs\" />\n";
-    if text.matches(entry).count() != 1 {
-        return Err(PrimaryCsvEmitError::ArtifactInvariant);
-    }
-    project.contents = text
-        .replacen(
-            entry,
-            &format!("{entry}    <Compile Include=\"GeneratedMapping.PrimaryCsv.cs\" />\n"),
-            1,
-        )
-        .into_bytes();
+    let mut library =
+        crate::primary_filename::library(document).map_err(PrimaryCsvEmitError::Emit)?;
     let SchemaKind::Group { children, .. } = &document.program().source.kind else {
         unreachable!("validated CSV source")
     };
     let mut code = String::from(
-        "namespace Ferrule.Generated;\n\npublic static partial class GeneratedMapping\n{\n    private static readonly global::Ferrule.Runtime.FerruleCsvReadField[] PrimaryCsvFields = [\n",
+        "    private static readonly global::Ferrule.Runtime.FerruleCsvReadField[] PrimaryCsvFields = [\n",
     );
     for field in children {
         let SchemaKind::Scalar { ty } = field.kind else {
@@ -82,9 +66,9 @@ pub fn emit_with_primary_csv_acquisition(
         )
     };
     code.push_str(&format!("    ];\n    private static readonly global::Ferrule.Runtime.FerruleCsvReadOptions PrimaryCsvOptions = new() {{ Delimiter = {}, Quote = {}, QuoteDisabled = {}, HasHeaders = {}, PreserveEmptyStrings = {} }};\n",character(policy.delimiter),character(policy.quote),policy.quote_disabled,policy.has_headers,policy.preserve_empty_strings));
-    code.push_str("\n    /// <summary>Acquire rows only; file selection and loading policy belong to the host.</summary>\n    public static global::Ferrule.Runtime.FerruleCsvAcquisition AcquirePrimaryCsv(\n        global::Ferrule.Runtime.FerruleExecutionContext execution,\n        global::System.Func<string, global::System.Collections.Generic.IEnumerable<string>> select,\n        global::System.Func<string, global::Ferrule.Runtime.FerruleCsvSourceData> load,\n        global::Ferrule.Runtime.FerruleCsvByteDecodingPolicy decoding, int maximum)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(execution);\n        return new(() => EvaluatePrimaryFilename(execution), select, load, PrimaryCsvFields, PrimaryCsvOptions, decoding, maximum);\n    }\n}\n");
-    files.push(file("GeneratedMapping.PrimaryCsv.cs", code).map_err(PrimaryCsvEmitError::Emit)?);
-    for (path, contents) in [
+    code.push_str("\n    /// <summary>Acquire rows only; file selection and loading policy belong to the host.</summary>\n    public static global::Ferrule.Runtime.FerruleCsvAcquisition AcquirePrimaryCsv(\n        global::Ferrule.Runtime.FerruleExecutionContext execution,\n        global::System.Func<string, global::System.Collections.Generic.IEnumerable<string>> select,\n        global::System.Func<string, global::Ferrule.Runtime.FerruleCsvSourceData> load,\n        global::Ferrule.Runtime.FerruleCsvByteDecodingPolicy decoding, int maximum)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(execution);\n        return new(() => EvaluatePrimaryFilename(execution), select, load, PrimaryCsvFields, PrimaryCsvOptions, decoding, maximum);\n    }\n");
+    library.add_companion("GeneratedMapping.PrimaryCsv.cs", ClassPart::members(code));
+    library.add_runtime(&[
         (
             "Runtime/FerruleCsvInput.cs",
             include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvInput.cs"),
@@ -97,10 +81,6 @@ pub fn emit_with_primary_csv_acquisition(
             "Runtime/FerruleCsvAcquisition.cs",
             include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvAcquisition.cs"),
         ),
-    ] {
-        files.push(file(path, contents.to_string()).map_err(PrimaryCsvEmitError::Emit)?);
-    }
-    ArtifactSet::new(files)
-        .map_err(EmitError::from)
-        .map_err(PrimaryCsvEmitError::Emit)
+    ]);
+    library.into_artifacts().map_err(PrimaryCsvEmitError::Emit)
 }

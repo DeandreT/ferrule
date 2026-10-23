@@ -1050,6 +1050,43 @@ ordinary user global-tools directory.
 `DOTNET_SKIP_FIRST_TIME_EXPERIENCE` is unsupported in .NET Core 3.0 and later;
 `DOTNET_NOLOGO` controls messages. Neither substitutes for the PATH opt-out.
 
+### Library composition
+
+The C# emitter composes a generated library from typed parts in
+`crates/codegen-csharp/src/composition.rs`; it never searches or rewrites
+emitted text. The ordinary mapping renderer returns the `GeneratedMapping`
+class as a `ClassPart`: the top-level types its compilation unit declares and
+the class members. A `Library` holds that class together with:
+
+- further partial declarations appended to `GeneratedMapping.cs` (the primary
+  filename evaluator);
+- companion sources, each its own compilation unit holding one partial
+  declaration (`GeneratedMapping.Csv.cs`, `.CsvDocument.cs`, `.PrimaryCsv.cs`,
+  `.CsvJson.cs`, `.CsvX12.cs`, `.Json5.cs`, `.X12.cs` and `.Documents.cs`);
+- optional runtime sources beyond the fixed runtime set.
+
+Only `Library::into_artifacts` renders text. The class declaration is
+`partial` exactly when another declaration extends it. The project file is
+rendered from its compile items: the mapping source, then each companion with
+the most recently layered first, then `GeneratedTargetBuilder.cs` and the
+runtime glob. Layered emitters extend the library of the emitter they build
+on: CSV documents extend CSV output, and primary CSV acquisition extends the
+primary filename library. Each layer keeps its own admission ahead of the
+layer below it.
+
+The Basic owned mappings render their own complete compilation unit, which
+may append the separate partial declaration of the owned JSON documents; they
+are assembled with the ordinary project file and take no companions. When a
+mapping contains a filter-map sequence, expression and user-function node
+bodies are declared under their `NodeCore_` and `UserFunctionCore_` names and
+the scoped `Node_` and `UserFunction_*_Node_` wrappers are appended after them.
+
+`crates/cli/tests/code_generation/csharp_composition.rs` records every C#
+emission route over the owned conformance corpora and the authored generation
+fixtures, including fixtures whose literals and parameter names resemble the
+composed parts. Set `FERRULE_UPDATE_CSHARP_COMPOSITION=1` to rewrite
+`fixtures/csharp_composition.txt` after an intended emission change.
+
 ### Generate the library
 
 ```sh
