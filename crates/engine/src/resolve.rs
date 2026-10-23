@@ -178,22 +178,30 @@ pub(crate) fn scalar_in_frame(
     scalar(&[pinned_owner(context, positions, frame)?], path)
 }
 
+/// The path retained by the latest receiving frame that has one, or else
+/// the first member's path of the innermost document set in the context.
+///
+/// Frames are selected by the path they retain rather than by
+/// [`FrameKind::Document`](crate::frame_view::FrameKind::Document): a group
+/// of document members keeps its first member's path, but is a group-members
+/// frame because its instance is the member collection. The path does not
+/// depend on whether the context binds the frame.
 pub(crate) fn source_document_path<'a>(
     context: &'a [&Instance],
     positions: &'a [PositionFrame],
 ) -> Option<&'a str> {
-    positions
-        .iter()
-        .rev()
-        .find_map(|position| position.document_path.as_deref())
-        .or_else(|| {
-            context.iter().rev().find_map(|instance| {
-                instance
-                    .as_document_set()?
-                    .first()
-                    .map(ir::DocumentMember::source_path)
-            })
+    FrameView::latest_receiving(context, positions, |frame| {
+        frame.position.document_path.is_some()
+    })
+    .and_then(|(frame, _)| frame.position.document_path.as_deref())
+    .or_else(|| {
+        context.iter().rev().find_map(|instance| {
+            instance
+                .as_document_set()?
+                .first()
+                .map(ir::DocumentMember::source_path)
         })
+    })
 }
 
 pub(crate) fn dynamic_scalar(
