@@ -92,6 +92,7 @@ pub(super) fn call_builtin(
         BuiltinId::CreateGuid => create_guid(args),
         BuiltinId::Random => Ok(Value::Float(rand::random::<f64>())),
         BuiltinId::FormatNumber => format_number::format_number(args),
+        BuiltinId::FormatDecimalInteger => format_number::format_decimal_integer(args),
         BuiltinId::Exists => exists(args),
         BuiltinId::Round => round(args),
         BuiltinId::DelayPassthrough => delay_passthrough(args),

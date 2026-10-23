@@ -1083,6 +1083,12 @@ rules, and perform conversions only when reached. The byte entry point uses
 explicit BOM-aware, non-flushing decoding; it does not acquire files or publish
 documents.
 
+The internal `format_decimal_integer` operation implements the reference's
+integer `#` picture for an explicit Decimal value. It rounds halves away from
+zero without binary floating point and retains `-0` when a nonzero negative
+fraction rounds to zero. An exact zero remains `0`. Ordinary `format_number`
+does not implicitly accept Decimal values.
+
 ## Explicit native JSON-to-X12 input
 
 The primary JSON projection companion retains ordered typed occurrences and
@@ -1967,6 +1973,12 @@ Dynamic JSON documents share the 64 MiB per-document limit and additionally
 have a 256 MiB combined budget per execution.
 
 ## XML Host Boundary
+
+An explicit scalar scope may use `MappedSequence` output to preserve zero or more
+XML element occurrences while its saved schema field remains non-repeating. The
+scalar values are emitted as separate elements in mapping order, not joined into
+one value. This is limited to element fields; document roots, attributes, text
+slots and already-repeating fields keep their existing cardinality rules.
 
 The [generated XML qualification index](generated-xml-qualification-index.md) maps
 public route families, error ownership and source fixtures, and separates written

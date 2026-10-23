@@ -1147,13 +1147,19 @@ fn validate_scope(
         }
         let target_is_nonrepeating_group =
             !target_node.repeating && matches!(target_node.kind, SchemaKind::Group { .. });
+        let target_is_mapped_element = target_is_nonrepeating_group
+            || !target_node.repeating
+                && matches!(target_node.kind, SchemaKind::Scalar { .. })
+                && matches!(scope.construction, TargetConstruction::Scalar { .. })
+                && !target_node.name.starts_with(['@', '#', '\u{1f}'])
+                && target_node.name != ir::XML_ATTRIBUTES_FIELD;
         let invalid_output = iteration.dynamic_document_iteration().is_some()
             && iteration.output() != IterationOutput::Repeated
             || match iteration.output() {
                 IterationOutput::Repeated => false,
                 IterationOutput::First => scope.repeating || !target_is_nonrepeating_group,
                 IterationOutput::MappedSequence => {
-                    scope.repeating || target_path.is_empty() || !target_is_nonrepeating_group
+                    scope.repeating || target_path.is_empty() || !target_is_mapped_element
                 }
             };
         if invalid_output {

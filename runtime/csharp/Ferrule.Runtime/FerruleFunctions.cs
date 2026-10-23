@@ -50,6 +50,7 @@ public static partial class FerruleFunctions
             "json_parse_object_exists" => JsonParseObjectExists(arguments),
             "json_serialize_object" => JsonSerializeObject(arguments),
             "format_number" => FormatNumber(arguments),
+            "format_decimal_integer" => FormatDecimalInteger(arguments),
             "round" => Round(arguments),
             "delay_passthrough" => DelayPassthrough(arguments),
             "date_from_datetime" => UnaryString(

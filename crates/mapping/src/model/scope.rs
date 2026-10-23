@@ -15,8 +15,8 @@ pub enum IterationOutput {
     Repeated,
     /// Produce the first surviving item as a non-repeating target group.
     First,
-    /// Preserve mapping-produced XML occurrences independently of the
-    /// target schema's declared repetition.
+    /// Preserve mapping-produced XML element occurrences independently of the
+    /// target schema's declared repetition, including explicit scalar scopes.
     MappedSequence,
 }
 
