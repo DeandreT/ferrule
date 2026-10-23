@@ -17,7 +17,6 @@ internal static partial class Program
         {
             ("""{"name":"Child","kind":{"kind":"group","children":[]}}""", new FerruleRepeated([]), "expected one element"),
             ("""{"name":"Child","repeating":true,"kind":{"kind":"group","children":[]}}""", new FerruleMappedSequence([]), "expected one non-repeating element group"),
-            ("""{"name":"Child","kind":{"kind":"scalar","ty":"string"}}""", new FerruleMappedSequence([]), "expected one non-repeating element group"),
             ("""{"name":"Child","kind":{"kind":"scalar","ty":"string"}}""", new FerruleRepeated([]), "expected one element"),
         })
         {
@@ -62,6 +61,8 @@ internal static partial class Program
         foreach (var (child, value, childCount) in new (string, FerruleInstance, int)[]
         {
             ("""{"name":"Child","kind":{"kind":"group","children":[]}}""", new FerruleMappedSequence([]), 0),
+            ("""{"name":"Child","kind":{"kind":"scalar","ty":"string"}}""", new FerruleMappedSequence([]), 0),
+            ("""{"name":"Child","kind":{"kind":"scalar","ty":"string"}}""", new FerruleMappedSequence([Scalar(Text("one")), Scalar(Text("two"))]), 2),
             ("""{"name":"Child","repeating":true,"kind":{"kind":"group","children":[]}}""", new FerruleRepeated([]), 0),
             ("""{"name":"Child","repeating":true,"kind":{"kind":"scalar","ty":"string"}}""", new FerruleRepeated([]), 0),
             ("""{"name":"Child","kind":{"kind":"scalar","ty":"string"}}""", Scalar(FerruleValue.Null), 0),

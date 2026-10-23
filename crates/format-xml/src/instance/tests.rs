@@ -340,7 +340,7 @@ fn mapped_sequence_writes_zero_one_or_many_non_repeating_child_groups() {
 }
 
 #[test]
-fn mapped_sequence_is_rejected_for_roots_scalars_and_repeating_schema_nodes() {
+fn mapped_sequence_is_rejected_for_roots_and_repeating_schema_nodes() {
     let sequence = Instance::MappedSequence(vec![Instance::Group((Vec::new()).into())]);
     assert!(matches!(
         to_string(&schema(), &sequence),
@@ -357,14 +357,11 @@ fn mapped_sequence_is_rejected_for_roots_scalars_and_repeating_schema_nodes() {
     );
     let scalar_sequence =
         Instance::Group((vec![("Value".into(), Instance::MappedSequence(Vec::new()))]).into());
-    assert!(matches!(
-        to_string(&scalar_schema, &scalar_sequence),
-        Err(XmlFormatError::Shape {
-            expected: "one non-repeating element group",
-            got: "a mapped element sequence",
-            ..
-        })
-    ));
+    assert!(
+        !to_string(&scalar_schema, &scalar_sequence)
+            .unwrap()
+            .contains("<Value")
+    );
 
     let repeating_schema = SchemaNode::group(
         "Root",
@@ -380,6 +377,35 @@ fn mapped_sequence_is_rejected_for_roots_scalars_and_repeating_schema_nodes() {
             ..
         })
     ));
+}
+
+#[test]
+fn mapped_scalar_occurrences_keep_the_nonrepeating_xml_schema() {
+    let schema = SchemaNode::group(
+        "Root",
+        vec![SchemaNode::scalar("Value", ScalarType::String)],
+    );
+    let instance = Instance::Group(
+        vec![(
+            "Value".into(),
+            Instance::MappedSequence(vec![
+                Instance::Scalar(Value::String("one".into())),
+                Instance::Scalar(Value::String("two".into())),
+            ]),
+        )]
+        .into(),
+    );
+    let text = to_string(&schema, &instance).unwrap();
+    let parsed = roxmltree::Document::parse(&text).unwrap();
+    assert_eq!(
+        parsed
+            .descendants()
+            .filter(|n| n.has_tag_name("Value"))
+            .filter_map(|n| n.text())
+            .collect::<Vec<_>>(),
+        ["one", "two"]
+    );
+    assert!(!schema.child("Value").unwrap().repeating);
 }
 
 #[test]

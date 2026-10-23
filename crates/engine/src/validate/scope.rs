@@ -747,8 +747,14 @@ pub(super) fn validate_scope(
         ));
     }
     if scope.iteration_output == IterationOutput::MappedSequence
-        && target
-            .is_some_and(|node| node.repeating || !matches!(node.kind, SchemaKind::Group { .. }))
+        && target.is_some_and(|node| {
+            node.repeating
+                || !(matches!(node.kind, SchemaKind::Group { .. })
+                    || matches!(node.kind, SchemaKind::Scalar { .. })
+                        && matches!(scope.construction, ScopeConstruction::Scalar { .. })
+                        && !node.name.starts_with(['@', '#', '\u{1f}'])
+                        && node.name != ir::XML_ATTRIBUTES_FIELD)
+        })
     {
         issues.push(ValidationIssue::new(
             &location,

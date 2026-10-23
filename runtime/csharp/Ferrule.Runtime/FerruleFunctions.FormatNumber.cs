@@ -8,6 +8,20 @@ public static partial class FerruleFunctions
 {
     private const string FormatNumberName = "format_number";
 
+    private static FerruleValue FormatDecimalInteger(IReadOnlyList<FerruleValue> arguments)
+    {
+        const string function = "format_decimal_integer";
+        RequireArity(function, arguments, 1);
+        if (arguments[0].Kind != FerruleValueKind.Decimal) throw Type(function, arguments[0]);
+        var value = arguments[0].DecimalValue;
+        UInt128 divisor = 1;
+        for (int i = 0; i < value.Scale; i++) divisor *= 10;
+        var magnitude = value.Coefficient / divisor;
+        if ((value.Coefficient % divisor) * 2 >= divisor) magnitude++;
+        string sign = value.IsNegative ? "-" : "";
+        return FerruleValue.FromString(sign + magnitude.ToString(CultureInfo.InvariantCulture));
+    }
+
     private static FerruleValue FormatNumber(IReadOnlyList<FerruleValue> arguments)
     {
         if (arguments.Count >= 2 && arguments[1].Kind != FerruleValueKind.String)

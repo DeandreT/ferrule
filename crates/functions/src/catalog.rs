@@ -199,6 +199,7 @@ pub(crate) enum BuiltinId {
     CreateGuid,
     Random,
     FormatNumber,
+    FormatDecimalInteger,
     Exists,
     Round,
     DateFromDatetime,
@@ -914,6 +915,19 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Authoring,
         "Formats a number with a picture."
+    ),
+    builtin!(
+        FormatDecimalInteger,
+        "format_decimal_integer",
+        "Format Decimal Integer",
+        Numeric,
+        &[parameter("value", Decimal)],
+        BuiltinArity::fixed(1),
+        String,
+        true,
+        true,
+        Internal,
+        "Formats an exact Decimal with the native integer picture, rounding halves away from zero."
     ),
     builtin!(
         Exists,
