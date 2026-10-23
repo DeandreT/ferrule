@@ -330,6 +330,14 @@ public static partial class FerruleJson
         if (jsonObjectItemNullable is not null && (!repeating || kind != "group" || jsonArrayWrapper || jsonAny))
             throw Boundary($"Embedded JSON schema node '{name}' has invalid JSON object-item nullability metadata.");
         var nullable = OptionalBoolean(element, "nullable");
+        if (JsonNullLayers.Contradiction(
+                kind != "group",
+                repeating,
+                nullable,
+                OptionalBoolean(element, "container_nullable")) is { } contradiction)
+        {
+            throw Boundary($"Embedded JSON schema node '{name}' has invalid JSON nullability metadata: {contradiction}.");
+        }
         var jsonFormats = ReadJsonFormats(name, element, scalarDomain, jsonAny);
         var fixedLexical = OptionalString(element, "fixed");
         FerruleValue? fixedValue = null;
@@ -1310,7 +1318,7 @@ public static partial class FerruleJson
         int depth)
     {
         budget.Visit(depth);
-        if (schema.ContainerNullable && element.ValueKind == JsonValueKind.Null)
+        if (schema.NullLayers.Whole && element.ValueKind == JsonValueKind.Null)
         {
             return new FerruleScalar(FerruleValue.JsonNull);
         }
@@ -1367,7 +1375,7 @@ public static partial class FerruleJson
                     : CanonicalizeAnyJson(element)));
         }
 
-        if (schema.SingleContainerNullable && element.ValueKind == JsonValueKind.Null)
+        if (schema.NullLayers.Single && element.ValueKind == JsonValueKind.Null)
         {
             return new FerruleScalar(FerruleValue.JsonNull);
         }
@@ -1437,7 +1445,7 @@ public static partial class FerruleJson
         NodeBudget budget)
     {
         FerruleValue value;
-        if (element.ValueKind == JsonValueKind.Null && schema.Nullable)
+        if (element.ValueKind == JsonValueKind.Null && schema.NullLayers.Value)
         {
             value = FerruleValue.JsonNull;
         }
@@ -1536,7 +1544,7 @@ public static partial class FerruleJson
 
     private static FerruleInstance Missing(JsonSchemaNode schema)
     {
-        if (schema.ContainerNullable)
+        if (schema.NullLayers.Whole)
         {
             return new FerruleScalar(FerruleValue.Null);
         }
@@ -1559,7 +1567,7 @@ public static partial class FerruleJson
         int depth)
     {
         budget.Visit(depth);
-        if (schema.ContainerNullable &&
+        if (schema.NullLayers.Whole &&
             instance is FerruleScalar { Value.Kind: FerruleValueKind.JsonNull })
         {
             writer.WriteNullValue();
@@ -1657,7 +1665,7 @@ public static partial class FerruleJson
             return;
         }
 
-        if (schema.SingleContainerNullable &&
+        if (schema.NullLayers.Single &&
             instance is FerruleScalar { Value.Kind: FerruleValueKind.JsonNull })
         {
             writer.WriteNullValue();
@@ -1923,7 +1931,7 @@ public static partial class FerruleJson
         ValidateNumericRangeOutput(schema, scalar, value);
         ValidateJsonMultipleOfOutput(schema, scalar, value);
         ValidateJsonAllowedValuesOutput(schema, scalar, value);
-        if (value.Kind == FerruleValueKind.JsonNull && schema.Nullable)
+        if (value.Kind == FerruleValueKind.JsonNull && schema.NullLayers.Value)
         {
             writer.WriteNullValue();
             return;
@@ -1988,7 +1996,7 @@ public static partial class FerruleJson
         FerruleValue value)
     {
         if (schema.NumericRange is not { } range ||
-            value.Kind == FerruleValueKind.JsonNull && schema.Nullable)
+            value.Kind == FerruleValueKind.JsonNull && schema.NullLayers.Value)
         {
             return;
         }
@@ -2178,7 +2186,7 @@ public static partial class FerruleJson
         FerruleValue value)
     {
         var domain = schema.ScalarDomain;
-        if (value.Kind == FerruleValueKind.JsonNull && schema.Nullable ||
+        if (value.Kind == FerruleValueKind.JsonNull && schema.NullLayers.Value ||
             ValueDomain(value.Kind) is { } valueDomain && domain.HasFlag(valueDomain))
         {
             return value;
@@ -2300,7 +2308,7 @@ public static partial class FerruleJson
             return true;
         }
         return instance is FerruleScalar { Value.Kind: FerruleValueKind.Null } &&
-               (schema.ContainerNullable || !schema.Repeating && schema.IsScalar);
+               (schema.NullLayers.Whole || !schema.Repeating && schema.IsScalar);
     }
 
     private static void ValidateRequired(
@@ -2352,7 +2360,7 @@ public static partial class FerruleJson
                     string.Equals(candidate.Name, required, StringComparison.Ordinal));
                 return property is not null &&
                        (property.Value.ValueKind != JsonValueKind.Null ||
-                        schema.Child(required)?.Nullable == true);
+                        schema.Child(required)?.NullLayers.Value == true);
             }) &&
             properties.All(property => alternative.Members.Contains(
                 property.Name,
@@ -2402,7 +2410,7 @@ public static partial class FerruleJson
             alternative.Required.All(required =>
                 fields.Any(field =>
                     string.Equals(field.Schema.Name, required, StringComparison.Ordinal) &&
-                    (!IsExplicitJsonNull(field.Value) || field.Schema.Nullable))) &&
+                    (!IsExplicitJsonNull(field.Value) || field.Schema.NullLayers.Value))) &&
             fields.All(field => alternative.Members.Contains(
                 field.Schema.Name,
                 StringComparer.Ordinal)) &&
@@ -2475,7 +2483,7 @@ public static partial class FerruleJson
         if (constraint.Type == "json_null")
         {
             return value.Kind == FerruleValueKind.JsonNull &&
-                   (schema.Nullable || schema.ContainerNullable);
+                   (schema.NullLayers.Value || schema.NullLayers.Whole);
         }
 
         if (!schema.IsScalar)
@@ -3089,7 +3097,7 @@ public static partial class FerruleJson
         int depth)
     {
         budget.Visit(depth);
-        if (schema.ContainerNullable && element.ValueKind == JsonValueKind.Null)
+        if (schema.NullLayers.Whole && element.ValueKind == JsonValueKind.Null)
         {
             return;
         }

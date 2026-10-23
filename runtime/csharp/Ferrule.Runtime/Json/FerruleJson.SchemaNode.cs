@@ -79,8 +79,16 @@ public static partial class FerruleJson
 
         public bool ContainerNullable { get; private set; }
         public bool? JsonObjectItemNullable { get; private set; }
-        // Scalar items admit null only through their own Nullable value domain.
-        public bool SingleContainerNullable => !IsScalar && (JsonObjectItemNullable ?? ContainerNullable);
+
+        /// <summary>Where this node admits explicit JSON null.</summary>
+        public JsonNullLayers NullLayers => JsonNullLayers.Derive(
+            IsScalar,
+            Repeating,
+            Nullable,
+            ContainerNullable,
+            JsonObjectItemNullable,
+            JsonArrayWrapper,
+            JsonAny);
         public bool JsonArrayWrapper { get; }
 
         public bool JsonAny { get; }
@@ -156,6 +164,53 @@ public static partial class FerruleJson
             resolved.JsonContains = JsonContains;
             resolved.JsonUniqueItems = JsonUniqueItems;
             ResolvedRecursiveSchema = resolved;
+        }
+    }
+
+    /// <summary>
+    /// Where one schema node admits explicit JSON null, derived from its saved
+    /// role flags exactly as the effective JSON view derives the native
+    /// boundary's layers, so object null, array-container null, object-item
+    /// null and scalar value null keep their separate meanings.
+    /// </summary>
+    /// <param name="Whole">One object, or one whole array or nested array, is <c>null</c>.</param>
+    /// <param name="Single">
+    /// One singular object or object array item is <c>null</c> before its own shape is
+    /// read or written. Nested-array frames and arbitrary JSON never consult it.
+    /// </param>
+    /// <param name="Value">The scalar value, or each scalar item, is <c>null</c>.</param>
+    internal readonly record struct JsonNullLayers(bool Whole, bool Single, bool Value)
+    {
+        /// <summary>The saved role metadata with no effective interpretation, if any.</summary>
+        internal static string? Contradiction(bool scalar, bool repeating, bool nullable, bool containerNullable) =>
+            nullable && !scalar ? "scalar nullability is declared on a group"
+            : containerNullable && scalar && !repeating ? "container nullability is declared on a singular scalar"
+            : null;
+
+        internal static JsonNullLayers Derive(
+            bool scalar,
+            bool repeating,
+            bool nullable,
+            bool containerNullable,
+            bool? objectItemNullable,
+            bool arrayWrapper,
+            bool jsonAny)
+        {
+            if (!repeating)
+            {
+                return scalar
+                    ? new JsonNullLayers(false, false, nullable)
+                    : new JsonNullLayers(containerNullable, containerNullable, false);
+            }
+            if (arrayWrapper)
+            {
+                // Each nested array's nullability belongs to the frame's item child.
+                return new JsonNullLayers(containerNullable, false, false);
+            }
+            // A scalar item's null belongs to its declared value domain; an object
+            // item's to its explicit override or else the array container.
+            var itemNull = scalar ? nullable : objectItemNullable ?? containerNullable;
+            return new JsonNullLayers(containerNullable, !scalar && !jsonAny && itemNull, scalar && itemNull);
         }
     }
 }
