@@ -920,3 +920,143 @@ fn owned_frames_read_the_position_their_slot_names() {
     assert!(checked > 1000, "checked {checked} lookups");
     assert!(unbound > 100, "{unbound} selected frames named no position");
 }
+
+/// `source_document_path` as it scanned positions before the frame view.
+fn legacy_source_document_path<'a>(
+    context: &'a [&Instance],
+    positions: &'a [PositionFrame],
+) -> Option<&'a str> {
+    positions
+        .iter()
+        .rev()
+        .find_map(|position| position.document_path.as_deref())
+        .or_else(|| {
+            context.iter().rev().find_map(|instance| {
+                instance
+                    .as_document_set()?
+                    .first()
+                    .map(ir::DocumentMember::source_path)
+            })
+        })
+}
+
+fn document_member(path: &str, value: &str) -> ir::DocumentMember {
+    ir::DocumentMember::new(path, record(vec![("Value", text(value))]))
+        .unwrap_or_else(|| panic!("valid member {path}"))
+}
+
+#[test]
+fn the_document_path_is_the_latest_retained_one_whatever_the_frame_kind() {
+    let documented = |collection: &[&str], grouped: bool, path: &str| PositionFrame {
+        document_path: Some(path.into()),
+        ..position(collection, 1, grouped)
+    };
+    let all = [
+        position(&["Rows"], 1, false),
+        documented(&["Files"], false, "a.xml"),
+        position(&["Rows"], 2, true),
+        documented(&["Files"], true, "b.xml"),
+        position(&["Lines"], 3, false),
+    ];
+    let set = Instance::DocumentSet(vec![
+        document_member("set-first.xml", "S"),
+        document_member("set-second.xml", "T"),
+    ]);
+    let plain = record(vec![("v", text("plain"))]);
+    let instances = [&plain, &set, &plain, &set, &plain, &plain, &plain, &plain];
+    let mut checked = 0;
+    for length in 0..=all.len() {
+        for context in 0..=instances.len() {
+            let (context, positions) = (&instances[..context], &all[..length]);
+            assert_eq!(
+                crate::resolve::source_document_path(context, positions),
+                legacy_source_document_path(context, positions),
+                "{} instances and {} positions",
+                context.len(),
+                positions.len()
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 50, "checked {checked} lookups");
+}
+
+/// Grouping a named file set keeps each group's first member as a grouped
+/// document frame. Its retained path stays the document path, although the
+/// frame is a group-members frame rather than a document frame.
+#[test]
+fn a_group_of_documents_reads_its_first_member_path() {
+    let project = Project {
+        source: SchemaNode::group("Source", Vec::new()),
+        target: SchemaNode::group(
+            "Target",
+            vec![
+                SchemaNode::group(
+                    "Group",
+                    vec![SchemaNode::scalar("Path", ir::ScalarType::String)],
+                )
+                .repeating(),
+            ],
+        ),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: Graph {
+            nodes: [
+                (0, Node::SourceDocumentPath),
+                (
+                    1,
+                    Node::SourceField {
+                        path: path(&["Value"]),
+                        frame: None,
+                    },
+                ),
+            ]
+            .into(),
+        },
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Group".into(),
+                iteration: ScopeIteration::Source(path(&["Files"])),
+                group_by: Some(1),
+                bindings: vec![Binding {
+                    target_field: "Path".into(),
+                    node: 0,
+                }],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    };
+    let source = record(vec![(
+        "Files",
+        Instance::DocumentSet(vec![
+            document_member("a.xml", "A"),
+            document_member("b.xml", "B"),
+            document_member("c.xml", "A"),
+        ]),
+    )]);
+
+    let output = run(&project, &source).expect("grouped documents run");
+
+    let paths = output
+        .field("Group")
+        .and_then(Instance::as_repeated)
+        .expect("grouped output")
+        .iter()
+        .map(|group| group.field("Path").and_then(Instance::as_scalar).cloned())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths,
+        [Some(text_value("a.xml")), Some(text_value("b.xml"))]
+    );
+}
+
+fn text_value(value: &str) -> Value {
+    Value::String(value.into())
+}

@@ -38,6 +38,7 @@ mod recursive_collect_owned;
 mod runtime_dependency;
 mod scope_roots;
 mod scope_serde;
+mod sequence_levels;
 mod source_owner;
 mod source_scope;
 mod sqlite_read;
@@ -129,6 +130,7 @@ pub use recursive::RecursiveFilterPlan;
 pub use recursive_collect_owned::OwnedRecursiveCollect;
 pub use runtime_dependency::{RuntimeBoundary, RuntimeDependency};
 pub use scope_roots::{NestedScopeKind, ScopeRoot, ScopeRootRole, ScopeRootSlot};
+pub use sequence_levels::SequenceLevelInput;
 pub use source_owner::{
     OwnedSourceAccess, OwnedSourceRef, SourceOwner, SourceSelector, SourceSelectorMut,
     SourceSelectorRef,

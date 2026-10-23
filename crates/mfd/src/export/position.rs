@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use mapping::{Graph, JoinId, Node, NodeId};
+use mapping::{Graph, JoinId, Node, NodeId, NodeInputRole};
 
 use super::auto_number;
 use super::schema::KeyAlloc;
@@ -25,72 +25,17 @@ pub(super) fn render_component(
     (input, output)
 }
 
+/// The inputs evaluated in the enclosing scope: every input but a generated
+/// sequence's item identities and the expressions evaluated per generated
+/// item, which are connected explicitly when the filter/exists chain is
+/// emitted.
 fn graph_node_inputs(node: &Node) -> Vec<NodeId> {
-    match node {
-        Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
-        Node::Raise { message } => message.iter().copied().collect(),
-        Node::RuntimeParameterDefault { default, .. } => vec![*default],
-        Node::If {
-            condition,
-            then,
-            else_,
-        } => vec![*condition, *then, *else_],
-        Node::ValueMap { input, .. } => vec![*input],
-        Node::Lookup { matches, .. } => vec![*matches],
-        Node::OwnedLookup(_)
-        | Node::OwnedAggregate(_)
-        | Node::OwnedCollectionFind(_)
-        | Node::OwnedJoinField(_)
-        | Node::OwnedJoinSourcePosition(_)
-        | Node::OwnedJoinAggregate(_) => node.dependencies(),
-        Node::DynamicSourceField { key, .. } => vec![*key],
-        Node::OwnedDynamicSourceField(field) => vec![field.key],
-        Node::XmlMixedContent { replacements, .. } => replacements
-            .iter()
-            .map(|replacement| replacement.expression)
-            .collect(),
-        Node::OwnedXmlMixedContent(mixed) => mixed
-            .replacements
-            .iter()
-            .map(|replacement| replacement.expression)
-            .collect(),
-        Node::CollectionFind {
-            predicate, value, ..
-        } => vec![*predicate, *value],
-        // The reducer's predicate has its own generated-item context and is
-        // connected explicitly when the filter/exists chain is emitted.
-        // Its sequence arguments still execute in the enclosing scope.
-        Node::SequenceExists { sequence, .. } => sequence.inputs(),
-        Node::SequenceItemAt { sequence, index } => {
-            sequence.inputs().into_iter().chain([*index]).collect()
-        }
-        Node::SequenceAggregate { sequence, arg, .. } => {
-            sequence.inputs().into_iter().chain(*arg).collect()
-        }
-        Node::Aggregate {
-            expression, arg, ..
-        } => expression.iter().chain(arg).copied().collect(),
-        Node::JoinAggregate {
-            expression, arg, ..
-        } => expression.iter().chain(arg).copied().collect(),
-        Node::OwnedSourceField(_)
-        | Node::OwnedPosition(_)
-        | Node::OwnedRowDocumentPath(_)
-        | Node::OwnedXmlSerialize(_)
-        | Node::SourceField { .. }
-        | Node::SourceDocumentPath
-        | Node::SourceRootXmlTypeEquals { .. }
-        | Node::SourceRootField { .. }
-        | Node::Position { .. }
-        | Node::JoinField { .. }
-        | Node::JoinPosition { .. }
-        | Node::Unconnected
-        | Node::Const { .. }
-        | Node::FunctionParameter { .. }
-        | Node::RuntimeValue { .. }
-        | Node::RuntimeParameter { .. }
-        | Node::XmlSerialize { .. } => Vec::new(),
-    }
+    node.inputs_where(|input| {
+        !matches!(
+            input.role,
+            NodeInputRole::ItemIdentity | NodeInputRole::GeneratedItem
+        )
+    })
 }
 
 pub(super) fn position_nodes_for_roots(
