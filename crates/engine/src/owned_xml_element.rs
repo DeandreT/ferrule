@@ -38,7 +38,7 @@ impl<'a> OwnedContext<'a> {
                         frame: pin.to_vec(),
                     });
                 };
-                let root = self.roots.root(key)?;
+                let root = self.endpoint_root(key)?;
                 let declared_repeating = match key {
                     OwnerKey::Primary => self.roots.primary_repeating,
                     OwnerKey::Named(index) => self.roots.declared[index].schema.repeating,
@@ -74,7 +74,7 @@ impl<'a> OwnedContext<'a> {
                     Some(item) => (item, &source.path[active.collection.len()..]),
                     None => return Ok(None),
                 },
-                None => (self.roots.root(key)?, source.path.as_slice()),
+                None => (self.endpoint_root(key)?, source.path.as_slice()),
             },
         };
         owned_element(base, suffix, &source.path)

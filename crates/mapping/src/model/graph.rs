@@ -186,6 +186,15 @@ pub struct OwnedRowDocumentPath {
     pub collection: Option<Vec<String>>,
 }
 
+/// Document-set membership metadata from one exact endpoint: the location of
+/// that owner's latest active document occurrence. It never reads another
+/// owner's document or the first member of an uniterated set.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OwnedSourceDocumentPath {
+    pub owner: SourceOwner,
+}
+
 /// Searches one explicitly owned collection for the first item whose
 /// item-relative `key` equals `matches`. The needle is evaluated once in the
 /// parent context; key and value read only the selected owner's item.
@@ -346,6 +355,8 @@ pub enum Node {
     OwnedPosition(OwnedPosition),
     /// Reads only the selected owner's physical row origin, with no fallback.
     OwnedRowDocumentPath(OwnedRowDocumentPath),
+    /// Reads only the selected owner's active document-set member location.
+    OwnedSourceDocumentPath(OwnedSourceDocumentPath),
     /// First-match lookup over exactly one owned endpoint collection.
     OwnedLookup(OwnedLookup),
     /// First-match predicate search over exactly one owned endpoint collection.
@@ -630,6 +641,7 @@ impl Node {
             Self::OwnedSourceField(_) => Some("owned_source_field"),
             Self::OwnedPosition(_) => Some("owned_position"),
             Self::OwnedRowDocumentPath(_) => Some("owned_row_document_path"),
+            Self::OwnedSourceDocumentPath(_) => Some("owned_source_document_path"),
             Self::OwnedDynamicSourceField(_) => Some("owned_dynamic_source_field"),
             Self::OwnedXmlSerialize(_) => Some("owned_xml_serialize"),
             Self::OwnedXmlMixedContent(_) => Some("owned_xml_mixed_content"),

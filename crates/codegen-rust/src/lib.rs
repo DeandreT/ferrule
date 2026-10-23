@@ -259,6 +259,7 @@ owned_presets! {
     XmlSerialize => emit_with_basic_owned_xml_serialize;
     XmlMixedContent => emit_with_basic_owned_xml_mixed_content;
     XmlMixedConstruction => emit_with_basic_owned_xml_mixed_construction;
+    DocumentPaths => emit_with_basic_owned_document_paths;
 }
 
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.
@@ -808,6 +809,7 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
+        | Expression::OwnedSourceDocumentPath(_)
         | Expression::OwnedXmlSerialize(_)
         | Expression::OwnedJoinField(_)
         | Expression::OwnedJoinSourcePosition(_)
@@ -993,6 +995,7 @@ fn render_expression_in_context_with_scalar_item_at(
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
+            | Expression::OwnedSourceDocumentPath(_)
             | Expression::OwnedDynamicSourceField(_)
             | Expression::OwnedLookup(_)
             | Expression::OwnedCollectionFind(_)

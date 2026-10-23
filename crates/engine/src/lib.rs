@@ -1186,6 +1186,9 @@ mod owned_group_starting_with_tests;
 mod owned_sequence_item_at_tests;
 
 #[cfg(test)]
+#[path = "tests/owned_document_path.rs"]
+mod owned_document_path_tests;
+#[cfg(test)]
 #[path = "tests/owned_dynamic_field.rs"]
 mod owned_dynamic_field_tests;
 #[cfg(test)]

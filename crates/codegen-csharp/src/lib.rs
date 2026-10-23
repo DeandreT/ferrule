@@ -195,6 +195,7 @@ owned_presets! {
     XmlSerialize => emit_with_basic_owned_xml_serialize;
     XmlMixedContent => emit_with_basic_owned_xml_mixed_content;
     XmlMixedConstruction => emit_with_basic_owned_xml_mixed_construction;
+    DocumentPaths => emit_with_basic_owned_document_paths;
 }
 
 fn dynamic_input_document_outputs(plan: &BoundaryEmissionPlan<'_>) -> bool {

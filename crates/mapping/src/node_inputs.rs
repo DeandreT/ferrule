@@ -91,6 +91,7 @@ impl Node {
             Self::OwnedSourceField(_)
             | Self::OwnedPosition(_)
             | Self::OwnedRowDocumentPath(_)
+            | Self::OwnedSourceDocumentPath(_)
             | Self::OwnedXmlSerialize(_)
             | Self::OwnedJoinField(_)
             | Self::OwnedJoinSourcePosition(_)

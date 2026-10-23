@@ -75,6 +75,7 @@ fn legacy_input_at(node: &Node, idx: usize) -> Option<NodeId> {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_)
         | Node::OwnedXmlSerialize(_)
         | Node::SourceField { .. }
         | Node::SourceDocumentPath

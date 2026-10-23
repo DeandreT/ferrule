@@ -970,6 +970,9 @@ fn node_label(node: &mapping::Node) -> String {
             "owned row document path {:?} {:?}",
             path.owner, path.collection
         ),
+        mapping::Node::OwnedSourceDocumentPath(path) => {
+            format!("owned document path {:?}", path.owner)
+        }
         mapping::Node::OwnedLookup(lookup) => format!(
             "owned lookup {:?} {:?} (read-only)",
             lookup.collection.owner, lookup.collection.path

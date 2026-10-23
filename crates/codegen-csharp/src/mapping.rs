@@ -363,6 +363,7 @@ fn render_user_function_expression(
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
+        | Expression::OwnedSourceDocumentPath(_)
         | Expression::OwnedDynamicSourceField(_) => {
             return Err(codegen::owned_expression_emission_error(
                 codegen::OwnedSourceNamespace::Function(function),
@@ -1863,6 +1864,7 @@ fn render_expression(
                 Expression::OwnedSourceField(_)
                     | Expression::OwnedPosition(_)
                     | Expression::OwnedRowDocumentPath(_)
+                    | Expression::OwnedSourceDocumentPath(_)
                     | Expression::OwnedDynamicSourceField(_)
                     | Expression::OwnedXmlSerialize(_)
             )
@@ -1922,6 +1924,7 @@ fn render_expression(
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
+        | Expression::OwnedSourceDocumentPath(_)
         | Expression::OwnedDynamicSourceField(_)
         | Expression::OwnedLookup(_)
         | Expression::OwnedCollectionFind(_)
@@ -2565,6 +2568,7 @@ pub(super) fn render_basic_scopes<'a>(
         false,
         codegen::OwnedPreset::ControlFree.capabilities().grouping,
         false,
+        false,
     )
 }
 
@@ -2576,22 +2580,31 @@ pub(super) fn owned_dynamic_loading_paths(program: &Program) -> Vec<NodeId> {
         .collect()
 }
 
-/// Render Basic scopes with the window, grouping and dynamic-loading
-/// capabilities an owned capability set admits; windows also select the
-/// paired legacy islands and loading wraps each loading scope.
+/// Render Basic scopes with the window, grouping, dynamic-loading and
+/// document-set capabilities an owned capability set admits; windows also
+/// select the paired legacy islands, loading wraps each loading scope and
+/// document sets let owned scopes walk document-set members.
 pub(super) fn render_basic_scopes_profile<'a>(
     program: &'a Program,
     output: &mut String,
     allow_windows: bool,
     grouping: codegen::GroupingModes,
     dynamic_loading: bool,
+    document_sets: bool,
 ) -> Result<BasicScopeIndices<'a>, EmitError> {
     let loading = if dynamic_loading {
         owned_dynamic_loading::loading_scopes(program)
     } else {
         BTreeMap::new()
     };
-    render_basic_scopes_loading(program, output, allow_windows, grouping, &loading)
+    render_basic_scopes_loading(
+        program,
+        output,
+        allow_windows,
+        grouping,
+        &loading,
+        document_sets,
+    )
 }
 
 fn render_basic_scopes_loading<'a>(
@@ -2600,6 +2613,7 @@ fn render_basic_scopes_loading<'a>(
     allow_windows: bool,
     grouping: codegen::GroupingModes,
     loading: &BTreeMap<usize, codegen::OwnedDynamicLoading<'_>>,
+    document_sets: bool,
 ) -> Result<BasicScopeIndices<'a>, EmitError> {
     let mut scopes = Vec::new();
     let primary = add_scope(&program.root, &mut scopes);
@@ -2641,7 +2655,11 @@ fn render_basic_scopes_loading<'a>(
             output.push_str(&format!("        var cohort_{index} = context."));
             match iteration.input() {
                 IterationSource::OwnedSource(source) => {
-                    output.push_str("WalkOwnedSourceCohort(");
+                    output.push_str(if document_sets {
+                        "WalkOwnedDocumentSourceCohort("
+                    } else {
+                        "WalkOwnedSourceCohort("
+                    });
                     crate::owned_basic::render_owner(&source.source().owner, output);
                     output.push_str(", ");
                     render_path(&source.source().path, output);

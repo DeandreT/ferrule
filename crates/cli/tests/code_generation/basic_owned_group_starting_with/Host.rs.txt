@@ -38,6 +38,7 @@ fn error(recipe:&Json)->RuntimeError {
             let source=match recipe["cause"].as_str().unwrap() {
                 "SourceUnavailable"=>OwnedSourceError::SourceUnavailable {name:recipe["owner"].as_str().unwrap().into()},
                 "InactiveSourceFrame"=>OwnedSourceError::InactiveSourceFrame {owner,collection:Some(strings(recipe,"collection"))},
+                "MissingDocumentPath"=>OwnedSourceError::MissingDocumentPath {owner},
                 "UniteratedRepetition"=>OwnedSourceError::UniteratedRepetition {owner,path:strings(recipe,"path"),segment:recipe["segment"].as_u64().unwrap() as usize},
                 "CannotTraverse"=>OwnedSourceError::Traversal {owner,source:SourcePathError::CannotTraverse {path:strings(recipe,"path"),segment:recipe["segment"].as_u64().unwrap() as usize,found:InstanceKind::Scalar}},
                 "ExpectedScalar"=>OwnedSourceError::Traversal {owner,source:SourcePathError::ExpectedScalar {path:strings(recipe,"path"),found:InstanceKind::Group}},

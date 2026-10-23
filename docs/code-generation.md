@@ -77,6 +77,7 @@ construct's existing typed refusal:
 | `dynamic_loading` | Owned dynamic driver loading: a loading scope walks its endpoint's exact driver collection, evaluates the path in each driver item, and exact field and position reads see the loaded document |
 | `xml` (`Closed`, `Serialize`, `MixedContent`, `MixedConstruction`) | Nested owned XML operator levels |
 | `joins` | Owned inner join scopes, their tuple reads, and owned joined aggregates |
+| `document_sets` | Ungrouped owned scopes over a document-set endpoint walk each member as its owner's root, and owned document-path reads return the exact owner's active member location |
 
 `OwnedCapabilities` is read by one closed-context validator, one Basic emission
 validator, the named-input planner, lowering (owned join scopes pass the
@@ -89,34 +90,35 @@ joins from the same set.
 Every public explicit entry point is a named `codegen::OwnedPreset`. Its
 capabilities come from one declarative table in `crates/codegen/src/capabilities.rs`:
 
-| Preset | Entry suffix | Controls | Grouping | Failures | Sequences | Constructions | Search | Dynamic fields | Dynamic loading | XML | Joins |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `ControlFree` | `sources` | — | — | — | — | — | — | — | — | — | — |
-| `Filters` | `filters` | filter | — | — | — | — | — | — | — | — | — |
-| `Sort` | `sort` | filter, sort | — | — | — | — | — | — | — | — | — |
-| `Windows` | `windows` | all | — | — | — | — | — | — | — | — | — |
-| `RowFailures` | `row_failures` | all | — | rows | — | — | — | — | — | — | — |
-| `GroupBy` | `group_by` | all | By | rows | — | — | — | — | — | — | — |
-| `SequenceItemAt` | `sequence_item_at` | all | By | rows | ItemAt | — | — | — | — | — | — |
-| `GroupAdjacentBy` | `group_adjacent_by` | all | By–AdjacentBy | rows | ItemAt | — | — | — | — | — | — |
-| `GroupStartingWith` | `group_starting_with` | all | By–StartingWith | rows | ItemAt | — | — | — | — | — | — |
-| `GroupEndingWith` | `group_ending_with` | all | By–EndingWith | rows | ItemAt | — | — | — | — | — | — |
-| `GroupIntoBlocks` | `group_into_blocks` | all | all | rows | ItemAt | — | — | — | — | — | — |
-| `FailureSources` | `failure_sources` | all | By–EndingWith | rows, owned | ItemAt | — | — | — | — | — | — |
-| `PathHierarchy` | `path_hierarchy` | all | By–EndingWith | rows, owned | ItemAt | hierarchy | — | — | — | — | — |
-| `AdjacencyTree` | `adjacency_tree` | all | By–EndingWith | rows, owned | ItemAt | hierarchy, tree | — | — | — | — | — |
-| `RecursiveCollect` | `recursive_collect` | all | By–EndingWith | rows, owned | ItemAt, owned recursive | hierarchy, tree | — | — | — | — | — |
-| `RecursiveFilter` | `recursive_filter` | all | By–EndingWith | rows, owned | ItemAt, owned recursive | all | — | — | — | — | — |
-| `LookupFind` | `lookup_find` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | — | — | — | — |
-| `DynamicField` | `dynamic_field` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | — | — |
-| `DynamicLoading` | `dynamic_loading` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | yes | — | — |
-| `CollectionAggregates` | `collection_aggregates` | all | all | rows, owned | ItemAt, owned recursive | all | all | — | — | — | — |
-| `Joins` | `joins` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | — | — | — | yes |
-| `SequenceExists` | `sequence_exists` | all | By–EndingWith | rows | ItemAt, Exists | — | — | — | — | — | — |
-| `SequenceAggregate` | `sequence_aggregate` | all | By–EndingWith | rows | ItemAt, Exists, Aggregate | — | — | — | — | — | — |
-| `XmlSerialize` | `xml_serialize` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | Serialize | — |
-| `XmlMixedContent` | `xml_mixed_content` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | MixedContent | — |
-| `XmlMixedConstruction` | `xml_mixed_construction` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | MixedConstruction | — |
+| Preset | Entry suffix | Controls | Grouping | Failures | Sequences | Constructions | Search | Dynamic fields | Dynamic loading | XML | Joins | Document sets |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `ControlFree` | `sources` | — | — | — | — | — | — | — | — | — | — | — |
+| `Filters` | `filters` | filter | — | — | — | — | — | — | — | — | — | — |
+| `Sort` | `sort` | filter, sort | — | — | — | — | — | — | — | — | — | — |
+| `Windows` | `windows` | all | — | — | — | — | — | — | — | — | — | — |
+| `RowFailures` | `row_failures` | all | — | rows | — | — | — | — | — | — | — | — |
+| `GroupBy` | `group_by` | all | By | rows | — | — | — | — | — | — | — | — |
+| `SequenceItemAt` | `sequence_item_at` | all | By | rows | ItemAt | — | — | — | — | — | — | — |
+| `GroupAdjacentBy` | `group_adjacent_by` | all | By–AdjacentBy | rows | ItemAt | — | — | — | — | — | — | — |
+| `GroupStartingWith` | `group_starting_with` | all | By–StartingWith | rows | ItemAt | — | — | — | — | — | — | — |
+| `GroupEndingWith` | `group_ending_with` | all | By–EndingWith | rows | ItemAt | — | — | — | — | — | — | — |
+| `GroupIntoBlocks` | `group_into_blocks` | all | all | rows | ItemAt | — | — | — | — | — | — | — |
+| `FailureSources` | `failure_sources` | all | By–EndingWith | rows, owned | ItemAt | — | — | — | — | — | — | — |
+| `PathHierarchy` | `path_hierarchy` | all | By–EndingWith | rows, owned | ItemAt | hierarchy | — | — | — | — | — | — |
+| `AdjacencyTree` | `adjacency_tree` | all | By–EndingWith | rows, owned | ItemAt | hierarchy, tree | — | — | — | — | — | — |
+| `RecursiveCollect` | `recursive_collect` | all | By–EndingWith | rows, owned | ItemAt, owned recursive | hierarchy, tree | — | — | — | — | — | — |
+| `RecursiveFilter` | `recursive_filter` | all | By–EndingWith | rows, owned | ItemAt, owned recursive | all | — | — | — | — | — | — |
+| `LookupFind` | `lookup_find` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | — | — | — | — | — |
+| `DynamicField` | `dynamic_field` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | — | — | — |
+| `DynamicLoading` | `dynamic_loading` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | yes | — | — | — |
+| `CollectionAggregates` | `collection_aggregates` | all | all | rows, owned | ItemAt, owned recursive | all | all | — | — | — | — | — |
+| `Joins` | `joins` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | — | — | — | yes | — |
+| `SequenceExists` | `sequence_exists` | all | By–EndingWith | rows | ItemAt, Exists | — | — | — | — | — | — | — |
+| `SequenceAggregate` | `sequence_aggregate` | all | By–EndingWith | rows | ItemAt, Exists, Aggregate | — | — | — | — | — | — | — |
+| `XmlSerialize` | `xml_serialize` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | Serialize | — | — |
+| `XmlMixedContent` | `xml_mixed_content` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | MixedContent | — | — |
+| `XmlMixedConstruction` | `xml_mixed_construction` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | MixedConstruction | — | — |
+| `DocumentPaths` | `document_paths` | all | — | — | — | — | — | — | — | — | — | yes |
 
 Each row backs `lower_with_basic_owned_<suffix>`,
 `validate_program_with_basic_owned_<suffix>`, the matching
@@ -831,6 +833,31 @@ ordinary entry points fail at a reached loading scope with the missing-loader
 error. Generated code makes one loader callback per reached path and never
 caches documents. Every other profile and the ordinary emitters keep refusing
 owned drivers. The [owned dynamic-loading contract](design/owned-dynamic-loading.md)
+defines the wire form, order and qualification.
+
+## Explicit owned document-set paths
+
+Use `codegen::lower_with_basic_owned_document_paths`, then
+`codegen_rust::emit_with_basic_owned_document_paths(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_document_paths(&program)`. Direct
+Program hosts use `validate_program_with_basic_owned_document_paths` and
+`validate_basic_owned_document_path_emission`; named-input discovery uses
+`legacy_named_input_admission_plan_with_basic_owned_document_paths`.
+
+Every ungrouped owned scope of the profile walks a document-set endpoint with
+no active document member by member, with that member's document as its
+owner's root, and filter, sort and window controls run over the complete
+cohort. `owned_source_document_path` returns the location of its exact owner's
+active member, or fails with a typed missing-document-path error; another
+owner's document, an uniterated set and an ancestor never answer it. The
+generated runtimes expose the walk as
+`BasicScopeContext::walk_owned_document_source_cohort` and
+`FerruleBasicScopeContext.WalkOwnedDocumentSourceCohort`, and the read as
+`owned_document_path` and `OwnedDocumentPath`. Hosts supply document sets
+through the typed instance entry points. Every other profile and the ordinary
+emitters refuse the read, and their owned walks keep refusing a document-set
+endpoint; dynamic owners and the XML document-set boundary adapters stay
+closed. The [owned document-path contract](design/owned-document-path.md)
 defines the wire form, order and qualification.
 
 ## Explicit owned XML serialization

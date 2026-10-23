@@ -101,6 +101,7 @@ fn expected_error(recipe: &Json) -> engine::EngineError {
             };
             let source = match recipe["cause"].as_str().unwrap() {
                 "SourceUnavailable" => engine::OwnedSourceError::SourceUnavailable { owner },
+                "MissingDocumentPath" => engine::OwnedSourceError::MissingDocumentPath { owner },
                 "InactiveSourceFrame" => engine::OwnedSourceError::InactiveSourceFrame {
                     owner,
                     collection: Some(strings(recipe, "collection")),

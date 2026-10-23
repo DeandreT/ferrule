@@ -10,9 +10,9 @@ use mapping::{
     OwnedAggregateValue, OwnedCollectionFind, OwnedDynamicSourceField, OwnedJoinAggregate,
     OwnedJoinConditions, OwnedJoinField, OwnedJoinKey, OwnedJoinPlan, OwnedJoinSource,
     OwnedJoinSourcePosition, OwnedLookup, OwnedPosition, OwnedRecursiveCollect,
-    OwnedRowDocumentPath, OwnedSourceField, OwnedSourceRef, OwnedXmlMixedContent,
-    OwnedXmlMixedContentContext, OwnedXmlMixedContentReplacement, OwnedXmlSerialize, RuntimeValue,
-    SequenceExpr, SourceOwner, XmlMixedContentReplacement,
+    OwnedRowDocumentPath, OwnedSourceDocumentPath, OwnedSourceField, OwnedSourceRef,
+    OwnedXmlMixedContent, OwnedXmlMixedContentContext, OwnedXmlMixedContentReplacement,
+    OwnedXmlSerialize, RuntimeValue, SequenceExpr, SourceOwner, XmlMixedContentReplacement,
 };
 
 use super::*;
@@ -24,6 +24,7 @@ fn legacy_dependencies(node: &Node) -> Vec<NodeId> {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_)
         | Node::OwnedXmlSerialize(_)
         | Node::OwnedJoinField(_)
         | Node::OwnedJoinSourcePosition(_)
@@ -124,6 +125,7 @@ fn legacy_node_inputs(node: &Node) -> Vec<(String, NodeId)> {
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_)
         | Node::OwnedXmlSerialize(_)
         | Node::OwnedJoinField(_)
         | Node::OwnedJoinSourcePosition(_)
@@ -372,9 +374,10 @@ fn kind(node: &Node) -> usize {
         Node::SequenceAggregate { .. } => 37,
         Node::Aggregate { .. } => 38,
         Node::JoinAggregate { .. } => 39,
+        Node::OwnedSourceDocumentPath(_) => 40,
     }
 }
-const KINDS: usize = 40;
+const KINDS: usize = 41;
 
 fn sequence_kind(sequence: &SequenceExpr) -> usize {
     match sequence {
@@ -525,6 +528,9 @@ fn nodes(ids: &mut Ids, present: bool) -> Vec<Node> {
         Node::OwnedRowDocumentPath(OwnedRowDocumentPath {
             owner: SourceOwner::Primary,
             collection: None,
+        }),
+        Node::OwnedSourceDocumentPath(OwnedSourceDocumentPath {
+            owner: SourceOwner::Primary,
         }),
         Node::OwnedLookup(OwnedLookup {
             collection: owned(&["Rows"]),

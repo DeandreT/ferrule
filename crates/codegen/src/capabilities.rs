@@ -165,6 +165,10 @@ pub struct OwnedCapabilities {
     pub xml: OwnedXml,
     /// Owned inner join scopes, their tuple reads and owned joined aggregates.
     pub joins: bool,
+    /// Ungrouped owned scopes over a document-set endpoint walk each member
+    /// as its owner's root, and owned document-path reads return the location
+    /// of their exact owner's active member.
+    pub document_sets: bool,
 }
 
 impl OwnedCapabilities {
@@ -201,6 +205,7 @@ impl OwnedCapabilities {
             && within(self.dynamic_loading, other.dynamic_loading)
             && self.xml as u8 <= other.xml as u8
             && within(self.joins, other.joins)
+            && within(self.document_sets, other.document_sets)
     }
 }
 
@@ -238,6 +243,7 @@ pub enum OwnedPreset {
     XmlSerialize,
     XmlMixedContent,
     XmlMixedConstruction,
+    DocumentPaths,
 }
 
 const NO_CONTROLS: SourceControls = SourceControls {
@@ -371,6 +377,7 @@ const fn set(
     dynamic_loading: bool,
     xml: OwnedXml,
     joins: bool,
+    document_sets: bool,
 ) -> OwnedCapabilities {
     OwnedCapabilities {
         controls,
@@ -383,12 +390,13 @@ const fn set(
         dynamic_loading,
         xml,
         joins,
+        document_sets,
     }
 }
 
 impl OwnedPreset {
     /// Every preset, in table order.
-    pub const ALL: [Self; 26] = [
+    pub const ALL: [Self; 27] = [
         Self::ControlFree,
         Self::Filters,
         Self::Sort,
@@ -415,39 +423,41 @@ impl OwnedPreset {
         Self::XmlSerialize,
         Self::XmlMixedContent,
         Self::XmlMixedConstruction,
+        Self::DocumentPaths,
     ];
 
     /// The preset table: every row lists its complete capability set.
     #[rustfmt::skip]
     pub const fn capabilities(self) -> OwnedCapabilities {
-        //                                    controls     grouping     failures     sequences     trees      search     dyn    load   xml        joins
+        //                                    controls     grouping     failures     sequences     trees      search     dyn    load   xml        joins  documents
         match self {
-            Self::ControlFree          => set(NO_CONTROLS, UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false),
-            Self::Filters              => set(FILTER,      UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false),
-            Self::Sort                 => set(SORT,        UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false),
-            Self::Windows              => set(WINDOWS,     UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false),
-            Self::RowFailures          => set(WINDOWS,     UNGROUPED,   ROWS,        NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false),
-            Self::GroupBy              => set(WINDOWS,     BY,          ROWS,        NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false),
-            Self::SequenceItemAt       => set(WINDOWS,     BY,          ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false),
-            Self::GroupAdjacentBy      => set(WINDOWS,     TO_ADJACENT, ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false),
-            Self::GroupStartingWith    => set(WINDOWS,     TO_STARTING, ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false),
-            Self::GroupEndingWith      => set(WINDOWS,     TO_ENDING,   ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false),
-            Self::GroupIntoBlocks      => set(WINDOWS,     ALL_MODES,   ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false),
-            Self::FailureSources       => set(WINDOWS,     TO_ENDING,   OWNED,       ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false),
-            Self::PathHierarchy        => set(WINDOWS,     TO_ENDING,   OWNED,       ITEM_AT,      HIERARCHY, NO_SEARCH, false, false, NO_XML,    false),
-            Self::AdjacencyTree        => set(WINDOWS,     TO_ENDING,   OWNED,       ITEM_AT,      TREE,      NO_SEARCH, false, false, NO_XML,    false),
-            Self::RecursiveCollect     => set(WINDOWS,     TO_ENDING,   OWNED,       RECURSIVE,    TREE,      NO_SEARCH, false, false, NO_XML,    false),
-            Self::RecursiveFilter      => set(WINDOWS,     TO_ENDING,   OWNED,       RECURSIVE,    FILTERED,  NO_SEARCH, false, false, NO_XML,    false),
-            Self::LookupFind           => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    false, false, NO_XML,    false),
-            Self::DynamicField         => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, NO_XML,    false),
-            Self::DynamicLoading       => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  true,  NO_XML,    false),
-            Self::CollectionAggregates => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  REDUCE,    false, false, NO_XML,    false),
-            Self::Joins                => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    false, false, NO_XML,    true),
-            Self::SequenceExists       => set(WINDOWS,     TO_ENDING,   ROWS,        EXISTS,       NO_TREES,  NO_SEARCH, false, false, NO_XML,    false),
-            Self::SequenceAggregate    => set(WINDOWS,     TO_ENDING,   ROWS,        AGGREGATE,    NO_TREES,  NO_SEARCH, false, false, NO_XML,    false),
-            Self::XmlSerialize         => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, SERIALIZE, false),
-            Self::XmlMixedContent      => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, MIXED,     false),
-            Self::XmlMixedConstruction => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, CONSTRUCT, false),
+            Self::ControlFree          => set(NO_CONTROLS, UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::Filters              => set(FILTER,      UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::Sort                 => set(SORT,        UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::Windows              => set(WINDOWS,     UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::RowFailures          => set(WINDOWS,     UNGROUPED,   ROWS,        NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::GroupBy              => set(WINDOWS,     BY,          ROWS,        NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::SequenceItemAt       => set(WINDOWS,     BY,          ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::GroupAdjacentBy      => set(WINDOWS,     TO_ADJACENT, ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::GroupStartingWith    => set(WINDOWS,     TO_STARTING, ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::GroupEndingWith      => set(WINDOWS,     TO_ENDING,   ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::GroupIntoBlocks      => set(WINDOWS,     ALL_MODES,   ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::FailureSources       => set(WINDOWS,     TO_ENDING,   OWNED,       ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::PathHierarchy        => set(WINDOWS,     TO_ENDING,   OWNED,       ITEM_AT,      HIERARCHY, NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::AdjacencyTree        => set(WINDOWS,     TO_ENDING,   OWNED,       ITEM_AT,      TREE,      NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::RecursiveCollect     => set(WINDOWS,     TO_ENDING,   OWNED,       RECURSIVE,    TREE,      NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::RecursiveFilter      => set(WINDOWS,     TO_ENDING,   OWNED,       RECURSIVE,    FILTERED,  NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::LookupFind           => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    false, false, NO_XML,    false, false),
+            Self::DynamicField         => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, NO_XML,    false, false),
+            Self::DynamicLoading       => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  true,  NO_XML,    false, false),
+            Self::CollectionAggregates => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  REDUCE,    false, false, NO_XML,    false, false),
+            Self::Joins                => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    false, false, NO_XML,    true, false),
+            Self::SequenceExists       => set(WINDOWS,     TO_ENDING,   ROWS,        EXISTS,       NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::SequenceAggregate    => set(WINDOWS,     TO_ENDING,   ROWS,        AGGREGATE,    NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false),
+            Self::XmlSerialize         => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, SERIALIZE, false, false),
+            Self::XmlMixedContent      => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, MIXED,     false, false),
+            Self::XmlMixedConstruction => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, CONSTRUCT, false, false),
+            Self::DocumentPaths        => set(WINDOWS,     UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, true),
         }
     }
 }

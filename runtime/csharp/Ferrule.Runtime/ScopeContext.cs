@@ -1248,6 +1248,7 @@ public enum FerruleOwnedSourceErrorKind
     UnsupportedSourceKind, Traversal, InvalidPosition, MetadataLimit,
     MetadataArithmeticOverflow,
     MissingRowDocumentPath,
+    MissingDocumentPath,
 }
 public enum FerruleOwnedSourceLimitKind
 {
@@ -1720,12 +1721,14 @@ public sealed partial class FerruleOwnedScopeContext
 {
     // Authenticated synthetic member containers minted only by paired By,
     // AdjacentBy, StartingWith, EndingWith and IntoBlocks. Nested ordinary occurrences remain Items.
-    // A Document roots one loaded document of an owned dynamic endpoint inside
-    // its loading scope; it is never a position or an exact occurrence.
+    // A Document roots one document of its owner: a loaded document of an owned
+    // dynamic endpoint inside its loading scope (no Location), or one member of a
+    // document-set endpoint inside the scope walking it (its Location). It is
+    // never a position or an exact occurrence.
     internal readonly record struct Occurrence(int Owner, IReadOnlyList<string> Path, FerruleInstance Item, nuint Index,
-        bool GroupMembers = false, bool Document = false);
+        bool GroupMembers = false, bool Document = false, string? Location = null);
     internal readonly record struct Observation(int Owner, IReadOnlyList<string> Path, FerruleInstance Item, nuint Index,
-        bool GroupMembers = false, bool Document = false);
+        bool GroupMembers = false, bool Document = false, string? Location = null);
     private readonly Occurrence[] _frames;
     private FerruleOwnedScopeContext(FerruleOwnedSourceRoots roots, Occurrence[] frames) { Roots = roots; _frames = frames; }
     internal static FerruleOwnedScopeContext CreateRoot(FerruleOwnedSourceRoots roots)
@@ -1737,7 +1740,7 @@ public sealed partial class FerruleOwnedScopeContext
     internal FerruleOwnedSourceRoots Roots { get; }
     internal int FrameCount => _frames.Length;
     internal Observation FrameAt(int index)
-    { var f = _frames[index]; return new(f.Owner, f.Path, f.Item, f.Index, f.GroupMembers, f.Document); }
+    { var f = _frames[index]; return new(f.Owner, f.Path, f.Item, f.Index, f.GroupMembers, f.Document, f.Location); }
     private static bool Prefix(IReadOnlyList<string> path, IReadOnlyList<string> prefix)
     {
         if (prefix.Count > path.Count) return false;
@@ -1849,7 +1852,7 @@ public sealed partial class FerruleOwnedScopeContext
         var selected = collection is { Count: 0 } ? -1 : Match(key, collection, true);
         if (collection is { Count: > 0 } && selected < 0)
             throw query.Error(FerruleOwnedSourceErrorKind.InactiveSourceFrame, collection: collection);
-        var current = selected < 0 ? Roots.Instance(key) : _frames[selected].Item;
+        var current = selected < 0 ? RootOf(key) : _frames[selected].Item;
         if (current is not FerruleGroup group || group.SourceOrigin is null)
             throw query.Error(FerruleOwnedSourceErrorKind.MissingRowDocumentPath, collection: collection);
         return FerruleValue.FromString(group.SourceOrigin.Document.SourcePath);
@@ -1909,7 +1912,7 @@ public sealed partial class FerruleOwnedScopeContext
             // output owns its separately admitted immutable path snapshot.
             var path = new string[f.Path.Count];
             for (var j = 0; j < path.Length; j++) path[j] = f.Path[j];
-            copy[i] = new(f.Owner, path, f.Item, f.Index, f.GroupMembers, f.Document);
+            copy[i] = new(f.Owner, path, f.Item, f.Index, f.GroupMembers, f.Document, f.Location);
         }
         return new FerruleOwnedScopeContext(roots, copy);
     }

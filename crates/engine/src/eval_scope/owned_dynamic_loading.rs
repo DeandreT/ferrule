@@ -196,7 +196,7 @@ fn eval_documents<'b>(
             owner: loaded.key,
             path: Vec::new(),
             item: document,
-            kind: SourceOriginKind::Document,
+            kind: SourceOriginKind::Document { location: None },
         });
         let document_state = OwnedContext {
             roots: state.roots,

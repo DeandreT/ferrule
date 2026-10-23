@@ -617,6 +617,7 @@ fn unsupported_kind(node: &Node) -> &'static str {
         Node::OwnedSourceField(_) => "owned_source_field",
         Node::OwnedPosition(_) => "owned_position",
         Node::OwnedRowDocumentPath(_) => "owned_row_document_path",
+        Node::OwnedSourceDocumentPath(_) => "owned_source_document_path",
         Node::Position { .. } => "position",
         Node::SourceField { .. } => "source_field",
         Node::RuntimeValue { .. } => "runtime_value",

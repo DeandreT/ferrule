@@ -88,6 +88,8 @@ pub fn validate_basic_owned_emission_with_capabilities(
             Expression::OwnedXmlSerialize(_) | Expression::OwnedXmlMixedContent(_) => {
                 Capability::XmlOperator
             }
+            Expression::OwnedSourceDocumentPath(_) if capabilities.document_sets => continue,
+            Expression::OwnedSourceDocumentPath(_) => Capability::Document,
             Expression::OwnedAggregate(_) if capabilities.search.collection_aggregates => continue,
             Expression::OwnedLookup(_)
             | Expression::OwnedCollectionFind(_)

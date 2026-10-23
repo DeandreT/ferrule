@@ -104,6 +104,7 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
             Node::OwnedSourceField(_)
             | Node::OwnedPosition(_)
             | Node::OwnedRowDocumentPath(_)
+            | Node::OwnedSourceDocumentPath(_)
             | Node::OwnedXmlSerialize(_) => {
                 super::schema::validate_owned_source_node(project, node, &location, issues)
             }
@@ -734,8 +735,9 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
                 sources.insert(name.as_str());
             }
         }
-        Node::OwnedRowDocumentPath(path) => {
-            if let mapping::SourceOwner::Named { name } = &path.owner
+        Node::OwnedRowDocumentPath(mapping::OwnedRowDocumentPath { owner, .. })
+        | Node::OwnedSourceDocumentPath(mapping::OwnedSourceDocumentPath { owner }) => {
+            if let mapping::SourceOwner::Named { name } = owner
                 && project
                     .extra_sources
                     .iter()

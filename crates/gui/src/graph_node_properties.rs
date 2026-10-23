@@ -120,6 +120,7 @@ impl GraphViewer<'_> {
                 }
                 node @ (Node::OwnedSourceField(_)
                 | Node::OwnedRowDocumentPath(_)
+                | Node::OwnedSourceDocumentPath(_)
                 | Node::OwnedDynamicSourceField(_)
                 | Node::OwnedLookup(_)
                 | Node::OwnedCollectionFind(_)

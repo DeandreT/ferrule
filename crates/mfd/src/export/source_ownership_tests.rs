@@ -82,6 +82,33 @@ fn physical_row_path_export_remains_explicitly_refused() {
 }
 
 #[test]
+fn document_set_path_export_remains_explicitly_refused() {
+    let mut project = project();
+    project.graph.nodes.insert(
+        9,
+        Node::OwnedSourceDocumentPath(mapping::OwnedSourceDocumentPath {
+            owner: SourceOwner::Primary,
+        }),
+    );
+    let path = Path::new("nonexistent-owned-export-parent/document-path.mfd");
+    for result in [
+        preflight_export(&project, path).map(|_| ()),
+        export(&project, path).map(|_| ()),
+        export_with_profile(&project, path, ExportProfile::NativeMfd).map(|_| ()),
+    ] {
+        assert!(matches!(
+            result,
+            Err(MfdError::UnsupportedSourceOwnership {
+                node: 9,
+                function: None,
+                kind: "owned_source_document_path",
+            })
+        ));
+    }
+    assert!(!path.exists());
+}
+
+#[test]
 fn unused_function_bodies_and_special_early_routes_are_not_silently_omitted() {
     let mut project = project();
     let id = FunctionId::new(7);

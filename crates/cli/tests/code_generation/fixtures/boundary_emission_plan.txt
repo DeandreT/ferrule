@@ -6106,6 +6106,63 @@ lower        err:dc09e5d5eb4fa75c XmlOperator
 ## basic-owned-xml-mixed-construction/closed-context/dynamic (project)
 lower        err:3b377b721fe6716f XmlOperator
 
+## basic-owned-document-path/nested (project)
+lower        ok:49fe6b715b1275a4
+validate     ok
+xml_mode     ok:None
+plan         ok:None
+rust         err:5f066e9a420f1144 UnsupportedBasicContext
+rust_api     err:5f066e9a420f1144 UnsupportedBasicContext
+csharp       err:b06b1ecb933177d4 UnsupportedBasicContext
+csharp_api   err:b06b1ecb933177d4 UnsupportedBasicContext
+rust_typed   err:5f066e9a420f1144 UnsupportedBasicContext
+rust_t_api   err:5f066e9a420f1144 UnsupportedBasicContext
+csharp_typed err:b06b1ecb933177d4 UnsupportedBasicContext
+csharp_t_api err:b06b1ecb933177d4 UnsupportedBasicContext
+rust_csv     err:8d8034d2b81e2244 
+csharp_csv   err:8d8034d2b81e2244 
+rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
+csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
+
+## basic-owned-document-path/cross (project)
+lower        ok:84b8d8685259eb8f
+validate     ok
+xml_mode     ok:None
+plan         ok:None
+rust         err:5f066e9a420f1144 UnsupportedBasicContext
+rust_api     err:5f066e9a420f1144 UnsupportedBasicContext
+csharp       err:b06b1ecb933177d4 UnsupportedBasicContext
+csharp_api   err:b06b1ecb933177d4 UnsupportedBasicContext
+rust_typed   err:5f066e9a420f1144 UnsupportedBasicContext
+rust_t_api   err:5f066e9a420f1144 UnsupportedBasicContext
+csharp_typed err:b06b1ecb933177d4 UnsupportedBasicContext
+csharp_t_api err:b06b1ecb933177d4 UnsupportedBasicContext
+rust_csv     err:40d8ade7718fdde7 
+csharp_csv   err:40d8ade7718fdde7 
+rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
+csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
+
+## basic-owned-document-path/root (project)
+lower        ok:f4d5ebfdbd0f5599
+validate     ok
+xml_mode     ok:None
+plan         ok:None
+rust         err:5f066e9a420f1144 UnsupportedBasicContext
+rust_api     err:5f066e9a420f1144 UnsupportedBasicContext
+csharp       err:b06b1ecb933177d4 UnsupportedBasicContext
+csharp_api   err:b06b1ecb933177d4 UnsupportedBasicContext
+rust_typed   err:5f066e9a420f1144 UnsupportedBasicContext
+rust_t_api   err:5f066e9a420f1144 UnsupportedBasicContext
+csharp_typed err:b06b1ecb933177d4 UnsupportedBasicContext
+csharp_t_api err:b06b1ecb933177d4 UnsupportedBasicContext
+rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
+csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
+rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
+csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
+
+## basic-owned-document-path/sorted (project)
+lower        err:e49079596b5bf968 ScopeControl
+
 ## xml-requests/base/json (project)
 lower        ok:f9112e1a1c75fd80
 validate     ok

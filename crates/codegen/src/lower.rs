@@ -918,6 +918,7 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
         Node::OwnedSourceField(field) => Expression::OwnedSourceField(field.clone()),
         Node::OwnedPosition(position) => Expression::OwnedPosition(position.clone()),
         Node::OwnedRowDocumentPath(path) => Expression::OwnedRowDocumentPath(path.clone()),
+        Node::OwnedSourceDocumentPath(path) => Expression::OwnedSourceDocumentPath(path.clone()),
         Node::OwnedLookup(lookup) => Expression::OwnedLookup(lookup.clone()),
         Node::OwnedCollectionFind(find) => Expression::OwnedCollectionFind(find.clone()),
         Node::OwnedXmlSerialize(serializer) => Expression::OwnedXmlSerialize(serializer.clone()),

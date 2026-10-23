@@ -7,6 +7,7 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
+        | Expression::OwnedSourceDocumentPath(_)
         | Expression::OwnedXmlSerialize(_)
         | Expression::OwnedJoinField(_)
         | Expression::OwnedJoinSourcePosition(_)

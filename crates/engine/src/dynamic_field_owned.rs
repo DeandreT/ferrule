@@ -47,7 +47,7 @@ impl OwnedContext<'_> {
                             frame: pin.to_vec(),
                         });
                     };
-                    let root = self.roots.root(owner)?;
+                    let root = self.endpoint_root(owner)?;
                     let frame = self
                         .frames
                         .iter()
@@ -79,7 +79,7 @@ impl OwnedContext<'_> {
                         };
                         (item, &object.path[frame.collection.len()..])
                     }
-                    None => (self.roots.root(owner)?, object.path.as_slice()),
+                    None => (self.endpoint_root(owner)?, object.path.as_slice()),
                 },
             };
         let Some(object) = owned_object(item, suffix, &object.path)? else {

@@ -107,6 +107,10 @@ pub(super) fn owned_source_title(node: &Node) -> Option<String> {
             owner(&path.owner),
             frame(path.collection.as_deref()),
         )),
+        Node::OwnedSourceDocumentPath(path) => Some(format!(
+            "Owned document path: {}\nRead-only; no other input's document",
+            owner(&path.owner),
+        )),
         Node::OwnedLookup(lookup) => Some(format!(
             "Owned lookup: {}\nCollection: {:?}\nKey: {:?}\nValue: {:?}\nRead-only; owned lookup authoring is unavailable",
             owner(&lookup.collection.owner),
@@ -398,6 +402,7 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
             ),
         ),
         Node::OwnedRowDocumentPath(_) => (Icon::ListOrdered, "row path".into()),
+        Node::OwnedSourceDocumentPath(_) => (Icon::FileText, "owned path".into()),
         Node::OwnedXmlSerialize(_) => (Icon::FileCode, "owned serialize".into()),
         Node::OwnedXmlMixedContent(mixed) => (
             Icon::FileCode,
@@ -774,6 +779,7 @@ pub(super) fn has_properties(node: &Node) -> bool {
         Node::OwnedSourceField(_)
             | Node::OwnedPosition(_)
             | Node::OwnedRowDocumentPath(_)
+            | Node::OwnedSourceDocumentPath(_)
             | Node::OwnedXmlSerialize(_)
             | Node::OwnedXmlMixedContent(_)
             | Node::Const { .. }

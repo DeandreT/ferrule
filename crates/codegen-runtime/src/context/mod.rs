@@ -714,18 +714,19 @@ struct OwnedSourceFrame<'a> {
     collection: Vec<String>,
     instance: &'a Instance,
     index: usize,
-    kind: OwnedOccurrenceKind,
+    kind: OwnedOccurrenceKind<'a>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum OwnedOccurrenceKind {
+enum OwnedOccurrenceKind<'a> {
     Item,
     // Authenticated member containers minted only by paired By / AdjacentBy /
     // StartingWith / EndingWith / IntoBlocks.
     GroupMembers,
-    // The root of one loaded document of an owned dynamic endpoint, minted only
-    // by owned dynamic loading. It roots its owner and is never a position.
-    Document,
+    // The root of one document of its owner, minted only by owned dynamic
+    // loading (no location) and by an owned document-set walk (the member's
+    // location). It roots its owner and is never a position.
+    Document { location: Option<&'a str> },
 }
 
 /// An owner-aware view separate from every legacy ScopeContext operation.
@@ -1005,7 +1006,11 @@ impl<'a> OwnedScopeContext<'a> {
         owner: SourceOwnerRef<'_>,
     ) -> Result<(OwnedOwnerKey, &'a Instance), OwnedSourceError> {
         let SourceOwnerRef::Named(name) = owner else {
-            return Ok((OwnedOwnerKey::Primary, self.registry.primary));
+            let key = OwnedOwnerKey::Primary;
+            let root = self
+                .document_frame(key)
+                .map_or(self.registry.primary, |frame| frame.instance);
+            return Ok((key, root));
         };
         if name.is_empty() {
             return Err(OwnedSourceError::InvalidNamedOwner);
@@ -1034,17 +1039,12 @@ impl<'a> OwnedScopeContext<'a> {
             });
         }
         let key = OwnedOwnerKey::Named(index);
-        // A dynamic declaration has no supplied root; inside its loading scope
-        // the active loaded document is that root.
-        declaration
-            .instance
-            .or_else(|| {
-                self.frames
-                    .iter()
-                    .rev()
-                    .find(|frame| frame.owner == key && frame.kind == OwnedOccurrenceKind::Document)
-                    .map(|frame| frame.instance)
-            })
+        // The active document roots its owner: a dynamic declaration has no
+        // supplied root outside its loading scope, and a document-set member
+        // replaces the set inside the scope walking it.
+        self.document_frame(key)
+            .map(|frame| frame.instance)
+            .or(declaration.instance)
             .map(|instance| (key, instance))
             .ok_or_else(|| OwnedSourceError::SourceUnavailable {
                 name: name.to_string(),
@@ -1067,7 +1067,7 @@ impl<'a> OwnedScopeContext<'a> {
     ) -> Option<usize> {
         self.frames.iter().rposition(|frame| {
             frame.owner == owner
-                && frame.kind != OwnedOccurrenceKind::Document
+                && !matches!(frame.kind, OwnedOccurrenceKind::Document { .. })
                 && collection.is_none_or(|path| same_path(path, &frame.collection))
         })
     }
@@ -1158,6 +1158,31 @@ impl<'a> OwnedScopeContext<'a> {
             owner: self.owned_identity(key),
             collection: collection.map(owned_string_path),
         })
+    }
+
+    /// The latest active document of `key`, if any.
+    fn document_frame(&self, key: OwnedOwnerKey) -> Option<&OwnedSourceFrame<'a>> {
+        self.frames.iter().rev().find(|frame| {
+            frame.owner == key && matches!(frame.kind, OwnedOccurrenceKind::Document { .. })
+        })
+    }
+
+    /// The location of the selected owner's latest active document-set
+    /// member. Another owner's document and an uniterated set never supply it.
+    pub fn owned_document_path(
+        &self,
+        owner: SourceOwnerRef<'_>,
+    ) -> Result<Value, OwnedSourceError> {
+        self.query_budget(owner, &[], None)?;
+        let (key, _) = self.resolve_owned_owner(owner)?;
+        match self.document_frame(key).map(|frame| frame.kind) {
+            Some(OwnedOccurrenceKind::Document {
+                location: Some(location),
+            }) => Ok(Value::String(location.to_owned())),
+            _ => Err(OwnedSourceError::MissingDocumentPath {
+                owner: self.owned_identity(key),
+            }),
+        }
     }
 
     /// Returns a bounded view with only the selected owned position replaced.

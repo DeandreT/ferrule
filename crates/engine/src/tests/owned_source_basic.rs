@@ -807,7 +807,7 @@ fn c02_c18_context_key_reuse_retains_actual_closed_domain_errors() {
 }
 
 #[test]
-fn c04_c11_owned_special_scope_and_runtime_documents_remain_closed() {
+fn c04_c11_owned_special_scopes_and_grouped_runtime_documents_remain_closed() {
     let (input, supplied) = fixture();
     let mut p = value_position_project(SourceOwner::Primary, &["Rows"]);
     p.root.group_adjacent_by = Some(1);
@@ -886,8 +886,22 @@ fn c04_c11_owned_special_scope_and_runtime_documents_remain_closed() {
             ..
         })
     ));
-    let p = value_position_project(SourceOwner::Primary, &[]);
+    // #451 walks each member of an ungrouped owned scope as its owner's root;
+    // a document is never a position, so the root position stays inactive.
+    let mut p = value_position_project(SourceOwner::Primary, &[]);
     let documents = Instance::DocumentSet(vec![ir::DocumentMember::new("x.json", input).unwrap()]);
+    assert_eq!(
+        crate::run_with_sources(&p, &documents, extras(supplied.clone())),
+        Err(EngineError::OwnedSourceAccess {
+            node: Some(2),
+            scope: None,
+            source: crate::OwnedSourceError::InactiveSourceFrame {
+                owner: SourceOwner::Primary,
+                collection: Some(vec![]),
+            },
+        })
+    );
+    p.root.group_by = Some(1);
     assert!(matches!(
         crate::run_with_sources(&p, &documents, extras(supplied)),
         Err(EngineError::UnsupportedOwnedContext {

@@ -281,6 +281,18 @@ pub fn encode(instance: &Instance) -> Json {
         Instance::Repeated(items) => {
             json!(["Repeated", items.iter().map(encode).collect::<Vec<_>>()])
         }
+        // Each member: its portable path, its resolved location or null, and its tree.
+        Instance::DocumentSet(documents) => json!([
+            "DocumentSet",
+            documents
+                .iter()
+                .map(|document| {
+                    let resolved =
+                        (document.source_path() != document.path()).then(|| document.source_path());
+                    json!([document.path(), resolved, encode(document.value())])
+                })
+                .collect::<Vec<_>>()
+        ]),
         other => panic!("closed test recipe kind {other:?}"),
     }
 }
@@ -316,6 +328,24 @@ pub fn decode(value: &Json) -> Instance {
             Instance::Group(fields.with_xml_type_origin(origin).unwrap())
         }
         "Repeated" => Instance::Repeated(value[1].as_array().unwrap().iter().map(decode).collect()),
+        "DocumentSet" => Instance::DocumentSet(
+            value[1]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|member| {
+                    let path = member[0].as_str().unwrap();
+                    let document = decode(&member[2]);
+                    match member[1].as_str() {
+                        Some(resolved) => {
+                            codegen_runtime::DocumentMember::new_source(path, resolved, document)
+                        }
+                        None => codegen_runtime::DocumentMember::new(path, document),
+                    }
+                    .unwrap()
+                })
+                .collect(),
+        ),
         _ => panic!("closed typed recipe"),
     }
 }

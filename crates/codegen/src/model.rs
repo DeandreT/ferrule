@@ -838,6 +838,9 @@ pub enum Expression {
     OwnedPosition(mapping::OwnedPosition),
     /// Exact-owner physical row metadata, not a schema field or legacy fallback.
     OwnedRowDocumentPath(mapping::OwnedRowDocumentPath),
+    /// Exact-owner document-set member location, never another owner's
+    /// document or the first member of an uniterated set.
+    OwnedSourceDocumentPath(mapping::OwnedSourceDocumentPath),
     /// First-match lookup over exactly one owned endpoint collection. The
     /// needle executes once in the parent; a miss or absent value is Null.
     OwnedLookup(mapping::OwnedLookup),
