@@ -8,7 +8,10 @@
 //! that reason about available frames must not merge roles, and none of them
 //! can recover evaluation order from this visit order.
 
-use crate::{FailureIteration, FailureRule, NodeId, Scope, ScopeConstruction, SequenceExpr};
+use crate::{
+    FailureIteration, FailureRule, NodeId, NodeInputRole, NodeInputSlot, Scope, ScopeConstruction,
+    SequenceExpr,
+};
 
 /// Where and how often a root expression is evaluated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -222,23 +225,23 @@ fn visit_sequence_roots(
     sequence: &SequenceExpr,
     root: &mut impl FnMut(NodeId, ScopeRootSlot, ScopeRootRole),
 ) {
-    for node in sequence.inputs() {
-        root(node, ScopeRootSlot::SequenceInput, ScopeRootRole::Parent);
-    }
-    // Mirrors `SequenceExpr::owned_items`: a filter/map also owns the item
-    // of the sequence it composes.
-    if let SequenceExpr::FilterMapV1(composition) = sequence {
-        root(
-            composition.source.item(),
-            ScopeRootSlot::SequenceReservedItem,
-            ScopeRootRole::GeneratedItem,
-        );
-    }
-    root(
-        sequence.item(),
-        ScopeRootSlot::SequenceItem,
-        ScopeRootRole::GeneratedItem,
-    );
+    // Inputs at every composition level, then the outermost level's item
+    // identities, as in `SequenceExpr::owned_items`.
+    sequence.visit_level_inputs(&mut |declared| {
+        let slot = match declared.input.slot {
+            NodeInputSlot::SequenceInput(_) => ScopeRootSlot::SequenceInput,
+            NodeInputSlot::SequenceReservedItem if declared.level == 0 => {
+                ScopeRootSlot::SequenceReservedItem
+            }
+            NodeInputSlot::SequenceItem if declared.level == 0 => ScopeRootSlot::SequenceItem,
+            _ => return,
+        };
+        let role = match declared.input.role {
+            NodeInputRole::Parent => ScopeRootRole::Parent,
+            _ => ScopeRootRole::GeneratedItem,
+        };
+        root(declared.input.node, slot, role);
+    });
 }
 
 /// Every executable root of a project: each target's scope tree, dynamic
