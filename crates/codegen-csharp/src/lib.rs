@@ -26,9 +26,11 @@ pub use json5_text_documents::{
     MapForceJson5DocumentEmitError, emit_csv_file_set_to_mapforce_json5_documents,
     emit_csv_to_mapforce_json5_documents,
 };
+mod interchange_source;
 mod runtime;
 mod static_documents;
 mod x12_output;
+pub use interchange_source::{MapForceSourceEmitError, emit_with_mapforce_x12_source};
 
 #[cfg(test)]
 mod csv_output_tests;

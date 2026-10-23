@@ -394,3 +394,90 @@ fn connected_hidden_wrappers_and_cyclic_drivers_are_not_silently_dropped() {
         .replace("</vertices>", r#"<vertex vertexkey="90"><edges><edge vertexkey="91"/><edge vertexkey="42"/></edges></vertex></vertices>"#));
     assert!(fixture.import().is_err());
 }
+
+#[test]
+fn generated_source_companion_binds_the_complete_physical_schema_to_its_message() {
+    let fixture = Fixture::new();
+    fixture.change("850.Config", |xml| {
+        xml.replace(
+            "<Segment ref=\"ST\" minOccurs=\"0\"/>",
+            "<Segment ref=\"ST\"/>",
+        )
+        .replace(
+            "<Segment ref=\"SE\" minOccurs=\"0\"/>",
+            "<Segment ref=\"SE\"/>",
+        )
+    });
+    fixture.change("Defs.Segment", |mut xml| {
+        for (name, count) in [
+            ("ISA", 16),
+            ("GS", 8),
+            ("ST", 2),
+            ("SE", 2),
+            ("GE", 2),
+            ("IEA", 2),
+        ] {
+            let old = format!(
+                "<Segment name=\"{name}\"><Data ref=\"{}\"/></Segment>",
+                if name == "ST" { "F143" } else { "F1" }
+            );
+            let data = (1..=count)
+                .map(|n| format!("<Data ref=\"F1\" nodeName=\"E{n:02}\"/>"))
+                .collect::<String>();
+            assert!(xml.contains(&old));
+            xml = xml.replace(&old, &format!("<Segment name=\"{name}\">{data}</Segment>"));
+        }
+        xml
+    });
+    // The discriminator follows the renamed ST field in the neutral schema.
+    fixture.change("Envelope.Config", |xml| xml.replace("ST/F143", "ST/E01"));
+    fixture.change("mapping.mfd", |xml| {
+        xml.replace(
+            "<messages>",
+            "<settings interchangecontrolversionnumber=\"00401\"/><messages>",
+        )
+    });
+    let imported = fixture.import().unwrap();
+    let program = codegen::lower(&imported.targets[0].body).unwrap();
+    let descriptor = codegen::prepare_mapforce_x12_source(
+        &program,
+        &imported.source_schema,
+        &imported.source_options,
+        &imported.message_path,
+    )
+    .unwrap();
+    assert!(descriptor.contains("mapforce_interchanges"));
+    let csharp = codegen_csharp::emit_with_mapforce_x12_source(
+        &program,
+        &imported.source_schema,
+        &imported.source_options,
+        &imported.message_path,
+    )
+    .unwrap();
+    assert!(
+        csharp
+            .into_files()
+            .iter()
+            .any(|file| file.path.as_str() == "Runtime/X12/FerruleX12.SourceLexical.cs")
+    );
+    let mut wrong = program.clone();
+    wrong.source.name = "UnrelatedMessage".into();
+    assert!(
+        codegen::prepare_mapforce_x12_source(
+            &wrong,
+            &imported.source_schema,
+            &imported.source_options,
+            &imported.message_path
+        )
+        .is_err()
+    );
+    assert!(
+        codegen::prepare_mapforce_x12_source(
+            &program,
+            &imported.source_schema,
+            &imported.source_options,
+            &["missing".into()]
+        )
+        .is_err()
+    );
+}
