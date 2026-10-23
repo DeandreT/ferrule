@@ -410,6 +410,7 @@ pub(crate) fn read_segments(
             component_join,
             subcomponent,
             subcomponent_escape: None,
+            lexical: false,
         },
         lenient,
     )
@@ -433,6 +434,7 @@ pub(crate) fn read_segments_with_subcomponent_escape(
             component_join,
             subcomponent: Some(subcomponent),
             subcomponent_escape: Some(escape),
+            lexical: false,
         },
         lenient,
     )
@@ -443,6 +445,27 @@ struct ReadSyntax {
     component_join: char,
     subcomponent: Option<char>,
     subcomponent_escape: Option<char>,
+    lexical: bool,
+}
+
+/// Structural source view. Scalar conversion is deferred, and a present empty
+/// field remains an empty String rather than being conflated with absence.
+pub(crate) fn read_lexical_segments(
+    schema: &SchemaNode,
+    segments: &[Segment],
+    component_join: char,
+) -> Result<Instance, EdiFormatError> {
+    read_segments_with_syntax(
+        schema,
+        segments,
+        ReadSyntax {
+            component_join,
+            subcomponent: None,
+            subcomponent_escape: None,
+            lexical: true,
+        },
+        false,
+    )
 }
 
 fn read_segments_with_syntax(
@@ -621,6 +644,13 @@ fn read_one_repeat(
                 components.first().cloned().unwrap_or_default()
             };
             let raw = decode_preserved_subcomponent(&raw, syntax);
+            if syntax.lexical {
+                return Ok(Instance::Scalar(if components.is_empty() {
+                    Value::Null
+                } else {
+                    Value::String(raw.into_owned())
+                }));
+            }
             Ok(Instance::Scalar(parse_element(
                 segment_id,
                 element_index + 1,
@@ -645,6 +675,7 @@ fn read_one_repeat(
                         syntax,
                         segment_id,
                         element_index,
+                        components.get(j).is_some(),
                     )?,
                 ));
             }
@@ -660,10 +691,18 @@ fn read_nested_component(
     syntax: ReadSyntax,
     segment_id: &str,
     element_index: usize,
+    present: bool,
 ) -> Result<Instance, EdiFormatError> {
     match &schema.kind {
         SchemaKind::Scalar { ty } => {
             let raw = decode_preserved_subcomponent(raw, syntax);
+            if syntax.lexical {
+                return Ok(Instance::Scalar(if present {
+                    Value::String(raw.into_owned())
+                } else {
+                    Value::Null
+                }));
+            }
             Ok(Instance::Scalar(parse_element(
                 segment_id,
                 element_index + 1,
@@ -692,6 +731,7 @@ fn read_nested_component(
                             syntax,
                             segment_id,
                             element_index,
+                            present && parts.get(index).is_some(),
                         )?,
                     ))
                 })

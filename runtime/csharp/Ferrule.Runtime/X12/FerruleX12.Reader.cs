@@ -4,7 +4,7 @@ namespace Ferrule.Runtime;
 
 public static partial class FerruleX12
 {
-    private sealed class Cursor(List<Segment> segments, Syntax syntax, Profile profile)
+    private sealed class Cursor(List<Segment> segments, Syntax syntax, Profile profile, bool lexical = false)
     {
         internal List<Segment> Segments { get; } = segments;
         internal Syntax Syntax { get; } = syntax;
@@ -13,6 +13,7 @@ public static partial class FerruleX12
         internal int Position { get; set; }
         internal int Loops { get; set; }
         internal Budget Budget { get; } = new();
+        internal bool Lexical { get; } = lexical;
     }
 
     private static IEnumerable<string> DeclaredSegmentIds(Node node, bool root = false)
@@ -91,7 +92,7 @@ public static partial class FerruleX12
                     throw Failure(FerruleX12Error.UnsupportedProfile,
                         "Repeated X12 element values are outside the selected profile.", cursor.Position);
                 fields.Add(new(element.Name, ReadElement(element, raw ?? "", cursor, elementPath, depth + 1,
-                    segment.Id == "ISA" && index == 15)));
+                    segment.Id == "ISA" && index == 15, raw is not null)));
             }
             cursor.Position++;
             return new FerruleGroup(fields);
@@ -159,20 +160,21 @@ public static partial class FerruleX12
         return new FerruleRepeated(items);
     }
 
-    private static FerruleInstance ReadElement(Node node, string raw, Cursor cursor, string[] path, int depth, bool isaComponent = false)
+    private static FerruleInstance ReadElement(Node node, string raw, Cursor cursor, string[] path, int depth, bool isaComponent = false, bool present = true)
     {
         cursor.Budget.Visit(depth);
         if (node.Type is not null)
         {
             if (!isaComponent && raw.Contains(cursor.Syntax.Component))
-                throw Failure(FerruleX12Error.Schema, "X12 scalar contains undeclared composite syntax.", cursor.Position, string.Join('/', path));
+                    throw Failure(FerruleX12Error.Schema, "X12 scalar contains undeclared composite syntax.", cursor.Position, string.Join('/', path));
+            if (cursor.Lexical) return new FerruleScalar(present ? FerruleValue.FromString(raw) : FerruleValue.Null);
             return new FerruleScalar(ApplyImpliedDecimals(node, ReadScalar(node, raw, path), path));
         }
         if (raw.Count(character => character == cursor.Syntax.Component) >= node.Children.Length)
             throw Failure(FerruleX12Error.Schema, "X12 composite contains undeclared components.", cursor.Position, string.Join('/', path));
         string[] components = raw.Split(cursor.Syntax.Component);
         return new FerruleGroup(node.Children.Select((child, index) => new FerruleField(child.Name,
-            ReadElement(child, index < components.Length ? components[index] : "", cursor, [.. path, child.Name], depth + 1))));
+            ReadElement(child, index < components.Length ? components[index] : "", cursor, [.. path, child.Name], depth + 1, present: present && index < components.Length))));
     }
 
     private static FerruleValue ReadScalar(Node node, string raw, string[] path)

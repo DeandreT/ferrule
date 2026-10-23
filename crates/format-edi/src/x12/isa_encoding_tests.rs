@@ -85,6 +85,33 @@ fn example() -> (SchemaNode, Instance) {
     )
 }
 
+#[test]
+fn lexical_source_retains_present_empty_and_unconverted_numeric_text() {
+    let (mut schema, _) = example();
+    let ir::SchemaKind::Group { children, .. } = &mut schema.kind else {
+        panic!("root")
+    };
+    let w05 = children.iter_mut().find(|n| n.name == "W05").unwrap();
+    let ir::SchemaKind::Group { children, .. } = &mut w05.kind else {
+        panic!("segment")
+    };
+    children[1] = SchemaNode::scalar("02", ScalarType::Float);
+    children.push(SchemaNode::scalar("03", ScalarType::String));
+    let text = EXPECTED_DEFAULT.replace("W05*N*DEMO-ORDER-0042", "W05**not-a-number");
+    assert!(from_str(&text, &schema, false).is_err());
+    let parsed = from_str_lexical(&text, &schema).unwrap();
+    let segment = parsed.field("W05").unwrap();
+    assert_eq!(
+        segment.field("01"),
+        Some(&Instance::Scalar(Value::String(String::new())))
+    );
+    assert_eq!(
+        segment.field("02"),
+        Some(&Instance::Scalar(Value::String("not-a-number".into())))
+    );
+    assert_eq!(segment.field("03"), Some(&Instance::Scalar(Value::Null)));
+}
+
 fn change(instance: &mut Instance, segment: &str, element: &str, value: &str) {
     let Instance::Group(fields) = instance else {
         panic!("example root");
