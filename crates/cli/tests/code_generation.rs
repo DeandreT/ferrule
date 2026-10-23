@@ -180,6 +180,8 @@ mod optional_runtime_defaults;
 mod path_hierarchy;
 #[path = "code_generation/primary_csv_acquisition.rs"]
 mod primary_csv_acquisition;
+#[path = "code_generation/primary_filename_documents.rs"]
+mod primary_filename_documents;
 #[path = "code_generation/primary_filenames.rs"]
 mod primary_filenames;
 #[path = "code_generation/recursive_sequences.rs"]

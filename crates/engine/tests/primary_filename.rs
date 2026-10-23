@@ -47,7 +47,7 @@ fn document(filename: Node) -> DocumentProject {
                 ..Default::default()
             },
         },
-        PrimarySourcePlan { filename: 17 },
+        PrimarySourcePlan::new(17),
     )
 }
 
@@ -206,10 +206,7 @@ fn invalid_or_unsupported_plan_fails_before_resolving_host_parameters() {
         );
     }
     let mapping = document(Node::Unconnected);
-    let missing = DocumentProject::new(
-        mapping.project().clone(),
-        PrimarySourcePlan { filename: 555 },
-    );
+    let missing = DocumentProject::new(mapping.project().clone(), PrimarySourcePlan::new(555));
     assert_eq!(
         evaluate_primary_filename(&missing, &execution),
         Err(PrimaryFilenameEvaluationError::Plan(

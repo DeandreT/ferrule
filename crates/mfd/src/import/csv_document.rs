@@ -45,7 +45,7 @@ pub fn import_csv_document_with_options(
         .primary_filename
         .ok_or_else(|| unsupported("missing retained filename"))?;
     Ok(ImportedDocument {
-        document: DocumentProject::new(lowered.imported.project, PrimarySourcePlan { filename }),
+        document: DocumentProject::new(lowered.imported.project, PrimarySourcePlan::new(filename)),
         warnings: lowered.imported.warnings,
         mapping_path: lowered.imported.mapping_path,
     })

@@ -54,7 +54,8 @@ pub use adjacency::AdjacencyTreePlan;
 pub use adjacency_owned::OwnedAdjacencyTreePlan;
 pub use csv_repair::{CsvRuntimeDependency, CsvTextRepairCause, CsvTextRepairDependency};
 pub use document_project::{
-    DocumentProject, DocumentProjectFormat, GlobalFilename, PrimaryFilenameError, PrimarySourcePlan,
+    DocumentProject, DocumentProjectFormat, EmptyFileSelection, GlobalFilename,
+    PrimaryFileSelection, PrimaryFilenameError, PrimarySourcePlan,
 };
 pub use dynamic_field_owned::OwnedDynamicSourceField;
 pub use edi::{
