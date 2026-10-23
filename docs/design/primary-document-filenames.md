@@ -9,7 +9,22 @@ The serialized wrapper has three required fields:
 
 - `format`: `"ferrule_document_project_v1"`.
 - `project`: the embedded mapping project.
-- `primary_source`: an object with a `filename` node ID from that project's graph.
+- `primary_source`: an object with a `filename` node ID from that project's
+  graph and an optional `selection`.
+
+`selection` states how the evaluated filename selects documents:
+
+- Absent or `"direct"`: the filename names one document; `*` and `?` are
+  ordinary characters.
+- `{"file_name_wildcard": {"empty": "refuse" | "map_no_documents"}}`: `*` and
+  `?` in the final path component select every matching file in one directory,
+  in Unicode scalar order of their names; directory components never contain
+  wildcards. `empty` states whether a wildcard that matches no file is a typed
+  selection failure or a run over zero documents.
+
+A direct plan is saved without `selection`, so its bytes are unchanged. A
+saved wildcard plan is refused by readers that predate the field rather than
+being read as a direct filename.
 
 Unknown wrapper and primary-plan fields are rejected. A serialized wrapper
 cannot be read as an ordinary project, because the project fields are nested.
@@ -51,7 +66,6 @@ failure and dynamic-source roots. This applies even when the filename
 expression is unsupported by the classifier. Ordinary project pruning keeps
 its existing roots and behavior.
 
-This model has no interpreter or generated-host acquisition entry point.
 `engine::evaluate_primary_filename` evaluates the classified literal or global
 parameter without a source instance. It preserves the exact string, reuses
 ordinary parameter coercion, and reports explicit null results separately from
@@ -103,3 +117,68 @@ A retained source-dependent expression still fails the filename classifier and
 document lowering. The APIs neither read saved preview instances nor replace
 the connected expression with a saved path. Ordinary import, pipeline import
 and `ImportProfile::Executable` keep their existing behavior.
+
+## Complete primary CSV documents
+
+Filename evaluation, selection, loading, parsing, mapping and publication are
+separate stages:
+
+1. The filename plan is evaluated once, without a source instance or preview.
+2. A `format_csv::PrimarySourceHost` receives the filename text and the plan's
+   selection mode, and returns logical requests in load order. The host
+   chooses where requests load from; it does not choose the selection mode.
+3. The host loads each request's bytes, which are parsed as one CSV document
+   with its own origin and local row positions.
+4. Only after every selected document is parsed does the ordinary mapping run,
+   once, over the rows of all documents in selection order. Grouping, sorting
+   and aggregation therefore span documents, and every row shares one
+   execution context. The mapping never runs per discovered file.
+5. The caller publishes the result.
+
+The first failure ends the run before any later request is loaded and before
+the mapping runs. `engine::run_primary_csv_document` refuses an unsupported
+filename expression, then validates the embedded mapping, before selecting
+anything, and returns the target instance; failures
+keep their stage (`Invalid`, `Acquisition` with the filename, selection,
+request, document-limit, load or input cause, or `Mapping`).
+
+Generated libraries add the same entry point to the CSV document adapters:
+`codegen_rust::emit_with_primary_csv_documents` adds
+`execute_primary_csv_document_bytes` and `PRIMARY_FILE_SELECTION`, and
+`codegen_csharp::emit_with_primary_csv_documents` adds
+`ExecutePrimaryCsvDocumentBytes` and `PrimaryFileSelection`. They take the
+execution context, a host, a byte-decoding policy and a document limit, and
+return one complete CSV document. They accept no filename or document content
+from the caller; the embedded plan alone names the documents. Rust failures
+are `PrimaryCsvDocumentError::{Acquisition, Output}`; C# raises the
+acquisition exception, with the host's exception as its cause, or the mapping
+and CSV output exceptions.
+
+## Local filesystem host
+
+`format_csv::LocalPrimaryFiles` (C# `FerruleLocalPrimaryFiles`) is the explicit
+local filesystem host. Nothing else performs filesystem access, and no host
+reaches a network: a host that wants another transport must be supplied
+explicitly.
+
+- Filenames are relative paths beneath one configured root. `/` and `\` both
+  separate components; empty and `.` components are ignored, and requests
+  use `/` between the remaining components.
+- URI schemes, rooted, drive and UNC paths, parent components and any other
+  colon are refused before the filesystem is touched.
+- Every component beneath the root must be a directory or regular file, not a
+  symbolic link. A wildcard selects regular files only, skips directories and
+  refuses a matching link. These checks are not atomic against concurrent
+  changes to the tree.
+- Matching is case-sensitive over Unicode scalars; names that are not valid
+  Unicode never match.
+- Each document is bounded by a byte limit, 8 MiB by default.
+
+Typed refusals are `Root`, `Uri`, `Rooted`, `Parent`, `InvalidName`,
+`WildcardDirectory`, `NoMatches`, `Missing`, `Symlink`, `NotRegular`,
+`TooLarge` and `Io`. A missing direct file is a load failure; a missing
+wildcard directory or a refused empty match is a selection failure.
+
+The portable cohort in `conformance/primary-filename-documents` compares
+complete documents, typed failures and the ordered host calls of the
+interpreter, generated Rust and generated C#.

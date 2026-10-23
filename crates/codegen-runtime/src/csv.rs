@@ -2,7 +2,7 @@ use std::fmt;
 
 use ir::{Instance, SchemaNode};
 
-use crate::{CsvFormatError, CsvWriteOptions, RuntimeError};
+use crate::{CsvAcquisitionError, CsvFormatError, CsvWriteOptions, RuntimeError};
 
 /// Maximum serialized UTF-8 bytes for one generated CSV document.
 pub const MAX_CSV_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
@@ -41,6 +41,33 @@ impl From<format_csv::CsvReadError> for CsvDocumentError {
 impl From<CsvBoundaryError> for CsvDocumentError {
     fn from(error: CsvBoundaryError) -> Self {
         Self::Output(error)
+    }
+}
+
+/// Failure of one complete primary CSV document run. Acquisition failures
+/// (filename, selection, load or parse) happen before the mapping runs;
+/// output failures include the single mapping execution.
+#[derive(Debug)]
+pub enum PrimaryCsvDocumentError<E> {
+    Acquisition(CsvAcquisitionError<RuntimeError, E>),
+    Output(CsvBoundaryError),
+}
+
+impl<E: fmt::Display> fmt::Display for PrimaryCsvDocumentError<E> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Acquisition(error) => error.fmt(formatter),
+            Self::Output(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for PrimaryCsvDocumentError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(match self {
+            Self::Acquisition(error) => error,
+            Self::Output(error) => error,
+        })
     }
 }
 

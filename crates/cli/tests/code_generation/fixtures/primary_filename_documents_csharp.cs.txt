@@ -1,0 +1,91 @@
+using System.Text;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var cases = JsonNode.Parse(File.ReadAllText(args[0]))!["cases"]!.AsArray();
+string root = args[1];
+int model = int.Parse(args[3]);
+var results = new JsonArray();
+foreach (var node in cases)
+{
+    var testCase = node!.AsObject();
+    if ((int)testCase["model"]! != model) continue;
+    if (testCase["unix"] is JsonValue unix && (bool)unix && OperatingSystem.IsWindows()) continue;
+    string id = (string)testCase["id"]!;
+    var parameters = new Dictionary<string, FerruleValue>();
+    if (testCase["parameters"] is JsonObject values)
+        foreach (var (name, value) in values) parameters[name] = FerruleValue.FromString((string)value!);
+    var execution = FerruleExecutionContext.WithParameters("authored.mapping", new FerruleRuntimeParameters(parameters));
+    long limit = testCase["max_document_bytes"] is JsonValue bytes ? (long)bytes : FerruleLocalPrimaryFiles.DefaultMaximumDocumentBytes;
+    int maximum = testCase["maximum"] is JsonValue documents ? (int)documents : 16;
+    var host = new Recording(new FerruleLocalPrimaryFiles(Path.Join(root, id), limit));
+    var record = new JsonObject { ["id"] = id };
+    try
+    {
+        byte[] output = GeneratedMapping.ExecutePrimaryCsvDocumentBytes(execution, host, FerruleCsvByteDecodingPolicy.StrictUtf8, maximum);
+        record["calls"] = host.Calls.DeepClone();
+        record["output"] = new UTF8Encoding(false, true).GetString(output);
+    }
+    catch (Exception error) when (error is FerruleCsvAcquisitionException or FerruleRuntimeException or FerruleCsvException)
+    {
+        record["calls"] = host.Calls.DeepClone();
+        record["error"] = Classify(error);
+    }
+    results.Add(record);
+}
+File.WriteAllText(args[2], results.ToJsonString());
+return 0;
+
+static string Snake(string name)
+{
+    var text = new StringBuilder();
+    for (int index = 0; index < name.Length; index++)
+    {
+        if (char.IsUpper(name[index]) && index > 0) text.Append('_');
+        text.Append(char.ToLowerInvariant(name[index]));
+    }
+    return text.ToString();
+}
+
+static JsonArray Classify(Exception error)
+{
+    if (error is FerruleCsvAcquisitionException acquisition)
+    {
+        string stage = acquisition.Error == FerruleCsvAcquisitionError.InvalidLimit ? "documents" : Snake(acquisition.Error.ToString());
+        switch (acquisition.InnerException)
+        {
+            case FerruleLocalFileException local:
+                return [stage, Snake(local.Error.ToString()), local.Subject];
+            case FerruleRuntimeException runtime when runtime.Error == FerruleRuntimeError.MissingRuntimeParameter:
+                return [stage, "missing_runtime_parameter", runtime.RuntimeParameter];
+        }
+        return acquisition.Error switch
+        {
+            FerruleCsvAcquisitionError.Documents => [stage, "limit", acquisition.Maximum?.ToString()],
+            FerruleCsvAcquisitionError.Input => [stage, "csv", acquisition.Path],
+            _ => [stage, "other", acquisition.Message],
+        };
+    }
+    var mapping = error as FerruleRuntimeException ?? error.InnerException as FerruleRuntimeException;
+    if (mapping is { Error: FerruleRuntimeError.MissingRuntimeParameter })
+        return ["mapping", "missing_runtime_parameter", mapping.RuntimeParameter];
+    return ["output", error.GetType().Name, error.Message];
+}
+
+sealed class Recording(FerruleLocalPrimaryFiles inner) : IFerrulePrimarySourceHost
+{
+    public JsonArray Calls { get; } = [];
+
+    public IReadOnlyList<string> Select(string filename, FerrulePrimaryFileSelection selection)
+    {
+        Calls.Add("select:" + filename);
+        return inner.Select(filename, selection);
+    }
+
+    public FerruleCsvSourceData Load(string request)
+    {
+        Calls.Add("load:" + request);
+        return inner.Load(request);
+    }
+}

@@ -1062,7 +1062,8 @@ the class members. A `Library` holds that class together with:
   filename evaluator);
 - companion sources, each its own compilation unit holding one partial
   declaration (`GeneratedMapping.Csv.cs`, `.CsvDocument.cs`, `.PrimaryCsv.cs`,
-  `.CsvJson.cs`, `.CsvX12.cs`, `.Json5.cs`, `.X12.cs` and `.Documents.cs`);
+  `.PrimaryCsvDocument.cs`, `.CsvJson.cs`, `.CsvX12.cs`, `.Json5.cs`, `.X12.cs`
+  and `.Documents.cs`);
 - optional runtime sources beyond the fixed runtime set.
 
 Only `Library::into_artifacts` renders text. The class declaration is
@@ -1070,8 +1071,9 @@ Only `Library::into_artifacts` renders text. The class declaration is
 rendered from its compile items: the mapping source, then each companion with
 the most recently layered first, then `GeneratedTargetBuilder.cs` and the
 runtime glob. Layered emitters extend the library of the emitter they build
-on: CSV documents extend CSV output, and primary CSV acquisition extends the
-primary filename library. Each layer keeps its own admission ahead of the
+on: CSV documents extend CSV output, primary CSV acquisition extends the
+primary filename library, and primary CSV documents extend CSV documents with
+the primary filename evaluator. Each layer keeps its own admission ahead of the
 layer below it.
 
 The Basic owned mappings render their own complete compilation unit, which
