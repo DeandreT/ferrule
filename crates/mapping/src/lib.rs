@@ -5,8 +5,12 @@
 
 mod adjacency;
 mod adjacency_owned;
+mod csv_file_set;
 mod csv_repair;
 mod document_project;
+pub use csv_file_set::{
+    CSV_FILE_SET_FILES_FIELD, CSV_FILE_SET_PATH_FIELD, csv_file_set_source_schema,
+};
 pub mod document_project_file;
 mod dynamic_field_owned;
 mod edi;

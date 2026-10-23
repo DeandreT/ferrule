@@ -87,7 +87,7 @@ pub use format_csv::{
     CsvAcquisitionError, CsvByteDecodingPolicy, CsvDocumentRows, CsvFormatError, CsvReadError,
     CsvReadLimit, CsvReadOptions, CsvRowOccurrence, CsvSourceAcquisition, CsvSourceData,
     CsvSourceDocument, CsvSourceError, CsvSourceLoadError, CsvSourceRows, CsvWriteOptions,
-    MAX_CSV_SOURCE_DOCUMENTS, MAX_CSV_SOURCE_PATH_BYTES,
+    MAX_CSV_SOURCE_DOCUMENTS, MAX_CSV_SOURCE_PATH_BYTES, acquire_csv_file_set,
     from_bytes_with_decoding_policy_bounded as parse_csv_rows_bytes_with_decoding_policy,
     from_bytes_with_options_bounded as parse_csv_rows_bytes,
     from_str_with_options_bounded as parse_csv_rows,

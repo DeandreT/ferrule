@@ -35,7 +35,8 @@ mod owned_json_api;
 mod primary_csv;
 mod primary_filename;
 pub use mapforce_json5_documents::{
-    MapForceJson5DocumentEmitError, emit_csv_to_mapforce_json5_documents,
+    MapForceJson5DocumentEmitError, emit_csv_file_set_to_mapforce_json5_documents,
+    emit_csv_to_mapforce_json5_documents,
 };
 mod scalar_sequence;
 mod selected_json_api;

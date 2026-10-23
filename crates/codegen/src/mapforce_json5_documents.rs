@@ -49,6 +49,41 @@ pub fn prepare_csv_to_mapforce_json5_documents(
     }
     crate::validate_primary_csv_acquisition(program, source)
         .map_err(MapForceJson5DocumentError::Source)?;
+    prepare_target(program, target)
+}
+
+pub fn prepare_csv_file_set_to_mapforce_json5_documents(
+    document: &DocumentProgram,
+    row_schema: &ir::SchemaNode,
+    source: &CsvInputPolicy,
+    target: Option<&str>,
+) -> Result<String, MapForceJson5DocumentError> {
+    source
+        .validate_dialect()
+        .map_err(MapForceJson5DocumentError::Source)?;
+    crate::csv_input_boundary::source_fields(row_schema)
+        .map_err(MapForceJson5DocumentError::Source)?;
+    codegen_schema::encode(row_schema, crate::MAX_EMBEDDED_JSON_SCHEMA_BYTES)
+        .map_err(MapForceJson5DocumentError::Schema)?;
+    if row_schema.name == mapping::CSV_FILE_SET_PATH_FIELD
+        || document.program().source != mapping::csv_file_set_source_schema(row_schema)
+    {
+        return Err(MapForceJson5DocumentError::Shape(
+            "file-set execution view differs from the original row schema",
+        ));
+    }
+    prepare_target(document.program(), target)
+}
+
+fn prepare_target(
+    program: &crate::Program,
+    target: Option<&str>,
+) -> Result<String, MapForceJson5DocumentError> {
+    if program.xml_boundary.is_some() {
+        return Err(MapForceJson5DocumentError::Shape(
+            "XML document adapters are a separate boundary",
+        ));
+    }
     let index = crate::validate_document_clocks(program, target)
         .map_err(MapForceJson5DocumentError::Visitor)?;
     let schema = index.map_or(&program.target, |index| {

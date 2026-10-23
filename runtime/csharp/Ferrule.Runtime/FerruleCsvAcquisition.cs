@@ -7,7 +7,7 @@ public sealed record FerruleCsvSourceData(byte[] Bytes, string? ResolvedPath = n
 
 public enum FerruleCsvAcquisitionError
 {
-    InvalidLimit, Filename, Selection, Request, Documents, Load, Input,
+    InvalidLimit, Filename, Selection, Request, Documents, Load, Input, InvalidFileSetSchema, FileSetBytes, FileSetRows,
 }
 
 public sealed class FerruleCsvAcquisitionException : Exception

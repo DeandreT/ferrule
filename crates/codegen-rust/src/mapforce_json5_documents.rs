@@ -42,13 +42,48 @@ pub fn emit_csv_to_mapforce_json5_documents(
 ) -> Result<ArtifactSet, MapForceJson5DocumentEmitError> {
     let descriptor = codegen::prepare_csv_to_mapforce_json5_documents(document, source, target)
         .map_err(MapForceJson5DocumentEmitError::Boundary)?;
+    emit_prepared(document, options, source, target, descriptor, None)
+}
+
+pub fn emit_csv_file_set_to_mapforce_json5_documents(
+    document: &DocumentProgram,
+    options: &Options,
+    row_schema: &ir::SchemaNode,
+    source: &CsvInputPolicy,
+    target: Option<&str>,
+) -> Result<ArtifactSet, MapForceJson5DocumentEmitError> {
+    let descriptor = codegen::prepare_csv_file_set_to_mapforce_json5_documents(
+        document, row_schema, source, target,
+    )
+    .map_err(MapForceJson5DocumentEmitError::Boundary)?;
+    emit_prepared(
+        document,
+        options,
+        source,
+        target,
+        descriptor,
+        Some(row_schema),
+    )
+}
+
+fn emit_prepared(
+    document: &DocumentProgram,
+    options: &Options,
+    source: &CsvInputPolicy,
+    target: Option<&str>,
+    descriptor: String,
+    row_schema: Option<&ir::SchemaNode>,
+) -> Result<ArtifactSet, MapForceJson5DocumentEmitError> {
     let artifacts = crate::emit_with_document_clocks(document.program(), options, target)
         .map_err(MapForceJson5DocumentEmitError::Visitor)?;
     let artifacts = crate::primary_filename::append(artifacts, document)
         .map_err(MapForceJson5DocumentEmitError::Emit)?;
-    let mut files = crate::primary_csv::append(artifacts, document, source)
-        .map_err(MapForceJson5DocumentEmitError::Acquisition)?
-        .into_files();
+    let mut files = (match row_schema {
+        Some(schema) => crate::primary_csv::append_file_set(artifacts, schema, source),
+        None => crate::primary_csv::append(artifacts, document, source),
+    })
+    .map_err(MapForceJson5DocumentEmitError::Acquisition)?
+    .into_files();
     let adapter = format!(
         "\n/// Serialize the selected complete body only; does not open or accept a document.\npub fn serialize_mapforce_json5_document(value: &Instance) -> Result<String, codegen_runtime::MapForceJson5Error> {{\n    codegen_runtime::serialize_mapforce_json5_ascii_keys({}, value)\n}}\n\npub fn serialize_mapforce_json5_document_bytes(value: &Instance) -> Result<Vec<u8>, codegen_runtime::MapForceJson5Error> {{\n    serialize_mapforce_json5_document(value).map(String::into_bytes)\n}}\n",
         rust_string(&descriptor)

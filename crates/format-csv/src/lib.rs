@@ -24,7 +24,9 @@ mod fixed_width;
 mod read;
 mod source_document;
 
-pub use acquisition::{CsvAcquisitionError, CsvSourceAcquisition, CsvSourceData};
+pub use acquisition::{
+    CsvAcquisitionError, CsvSourceAcquisition, CsvSourceData, acquire_csv_file_set,
+};
 pub use bounded::{CsvBoundedError, to_bytes_with_options_bounded, to_string_with_options_bounded};
 pub use bounded_read::{
     CsvReadError, CsvReadLimit, MAX_CSV_INPUT_BYTES, MAX_CSV_INPUT_CELL_BYTES,

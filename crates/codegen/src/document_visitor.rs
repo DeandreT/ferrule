@@ -109,6 +109,11 @@ pub fn validate_document_filename_clock(
                 | Expression::Call { .. }
                 | Expression::If { .. }
                 | Expression::Aggregate { .. }
+                | Expression::CollectionFind { .. }
+                | Expression::SequenceItemAt {
+                    sequence: crate::GeneratedSequence::TokenizeRegex { .. },
+                    ..
+                }
                 | Expression::DistinctTextMapLast { .. }
         ) {
             return Err(DocumentVisitorBoundaryError::Unsupported(
@@ -146,6 +151,11 @@ pub fn validate_document_clocks(
                 | Expression::Call { .. }
                 | Expression::If { .. }
                 | Expression::Aggregate { .. }
+                | Expression::CollectionFind { .. }
+                | Expression::SequenceItemAt {
+                    sequence: crate::GeneratedSequence::TokenizeRegex { .. },
+                    ..
+                }
                 | Expression::InvocationCounter { .. }
                 | Expression::DistinctTextMapLast { .. }
         ) {
