@@ -1071,6 +1071,18 @@ domain and at most 17 fractional output digits, with midpoint rounding away
 from zero. Input and output are bounded to 64 MiB, with 64 container levels and
 one million input values; callers can lower the output limit.
 
+## Lexical X12 Source View
+
+The separate `parse_lexical_x12_source` / `ParseLexicalSourceBytes` source
+primitive retains physical scalar text without eager numeric or date conversion.
+It uses the bound source schema for segment/group ownership and distinguishes
+present empty fields from absent positions. It is not the ordinary strict X12
+reader, nor a complete native-reader validation policy. A mapping-specific
+projection must still apply the reference's empty-field and lexical-normalization
+rules, and perform conversions only when reached. The byte entry point uses
+explicit BOM-aware, non-flushing decoding; it does not acquire files or publish
+documents.
+
 ## Explicit native JSON-to-X12 input
 
 The primary JSON projection companion retains ordered typed occurrences and
