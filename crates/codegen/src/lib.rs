@@ -19,6 +19,7 @@ mod json5_boundary;
 mod json_projection;
 mod lower;
 mod mapforce_json5_documents;
+mod mapforce_x12_source;
 mod mapforce_x12_writer;
 mod model;
 mod owned_admission;
@@ -89,6 +90,7 @@ pub use mapforce_json5_documents::{
     MapForceJson5DocumentError, prepare_csv_file_set_to_mapforce_json5_documents,
     prepare_csv_to_mapforce_json5_documents,
 };
+pub use mapforce_x12_source::{MapForceX12SourceError, prepare_mapforce_x12_source};
 pub use mapforce_x12_writer::{MapForceX12WriterError, prepare_mapforce_x12_writer};
 pub use model::{
     AggregateFunction, AggregateValue, Binding, DelimitedTextField, DelimitedTextFieldError,
