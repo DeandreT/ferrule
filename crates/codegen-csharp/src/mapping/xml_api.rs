@@ -6,6 +6,8 @@ mod input_document_sets;
 mod mixed_named_outputs;
 mod named_document_outputs;
 mod named_inputs;
+mod owned_document_sets;
+pub(crate) use owned_document_sets::render as render_owned_document_sets;
 
 use crate::{EmitError, literal};
 use codegen::{Program, XmlDocumentInputs, XmlEmissionPlan, XmlOutputMode, XmlOutputPolicy};

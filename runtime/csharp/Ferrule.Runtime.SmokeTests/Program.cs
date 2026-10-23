@@ -183,6 +183,7 @@ internal static partial class Program
             ("JSON root rows", JsonRootRows),
             ("XML document member errors and budgets", XmlDocumentMembersAndBudgets),
             ("XML input/document exclusive owners", XmlInputDocumentOwners),
+            ("XML document-set input members and owners", XmlDocumentSetInputMembers),
             ("XML dynamic input/document exclusive owners", XmlDynamicInputDocumentOwners),
             ("XML dynamic input/mixed-output exclusive owners", XmlDynamicInputDocumentOutputsOwners),
             ("XML dynamic input/mixed-output adapter channels", XmlDynamicInputDocumentOutputsAdapterChannels),

@@ -178,6 +178,18 @@ pub enum OwnedSourceDiagnostic {
     },
 }
 
+/// Why a Program cannot expose the owned XML document-set entry points.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum XmlDocumentSetInputRefusal {
+    /// The Program has no ordinary XML source boundary.
+    MissingXmlBoundary,
+    /// The primary is read with the observed root-view policy rather than
+    /// the structured profile every member is parsed with.
+    ObservedPrimaryInput,
+    /// A named source loaded per driver item is never a static document set.
+    DynamicSource { index: usize, name: String },
+}
+
 /// A malformed backend-neutral program that an emitter must not publish.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProgramValidationError {
@@ -190,6 +202,9 @@ pub enum ProgramValidationError {
     },
     InvalidXmlBoundary {
         reason: String,
+    },
+    XmlDocumentSetInput {
+        refusal: XmlDocumentSetInputRefusal,
     },
     InvalidPrimaryRootSchema {
         node: NodeId,

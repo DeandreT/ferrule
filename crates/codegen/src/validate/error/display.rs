@@ -15,6 +15,9 @@ impl fmt::Display for ProgramValidationError {
             Self::InvalidXmlBoundary { reason } => {
                 write!(formatter, "invalid XML document boundary: {reason}")
             }
+            Self::XmlDocumentSetInput { refusal } => {
+                write!(formatter, "unsupported XML document-set input: {refusal:?}")
+            }
             Self::InvalidPrimaryRootSchema { node } => write!(
                 formatter,
                 "compiled mapping expression {node} requires a supported nonrepeating closed primary XML root"

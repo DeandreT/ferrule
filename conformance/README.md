@@ -304,8 +304,11 @@ layout with a JSON oracle; the SequenceExists and SequenceAggregate cohorts shar
 bindings with `cases.rs`. The
 [`basic-owned-dynamic-document-path/`](basic-owned-dynamic-document-path/)
 cohort keeps the same JSON oracle with host documents and recorded loader
-callbacks, run by the owned dynamic-loading hosts. Each cohort README lists its
-cases and expected outcomes. Run one cohort, including its generated hosts, with its harness
+callbacks, run by the owned dynamic-loading hosts. The
+[`basic-owned-xml-document-set/`](basic-owned-xml-document-set/) cohort keeps
+the outcome layout but supplies each endpoint as XML member lists. Each cohort
+README lists its cases and expected outcomes. Run one cohort, including its
+generated hosts, with its harness
 filter, for example:
 
 ```sh

@@ -212,7 +212,11 @@ fn emit_with_owned_capabilities(
         return Err(EmitError::InvalidPackageName(options.package_name.clone()));
     }
     let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_capability_source(program, capabilities)?;
+    let mut source =
+        owned_basic::render_public_basic_owned_capability_source(program, capabilities)?;
+    if capabilities.xml_document_sets {
+        source.push_str(&xml_api::render_owned_document_sets(program)?);
+    }
     ArtifactSet::new([
         GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
         GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
@@ -261,6 +265,7 @@ owned_presets! {
     XmlMixedConstruction => emit_with_basic_owned_xml_mixed_construction;
     DocumentPaths => emit_with_basic_owned_document_paths;
     DynamicDocumentPaths => emit_with_basic_owned_dynamic_document_paths;
+    XmlDocumentSets => emit_with_basic_owned_xml_document_sets;
 }
 
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.

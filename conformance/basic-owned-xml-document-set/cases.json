@@ -1,0 +1,125 @@
+{
+ "version": 1,
+ "cases": [
+  {
+   "id": "nested-sets",
+   "model": "nested",
+   "source": [["p1.xml", "/in/p1.xml", "<Input><Title>P one</Title><Rows><Value>p1a</Value></Rows><Rows><Value>p1b</Value></Rows></Input>"], ["p2.xml", null, "<Input><Title>P two</Title><Rows><Value>p2a</Value></Rows></Input>"]],
+   "inputs": [["Ref", [["n1.xml", "/ref/n1.xml", "<Input><Title>N one</Title><Rows><Value>n1a</Value></Rows></Input>"], ["n2.xml", null, "<Input><Title>N two</Title><Rows><Value>n2a</Value></Rows><Rows><Value>n2b</Value></Rows></Input>"]]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Group", [["Docs", ["Repeated", [["Group", [["Path", ["String", "/in/p1.xml"]], ["Title", ["String", "P one"]], ["Rows", ["Repeated", [["Group", [["Value", ["String", "p1a"]], ["Position", ["Int", 1]], ["Path", ["String", "/in/p1.xml"]], ["Pairs", ["Repeated", [["Group", [["Value", ["String", "n1a"]], ["Position", ["Int", 1]], ["NamedPath", ["String", "/ref/n1.xml"]], ["PrimaryPath", ["String", "/in/p1.xml"]], ["NamedTitle", ["String", "N one"]], ["PrimaryTitle", ["String", "P one"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "n2a"]], ["Position", ["Int", 1]], ["NamedPath", ["String", "n2.xml"]], ["PrimaryPath", ["String", "/in/p1.xml"]], ["NamedTitle", ["String", "N two"]], ["PrimaryTitle", ["String", "P one"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "n2b"]], ["Position", ["Int", 2]], ["NamedPath", ["String", "n2.xml"]], ["PrimaryPath", ["String", "/in/p1.xml"]], ["NamedTitle", ["String", "N two"]], ["PrimaryTitle", ["String", "P one"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "p1b"]], ["Position", ["Int", 2]], ["Path", ["String", "/in/p1.xml"]], ["Pairs", ["Repeated", [["Group", [["Value", ["String", "n1a"]], ["Position", ["Int", 1]], ["NamedPath", ["String", "/ref/n1.xml"]], ["PrimaryPath", ["String", "/in/p1.xml"]], ["NamedTitle", ["String", "N one"]], ["PrimaryTitle", ["String", "P one"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "n2a"]], ["Position", ["Int", 1]], ["NamedPath", ["String", "n2.xml"]], ["PrimaryPath", ["String", "/in/p1.xml"]], ["NamedTitle", ["String", "N two"]], ["PrimaryTitle", ["String", "P one"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "n2b"]], ["Position", ["Int", 2]], ["NamedPath", ["String", "n2.xml"]], ["PrimaryPath", ["String", "/in/p1.xml"]], ["NamedTitle", ["String", "N two"]], ["PrimaryTitle", ["String", "P one"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "p2.xml"]], ["Title", ["String", "P two"]], ["Rows", ["Repeated", [["Group", [["Value", ["String", "p2a"]], ["Position", ["Int", 1]], ["Path", ["String", "p2.xml"]], ["Pairs", ["Repeated", [["Group", [["Value", ["String", "n1a"]], ["Position", ["Int", 1]], ["NamedPath", ["String", "/ref/n1.xml"]], ["PrimaryPath", ["String", "p2.xml"]], ["NamedTitle", ["String", "N one"]], ["PrimaryTitle", ["String", "P two"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "n2a"]], ["Position", ["Int", 1]], ["NamedPath", ["String", "n2.xml"]], ["PrimaryPath", ["String", "p2.xml"]], ["NamedTitle", ["String", "N two"]], ["PrimaryTitle", ["String", "P two"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "n2b"]], ["Position", ["Int", 2]], ["NamedPath", ["String", "n2.xml"]], ["PrimaryPath", ["String", "p2.xml"]], ["NamedTitle", ["String", "N two"]], ["PrimaryTitle", ["String", "P two"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}},
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Group", [["Docs", ["Repeated", [["Group", [["Path", ["String", "/in/p1.xml"]], ["Title", ["String", "P one"]], ["Rows", ["Repeated", [["Group", [["Value", ["String", "p1a"]], ["Position", ["Int", 1]], ["Path", ["String", "/in/p1.xml"]], ["Pairs", ["Repeated", [["Group", [["Value", ["String", "n1a"]], ["Position", ["Int", 1]], ["NamedPath", ["String", "/ref/n1.xml"]], ["PrimaryPath", ["String", "/in/p1.xml"]], ["NamedTitle", ["String", "N one"]], ["PrimaryTitle", ["String", "P one"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "n2a"]], ["Position", ["Int", 1]], ["NamedPath", ["String", "n2.xml"]], ["PrimaryPath", ["String", "/in/p1.xml"]], ["NamedTitle", ["String", "N two"]], ["PrimaryTitle", ["String", "P one"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "n2b"]], ["Position", ["Int", 2]], ["NamedPath", ["String", "n2.xml"]], ["PrimaryPath", ["String", "/in/p1.xml"]], ["NamedTitle", ["String", "N two"]], ["PrimaryTitle", ["String", "P one"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "p1b"]], ["Position", ["Int", 2]], ["Path", ["String", "/in/p1.xml"]], ["Pairs", ["Repeated", [["Group", [["Value", ["String", "n1a"]], ["Position", ["Int", 1]], ["NamedPath", ["String", "/ref/n1.xml"]], ["PrimaryPath", ["String", "/in/p1.xml"]], ["NamedTitle", ["String", "N one"]], ["PrimaryTitle", ["String", "P one"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "n2a"]], ["Position", ["Int", 1]], ["NamedPath", ["String", "n2.xml"]], ["PrimaryPath", ["String", "/in/p1.xml"]], ["NamedTitle", ["String", "N two"]], ["PrimaryTitle", ["String", "P one"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "n2b"]], ["Position", ["Int", 2]], ["NamedPath", ["String", "n2.xml"]], ["PrimaryPath", ["String", "/in/p1.xml"]], ["NamedTitle", ["String", "N two"]], ["PrimaryTitle", ["String", "P one"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "p2.xml"]], ["Title", ["String", "P two"]], ["Rows", ["Repeated", [["Group", [["Value", ["String", "p2a"]], ["Position", ["Int", 1]], ["Path", ["String", "p2.xml"]], ["Pairs", ["Repeated", [["Group", [["Value", ["String", "n1a"]], ["Position", ["Int", 1]], ["NamedPath", ["String", "/ref/n1.xml"]], ["PrimaryPath", ["String", "p2.xml"]], ["NamedTitle", ["String", "N one"]], ["PrimaryTitle", ["String", "P two"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "n2a"]], ["Position", ["Int", 1]], ["NamedPath", ["String", "n2.xml"]], ["PrimaryPath", ["String", "p2.xml"]], ["NamedTitle", ["String", "N two"]], ["PrimaryTitle", ["String", "P two"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "n2b"]], ["Position", ["Int", 2]], ["NamedPath", ["String", "n2.xml"]], ["PrimaryPath", ["String", "p2.xml"]], ["NamedTitle", ["String", "N two"]], ["PrimaryTitle", ["String", "P two"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}}
+   ]
+  },
+  {
+   "id": "nested-empty",
+   "model": "nested",
+   "source": [],
+   "inputs": [["Ref", [["n1.xml", "/ref/n1.xml", "<Input><Title>N one</Title><Rows><Value>n1a</Value></Rows></Input>"], ["n2.xml", null, "<Input><Title>N two</Title><Rows><Value>n2a</Value></Rows><Rows><Value>n2b</Value></Rows></Input>"]]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Group", [["Docs", ["Repeated", []]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}},
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Group", [["Docs", ["Repeated", []]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}}
+   ]
+  },
+  {
+   "id": "nested-unsupplied",
+   "model": "nested",
+   "source": [["p1.xml", "/in/p1.xml", "<Input><Title>P one</Title><Rows><Value>p1a</Value></Rows><Rows><Value>p1b</Value></Rows></Input>"], ["p2.xml", null, "<Input><Title>P two</Title><Rows><Value>p2a</Value></Rows></Input>"]],
+   "inputs": [],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "Mapping", "error": {"kind": "OwnedSource", "owner": "Ref", "cause": "SourceUnavailable"}}}},
+    {"selection": "Primary", "expected": {"Err": {"kind": "Mapping", "error": {"kind": "OwnedSource", "owner": "Ref", "cause": "SourceUnavailable"}}}}
+   ]
+  },
+  {
+   "id": "cross-sets",
+   "model": "cross",
+   "source": [["p1.xml", "/in/p1.xml", "<Input><Title>P one</Title><Rows><Value>p1a</Value></Rows><Rows><Value>p1b</Value></Rows></Input>"], ["p2.xml", null, "<Input><Title>P two</Title><Rows><Value>p2a</Value></Rows></Input>"]],
+   "inputs": [["Ref", [["n1.xml", "/ref/n1.xml", "<Input><Title>N one</Title><Rows><Value>n1a</Value></Rows></Input>"], ["n2.xml", null, "<Input><Title>N two</Title><Rows><Value>n2a</Value></Rows><Rows><Value>n2b</Value></Rows></Input>"]]]],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "Mapping", "error": {"kind": "OwnedSource", "node": 1, "owner": "Primary", "cause": "MissingDocumentPath"}}}},
+    {"selection": "Primary", "expected": {"Err": {"kind": "Mapping", "error": {"kind": "OwnedSource", "node": 1, "owner": "Primary", "cause": "MissingDocumentPath"}}}}
+   ]
+  },
+  {
+   "id": "cross-empty",
+   "model": "cross",
+   "source": [["p1.xml", "/in/p1.xml", "<Input><Title>P one</Title><Rows><Value>p1a</Value></Rows><Rows><Value>p1b</Value></Rows></Input>"], ["p2.xml", null, "<Input><Title>P two</Title><Rows><Value>p2a</Value></Rows></Input>"]],
+   "inputs": [["Ref", []]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Group", [["NamedDocs", ["Repeated", []]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}},
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Group", [["NamedDocs", ["Repeated", []]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}}
+   ]
+  },
+  {
+   "id": "sorted-sets",
+   "model": "sorted",
+   "source": [["p1.xml", "/in/p1.xml", "<Input><Title>P one</Title><Rows><Value>p1a</Value></Rows><Rows><Value>p1b</Value></Rows></Input>"], ["p2.xml", null, "<Input><Title>P two</Title><Rows><Value>p2a</Value></Rows></Input>"]],
+   "inputs": [["Ref", [["n1.xml", "/ref/n1.xml", "<Input><Title>N one</Title><Rows><Value>n1a</Value></Rows></Input>"], ["n2.xml", null, "<Input><Title>N two</Title><Rows><Value>n2a</Value></Rows><Rows><Value>n2b</Value></Rows></Input>"]]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Group", [["Rows", ["Repeated", [["Group", [["Value", ["String", "p2a"]], ["Position", ["Int", 1]], ["Path", ["String", "p2.xml"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "p1b"]], ["Position", ["Int", 2]], ["Path", ["String", "/in/p1.xml"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "p1a"]], ["Position", ["Int", 3]], ["Path", ["String", "/in/p1.xml"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}},
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Group", [["Rows", ["Repeated", [["Group", [["Value", ["String", "p2a"]], ["Position", ["Int", 1]], ["Path", ["String", "p2.xml"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "p1b"]], ["Position", ["Int", 2]], ["Path", ["String", "/in/p1.xml"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "p1a"]], ["Position", ["Int", 3]], ["Path", ["String", "/in/p1.xml"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}}
+   ]
+  },
+  {
+   "id": "nested-primary-member-invalid",
+   "model": "nested",
+   "source": [["p1.xml", "/in/p1.xml", "<Input><Title>P one</Title><Rows><Value>p1a</Value></Rows><Rows><Value>p1b</Value></Rows></Input>"], ["p2.xml", null, "<Input><Title>broken</Title>"]],
+   "inputs": [["Ref", [["n1.xml", "/ref/n1.xml", "<Input><Title>N one</Title><Rows><Value>n1a</Value></Rows></Input>"], ["n2.xml", null, "<Input><Title>N two</Title><Rows><Value>n2a</Value></Rows><Rows><Value>n2b</Value></Rows></Input>"]]]],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "Member", "owner": "Primary", "index": 1, "path": "p2.xml", "boundary": "Input"}}},
+    {"selection": "Primary", "expected": {"Err": {"kind": "Member", "owner": "Primary", "index": 1, "path": "p2.xml", "boundary": "Input"}}}
+   ]
+  },
+  {
+   "id": "nested-named-member-invalid",
+   "model": "nested",
+   "source": [["p1.xml", "/in/p1.xml", "<Input><Title>P one</Title><Rows><Value>p1a</Value></Rows><Rows><Value>p1b</Value></Rows></Input>"], ["p2.xml", null, "<Input><Title>P two</Title><Rows><Value>p2a</Value></Rows></Input>"]],
+   "inputs": [["Ref", [["n1.xml", "/ref/n1.xml", "<Input><Title>broken</Title>"], ["n2.xml", null, "<Input><Title>N two</Title><Rows><Value>n2a</Value></Rows><Rows><Value>n2b</Value></Rows></Input>"]]]],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "Member", "owner": "Ref", "index": 0, "path": "n1.xml", "boundary": "Input"}}},
+    {"selection": "Primary", "expected": {"Err": {"kind": "Member", "owner": "Ref", "index": 0, "path": "n1.xml", "boundary": "Input"}}}
+   ]
+  },
+  {
+   "id": "nested-unknown-name",
+   "model": "nested",
+   "source": [["p1.xml", "/in/p1.xml", "<Input><Title>P one</Title><Rows><Value>p1a</Value></Rows><Rows><Value>p1b</Value></Rows></Input>"], ["p2.xml", null, "<Input><Title>broken</Title>"]],
+   "inputs": [["Other", [["n1.xml", "/ref/n1.xml", "<Input><Title>broken</Title>"], ["n2.xml", null, "<Input><Title>N two</Title><Rows><Value>n2a</Value></Rows><Rows><Value>n2b</Value></Rows></Input>"]]]],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "Mapping", "error": {"kind": "UnexpectedNamedSource", "name": "Other"}}}},
+    {"selection": "Primary", "expected": {"Err": {"kind": "Mapping", "error": {"kind": "UnexpectedNamedSource", "name": "Other"}}}}
+   ]
+  },
+  {
+   "id": "nested-duplicate-name",
+   "model": "nested",
+   "source": [["p1.xml", "/in/p1.xml", "<Input><Title>P one</Title><Rows><Value>p1a</Value></Rows><Rows><Value>p1b</Value></Rows></Input>"], ["p2.xml", null, "<Input><Title>broken</Title>"]],
+   "inputs": [["Ref", [["n1.xml", "/ref/n1.xml", "<Input><Title>N one</Title><Rows><Value>n1a</Value></Rows></Input>"], ["n2.xml", null, "<Input><Title>N two</Title><Rows><Value>n2a</Value></Rows><Rows><Value>n2b</Value></Rows></Input>"]]], ["Ref", [["n1.xml", "/ref/n1.xml", "<Input><Title>broken</Title>"], ["n2.xml", null, "<Input><Title>N two</Title><Rows><Value>n2a</Value></Rows><Rows><Value>n2b</Value></Rows></Input>"]]]],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "Mapping", "error": {"kind": "DuplicateNamedSource", "name": "Ref"}}}},
+    {"selection": "Primary", "expected": {"Err": {"kind": "Mapping", "error": {"kind": "DuplicateNamedSource", "name": "Ref"}}}}
+   ]
+  },
+  {
+   "id": "nested-empty-path",
+   "model": "nested",
+   "source": [["", "/in/p1.xml", "<Input><Title>broken</Title>"], ["p2.xml", null, "<Input><Title>P two</Title><Rows><Value>p2a</Value></Rows></Input>"]],
+   "inputs": [["Ref", [["n1.xml", "/ref/n1.xml", "<Input><Title>broken</Title>"], ["n2.xml", null, "<Input><Title>N two</Title><Rows><Value>n2a</Value></Rows><Rows><Value>n2b</Value></Rows></Input>"]]]],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "Member", "owner": "Primary", "index": 0, "path": "", "boundary": "Input"}}},
+    {"selection": "Primary", "expected": {"Err": {"kind": "Member", "owner": "Primary", "index": 0, "path": "", "boundary": "Input"}}}
+   ]
+  },
+  {
+   "id": "nested-empty-resolved",
+   "model": "nested",
+   "source": [["p1.xml", "/in/p1.xml", "<Input><Title>P one</Title><Rows><Value>p1a</Value></Rows><Rows><Value>p1b</Value></Rows></Input>"], ["p2.xml", null, "<Input><Title>P two</Title><Rows><Value>p2a</Value></Rows></Input>"]],
+   "inputs": [["Ref", [["n1.xml", "/ref/n1.xml", "<Input><Title>N one</Title><Rows><Value>n1a</Value></Rows></Input>"], ["n2.xml", "", "<Input><Title>N two</Title><Rows><Value>n2a</Value></Rows><Rows><Value>n2b</Value></Rows></Input>"]]]],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "Member", "owner": "Ref", "index": 1, "path": "n2.xml", "boundary": "Input"}}},
+    {"selection": "Primary", "expected": {"Err": {"kind": "Member", "owner": "Ref", "index": 1, "path": "n2.xml", "boundary": "Input"}}}
+   ]
+  }
+ ]
+}

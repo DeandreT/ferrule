@@ -5,7 +5,7 @@ use super::*;
 use serde_json::Value as Json;
 
 #[path = "../../../../conformance/basic-owned-document-path/projects.rs"]
-mod projects;
+pub(super) mod projects;
 use super::execution_bindings::{self as bindings, Emitters};
 use super::owned_capability_presets::{self as presets, Corpus};
 
@@ -143,7 +143,15 @@ fn basic_docpath451_other_presets_keep_the_document_path_closed() -> TestResult<
             &program,
             preset.capabilities(),
         );
-        if preset.capabilities().document_sets {
+        if preset == codegen::OwnedPreset::XmlDocumentSets {
+            // The composition admits the read but needs XML format identity.
+            assert!(matches!(
+                result,
+                Err(codegen::ProgramValidationError::XmlDocumentSetInput {
+                    refusal: codegen::XmlDocumentSetInputRefusal::MissingXmlBoundary
+                })
+            ));
+        } else if preset.capabilities().document_sets {
             result?;
         } else {
             let error = result.expect_err("closed without the document-set capability");

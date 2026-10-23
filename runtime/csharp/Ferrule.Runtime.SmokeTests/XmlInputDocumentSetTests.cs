@@ -86,4 +86,62 @@ internal static partial class Program
         catch (FerruleXmlExecutionException error) { return error; }
         throw new InvalidOperationException("Expected static input admission failure.");
     }
+
+    private static void XmlDocumentSetInputMembers()
+    {
+        const string descriptor = "{\"name\":\"Input\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Title\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}";
+        var named = FerruleXmlInputSource.Named(0, "Ref");
+        var members = new[]
+        {
+            new FerruleXmlDocumentSetMember("deep/one.xml", "/in/deep/one.xml", "<Input><Title>One</Title></Input>"),
+            new FerruleXmlDocumentSetMember("two.xml", null, "<Input><Title>Two</Title></Input>"),
+        };
+        var parsed = (FerruleDocumentSet)FerruleXmlDocumentSets.Parse(descriptor, named, members);
+        Equal(2, parsed.Documents.Count);
+        Equal("deep/one.xml", parsed.Documents[0].Path);
+        Equal<string?>("/in/deep/one.xml", parsed.Documents[0].ResolvedSourcePath);
+        Equal<string?>(null, parsed.Documents[1].ResolvedSourcePath);
+        var bytes = members.Select(member => new FerruleXmlBytesDocumentSetMember(
+            member.Path, member.ResolvedSourcePath, System.Text.Encoding.UTF8.GetBytes(member.Document))).ToArray();
+        Equal(2, ((FerruleDocumentSet)FerruleXmlDocumentSets.Parse(descriptor, named, bytes)).Documents.Count);
+        Equal(0, ((FerruleDocumentSet)FerruleXmlDocumentSets.Parse(descriptor, named, Array.Empty<FerruleXmlDocumentSetMember>())).Documents.Count);
+
+        var broken = DocumentSetFailure(() => FerruleXmlDocumentSets.Parse(descriptor, named,
+            new[] { members[0], new FerruleXmlDocumentSetMember("bad.xml", null, "<Input>") }));
+        Equal<FerruleXmlDocumentSetMemberOwner?>(new FerruleXmlDocumentSetMemberOwner(named, 1, "bad.xml"), broken.Member);
+        Equal(FerruleXmlBoundaryErrorKind.Input, broken.Boundary.Kind);
+        Equal(true, ReferenceEquals(broken.Boundary, broken.InnerException));
+        var utf8 = DocumentSetFailure(() => FerruleXmlDocumentSets.Parse(descriptor, named,
+            new[] { new FerruleXmlBytesDocumentSetMember("b.xml", null, new byte[] { 0xff }) }));
+        Equal(FerruleXmlBoundaryErrorKind.Utf8, utf8.Boundary.Kind);
+        Equal("b.xml", utf8.Member!.Path);
+
+        // Every member's shape is admitted before any member is parsed.
+        var shape = DocumentSetFailure(() => FerruleXmlDocumentSets.Preflight(
+            new (FerruleXmlInputSource, IReadOnlyList<FerruleXmlDocumentSetMember>)[]
+            {
+                (FerruleXmlInputSource.Primary, new[] { new FerruleXmlDocumentSetMember("p.xml", null, "<") }),
+                (named, new[] { new FerruleXmlDocumentSetMember("ok.xml", "", "<") }),
+            }));
+        Equal<FerruleXmlDocumentSetMemberOwner?>(new FerruleXmlDocumentSetMemberOwner(named, 0, "ok.xml"), shape.Member);
+        Equal(FerruleXmlBoundaryErrorKind.Input, shape.Boundary.Kind);
+        var many = Enumerable.Repeat(new FerruleXmlDocumentSetMember("m.xml", null, ""), 4097).ToArray();
+        var count = DocumentSetFailure(() => FerruleXmlDocumentSets.Preflight(
+            new (FerruleXmlInputSource, IReadOnlyList<FerruleXmlDocumentSetMember>)[] { (FerruleXmlInputSource.Primary, many) }));
+        Equal<FerruleXmlDocumentSetMemberOwner?>(null, count.Member);
+        Equal(true, count.Boundary.InnerException is FerruleXmlInputSetResourceException);
+
+        var runtime = new FerruleRuntimeException(FerruleRuntimeError.UnexpectedNamedSource, "unexpected", detail: "Other");
+        var mapping = FerruleXmlDocumentSetInputException.FromMapping(runtime);
+        Equal<FerruleXmlDocumentSetMemberOwner?>(null, mapping.Member);
+        Equal(FerruleXmlBoundaryErrorKind.Mapping, mapping.Boundary.Kind);
+        Equal(true, ReferenceEquals(runtime, mapping.Boundary.InnerException));
+    }
+
+    private static FerruleXmlDocumentSetInputException DocumentSetFailure(Action action)
+    {
+        try { action(); }
+        catch (FerruleXmlDocumentSetInputException error) { return error; }
+        throw new InvalidOperationException("Expected XML document-set input failure.");
+    }
 }

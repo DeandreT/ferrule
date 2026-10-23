@@ -172,6 +172,11 @@ pub struct OwnedCapabilities {
     /// Owned document-path reads of an owned dynamic endpoint return the
     /// logical path that loaded its active document.
     pub dynamic_document_paths: bool,
+    /// The primary and every static named endpoint also enter through XML
+    /// document-set entry points: each arrives as an ordered list of members
+    /// parsed through the structured XML profile. It composes with
+    /// `document_sets`, which walks the parsed members.
+    pub xml_document_sets: bool,
 }
 
 impl OwnedCapabilities {
@@ -210,6 +215,7 @@ impl OwnedCapabilities {
             && within(self.joins, other.joins)
             && within(self.document_sets, other.document_sets)
             && within(self.dynamic_document_paths, other.dynamic_document_paths)
+            && within(self.xml_document_sets, other.xml_document_sets)
     }
 }
 
@@ -249,6 +255,7 @@ pub enum OwnedPreset {
     XmlMixedConstruction,
     DocumentPaths,
     DynamicDocumentPaths,
+    XmlDocumentSets,
 }
 
 const NO_CONTROLS: SourceControls = SourceControls {
@@ -384,6 +391,7 @@ const fn set(
     joins: bool,
     document_sets: bool,
     dynamic_document_paths: bool,
+    xml_document_sets: bool,
 ) -> OwnedCapabilities {
     OwnedCapabilities {
         controls,
@@ -398,12 +406,13 @@ const fn set(
         joins,
         document_sets,
         dynamic_document_paths,
+        xml_document_sets,
     }
 }
 
 impl OwnedPreset {
     /// Every preset, in table order.
-    pub const ALL: [Self; 28] = [
+    pub const ALL: [Self; 29] = [
         Self::ControlFree,
         Self::Filters,
         Self::Sort,
@@ -432,41 +441,43 @@ impl OwnedPreset {
         Self::XmlMixedConstruction,
         Self::DocumentPaths,
         Self::DynamicDocumentPaths,
+        Self::XmlDocumentSets,
     ];
 
     /// The preset table: every row lists its complete capability set.
     #[rustfmt::skip]
     pub const fn capabilities(self) -> OwnedCapabilities {
-        //                                    controls     grouping     failures     sequences     trees      search     dyn    load   xml        joins  docs   dyn-docs
+        //                                    controls     grouping     failures     sequences     trees      search     dyn    load   xml        joins  docs   dyn-docs  xml-docs
         match self {
-            Self::ControlFree          => set(NO_CONTROLS, UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::Filters              => set(FILTER,      UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::Sort                 => set(SORT,        UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::Windows              => set(WINDOWS,     UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::RowFailures          => set(WINDOWS,     UNGROUPED,   ROWS,        NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::GroupBy              => set(WINDOWS,     BY,          ROWS,        NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::SequenceItemAt       => set(WINDOWS,     BY,          ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::GroupAdjacentBy      => set(WINDOWS,     TO_ADJACENT, ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::GroupStartingWith    => set(WINDOWS,     TO_STARTING, ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::GroupEndingWith      => set(WINDOWS,     TO_ENDING,   ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::GroupIntoBlocks      => set(WINDOWS,     ALL_MODES,   ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::FailureSources       => set(WINDOWS,     TO_ENDING,   OWNED,       ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::PathHierarchy        => set(WINDOWS,     TO_ENDING,   OWNED,       ITEM_AT,      HIERARCHY, NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::AdjacencyTree        => set(WINDOWS,     TO_ENDING,   OWNED,       ITEM_AT,      TREE,      NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::RecursiveCollect     => set(WINDOWS,     TO_ENDING,   OWNED,       RECURSIVE,    TREE,      NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::RecursiveFilter      => set(WINDOWS,     TO_ENDING,   OWNED,       RECURSIVE,    FILTERED,  NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::LookupFind           => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    false, false, NO_XML,    false, false, false),
-            Self::DynamicField         => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, NO_XML,    false, false, false),
-            Self::DynamicLoading       => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  true,  NO_XML,    false, false, false),
-            Self::CollectionAggregates => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  REDUCE,    false, false, NO_XML,    false, false, false),
-            Self::Joins                => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    false, false, NO_XML,    true,  false, false),
-            Self::SequenceExists       => set(WINDOWS,     TO_ENDING,   ROWS,        EXISTS,       NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::SequenceAggregate    => set(WINDOWS,     TO_ENDING,   ROWS,        AGGREGATE,    NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false),
-            Self::XmlSerialize         => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, SERIALIZE, false, false, false),
-            Self::XmlMixedContent      => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, MIXED,     false, false, false),
-            Self::XmlMixedConstruction => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, CONSTRUCT, false, false, false),
-            Self::DocumentPaths        => set(WINDOWS,     UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, true,  false),
-            Self::DynamicDocumentPaths => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  true,  NO_XML,    false, true,  true),
+            Self::ControlFree          => set(NO_CONTROLS, UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::Filters              => set(FILTER,      UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::Sort                 => set(SORT,        UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::Windows              => set(WINDOWS,     UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::RowFailures          => set(WINDOWS,     UNGROUPED,   ROWS,        NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::GroupBy              => set(WINDOWS,     BY,          ROWS,        NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::SequenceItemAt       => set(WINDOWS,     BY,          ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::GroupAdjacentBy      => set(WINDOWS,     TO_ADJACENT, ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::GroupStartingWith    => set(WINDOWS,     TO_STARTING, ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::GroupEndingWith      => set(WINDOWS,     TO_ENDING,   ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::GroupIntoBlocks      => set(WINDOWS,     ALL_MODES,   ROWS,        ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::FailureSources       => set(WINDOWS,     TO_ENDING,   OWNED,       ITEM_AT,      NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::PathHierarchy        => set(WINDOWS,     TO_ENDING,   OWNED,       ITEM_AT,      HIERARCHY, NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::AdjacencyTree        => set(WINDOWS,     TO_ENDING,   OWNED,       ITEM_AT,      TREE,      NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::RecursiveCollect     => set(WINDOWS,     TO_ENDING,   OWNED,       RECURSIVE,    TREE,      NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::RecursiveFilter      => set(WINDOWS,     TO_ENDING,   OWNED,       RECURSIVE,    FILTERED,  NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::LookupFind           => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    false, false, NO_XML,    false, false, false, false),
+            Self::DynamicField         => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, NO_XML,    false, false, false, false),
+            Self::DynamicLoading       => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  true,  NO_XML,    false, false, false, false),
+            Self::CollectionAggregates => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  REDUCE,    false, false, NO_XML,    false, false, false, false),
+            Self::Joins                => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    false, false, NO_XML,    true,  false, false, false),
+            Self::SequenceExists       => set(WINDOWS,     TO_ENDING,   ROWS,        EXISTS,       NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::SequenceAggregate    => set(WINDOWS,     TO_ENDING,   ROWS,        AGGREGATE,    NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, false, false, false),
+            Self::XmlSerialize         => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, SERIALIZE, false, false, false, false),
+            Self::XmlMixedContent      => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, MIXED,     false, false, false, false),
+            Self::XmlMixedConstruction => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  false, CONSTRUCT, false, false, false, false),
+            Self::DocumentPaths        => set(WINDOWS,     UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, true,  false, false),
+            Self::DynamicDocumentPaths => set(WINDOWS,     ALL_MODES,   OWNED,       RECURSIVE,    FILTERED,  SEARCH,    true,  true,  NO_XML,    false, true,  true,  false),
+            Self::XmlDocumentSets      => set(WINDOWS,     UNGROUPED,   NO_FAILURES, NO_SEQUENCES, NO_TREES,  NO_SEARCH, false, false, NO_XML,    false, true,  false, true),
         }
     }
 }
@@ -486,6 +497,20 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn xml_document_sets_compose_with_document_set_walks() {
+        for preset in OwnedPreset::ALL {
+            let capabilities = preset.capabilities();
+            assert!(
+                !capabilities.xml_document_sets || capabilities.document_sets,
+                "{preset:?}"
+            );
+        }
+        let xml = OwnedPreset::XmlDocumentSets.capabilities();
+        assert!(OwnedPreset::DocumentPaths.capabilities().is_within(xml));
+        assert!(!xml.is_within(OwnedPreset::DocumentPaths.capabilities()));
     }
 
     #[test]

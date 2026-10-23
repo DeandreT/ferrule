@@ -36,7 +36,7 @@ pub use error::{
     OwnedSourceCapabilityOrigin, OwnedSourceCapabilityReason, OwnedSourceDiagnostic,
     OwnedSourceDiagnosticLocation, OwnedSourceDiagnosticOwner, OwnedSourceDiagnosticRequest,
     OwnedSourceNamespace, OwnedSourceSchemaShape, OwnedSourceStructureReason,
-    ProgramValidationError,
+    ProgramValidationError, XmlDocumentSetInputRefusal,
 };
 pub use owned_sources::{
     OwnedDynamicLoading, is_basic_owned_primary_row_failure, owned_dynamic_loading,

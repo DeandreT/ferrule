@@ -6184,6 +6184,45 @@ lower        err:a34073f9d4b8e2b3 DynamicOwner
 ## basic-owned-dynamic-document-path/members (project)
 lower        err:ce3200fd14fd5a72 DynamicOwner
 
+## basic-owned-xml-document-set/nested (project)
+lower        ok:d37774a2fab4aec7
+validate     ok
+xml_mode     ok:Some(SingleDocument)
+plan         ok:SingleDocument/Structured/[]
+rust         err:5f066e9a420f1144 UnsupportedBasicContext
+rust_api     err:5f066e9a420f1144 UnsupportedBasicContext
+csharp       err:b06b1ecb933177d4 UnsupportedBasicContext
+csharp_api   err:b06b1ecb933177d4 UnsupportedBasicContext
+rust_typed   err:5f066e9a420f1144 UnsupportedBasicContext
+rust_t_api   err:5f066e9a420f1144 UnsupportedBasicContext
+csharp_typed err:b06b1ecb933177d4 UnsupportedBasicContext
+csharp_t_api err:b06b1ecb933177d4 UnsupportedBasicContext
+rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
+csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
+rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
+csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
+
+## basic-owned-xml-document-set/cross (project)
+lower        ok:633979a6b536063a
+validate     ok
+xml_mode     ok:Some(SingleDocument)
+plan         ok:SingleDocument/Structured/[]
+rust         err:5f066e9a420f1144 UnsupportedBasicContext
+rust_api     err:5f066e9a420f1144 UnsupportedBasicContext
+csharp       err:b06b1ecb933177d4 UnsupportedBasicContext
+csharp_api   err:b06b1ecb933177d4 UnsupportedBasicContext
+rust_typed   err:5f066e9a420f1144 UnsupportedBasicContext
+rust_t_api   err:5f066e9a420f1144 UnsupportedBasicContext
+csharp_typed err:b06b1ecb933177d4 UnsupportedBasicContext
+csharp_t_api err:b06b1ecb933177d4 UnsupportedBasicContext
+rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
+csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
+rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
+csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
+
+## basic-owned-xml-document-set/sorted (project)
+lower        err:e49079596b5bf968 ScopeControl
+
 ## xml-requests/base/json (project)
 lower        ok:f9112e1a1c75fd80
 validate     ok

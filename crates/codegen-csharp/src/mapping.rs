@@ -24,6 +24,7 @@ mod owned_recursive_collect;
 mod owned_recursive_filter;
 mod selected_json_api;
 mod xml_api;
+pub(crate) use xml_api::render_owned_document_sets;
 
 /// Shared JSON document input/output records of the JSON companions.
 const JSON_RECORDS: &str = "public sealed record NamedJsonInput(\n    string Name,\n    string Document);\n\npublic sealed record NamedJsonBytesInput(\n    string Name,\n    byte[] Document);\n\npublic sealed record NamedJsonOutput(\n    string Name,\n    string Document);\n\npublic sealed record NamedJsonBytesOutput(\n    string Name,\n    byte[] Document);\n\npublic sealed record JsonExecutionOutputs(\n    string Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedJsonOutput> Extras);\n\npublic sealed record JsonBytesExecutionOutputs(\n    byte[] Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedJsonBytesOutput> Extras);\n\n";

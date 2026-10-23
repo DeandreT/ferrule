@@ -323,6 +323,14 @@ pub(super) fn presets() -> Vec<Preset> {
             legacy_named_input_admission_plan_with_basic_owned_dynamic_document_paths,
             emit_with_basic_owned_dynamic_document_paths
         ),
+        preset!(
+            "xml_document_sets",
+            lower_with_basic_owned_xml_document_sets,
+            validate_program_with_basic_owned_xml_document_sets,
+            validate_basic_owned_xml_document_set_emission,
+            legacy_named_input_admission_plan_with_basic_owned_xml_document_sets,
+            emit_with_basic_owned_xml_document_sets
+        ),
     ]
 }
 
@@ -730,6 +738,10 @@ pub(super) fn corpora() -> TestResult<Vec<(&'static str, Corpus)>> {
         (
             "basic-owned-dynamic-document-path",
             super::basic_owned_dynamic_document_path::capability_corpus(),
+        ),
+        (
+            "basic-owned-xml-document-set",
+            super::basic_owned_xml_document_set::capability_corpus(),
         ),
     ])
 }

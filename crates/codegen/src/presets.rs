@@ -164,4 +164,8 @@ owned_presets! {
         validate_program_with_basic_owned_dynamic_document_paths,
         validate_basic_owned_dynamic_document_path_emission,
         legacy_named_input_admission_plan_with_basic_owned_dynamic_document_paths;
+    XmlDocumentSets => lower_with_basic_owned_xml_document_sets,
+        validate_program_with_basic_owned_xml_document_sets,
+        validate_basic_owned_xml_document_set_emission,
+        legacy_named_input_admission_plan_with_basic_owned_xml_document_sets;
 }
