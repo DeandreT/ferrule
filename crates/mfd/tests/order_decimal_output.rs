@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -354,6 +357,7 @@ fn changed_decimal_product_shapes_remain_strictly_rejected() -> Result<(), Box<d
 #[test]
 #[ignore = "needs the local ignored ReferenceSamples corpus"]
 fn local_order_in_usd_exact_csv_after_strict_reimport() -> Result<(), Box<dyn Error>> {
+    private_corpus::require(&[&private_corpus::root()]);
     let samples = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples")
         .canonicalize()?;

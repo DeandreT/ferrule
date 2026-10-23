@@ -742,12 +742,16 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires the private compatibility corpus at samples/ReferenceSamples"]
     fn local_reference_config_can_be_certified_without_copying_fixture() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../samples/ReferenceSamples/ORDERS01-Parseridoc.txt");
-        if !path.is_file() {
-            return;
-        }
+        assert!(
+            path.is_file(),
+            "private compatibility corpus not present at {}; this test needs the local \
+             gitignored samples/ReferenceSamples corpus",
+            path.display()
+        );
         let text = std::fs::read_to_string(&path).unwrap();
         let descriptor = parse_native_config(&text).unwrap();
         let rendered = render_native_config(&descriptor).unwrap();

@@ -80,12 +80,25 @@ const CASES: [&str; 60] = [
     "Tutorial/getAuthor.mfd",
 ];
 
+/// The gitignored private compatibility corpus; an explicit run without it
+/// fails with the expected path rather than passing.
+pub(super) fn private_corpus() -> TestResult<PathBuf> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
+    if !root.is_dir() {
+        return Err(format!(
+            "private compatibility corpus not present at {}; this test needs the local \
+             gitignored samples/ReferenceSamples corpus",
+            root.display()
+        )
+        .into());
+    }
+    Ok(root.canonicalize()?)
+}
+
 #[test]
 #[ignore = "requires the local ignored sample corpus and .NET 10 SDK"]
 fn generic_generated_hosts_execute_sixty_additional_local_designs() -> TestResult<()> {
-    let original = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../samples/ReferenceSamples")
-        .canonicalize()?;
+    let original = private_corpus()?;
     let directory = TempDir::new("generic_reference_corpus")?;
     // Import performs SQLite introspection too. Stage before any importer/native reader runs.
     let package = package::Snapshot::copy(&original, &directory.0.join("ReferenceSamples"))?;

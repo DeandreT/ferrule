@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -390,6 +393,7 @@ fn required_host_prefix_keeps_preview_and_run_contract_through_two_native_cycles
 #[ignore = "needs the local ignored ReferenceSamples corpus"]
 fn local_phone_list_native_roundtrip_keeps_optional_prefix_and_related_fields()
 -> Result<(), Box<dyn std::error::Error>> {
+    private_corpus::require(&[&private_corpus::root()]);
     let samples = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples")
         .canonicalize()?;
@@ -455,6 +459,7 @@ fn local_phone_list_native_roundtrip_keeps_optional_prefix_and_related_fields()
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn local_filter_database_records_strict_export_reimports_same_output()
 -> Result<(), Box<dyn std::error::Error>> {
+    private_corpus::require(&[&private_corpus::root()]);
     let sample = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples/Tutorial/FilterDatabaseRecords.mfd");
     let imported = mfd::import(&sample)?;

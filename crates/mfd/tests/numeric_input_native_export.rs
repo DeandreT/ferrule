@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -43,6 +46,7 @@ fn compact_xml(
 #[test]
 #[ignore = "needs the local ignored ReferenceSamples corpus"]
 fn finite_numeric_input_preview_strictly_roundtrips_top_ten_xml() -> Result<(), Box<dyn Error>> {
+    private_corpus::require(&[&private_corpus::root()]);
     let samples = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples")
         .canonicalize()?;
@@ -115,6 +119,7 @@ fn finite_numeric_input_preview_strictly_roundtrips_top_ten_xml() -> Result<(), 
 #[test]
 #[ignore = "needs the local ignored ReferenceSamples corpus"]
 fn integer_input_preview_clears_input_is_sequence_strict_preflight() -> Result<(), Box<dyn Error>> {
+    private_corpus::require(&[&private_corpus::root()]);
     let samples = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples")
         .canonicalize()?;

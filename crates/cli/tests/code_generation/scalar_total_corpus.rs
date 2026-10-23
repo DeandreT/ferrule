@@ -229,9 +229,7 @@ fn assert_host(
 #[test]
 #[ignore = "requires the local ignored ReferenceSamples corpus and .NET 10 SDK"]
 fn scalar_total_corpus_executes_computed_sum_frames_in_both_languages() -> TestResult<()> {
-    let original = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../samples/ReferenceSamples")
-        .canonicalize()?;
+    let original = super::reference_corpus_generic::private_corpus()?;
     let directory = TempDir::new("scalar_total_corpus")?;
     let package = directory.0.join("package");
     std::fs::create_dir(&package)?;

@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -44,15 +47,7 @@ fn nanonull_invoice_native_roundtrip_preserves_pdf_and_json() -> Result<(), Box<
     let design = samples.join("Nanonull_InvoicePDFtoJSON.mfd");
     let template_path = samples.join("Nanonull_Invoice.pxt");
     let pdf = samples.join("Invoice_2023-1000354.pdf");
-    for required in [&design, &template_path, &pdf] {
-        if !required.is_file() {
-            eprintln!(
-                "skipping Nanonull invoice native regression: local sample file is unavailable: {}",
-                required.display()
-            );
-            return Ok(());
-        }
-    }
+    private_corpus::require(&[&design, &template_path, &pdf]);
 
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

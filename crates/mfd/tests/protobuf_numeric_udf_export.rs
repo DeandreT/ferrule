@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -340,6 +343,7 @@ fn numeric_udf_fold_rejects_non_float32_callers_and_changed_or_shared_wrappers()
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn local_protocol_buffer_numeric_udf_strict_export_keeps_exact_csv()
 -> Result<(), Box<dyn std::error::Error>> {
+    private_corpus::require(&[&private_corpus::root()]);
     let sample = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples/Tutorial/ReadProtocolBuffers.mfd");
     let imported = mfd::import(&sample)?;
