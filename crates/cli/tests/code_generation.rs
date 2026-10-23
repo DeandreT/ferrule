@@ -42,6 +42,8 @@ mod basic_owned_json_adapters;
 mod basic_owned_lookup_find;
 #[path = "code_generation/basic_owned_nested_phases.rs"]
 mod basic_owned_nested_phases;
+#[path = "code_generation/basic_owned_occurrence.rs"]
+mod basic_owned_occurrence;
 #[path = "code_generation/basic_owned_path_hierarchy.rs"]
 mod basic_owned_path_hierarchy;
 #[path = "code_generation/basic_owned_recursive_collect.rs"]
@@ -96,6 +98,8 @@ mod dynamic_source_fault_projection;
 mod enclosing_frame_date_producers;
 #[path = "code_generation/enclosing_frame_value_maps.rs"]
 mod enclosing_frame_value_maps;
+#[path = "code_generation/execution_bindings.rs"]
+mod execution_bindings;
 #[path = "code_generation/extra_targets.rs"]
 mod extra_targets;
 #[path = "code_generation/failure_rules.rs"]
@@ -296,6 +300,12 @@ impl Drop for TempDir {
 }
 
 fn dotnet_command(sandbox: &Path) -> Command {
+    dotnet_command_at(OsStr::new("dotnet"), sandbox)
+}
+
+/// `dotnet_command` for an explicit SDK host, with the same isolated
+/// CLI home, package cache and temporary directory under `sandbox`.
+fn dotnet_command_at(program: &OsStr, sandbox: &Path) -> Command {
     let home = sandbox.join(".dotnet-home");
     let packages = sandbox.join(".nuget-packages");
     let temp = sandbox.join(".tmp");
@@ -303,7 +313,7 @@ fn dotnet_command(sandbox: &Path) -> Command {
     let _ = std::fs::create_dir_all(&packages);
     let _ = std::fs::create_dir_all(&temp);
 
-    let mut command = Command::new("dotnet");
+    let mut command = Command::new(program);
     command
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .env("DOTNET_CLI_HOME", home)
