@@ -83,13 +83,9 @@ fn json_documents_admit_null_where_the_view_says() {
             "{child:?}"
         );
         if let Some(item) = item {
-            // Known boundary divergence: scalar array items still reuse the
-            // container flag, so a nullable array of non-nullable scalars
-            // accepts `[null]`. The view keeps the declared item domain.
-            let scalar_container_fallback = child.is_scalar() && outer;
             assert_eq!(
                 read(&root, "{\"x\":[null]}"),
-                (item || scalar_container_fallback).then(|| Instance::Repeated(vec![json_null()])),
+                item.then(|| Instance::Repeated(vec![json_null()])),
                 "{child:?}"
             );
         }

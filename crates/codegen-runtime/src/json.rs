@@ -31,6 +31,8 @@ mod property_names;
 #[cfg(test)]
 mod required_property_precedence;
 #[cfg(test)]
+mod scalar_item_nullability;
+#[cfg(test)]
 mod string_int_range;
 pub(crate) mod text;
 mod unique_items;

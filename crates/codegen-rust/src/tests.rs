@@ -48,6 +48,7 @@ mod json_patterns;
 mod json_property_counts;
 mod json_property_dependencies;
 mod json_property_names;
+mod json_scalar_item_nullability;
 mod json_unique_items;
 mod recursive_filter;
 mod scalar_functions;

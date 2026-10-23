@@ -33,12 +33,21 @@ fn legacy_preflight_accepts(node: &SchemaNode) -> bool {
 
 /// Compares only what the boundary consults: nested-array frames and
 /// arbitrary JSON return before the single-occurrence null check.
+///
+/// Scalar array items intentionally diverge from the oracle (#924): they
+/// admit null only through their value layer, so a nullable array of
+/// non-nullable scalars no longer accepts a null item.
 fn assert_matches_legacy(node: &SchemaNode, context: &str) {
     let derived = instance_null(node).unwrap();
     let legacy = legacy(node);
     assert_eq!(derived.whole, legacy.whole, "{context}: {node:?}");
     assert_eq!(derived.value, legacy.value, "{context}: {node:?}");
-    if !node.json_array_wrapper && !node.json_any {
+    if node.json_array_wrapper || node.json_any {
+        return;
+    }
+    if node.repeating && node.is_scalar() {
+        assert!(!derived.single, "{context}: {node:?}");
+    } else {
         assert_eq!(derived.single, legacy.single, "{context}: {node:?}");
     }
 }
@@ -246,13 +255,10 @@ fn independently_authored_instance_null_controls() {
         read(&scalar_items, r#"{"x":[null]}"#),
         Ok(Instance::Repeated(vec![json_null()]))
     );
-    // Known gap #924: a nullable array of non-nullable scalars still accepts
-    // a null item through the container layer.
+    // A nullable array of non-nullable scalars refuses a null item.
     let scalar_container = int().repeating().nullable_container().unwrap();
-    assert_eq!(
-        read(&scalar_container, r#"{"x":[null]}"#),
-        Ok(Instance::Repeated(vec![json_null()]))
-    );
+    assert_eq!(read(&scalar_container, r#"{"x":null}"#), Ok(json_null()));
+    assert!(read(&scalar_container, r#"{"x":[null]}"#).is_err());
 
     // A missing nullable object or array is absent; a missing plain array is
     // empty.
