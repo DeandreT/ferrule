@@ -167,17 +167,22 @@ public static partial class FerruleJson
     }
 
     public static string Serialize(string schemaJson, FerruleInstance instance)
-        => SerializeCore(schemaJson, instance, embedded: false);
+        => SerializeCore(schemaJson, instance, embedded: false).Text.ToString();
 
     /// <summary>Serializes a generated host result with a versioned embedded schema.</summary>
     public static string SerializeEmbedded(string descriptor, FerruleInstance instance)
-        => SerializeCore(descriptor, instance, embedded: true);
+        => SerializeCore(descriptor, instance, embedded: true).Text.ToString();
 
     /// <summary>Serializes a generated host result as compact JSON without a trailing newline.</summary>
     public static string SerializeEmbeddedCompact(string descriptor, FerruleInstance instance)
-        => SerializeCore(descriptor, instance, embedded: true, compact: true);
+        => SerializeCore(descriptor, instance, embedded: true, compact: true).Text.ToString();
 
-    private static string SerializeCore(
+    /// <summary>
+    /// Writes and canonicalizes one complete document, including the pretty
+    /// layout's final newline, and applies the output byte limit to the counted
+    /// text before any route materializes it.
+    /// </summary>
+    private static CanonicalOutput SerializeCore(
         string schemaJson, FerruleInstance instance, bool embedded, bool compact = false)
     {
         ArgumentNullException.ThrowIfNull(schemaJson);
@@ -215,15 +220,16 @@ public static partial class FerruleJson
                 }
             }
 
-            var canonical = CanonicalizeOutputStrings(buffer.WrittenSpan, compact);
-            var outputBytes = checked(StrictUtf8.GetByteCount(canonical) + (compact ? 0 : 1));
+            var text = CanonicalizeOutputText(buffer.WrittenSpan, compact);
+            if (!compact) text.Append('\n');
+            var outputBytes = CanonicalUtf8Length(text) ?? StrictUtf8.GetByteCount(text.ToString());
             if (outputBytes > MaximumDocumentBytes)
             {
                 throw Boundary(
                     $"JSON output is {outputBytes} bytes; maximum is {MaximumDocumentBytes}.");
             }
 
-            return compact ? canonical : canonical + "\n";
+            return new CanonicalOutput(text, outputBytes);
         }
         catch (FerruleRuntimeException)
         {
@@ -237,15 +243,15 @@ public static partial class FerruleJson
     }
 
     public static byte[] SerializeBytes(string schemaJson, FerruleInstance instance) =>
-        StrictUtf8.GetBytes(Serialize(schemaJson, instance));
+        CanonicalUtf8(SerializeCore(schemaJson, instance, embedded: false));
 
     /// <summary>Serializes a generated host result as UTF-8 bytes.</summary>
     public static byte[] SerializeEmbeddedBytes(string descriptor, FerruleInstance instance) =>
-        StrictUtf8.GetBytes(SerializeEmbedded(descriptor, instance));
+        CanonicalUtf8(SerializeCore(descriptor, instance, embedded: true));
 
     /// <summary>Serializes a generated host result as compact UTF-8 bytes without a newline or BOM.</summary>
     public static byte[] SerializeEmbeddedCompactBytes(string descriptor, FerruleInstance instance) =>
-        StrictUtf8.GetBytes(SerializeEmbeddedCompact(descriptor, instance));
+        CanonicalUtf8(SerializeCore(descriptor, instance, embedded: true, compact: true));
 
     private static JsonSchemaNode ParseSchema(string schemaJson, bool embedded = false)
     {
