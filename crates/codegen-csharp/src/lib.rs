@@ -30,7 +30,9 @@ mod mapforce_x12_source;
 mod runtime;
 mod static_documents;
 mod x12_output;
-pub use mapforce_x12_source::{MapForceSourceEmitError, emit_with_mapforce_x12_source};
+pub use mapforce_x12_source::{
+    MapForceSourceEmitError, emit_with_mapforce_x12_json, emit_with_mapforce_x12_source,
+};
 
 #[cfg(test)]
 mod csv_output_tests;

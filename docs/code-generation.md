@@ -1089,6 +1089,20 @@ zero without binary floating point and retains `-0` when a nonzero negative
 fraction rounds to zero. An exact zero remains `0`. Ordinary `format_number`
 does not implicitly accept Decimal values.
 
+For strict quoted-key output, use `format_mapforce_json_ascii_keys` or
+`serialize_mapforce_json_ascii_keys` (and their `_with_limit` variants). The C#
+counterparts are `FerruleMapForceJson5.FormatStrictAsciiKeys` and
+`FerruleJson.SerializeMapForceJsonAsciiKeys`. These share the explicit native
+Decimal, escaping and tab/CRLF layout rules while quoting every property name.
+ASCII property-name admission and the existing `MapForceJson5Error` error carrier
+remain shared; ordinary JSON5 formatting is unchanged. This returns text, not a
+published file, and does not impose another schema-validation pass.
+
+`emit_with_mapforce_x12_json` in each backend combines the bound X12 source reader
+with that strict primary-target writer. Generated `serialize_mapforce_json` /
+`SerializeMapForceJson` serializes an already evaluated body; it does not evaluate
+the filename or decide when the body should run.
+
 `parse_mapforce_x12_source` / `ParseMapForceSourceBytes` adds a separately selected
 native source value view. It removes ignored tab/CR/LF characters while retaining
 an LF segment terminator, treats empty physical values and empty composites as

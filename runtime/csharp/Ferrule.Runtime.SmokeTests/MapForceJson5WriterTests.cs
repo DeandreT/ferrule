@@ -36,5 +36,12 @@ internal static partial class Program
         }
         if (FerruleMapForceJson5.FormatAsciiKeys("\"é\"", 4) != "\"é\"")
             throw new InvalidOperationException("JSON5 writer changed the exact UTF-8 limit.");
+        const string strictInput = "{\"alpha\":1,\"a1\":2,\"_x\":\"\\n\\u0085🙂\",\"alpha\":3}";
+        const string strictExpected = "{\r\n\t\"alpha\": 1,\r\n\t\"a1\": 2,\r\n\t\"_x\": \"\\u000A\\u0085\\uD83D\\uDE42\",\r\n\t\"alpha\": 3\r\n}";
+        Equal(strictExpected, FerruleMapForceJson5.FormatStrictAsciiKeys(strictInput));
+        const string anySchema = "{\"name\":\"value\",\"json_any\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
+        Equal(strictExpected, FerruleJson.SerializeMapForceJsonAsciiKeys(anySchema, new FerruleScalar(FerruleValue.FromString(strictInput))));
+        Equal(strictExpected, FerruleMapForceJson5.FormatStrictAsciiKeys(strictInput, Encoding.UTF8.GetByteCount(strictExpected)));
+        Throws<FerruleMapForceJson5Exception>(() => FerruleMapForceJson5.FormatStrictAsciiKeys(strictInput, Encoding.UTF8.GetByteCount(strictExpected)-1));
     }
 }

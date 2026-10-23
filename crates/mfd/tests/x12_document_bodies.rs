@@ -460,6 +460,36 @@ fn generated_source_companion_binds_the_complete_physical_schema_to_its_message(
             .iter()
             .any(|file| file.path.as_str() == "Runtime/X12/FerruleX12.SourceLexical.cs")
     );
+    let strict = codegen_csharp::emit_with_mapforce_x12_json(
+        &program,
+        &imported.source_schema,
+        &imported.source_options,
+        &imported.message_path,
+    )
+    .unwrap()
+    .into_files();
+    assert!(
+        strict
+            .iter()
+            .any(|file| file.path.as_str() == "Runtime/Json5/FerruleMapForceJson5.cs")
+    );
+    assert!(
+        strict
+            .iter()
+            .any(|file| file.path.as_str() == "GeneratedMapping.cs"
+                && String::from_utf8_lossy(&file.contents).contains("SerializeMapForceJson("))
+    );
+    let strict = codegen_rust::emit_with_mapforce_x12_json(
+        &program,
+        &Default::default(),
+        &imported.source_schema,
+        &imported.source_options,
+        &imported.message_path,
+    )
+    .unwrap()
+    .into_files();
+    assert!(strict.iter().any(|file| file.path.as_str() == "src/lib.rs"
+        && String::from_utf8_lossy(&file.contents).contains("pub fn serialize_mapforce_json(")));
     let mut wrong = program.clone();
     wrong.source.name = "UnrelatedMessage".into();
     assert!(
