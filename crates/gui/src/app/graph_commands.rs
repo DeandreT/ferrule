@@ -16,9 +16,9 @@
 
 use editor_ui::{
     GraphAction, GraphCommand, GraphDocument, GraphEditError, GraphPatch, HistoryRecord,
-    ScopeFields, ScopeLocation, ScopeSetting, TargetBinding, TargetId,
+    ProjectParts, ScopeFields, ScopeLocation, ScopeSetting, TargetBinding, TargetId,
 };
-use mapping::{Node, Project, Scope};
+use mapping::{Graph, Node, Project, Scope};
 
 use super::{CanvasLayout, EditorSnapshot, FerruleApp, HISTORY_COALESCE_DELAY, MappingDocument};
 use crate::graph_viewer::PlannedGraphEdit;
@@ -159,6 +159,17 @@ fn document_root(project: &Project, document: MappingDocument) -> Option<&Scope>
     }
 }
 
+/// The graph a mapping document edits.
+fn document_graph(project: &Project, document: MappingDocument) -> Option<&Graph> {
+    match document {
+        MappingDocument::Main | MappingDocument::Target(_) => Some(&project.graph),
+        MappingDocument::Function(function) => project
+            .user_functions
+            .get(&function)
+            .map(|function| &function.body),
+    }
+}
+
 impl FerruleApp {
     pub(super) fn graph_document(&self, document: MappingDocument) -> Option<GraphDocument> {
         match document {
@@ -238,6 +249,36 @@ impl FerruleApp {
             patch = with_settings;
         }
         if let Ok(command) = GraphCommand::new(graph, action, patch) {
+            self.frame_commands.push(command);
+        }
+    }
+
+    /// Queues `action` for an edit made in place since `before` that changes
+    /// only the nodes of `document`'s graph.
+    pub(super) fn queue_node_edit(
+        &mut self,
+        document: MappingDocument,
+        before: &Graph,
+        action: GraphAction,
+    ) {
+        let (Some(graph), Some(after)) = (
+            self.graph_document(document),
+            document_graph(&self.project, document),
+        ) else {
+            return;
+        };
+        let patch = GraphPatch::of_nodes(before, after, same_node);
+        if let Ok(command) = GraphCommand::new(graph, action, patch) {
+            self.frame_commands.push(command);
+        }
+    }
+
+    /// Queues `action` for an edit made in place since `before` to the
+    /// project parts outside any target scope and to the shared graph.
+    pub(super) fn queue_project_edit(&mut self, before: &Project, action: GraphAction) {
+        let patch = GraphPatch::of_nodes(&before.graph, &self.project.graph, same_node)
+            .with_project_parts(ProjectParts::between(before, &self.project, same_node));
+        if let Ok(command) = GraphCommand::new(GraphDocument::Project, action, patch) {
             self.frame_commands.push(command);
         }
     }

@@ -358,3 +358,6 @@ mod properties;
 
 #[path = "graph_scope_command_tests.rs"]
 mod scopes;
+
+#[path = "graph_project_command_tests.rs"]
+mod projects;

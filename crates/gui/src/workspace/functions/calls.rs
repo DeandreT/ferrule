@@ -34,7 +34,9 @@ impl FerruleApp {
         // Prepare the complete action before creating even a cached canvas:
         // exhaustion must not alter model nodes, wires, layout or edit history.
         let (args, call) = reserve_call_ids(graph, &owned_items, argument_count)?;
-        match active {
+        // Kept only for this explicit action, to record it as a typed insertion.
+        let before = graph.clone();
+        let position = match active {
             MappingDocument::Main => insert_call(
                 &mut self.project.graph,
                 &mut self.main_canvas.snarl,
@@ -46,15 +48,16 @@ impl FerruleApp {
                 if !self.ensure_target_canvas(target) {
                     return Ok(());
                 }
-                if let Some(canvas) = self.mapping_workspace.target_canvases.get_mut(&target) {
-                    insert_call(
-                        &mut self.project.graph,
-                        &mut canvas.snarl,
-                        function,
-                        args,
-                        call,
-                    );
-                }
+                let Some(canvas) = self.mapping_workspace.target_canvases.get_mut(&target) else {
+                    return Ok(());
+                };
+                insert_call(
+                    &mut self.project.graph,
+                    &mut canvas.snarl,
+                    function,
+                    args,
+                    call,
+                )
             }
             MappingDocument::Function(owner) => {
                 if !self.ensure_function_canvas(owner) {
@@ -64,19 +67,28 @@ impl FerruleApp {
                     &mut self.project.user_functions,
                     &mut self.mapping_workspace.function_canvases,
                 );
-                if let (Some(definition), Some(canvas)) =
+                let (Some(definition), Some(canvas)) =
                     (functions.get_mut(&owner), canvases.get_mut(&owner))
-                {
-                    insert_call(
-                        &mut definition.body,
-                        &mut canvas.snarl,
-                        function,
-                        args,
-                        call,
-                    );
-                }
+                else {
+                    return Ok(());
+                };
+                insert_call(
+                    &mut definition.body,
+                    &mut canvas.snarl,
+                    function,
+                    args,
+                    call,
+                )
             }
-        }
+        };
+        let action = editor_ui::GraphAction::InsertNode {
+            node: call,
+            position: editor_ui::CanvasPosition {
+                x: position.x,
+                y: position.y,
+            },
+        };
+        self.queue_node_edit(active, &before, action);
         Ok(())
     }
 }
@@ -116,13 +128,15 @@ pub(super) fn reserve_call_ids(
     Ok((ids, call))
 }
 
+/// Adds the call with hidden unconnected inputs and returns its canvas
+/// position.
 fn insert_call(
     graph: &mut Graph,
     snarl: &mut Snarl<CanvasNode>,
     function: FunctionId,
     args: Vec<NodeId>,
     call: NodeId,
-) {
+) -> egui::Pos2 {
     let position = egui::pos2(80.0, graph.nodes.len() as f32 * 24.0);
     for &id in &args {
         graph.nodes.insert(id, Node::Unconnected);
@@ -131,4 +145,5 @@ fn insert_call(
         .nodes
         .insert(call, Node::UserFunctionCall { function, args });
     snarl.insert_node(position, CanvasNode::Graph(call));
+    position
 }

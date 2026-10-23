@@ -332,14 +332,24 @@ impl FerruleApp {
         let Some(draft) = self.extra_target_draft.as_ref() else {
             return;
         };
+        let before = self.project.clone();
         match draft.clone().build(&self.project.extra_targets) {
             Ok((Some(index), target)) => {
+                let action = before.extra_targets.get(index).map(|previous| {
+                    editor_ui::GraphAction::EditNamedTarget {
+                        name: previous.name.clone(),
+                        renamed: target.name.clone(),
+                    }
+                });
                 let saved_nodes = self
                     .mapping_workspace
                     .target_canvases
                     .get(&index)
                     .map(|canvas| CanvasLayout::capture_nodes(&canvas.snarl));
                 self.project.extra_targets[index] = target;
+                if let Some(action) = action {
+                    self.queue_project_edit(&before, action);
+                }
                 if let Some(saved_nodes) = saved_nodes
                     && let Some(canvas) = self.mapping_workspace.target_canvases.get_mut(&index)
                 {
@@ -353,7 +363,11 @@ impl FerruleApp {
             }
             Ok((None, target)) => {
                 let index = self.project.extra_targets.len();
+                let action = editor_ui::GraphAction::AddNamedTarget {
+                    name: target.name.clone(),
+                };
                 self.project.extra_targets.push(target);
+                self.queue_project_edit(&before, action);
                 self.extra_target_draft = None;
                 self.open_target_tab(index);
                 self.status = "target added".to_string();
@@ -405,9 +419,14 @@ impl FerruleApp {
     }
 
     pub(super) fn remove_extra_target_now(&mut self, index: usize) {
+        let before = self.project.clone();
         let Some(target) = remove_extra_target(&mut self.project.extra_targets, index) else {
             return;
         };
+        let action = editor_ui::GraphAction::RemoveNamedTarget {
+            name: target.name.clone(),
+        };
+        self.queue_project_edit(&before, action);
         self.mapping_workspace.remove_target(index);
         self.selected_scope.clear();
         self.status = format!("removed target {}", target.name);
