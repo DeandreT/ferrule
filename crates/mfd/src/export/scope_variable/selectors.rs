@@ -12,6 +12,8 @@ pub(in crate::export) fn selector_context_warnings(
     bridge_required: bool,
 ) -> Vec<String> {
     use mapping::{Node, NodeId, Scope, ScopeConstruction};
+
+    use crate::node_inputs::{SelectorInputs, selector_inputs};
     struct Audit<'a, 'b> {
         project: &'a mapping::Project,
         sources: &'b super::super::source::SourceExports<'a>,
@@ -102,11 +104,11 @@ pub(in crate::export) fn selector_context_warnings(
                 active.remove(&id);
                 return;
             };
-            let mut parent = Vec::new();
-            let mut private = Vec::new();
             let mut owned = frames.to_vec();
             let mut owned_anchor = anchor.to_vec();
             let mut private_xml = false;
+            // Frames the node itself adds for its private inputs; which inputs
+            // are parent, private or replacements follows their roles.
             match node {
                 Node::OwnedSourceField(_)
                 | Node::OwnedPosition(_)
@@ -139,106 +141,48 @@ pub(in crate::export) fn selector_context_warnings(
                         self.warnings.insert(format!("position node {id} at {usage} resolves to a private XML item context; the typed XML scope-sequence bridge has not qualified this reducer ownership"));
                     }
                 }
-                Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => {
-                    parent.extend(args)
-                }
-                Node::Raise { message } => parent.extend(message.iter().copied()),
-                Node::RuntimeParameterDefault { default, .. } => parent.push(*default),
-                Node::If {
-                    condition,
-                    then,
-                    else_,
-                } => parent.extend([*condition, *then, *else_]),
-                Node::ValueMap { input, .. } => parent.push(*input),
-                Node::Lookup { matches, .. } => parent.push(*matches),
-                Node::DynamicSourceField { key, .. } => parent.push(*key),
-                Node::XmlMixedContent { replacements, .. } => {
-                    for replacement in replacements {
-                        let mut item = frames.to_vec();
-                        let item_anchor =
-                            self.source_frames(&replacement.collection, anchor, &mut item);
-                        let mut item_private = private_frames.clone();
-                        item_private.extend(frames.len()..item.len());
-                        self.expression(
-                            replacement.expression,
-                            &item,
-                            &item_anchor,
-                            usage,
-                            &item_private,
-                            active,
-                        );
-                    }
-                }
-                Node::CollectionFind {
-                    collection,
-                    predicate,
-                    value,
-                } => {
+                Node::CollectionFind { collection, .. } | Node::Aggregate { collection, .. } => {
                     private_xml = true;
                     owned_anchor = self.source_frames(collection, anchor, &mut owned);
-                    private.extend([*predicate, *value]);
                 }
-                Node::Aggregate {
-                    collection,
-                    expression,
-                    arg,
-                    ..
-                } => {
-                    private_xml = true;
-                    owned_anchor = self.source_frames(collection, anchor, &mut owned);
-                    private.extend(expression);
-                    parent.extend(arg);
-                }
-                Node::JoinAggregate {
-                    plan,
-                    expression,
-                    arg,
-                    ..
-                } => {
+                Node::JoinAggregate { plan, .. } => {
                     private_xml = true;
                     for source in plan.sources() {
                         self.source_frames(source.collection(), anchor, &mut owned);
                     }
-                    private.extend(expression);
-                    parent.extend(arg);
                 }
-                Node::SequenceExists {
-                    sequence,
-                    predicate,
-                } => {
-                    parent.extend(sequence.inputs());
+                Node::SequenceExists { .. } | Node::SequenceAggregate { .. } => {
                     owned.push(Vec::new());
-                    private.push(*predicate);
                 }
-                Node::SequenceItemAt { sequence, index } => {
-                    parent.extend(sequence.inputs());
-                    parent.push(*index);
+                _ => {}
+            }
+            let SelectorInputs {
+                parent,
+                private,
+                replacements,
+            } = selector_inputs(node);
+            if let Node::XmlMixedContent {
+                replacements: rules,
+                ..
+            } = node
+            {
+                for (index, expression) in replacements {
+                    let Some(rule) = rules.get(index) else {
+                        continue;
+                    };
+                    let mut item = frames.to_vec();
+                    let item_anchor = self.source_frames(&rule.collection, anchor, &mut item);
+                    let mut item_private = private_frames.clone();
+                    item_private.extend(frames.len()..item.len());
+                    self.expression(
+                        expression,
+                        &item,
+                        &item_anchor,
+                        usage,
+                        &item_private,
+                        active,
+                    );
                 }
-                Node::SequenceAggregate {
-                    sequence,
-                    predicate,
-                    expression,
-                    arg,
-                    ..
-                } => {
-                    parent.extend(sequence.inputs());
-                    parent.extend(arg);
-                    owned.push(Vec::new());
-                    private.extend(predicate);
-                    private.extend(expression);
-                }
-                Node::SourceField { .. }
-                | Node::SourceDocumentPath
-                | Node::SourceRootXmlTypeEquals { .. }
-                | Node::SourceRootField { .. }
-                | Node::JoinField { .. }
-                | Node::JoinPosition { .. }
-                | Node::Unconnected
-                | Node::Const { .. }
-                | Node::FunctionParameter { .. }
-                | Node::RuntimeValue { .. }
-                | Node::RuntimeParameter { .. }
-                | Node::XmlSerialize { .. } => {}
             }
             for input in parent {
                 self.expression(input, frames, anchor, usage, private_frames, active);
