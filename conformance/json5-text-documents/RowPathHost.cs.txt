@@ -1,0 +1,30 @@
+using System.Text;
+using Ferrule.Runtime;
+using Ferrule.Generated;
+
+var parameters = new FerruleRuntimeParameters(new Dictionary<string,FerruleValue> { ["Input"] = FerruleValue.FromString("actual-*.csv") });
+var execution = FerruleExecutionContext.WithParameters("fixture.mfd",parameters);
+using var rows = GeneratedMapping.AcquirePrimaryCsv(execution,name => {
+    if(name!="actual-*.csv")throw new Exception("filename");
+    return new[]{"a.csv","b.csv"};
+},name => new FerruleCsvSourceData(Encoding.UTF8.GetBytes(name=="a.csv" ? "A,9007199254740993\n" : "B,1.25\n"),$" resolved/{name} "),FerruleCsvByteDecodingPolicy.StrictUtf8,2);
+var values = new List<FerruleInstance>();
+while(rows.MoveNext())values.Add(rows.Current.Value);
+var input = new FerruleRepeated(values);
+int bodies=0,files=0;
+string Body(){bodies++;return "B";}
+string Filename()=>$"F{++files}-";
+const string Expected="{\r\n\tTime: \"B\",\r\n\tLines: [\r\n\t\t{\r\n\t\t\tQty: 9007199254740993,\r\n\t\t\tPath: \" resolved/a.csv \"\r\n\t\t},\r\n\t\t{\r\n\t\t\tQty: 1.25,\r\n\t\t\tPath: \" resolved/b.csv \"\r\n\t\t}\r\n\t]\r\n}";
+var result=GeneratedMapping.VisitTargetDocumentsWithClocks(input,Array.Empty<NamedInput>(),execution,null,Body,Filename,document=>{
+    if(document.Path!="F2-B" || GeneratedMapping.SerializeMapForceJson5Document(document.Value)!=Expected)throw new Exception("complete row-path output");
+    return GeneratedMapping.DocumentDecision<string>.Continue;
+});
+if(result.Accepted!=1)throw new Exception("accepted count");
+var changed=values.ToArray();
+changed[1]=new FerruleGroup(((FerruleGroup)changed[1]).Fields);
+try{
+    GeneratedMapping.VisitTargetDocumentsWithClocks(new FerruleRepeated(changed),Array.Empty<NamedInput>(),execution,null,Body,Filename,_=>GeneratedMapping.DocumentDecision<string>.Continue);
+    throw new Exception("missing origin accepted");
+}catch(GeneratedMapping.DocumentVisitException error) when(error.Accepted==0 && error.InnerException is FerruleRuntimeException { Error:FerruleRuntimeError.SourceRowDocumentPath,Node:4,InnerException:FerruleSourceRowPathException { Error:FerruleSourceRowPathError.MissingOrigin } }) {}
+if(bodies!=2 || files!=2)throw new Exception("failure sampled a filename");
+Console.WriteLine("PASS source row paths");

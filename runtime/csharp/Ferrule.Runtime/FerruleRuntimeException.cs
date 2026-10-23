@@ -82,6 +82,7 @@ public enum FerruleRuntimeError
     DistinctTextMapKey,
     DistinctTextMapValue,
     DistinctTextMapLimit,
+    SourceRowDocumentPath,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>

@@ -118,6 +118,7 @@ fn check_clock_path(project: &Project, root: &Scope) -> Result<(), EngineError> 
             | Node::RuntimeParameterDefault { .. }
             | Node::SourceField { .. }
             | Node::SourceDocumentPath
+            | Node::SourceRowDocumentPath { .. }
             | Node::Position { .. }
             | Node::Call { .. }
             | Node::If { .. }
@@ -149,6 +150,7 @@ fn check_body_clock(project: &Project) -> Result<(), EngineError> {
                 | Node::RuntimeParameterDefault { .. }
                 | Node::SourceField { .. }
                 | Node::SourceDocumentPath
+                | Node::SourceRowDocumentPath { .. }
                 | Node::Position { .. }
                 | Node::Call { .. }
                 | Node::If { .. }

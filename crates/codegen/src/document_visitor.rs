@@ -104,6 +104,7 @@ pub fn validate_document_filename_clock(
                 | Expression::RuntimeParameterDefault { .. }
                 | Expression::SourceField { .. }
                 | Expression::SourceDocumentPath
+                | Expression::SourceRowDocumentPath { .. }
                 | Expression::Position { .. }
                 | Expression::Call { .. }
                 | Expression::If { .. }
@@ -140,6 +141,7 @@ pub fn validate_document_clocks(
                 | Expression::RuntimeParameterDefault { .. }
                 | Expression::SourceField { .. }
                 | Expression::SourceDocumentPath
+                | Expression::SourceRowDocumentPath { .. }
                 | Expression::Position { .. }
                 | Expression::Call { .. }
                 | Expression::If { .. }

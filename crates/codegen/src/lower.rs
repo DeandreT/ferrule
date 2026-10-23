@@ -1423,6 +1423,9 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
                 .collect(),
         },
         Node::SourceDocumentPath => Expression::SourceDocumentPath,
+        Node::SourceRowDocumentPath { collection } => Expression::SourceRowDocumentPath {
+            collection: collection.clone(),
+        },
         Node::Position { collection } => Expression::Position {
             collection: collection.clone(),
         },

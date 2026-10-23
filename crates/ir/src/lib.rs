@@ -17,6 +17,7 @@ mod primary_root;
 mod scalar_lexical;
 mod schema;
 mod source_origin;
+pub use source_origin::{SourceRowPathError, source_row_document_path};
 mod xml_schema_hints;
 mod xml_structured_input;
 mod xml_type_origin;

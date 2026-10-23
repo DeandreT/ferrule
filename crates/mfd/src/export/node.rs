@@ -323,6 +323,9 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
             Node::DistinctTextMapLast { .. } => {
                 return Err(MfdError::Unsupported("distinct text mapping has no qualified .mfd export representation".into()));
             }
+            Node::SourceRowDocumentPath { .. } => {
+                return Err(MfdError::Unsupported("row document paths have no qualified .mfd export representation".into()));
+            }
             Node::Raise { .. } => {
                 return Err(MfdError::Unsupported(format!(
                     "raise node {id} requires an item-owned exception branch for native export"

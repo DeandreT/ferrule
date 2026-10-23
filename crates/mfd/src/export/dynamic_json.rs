@@ -942,6 +942,7 @@ fn node_dependencies(node: &Node) -> Vec<NodeId> {
         | Node::OwnedXmlSerialize(_)
         | Node::SourceField { .. }
         | Node::SourceDocumentPath
+        | Node::SourceRowDocumentPath { .. }
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }
         | Node::Position { .. }

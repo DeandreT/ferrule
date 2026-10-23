@@ -500,6 +500,7 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
             ),
         ),
         Node::SourceDocumentPath => (Icon::FileText, "path".into()),
+        Node::SourceRowDocumentPath { .. } => (Icon::FileText, "row path".into()),
         Node::InvocationCounter { key, .. } => (Icon::ListOrdered, format!("counter {key}")),
         Node::RuntimeValue { value } => match value {
             RuntimeValue::MappingFilePath => (Icon::Folder, "mapping path".into()),
@@ -784,6 +785,7 @@ pub(super) fn has_properties(node: &Node) -> bool {
             | Node::Const { .. }
             | Node::Call { .. }
             | Node::SourceField { .. }
+            | Node::SourceRowDocumentPath { .. }
             | Node::SourceRootField { .. }
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::DynamicSourceField { .. }

@@ -180,6 +180,10 @@ impl GraphViewer<'_> {
                 Node::SourceDocumentPath => {
                     ui.label("current source document path");
                 }
+                Node::SourceRowDocumentPath { collection } => {
+                    ui.label("physical path of the exact source row");
+                    ui.monospace(format!("collection: {collection:?}"));
+                }
                 Node::Position { collection } => {
                     self.source_paths.show_collection_picker(
                         ui,

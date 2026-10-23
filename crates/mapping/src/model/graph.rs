@@ -402,6 +402,10 @@ pub enum Node {
     /// Reads the resolved location retained by the nearest active source
     /// document. This is boundary metadata, not a schema field.
     SourceDocumentPath,
+    /// Read physical row provenance from the exact active collection frame.
+    /// Unlike SourceDocumentPath, this never unwraps a document set, falls back
+    /// to an outer frame or chooses a representative of a grouped collection.
+    SourceRowDocumentPath { collection: Vec<String> },
     /// Returns the 1-based position of the current item in `collection`'s
     /// iteration. An empty collection selects the innermost iteration frame.
     Position {
@@ -685,6 +689,7 @@ impl Node {
             | Self::SourceRootXmlTypeEquals { .. }
             | Self::SourceRootField { .. }
             | Self::SourceDocumentPath
+            | Self::SourceRowDocumentPath { .. }
             | Self::Position { .. }
             | Self::JoinField { .. }
             | Self::JoinPosition { .. }

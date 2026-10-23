@@ -968,6 +968,9 @@ pub enum Expression {
     },
     /// Reads the resolved path retained by the nearest source document.
     SourceDocumentPath,
+    SourceRowDocumentPath {
+        collection: Vec<String>,
+    },
     Position {
         collection: Vec<String>,
     },

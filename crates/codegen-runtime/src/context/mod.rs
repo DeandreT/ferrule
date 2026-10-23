@@ -373,6 +373,40 @@ impl<'a> ScopeContext<'a> {
             .ok_or(SourcePathError::MissingDocumentPath)
     }
 
+    /// Read only the exact active row frame, without representative or outward fallback.
+    pub fn source_row_document_path(
+        &self,
+        node: u32,
+        collection: &[&str],
+    ) -> Result<Value, RuntimeError> {
+        let read = || {
+            let frame = self
+                .frames
+                .iter()
+                .rev()
+                .find(|frame| {
+                    frame
+                        .collection
+                        .as_ref()
+                        .is_some_and(|identity| same_path(collection, identity.path()))
+                })
+                .ok_or(ir::SourceRowPathError::InactiveFrame)?;
+            if frame
+                .collection
+                .as_ref()
+                .is_some_and(CollectionIdentity::is_grouped)
+            {
+                return Err(ir::SourceRowPathError::GroupedFrame);
+            }
+            ir::source_row_document_path(frame.instance).map(|path| Value::String(path.into()))
+        };
+        read().map_err(|source| RuntimeError::SourceRowDocumentPath {
+            node,
+            collection: collection.iter().map(|part| (*part).into()).collect(),
+            source,
+        })
+    }
+
     /// Reads one runtime-named scalar field from an open source object.
     ///
     /// The outer owning-object match shadows outward frames even when the

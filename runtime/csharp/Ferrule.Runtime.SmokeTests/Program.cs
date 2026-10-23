@@ -22,6 +22,7 @@ internal static partial class Program
             ("JSON source complete literal corpus", JsonSourceCorpus),
             ("JSON5 writer complete byte corpus", Json5TextWriter),
             ("JSON5 writer typed decimal output", Json5TypedWriter),
+            ("Exact source row document paths", SourceRowDocumentPaths),
             ("JSON source exact selection and bounded admission", JsonSourceSelectionAndLimits),
             ("JSON source complete occurrence document", JsonSourceOccurrenceDocument),
             ("JSON source exact occurrence identities", JsonSourceOccurrenceIdentity),

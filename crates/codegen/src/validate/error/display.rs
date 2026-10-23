@@ -8,6 +8,14 @@ use super::ProgramValidationError;
 impl fmt::Display for ProgramValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidSourceRowPath {
+                node,
+                collection,
+                reason,
+            } => write!(
+                formatter,
+                "row document path expression {node} for {collection:?}: {reason}"
+            ),
             Self::OwnedSource { diagnostic } => write!(formatter, "owned source: {diagnostic:?}"),
             Self::FilterMapAdmission { item, kind } => {
                 write!(formatter, "compiled filter_map_v1 item {item}: {kind:?}")
