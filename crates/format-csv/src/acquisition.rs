@@ -18,6 +18,9 @@ pub struct CsvSourceData {
 
 #[derive(Debug)]
 pub enum CsvAcquisitionError<F, E> {
+    InvalidFileSetSchema,
+    FileSetBytes,
+    FileSetRows,
     InvalidLimit {
         maximum: usize,
     },
@@ -40,6 +43,13 @@ pub enum CsvAcquisitionError<F, E> {
 impl<F: fmt::Display, E: fmt::Display> fmt::Display for CsvAcquisitionError<F, E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidFileSetSchema => {
+                f.write_str("CSV file-set row schema conflicts with its metadata fields")
+            }
+            Self::FileSetBytes => {
+                f.write_str("CSV file set exceeds its 64 MiB aggregate input limit")
+            }
+            Self::FileSetRows => f.write_str("CSV file set exceeds its aggregate row limit"),
             Self::InvalidLimit { maximum } => write!(
                 f,
                 "CSV acquisition document limit {maximum} exceeds the hard maximum"
@@ -64,7 +74,11 @@ impl<F: Error + 'static, E: Error + 'static> Error for CsvAcquisitionError<F, E>
                 Some(error)
             }
             Self::Input { source, .. } => Some(source),
-            Self::InvalidLimit { .. } | Self::Documents { .. } => None,
+            Self::InvalidFileSetSchema
+            | Self::FileSetBytes
+            | Self::FileSetRows
+            | Self::InvalidLimit { .. }
+            | Self::Documents { .. } => None,
         }
     }
 }
@@ -193,3 +207,92 @@ impl<F, E> Iterator for CsvSourceAcquisition<'_, F, E> {
 }
 
 impl<F, E> FusedIterator for CsvSourceAcquisition<'_, F, E> {}
+
+/// Acquire the complete explicit file-set execution view, preserving empty
+/// files as well as each parsed row's physical provenance. No mapping or output
+/// publication occurs, and a failure returns no partial input instance.
+/// In addition to per-file reader limits, the complete view admits at most
+/// 64 MiB of source bytes/path text and one million rows.
+#[allow(clippy::too_many_arguments)]
+pub fn acquire_csv_file_set<F, E, I: Iterator<Item = Result<String, E>>>(
+    filename: impl FnOnce() -> Result<String, F>,
+    select: impl FnOnce(&str) -> Result<I, E>,
+    mut load: impl FnMut(&str) -> Result<CsvSourceData, E>,
+    schema: &SchemaNode,
+    options: &CsvReadOptions,
+    decoding: CsvByteDecodingPolicy,
+    maximum: usize,
+) -> Result<ir::Instance, CsvAcquisitionError<F, E>> {
+    if schema.name.is_empty() || schema.name == mapping::CSV_FILE_SET_PATH_FIELD || schema.repeating
+    {
+        return Err(CsvAcquisitionError::InvalidFileSetSchema);
+    }
+    if maximum > MAX_CSV_SOURCE_DOCUMENTS {
+        return Err(CsvAcquisitionError::InvalidLimit { maximum });
+    }
+    let path = filename().map_err(CsvAcquisitionError::Filename)?;
+    let requests = select(&path).map_err(CsvAcquisitionError::Selection)?;
+    let mut files = Vec::new();
+    let mut bytes = 0usize;
+    let mut rows = 0usize;
+    for request in requests {
+        let path = request.map_err(CsvAcquisitionError::Request)?;
+        if files.len() == maximum {
+            return Err(CsvAcquisitionError::Documents { maximum });
+        }
+        crate::source_document::validate_path(&path, "path").map_err(|source| {
+            CsvAcquisitionError::Input {
+                path: path.clone(),
+                source,
+            }
+        })?;
+        let data = load(&path).map_err(|source| CsvAcquisitionError::Load {
+            path: path.clone(),
+            source,
+        })?;
+        let additional = data
+            .bytes
+            .len()
+            .saturating_add(path.len())
+            .saturating_add(data.resolved_path.as_ref().map_or(0, String::len));
+        bytes = bytes
+            .checked_add(additional)
+            .filter(|bytes| *bytes <= 64 * 1024 * 1024)
+            .ok_or(CsvAcquisitionError::FileSetBytes)?;
+        let document = CsvSourceDocument::parse_bytes(
+            &path,
+            data.resolved_path.as_deref(),
+            &data.bytes,
+            schema,
+            options,
+            decoding,
+        )
+        .map_err(|source| CsvAcquisitionError::Input { path, source })?;
+        rows = rows
+            .checked_add(document.rows().len())
+            .filter(|rows| *rows <= 1_000_000)
+            .ok_or(CsvAcquisitionError::FileSetRows)?;
+        files.push(ir::Instance::Group(
+            vec![
+                (
+                    mapping::CSV_FILE_SET_PATH_FIELD.into(),
+                    ir::Instance::Scalar(ir::Value::String(document.source_path().into())),
+                ),
+                (
+                    schema.name.clone(),
+                    ir::Instance::Repeated(
+                        document.rows().map(|row| row.value().clone()).collect(),
+                    ),
+                ),
+            ]
+            .into(),
+        ));
+    }
+    Ok(ir::Instance::Group(
+        vec![(
+            mapping::CSV_FILE_SET_FILES_FIELD.into(),
+            ir::Instance::Repeated(files),
+        )]
+        .into(),
+    ))
+}

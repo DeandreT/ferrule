@@ -44,6 +44,23 @@ pub(crate) fn append(
     document: &DocumentProgram,
     policy: &CsvInputPolicy,
 ) -> Result<ArtifactSet, PrimaryCsvEmitError> {
+    append_schema(artifacts, &document.program().source, policy, false)
+}
+
+pub(crate) fn append_file_set(
+    artifacts: ArtifactSet,
+    schema: &ir::SchemaNode,
+    policy: &CsvInputPolicy,
+) -> Result<ArtifactSet, PrimaryCsvEmitError> {
+    append_schema(artifacts, schema, policy, true)
+}
+
+fn append_schema(
+    artifacts: ArtifactSet,
+    schema: &ir::SchemaNode,
+    policy: &CsvInputPolicy,
+    file_set: bool,
+) -> Result<ArtifactSet, PrimaryCsvEmitError> {
     let mut files = artifacts.into_files();
     let project = files
         .iter_mut()
@@ -62,7 +79,7 @@ pub(crate) fn append(
             1,
         )
         .into_bytes();
-    let SchemaKind::Group { children, .. } = &document.program().source.kind else {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
         unreachable!("validated CSV source")
     };
     let mut code = String::from(
@@ -90,7 +107,11 @@ pub(crate) fn append(
         )
     };
     code.push_str(&format!("    ];\n    private static readonly global::Ferrule.Runtime.FerruleCsvReadOptions PrimaryCsvOptions = new() {{ Delimiter = {}, Quote = {}, QuoteDisabled = {}, HasHeaders = {}, PreserveEmptyStrings = {} }};\n",character(policy.delimiter),character(policy.quote),policy.quote_disabled,policy.has_headers,policy.preserve_empty_strings));
-    code.push_str("\n    /// <summary>Acquire rows only; file selection and loading policy belong to the host.</summary>\n    public static global::Ferrule.Runtime.FerruleCsvAcquisition AcquirePrimaryCsv(\n        global::Ferrule.Runtime.FerruleExecutionContext execution,\n        global::System.Func<string, global::System.Collections.Generic.IEnumerable<string>> select,\n        global::System.Func<string, global::Ferrule.Runtime.FerruleCsvSourceData> load,\n        global::Ferrule.Runtime.FerruleCsvByteDecodingPolicy decoding, int maximum)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(execution);\n        return new(() => EvaluatePrimaryFilename(execution), select, load, PrimaryCsvFields, PrimaryCsvOptions, decoding, maximum);\n    }\n}\n");
+    if file_set {
+        code.push_str(&format!("\n    public static global::Ferrule.Runtime.FerruleInstance AcquirePrimaryCsvFileSet(\n        global::Ferrule.Runtime.FerruleExecutionContext execution,\n        global::System.Func<string, global::System.Collections.Generic.IEnumerable<string>> select,\n        global::System.Func<string, global::Ferrule.Runtime.FerruleCsvSourceData> load,\n        global::Ferrule.Runtime.FerruleCsvByteDecodingPolicy decoding, int maximum)\n    {{\n        global::System.ArgumentNullException.ThrowIfNull(execution);\n        return global::Ferrule.Runtime.FerruleCsvFileSet.Acquire(() => EvaluatePrimaryFilename(execution), select, load,\n            PrimaryCsvFields, {}, PrimaryCsvOptions, decoding, maximum);\n    }}\n}}\n", literal::string(&schema.name)));
+    } else {
+        code.push_str("\n    /// <summary>Acquire rows only; file selection and loading policy belong to the host.</summary>\n    public static global::Ferrule.Runtime.FerruleCsvAcquisition AcquirePrimaryCsv(\n        global::Ferrule.Runtime.FerruleExecutionContext execution,\n        global::System.Func<string, global::System.Collections.Generic.IEnumerable<string>> select,\n        global::System.Func<string, global::Ferrule.Runtime.FerruleCsvSourceData> load,\n        global::Ferrule.Runtime.FerruleCsvByteDecodingPolicy decoding, int maximum)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(execution);\n        return new(() => EvaluatePrimaryFilename(execution), select, load, PrimaryCsvFields, PrimaryCsvOptions, decoding, maximum);\n    }\n}\n");
+    }
     files.push(file("GeneratedMapping.PrimaryCsv.cs", code).map_err(PrimaryCsvEmitError::Emit)?);
     for (path, contents) in [
         (
@@ -107,6 +128,15 @@ pub(crate) fn append(
         ),
     ] {
         files.push(file(path, contents.to_string()).map_err(PrimaryCsvEmitError::Emit)?);
+    }
+    if file_set {
+        files.push(
+            file(
+                "Runtime/FerruleCsvFileSet.cs",
+                include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvFileSet.cs"),
+            )
+            .map_err(PrimaryCsvEmitError::Emit)?,
+        );
     }
     ArtifactSet::new(files)
         .map_err(EmitError::from)

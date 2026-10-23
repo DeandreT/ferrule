@@ -78,7 +78,8 @@ mod xml_root_view;
 mod xml_serializer;
 
 pub use csv_document::{
-    ImportedDocument, import_csv_document, import_csv_document_with_options,
+    ImportedCsvJsonDocument, ImportedDocument, import_csv_document,
+    import_csv_document_with_options, import_csv_json_document_with_options,
     import_grouped_csv_document, import_grouped_csv_document_with_options,
 };
 pub use schema::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};

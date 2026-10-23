@@ -45,13 +45,30 @@ pub(crate) fn append(
     document: &DocumentProgram,
     policy: &CsvInputPolicy,
 ) -> Result<ArtifactSet, PrimaryCsvEmitError> {
+    append_schema(artifacts, &document.program().source, policy, false)
+}
+
+pub(crate) fn append_file_set(
+    artifacts: ArtifactSet,
+    row_schema: &ir::SchemaNode,
+    policy: &CsvInputPolicy,
+) -> Result<ArtifactSet, PrimaryCsvEmitError> {
+    append_schema(artifacts, row_schema, policy, true)
+}
+
+fn append_schema(
+    artifacts: ArtifactSet,
+    schema: &ir::SchemaNode,
+    policy: &CsvInputPolicy,
+    file_set: bool,
+) -> Result<ArtifactSet, PrimaryCsvEmitError> {
     let mut files = artifacts.into_files();
-    let SchemaKind::Group { children, .. } = &document.program().source.kind else {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
         unreachable!("validated row schema")
     };
     let mut code = format!(
         "\nfn primary_csv_schema() -> &'static codegen_runtime::SchemaNode {{\n    static SCHEMA: std::sync::OnceLock<codegen_runtime::SchemaNode> = std::sync::OnceLock::new();\n    SCHEMA.get_or_init(|| codegen_runtime::SchemaNode::group({}, vec![\n",
-        rust_string(&document.program().source.name)
+        rust_string(&schema.name)
     );
     for field in children {
         let SchemaKind::Scalar { ty } = field.kind else {
@@ -61,7 +78,11 @@ pub(crate) fn append(
     }
     code.push_str("    ]))\n}\n");
     code.push_str(&format!("\nfn primary_csv_options() -> codegen_runtime::CsvReadOptions {{\n    codegen_runtime::CsvReadOptions {{ delimiter: {:?}, quote: {:?}, quote_disabled: {}, has_headers: {}, preserve_empty_strings: {}, repair_dependency: None }}\n}}\n",policy.delimiter,policy.quote,policy.quote_disabled,policy.has_headers,policy.preserve_empty_strings));
-    code.push_str("\n/// Acquire rows only. The host decides file selection and loading policy.\npub fn acquire_primary_csv<'a, E: 'a, I: Iterator<Item = Result<String, E>> + 'a>(\n    execution: &'a ExecutionContext<'a>,\n    select: impl FnOnce(&str) -> Result<I, E> + 'a,\n    load: impl FnMut(&str) -> Result<codegen_runtime::CsvSourceData, E> + 'a,\n    decoding: codegen_runtime::CsvByteDecodingPolicy,\n    maximum: usize,\n) -> Result<codegen_runtime::CsvSourceAcquisition<'a, codegen_runtime::RuntimeError, E>, codegen_runtime::CsvAcquisitionError<codegen_runtime::RuntimeError, E>> {\n    codegen_runtime::CsvSourceAcquisition::new(\n        move || evaluate_primary_filename(execution), select, load,\n        primary_csv_schema(), primary_csv_options(), decoding, maximum,\n    )\n}\n");
+    if file_set {
+        code.push_str("\n/// Acquire all physical files, including empty ones, before mapping.\npub fn acquire_primary_csv_file_set<E, I: Iterator<Item = Result<String, E>>>(\n    execution: &ExecutionContext<'_>, select: impl FnOnce(&str) -> Result<I, E>,\n    load: impl FnMut(&str) -> Result<codegen_runtime::CsvSourceData, E>,\n    decoding: codegen_runtime::CsvByteDecodingPolicy, maximum: usize,\n) -> Result<Instance, codegen_runtime::CsvAcquisitionError<codegen_runtime::RuntimeError, E>> {\n    codegen_runtime::acquire_csv_file_set(|| evaluate_primary_filename(execution), select, load,\n        primary_csv_schema(), &primary_csv_options(), decoding, maximum)\n}\n");
+    } else {
+        code.push_str("\n/// Acquire rows only. The host decides file selection and loading policy.\npub fn acquire_primary_csv<'a, E: 'a, I: Iterator<Item = Result<String, E>> + 'a>(\n    execution: &'a ExecutionContext<'a>,\n    select: impl FnOnce(&str) -> Result<I, E> + 'a,\n    load: impl FnMut(&str) -> Result<codegen_runtime::CsvSourceData, E> + 'a,\n    decoding: codegen_runtime::CsvByteDecodingPolicy,\n    maximum: usize,\n) -> Result<codegen_runtime::CsvSourceAcquisition<'a, codegen_runtime::RuntimeError, E>, codegen_runtime::CsvAcquisitionError<codegen_runtime::RuntimeError, E>> {\n    codegen_runtime::CsvSourceAcquisition::new(\n        move || evaluate_primary_filename(execution), select, load,\n        primary_csv_schema(), primary_csv_options(), decoding, maximum,\n    )\n}\n");
+    }
     files
         .iter_mut()
         .find(|file| file.path.as_str() == "src/lib.rs")

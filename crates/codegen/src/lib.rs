@@ -83,7 +83,8 @@ pub use lower::{
     lower_with_basic_owned_sort, lower_with_basic_owned_windows,
 };
 pub use mapforce_json5_documents::{
-    MapForceJson5DocumentError, prepare_csv_to_mapforce_json5_documents,
+    MapForceJson5DocumentError, prepare_csv_file_set_to_mapforce_json5_documents,
+    prepare_csv_to_mapforce_json5_documents,
 };
 pub use model::{
     AggregateFunction, AggregateValue, Binding, DelimitedTextField, DelimitedTextFieldError,

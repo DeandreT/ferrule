@@ -63,10 +63,12 @@ pub use export::{
 };
 pub use import::{
     ImportIssue, ImportIssueKind, ImportOptions, ImportOutcome, ImportProfile, ImportReport,
-    Imported, ImportedDocument, ImportedPipeline, MAX_FLEXTEXT_CONFIGURATION_BYTES, assess_import,
-    import, import_csv_document, import_csv_document_with_options, import_flextext_configuration,
-    import_grouped_csv_document, import_grouped_csv_document_with_options, import_pipeline,
-    import_pipeline_with_options, import_with_options, import_with_profile,
+    Imported, ImportedCsvJsonDocument, ImportedDocument, ImportedPipeline,
+    MAX_FLEXTEXT_CONFIGURATION_BYTES, assess_import, import, import_csv_document,
+    import_csv_document_with_options, import_csv_json_document_with_options,
+    import_flextext_configuration, import_grouped_csv_document,
+    import_grouped_csv_document_with_options, import_pipeline, import_pipeline_with_options,
+    import_with_options, import_with_profile,
 };
 pub use resource::PackageManifest;
 pub use resource::{
