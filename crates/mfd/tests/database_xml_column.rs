@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -259,6 +262,7 @@ fn embedded_xml_database_columns_execute_compactly_and_round_trip() {
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn local_xml_to_sqlite_field_strict_export_preserves_sqlite_payloads()
 -> Result<(), Box<dyn std::error::Error>> {
+    private_corpus::require(&[&private_corpus::root()]);
     let sample = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples/Tutorial/XmlToSqliteField.mfd");
     let imported = mfd::import(&sample)?;

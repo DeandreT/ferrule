@@ -338,14 +338,20 @@ fn imports_and_runs_a_connected_xlsx_workbook_design() -> Result<(), Box<dyn Err
 }
 
 #[test]
+#[ignore = "requires the private compatibility corpus at samples/ReferenceSamples"]
 fn imports_and_runs_a_connected_flextext_design_with_its_generated_layout()
 -> Result<(), Box<dyn Error>> {
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let source_path = samples.join("Quotations.xml");
     let sample_output = samples.join("QuotationsDoc.txt");
     let sample_design = samples.join("QuotationsDoc.mfd");
-    if !source_path.is_file() || !sample_output.is_file() || !sample_design.is_file() {
-        return Ok(());
+    for path in [&source_path, &sample_output, &sample_design] {
+        assert!(
+            path.is_file(),
+            "private compatibility corpus not present at {}; this test needs the local \
+             gitignored samples/ReferenceSamples corpus",
+            path.display()
+        );
     }
     let imported = mfd::import(&sample_design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -848,12 +854,9 @@ fn imports_and_runs_an_xml_primary_with_exact_named_csv_bytes() -> Result<(), Bo
 
 #[test]
 fn imports_and_runs_an_xml_primary_with_exact_named_json_bytes() -> Result<(), Box<dyn Error>> {
-    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
-    let sample_design = samples.join("Altova_Hierarchical_JSON.mfd");
-    let sample_input = samples.join("Altova_Hierarchical.xml");
-    if !sample_design.is_file() || !sample_input.is_file() {
-        return Ok(());
-    }
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures");
+    let sample_design = fixtures.join("stock.mfd");
+    let sample_input = fixtures.join("stock.xml");
     let imported = mfd::import(&sample_design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let mut final_project = imported.project;
@@ -874,7 +877,7 @@ fn imports_and_runs_an_xml_primary_with_exact_named_json_bytes() -> Result<(), B
     let copy_project = mapping::Project {
         source: final_project.source.clone(),
         target: final_project.source.clone(),
-        source_path: Some("Altova_Hierarchical.xml".into()),
+        source_path: Some("stock.xml".into()),
         target_path: Some("buffer.xml".into()),
         source_options: final_project.source_options.clone(),
         target_options: final_project.source_options.clone(),
@@ -889,7 +892,7 @@ fn imports_and_runs_an_xml_primary_with_exact_named_json_bytes() -> Result<(), B
         },
     };
     final_project.source_path = None;
-    final_project.target_path = Some("hierarchy-copy.xml".into());
+    final_project.target_path = Some("stock-copy.xml".into());
     let pipeline = mapping::Pipeline {
         main_mapping_path: None,
         stages: vec![
@@ -969,7 +972,7 @@ fn imports_and_runs_an_xml_primary_with_exact_named_json_bytes() -> Result<(), B
     let json = &pipeline.stages[1].project.extra_targets[0];
     let expected_json = format_json::to_string(&json.schema, &expected.extras[0].instance)?;
     assert_eq!(std::fs::read(&output_json)?, expected_json.as_bytes());
-    assert!(expected_json.contains("\"Office\""));
+    assert!(expected_json.contains("\"sku\"") && expected_json.contains("\"A1\""));
     Ok(())
 }
 

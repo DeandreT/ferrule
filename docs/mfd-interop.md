@@ -225,11 +225,12 @@ Set `FERRULE_MFD_SURVEY_PACKAGE_MANIFEST` to the manifest file. Set
 retain their declared order after canonical deduplication. When no manifest is
 selected, the `ReferenceSamples` directory remains the package root.
 
-The surveys are ignored by ordinary test runs. An explicit run fails with a
-"private compatibility corpus not present at <path>" error when the gitignored
-`samples/ReferenceSamples` corpus is missing; it never reports a pass without
-it. The reference-output survey likewise fails when the local reference
-application is missing.
+The surveys, and every other test that reads the gitignored
+`samples/ReferenceSamples` corpus, are ignored by ordinary test runs. An
+explicit run fails with a "private compatibility corpus not present at <path>"
+error when the corpus is missing; it never reports a pass without it. The
+reference-output survey likewise fails when the local reference application is
+missing.
 
 For example, on Unix:
 

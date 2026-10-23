@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -466,9 +469,7 @@ fn invalid_stale_and_unresolved_descriptors_publish_no_artifacts() {
 fn local_idoc_order_retains_descriptor_without_claiming_native_compatibility() {
     let sample =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples/IDoc_Order.mfd");
-    if !sample.is_file() {
-        return;
-    }
+    private_corpus::require(&[&sample]);
     let imported = mfd::import(&sample).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let descriptor = imported

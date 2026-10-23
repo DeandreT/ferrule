@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -270,12 +273,11 @@ fn oversized_unresolved_schema_metadata_cannot_be_exported() -> Result<(), Box<d
 }
 
 #[test]
+#[ignore = "requires the private compatibility corpus at samples/ReferenceSamples"]
 fn local_mf940_survey_retains_both_missing_schema_references() -> Result<(), Box<dyn Error>> {
     let sample =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples/MF940.mfd");
-    if !sample.is_file() {
-        return Ok(());
-    }
+    private_corpus::require(&[&sample]);
     let imported = mfd::import(&sample)?;
     let sales_order = "salesOrderSchemaV0_1_21V2.json";
     // The variables component is a string parser folded into a graph call;

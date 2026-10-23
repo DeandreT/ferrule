@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -360,9 +363,7 @@ fn stale_idoc_text_settings_reject_export_without_artifacts() {
 fn local_idoc_order_preserves_native_text_settings_after_relocation() {
     let sample =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples/IDoc_Order.mfd");
-    if !sample.is_file() {
-        return;
-    }
+    private_corpus::require(&[&sample]);
     let imported = mfd::import(&sample).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let settings = imported

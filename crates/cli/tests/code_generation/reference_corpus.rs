@@ -314,9 +314,7 @@ const CASES: [CorpusCase; 43] = [
 #[test]
 #[ignore = "requires the local ignored ReferenceSamples corpus and .NET 10 SDK"]
 fn generated_rust_and_csharp_execute_local_samples_like_engine() -> TestResult<()> {
-    let original = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../samples/ReferenceSamples")
-        .canonicalize()?;
+    let original = super::reference_corpus_generic::private_corpus()?;
     let directory = TempDir::new("reference_corpus")?;
     let package = super::reference_corpus_generic::package::Snapshot::copy(
         &original,
@@ -353,9 +351,7 @@ fn generated_rust_and_csharp_execute_local_samples_like_engine() -> TestResult<(
 #[test]
 #[ignore = "requires the local ignored ReferenceSamples corpus"]
 fn native_object_find_stock_design_is_retained_as_a_blocked_repair() -> TestResult<()> {
-    let samples = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../samples/ReferenceSamples")
-        .canonicalize()?;
+    let samples = super::reference_corpus_generic::private_corpus()?;
     let imported = mfd::import_with_options(
         &samples.join("ArticlesInStock.mfd"),
         &mfd::ImportOptions::default().with_package_root(&samples),

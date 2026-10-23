@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -371,9 +374,7 @@ fn imports_and_executes_the_local_multiline_book_catalog() {
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let design = samples.join("BookCatalogPDFToXML.mfd");
     let pdf = samples.join("BookCatalog.pdf");
-    if !design.is_file() || !pdf.is_file() {
-        return;
-    }
+    private_corpus::require(&[&design, &pdf]);
 
     let Ok(imported) = mfd::import(&design) else {
         panic!("local BookCatalog PDF mapping must import");
@@ -410,9 +411,7 @@ fn imports_and_executes_the_local_multiline_book_catalog() {
 fn imports_the_local_article_stock_as_a_blocked_pdf_repair() {
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let design = samples.join("ArticlesInStock.mfd");
-    if !design.is_file() {
-        return;
-    }
+    private_corpus::require(&[&design]);
     let imported = mfd::import(&design).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings[0].contains("ObjectFind"));
