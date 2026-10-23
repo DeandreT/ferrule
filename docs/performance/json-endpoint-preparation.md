@@ -25,7 +25,8 @@ programs from each document's work budget.
 In C#, `FerruleJson` keys prepared schemas by descriptor string identity in a
 `ConditionalWeakTable`. Generated descriptor constants are interned, so each one
 is prepared once. A descriptor built at run time is prepared once per string
-object and released with it. The JSON5 codec still parses its schemas per call.
+object and released with it. The JSON5, XML and X12 codecs now prepare their
+descriptors the same way; see [endpoint codec preparation](endpoint-codec-preparation.md).
 
 Neither runtime retains a failed preparation. A rejected descriptor is parsed
 again by every call, so it reports its original error in its original order:
@@ -108,14 +109,14 @@ The remaining costs are proportional to document size:
 | --- | --- | ---: | ---: |
 | Rust | Owned `serde_json::Value` tree of the input | 29,308,461 bytes allocated, 19,669,370 peak | 70% of `parse_json` allocation |
 | Rust | Normalized `serde_json::Value` tree of the output | 19,618,380 bytes allocated, 12,538,652 peak | 70% of `serialize_json` allocation |
-| Rust | Pretty text growth | 8,388,480 bytes over 16 allocations, 6,291,456 peak | 30% of `serialize_json` allocation |
+| Rust | Pretty text growth, since removed (see [endpoint codec preparation](endpoint-codec-preparation.md#rust-json-and-json5-output-text)) | 8,388,480 bytes over 16 allocations, 6,291,456 peak | 30% of `serialize_json` allocation |
 | C# | UTF-8 to UTF-16 decoding of byte input | 3,170,496 bytes | 2.9% of `ParseBytes` |
 | C# | Final newline concatenation of pretty output | 4,850,560 bytes | 7.6% of `Serialize` |
 | C# | UTF-16 to UTF-8 encoding of byte output | 2,425,296 bytes | 3.7% of `SerializeBytes` |
 
 Rust re-encodes nothing. `parse_json_bytes` validates UTF-8 in place,
-`serialize_json_bytes` reuses the string's buffer, and in this fixture the
-newline fits the string's existing capacity. `System.Text.Json` parses C# input from pooled
+`serialize_json_bytes` reuses the string's buffer, and the output text, including
+its newline, is now written into a buffer of its exact length. `System.Text.Json` parses C# input from pooled
 buffers, which these counts do not include. The rest of the C# parse cost is the
 owned instance tree.
 
