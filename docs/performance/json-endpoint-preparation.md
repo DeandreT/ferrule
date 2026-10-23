@@ -111,8 +111,8 @@ The remaining costs are proportional to document size:
 | Rust | Normalized `serde_json::Value` tree of the output | 19,618,380 bytes allocated, 12,538,652 peak | 70% of `serialize_json` allocation |
 | Rust | Pretty text growth, since removed (see [endpoint codec preparation](endpoint-codec-preparation.md#rust-json-and-json5-output-text)) | 8,388,480 bytes over 16 allocations, 6,291,456 peak | 30% of `serialize_json` allocation |
 | C# | UTF-8 to UTF-16 decoding of byte input | 3,170,496 bytes | 2.9% of `ParseBytes` |
-| C# | Final newline concatenation of pretty output | 4,850,560 bytes | 7.6% of `Serialize` |
-| C# | UTF-16 to UTF-8 encoding of byte output | 2,425,296 bytes | 3.7% of `SerializeBytes` |
+| C# | Final newline concatenation of pretty output, since removed (see [endpoint codec preparation](endpoint-codec-preparation.md#c-ordinary-json-output)) | 4,850,560 bytes | 7.6% of `Serialize` |
+| C# | UTF-16 to UTF-8 encoding of byte output; byte routes now encode the builder without the UTF-16 string (see [endpoint codec preparation](endpoint-codec-preparation.md#c-ordinary-json-output)) | 2,425,296 bytes | 3.7% of `SerializeBytes` |
 
 Rust re-encodes nothing. `parse_json_bytes` validates UTF-8 in place,
 `serialize_json_bytes` reuses the string's buffer, and the output text, including
@@ -120,13 +120,13 @@ its newline, is now written into a buffer of its exact length. `System.Text.Json
 buffers, which these counts do not include. The rest of the C# parse cost is the
 owned instance tree.
 
-No copy reduction is part of this change. The largest remaining costs are the
-two owned Rust JSON trees. Removing the input tree requires reading
-schema-shaped instances directly from the JSON text. Removing the output tree
-requires applying output constraints to the borrowed writer that the
-filesystem JSON writer already uses. The C# ordinary-JSON newline copy is the
-same final-newline copy that JSON5 output no longer makes. Each of these needs
-its own before/after measurement.
+The largest remaining costs are the two owned Rust JSON trees. Removing the
+input tree requires reading schema-shaped instances directly from the JSON text.
+Removing the output tree requires applying output constraints to the borrowed
+writer that the filesystem JSON writer already uses. Both are streaming
+rewrites and are not pursued. The Rust output text growth and the C# newline
+and UTF-16 output copies were later removed; see
+[endpoint codec preparation](endpoint-codec-preparation.md).
 
 ## Limits
 

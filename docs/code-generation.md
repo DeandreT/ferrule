@@ -2019,8 +2019,10 @@ descriptor text. C# keys each role's prepared schema or profile by descriptor
 string identity. Each route still applies its own document limits, schema checks
 and per-call budgets in their original order. Rust JSON and JSON5 output text is
 measured before it is written, so an output above its byte limit is refused
-without being materialized. C# X12 and JSON5 byte routes encode the completed
-output directly to UTF-8, without first building the UTF-16 string; see
+without being materialized. C# JSON, JSON5 and X12 byte routes encode the
+completed output directly to UTF-8, without first building the UTF-16 string,
+and C# JSON and JSON5 apply their output limit before either route materializes
+the document; see
 [endpoint codec preparation](performance/endpoint-codec-preparation.md).
 
 JSON text and property names must contain valid Unicode scalar values. Both
