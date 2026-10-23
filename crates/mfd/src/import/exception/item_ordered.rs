@@ -505,17 +505,7 @@ fn expression_depth(
     if active.len() >= MAX_DEPTH || !active.insert(id) {
         return None;
     }
-    let dependencies = match graph.nodes.get(&id)? {
-        Node::Const { .. } | Node::SourceField { .. } | Node::Position { .. } => Vec::new(),
-        Node::Call { args, .. } => args.clone(),
-        Node::If {
-            condition,
-            then,
-            else_,
-        } => vec![*condition, *then, *else_],
-        Node::ValueMap { input, .. } => vec![*input],
-        _ => return None,
-    };
+    let dependencies = crate::node_inputs::ordering_inputs(graph.nodes.get(&id)?)?;
     let mut depth = 1;
     for dependency in dependencies {
         depth = depth.max(expression_depth(dependency, graph, depths, active)?.checked_add(1)?);

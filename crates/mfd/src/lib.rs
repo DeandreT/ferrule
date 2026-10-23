@@ -54,6 +54,7 @@ mod design;
 mod export;
 mod import;
 mod json_parser_recipe;
+mod node_inputs;
 mod resource;
 
 pub use export::{
