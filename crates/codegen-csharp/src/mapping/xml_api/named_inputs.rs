@@ -2,11 +2,15 @@
 //! Complete input preflight precedes either primary reader.
 
 use crate::{EmitError, literal};
-use codegen::Program;
+use codegen::{Program, XmlDocumentInputs, XmlEmissionPlan};
 
 pub(super) const TYPES: &str = "public sealed record NamedXmlOutput(string Name, string Document);\npublic sealed record NamedXmlBytesOutput(string Name, byte[] Document);\npublic sealed record XmlExecutionOutputs(string Primary, global::System.Collections.Generic.IReadOnlyList<NamedXmlOutput> Extras);\npublic sealed record XmlBytesExecutionOutputs(byte[] Primary, global::System.Collections.Generic.IReadOnlyList<NamedXmlBytesOutput> Extras);\n\npublic sealed record NamedXmlInput(string Name, string Document);\npublic sealed record NamedXmlBytesInput(string Name, byte[] Document);\n";
 
-pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitError> {
+pub(super) fn render(
+    program: &Program,
+    plan: &XmlEmissionPlan<'_>,
+    output: &mut String,
+) -> Result<(), EmitError> {
     let names = program
         .extra_sources
         .iter()
@@ -65,9 +69,7 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
         } else {
             "ParseStructuredEmbedded"
         };
-        let observed_primary = program.xml_boundary.as_ref().is_some_and(|policy| {
-            policy.input.profile() == Some(codegen::XmlInputProfile::RootView)
-        });
+        let observed_primary = plan.inputs() == XmlDocumentInputs::RootViewWithNamedInputs;
         let primary_parser = if observed_primary {
             if bytes {
                 "ParseEmbeddedBytes"

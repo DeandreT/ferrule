@@ -9,7 +9,16 @@ use ir::{
 use mapping::NodeId;
 
 use super::{ProgramValidationError, SourceCatalog};
-use crate::Expression;
+use crate::{Expression, XmlDocumentCardinality, XmlDocumentInputs, XmlOutputMode};
+
+/// The XML adapter classification established by [`validate_boundary`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProvedXmlBoundary {
+    pub(crate) mode: XmlOutputMode,
+    pub(crate) inputs: XmlDocumentInputs,
+    /// One cardinality per named target, in declaration order.
+    pub(crate) named_outputs: Vec<XmlDocumentCardinality>,
+}
 
 pub(super) fn validate(
     sources: SourceCatalog<'_>,
@@ -261,18 +270,31 @@ fn unsupported_schema_feature(schema: &SchemaNode) -> Option<&'static str> {
 }
 
 /// Each admitted document adapter owns every named source and output policy.
-pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramValidationError> {
+/// Returns the adapter classification this proof establishes.
+pub(super) fn validate_boundary(
+    program: &crate::Program,
+) -> Result<Option<ProvedXmlBoundary>, ProgramValidationError> {
     let Some(policy) = &program.xml_boundary else {
-        return Ok(());
+        return Ok(None);
     };
     let reject = |reason: &str| ProgramValidationError::InvalidXmlBoundary {
         reason: reason.to_owned(),
     };
-    match policy.input.profile() {
+    let inputs = match policy.input.profile() {
         Some(crate::XmlInputProfile::RootView)
-            if ir::xml_root_view_read_policy_is_supported(&program.source) => {}
+            if ir::xml_root_view_read_policy_is_supported(&program.source) =>
+        {
+            if program.extra_sources.is_empty() {
+                XmlDocumentInputs::RootViewPrimary
+            } else {
+                XmlDocumentInputs::RootViewWithNamedInputs
+            }
+        }
         Some(crate::XmlInputProfile::Structured)
-            if ir::xml_structured_document_input_is_supported(&program.source) => {}
+            if ir::xml_structured_document_input_is_supported(&program.source) =>
+        {
+            XmlDocumentInputs::Structured
+        }
         Some(crate::XmlInputProfile::Structured) => {
             return Err(reject(
                 "requires the closed ordinary structured XML input policy",
@@ -283,7 +305,7 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
                 "requires the closed observed primary XML root input policy",
             ));
         }
-    }
+    };
     let root_view_static_inputs = !program.extra_sources.is_empty()
         && program
             .extra_sources
@@ -439,6 +461,7 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
     }
     if validate_mixed_named_output(program)? {
         validate_document_output(&program.target, &program.root, &policy.output, false)?;
+        let mut named_outputs = Vec::with_capacity(program.extra_targets.len());
         for (target, output) in program.extra_targets.iter().zip(&policy.extra_outputs) {
             let dynamic = target
                 .root
@@ -452,8 +475,17 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
                     }
                     error => error,
                 })?;
+            named_outputs.push(if dynamic {
+                XmlDocumentCardinality::List
+            } else {
+                XmlDocumentCardinality::Single
+            });
         }
-        return Ok(());
+        return Ok(Some(ProvedXmlBoundary {
+            mode: XmlOutputMode::StaticPrimaryMixedNamedXmlOutputs,
+            inputs,
+            named_outputs,
+        }));
     }
     let dynamic_primary = validate_dynamic_primary_output(program)?;
     let dynamic_named = validate_dynamic_named_output(program)?;
@@ -472,7 +504,40 @@ pub(super) fn validate_boundary(program: &crate::Program) -> Result<(), ProgramV
                 error => error,
             })?;
     }
-    Ok(())
+    // The dynamic primary and dynamic named routes exclude each other above.
+    let dynamic_inputs = program
+        .extra_sources
+        .iter()
+        .any(|source| source.dynamic.is_some());
+    let static_inputs = !program.extra_sources.is_empty();
+    let mode = match (
+        dynamic_primary,
+        dynamic_named,
+        dynamic_inputs,
+        static_inputs,
+    ) {
+        (true, _, true, _) => XmlOutputMode::DynamicNamedInputDynamicPrimaryDocuments,
+        (true, _, false, false) => XmlOutputMode::DynamicPrimaryDocuments,
+        (true, _, false, true) => XmlOutputMode::StaticNamedInputsDynamicPrimaryDocuments,
+        (false, true, true, _) => {
+            XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments
+        }
+        (false, true, false, false) => XmlOutputMode::StaticPrimaryDynamicNamedDocuments,
+        (false, true, false, true) => {
+            XmlOutputMode::StaticNamedInputsStaticPrimaryDynamicNamedDocuments
+        }
+        (false, false, _, _) => XmlOutputMode::SingleDocument,
+    };
+    let named = if dynamic_named {
+        XmlDocumentCardinality::List
+    } else {
+        XmlDocumentCardinality::Single
+    };
+    Ok(Some(ProvedXmlBoundary {
+        mode,
+        inputs,
+        named_outputs: vec![named; program.extra_targets.len()],
+    }))
 }
 
 fn validate_mixed_named_output(program: &crate::Program) -> Result<bool, ProgramValidationError> {

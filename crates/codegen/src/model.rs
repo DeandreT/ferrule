@@ -435,25 +435,6 @@ pub struct Program {
     pub extra_targets: Vec<NamedTargetProgram>,
 }
 
-/// Output cardinality proved by the complete XML boundary and mapping validation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum XmlOutputMode {
-    SingleDocument,
-    DynamicPrimaryDocuments,
-    /// Dynamic named XML inputs and optional statics feed a primary document list.
-    DynamicNamedInputDynamicPrimaryDocuments,
-    /// Static named Structured inputs and one ordered primary document list.
-    StaticNamedInputsDynamicPrimaryDocuments,
-    /// One static primary document followed by each named target's ordered members.
-    StaticPrimaryDynamicNamedDocuments,
-    /// Static named Structured inputs, a static primary and ordered named document lists.
-    StaticNamedInputsStaticPrimaryDynamicNamedDocuments,
-    /// Dynamic named Structured inputs, optional statics and ordered named document lists.
-    DynamicNamedInputStaticPrimaryDynamicNamedDocuments,
-    /// One static named XML document and one or more path-bearing named document lists.
-    StaticPrimaryMixedNamedXmlOutputs,
-}
-
 impl Program {
     /// All retained compositions, including unselected direct-Program expressions.
     /// Common lowering has already pruned unreachable project expressions.
@@ -512,72 +493,6 @@ impl Program {
             }
         }
         sequences
-    }
-
-    /// Returns a proved XML adapter mode, or no adapter, without changing its policy ABI.
-    /// An invalid program returns its original typed validation error.
-    pub fn xml_output_mode(&self) -> Result<Option<XmlOutputMode>, crate::ProgramValidationError> {
-        crate::validate_program(self)?;
-        Ok(self.xml_boundary.as_ref().map(|_| {
-            if self
-                .root
-                .iteration
-                .as_ref()
-                .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
-            {
-                if self
-                    .extra_sources
-                    .iter()
-                    .any(|source| source.dynamic.is_some())
-                {
-                    XmlOutputMode::DynamicNamedInputDynamicPrimaryDocuments
-                } else if self.extra_sources.is_empty() {
-                    XmlOutputMode::DynamicPrimaryDocuments
-                } else {
-                    XmlOutputMode::StaticNamedInputsDynamicPrimaryDocuments
-                }
-            } else if self.extra_sources.is_empty()
-                && self.extra_targets.len() >= 2
-                && self
-                    .extra_targets
-                    .iter()
-                    .filter(|target| target.root.iteration.is_none())
-                    .count()
-                    == 1
-                && self
-                    .extra_targets
-                    .iter()
-                    .filter(|target| {
-                        target.root.iteration.as_ref().is_some_and(|iteration| {
-                            iteration.dynamic_document_iteration().is_some()
-                        })
-                    })
-                    .count()
-                    == self.extra_targets.len() - 1
-            {
-                XmlOutputMode::StaticPrimaryMixedNamedXmlOutputs
-            } else if self.extra_targets.iter().any(|target| {
-                target
-                    .root
-                    .iteration
-                    .as_ref()
-                    .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
-            }) {
-                if self
-                    .extra_sources
-                    .iter()
-                    .any(|source| source.dynamic.is_some())
-                {
-                    XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments
-                } else if self.extra_sources.is_empty() {
-                    XmlOutputMode::StaticPrimaryDynamicNamedDocuments
-                } else {
-                    XmlOutputMode::StaticNamedInputsStaticPrimaryDynamicNamedDocuments
-                }
-            } else {
-                XmlOutputMode::SingleDocument
-            }
-        }))
     }
 }
 

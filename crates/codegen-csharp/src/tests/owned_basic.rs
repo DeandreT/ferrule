@@ -2618,7 +2618,7 @@ fn private_source_failure_preserves_ordinary_bytes_and_public_owned_gates() {
     };
     let ordinary = emit(&program);
     let typed = emit_typed(&program);
-    let untyped_source = crate::mapping::render(&program);
+    let untyped_source = crate::mapping::render_complete(&program);
     let typed_source = crate::mapping::render_typed(&program);
     eprintln!(
         "INPUT ordinary legacy failure complete Program={program:#?} RAW ordinary={ordinary:#?} typed={typed:#?} ordinary_source={untyped_source:#?} typed_source={typed_source:#?}"

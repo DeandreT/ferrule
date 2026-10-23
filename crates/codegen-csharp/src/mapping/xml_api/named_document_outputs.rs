@@ -1,18 +1,18 @@
 use super::output_arguments;
 use crate::{EmitError, literal};
-use codegen::{Program, ProgramValidationError};
+use codegen::{Program, ProgramValidationError, XmlEmissionPlan};
 
 pub(super) const TYPES: &str = "public sealed record XmlDocumentOutput(string Path, string Document);\npublic sealed record XmlBytesDocumentOutput(string Path, byte[] Document);\npublic sealed record NamedXmlDocumentOutputs(string Name, global::System.Collections.Generic.IReadOnlyList<XmlDocumentOutput> Documents);\npublic sealed record NamedXmlBytesDocumentOutputs(string Name, global::System.Collections.Generic.IReadOnlyList<XmlBytesDocumentOutput> Documents);\npublic sealed record XmlDocumentExecutionOutputs(string Primary, global::System.Collections.Generic.IReadOnlyList<NamedXmlDocumentOutputs> Extras);\npublic sealed record XmlBytesDocumentExecutionOutputs(byte[] Primary, global::System.Collections.Generic.IReadOnlyList<NamedXmlBytesDocumentOutputs> Extras);\n\n";
 
-pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitError> {
+pub(super) fn render(
+    program: &Program,
+    plan: &XmlEmissionPlan<'_>,
+    output: &mut String,
+) -> Result<(), EmitError> {
     if program.extra_targets.len() > 1 {
-        return render_multiple(program, output);
+        return render_multiple(program, plan, output);
     }
-    let policy = program.xml_boundary.as_ref().ok_or_else(|| {
-        ProgramValidationError::InvalidXmlBoundary {
-            reason: "XML document outputs require a boundary".into(),
-        }
-    })?;
+    let policy = plan.policy();
     let named = program.extra_targets.first().ok_or_else(|| {
         ProgramValidationError::InvalidXmlBoundary {
             reason: "XML document outputs require one named target".into(),
@@ -156,12 +156,12 @@ pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitE
     Ok(())
 }
 
-fn render_multiple(program: &Program, output: &mut String) -> Result<(), EmitError> {
-    let policy = program.xml_boundary.as_ref().ok_or_else(|| {
-        ProgramValidationError::InvalidXmlBoundary {
-            reason: "XML document outputs require a boundary".into(),
-        }
-    })?;
+fn render_multiple(
+    program: &Program,
+    plan: &XmlEmissionPlan<'_>,
+    output: &mut String,
+) -> Result<(), EmitError> {
+    let policy = plan.policy();
     if policy.extra_outputs.len() != program.extra_targets.len()
         || program
             .extra_targets

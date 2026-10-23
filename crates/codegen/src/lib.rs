@@ -14,6 +14,7 @@ mod csv_x12_boundary;
 mod diagnostic;
 mod document_program;
 mod embedded_schema;
+mod emission_plan;
 mod join;
 mod json5_boundary;
 mod lower;
@@ -55,6 +56,10 @@ pub use embedded_schema::{
     EmbeddedSchemaError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_EMBEDDED_XML_SCHEMA_BYTES,
     serialize_embedded_schema,
 };
+pub use emission_plan::{
+    BoundaryEmissionPlan, CompanionSelection, XmlDocumentCardinality, XmlDocumentInputs,
+    XmlEmissionPlan, XmlOutputMode, prepare_boundary_emission,
+};
 pub use join::{
     InnerJoin, JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource,
     JoinSourceCardinality, OwnedInnerJoin,
@@ -75,8 +80,7 @@ pub use model::{
     SUPPORTED_SCALAR_CALLS, ScalarFunction, ScalarTargetDomain, ScopeSequence, SequenceWindow,
     SortFilterOrder, SortKey, SortPlan, SourceIteration, TargetConstruction, TargetScope,
     UserFunctionParameter, UserFunctionProgram, XmlBoundaryProgram, XmlInputPolicy,
-    XmlInputProfile, XmlMixedContentElement, XmlMixedContentReplacement, XmlOutputMode,
-    XmlOutputPolicy,
+    XmlInputProfile, XmlMixedContentElement, XmlMixedContentReplacement, XmlOutputPolicy,
 };
 pub use owned_admission::{
     NamedInputAdmission, NamedInputAdmissionPlan, NamedInputAvailability, NamedInputCatalogue,

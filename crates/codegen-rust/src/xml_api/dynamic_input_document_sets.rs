@@ -1,20 +1,10 @@
 //! One-loader/static-input admission and dynamic-primary document-list renderer.
 use super::output_arguments;
 use crate::{EmitError, rust_string};
-use codegen::{Program, ProgramValidationError, XmlOutputMode};
+use codegen::{Program, ProgramValidationError, XmlEmissionPlan};
 
-pub(super) fn render(program: &Program) -> Result<String, EmitError> {
-    if program.xml_output_mode()? != Some(XmlOutputMode::DynamicNamedInputDynamicPrimaryDocuments) {
-        return Err(ProgramValidationError::InvalidXmlBoundary {
-            reason: "dynamic-input XML document lists require their checked adapter mode".into(),
-        }
-        .into());
-    }
-    let policy = program.xml_boundary.as_ref().ok_or_else(|| {
-        ProgramValidationError::InvalidXmlBoundary {
-            reason: "missing dynamic-input document-list XML boundary".into(),
-        }
-    })?;
+pub(super) fn render(program: &Program, plan: &XmlEmissionPlan<'_>) -> Result<String, EmitError> {
+    let policy = plan.policy();
     let static_sources = program
         .extra_sources
         .iter()
@@ -165,7 +155,7 @@ mod tests {
     }
     #[test]
     fn new_mode_emits_only_four_loader_lists_and_keeps_complete_declaration_indices() {
-        let output = render(&program()).unwrap();
+        let output = super::super::render(&program()).unwrap();
         let functions = output
             .lines()
             .filter_map(|line| {
@@ -199,7 +189,7 @@ mod tests {
     }
     #[test]
     fn complete_static_admission_and_mapping_precede_final_count_writer_charge_and_retention() {
-        let output = render(&program()).unwrap();
+        let output = super::super::render(&program()).unwrap();
         let positions = [
             "XmlInputSetBudget::new(inputs.len().saturating_add(1))",
             "xml_input_indices",
@@ -222,7 +212,7 @@ mod tests {
         let mut invalid = program();
         invalid.xml_boundary.as_mut().unwrap().extra_inputs[2].name = "wrong".into();
         assert!(matches!(
-            render(&invalid),
+            super::super::render(&invalid),
             Err(EmitError::InvalidProgram(_))
         ));
         invalid.xml_boundary = None;
@@ -246,7 +236,7 @@ mod tests {
                 value: ir::Value::String("literal".into()),
             },
         );
-        let output = render(&codegen::lower(&project).unwrap()).unwrap();
+        let output = super::super::render(&codegen::lower(&project).unwrap()).unwrap();
         assert!(output.contains(
             "declaration_index: 0, source: \"catalog\", schema: EXTRA_XML_INPUT_SCHEMA_0"
         ));
@@ -258,7 +248,7 @@ mod tests {
     fn multiple_dynamic_policies_share_one_adapter_and_keep_complete_indices() {
         let project: ::mapping::Project = serde_json::from_str(include_str!("../../../codegen/src/tests/fixtures/multiple_dynamic_named_inputs_dynamic_primary_xml_documents.json")).unwrap();
         let mut program = codegen::lower(&project).unwrap();
-        let output = render(&program).unwrap();
+        let output = super::super::render(&program).unwrap();
         assert_eq!(
             output
                 .matches("XmlDynamicSourceAdapter::for_sources(loader, vec![")
@@ -278,7 +268,7 @@ mod tests {
         );
         assert!(!output.contains("NamedInput { name: \"codes\""));
         assert_eq!(output.matches("adapter.recover(error)").count(), 4);
-        let single = render(&self::program()).unwrap();
+        let single = super::super::render(&self::program()).unwrap();
         assert_eq!(
             single
                 .matches("XmlDynamicSourceAdapter::new(loader,")
@@ -287,6 +277,6 @@ mod tests {
         );
         assert!(!single.contains("XmlDynamicSourceAdapter::for_sources("));
         program.xml_boundary.as_mut().unwrap().extra_inputs[3].name = "wrong".into();
-        assert!(render(&program).is_err());
+        assert!(super::super::render(&program).is_err());
     }
 }
