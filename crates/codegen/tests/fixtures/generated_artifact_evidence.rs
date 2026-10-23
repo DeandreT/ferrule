@@ -11,24 +11,35 @@ use codegen::{ArtifactPath, ArtifactSet};
 
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
+/// Evidence under `FERRULE_CODEGEN_EVIDENCE_DIR` is retained; the default directory under
+/// the temporary directory is removed on drop, including after a panic.
 pub struct Evidence {
     directory: PathBuf,
+    owned_root: Option<PathBuf>,
+}
+
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if let Some(root) = &self.owned_root {
+            let _ = fs::remove_dir_all(&self.directory);
+            // The shared default root is removed once no other evidence remains in it.
+            let _ = fs::remove_dir(root);
+        }
+    }
 }
 
 impl Evidence {
     pub fn new(tag: &str) -> Self {
-        let root = if let Some(root) = std::env::var_os("FERRULE_CODEGEN_EVIDENCE_DIR") {
+        let (root, owned) = if let Some(root) = std::env::var_os("FERRULE_CODEGEN_EVIDENCE_DIR") {
             let root = PathBuf::from(root);
             assert!(
                 root.is_dir(),
                 "configured evidence root must exist: {}",
                 root.display()
             );
-            root
+            (root, false)
         } else {
-            let root = std::env::temp_dir().join("ferrule-codegen-evidence");
-            fs::create_dir_all(&root).expect("create portable generated-test evidence root");
-            root
+            (std::env::temp_dir().join("ferrule-codegen-evidence"), true)
         };
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -36,13 +47,24 @@ impl Evidence {
             .as_nanos();
         let serial = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
         let directory = root.join(format!("{tag}-{}-{nonce}-{serial}", std::process::id()));
-        fs::create_dir(&directory).unwrap_or_else(|error| {
-            panic!(
-                "create exclusive generated-test evidence {}: {error}",
-                directory.display()
-            )
-        });
-        Self { directory }
+        loop {
+            if owned {
+                fs::create_dir_all(&root).expect("create portable generated-test evidence root");
+            }
+            match fs::create_dir(&directory) {
+                Ok(()) => break,
+                // Another test removed the empty shared default root in between.
+                Err(error) if owned && error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => panic!(
+                    "create exclusive generated-test evidence {}: {error}",
+                    directory.display()
+                ),
+            }
+        }
+        Self {
+            directory,
+            owned_root: owned.then_some(root),
+        }
     }
 
     pub fn path(&self) -> &Path {

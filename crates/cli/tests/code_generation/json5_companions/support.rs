@@ -2,8 +2,20 @@ use super::*;
 use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-// No Drop cleanup: full originals survive both success and every failed attempt.
+/// Full originals under `FERRULE_CODEGEN_JSON5_EVIDENCE_DIR`, or with
+/// `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`, survive success and every failed attempt.
+/// Otherwise the directory is removed on drop, including after a panic.
 pub(super) struct RetainedDirectory(pub PathBuf);
+
+impl Drop for RetainedDirectory {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_CODEGEN_JSON5_EVIDENCE_DIR").is_none()
+            && !host_policy::keep_artifacts()
+        {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
 
 impl RetainedDirectory {
     pub(super) fn new(label: &str) -> TestResult<Self> {

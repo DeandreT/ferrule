@@ -5,6 +5,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 type SchemaMutation = Box<dyn Fn(&mut SchemaNode)>;
 
+/// Removes the per-test directory on drop, including after a panic.
+struct TempDir(std::path::PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 /// Keeps retained evidence directory names valid on Windows.
 fn evidence_label(label: &str) -> String {
     label
@@ -35,6 +44,7 @@ fn retained_capture(
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&root).unwrap();
+    let _cleanup = TempDir(root.clone());
     std::fs::write(root.join("OPTIONS.original.txt"), format!("{options:#?}")).unwrap();
     let result = X12BoundaryOptions::from_format_options(options);
     std::fs::write(root.join("OUTCOME.original.txt"), format!("{result:#?}")).unwrap();
@@ -60,6 +70,7 @@ fn retained_profile(
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&root).unwrap();
+    let _cleanup = TempDir(root.clone());
     std::fs::write(root.join("SCHEMA.original.txt"), format!("{schema:#?}")).unwrap();
     std::fs::write(root.join("OPTIONS.original.txt"), format!("{options:#?}")).unwrap();
     let result = descriptor(schema, Some(options), side);

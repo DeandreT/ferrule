@@ -98,7 +98,16 @@ const FIXTURES: &[(&str, &[u8])] = &[
     ),
 ];
 
+/// Removes the per-test evidence directory on drop, including after a panic, unless
+/// `FERRULE_CODEGEN_KEEP_ARTIFACTS=1` retains it.
 struct Evidence(PathBuf);
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if !host_policy::keep_artifacts() {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
 impl Evidence {
     fn new(label: &str) -> TestResult<Self> {
         static NEXT: AtomicUsize = AtomicUsize::new(0);

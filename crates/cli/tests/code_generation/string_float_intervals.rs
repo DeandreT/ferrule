@@ -4,7 +4,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const CASES: &str = include_str!("../../../format-json/tests/fixtures/string_float_intervals.json");
 
+/// Evidence under `FERRULE_STRING_FLOAT_EVIDENCE_DIR` is retained; otherwise it is removed on drop,
+/// including after a panic, unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`.
 struct Evidence(PathBuf);
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_STRING_FLOAT_EVIDENCE_DIR").is_none()
+            && !host_policy::keep_artifacts()
+        {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
 impl Evidence {
     fn new() -> TestResult<Self> {
         let parent = std::env::var_os("FERRULE_STRING_FLOAT_EVIDENCE_DIR")

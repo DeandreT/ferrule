@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -11,7 +11,27 @@ use serde_json::Value as Json;
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 const CASES: &str = include_str!("fixtures/signed_integer_float_bounds.json");
 
-fn evidence() -> TestResult<PathBuf> {
+/// Evidence under `FERRULE_JSON_BOUNDS_EVIDENCE_DIR` is retained; otherwise it is removed on drop,
+/// including after a panic.
+struct Evidence(PathBuf);
+
+impl std::ops::Deref for Evidence {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_JSON_BOUNDS_EVIDENCE_DIR").is_none() {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
+
+fn evidence() -> TestResult<Evidence> {
     let parent = std::env::var_os("FERRULE_JSON_BOUNDS_EVIDENCE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
@@ -26,6 +46,7 @@ fn evidence() -> TestResult<PathBuf> {
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&path)?;
+    let path = Evidence(path);
     std::fs::write(path.join("cases.json"), CASES)?;
     eprintln!("JSON_BOUNDS_ORIGINALS={}", path.display());
     Ok(path)

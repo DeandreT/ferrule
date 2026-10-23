@@ -6,7 +6,18 @@ mod projects;
 
 const CASES: &str = include_str!("variadic_logical/cases.tsv");
 
+/// Evidence under `FERRULE_LOGICAL_EVIDENCE_DIR` is retained; otherwise it is removed on drop,
+/// including after a panic, unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`.
 struct Evidence(PathBuf);
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_LOGICAL_EVIDENCE_DIR").is_none()
+            && !host_policy::keep_artifacts()
+        {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
 impl Evidence {
     fn new(label: &str) -> TestResult<Self> {
         let parent = std::env::var_os("FERRULE_LOGICAL_EVIDENCE_DIR")

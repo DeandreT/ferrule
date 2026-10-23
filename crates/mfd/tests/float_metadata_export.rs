@@ -22,7 +22,13 @@ impl TempDir {
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        std::fs::create_dir_all(&path).unwrap();
+        loop {
+            match std::fs::create_dir_all(&path) {
+                // Another test removed the empty shared parent in between.
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                result => break result.unwrap(),
+            }
+        }
         Self(path)
     }
 }
@@ -39,6 +45,10 @@ impl Drop for TempDir {
             );
         } else {
             let _ = std::fs::remove_dir_all(&self.0);
+            // The shared parent is removed once no other test directory remains in it.
+            if let Some(parent) = self.0.parent() {
+                let _ = std::fs::remove_dir(parent);
+            }
         }
     }
 }
