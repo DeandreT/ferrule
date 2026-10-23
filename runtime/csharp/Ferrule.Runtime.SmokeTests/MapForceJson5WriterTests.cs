@@ -15,6 +15,11 @@ internal static partial class Program
             string actual = Convert.ToHexStringLower(Encoding.UTF8.GetBytes(output));
             if (actual != item.GetProperty("expected_hex").GetString())
                 throw new InvalidOperationException($"JSON5 writer case {item.GetProperty("id")} byte mismatch.");
+            const string any = "{\"name\":\"value\",\"json_any\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
+            string typed = FerruleJson.SerializeMapForceJson5AsciiKeys(any,
+                new FerruleScalar(FerruleValue.FromString(item.GetProperty("input").GetString()!)));
+            if (typed != output)
+                throw new InvalidOperationException($"Typed JSON5 writer case {item.GetProperty("id")} byte mismatch.");
         }
         foreach (var (input, maximum, expected) in new[]
         {

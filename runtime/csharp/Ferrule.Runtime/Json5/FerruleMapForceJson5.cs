@@ -11,6 +11,8 @@ public enum FerruleMapForceJson5Error
     Number,
     InvalidLimit,
     OutputBytes,
+    Schema,
+    Shape,
 }
 
 public sealed class FerruleMapForceJson5Exception : Exception
@@ -61,14 +63,14 @@ public static class FerruleMapForceJson5
             foreach (var item in value.EnumerateArray()) ValidateCount(item, ref remaining);
     }
 
-    private sealed class Output(int maximum)
+    internal sealed class Output(int maximum)
     {
         private readonly StringBuilder text = new();
         private int bytes;
 
         public override string ToString() => text.ToString();
 
-        private void Add(string value)
+        internal void Add(string value)
         {
             int count = Utf8.GetByteCount(value);
             if (count > maximum - bytes)
@@ -77,13 +79,13 @@ public static class FerruleMapForceJson5
             bytes += count;
         }
 
-        private void Line(int depth)
+        internal void Line(int depth)
         {
             Add("\r\n");
             for (int i = 0; i < depth; i++) Add("\t");
         }
 
-        private void Quote(string value)
+        internal void Quote(string value)
         {
             Add("\"");
             foreach (char unit in value)
@@ -94,6 +96,28 @@ public static class FerruleMapForceJson5
                 else Add(unit.ToString());
             }
             Add("\"");
+        }
+
+        internal void Key(string value)
+        {
+            if (value.Any(c => c > 127)) throw new FerruleMapForceJson5Exception(FerruleMapForceJson5Error.NonAsciiProperty, "MapForce JSON5 formatting requires ASCII property names.");
+            if (value.Length > 0 && char.IsAsciiLetter(value[0]) && value.All(char.IsAsciiLetterOrDigit)) Add(value);
+            else Quote(value);
+        }
+
+        internal void NumberText(string token)
+        {
+            try
+            {
+                if (token.Length > 4096) throw new FormatException("Number token exceeds the decimal lexical limit.");
+                int exponent = token.IndexOfAny(['e', 'E']);
+                if (exponent >= 0 && !int.TryParse(token[(exponent + 1)..], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out _))
+                    throw new OverflowException("Number exponent exceeds the supported range.");
+                decimal number = decimal.Parse(token, NumberStyles.Float, CultureInfo.InvariantCulture);
+                Add(number.ToString("0.#################", CultureInfo.InvariantCulture));
+            }
+            catch (Exception error) when (error is FormatException or OverflowException)
+            { throw new FerruleMapForceJson5Exception(FerruleMapForceJson5Error.Number, "JSON number is outside the decimal formatting profile.", error); }
         }
 
         internal void Value(JsonElement value, int depth)
@@ -132,18 +156,7 @@ public static class FerruleMapForceJson5
                     break;
                 case JsonValueKind.String: Quote(value.GetString()!); break;
                 case JsonValueKind.Number:
-                    try
-                    {
-                        string token = value.GetRawText();
-                        if (token.Length > 4096) throw new FormatException("Number token exceeds the decimal lexical limit.");
-                        int exponent = token.IndexOfAny(['e', 'E']);
-                        if (exponent >= 0 && !int.TryParse(token[(exponent + 1)..], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out _))
-                            throw new OverflowException("Number exponent exceeds the supported range.");
-                        decimal number = decimal.Parse(token, NumberStyles.Float, CultureInfo.InvariantCulture);
-                        Add(number.ToString("0.#################", CultureInfo.InvariantCulture));
-                    }
-                    catch (Exception error) when (error is FormatException or OverflowException)
-                    { throw new FerruleMapForceJson5Exception(FerruleMapForceJson5Error.Number, "JSON number is outside the decimal formatting profile.", error); }
+                    NumberText(value.GetRawText());
                     break;
                 case JsonValueKind.True: Add("true"); break;
                 case JsonValueKind.False: Add("false"); break;

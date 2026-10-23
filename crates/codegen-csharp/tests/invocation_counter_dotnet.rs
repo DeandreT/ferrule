@@ -18,6 +18,8 @@ mod document_rows;
 mod expected;
 #[path = "../../../conformance/invocation-counter-expressions/project.rs"]
 mod fixture;
+#[path = "../../../conformance/mapforce-json5-documents/project.rs"]
+mod json5_documents;
 #[path = "../../../conformance/document-rows/named.rs"]
 mod named_document_rows;
 #[path = "../../../conformance/invocation-counter-expressions/optional_presence.rs"]
@@ -182,6 +184,17 @@ fn run_fixture_with_options(
     visitor: Option<(Option<&str>, bool)>,
     body_clock: bool,
 ) -> Result<(), Box<dyn Error>> {
+    run_fixture_with_document(project, host, expected, visitor, body_clock, None)
+}
+
+fn run_fixture_with_document(
+    project: mapping::Project,
+    host: &str,
+    expected: &str,
+    visitor: Option<(Option<&str>, bool)>,
+    body_clock: bool,
+    filename: Option<mapping::NodeId>,
+) -> Result<(), Box<dyn Error>> {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_nanos();
@@ -191,7 +204,20 @@ fn run_fixture_with_options(
     )));
     std::fs::create_dir(&root.0)?;
     let program = codegen::lower(&project)?;
-    let artifacts = if body_clock {
+    let artifacts = if let Some(filename) = filename {
+        let document = codegen::lower_document(&mapping::DocumentProject::new(
+            project,
+            mapping::PrimarySourcePlan { filename },
+        ))?;
+        codegen_csharp::emit_csv_to_mapforce_json5_documents(
+            &document,
+            &codegen::CsvInputPolicy {
+                has_headers: false,
+                ..Default::default()
+            },
+            visitor.and_then(|v| v.0),
+        )?
+    } else if body_clock {
         codegen_csharp::emit_with_document_clocks(&program, visitor.and_then(|v| v.0))?
     } else if visitor == Some((None, true))
         && program.root.construction == codegen::TargetConstruction::DocumentRows
@@ -263,6 +289,21 @@ fn run_fixture_with_options(
             .collect::<Vec<_>>(),
         expected.lines().collect::<Vec<_>>()
     );
+    Ok(())
+}
+
+#[test]
+fn generated_json5_documents_preserve_decimal_origins_and_clocks() -> Result<(), Box<dyn Error>> {
+    for named in [false, true] {
+        run_fixture_with_document(
+            json5_documents::project(named),
+            include_str!("../../../conformance/mapforce-json5-documents/Host.cs.txt"),
+            "PASS mapped JSON5 documents",
+            Some((named.then_some("selected"), true)),
+            true,
+            Some(90),
+        )?;
+    }
     Ok(())
 }
 

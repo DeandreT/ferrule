@@ -1,0 +1,13 @@
+{
+  "name": "Root",
+  "kind": {
+    "kind": "group",
+    "children": [
+      {"name": "label", "kind": {"kind": "scalar", "ty": "string"}},
+      {"name": "qty", "kind": {"kind": "scalar", "ty": "float"}},
+      {"name": "numbers", "repeating": true, "kind": {"kind": "scalar", "ty": "float"}}
+    ],
+    "required": ["missing"],
+    "dynamic": {"name": "*", "json_any": true, "kind": {"kind": "scalar", "ty": "string"}}
+  }
+}

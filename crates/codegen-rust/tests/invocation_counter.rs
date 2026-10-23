@@ -23,6 +23,8 @@ mod document_publication;
 mod document_rows;
 #[path = "../../../conformance/invocation-counter-expressions/expected.rs"]
 mod expected;
+#[path = "../../../conformance/mapforce-json5-documents/project.rs"]
+mod json5_documents;
 #[path = "../../../conformance/document-rows/named.rs"]
 mod named_document_rows;
 #[path = "../../../conformance/invocation-counter-expressions/optional_presence.rs"]
@@ -202,6 +204,26 @@ fn run_fixture_with_options(
     visitor: Option<(Option<&str>, bool)>,
     body_clock: bool,
 ) -> Result<(), Box<dyn Error>> {
+    run_fixture_with_document(
+        project,
+        package_name,
+        host,
+        expected,
+        visitor,
+        body_clock,
+        None,
+    )
+}
+
+fn run_fixture_with_document(
+    project: mapping::Project,
+    package_name: &str,
+    host: &str,
+    expected: &str,
+    visitor: Option<(Option<&str>, bool)>,
+    body_clock: bool,
+    filename: Option<mapping::NodeId>,
+) -> Result<(), Box<dyn Error>> {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_nanos();
@@ -218,7 +240,21 @@ fn run_fixture_with_options(
             runtime.to_string_lossy().into_owned(),
         ),
     };
-    let artifacts = if body_clock {
+    let artifacts = if let Some(filename) = filename {
+        let document = codegen::lower_document(&mapping::DocumentProject::new(
+            project,
+            mapping::PrimarySourcePlan { filename },
+        ))?;
+        codegen_rust::emit_csv_to_mapforce_json5_documents(
+            &document,
+            &options,
+            &codegen::CsvInputPolicy {
+                has_headers: false,
+                ..Default::default()
+            },
+            visitor.and_then(|v| v.0),
+        )?
+    } else if body_clock {
         codegen_rust::emit_with_document_clocks(&program, &options, visitor.and_then(|v| v.0))?
     } else if visitor == Some((None, true))
         && program.root.construction == codegen::TargetConstruction::DocumentRows
@@ -265,12 +301,46 @@ fn run_fixture_with_options(
         .generated_host_output(&root.0)?;
     std::fs::write(root.0.join("stdout.txt"), &output.stdout)?;
     std::fs::write(root.0.join("stderr.txt"), &output.stderr)?;
+    if filename.is_some() && std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").is_some() {
+        let target = std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| root.0.join("target"));
+        let products = root.0.join("qualified-host");
+        std::fs::create_dir(&products)?;
+        for extension in [std::env::consts::EXE_EXTENSION, "pdb"] {
+            let name = if extension.is_empty() {
+                package_name.into()
+            } else {
+                format!("{package_name}.{extension}")
+            };
+            let binary = target.join("debug").join(&name);
+            if binary.exists() {
+                std::fs::copy(binary, products.join(name))?;
+            }
+        }
+    }
     assert!(
         output.status.success(),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected);
+    Ok(())
+}
+
+#[test]
+fn generated_json5_documents_preserve_decimal_origins_and_clocks() -> Result<(), Box<dyn Error>> {
+    for named in [false, true] {
+        run_fixture_with_document(
+            json5_documents::project(named),
+            "json5_documents",
+            include_str!("../../../conformance/mapforce-json5-documents/Host.rs.txt"),
+            "PASS mapped JSON5 documents",
+            Some((named.then_some("selected"), true)),
+            true,
+            Some(90),
+        )?;
+    }
     Ok(())
 }
 
