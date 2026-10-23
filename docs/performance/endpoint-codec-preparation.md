@@ -8,9 +8,11 @@ ordinary JSON. Every call still keeps its own work accounting. For a small
 document this removes most of the per-call cost.
 
 With preparation in place, the measurements below attribute the remaining
-per-call costs. Three text copies were attributed and removed: the growing JSON
-output buffer in Rust, and the UTF-16 output string on the C# X12 and JSON5 byte
-routes. The other remaining costs are listed with their measurements.
+per-call costs. Four text copies were attributed and removed: the growing JSON
+output buffer in Rust, the UTF-16 output string on the C# X12 and JSON5 byte
+routes, and the C# ordinary JSON final-newline copy and UTF-16 output string.
+The costs left in place are listed with their measurements and the reasons
+they were not pursued.
 
 ## Ownership
 
@@ -66,10 +68,14 @@ C#: the `endpoint prepared codec allocation accounting` smoke test reads
 `GC.GetAllocatedBytesForCurrentThread()`. It compares the shared descriptor with
 a fresh copy of the same text, which misses the identity tables and pays for
 preparation again. The `endpoint JSON5 output limit on both routes` smoke test
-also reports its 64 MiB calls:
+also reports its 64 MiB calls. The ordinary JSON rows come from the
+`JSON prepared schema allocation accounting` and
+`JSON output limit on text and byte routes` smoke tests, with the JSON order
+fixture of [JSON endpoint preparation](json-endpoint-preparation.md):
 
 ```sh
-FERRULE_ENDPOINT_PREPARATION_REPORT=1 dotnet run -c Release --project runtime/csharp/Ferrule.Runtime.SmokeTests
+FERRULE_ENDPOINT_PREPARATION_REPORT=1 FERRULE_JSON_PREPARATION_REPORT=1 \
+  dotnet run -c Release --project runtime/csharp/Ferrule.Runtime.SmokeTests
 ```
 
 The fixtures are self-authored:
@@ -216,26 +222,74 @@ byte route and both refusals no longer allocate the 134 MB output string. The
 exactly the limit and refuse one more byte with `OutputDocumentBytes`, requested
 67,108,865 and maximum 67,108,864, both before and after the change.
 
-## Remaining per-call costs
+### C# ordinary JSON output
 
-| Runtime | Cost | Large-document measurement | Share | Status |
+`FerruleJson` materialized the canonical builder as a string, counted its UTF-8
+bytes and then concatenated the final newline, copying the whole document again
+([JSON endpoint preparation](json-endpoint-preparation.md) attributed 4,850,560
+bytes, 7.6% of `Serialize`, to that copy). Its byte routes then encoded the
+returned string. Ordinary JSON now finishes the newline in the builder, counts
+the builder's UTF-8 bytes and applies the output limit before any route
+materializes the document. Text routes call `ToString()` once; byte routes
+encode the builder straight into one array, sharing the helper the JSON5 routes
+now use. Canonical text is decoded from the writer's UTF-8; should counting
+ever fail, the original strict census runs on the materialized text and reports
+its original error. Every ordinary route returns exactly the limit and refuses
+one more byte with the same message, both before and after the change.
+
+| Operation | Before | After |
+| --- | ---: | ---: |
+| `Serialize`, large | 63,592,362 | 58,757,920 |
+| `SerializeBytes`, large | 66,017,656 | 56,332,704 |
+| `SerializeEmbeddedCompact`, large | 50,925,200 | 50,925,248 |
+| `SerializeEmbeddedCompactBytes`, large | 52,510,464 | 49,340,064 |
+
+These use the 2,425,267-byte output of the JSON order fixture. The pretty text
+route drops by the 4.8 MB newline copy and the pretty byte route by 9.7 MB, the
+newline copy plus the UTF-16 string. The compact text route already made one
+copy and is unchanged; its byte route drops by 3.2 MB. At the 67,108,864-byte
+output limit, with a prebuilt mapped string, one call each:
+
+| Operation | Before | After |
+| --- | ---: | ---: |
+| `Serialize`, output of exactly the limit | 738,197,968 | 603,996,336 |
+| `SerializeBytes`, output of exactly the limit | 805,306,856 | 536,887,520 |
+| `Serialize`, output one byte above the limit | 603,981,696 | 469,780,064 |
+| `SerializeBytes`, output one byte above the limit | 603,981,160 | 469,779,528 |
+| `SerializeEmbeddedCompact`, output of exactly the limit | 603,980,224 | 603,980,272 |
+| `SerializeEmbeddedCompactBytes`, output of exactly the limit | 671,089,112 | 536,871,456 |
+| `SerializeEmbeddedCompact`, output one byte above the limit | 603,997,232 | 469,779,528 |
+| `SerializeEmbeddedCompactBytes`, output one byte above the limit | 603,997,528 | 469,779,528 |
+
+`SerializeEmbedded` and its byte route match the `Serialize` rows. Each refusal
+and each pretty or byte success no longer allocates one 134 MB UTF-16 string,
+and the pretty byte route no longer allocates two.
+
+## Costs not pursued
+
+| Runtime | Cost | Large-document measurement | Share | Reason |
 | --- | --- | ---: | ---: | --- |
-| Rust | `roxmltree` DOM of structured XML input | 72,382,352 bytes allocated, 50,405,376 peak for 2,725,338 bytes | 99.9% of `parse_structured_xml` | Owned by the format reader; removing it means a streaming reader |
-| Rust | Owned JSON input tree (see [JSON](json-endpoint-preparation.md)) | 29,308,461 bytes, 19,669,370 peak | 70% of `parse_json` | Remaining |
-| Rust | Normalized JSON `serde_json::Value` of the output | 19,618,380 bytes, 12,538,652 peak | 89% of `serialize_json` | Remaining |
-| Rust | JSON5 normalized strict text | 2,097,157 bytes, 1,572,872 peak | 26% of `map_json5_with` | Remaining; see below |
-| Rust | X12 filtered native input text | about 1.7 MB including growth | 5% of `parse_x12` | Measured, not changed; see below |
-| C# | UTF-8 to UTF-16 decoding of byte input | JSON5 2,000,520; X12 1,698,224; XML 5,450,704 bytes | 11%, 6% and 4% of their byte routes | Remaining; the readers take strings |
-| C# | Ordinary JSON final newline and byte encoding | See [JSON](json-endpoint-preparation.md) | 7.6% and 3.7% | Remaining; `FerruleJson` is being changed by other work |
-
-Two candidates were measured and left unchanged:
+| Rust | `roxmltree` DOM of structured XML input | 72,382,352 bytes allocated, 50,405,376 peak for 2,725,338 bytes | 99.9% of `parse_structured_xml` | Owned by the format reader; removing it needs a streaming reader, which #795 excludes |
+| Rust | Owned JSON input tree (see [JSON](json-endpoint-preparation.md)) | 29,308,461 bytes, 19,669,370 peak | 70% of `parse_json` | Removing it needs schema-shaped reading straight from the JSON text, a streaming rewrite |
+| Rust | Normalized JSON `serde_json::Value` of the output | 19,618,380 bytes, 12,538,652 peak | 89% of `serialize_json` | Removing it needs output constraints applied while writing, a streaming rewrite |
+| Rust | JSON5 normalized strict text | 2,097,157 bytes, 1,572,872 peak | 26% of `map_json5_with` | See below |
+| Rust | X12 filtered native input text | about 1.7 MB including growth | 5% of `parse_x12` | Measured; see below |
+| C# | UTF-8 to UTF-16 decoding of byte input | JSON 3,170,496; JSON5 2,000,520; X12 1,698,224; XML 5,450,704 bytes | 2.9%, 11%, 6% and 4% of their byte routes | See below |
 
 - Reserving the exact X12 native input text cut `parse_x12` allocation by
   907,511 bytes (2.6%) but its peak by only 39,265 bytes. The peak is reached
   later, in the native reader.
 - The JSON5 normalizer grows its output from empty. Reserving the input length
   would remove the growth for ordinary documents, but a comment-padded document
-  would reserve up to 64 MiB for a few bytes of output.
+  would reserve up to 64 MiB for a few bytes of output. Sizing it exactly needs
+  a second normalization pass over the complete document.
+- C# byte inputs are decoded to a string once. The ordinary JSON decode is 2.9%
+  of `ParseBytes`; `System.Text.Json` parses either the string or the bytes from
+  pooled buffers that these counts do not include, so parsing the bytes directly
+  would save only that decode. It would also let the parser read the caller's
+  array for the whole call instead of one decoded snapshot. The JSON5
+  normalizer, the X12 tokenizer and the XML readers work on strings, so their
+  byte routes would need byte-level readers.
 
 ## Limits
 
