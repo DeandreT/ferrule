@@ -267,9 +267,13 @@ A portable Basic cohort separates three contracts:
   `FERRULE_CODEGEN_HOST_TARGET_DIR`), isolated .NET CLI/package/temporary
   directories, `DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=false`, warnings denied for
   the Rust host, and retention: a run directory with its per-call host
-  evidence is removed unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`. Failure
-  messages quote a bounded tail of host output. A cohort chooses only its
-  generation profile's lowering and emitters.
+  evidence is removed unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`. A retained
+  run keeps a bounded tail of each command's output under `logs/` and a
+  `RUN-MANIFEST.json` listing every command with its exit status and every
+  retained file with its size and SHA-256; its per-run Cargo target and .NET
+  sandboxes are restorable caches, summarized in the manifest and dropped.
+  Failure messages quote a bounded tail of host output. A cohort chooses only
+  its generation profile's lowering and emitters.
 - **Results.** Plain tests in `crates/cli/tests/code_generation/` compare every
   call of every executor with the oracle and fail on any mismatch or missing
   call. They need no preparation step, success receipt, source fingerprint or
@@ -311,31 +315,21 @@ cohorts' models from the same `projects.rs` builders.
 
 The CLI integration module
 [`basic_owned_row_failures.rs`](../crates/cli/tests/code_generation/basic_owned_row_failures.rs)
-qualifies genuine Projects with independently fixed inputs and typed outcomes
-through the native engine and compiled public Rust/C# callers. Preparation and
-consumer execution are separate ignored tests so a coordinator can serialize
-compiler use.
-
-Set `FERRULE_BASIC_ROW808_PREPARE_DIR` to a fresh absolute directory whose parent
-already exists, then run from the repository root:
+checks three genuine Projects and 31 cases with independently fixed inputs and
+typed outcomes through the native engine and compiled public Rust/C# callers.
+The plain test retains the complete model, case, target-selection and public
+API inventory before evaluating any mapping, then compares all 93 interpreter
+calls and the paired public lowering and emission. The ignored test repeats
+that preparation in its own run directory, then builds and runs the generated
+consumers, which check complete typed results rather than error text alone and
+reject missing results. Neither needs an earlier preparation or receipt:
 
 ```sh
 cargo test -p cli --features codegen-tests --test code_generation --locked \
-  basic_owned_row_failures::prepare_basic_owned_row808_three_models_ninety_three_calls \
-  -- --exact --ignored --nocapture --test-threads=1
-cargo test -p cli --features codegen-tests --test code_generation --locked \
-  basic_owned_row_failures::qualify_basic_owned_row808_prepared_generated_consumers \
-  -- --exact --ignored --nocapture --test-threads=1
+  basic_owned_row_failures:: -- --include-ignored
 ```
 
-Preparation retains the complete model, case, target-selection and public API
-inventory before evaluating any mapping. It publishes `SUCCESSFUL-PREPARATION.json`
-only after every native comparison and paired public lowering/emission succeeds.
-The receipt binds source and artifact bytes with SHA256; changed sources or
-fixtures require fresh preparation. Consumer execution verifies that binding,
-records commands and raw outputs, and checks complete typed results rather than
-error text alone. It rejects missing results and preserves failed builds and
-comparisons. Use a fresh evidence directory for each attempt.
+The run directory is removed unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`.
 
 Rust consumers compile with warnings denied. C# uses isolated CLI/package/temp
 directories and normal NuGet restore for any framework reference packs not

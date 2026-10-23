@@ -17,26 +17,18 @@ pub fn enforce_enabled() -> Result<bool, Box<dyn Error>> {
     }
 }
 
-pub fn corpus_available(samples_dir: &Path) -> Result<bool, Box<dyn Error>> {
-    check_corpus_available(enforce_enabled()?, samples_dir)
-}
-
-fn check_corpus_available(enforce: bool, samples_dir: &Path) -> Result<bool, Box<dyn Error>> {
+/// The ignored surveys need the gitignored private compatibility corpus. When
+/// it is missing, an explicit run fails rather than reporting a pass.
+pub fn require_corpus(samples_dir: &Path) -> Result<(), Box<dyn Error>> {
     if samples_dir.is_dir() {
-        return Ok(true);
+        return Ok(());
     }
-    if enforce {
-        return Err(format!(
-            "{ENFORCE_ENV}=1 requires the private compatibility corpus at {}",
-            samples_dir.display()
-        )
-        .into());
-    }
-    eprintln!(
-        "samples dir not found at {}; skipping",
+    Err(format!(
+        "private compatibility corpus not present at {}; the survey needs the \
+         local gitignored samples/ReferenceSamples corpus",
         samples_dir.display()
-    );
-    Ok(false)
+    )
+    .into())
 }
 
 pub fn enforce_exact(survey: &str, metrics: &[(&str, usize, usize)]) -> Result<(), Box<dyn Error>> {
@@ -97,10 +89,9 @@ mod tests {
     }
 
     #[test]
-    fn enforced_corpus_must_exist() {
+    fn missing_corpus_fails_with_its_path() {
         let missing = Path::new("definitely-not-a-real-ferrule-corpus");
-        assert!(!check_corpus_available(false, missing).unwrap());
-        let error = check_corpus_available(true, missing).unwrap_err();
-        assert!(error.to_string().contains(ENFORCE_ENV));
+        let error = require_corpus(missing).unwrap_err().to_string();
+        assert!(error.contains("corpus not present at definitely-not-a-real-ferrule-corpus"));
     }
 }

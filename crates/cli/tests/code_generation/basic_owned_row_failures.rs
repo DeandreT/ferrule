@@ -1,8 +1,11 @@
-//! Public one-segment Primary Group failure qualification (#808).
-//! Preparation is compiler-free; the coordinator owns the serialized compiler lane.
+//! Public one-segment Primary Group failure cases (#808): three genuine
+//! Projects and 31 cases with independently fixed inputs and typed outcomes.
+//! The plain test compares all 93 interpreter calls and the public lowering
+//! and emission; the ignored test also builds and runs the generated Rust and
+//! C# consumers. Each run prepares its own evidence directory (removed unless
+//! `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`); no earlier preparation is required.
 use super::*;
 use serde_json::{Value as Json, json};
-use sha2::{Digest as _, Sha256};
 use std::fs;
 use std::io::Write as _;
 
@@ -13,19 +16,9 @@ mod native;
 
 struct Evidence(PathBuf);
 impl Evidence {
-    fn new() -> TestResult<Self> {
-        let path = PathBuf::from(
-            std::env::var_os("FERRULE_BASIC_ROW808_PREPARE_DIR")
-                .ok_or("coordinator must supply a fresh absolute evidence directory")?,
-        );
-        if !path.is_absolute() || fs::symlink_metadata(&path).is_ok() {
-            return Err("evidence directory must be fresh and absolute".into());
-        }
-        if !path.parent().is_some_and(Path::is_dir) {
-            return Err("evidence parent must already exist".into());
-        }
+    fn new(temp: &TempDir) -> TestResult<Self> {
+        let path = temp.0.canonicalize()?.join("row808");
         fs::create_dir(&path)?;
-        eprintln!("BASIC_ROW808_ORIGINALS={}", path.display());
         Ok(Self(path))
     }
     fn write(&self, name: &str, bytes: &[u8]) -> TestResult<()> {
@@ -54,103 +47,13 @@ impl Evidence {
     }
 }
 
-const SUCCESS_FILE: &str = "SUCCESSFUL-PREPARATION.json";
-
-fn hashes(files: ArtifactFiles) -> Vec<(String, usize, String)> {
-    files
-        .into_iter()
-        .map(|(path, bytes)| {
-            let digest = format!("{:x}", Sha256::digest(&bytes));
-            (path, bytes.len(), digest)
-        })
-        .collect()
-}
-
-fn source_bindings() -> TestResult<Vec<(String, usize, String)>> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .ok_or("workspace source root")?;
-    let mut files = Vec::new();
-    // Bind the native/backend implementations and every local Rust runtime
-    // dependency, not just manifests that can survive stale preparation.
-    for name in [
-        "engine",
-        "codegen",
-        "codegen-rust",
-        "codegen-csharp",
-        "codegen-runtime",
-        "codegen-schema",
-        "functions",
-        "format-csv",
-        "format-edi",
-        "format-json",
-        "format-xml",
-        "ir",
-        "json-pattern",
-        "mapping",
-    ] {
-        let relative = format!("crates/{name}");
-        files.push((
-            format!("{relative}/Cargo.toml"),
-            fs::read(root.join(&relative).join("Cargo.toml"))?,
-        ));
-        for (path, bytes) in artifact_files(&root.join(&relative).join("src"))? {
-            files.push((format!("{relative}/src/{path}"), bytes));
-        }
-    }
-    for relative in [
-        "runtime/csharp/Ferrule.Runtime",
-        "crates/cli/tests/code_generation/basic_owned_row_failures",
-    ] {
-        for (path, bytes) in artifact_files(&root.join(relative))? {
-            files.push((format!("{relative}/{path}"), bytes));
-        }
-    }
-    for relative in [
-        "Cargo.toml",
-        "Cargo.lock",
-        "crates/cli/Cargo.toml",
-        "crates/cli/tests/code_generation.rs",
-        "crates/cli/tests/code_generation/host_policy.rs",
-        "crates/cli/tests/code_generation/basic_owned_row_failures.rs",
-    ] {
-        files.push((relative.into(), fs::read(root.join(relative))?));
-    }
-    files.sort_by(|left, right| left.0.cmp(&right.0));
-    Ok(hashes(files))
-}
-
-fn preparation_binding(directory: &Path) -> TestResult<Json> {
-    let files = artifact_files(directory)?
-        .into_iter()
-        .filter(|(path, _)| path != SUCCESS_FILE)
-        .collect();
-    Ok(json!({
-        "schema_version":1,"result":"success","models":3,"cases":31,"native_calls":93,
-        "selections":["All","Primary","audit"],
-        "rust_runtime_path":Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime").canonicalize()?,
-        "evidence_files":hashes(files),"source_files":source_bindings()?
-    }))
-}
-
-fn verify_successful_preparation(directory: &Path) -> TestResult<Json> {
-    let original: Json = serde_json::from_slice(&fs::read(directory.join(SUCCESS_FILE))?)?;
-    if original != preparation_binding(directory)? {
-        return Err("successful preparation is stale or its exact model/case/artifact/source binding changed".into());
-    }
-    Ok(original)
-}
-
-#[test]
-#[ignore = "coordinator prepares native/public generated row-failure evidence before separately compiling fresh consumers"]
-fn prepare_basic_owned_row808_three_models_ninety_three_calls() -> TestResult<()> {
-    let evidence = Evidence::new()?;
-    let source_fence = source_bindings()?;
+/// Retain the complete inventory, compare every interpreter call and emit
+/// both public libraries plus their consumer hosts into `evidence`. Complete
+/// inputs, expectations and the call inventory are written before the first
+/// mapping invocation.
+fn prepare(evidence: &Evidence) -> TestResult<()> {
     let projects = fixtures::projects();
     let controls = fixtures::controls();
-    // Complete independent inputs, expectations, schemas, graph, options and call
-    // inventory are fixed and persisted before the first mapping invocation.
     evidence.write("controls.json", &serde_json::to_vec_pretty(&controls)?)?;
     evidence.debug("ALL3-COMPLETE-PUBLIC-PROJECTS.txt", &projects)?;
     evidence.write("LIMITS-AND-API-INVENTORY.json", &serde_json::to_vec_pretty(&json!({
@@ -169,7 +72,7 @@ fn prepare_basic_owned_row808_three_models_ninety_three_calls() -> TestResult<()
             mapping::project_file::encode_pretty(project)?.as_bytes(),
         )?;
     }
-    let native_checks = native::run(&projects, &controls, &evidence)?;
+    let native_checks = native::run(&projects, &controls, evidence)?;
     let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../codegen-runtime")
         .canonicalize()?;
@@ -250,49 +153,25 @@ fn prepare_basic_owned_row808_three_models_ninety_three_calls() -> TestResult<()
         || native_checks.len() != 93
         || native_checks.iter().any(|(_, _, matched)| !matched)
     {
-        return Err("row808 native or public admission/emission differs; complete originals retained (no compiler was started)".into());
+        return Err("row808 native or public admission/emission differs; FERRULE_CODEGEN_KEEP_ARTIFACTS=1 retains the evidence".into());
     }
-    if source_fence != source_bindings()? {
-        return Err(
-            "runtime/backend/fixture sources changed during preparation; originals retained".into(),
-        );
-    }
-    // This is the only publication of success: failed native comparisons or
-    // partial/failed public emission never produce a runnable qualification.
-    evidence.write(
-        SUCCESS_FILE,
-        &serde_json::to_vec_pretty(&preparation_binding(&evidence.0)?)?,
-    )?;
     Ok(())
 }
 
 #[test]
-#[ignore = "requires successful row808 preparation, unchanged runtime/backend sources, and the coordinator's serialized compiler lane"]
-fn qualify_basic_owned_row808_prepared_generated_consumers() -> TestResult<()> {
-    let directory = PathBuf::from(
-        std::env::var_os("FERRULE_BASIC_ROW808_PREPARE_DIR")
-            .ok_or("coordinator must supply the successful preparation directory")?,
-    );
-    if !directory.is_absolute() || !directory.is_dir() {
-        return Err("prepared evidence directory must exist and be absolute".into());
-    }
-    let successful_preparation = verify_successful_preparation(&directory)?;
-    if fs::read(directory.join("controls.json"))?
-        != serde_json::to_vec_pretty(&fixtures::controls())?
-    {
-        return Err(
-            "prepared controls differ from the complete independently frozen inventory".into(),
-        );
-    }
-    for (index, project) in fixtures::projects().iter().enumerate() {
-        if fs::read(directory.join(format!("model{index}-project.json")))?
-            != mapping::project_file::encode_pretty(project)?.as_bytes()
-        {
-            return Err("prepared public Project differs from the frozen fixture".into());
-        }
-    }
-    // Failed preparation is intentionally not converted into a generated-code
-    // claim or a hand-authored Program. Its complete originals remain retained.
+fn basic_row808_interpreter_and_emission_match_expected() -> TestResult<()> {
+    let temp = TempDir::new("row808_native")?;
+    prepare(&Evidence::new(&temp)?)
+}
+
+#[test]
+#[ignore = "builds and runs one generated Rust host and one generated C# host per model; requires cargo and the .NET 10 SDK"]
+fn basic_row808_generated_rust_and_csharp_match_expected() -> TestResult<()> {
+    let temp = TempDir::new("row808_hosts")?;
+    let evidence = Evidence::new(&temp)?;
+    prepare(&evidence)?;
+    let directory = evidence.0;
+    // A failed emission is never replaced by a hand-authored Program.
     for index in 0..3 {
         for file in [
             format!("rust-model{index}/Cargo.toml"),
@@ -381,11 +260,8 @@ fn qualify_basic_owned_row808_prepared_generated_consumers() -> TestResult<()> {
         .open(directory.join("ALL-GENERATED-EXECUTION-STATUSES.txt"))?;
     writeln!(result, "{statuses:#?}")?;
     result.flush()?;
-    if successful_preparation["source_files"] != serde_json::to_value(source_bindings()?)? {
-        return Err("runtime/backend/fixture sources changed during qualification; complete originals retained".into());
-    }
     if statuses.len() != 7 || statuses.iter().any(|(_, okay)| !okay) {
-        return Err("row808 generated consumer differs; complete build/command/input/output/cause originals retained".into());
+        return Err("row808 generated consumer differs; FERRULE_CODEGEN_KEEP_ARTIFACTS=1 retains the build, command and call evidence".into());
     }
     Ok(())
 }

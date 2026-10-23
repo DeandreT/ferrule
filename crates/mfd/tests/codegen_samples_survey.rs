@@ -98,10 +98,20 @@ fn diagnostic_categories_hide_sample_specific_identifiers() {
         diagnostic_category("scope 12: function `upper` uses node 99"),
         "scope : function `_` uses node "
     );
-    for alias in [LEGACY_VENDOR_NAME, LEGACY_REFERENCE_RELEASE, LEGACY_REFERENCE_EXAMPLES] {
+    for alias in [
+        LEGACY_VENDOR_NAME,
+        LEGACY_REFERENCE_RELEASE,
+        LEGACY_REFERENCE_EXAMPLES,
+    ] {
         let detail = format!("extra source `{alias}` from {alias}");
-        assert_eq!(survey_display_text(&detail), "extra source `ReferenceSamples` from ReferenceSamples");
-        assert_eq!(diagnostic_category(&detail), "extra source `_` from ReferenceSamples");
+        assert_eq!(
+            survey_display_text(&detail),
+            "extra source `ReferenceSamples` from ReferenceSamples"
+        );
+        assert_eq!(
+            diagnostic_category(&detail),
+            "extra source `_` from ReferenceSamples"
+        );
     }
 }
 
@@ -109,9 +119,7 @@ fn diagnostic_categories_hide_sample_specific_identifiers() {
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn survey_generated_backends() -> Result<(), Box<dyn Error>> {
     let samples_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLES_DIR);
-    if !survey_gate::corpus_available(&samples_dir)? {
-        return Ok(());
-    }
+    survey_gate::require_corpus(&samples_dir)?;
 
     let import_context = SurveyResourceSelection::from_environment().resolve(&samples_dir)?;
     let paths = discover_sample_paths(&samples_dir)?;

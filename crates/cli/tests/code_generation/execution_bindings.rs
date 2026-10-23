@@ -11,12 +11,14 @@
 //! Cache: each run builds under its own `TempDir`, or the dedicated
 //! `FERRULE_CODEGEN_HOST_TARGET_DIR` (see `host_policy`). Retention: the run
 //! directory, including per-call host evidence, is removed unless
-//! `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`.
+//! `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`, which also writes its compact manifest
+//! (see `run_manifest`).
 use super::*;
 use serde_json::{Value as Json, json};
 use std::fs;
 
 use super::basic_owned_sequence_item_at::{codec, run_native_with_input_after};
+use super::run_manifest::Recorder;
 
 /// Bytes of host stdout/stderr quoted in one failure message.
 const FAILURE_EXCERPT: usize = 32 * 1024;
@@ -165,6 +167,7 @@ fn model_calls(controls: &Json, model: usize) -> usize {
 pub(super) fn check_interpreter(tag: &str, controls: &Json, models: &[Project]) -> TestResult<()> {
     let temp = TempDir::new(&format!("{tag}_native"))?;
     let native = run_native_with_input_after(controls, models, &temp.0.join("native"))?;
+    Recorder::new(&temp.0).finish(&format!("{tag}-native"), &[])?;
     if native.len() != total_calls(controls) {
         return Err(format!("{tag}: {} interpreter calls ran", native.len()).into());
     }
@@ -365,8 +368,9 @@ pub(super) fn check_generated_hosts(
     )?;
     write_file(&root.join("rust-host/Cargo.toml"),format!("[package]\nname=\"{tag}-public-host\"\nversion=\"0.1.0\"\nedition=\"2024\"\npublish=false\n[workspace]\n[dependencies]\ncodegen-runtime={{path={}}}\nserde_json=\"=1.0.150\"\n{dependencies}",serde_json::to_string(&runtime.display().to_string())?).as_bytes())?;
 
+    let recorder = Recorder::new(&root);
     let mut failures = Vec::new();
-    if let Err(error) = run_rust_host(&root, tag, controls) {
+    if let Err(error) = run_rust_host(&root, tag, controls, &recorder) {
         failures.push(format!("Rust host: {error}"));
     }
     let dotnet = dotnet_executable()?;
@@ -381,7 +385,8 @@ pub(super) fn check_generated_hosts(
                     if index >= programs.len() {
                         break;
                     }
-                    if let Err(error) = run_csharp_host(&root, tag, &dotnet, controls, index)
+                    if let Err(error) =
+                        run_csharp_host(&root, tag, &dotnet, controls, index, &recorder)
                         && let Ok(mut failures) = csharp_failures.lock()
                     {
                         failures.push(error);
@@ -395,23 +400,31 @@ pub(super) fn check_generated_hosts(
         .map_err(|_| "C# worker panicked")?;
     csharp_failures.sort();
     failures.extend(csharp_failures);
+    // The per-run Rust target and the .NET sandboxes are restorable caches.
+    let mut caches = vec![PathBuf::from("cargo-target")];
+    caches.extend(
+        (0..programs.len()).map(|index| PathBuf::from(format!("dotnet-sandbox-model{index}"))),
+    );
+    recorder.finish(&format!("{tag}-hosts"), &caches)?;
     if !failures.is_empty() {
         return Err(failures.join("\n\n").into());
     }
     Ok(())
 }
 
-fn run_rust_host(root: &Path, tag: &str, controls: &Json) -> TestResult<()> {
+fn run_rust_host(root: &Path, tag: &str, controls: &Json, recorder: &Recorder) -> TestResult<()> {
     let build = host_policy::with_cargo_target(root, |target| {
-        let build = Command::new(env!("CARGO"))
+        let mut command = Command::new(env!("CARGO"));
+        command
             .args(["build", "--quiet", "--manifest-path"])
             .arg(root.join("rust-host/Cargo.toml"))
             .env("CARGO_TARGET_DIR", target)
             .env("CARGO_BUILD_BUILD_DIR", target)
             .env("CARGO_INCREMENTAL", "0")
             .env("RUSTFLAGS", "-D warnings")
-            .env_remove("CARGO_ENCODED_RUSTFLAGS")
-            .output()?;
+            .env_remove("CARGO_ENCODED_RUSTFLAGS");
+        let build = command.output()?;
+        recorder.record("rust-build", &command, &build)?;
         let executable = target.join(format!("debug/{tag}-public-host"));
         io::Result::Ok((build, executable))
     })?;
@@ -422,11 +435,13 @@ fn run_rust_host(root: &Path, tag: &str, controls: &Json) -> TestResult<()> {
     let executable = executable.canonicalize()?;
     let output = root.join("rust-actual");
     let contract = host_contract(root, tag, "rust", "rust", &executable, None, &output)?;
-    let run = Command::new(&executable)
+    let mut command = Command::new(&executable);
+    command
         .arg(root.join("controls.json"))
         .arg(&output)
-        .arg(&contract)
-        .output()?;
+        .arg(&contract);
+    let run = command.output()?;
+    recorder.record("rust-run", &command, &run)?;
     Ok(host_result(&output, total_calls(controls), &run)?)
 }
 
@@ -447,11 +462,13 @@ fn run_csharp_host(
     dotnet: &Path,
     controls: &Json,
     index: usize,
+    recorder: &Recorder,
 ) -> Result<(), String> {
     let label = format!("model{index}");
     let artifacts = root.join(format!("dotnet-artifacts-{label}"));
     let sandbox = root.join(format!("dotnet-sandbox-{label}"));
-    let build = dotnet_command_at(dotnet.as_os_str(), &sandbox)
+    let mut command = dotnet_command_at(dotnet.as_os_str(), &sandbox);
+    command
         .args([
             "build",
             "--configuration",
@@ -464,9 +481,13 @@ fn run_csharp_host(
             "--artifacts-path",
         ])
         .arg(&artifacts)
-        .arg(root.join(format!("csharp-host{index}/Host.csproj")))
+        .arg(root.join(format!("csharp-host{index}/Host.csproj")));
+    let build = command
         .output()
         .map_err(|error| format!("C# {label} build: {error}"))?;
+    recorder
+        .record(&format!("csharp-{label}-build"), &command, &build)
+        .map_err(|error| format!("C# {label} build record: {error}"))?;
     if !build.status.success() {
         return Err(format!("C# {label} {}", failed("build", &build)));
     }
@@ -482,14 +503,19 @@ fn run_csharp_host(
         &output,
     )
     .map_err(|error| format!("C# {label} contract: {error}"))?;
-    let run = dotnet_command_at(dotnet.as_os_str(), &sandbox)
+    let mut command = dotnet_command_at(dotnet.as_os_str(), &sandbox);
+    command
         .arg(&assembly)
         .arg(root.join("controls.json"))
         .arg(index.to_string())
         .arg(&output)
-        .arg(&contract)
+        .arg(&contract);
+    let run = command
         .output()
         .map_err(|error| format!("C# {label} run: {error}"))?;
+    recorder
+        .record(&format!("csharp-{label}-run"), &command, &run)
+        .map_err(|error| format!("C# {label} run record: {error}"))?;
     host_result(&output, model_calls(controls, index), &run)
         .and_then(|()| csharp_messages(controls, index, &output))
         .map_err(|error| format!("C# {label}: {error}"))
