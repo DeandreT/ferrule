@@ -38,6 +38,23 @@ pub fn write_mapforce_x12_document(
     write_text(&text, output).map_err(MapForceX12WriteError::Io)
 }
 
+pub fn write_mapforce_x12_document_with_clock(
+    descriptor_text: &str,
+    document: &Instance,
+    execution: &ExecutionContext<'_>,
+    clock: &mut dyn FnMut(super::MapForceX12ClockField) -> Result<String, String>,
+    output: &mut dyn Write,
+) -> Result<(), MapForceX12WriteError> {
+    let text = super::mapforce_writer::render_with_clock(
+        descriptor_text,
+        document,
+        execution,
+        Some(clock),
+    )
+    .map_err(MapForceX12WriteError::Format)?;
+    write_text(&text, output).map_err(MapForceX12WriteError::Io)
+}
+
 // StreamWriter's 1024-character buffer retains a terminal high surrogate in
 // the encoder until the next chunk. Encoding each Rust char or byte chunk
 // independently would preserve full bytes but change observable write prefixes.

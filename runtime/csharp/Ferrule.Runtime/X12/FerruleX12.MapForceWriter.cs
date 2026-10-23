@@ -3,12 +3,26 @@ using System.Text.Json;
 
 namespace Ferrule.Runtime;
 
+public enum FerruleMapForceX12ClockField { InterchangeDate, InterchangeTime, GroupDate, GroupTime }
+
 public static partial class FerruleX12
 {
     /// <summary>Explicit MapForce-compatible field formatting, required layout
     /// materialization and Latin-1 output. No file is opened or accepted here.</summary>
     public static byte[] SerializeMapForceDocumentBytes(string descriptor, FerruleInstance document, FerruleExecutionContext execution)
         => Encoding.GetEncoding("ISO-8859-1").GetBytes(RenderMapForceDocument(descriptor, document, execution));
+
+    public static byte[] SerializeMapForceDocumentBytesWithClock(string descriptor, FerruleInstance document, FerruleExecutionContext execution, Func<FerruleMapForceX12ClockField, string> clock)
+    {
+        ArgumentNullException.ThrowIfNull(clock);
+        return Encoding.GetEncoding("ISO-8859-1").GetBytes(RenderMapForceDocument(descriptor, document, execution, clock));
+    }
+
+    public static void WriteMapForceDocumentWithClock(string descriptor, FerruleInstance document, FerruleExecutionContext execution, Func<FerruleMapForceX12ClockField, string> clock, Stream output)
+    {
+        ArgumentNullException.ThrowIfNull(clock); ArgumentNullException.ThrowIfNull(output);
+        WriteMapForceText(RenderMapForceDocument(descriptor, document, execution, clock), output);
+    }
 
     /// <summary>Write and flush an already opened stream. The caller owns close
     /// and accepts the document only after close succeeds.</summary>
@@ -28,7 +42,7 @@ public static partial class FerruleX12
         writer.Flush();
     }
 
-    private static string RenderMapForceDocument(string descriptor, FerruleInstance document, FerruleExecutionContext execution)
+    private static string RenderMapForceDocument(string descriptor, FerruleInstance document, FerruleExecutionContext execution, Func<FerruleMapForceX12ClockField, string>? clock = null)
     {
         ArgumentNullException.ThrowIfNull(document); ArgumentNullException.ThrowIfNull(execution);
         RequireUtf8(descriptor, 2 * MaximumSchemaBytes, "MapForce writer descriptor");
@@ -50,10 +64,37 @@ public static partial class FerruleX12
             if (minimum is < 0 or > 1024 || node.Type is not null || !minimums.TryAdd(string.Join('\0', path), minimum))
                 throw Failure(FerruleX12Error.Schema, "Invalid writer minimum.");
         }
+        List<(string Id, string? Date, string? Time)>? clockDefaults = null;
+        if (clock is not null && profile.Autocomplete is not null)
+        {
+            var raw = new List<Segment>();
+            MapForceContainer(profile.Root, document, profile, minimums, [], raw, new Budget(), 0, false, true, raw: true);
+            clockDefaults = [];
+            foreach (var segment in raw.Where(s => s.Id is "ISA" or "GS"))
+            {
+                bool isa = segment.Id == "ISA";
+                var date = ReadCompletionTimestamp(clock(isa ? FerruleMapForceX12ClockField.InterchangeDate : FerruleMapForceX12ClockField.GroupDate));
+                var time = ReadCompletionTimestamp(clock(isa ? FerruleMapForceX12ClockField.InterchangeTime : FerruleMapForceX12ClockField.GroupTime));
+                clockDefaults.Add((segment.Id, segment.Elements[isa ? 8 : 3].Length == 0 ? isa ? date.Date6 : date.Date8 : null,
+                    segment.Elements[isa ? 9 : 4].Length == 0 ? isa ? time.Time4 : time.Time4 + "00" : null));
+            }
+        }
         var segments = new List<Segment>(); var budget = new Budget();
         MapForceContainer(profile.Root, document, profile, minimums, [], segments, budget, 0, false, true);
         var automaticTimes = new Queue<bool>(segments.Where(s => s.Id == "GS").Select(s => s.Elements[4].Length == 0));
-        if (profile.Autocomplete is not null) segments = CompleteMapForceSegments(profile, segments, execution);
+        if (clockDefaults is not null)
+        {
+            int index = 0;
+            foreach (var segment in segments.Where(s => s.Id is "ISA" or "GS"))
+            {
+                if (index == clockDefaults.Count || clockDefaults[index].Id != segment.Id) throw Failure(FerruleX12Error.Envelope, "Clock ownership changed during formatting.");
+                var defaults = clockDefaults[index++]; bool isa = segment.Id == "ISA";
+                if (defaults.Date is { } date) segment.Elements[isa ? 8 : 3] = date;
+                if (defaults.Time is { } time) segment.Elements[isa ? 9 : 4] = time;
+            }
+            if (index != clockDefaults.Count) throw Failure(FerruleX12Error.Envelope, "Unused clock defaults.");
+        }
+        if (profile.Autocomplete is not null) segments = CompleteMapForceSegments(profile, segments, execution, clockDefaults is not null);
         foreach (var segment in segments.Where(s => s.Id == "GS"))
             if (automaticTimes.Dequeue() && profile.Autocomplete is not null) segment.Elements[4] = segment.Elements[4][..4];
         EncodeInterchangeControls(segments);
@@ -71,7 +112,7 @@ public static partial class FerruleX12
     }
 
     private static void MapForceContainer(Node node, FerruleInstance? instance, Profile profile,
-        Dictionary<string, int> minimums, string[] path, List<Segment> segments, Budget budget, int depth, bool item, bool root = false)
+        Dictionary<string, int> minimums, string[] path, List<Segment> segments, Budget budget, int depth, bool item, bool root = false, bool raw = false)
     {
         budget.Visit(depth); int minimum = minimums.GetValueOrDefault(string.Join('\0', path));
         if (node.Repeating && !item)
@@ -82,7 +123,7 @@ public static partial class FerruleX12
             };
             if (path.Length == 1 && items.Count == 0) throw Failure(FerruleX12Error.Envelope, "No output interchange.");
             int count = Math.Max(items.Count, minimum);
-            for (int index = 0; index < count; index++) { budget.Loop(); MapForceContainer(node, index < items.Count ? items[index] : new FerruleGroup([]), profile, minimums, path, segments, budget, depth + 1, true); }
+            for (int index = 0; index < count; index++) { budget.Loop(); MapForceContainer(node, index < items.Count ? items[index] : new FerruleGroup([]), profile, minimums, path, segments, budget, depth + 1, true, raw: raw); }
             return;
         }
         if (instance is null && minimum == 0 && !root) return;
@@ -98,7 +139,7 @@ public static partial class FerruleX12
             {
                 var child = node.Children[i]; group.TryGetField(child.Name, out var value);
                 char? allowed = id == "ISA" ? i == 10 ? profile.OutputSyntax.Repetition : i == 15 ? profile.OutputSyntax.Component : null : null;
-                values[i] = MapForceElement(child, value, profile.OutputSyntax, budget, depth + 1, allowed);
+                values[i] = MapForceElement(child, value, profile.OutputSyntax, budget, depth + 1, allowed, raw: raw);
                 if (id == "ISA" && values[i].Length == 0)
                     values[i] = i switch { 10 => profile.OutputSyntax.Repetition?.ToString() ?? "", 11 => profile.SelectedVersion.Interchange, 15 => profile.OutputSyntax.Component.ToString(), _ => "" };
             }
@@ -107,11 +148,11 @@ public static partial class FerruleX12
         foreach (var child in node.Children)
         {
             group.TryGetField(child.Name, out var value);
-            MapForceContainer(child, value, profile, minimums, [..path, child.Name], segments, budget, depth + 1, false);
+            MapForceContainer(child, value, profile, minimums, [..path, child.Name], segments, budget, depth + 1, false, raw: raw);
         }
     }
 
-    private static string MapForceElement(Node node, FerruleInstance? instance, Syntax syntax, Budget budget, int depth, char? allowed = null, bool item = false)
+    private static string MapForceElement(Node node, FerruleInstance? instance, Syntax syntax, Budget budget, int depth, char? allowed = null, bool item = false, bool raw = false)
     {
         budget.Visit(depth);
         if (node.Repeating && !item)
@@ -119,20 +160,21 @@ public static partial class FerruleX12
             if (instance is null) return "";
             if (instance is not FerruleRepeated repeat || syntax.Repetition is not { } separator) throw Failure(FerruleX12Error.Value, "Expected repeated element with repetition syntax.");
             var values = new List<string>();
-            foreach (var candidate in repeat.Items) { budget.Loop(); values.Add(MapForceElement(node, candidate, syntax, budget, depth + 1, allowed, true)); }
+            foreach (var candidate in repeat.Items) { budget.Loop(); values.Add(MapForceElement(node, candidate, syntax, budget, depth + 1, allowed, true, raw)); }
             return string.Join(separator, values);
         }
         if (node.Type is null)
         {
             if (instance is not null and not FerruleGroup) throw Failure(FerruleX12Error.Value, "Expected composite.");
             var group = instance as FerruleGroup;
-            var values = node.Children.Select(child => MapForceElement(child, group is not null && group.TryGetField(child.Name, out var found) ? found : null, syntax, budget, depth + 1)).ToList();
+            var values = node.Children.Select(child => MapForceElement(child, group is not null && group.TryGetField(child.Name, out var found) ? found : null, syntax, budget, depth + 1, raw: raw)).ToList();
             while (values.Count > 0 && values[^1].Length == 0) values.RemoveAt(values.Count - 1);
             return string.Join(syntax.Component, values);
         }
         if (instance is not null and not FerruleScalar) throw Failure(FerruleX12Error.Value, "Expected scalar.");
         var value = instance is FerruleScalar scalar ? scalar.Value : node.Fixed is not null ? FerruleValue.FromString(node.Fixed) : FerruleValue.Null;
         if (value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull || value.Kind == FerruleValueKind.String && value.StringValue.Length == 0) return "";
+        if (raw) return FerruleMapForceEdiScalars.Format(new(FerruleMapForceEdiScalarKind.Text, 0, 65536), value);
         var kind = node.Lexical?.Kind switch {
             "compact_date6" or "compact_date8" => FerruleMapForceEdiScalarKind.Date,
             "compact_time" => FerruleMapForceEdiScalarKind.Time,
