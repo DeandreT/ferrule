@@ -24,6 +24,7 @@ mod idoc;
 mod idoc_native_config;
 mod idoc_native_text;
 mod iteration;
+mod json_source_projection;
 mod model;
 mod owned_join;
 mod path_hierarchy;
@@ -98,6 +99,10 @@ pub use idoc_native_text::{
 pub use iteration::{
     JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, JoinSourceCardinality,
     ScopeIteration, ScopeSequence,
+};
+pub use json_source_projection::{
+    JsonProjectionPlanError, JsonSourceProperty, JsonSourceShape, MAX_JSON_PROJECTION_DEPTH,
+    MAX_JSON_PROJECTION_NAME_BYTES, MAX_JSON_PROJECTION_NODES,
 };
 pub use model::{
     AggregateOp, Binding, DynamicBinding, DynamicChild, DynamicSourcePath, EdiConfigDependency,

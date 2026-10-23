@@ -1,0 +1,24 @@
+{
+  "shape": {
+    "kind": "object",
+    "properties": [
+      {"name":"rows","shape":{"kind":"array","item":{"kind":"object","properties":[
+        {"name":"n","shape":{"kind":"number"}},
+        {"name":"s","shape":{"kind":"string"}}
+      ]}}},
+      {"name":"flag","shape":{"kind":"boolean"}},
+      {"name":"empty","shape":{"kind":"null"}}
+    ]
+  },
+  "cases": [
+    {
+      "input":"{\"rows\":[null,7,{\"n\":1.2300,\"n\":1e999,\"n\":\"3\",\"s\":\"\",\"s\":\"ok\"}],\"rows\":[{\"n\":-0,\"s\":false}],\"flag\":true,\"flag\":null,\"empty\":null,\"extra\":\"ignored\"}",
+      "expected":{"Path":"doc.json","Root":[{"rows":[{"Items":[{"n":[{"Value":"1.2300"},{"Value":"1e999"}],"s":[{"Value":""},{"Value":"ok"}]}]},{"Items":[{"n":[{"Value":"-0"}],"s":[]}]}],"flag":[{"Value":true}],"empty":[{}]}]}
+    },
+    {"input":"{}","expected":{"Path":"doc.json","Root":[{"rows":[],"flag":[],"empty":[]}]}},
+    {"input":"null","expected":{"Path":"doc.json","Root":[]}},
+    {"input":"[]","expected":{"Path":"doc.json","Root":[]}},
+    {"input":"{\"rows\":null,\"flag\":\"true\",\"empty\":false,\"rows\":[]}","expected":{"Path":"doc.json","Root":[{"rows":[{"Items":[]}],"flag":[],"empty":[]}]}},
+    {"input":"{\"r\\u006fws\":[{\"n\":1,\"\\u006e\":2}],\"Rows\":[]}","expected":{"Path":"doc.json","Root":[{"rows":[{"Items":[{"n":[{"Value":"1"},{"Value":"2"}],"s":[]}]}],"flag":[],"empty":[]}]}}
+  ]
+}
