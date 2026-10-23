@@ -1041,3 +1041,40 @@ fn owned_source_ancestor_refuses_filter_map_authoring_before_project_mutation() 
     assert!(reference.path.is_empty());
     assert_eq!(app.project.root.output_path(), Some(7));
 }
+
+#[test]
+fn filter_map_creation_and_stage_edits_are_typed_commands_matching_snapshots() {
+    use super::typed_edit_oracle::{assert_typed_edit_matches_snapshots, newest_command};
+    use editor_ui::{GraphAction, ScopeLocation};
+    let unsequenced = || {
+        let mut app = fixture("identity-all");
+        app.project.root.children[0].set_sequence(None);
+        app.rebase_history();
+        app
+    };
+    let created = assert_typed_edit_matches_snapshots(
+        unsequenced,
+        |app| app.create_selected_filter_map().unwrap(),
+        "Use filter/map",
+    );
+    let command = newest_command(&created);
+    let scope = ScopeLocation::of_children(&[0]);
+    assert_eq!(
+        command.action(),
+        &GraphAction::UseFilterMap {
+            scope: scope.clone()
+        }
+    );
+    assert_eq!(command.patch().added_nodes().count(), 4);
+
+    let edited = assert_typed_edit_matches_snapshots(
+        || fixture("identity-all"),
+        |app| click_control(app, &context(), "Add capture", true),
+        "Edit filter/map",
+    );
+    assert_eq!(
+        newest_command(&edited).action(),
+        &GraphAction::EditFilterMap { scope }
+    );
+    assert_eq!(newest_command(&edited).patch().nodes().count(), 0);
+}

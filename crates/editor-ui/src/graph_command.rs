@@ -4,12 +4,13 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
-use mapping::{Graph, Node, NodeId, Project, Scope};
+use mapping::{DynamicBinding, Graph, JoinId, Node, NodeId, Project, Scope};
 
 use crate::graph_edit::same_bindings;
+use crate::scope_command::{self, ListEdit};
 use crate::{
     EditorCommand, EditorTransaction, GraphDocument, GraphEditError, GraphPatch, ScopeLocation,
-    ScopeSetting, TargetId,
+    ScopeSetting, ScopeSettingValue, TargetId,
 };
 
 /// The receiving end of one wire.
@@ -142,11 +143,62 @@ pub enum GraphAction {
         from: TargetBinding,
         to: TargetBinding,
     },
-    /// Changes one setting of `scope`.
+    /// Changes one setting of `scope`. Computed properties and iterations
+    /// other than source-backed ones are changed by their own actions.
     EditScope {
         scope: ScopeLocation,
         setting: ScopeSetting,
     },
+    /// Appends an empty static child scope for target field `field` to the
+    /// child scopes of `parent`.
+    AddScope {
+        parent: ScopeLocation,
+        field: String,
+    },
+    /// Adds empty child scopes below `scope`, keeping every existing scope.
+    ExpandScope { scope: ScopeLocation },
+    /// Removes the static child scope at `scope`, with the generated items
+    /// its scopes own.
+    RemoveScope { scope: ScopeLocation },
+    /// Appends `property` to the computed properties of `scope`.
+    AddComputedProperty {
+        scope: ScopeLocation,
+        property: DynamicBinding,
+    },
+    /// Removes `property` from `scope`, keeping the order of the others.
+    RemoveComputedProperty {
+        scope: ScopeLocation,
+        property: DynamicBinding,
+    },
+    /// Replaces the name or value expression of one computed property.
+    EditComputedProperty {
+        scope: ScopeLocation,
+        from: DynamicBinding,
+        to: DynamicBinding,
+    },
+    /// Makes the non-iterating `scope` iterate the new join `join`.
+    CreateJoin { scope: ScopeLocation, join: JoinId },
+    /// Changes the equality conditions of `join`, keeping its inputs.
+    EditJoinKeys { scope: ScopeLocation, join: JoinId },
+    /// Binds a new read of `join` to one target field of `scope`.
+    AddJoinedOutput {
+        scope: ScopeLocation,
+        join: JoinId,
+        binding: TargetBinding,
+    },
+    /// Makes `scope` iterate a new filter/map sequence, adding only the
+    /// bound and item nodes that sequence owns.
+    UseFilterMap { scope: ScopeLocation },
+    /// Changes the stages of the filter/map sequence `scope` iterates.
+    EditFilterMap { scope: ScopeLocation },
+    /// Binds the XML type of `scope` to the new declared-type constant `node`.
+    SetXmlType { scope: ScopeLocation, node: NodeId },
+    /// Removes every XML type binding of `scope`, leaving inference to
+    /// choose the type.
+    InferXmlType { scope: ScopeLocation },
+    /// Adds `duplicate`, a copy of the sequence consumer `original`, with
+    /// the private expressions it owns.
+    DuplicateSequenceConsumer { original: NodeId, duplicate: NodeId },
 }
 
 impl GraphAction {
@@ -162,13 +214,30 @@ impl GraphAction {
             Self::RemoveBinding { .. } => "Remove binding",
             Self::RetargetBinding { .. } => "Retarget binding",
             Self::EditScope { setting, .. } => setting.label(),
+            Self::AddScope { .. } => "Add child scope",
+            Self::ExpandScope { .. } => "Expand scope subtree",
+            Self::RemoveScope { .. } => "Remove scope",
+            Self::AddComputedProperty { .. } => "Add computed property",
+            Self::RemoveComputedProperty { .. } => "Remove computed property",
+            Self::EditComputedProperty { .. } => "Edit computed property",
+            Self::CreateJoin { .. } => "Create join",
+            Self::EditJoinKeys { .. } => "Edit join keys",
+            Self::AddJoinedOutput { .. } => "Add joined output",
+            Self::UseFilterMap { .. } => "Use filter/map",
+            Self::EditFilterMap { .. } => "Edit filter/map",
+            Self::SetXmlType { .. } => "Set XML type",
+            Self::InferXmlType { .. } => "Use XML type inference",
+            Self::DuplicateSequenceConsumer { .. } => "Duplicate sequence consumer",
         }
     }
 
     /// Whether consecutive commands performing this same action, such as
     /// keystrokes in one property field, may form one history step.
     pub fn coalesces(&self) -> bool {
-        matches!(self, Self::EditNode { .. } | Self::EditScope { .. })
+        matches!(
+            self,
+            Self::EditNode { .. } | Self::EditScope { .. } | Self::EditFilterMap { .. }
+        )
     }
 
     /// Checks that `patch` performs this action on its named identities.
@@ -225,8 +294,7 @@ impl GraphAction {
                 {
                     return Err(GraphEditError::NotInserted { node: *node });
                 }
-                let additive = patch.scopes().next().is_none()
-                    && patch.settings().next().is_none()
+                let additive = patch.only_nodes()
                     && patch.nodes().all(|(_, change)| change.before().is_none());
                 if additive {
                     Ok(())
@@ -248,8 +316,7 @@ impl GraphAction {
                     return Err(GraphEditError::NodeNotEdited { node: *node });
                 }
                 // Only hidden inputs the edit adds or retires may change beside it.
-                let local = patch.scopes().next().is_none()
-                    && patch.settings().next().is_none()
+                let local = patch.only_nodes()
                     && patch.nodes().all(|(id, change)| {
                         id == *node || change.before().is_none() || change.after().is_none()
                     });
@@ -288,14 +355,22 @@ impl GraphAction {
                 })
             }
             Self::EditScope { scope, setting } => {
-                if patch.setting(scope, *setting).is_none() {
-                    return Err(GraphEditError::SettingNotChanged {
-                        location: scope.clone(),
-                        setting: *setting,
-                    });
+                let not_changed = || GraphEditError::SettingNotChanged {
+                    location: scope.clone(),
+                    setting: *setting,
+                };
+                let change = patch.setting(scope, *setting).ok_or_else(not_changed)?;
+                let named_elsewhere = |value: &ScopeSettingValue| match value {
+                    ScopeSettingValue::Iteration(iteration) => !iteration.is_source_backed(),
+                    ScopeSettingValue::ComputedProperties(_) => true,
+                    _ => false,
+                };
+                if named_elsewhere(change.before()) || named_elsewhere(change.after()) {
+                    return Err(not_changed());
                 }
                 if patch.nodes().next().is_none()
                     && patch.scopes().next().is_none()
+                    && patch.children().next().is_none()
                     && patch.settings().count() == 1
                 {
                     Ok(())
@@ -303,6 +378,49 @@ impl GraphAction {
                     Err(GraphEditError::UnrelatedChanges)
                 }
             }
+            Self::AddScope { parent, field } => {
+                scope_command::validate_add_scope(patch, parent, field)
+            }
+            Self::ExpandScope { scope } => scope_command::validate_expand_scope(patch, scope),
+            Self::RemoveScope { scope } => scope_command::validate_remove_scope(patch, scope),
+            Self::AddComputedProperty { scope, property } => {
+                scope_command::validate_computed_properties(patch, scope, ListEdit::Add(property))
+            }
+            Self::RemoveComputedProperty { scope, property } => {
+                scope_command::validate_computed_properties(
+                    patch,
+                    scope,
+                    ListEdit::Remove(property),
+                )
+            }
+            Self::EditComputedProperty { scope, from, to } => {
+                scope_command::validate_computed_properties(
+                    patch,
+                    scope,
+                    ListEdit::Replace { from, to },
+                )
+            }
+            Self::CreateJoin { scope, join } => {
+                scope_command::validate_create_join(patch, scope, *join)
+            }
+            Self::EditJoinKeys { scope, join } => {
+                scope_command::validate_join_keys(patch, scope, *join)
+            }
+            Self::AddJoinedOutput {
+                scope,
+                join,
+                binding,
+            } => scope_command::validate_joined_output(patch, scope, *join, binding),
+            Self::UseFilterMap { scope } => scope_command::validate_use_filter_map(patch, scope),
+            Self::EditFilterMap { scope } => scope_command::validate_edit_filter_map(patch, scope),
+            Self::SetXmlType { scope, node } => {
+                scope_command::validate_set_xml_type(patch, scope, *node)
+            }
+            Self::InferXmlType { scope } => scope_command::validate_infer_xml_type(patch, scope),
+            Self::DuplicateSequenceConsumer {
+                original,
+                duplicate,
+            } => scope_command::validate_duplicate(patch, *original, *duplicate),
         }
     }
 }
@@ -321,6 +439,7 @@ fn validate_binding_edit(
     };
     if patch.nodes().next().is_some()
         || patch.settings().next().is_some()
+        || patch.children().next().is_some()
         || patch.scopes().count() != 1
     {
         return Err(GraphEditError::UnrelatedChanges);

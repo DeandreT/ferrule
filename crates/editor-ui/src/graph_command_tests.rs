@@ -355,3 +355,6 @@ fn content_checked_exchanges_refuse_stale_nodes_without_partial_effects() {
 
 #[path = "graph_property_command_tests.rs"]
 mod properties;
+
+#[path = "graph_scope_command_tests.rs"]
+mod scopes;

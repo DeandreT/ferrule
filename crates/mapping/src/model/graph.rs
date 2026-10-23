@@ -685,14 +685,14 @@ pub struct Graph {
 
 /// Connects a graph node's output to a named scalar field on the current
 /// scope's target group.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Binding {
     pub target_field: String,
     pub node: NodeId,
 }
 
 /// Inserts one scalar under a property name evaluated at run time.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DynamicBinding {
     pub key: NodeId,
     pub value: NodeId,
@@ -700,7 +700,7 @@ pub struct DynamicBinding {
 
 /// Inserts a child scope's complete value under a property name evaluated
 /// in the enclosing scope context.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DynamicChild {
     pub key: NodeId,
     pub scope: Scope,
