@@ -896,7 +896,10 @@ pub(super) fn corpora() -> TestResult<Vec<(&'static str, Corpus)>> {
             "basic-owned-filter",
             super::basic_owned_filter::capability_corpus(),
         ),
-        ("basic-owned-sort", json_corpus("basic-owned-sort")?),
+        (
+            "basic-owned-sort",
+            super::basic_owned_sort::capability_corpus(),
+        ),
         ("basic-owned-windows", json_corpus("basic-owned-windows")?),
         (
             "basic-owned-nested-alias",
