@@ -50,6 +50,15 @@ public sealed class FerruleJsonSourceValue
     public string? NumberText => Kind == FerruleJsonSourceKind.Number ? text : null;
     public bool? BooleanValue => boolean;
 
+    /// <summary>
+    /// Select a number with the explicit bounded decimal-number policy. Other
+    /// JSON kinds are absent, not coerced. Conversion is deferred until this call;
+    /// plain numbers round as decimals and exponent forms pass through binary64.
+    /// Overflow and lexical limits remain FerruleDecimalException failures.
+    /// </summary>
+    public FerruleDecimal96? AsDecimalNumber() =>
+        Kind == FerruleJsonSourceKind.Number ? FerruleDecimal96.ParseNumber(text!) : null;
+
     /// <summary>Every exact decoded-name match, in source order, without coercion.</summary>
     public IEnumerable<FerruleJsonSourceValue> MembersNamed(string name)
     {

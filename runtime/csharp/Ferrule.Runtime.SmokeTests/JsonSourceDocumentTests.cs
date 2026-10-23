@@ -78,4 +78,40 @@ internal static partial class Program
         }
         JsonSourceRefuses(FerruleJsonSourceErrorKind.InvalidLimits, "null"u8.ToArray(), limits with { ContainerDepth = 65 });
     }
+
+    private static void JsonSourceDecimalNumbers()
+    {
+        using var corpus = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "json-source-decimal-selection.json")));
+        foreach (var item in corpus.RootElement.EnumerateArray())
+        {
+            var value = FerruleJsonSourceDocument.Parse("number", Encoding.UTF8.GetBytes(item.GetProperty("input").GetString()!)).Root;
+            var original = value.NumberText;
+            if (item.TryGetProperty("error", out _))
+                DecimalSelectionRefuses(FerruleDecimalError.Overflow, value);
+            else
+                Equal(item.GetProperty("value").GetString(), value.AsDecimalNumber()?.ToString());
+            Equal(original, value.NumberText);
+        }
+        var document = FerruleJsonSourceDocument.Parse("doc", """
+            {"n":1.2300,"n":1e999,"n":"1e999","n":3}
+            """u8);
+        using var values = document.Root.MembersNamed("n").GetEnumerator();
+        Equal(true, values.MoveNext()); Equal("1.23", values.Current.AsDecimalNumber()?.ToString());
+        Equal(true, values.MoveNext()); Equal("1e999", values.Current.NumberText);
+        DecimalSelectionRefuses(FerruleDecimalError.Overflow, values.Current);
+        Equal(true, values.MoveNext()); Equal((FerruleDecimal96?)null, values.Current.AsDecimalNumber());
+        Equal(true, values.MoveNext()); Equal("3", values.Current.AsDecimalNumber()?.ToString());
+        Equal(false, values.MoveNext());
+        var large = new string('1', FerruleDecimal96.MaximumLexicalBytes + 1);
+        var number = FerruleJsonSourceDocument.Parse("large", Encoding.UTF8.GetBytes(large)).Root;
+        Equal(large, number.NumberText);
+        DecimalSelectionRefuses(FerruleDecimalError.InputTooLong, number);
+    }
+
+    private static void DecimalSelectionRefuses(FerruleDecimalError expected, FerruleJsonSourceValue value)
+    {
+        try { _ = value.AsDecimalNumber(); }
+        catch (FerruleDecimalException error) { Equal(expected, error.Error); return; }
+        throw new Exception($"Expected {expected} decimal selection failure.");
+    }
 }
