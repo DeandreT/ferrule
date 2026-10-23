@@ -1953,7 +1953,10 @@ fn apply_attribute_use(
             false
         }
     };
-    if attribute.xml_attribute_required && attribute.default.is_some() {
+    // An attribute without an effective XML view is refused as required.
+    if !matches!(crate::declaration::required_attribute(attribute), Ok(false))
+        && attribute.default.is_some()
+    {
         state.reject_attribute_use(XmlFormatError::UnsupportedXmlAttributeDefault {
             name: attribute.name.clone(),
         });

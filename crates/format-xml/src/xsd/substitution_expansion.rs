@@ -76,7 +76,7 @@ pub(super) fn attach_substitution_alternatives(
             "substitution heads with xsi:type alternatives are not supported",
         ));
     }
-    if node.nillable {
+    if crate::declaration::declaration(node)?.nil {
         return Err(unsupported_substitution(
             &head,
             &head,
@@ -126,6 +126,8 @@ pub(super) fn attach_substitution_alternatives(
             false,
         )
         .ok_or_else(|| XmlFormatError::MissingElement(descendant.identity.clone()))?;
+        // Derived before the member's kind is taken apart; refused in order below.
+        let member_declaration = crate::declaration::declaration(&member);
         let SchemaKind::Group {
             children: member_children,
             alternatives: member_alternatives,
@@ -149,7 +151,7 @@ pub(super) fn attach_substitution_alternatives(
                 "recursive, dynamic, or type-alternative members are not supported",
             ));
         }
-        if member.nillable
+        if member_declaration?.nil
             || member.fixed != node.fixed
             || member.default != node.default
             || member.xml_repeating_sequences != original_sequences
