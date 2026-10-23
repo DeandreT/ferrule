@@ -1,23 +1,3 @@
-pub(crate) const PROJECT: &str = r#"<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <Deterministic>true</Deterministic>
-    <InvariantGlobalization>true</InvariantGlobalization>
-    <RootNamespace>Ferrule.Generated</RootNamespace>
-    <AssemblyName>Ferrule.Generated</AssemblyName>
-    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-  </PropertyGroup>
-  <ItemGroup>
-    <Compile Include="GeneratedMapping.cs" />
-    <Compile Include="GeneratedTargetBuilder.cs" />
-    <Compile Include="Runtime/**/*.cs" />
-  </ItemGroup>
-</Project>
-"#;
-
 pub(crate) const DYNAMIC_INPUT_DOCUMENT_OUTPUTS_SOURCE: (&str, &str) = (
     "Runtime/FerruleXml.DynamicInputDocumentOutputs.cs",
     include_str!(
@@ -489,7 +469,7 @@ internal static class TargetBuilder
 }
 "#;
 
-// Optional companions are never part of ordinary SOURCES/PROJECT.
+// Optional companions are never part of the ordinary SOURCES or project file.
 pub(crate) const JSON5_SOURCES: [(&str, &str); 10] = [
     (
         "Runtime/Json5/FerruleJson5Syntax.cs",

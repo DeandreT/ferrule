@@ -5,7 +5,7 @@ use super::super::typed_dynamic_document_sources::typed_snapshot as dynamic_csv_
 
 const DYNAMIC_CSV_MARKER: &str = "dynamic-csv-original-second-loader-failure";
 
-fn dynamic_csv_project(mixed: bool) -> Project {
+pub(in super::super) fn dynamic_csv_project(mixed: bool) -> Project {
     let mut project = Project {
         source: SchemaNode::group(
             "Input",

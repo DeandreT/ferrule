@@ -258,3 +258,58 @@ fn filter_map_failure_iteration_stays_typed_refused_before_artifacts() {
     );
     assert_eq!(actual, expected);
 }
+
+#[test]
+fn filter_map_node_declarations_leave_marker_literals_unchanged() {
+    let marker = "\n    private static global::Ferrule.Runtime.FerruleValue Node_1(\n    private static global::Ferrule.Runtime.FerruleValue UserFunction_100_Node_1(";
+    let mut program = expected_identity();
+    program.target = SchemaNode::group(
+        "Output",
+        vec![
+            SchemaNode::group("Rows", vec![SchemaNode::scalar("Value", ScalarType::Int)])
+                .repeating(),
+            SchemaNode::scalar("Label", ScalarType::String),
+        ],
+    );
+    program
+        .expressions
+        .push(literal(40, Value::String(marker.into())));
+    program.root.bindings.push(codegen::Binding {
+        target_field: "Label".into(),
+        expression: 40,
+        target_domain: codegen::ScalarTargetDomain::Single(ScalarType::String),
+        repeating: false,
+    });
+    program.user_functions[0]
+        .expressions
+        .push(literal(2, Value::String(marker.into())));
+    let artifacts = crate::emit(&program).expect("filter-map mapping with marker literals");
+    let source = artifacts
+        .files()
+        .iter()
+        .find(|file| file.path.as_str() == "GeneratedMapping.cs")
+        .map(|file| String::from_utf8_lossy(&file.contents).into_owned())
+        .expect("generated mapping");
+    assert_eq!(source.matches(&crate::literal::string(marker)).count(), 2);
+    let declarations = |prefix: &str| {
+        source
+            .matches(&format!(
+                "\n    private static global::Ferrule.Runtime.FerruleValue {prefix}"
+            ))
+            .count()
+    };
+    // One body and one scoped wrapper per node; no other declaration.
+    assert_eq!(declarations("NodeCore_"), program.expressions.len());
+    assert_eq!(declarations("Node_"), program.expressions.len());
+    for function in &program.user_functions {
+        let id = function.id.get();
+        assert_eq!(
+            declarations(&format!("UserFunctionCore_{id}_Node_")),
+            function.expressions.len()
+        );
+        assert_eq!(
+            declarations(&format!("UserFunction_{id}_Node_")),
+            function.expressions.len()
+        );
+    }
+}

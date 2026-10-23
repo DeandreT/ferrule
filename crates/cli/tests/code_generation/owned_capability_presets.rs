@@ -64,14 +64,14 @@ type CSharp = fn(&codegen::Program) -> Result<codegen::ArtifactSet, codegen_csha
 
 /// One public preset: its lowering, program validator, emission validator,
 /// named-input plan and both emitters.
-struct Preset {
+pub(super) struct Preset {
     name: &'static str,
-    lower: Lower,
+    pub(super) lower: Lower,
     validate: Validate,
     emission: Validate,
     plan: Plan,
     rust: Rust,
-    csharp: CSharp,
+    pub(super) csharp: CSharp,
 }
 
 macro_rules! preset {
@@ -88,7 +88,7 @@ macro_rules! preset {
     };
 }
 
-fn presets() -> Vec<Preset> {
+pub(super) fn presets() -> Vec<Preset> {
     vec![
         Preset {
             name: "ordinary",
@@ -311,19 +311,19 @@ fn presets() -> Vec<Preset> {
 }
 
 /// Stable FNV-1a over a byte stream.
-struct Fnv(u64);
+pub(super) struct Fnv(u64);
 
 impl Fnv {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self(0xcbf2_9ce4_8422_2325)
     }
-    fn bytes(&mut self, bytes: &[u8]) -> &mut Self {
+    pub(super) fn bytes(&mut self, bytes: &[u8]) -> &mut Self {
         for byte in bytes {
             self.0 = (self.0 ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3);
         }
         self
     }
-    fn finish(&self) -> String {
+    pub(super) fn finish(&self) -> String {
         format!("{:016x}", self.0)
     }
 }
