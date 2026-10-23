@@ -21,6 +21,7 @@ mod mapping;
 mod owned_basic;
 mod primary_csv;
 mod primary_filename;
+mod primary_json;
 pub use mapforce_json5_documents::{
     MapForceJson5DocumentEmitError, emit_csv_file_set_to_mapforce_json5_documents,
     emit_csv_to_mapforce_json5_documents,
@@ -55,6 +56,7 @@ pub use error::EmitError;
 pub use json5_output::Json5EmitError;
 pub use primary_csv::{PrimaryCsvEmitError, emit_with_primary_csv_acquisition};
 pub use primary_filename::emit_with_primary_filename;
+pub use primary_json::{PrimaryJsonEmitError, emit_with_primary_json_projection};
 pub use static_documents::StaticDocumentEmitError;
 pub use x12_output::X12EmitError;
 

@@ -18,6 +18,8 @@ pub enum PrimaryFilenamePlan {
 pub struct DocumentProgram {
     program: Program,
     primary_filename: PrimaryFilenamePlan,
+    source_options: mapping::FormatOptions,
+    json_source_projection: Option<mapping::JsonSourceShape>,
 }
 
 impl DocumentProgram {
@@ -27,6 +29,14 @@ impl DocumentProgram {
 
     pub fn primary_filename(&self) -> &PrimaryFilenamePlan {
         &self.primary_filename
+    }
+
+    pub fn source_options(&self) -> &mapping::FormatOptions {
+        &self.source_options
+    }
+
+    pub fn json_source_projection(&self) -> Option<&mapping::JsonSourceShape> {
+        self.json_source_projection.as_ref()
     }
 }
 
@@ -75,5 +85,7 @@ pub fn lower_document(document: &DocumentProject) -> Result<DocumentProgram, Doc
     Ok(DocumentProgram {
         program,
         primary_filename,
+        source_options: document.project().source_options.clone(),
+        json_source_projection: document.json_source_projection().cloned(),
     })
 }
