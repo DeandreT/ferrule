@@ -35,6 +35,28 @@ mod xml_mixed_content;
 
 use std::fmt;
 
+/// Source identity of this runtime package, as computed by `identity.rs`.
+/// Generated mappings with a compatibility manifest record the identity they
+/// require and check it through [`runtime_identity_matches`].
+pub const RUNTIME_IDENTITY: &str = env!("FERRULE_RUNTIME_IDENTITY");
+
+/// Whether this runtime has the `required` identity. It is usable in constant
+/// evaluation, so a mapping bound to another runtime fails to compile.
+pub const fn runtime_identity_matches(required: &str) -> bool {
+    let (available, required) = (RUNTIME_IDENTITY.as_bytes(), required.as_bytes());
+    if available.len() != required.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < available.len() {
+        if available[index] != required[index] {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
 pub use adjacency_tree::{
     AdjacencyTreeFields, AdjacencyTreeRoot, OwnedAdjacencyTreeRoot, adjacency_tree,
     owned_adjacency_tree,

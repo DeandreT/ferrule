@@ -966,7 +966,9 @@ dependencies = [
  "format-xml",
  "ir",
  "mapping",
+ "serde",
  "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -1001,6 +1003,7 @@ dependencies = [
  "quick-xml 0.41.0",
  "regex",
  "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -1012,6 +1015,7 @@ dependencies = [
  "ir",
  "mapping",
  "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]

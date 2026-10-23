@@ -1,14 +1,20 @@
 use codegen::{ArtifactSet, CsvOutputPolicy, Program};
 use ir::{ScalarType, SchemaKind};
 
+use crate::Options;
 use crate::composition::{ClassPart, Library};
 use crate::{EmitError, literal};
+use codegen::GenerationProfile;
 
 const CSV_RUNTIME_SOURCE: &str =
     include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsv.cs");
 
-pub(crate) fn emit(program: &Program, policy: &CsvOutputPolicy) -> Result<ArtifactSet, EmitError> {
-    library(program, policy)?.into_artifacts()
+pub(crate) fn emit(
+    program: &Program,
+    policy: &CsvOutputPolicy,
+    options: &Options,
+) -> Result<ArtifactSet, EmitError> {
+    library(program, policy)?.into_artifacts_with(options, GenerationProfile::CsvOutput)
 }
 
 /// The ordinary library plus one partial class and its runtime, added only

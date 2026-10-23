@@ -21,6 +21,22 @@ pub enum GenerateTarget {
     CSharp,
 }
 
+/// Identity and compatibility settings of one generation request. The
+/// default keeps every generated name and artifact unchanged.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GenerateSettings {
+    /// Rust only: the generated package name instead of
+    /// `ferrule-generated-mapping`.
+    pub rust_package_name: Option<codegen_rust::PackageName>,
+    /// C# only: the assembly, root namespace and mapping class instead of
+    /// `Ferrule.Generated` and `GeneratedMapping`.
+    pub csharp_identity: Option<codegen_csharp::Identity>,
+    /// Whether the library carries `ferrule-manifest.json` and checks it. A
+    /// Rust runtime path is then also checked against the generator's runtime
+    /// identity before anything is written.
+    pub manifest: codegen::ManifestSelection,
+}
+
 /// Files written by a successful atomic generation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenerateOutcome {
@@ -53,7 +69,25 @@ pub fn generate_project_with_profile(
     target: GenerateTarget,
     profile: GenerateProfile,
 ) -> anyhow::Result<GenerateOutcome> {
-    let artifacts = preparation::generate_artifacts(project_path, &target, profile)?;
+    generate_project_with_settings(
+        project_path,
+        output_directory,
+        target,
+        profile,
+        &GenerateSettings::default(),
+    )
+}
+
+/// Generates a project with a selected profile under explicit identity and
+/// compatibility settings. Every setting is refused before anything is written.
+pub fn generate_project_with_settings(
+    project_path: &Path,
+    output_directory: &Path,
+    target: GenerateTarget,
+    profile: GenerateProfile,
+    settings: &GenerateSettings,
+) -> anyhow::Result<GenerateOutcome> {
+    let artifacts = preparation::generate_artifacts(project_path, &target, profile, settings)?;
     write_artifacts(output_directory, &artifacts)?;
     Ok(GenerateOutcome {
         output_directory: output_directory.to_path_buf(),

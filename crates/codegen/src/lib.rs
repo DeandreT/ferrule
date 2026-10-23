@@ -6,6 +6,7 @@
 
 mod artifact;
 mod capabilities;
+mod compatibility;
 mod csv_document_boundary;
 mod csv_input_boundary;
 mod csv_json_boundary;
@@ -15,6 +16,7 @@ mod diagnostic;
 mod document_program;
 mod embedded_schema;
 mod emission_plan;
+mod identity;
 mod join;
 mod json5_boundary;
 mod lower;
@@ -32,6 +34,12 @@ pub use artifact::{
 pub use capabilities::{
     FailureSources, GroupingModes, OwnedCapabilities, OwnedConstructions, OwnedPreset, OwnedSearch,
     OwnedXml, SequenceConsumers, SourceControls,
+};
+pub use compatibility::{
+    CompatibilityManifest, CompatibilityRefusal, GENERATOR_NAME, GENERATOR_VERSION,
+    GenerationProfile, GeneratorRecord, LibraryIdentity, MANIFEST_FORMAT, MANIFEST_FORMAT_VERSION,
+    MANIFEST_PATH, ManifestError, ManifestSelection, RuntimeBinding, RuntimeIdentity,
+    RuntimeRecord,
 };
 pub use csv_document_boundary::{
     CsvDocumentBoundaryError, CsvDocumentBoundaryPolicy, validate_csv_document_boundary,
@@ -60,6 +68,7 @@ pub use emission_plan::{
     BoundaryEmissionPlan, CompanionSelection, XmlDocumentCardinality, XmlDocumentInputs,
     XmlEmissionPlan, XmlOutputMode, prepare_boundary_emission,
 };
+pub use identity::{IdentityError, IdentityKind, IdentityViolation};
 pub use join::{
     InnerJoin, JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource,
     JoinSourceCardinality, OwnedInnerJoin,
