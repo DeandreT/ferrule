@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -538,6 +541,7 @@ fn assert_rejected(project: &Project, path: &Path) -> Result<(), Box<dyn Error>>
 #[ignore = "needs the local ignored ReferenceSamples corpus"]
 fn local_employee_and_manager_queries_export_natively_and_keep_exact_xml()
 -> Result<(), Box<dyn Error>> {
+    private_corpus::require(&[&private_corpus::root()]);
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     for name in [
         "DB_EmployeeListByTitle",

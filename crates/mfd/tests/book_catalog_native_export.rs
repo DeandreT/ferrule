@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -32,9 +35,7 @@ fn local_book_catalog_keeps_extraction_and_xml_through_two_strict_native_cycles(
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let design = samples.join("BookCatalogPDFToXML.mfd");
     let pdf = samples.join("BookCatalog.pdf");
-    if !design.is_file() || !pdf.is_file() {
-        return Ok(());
-    }
+    private_corpus::require(&[&design, &pdf]);
 
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

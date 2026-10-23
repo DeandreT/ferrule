@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -673,7 +676,8 @@ fn serial_pipeline_preserves_intermediate_output_instance_and_execution() {
 }
 
 #[test]
-fn local_chains_keep_only_declared_intermediate_instance_paths_when_available() {
+#[ignore = "requires the private compatibility corpus at samples/ReferenceSamples"]
+fn local_reference_chains_keep_only_declared_intermediate_instance_paths() {
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     for (relative, output_instance, input_instance) in [
         ("ChainedPersonList.mfd", None, None),
@@ -694,9 +698,7 @@ fn local_chains_keep_only_declared_intermediate_instance_paths_when_available() 
         ),
     ] {
         let sample = samples.join(relative);
-        if !sample.is_file() {
-            continue;
-        }
+        private_corpus::require(&[&sample]);
         let imported =
             mfd::import_pipeline(&sample).unwrap_or_else(|error| panic!("{relative}: {error}"));
         assert!(
@@ -1333,13 +1335,7 @@ fn xml_primary_named_csv_import_rejects_ambiguous_malformed_and_bypassed_targets
 
 #[test]
 fn xml_primary_may_keep_one_connected_json_named_target_with_exact_output() {
-    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
-    if !samples.join("Altova_Hierarchical_JSON.mfd").is_file()
-        || !samples.join("Altova_Hierarchical.xml").is_file()
-    {
-        return;
-    }
-    let (pipeline, hosts) = local_xml_with_named_json_pipeline();
+    let (pipeline, hosts) = xml_with_named_json_pipeline();
     let before = engine::run_pipeline(&pipeline, &hosts).unwrap();
     assert_eq!(before.stage("copy").unwrap().primary, hosts["input"]);
     let final_stage = &pipeline.stages[1];
@@ -1355,7 +1351,7 @@ fn xml_primary_may_keep_one_connected_json_named_target_with_exact_output() {
     let xml_before =
         format_xml::to_string(&final_stage.project.target, &final_before.primary).unwrap();
     let json_before = format_json::to_string(&json.schema, &named_before.instance).unwrap();
-    assert!(json_before.contains("\"Office\""));
+    assert!(json_before.contains("\"sku\"") && json_before.contains("\"A1\""));
 
     let directory = TempDir::new();
     let exported = directory.0.join("xml-with-named-json.mfd");
@@ -1409,13 +1405,7 @@ fn xml_primary_may_keep_one_connected_json_named_target_with_exact_output() {
 
 #[test]
 fn xml_primary_named_json_export_rejects_nonfinal_multiple_and_json_lines_without_artifacts() {
-    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
-    if !samples.join("Altova_Hierarchical_JSON.mfd").is_file()
-        || !samples.join("Altova_Hierarchical.xml").is_file()
-    {
-        return;
-    }
-    let (pipeline, _) = local_xml_with_named_json_pipeline();
+    let (pipeline, _) = xml_with_named_json_pipeline();
     let directory = TempDir::new();
 
     let mut nonfinal = pipeline.clone();
@@ -1795,13 +1785,12 @@ fn synthetic_hierarchical_xlsx_final_chain_roundtrips_workbook_cells() {
 }
 
 #[test]
+#[ignore = "requires the private compatibility corpus at samples/ReferenceSamples"]
 fn local_xml_to_xlsx_mapping_runs_after_an_identity_xml_stage() {
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let design = samples.join("Altova_Hierarchical_Excel.mfd");
     let input = samples.join("Altova_Hierarchical.xml");
-    if !design.is_file() || !input.is_file() {
-        return;
-    }
+    private_corpus::require(&[&design, &input]);
     assert_identity_xml_to_xlsx_roundtrip(&design, &input);
 }
 
@@ -1963,14 +1952,13 @@ fn synthetic_fixed_width_final_chain_roundtrips_exact_text() {
 }
 
 #[test]
+#[ignore = "requires the private compatibility corpus at samples/ReferenceSamples"]
 fn local_xml_to_fixed_width_mapping_runs_after_an_identity_xml_stage() {
     let samples =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples/Tutorial");
     let design = samples.join("MissingFields.mfd");
     let input = samples.join("MissingFields.xml");
-    if !design.is_file() || !input.is_file() {
-        return;
-    }
+    private_corpus::require(&[&design, &input]);
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let (pipeline, hosts) = identity_xml_to_fixed_width_pipeline(imported.project, &input);
@@ -2384,13 +2372,12 @@ fn xlsx_final_chain_import_rejects_ambiguous_disconnected_and_update_existing() 
 }
 
 #[test]
+#[ignore = "requires the private compatibility corpus at samples/ReferenceSamples"]
 fn local_xml_to_json_mapping_runs_after_an_identity_xml_stage() {
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let design = samples.join("Altova_Hierarchical_JSON.mfd");
     let input = samples.join("Altova_Hierarchical.xml");
-    if !design.is_file() || !input.is_file() {
-        return;
-    }
+    private_corpus::require(&[&design, &input]);
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let mut final_project = imported.project;
@@ -2449,7 +2436,7 @@ fn local_xml_to_json_mapping_runs_after_an_identity_xml_stage() {
         &before.stage("convert").unwrap().primary,
     )
     .unwrap();
-    assert!(json_before.contains("\"Office\""));
+    assert!(json_before.contains("\"sku\"") && json_before.contains("\"A1\""));
 
     let directory = TempDir::new();
     std::fs::copy(&input, directory.0.join("Altova_Hierarchical.xml")).unwrap();
@@ -2702,9 +2689,9 @@ fn local_xml_with_named_csv_pipeline() -> (mapping::Pipeline, BTreeMap<String, I
     )
 }
 
-fn local_xml_with_named_json_pipeline() -> (mapping::Pipeline, BTreeMap<String, Instance>) {
-    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
-    let imported = mfd::import(&samples.join("Altova_Hierarchical_JSON.mfd")).unwrap();
+fn xml_with_named_json_pipeline() -> (mapping::Pipeline, BTreeMap<String, Instance>) {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let imported = mfd::import(&fixtures.join("stock.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let mut final_project = imported.project;
     let json = mapping::NamedTarget {
@@ -2723,8 +2710,8 @@ fn local_xml_with_named_json_pipeline() -> (mapping::Pipeline, BTreeMap<String, 
     final_project.extra_targets.push(json);
     identity_xml_to_final_pipeline(
         final_project,
-        &samples.join("Altova_Hierarchical.xml"),
-        "hierarchy-copy.xml",
+        &fixtures.join("stock.xml"),
+        "stock-copy.xml",
         "xml-and-json",
     )
 }
@@ -2879,14 +2866,13 @@ fn flextext_final_chain_roundtrips_exact_text_and_generated_config() {
 }
 
 #[test]
+#[ignore = "requires the private compatibility corpus at samples/ReferenceSamples"]
 fn local_xml_to_flextext_mapping_runs_after_an_identity_xml_stage() {
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let design = samples.join("QuotationsDoc.mfd");
     let input = samples.join("Quotations.xml");
     let expected = samples.join("QuotationsDoc.txt");
-    if !design.is_file() || !input.is_file() || !expected.is_file() {
-        return;
-    }
+    private_corpus::require(&[&design, &input, &expected]);
     assert_identity_xml_to_flextext_roundtrip(&design, &input, Some(&expected));
 }
 
@@ -3008,13 +2994,12 @@ fn protobuf_final_chain_roundtrips_exact_binary_and_generated_schema() {
 }
 
 #[test]
+#[ignore = "requires the private compatibility corpus at samples/ReferenceSamples"]
 fn local_xml_to_protobuf_mapping_runs_after_an_identity_xml_stage() {
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let design = samples.join("PersonsToProtobuf.mfd");
     let input = samples.join("Altova_Hierarchical.xml");
-    if !design.is_file() || !input.is_file() {
-        return;
-    }
+    private_corpus::require(&[&design, &input]);
     assert_identity_xml_to_protobuf_roundtrip(&design, &input, None);
 }
 

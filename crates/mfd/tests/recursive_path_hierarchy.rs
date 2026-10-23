@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -239,6 +242,7 @@ fn nested_path_collection_keeps_the_native_guard_closed() -> Result<(), Box<dyn 
 #[ignore = "needs the local ignored ReferenceSamples corpus"]
 fn local_path_hierarchy_native_roundtrip_keeps_directory_tree()
 -> Result<(), Box<dyn std::error::Error>> {
+    private_corpus::require(&[&private_corpus::root()]);
     let samples = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples")
         .canonicalize()?;

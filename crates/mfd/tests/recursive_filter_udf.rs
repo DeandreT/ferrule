@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -185,6 +188,7 @@ fn output_xml(project: &Project, output: &Instance) -> Result<String, Box<dyn st
 #[ignore = "needs the local ignored ReferenceSamples corpus"]
 fn local_recursive_directory_filter_native_roundtrip_keeps_33_xml_files()
 -> Result<(), Box<dyn std::error::Error>> {
+    private_corpus::require(&[&private_corpus::root()]);
     let samples = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples")
         .canonicalize()?;

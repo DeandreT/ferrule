@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -29,6 +32,7 @@ impl Drop for TempDir {
 }
 
 fn samples() -> Result<PathBuf, Box<dyn Error>> {
+    private_corpus::require(&[&private_corpus::root()]);
     Ok(Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples")
         .canonicalize()?)

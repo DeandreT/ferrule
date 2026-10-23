@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -528,12 +531,11 @@ fn connected_xml_passthrough_reports_unrepresented_chain() {
 }
 
 #[test]
+#[ignore = "requires the private compatibility corpus at samples/ReferenceSamples"]
 fn local_reference_chain_reports_loss_when_samples_are_available() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples/Tutorial/BasicTutorials/Tut3-ChainedMapping.mfd");
-    if !path.is_file() {
-        return;
-    }
+    private_corpus::require(&[&path]);
     let imported = mfd::import(&path).unwrap();
     assert!(
         imported

@@ -255,7 +255,12 @@ fn survey_annual_temperature_primitives() -> Result<(), Box<dyn std::error::Erro
                 .join("../../samples/ReferenceSamples/Annual Average Temperature By Year.pdf")
         });
     if !path.is_file() {
-        return Ok(());
+        return Err(format!(
+            "survey PDF not present at {}; set FERRULE_PDF_SURVEY or provide the local \
+             gitignored samples/ReferenceSamples corpus",
+            path.display()
+        )
+        .into());
     }
     let pages = extract_pages(&std::fs::read(path)?)?;
     for page in pages {

@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -62,6 +65,7 @@ fn native_roundtrip(project: &Project, path: &Path) -> Result<Project, Box<dyn E
 #[test]
 #[ignore = "needs the local ignored ReferenceSamples corpus"]
 fn annual_pdf_native_roundtrip_keeps_148_csv_rows() -> Result<(), Box<dyn Error>> {
+    private_corpus::require(&[&private_corpus::root()]);
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let imported = mfd::import(&samples.join("Annual Average Temperature.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -149,6 +153,7 @@ fn annual_pdf_native_roundtrip_keeps_148_csv_rows() -> Result<(), Box<dyn Error>
 #[ignore = "needs the local ignored ReferenceSamples corpus"]
 fn grouped_xml_native_roundtrip_keeps_five_years_and_numeric_errors() -> Result<(), Box<dyn Error>>
 {
+    private_corpus::require(&[&private_corpus::root()]);
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let imported = mfd::import(&samples.join("GroupTemperaturesByYear_Fahrenheit.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

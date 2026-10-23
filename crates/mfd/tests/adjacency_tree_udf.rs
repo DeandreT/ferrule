@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -166,6 +169,7 @@ fn collect_names(tree: &Instance, names: &mut Vec<String>) {
 #[ignore = "needs the local ignored ReferenceSamples corpus"]
 fn local_schema_type_hierarchy_native_roundtrip_keeps_49_types()
 -> Result<(), Box<dyn std::error::Error>> {
+    private_corpus::require(&[&private_corpus::root()]);
     let samples = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples")
         .canonicalize()?;

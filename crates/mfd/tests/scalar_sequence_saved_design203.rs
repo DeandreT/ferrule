@@ -1,4 +1,4 @@
-//! Ignored, bounded public-API qualification for the frozen clean-room recipes.
+//! Bounded public-API qualification for the frozen clean-room recipes.
 //! This is native execution and MFD refusal evidence, not native MFD interchange.
 
 use std::cell::RefCell;
@@ -659,11 +659,31 @@ fn exposed_checks(observed: &Observations, expected: &Json, case: &Json) -> Vec<
     failures
 }
 
+/// A default evidence root, removed when the run ends.
+struct TemporaryRoot(PathBuf);
+
+impl Drop for TemporaryRoot {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+/// `FERRULE_SAVED_DESIGN203_EVIDENCE_DIR` names a retained evidence root;
+/// without it each run uses a fresh temporary root that is removed afterwards.
 fn produce(execute_public_controls: bool) -> Result<(), Box<dyn Error>> {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_SAVED_DESIGN203_EVIDENCE_DIR")
-            .ok_or("explicit evidence directory required")?,
-    );
+    let (root, _temporary) = match std::env::var_os("FERRULE_SAVED_DESIGN203_EVIDENCE_DIR") {
+        Some(root) => (PathBuf::from(root), None),
+        None => {
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let root = std::env::temp_dir().join(format!(
+                "ferrule_saved_design203_{}_{}",
+                std::process::id(),
+                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ));
+            let _ = fs::remove_dir_all(&root);
+            (root.clone(), Some(TemporaryRoot(root)))
+        }
+    };
     let spelling = root.components().collect::<PathBuf>();
     if !root.is_absolute()
         || spelling.as_os_str() != root.as_os_str()
@@ -957,14 +977,13 @@ fn produce(execute_public_controls: bool) -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-#[ignore = "root-owned 24 public codec/input materializations; explicit absent evidence directory required"]
+#[ignore = "materializes the 24 public codec inputs only; the qualification test covers them"]
 fn materialize_frozen_scalar_sequence_saved_design203_public_projects() -> Result<(), Box<dyn Error>>
 {
     produce(false)
 }
 
 #[test]
-#[ignore = "root-owned finite 24-native/51-MFD qualification; explicit absent evidence directory required"]
 fn qualify_frozen_scalar_sequence_saved_design203_public_recipes() -> Result<(), Box<dyn Error>> {
     produce(true)
 }

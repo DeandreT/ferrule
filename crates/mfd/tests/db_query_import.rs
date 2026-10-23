@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -1240,6 +1243,7 @@ fn native_joined_select_keeps_sqlite_integer_overflow_promotion() {
 #[test]
 #[ignore = "requires the optional local reference sample corpus"]
 fn local_select_component_cross_type_preview_is_diagnosed_without_unfiltered_rows() {
+    private_corpus::require(&[&private_corpus::root()]);
     let dir = TempDir::new();
     let sample = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples/Tutorial/select-component.mfd");

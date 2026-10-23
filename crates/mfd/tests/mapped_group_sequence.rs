@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -302,9 +305,7 @@ fn local_read_messages_filters_parent_orders_and_preserves_conditioned_addresses
     let sample_dir =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let mapping = sample_dir.join("ReadMessages.mfd");
-    if !mapping.is_file() {
-        return;
-    }
+    private_corpus::require(&[&mapping]);
     let imported = mfd::import(&mapping).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(
