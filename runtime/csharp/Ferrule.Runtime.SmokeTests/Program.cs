@@ -30,6 +30,7 @@ internal static partial class Program
             ("JSON source typed occurrence projection", JsonSourceProjection),
             ("EDI scalar formatting", EdiScalarFormatting),
             ("UTF-16 interchange stream boundaries", InterchangeStream),
+            ("Independently reached interchange writer clocks", InterchangeClocks),
             ("Native JSON source decoding and strings", NativeJsonSource),
             ("JSON source complete occurrence document", JsonSourceOccurrenceDocument),
             ("JSON source exact occurrence identities", JsonSourceOccurrenceIdentity),

@@ -1114,6 +1114,16 @@ the encoder's carried surrogate at a buffer boundary. This stream API does not
 by itself establish the original's default-header clock calls or partial output
 on a late formatting failure.
 
+The corresponding `...with_clock` / `...WithClock` writer entry points accept a
+field-specific callback for Interchange date, Interchange time, Group date and
+Group time. Each field samples independently, even if a supplied value makes the
+sample unused. The explicit clock path materializes and checks the shape first,
+samples completion defaults before scalar formatting, and retains the ordinary
+writer's missing-value rules. No samples are taken when automatic completion is
+disabled. Stable-clock entry points keep their existing behavior. For physical
+publication, the host must open the output before invoking the stream writer;
+an open failure must not consume completion-clock samples.
+
 ## Flat CSV Output
 
 Add `--csv-output` to either generation command to include CSV output methods.
