@@ -3,7 +3,6 @@
 use super::*;
 use serde_json::{Value as Json, json};
 use std::collections::BTreeSet;
-use std::fs;
 
 #[path = "../../../../conformance/basic-owned-sequence-aggregate/cases.rs"]
 mod cases;
@@ -11,8 +10,9 @@ mod cases;
 mod closed;
 #[path = "../../../../conformance/basic-owned-sequence-aggregate/projects.rs"]
 mod projects;
-// Reuse the #473 codec and native runner rather than a second implementation.
-use super::basic_owned_sequence_item_at::{codec, run_native_with_input_after as run_native};
+// Reuse the #473 codec; the shared execution bindings launch every executor.
+use super::basic_owned_sequence_item_at::codec;
+use super::execution_bindings::{self as bindings, Emitters, runtime_path, rust_options};
 
 const MODELS: usize = 25;
 const CALLS: usize = 4 * MODELS;
@@ -48,17 +48,6 @@ fn corpus() -> TestResult<(Json, Vec<Project>)> {
                 .collect::<Vec<_>>(),"calls":case.calls}));
     }
     Ok((json!({"version":1,"cases":records}), models))
-}
-fn runtime_path() -> TestResult<PathBuf> {
-    Ok(Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../codegen-runtime")
-        .canonicalize()?)
-}
-fn rust_options(package: &str, runtime: &Path) -> codegen_rust::Options {
-    codegen_rust::Options {
-        package_name: package.into(),
-        runtime_dependency: codegen_rust::RuntimeDependency::Path(runtime.display().to_string()),
-    }
 }
 fn all_optional(plan: &codegen::NamedInputAdmissionPlan<'_>) -> bool {
     let optional = |catalogue: &codegen::NamedInputCatalogue<'_>| {
@@ -416,282 +405,25 @@ fn basic_aggregate474_closed_projects_programs_and_old_profiles_refuse() -> Test
 #[test]
 fn basic_aggregate474_interpreter_matches_expected() -> TestResult<()> {
     let (controls, models) = corpus()?;
-    let temp = TempDir::new("aggregate474_native")?;
-    let native = run_native(&controls, &models, &temp.0.join("native"))?;
-    assert_eq!(native.len(), CALLS);
-    let differing: Vec<_> = native.iter().filter(|row| row["matched"] != true).collect();
-    assert!(differing.is_empty(), "{differing:#?}");
-    Ok(())
+    assert_eq!(bindings::total_calls(&controls), CALLS);
+    bindings::check_interpreter("aggregate474", &controls, &models)
 }
 
-fn write_file(path: &Path, bytes: &[u8]) -> TestResult<()> {
-    fs::create_dir_all(path.parent().ok_or("file parent")?)?;
-    fs::write(path, bytes)?;
-    Ok(())
-}
-fn write_artifacts(directory: &Path, artifacts: &codegen::ArtifactSet) -> TestResult<()> {
-    for file in artifacts.files() {
-        write_file(&directory.join(file.path.as_str()), &file.contents)?;
-    }
-    Ok(())
-}
-fn replace_once(source: String, needle: &str, replacement: &str) -> TestResult<String> {
-    if source.matches(needle).count() != 1 {
-        return Err(format!("host template seam changed: {needle}").into());
-    }
-    Ok(source.replace(needle, replacement))
-}
-// The Starting hosts compare every call against the same recipe vocabulary.
-fn rust_host(dispatch: &str) -> TestResult<String> {
-    let template = include_str!("basic_owned_group_starting_with/Host.rs.txt")
-        .replace("itemat473", "aggregate474");
-    let template = replace_once(template, "@DISPATCH@", dispatch)?;
-    replace_once(template, "@CORE_CALLS@", &CALLS.to_string())
-}
-/// This corpus has no ordinary saved-project control inside the host.
-const NO_LEGACY_CONTROL: &str = "use serde_json::Value as Json;\nuse std::path::Path;\npub fn run(_directory:&Path,_contract:&Json)->Result<Vec<Json>,Box<dyn std::error::Error>> {Ok(Vec::new())}\n";
-fn csharp_host(calls: usize) -> TestResult<String> {
-    let template = include_str!("basic_owned_group_starting_with/Host.cs.txt")
-        .replace("itemat473", "aggregate474")
-        + "\n"
-        + include_str!("basic_owned_group_starting_with/HostProof.cs.txt");
-    replace_once(template, "@MODEL_CALLS@", &calls.to_string())
-}
-fn host_project(model: &str) -> String {
-    format!(
-        "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><NuGetAudit>false</NuGetAudit></PropertyGroup><ItemGroup><ProjectReference Include=\"../csharp-{model}/Ferrule.Generated.csproj\" /></ItemGroup></Project>\n"
-    )
-}
-fn host_contract(
-    root: &Path,
-    label: &str,
-    engine: &str,
-    program: &Path,
-    assembly: Option<&Path>,
-    output: &Path,
-) -> TestResult<PathBuf> {
-    let path = root.join(format!("run-contracts/{label}.json"));
-    let mut contract = json!({"version":2,"engine":engine,"run_id":format!("aggregate474-{label}"),
-        "output_directory":output,"program":{"path":program}});
-    if let Some(assembly) = assembly {
-        contract["assembly"] = json!({"path":assembly});
-    }
-    write_file(&path, &serde_json::to_vec_pretty(&contract)?)?;
-    Ok(path)
-}
-/// The hosts compare every call themselves; also require their complete row count.
-fn host_result(output: &Path, calls: usize, run: &Output) -> Result<(), String> {
-    let rows: Vec<Json> = fs::read(output.join("ALL-COMPLETE-COMPARISONS.json"))
-        .map_err(|error| error.to_string())
-        .and_then(|bytes| serde_json::from_slice(&bytes).map_err(|error| error.to_string()))
-        .unwrap_or_default();
-    let matched = rows.iter().filter(|row| row["matched"] == true).count();
-    if run.status.success() && rows.len() == calls && matched == calls {
-        return Ok(());
-    }
-    Err(format!(
-        "{}: status {:?}, {matched}/{} matched of {calls}\n{}{}",
-        output.display(),
-        run.status,
-        rows.len(),
-        String::from_utf8_lossy(&run.stdout),
-        String::from_utf8_lossy(&run.stderr)
-    ))
-}
-fn model_calls(controls: &Json, model: usize) -> usize {
-    controls["cases"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|case| case["model"] == model)
-        .map(|case| case["calls"].as_array().map_or(0, Vec::len))
-        .sum()
-}
+const EMITTERS: Emitters = Emitters {
+    rust: codegen_rust::emit_with_basic_owned_sequence_aggregate,
+    csharp: codegen_csharp::emit_with_basic_owned_sequence_aggregate,
+};
 
 #[test]
 #[ignore = "builds and runs one generated Rust host and one generated C# host per model; requires cargo and the .NET 10 SDK"]
 fn basic_aggregate474_generated_rust_and_csharp_match_expected() -> TestResult<()> {
     let (controls, models) = corpus()?;
-    let runtime = runtime_path()?;
-    let temp = TempDir::new("aggregate474_hosts")?;
-    let root = temp.0.canonicalize()?;
-    write_file(
-        &root.join("controls.json"),
-        &serde_json::to_vec_pretty(&controls)?,
-    )?;
-    let mut dependencies = String::new();
-    let mut dispatch = String::new();
-    for (index, project) in models.iter().enumerate() {
-        let program = codegen::lower_with_basic_owned_sequence_aggregate(project)?;
-        let options = rust_options(&format!("aggregate474-model{index}"), &runtime);
-        write_artifacts(
-            &root.join(format!("rust-model{index}")),
-            &codegen_rust::emit_with_basic_owned_sequence_aggregate(&program, &options)?,
-        )?;
-        write_artifacts(
-            &root.join(format!("csharp-model{index}")),
-            &codegen_csharp::emit_with_basic_owned_sequence_aggregate(&program)?,
-        )?;
-        let host = root.join(format!("csharp-host{index}"));
-        write_file(
-            &host.join("Host.csproj"),
-            host_project(&format!("model{index}")).as_bytes(),
-        )?;
-        write_file(
-            &host.join("Program.cs"),
-            csharp_host(model_calls(&controls, index))?.as_bytes(),
-        )?;
-        dependencies.push_str(&format!(
-            "model{index}={{package=\"aggregate474-model{index}\",path=\"../rust-model{index}\"}}\n"
-        ));
-        dispatch.push_str(&format!("{index}=>invoke!(model{index},selection,&source,&inputs,&execution,limits,&directory,&prefix,call,&before,&named,&identity,&raw_before),\n"));
-    }
-    write_file(
-        &root.join("rust-host/src/main.rs"),
-        rust_host(&dispatch)?.as_bytes(),
-    )?;
-    write_file(
-        &root.join("rust-host/src/codec.rs"),
-        include_bytes!("basic_owned_sequence_item_at/codec.rs"),
-    )?;
-    write_file(
-        &root.join("rust-host/src/proof.rs"),
-        include_bytes!("basic_owned_group_starting_with/HostProof.rs.txt"),
-    )?;
-    write_file(
-        &root.join("rust-host/src/legacy_control.rs"),
-        NO_LEGACY_CONTROL.as_bytes(),
-    )?;
-    write_file(&root.join("rust-host/Cargo.toml"),format!("[package]\nname=\"aggregate474-public-host\"\nversion=\"0.1.0\"\nedition=\"2024\"\npublish=false\n[workspace]\n[dependencies]\ncodegen-runtime={{path={}}}\nserde_json=\"=1.0.150\"\n{dependencies}",serde_json::to_string(&runtime.display().to_string())?).as_bytes())?;
-
-    let mut failures = Vec::new();
-    let target = root.join("target");
-    let build = Command::new(env!("CARGO"))
-        .args(["build", "--quiet", "--manifest-path"])
-        .arg(root.join("rust-host/Cargo.toml"))
-        .env("CARGO_TARGET_DIR", &target)
-        .env("CARGO_BUILD_BUILD_DIR", &target)
-        .env("RUSTFLAGS", "-D warnings")
-        .env_remove("CARGO_ENCODED_RUSTFLAGS")
-        .output()?;
-    if build.status.success() {
-        let executable = target
-            .join("debug/aggregate474-public-host")
-            .canonicalize()?;
-        let output = root.join("rust-actual");
-        let contract = host_contract(&root, "rust", "rust", &executable, None, &output)?;
-        let run = Command::new(&executable)
-            .arg(root.join("controls.json"))
-            .arg(&output)
-            .arg(&contract)
-            .output()?;
-        if let Err(error) = host_result(&output, CALLS, &run) {
-            failures.push(format!("Rust host: {error}"));
-        }
-    } else {
-        failures.push(format!(
-            "Rust host build failed:\n{}",
-            String::from_utf8_lossy(&build.stderr)
-        ));
-    }
-
-    let dotnet = std::env::split_paths(&std::env::var_os("PATH").ok_or("PATH")?)
-        .map(|directory| directory.join("dotnet"))
-        .find(|candidate| candidate.is_file())
-        .ok_or("dotnet not found on PATH")?
-        .canonicalize()?;
-    let next = AtomicUsize::new(0);
-    let csharp_failures = Mutex::new(Vec::new());
-    let workers = std::thread::available_parallelism().map_or(2, |n| (n.get() / 2).clamp(1, 8));
-    std::thread::scope(|scope| {
-        for _ in 0..workers {
-            scope.spawn(|| {
-                loop {
-                    let index = next.fetch_add(1, Ordering::Relaxed);
-                    if index >= MODELS {
-                        break;
-                    }
-                    if let Err(error) = run_csharp_host(&root, &dotnet, &controls, index)
-                        && let Ok(mut failures) = csharp_failures.lock()
-                    {
-                        failures.push(error);
-                    }
-                }
-            });
-        }
-    });
-    let mut csharp_failures = csharp_failures
-        .into_inner()
-        .map_err(|_| "C# worker panicked")?;
-    csharp_failures.sort();
-    failures.extend(csharp_failures);
-    if !failures.is_empty() {
-        return Err(failures.join("\n\n").into());
-    }
-    Ok(())
-}
-
-fn run_csharp_host(
-    root: &Path,
-    dotnet: &Path,
-    controls: &Json,
-    index: usize,
-) -> Result<(), String> {
-    let label = format!("model{index}");
-    let artifacts = root.join(format!("dotnet-artifacts-{label}"));
-    let failed = |stage: &str, output: &Output| {
-        format!(
-            "C# {label} {stage}: {:?}\n{}{}",
-            output.status,
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        )
-    };
-    let build = Command::new(dotnet)
-        .args([
-            "build",
-            "--configuration",
-            "Release",
-            "--nologo",
-            "--verbosity",
-            "quiet",
-            "-nodeReuse:false",
-            "-p:UseSharedCompilation=false",
-            "--artifacts-path",
-        ])
-        .arg(&artifacts)
-        .arg(root.join(format!("csharp-host{index}/Host.csproj")))
-        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
-        .env("DOTNET_NOLOGO", "1")
-        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
-        .output()
-        .map_err(|error| format!("C# {label} build: {error}"))?;
-    if !build.status.success() {
-        return Err(failed("build", &build));
-    }
-    let assembly = artifacts.join("bin/Host/release/Host.dll");
-    let output = root.join(format!("csharp-{label}-actual"));
-    let contract = host_contract(
-        root,
-        &format!("csharp-{label}"),
-        "csharp",
-        dotnet,
-        Some(&assembly),
-        &output,
-    )
-    .map_err(|error| format!("C# {label} contract: {error}"))?;
-    let run = Command::new(dotnet)
-        .arg(&assembly)
-        .arg(root.join("controls.json"))
-        .arg(index.to_string())
-        .arg(&output)
-        .arg(&contract)
-        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
-        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
-        .output()
-        .map_err(|error| format!("C# {label} run: {error}"))?;
-    host_result(&output, model_calls(controls, index), &run)
-        .map_err(|error| format!("C# {label}: {error}"))
+    assert_eq!(bindings::total_calls(&controls), CALLS);
+    let programs = models
+        .iter()
+        .map(codegen::lower_with_basic_owned_sequence_aggregate)
+        .collect::<Result<Vec<_>, _>>()?;
+    bindings::check_generated_hosts("aggregate474", &controls, &programs, EMITTERS)
 }
 
 /// The models, the closed Projects and the directly constructed Programs, for
