@@ -8,6 +8,27 @@ public static partial class FerruleX12
     /// <summary>Explicit MapForce-compatible field formatting, required layout
     /// materialization and Latin-1 output. No file is opened or accepted here.</summary>
     public static byte[] SerializeMapForceDocumentBytes(string descriptor, FerruleInstance document, FerruleExecutionContext execution)
+        => Encoding.GetEncoding("ISO-8859-1").GetBytes(RenderMapForceDocument(descriptor, document, execution));
+
+    /// <summary>Write and flush an already opened stream. The caller owns close
+    /// and accepts the document only after close succeeds.</summary>
+    public static void WriteMapForceDocument(string descriptor, FerruleInstance document, FerruleExecutionContext execution, Stream output)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        var text = RenderMapForceDocument(descriptor, document, execution);
+        WriteMapForceText(text, output);
+    }
+
+    internal static void WriteMapForceText(string text, Stream output)
+    {
+        // No disposal flush on an exceptional write, and no duplicate flush on
+        // success. This writer owns no stream; the host always closes its output.
+        var writer = new StreamWriter(output, Encoding.GetEncoding("ISO-8859-1"), 1024, leaveOpen: true);
+        writer.Write(text);
+        writer.Flush();
+    }
+
+    private static string RenderMapForceDocument(string descriptor, FerruleInstance document, FerruleExecutionContext execution)
     {
         ArgumentNullException.ThrowIfNull(document); ArgumentNullException.ThrowIfNull(execution);
         RequireUtf8(descriptor, 2 * MaximumSchemaBytes, "MapForce writer descriptor");
@@ -45,7 +66,7 @@ public static partial class FerruleX12
             for (int index = 0; index < length; index++) { Add(profile.OutputSyntax.Element.ToString()); Add(segment.Elements[index]); }
             Add(profile.OutputSyntax.Segment + "\r\n");
         }
-        return Encoding.GetEncoding("ISO-8859-1").GetBytes(output.ToString());
+        return output.ToString();
         void Add(string text) { bytes += StrictUtf8.GetByteCount(text); if (bytes > MaximumDocumentBytes) throw Limit("MapForce output byte limit exceeded."); output.Append(text); }
     }
 

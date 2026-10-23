@@ -1099,6 +1099,21 @@ format; it does not certify that the resulting interchange meets a trading
 partner's EDI requirements. Acquisition order, reached clocks and physical output
 publication are separate host contracts.
 
+`execute_primary_json_with_body_clock` / `ExecutePrimaryJsonWithBodyClock`
+samples the supplied callback at each reached current-dateTime node. It does
+not combine source acquisition with execution or change ordinary stable-clock
+entry points. Keep per-document acquisition, body execution and any filename
+evaluation in the order required by the source mapping.
+
+`write_mapforce_x12_document` / `WriteMapForceX12Document` renders the complete
+document, writes it through a 1024-UTF-16-unit Latin-1 encoder buffer, and flushes
+an already opened stream. It does not open, close or accept the output. The host
+must close successfully before recording acceptance. A write failure skips the
+final flush; an ordinary byte-array write is a separate API and does not model
+the encoder's carried surrogate at a buffer boundary. This stream API does not
+by itself establish the original's default-header clock calls or partial output
+on a late formatting failure.
+
 ## Flat CSV Output
 
 Add `--csv-output` to either generation command to include CSV output methods.

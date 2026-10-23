@@ -17,8 +17,10 @@ use crate::{ExecutionContext, JsonBoundaryError, RuntimeError, RuntimeValue};
 use format_edi::x12::{SchemaCursor, SchemaRole};
 
 mod latin1_best_fit;
+mod mapforce_stream;
 mod mapforce_writer;
 mod output;
+pub use mapforce_stream::{MapForceX12WriteError, write_mapforce_x12_document};
 pub use mapforce_writer::serialize_mapforce_x12_document;
 #[cfg(test)]
 mod tests;
