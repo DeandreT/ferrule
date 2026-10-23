@@ -269,6 +269,8 @@ mod tests {
     mod owned_adjacency_tree;
     #[path = "owned_basic.rs"]
     mod owned_basic;
+    #[path = "owned_basic_consumers.rs"]
+    mod owned_basic_consumers;
     #[path = "owned_collection_aggregates.rs"]
     mod owned_collection_aggregates;
     #[path = "owned_dynamic_field.rs"]

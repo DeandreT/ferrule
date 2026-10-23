@@ -372,8 +372,63 @@ fn private_basic_omits_unused_valid_leaves_but_keeps_structural_admission() {
     }
 }
 
-// Ignored generated execution is admitted separately by the root operator. No
-// extra build cache or automatic cleanup is created by these source proposals.
+/// Where one generated-host test builds and runs. Its evidence variable may
+/// name a fresh absolute root, which is always kept; otherwise the run uses a
+/// fresh temporary directory, removed unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`.
+/// `FERRULE_PRIVATE_RUST_BASIC_RUNTIME` may name another runtime source; it
+/// defaults to this checkout's `codegen-runtime`. The cargo target is
+/// `FERRULE_CODEGEN_HOST_TARGET_DIR` when set, else a directory inside the run
+/// (see `host_target`).
+struct HostRun {
+    root: PathBuf,
+    runtime: PathBuf,
+    temporary: Option<PathBuf>,
+}
+
+impl HostRun {
+    fn new(evidence: &str, label: &str) -> Self {
+        let runtime = std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../codegen-runtime")
+                    .canonicalize()
+                    .expect("checkout runtime source")
+            });
+        if let Some(root) = std::env::var_os(evidence) {
+            return Self {
+                root: root.into(),
+                runtime,
+                temporary: None,
+            };
+        }
+        let parent = std::env::temp_dir().join(format!(
+            "ferrule_codegen_rust_{label}_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&parent);
+        fs::create_dir_all(&parent).expect("temporary run directory");
+        Self {
+            root: parent.join("run"),
+            runtime,
+            temporary: Some(parent),
+        }
+    }
+}
+
+impl Drop for HostRun {
+    fn drop(&mut self) {
+        let Some(parent) = &self.temporary else {
+            return;
+        };
+        if std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").as_deref() == Some("1".as_ref()) {
+            eprintln!("retained generated host run at {}", parent.display());
+        } else {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+}
+
 fn retained_file(path: &Path, bytes: &[u8]) {
     let mut file = fs::OpenOptions::new()
         .write(true)
@@ -785,21 +840,14 @@ fn generated_programs() -> Vec<(&'static str, Program, &'static str)> {
 }
 
 #[test]
-#[ignore = "requires separately admitted runtime source, retained evidence root and exclusive generated host target"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn private_basic_generated_typed_corpus_retains_raw_before_assertions() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_EVIDENCE_ROOT")
-            .expect("explicit retained evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PRIVATE_RUST_BASIC_EVIDENCE_ROOT",
+        "private_rust_basic",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME")
-            .expect("explicit qualified runtime source"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "explicit admitted host target; no duplicate cache"
-    );
     fs::create_dir(&root).expect("fresh evidence root; preserve existing evidence");
     fs::create_dir(root.join("src")).unwrap();
     let mut generated = String::new();
@@ -1798,21 +1846,14 @@ fn generated_failure_programs() -> Vec<(&'static str, Program, &'static str)> {
 }
 
 #[test]
-#[ignore = "requires separately admitted runtime source, fresh retained failure evidence root and shared generated host target"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn private_source_failure_generated_corpus_retains_complete_raw_before_assertions() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_FAILURE_EVIDENCE_ROOT")
-            .expect("fresh retained failure evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PRIVATE_RUST_FAILURE_EVIDENCE_ROOT",
+        "private_rust_failure",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME")
-            .expect("explicit qualified runtime source"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "explicit shared target/no duplicate cache"
-    );
     fs::create_dir(&root).expect("fresh evidence namespace");
     fs::create_dir(root.join("src")).unwrap();
     let mut generated = String::new();
@@ -2391,20 +2432,14 @@ fn checked_generated_programs() -> Vec<(&'static str, Program, &'static str)> {
 }
 
 #[test]
-#[ignore = "requires explicit checked evidence root, qualified runtime and exclusive shared target admission"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn private_checked_generated_inputs_capture_complete_results_before_comparisons() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_CHECKED_EVIDENCE_ROOT")
-            .expect("fresh checked evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PRIVATE_RUST_CHECKED_EVIDENCE_ROOT",
+        "private_rust_checked",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME").expect("qualified runtime"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one admitted shared target"
-    );
     fs::create_dir(&root).expect("fresh root; retain evidence on refusal");
     fs::create_dir(root.join("src")).unwrap();
     let mut generated = String::new();
@@ -2765,21 +2800,14 @@ fn composed_checked_failure_programs() -> Vec<(&'static str, Program, &'static s
 }
 
 #[test]
-#[ignore = "requires fresh composed evidence root, qualified runtime and one separately admitted shared generated-host target"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn private_checked_global_failure_interactions_retain_full_inputs_returns_and_trace() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_COMPOSED_EVIDENCE_ROOT")
-            .expect("fresh composed evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PRIVATE_RUST_COMPOSED_EVIDENCE_ROOT",
+        "private_rust_composed",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME")
-            .expect("explicit qualified runtime source"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one shared target; no duplicate cache"
-    );
     fs::create_dir(&root).expect("fresh namespace; preserve reached originals on refusal");
     fs::create_dir(root.join("src")).unwrap();
     let mut generated = String::new();
@@ -3272,20 +3300,14 @@ fn public519_host_programs() -> Vec<(&'static str, Program, &'static str)> {
     ]
 }
 #[test]
-#[ignore = "requires independently accepted public proposal, qualified prerequisites, fresh evidence and serial shared generated-host admission"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn public_basic_owned_generated_external_api_retains_all_twelve_reached_results() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PUBLIC_RUST_BASIC_EVIDENCE_ROOT")
-            .expect("fresh public evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PUBLIC_RUST_BASIC_EVIDENCE_ROOT",
+        "public_rust_basic",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME").expect("qualified runtime path"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one separately admitted compatible target"
-    );
     fs::create_dir(&root).expect("fresh namespace, preserve failures");
     fs::create_dir(root.join("src")).unwrap();
     fs::create_dir(root.join("tests")).unwrap();
@@ -3516,20 +3538,14 @@ fn public_basic_owned_literal_import_is_preserved_and_checked_import_is_unique()
     assert!(source.contains("pub enum SelectedTargetOutput"));
 }
 #[test]
-#[ignore = "requires independently accepted import successor and separately admitted external public-consumer compilation"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn public_basic_owned_literal_import_external_consumer_retains_exact_value() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PUBLIC_RUST_BASIC_LITERAL_EVIDENCE_ROOT")
-            .expect("fresh literal evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PUBLIC_RUST_BASIC_LITERAL_EVIDENCE_ROOT",
+        "public_rust_basic_literal",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME").expect("qualified runtime"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one separately admitted compatible target"
-    );
     fs::create_dir(&root).expect("fresh namespace, preserve reached originals");
     fs::create_dir(root.join("src")).unwrap();
     fs::create_dir(root.join("tests")).unwrap();
@@ -4844,20 +4860,14 @@ fn public582_host_programs() -> Vec<(&'static str, Program, &'static str)> {
     ]
 }
 #[test]
-#[ignore = "requires independently accepted public proposal, qualified prerequisites, fresh evidence and serial shared generated-host admission"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn public_basic_owned_generated_value_maps_retain_all_seven_reached_results() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PUBLIC_RUST_VALUE_MAP_EVIDENCE_ROOT")
-            .expect("fresh public evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PUBLIC_RUST_VALUE_MAP_EVIDENCE_ROOT",
+        "public_rust_value_map",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME").expect("qualified runtime path"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one separately admitted compatible target"
-    );
     fs::create_dir(&root).expect("fresh namespace, preserve failures");
     fs::create_dir(root.join("src")).unwrap();
     fs::create_dir(root.join("tests")).unwrap();
@@ -6031,20 +6041,14 @@ fn public_root_pin632_six_programs_keep_complete_public_source_and_scalar_union_
 }
 
 #[test]
-#[ignore = "requires independently accepted public proposal, qualified prerequisites, fresh evidence and serial shared generated-host admission"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn public_root_pin632_generated_six_programs_retain_all_twenty_two_results() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PUBLIC_RUST_ROOT_PIN632_EVIDENCE_ROOT")
-            .expect("fresh public evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PUBLIC_RUST_ROOT_PIN632_EVIDENCE_ROOT",
+        "public_rust_root_pin632",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME").expect("qualified runtime path"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one separately admitted compatible target"
-    );
     fs::create_dir(&root).expect("fresh namespace, preserve failures");
     fs::create_dir(root.join("src")).unwrap();
     fs::create_dir(root.join("tests")).unwrap();
@@ -7125,21 +7129,14 @@ const FILTER644_MODES: &str = r#"
 "#;
 
 #[test]
-#[ignore = "requires merged common admission/filter prerequisites, fresh evidence and sole Root generated-host compiler admission"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn public_basic_filter_generated_fourteen_programs_retain_all_twenty_four_results() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PUBLIC_RUST_FILTER644_EVIDENCE_ROOT")
-            .expect("fresh public filter evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PUBLIC_RUST_FILTER644_EVIDENCE_ROOT",
+        "public_rust_filter644",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME")
-            .expect("qualified current runtime path"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one separately admitted compatible target"
-    );
     fs::create_dir(&root).expect("fresh namespace; retain failures");
     fs::create_dir(root.join("src")).unwrap();
     fs::create_dir(root.join("tests")).unwrap();
@@ -8138,21 +8135,14 @@ fn public_basic_sort_freezes_six_program_twenty_four_call_inventory_and_prior_fi
 }
 
 #[test]
-#[ignore = "requires merged sorting prerequisites, fresh evidence and sole Root generated-host compiler admission"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn public_basic_sort_generated_six_programs_retain_all_twenty_four_results() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PUBLIC_RUST_SORT668_EVIDENCE_ROOT")
-            .expect("fresh public sorting evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PUBLIC_RUST_SORT668_EVIDENCE_ROOT",
+        "public_rust_sort668",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME")
-            .expect("qualified current runtime path"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one separately admitted compatible target"
-    );
     fs::create_dir(&root).expect("fresh namespace; retain failures");
     fs::create_dir(root.join("src")).unwrap();
     fs::create_dir(root.join("tests")).unwrap();
