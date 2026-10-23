@@ -750,49 +750,6 @@ impl<'a> Admission<'a> {
             );
         }
     }
-    fn sequence(
-        &mut self,
-        sequence: &SequenceExpr,
-        function: Option<FunctionId>,
-        inherited: OwnedCapabilityContext,
-        basic_consumer: bool,
-    ) {
-        let context = if basic_consumer
-            && inherited == OwnedCapabilityContext::Basic
-            && basic_item_at_producer(sequence)
-        {
-            OwnedCapabilityContext::Basic
-        } else if matches!(sequence, SequenceExpr::RecursiveCollect { .. })
-            && matches!(
-                inherited,
-                OwnedCapabilityContext::Basic | OwnedCapabilityContext::GeneratedItem
-            )
-        {
-            OwnedCapabilityContext::TreeOperator
-        } else if inherited == OwnedCapabilityContext::Basic {
-            OwnedCapabilityContext::GeneratedItem
-        } else {
-            inherited
-        };
-        self.push(function, context, false, sequence.inputs());
-        // Producer arguments are parent scalars; the lexical declaration is
-        // still an ordinary generated item, never an endpoint-bearing input.
-        let item_context = if context == OwnedCapabilityContext::Basic {
-            OwnedCapabilityContext::GeneratedItem
-        } else {
-            context
-        };
-        self.push(function, item_context, false, sequence.owned_items());
-        match sequence {
-            SequenceExpr::RecursiveCollect { collection, .. } => self.path(collection),
-            SequenceExpr::FilterMapV1(composition) => {
-                self.function(composition.predicate);
-                self.function(composition.mapper);
-                self.sequence(&composition.source, function, context, false);
-            }
-            _ => {}
-        }
-    }
     fn graph(&mut self) -> Result<(), EngineError> {
         while let Some((function, context, ancestry, root_failure, primary_row_failure, id)) =
             self.pending.pop()
@@ -1485,6 +1442,8 @@ fn node_context(node: &Node) -> OwnedCapabilityContext {
         _ => OwnedCapabilityContext::Basic,
     }
 }
+
+mod sequence;
 
 #[cfg(test)]
 #[path = "tests/root_admission.rs"]
