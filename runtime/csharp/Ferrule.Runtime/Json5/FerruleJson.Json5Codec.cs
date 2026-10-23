@@ -9,6 +9,13 @@ public static partial class FerruleJson
     /// <summary>Serialize a mapped document with reference-style JSON5 and exact decimal values.
     /// Schema metadata is retained but no second required/range/default validation is imposed.</summary>
     public static string SerializeMapForceJson5AsciiKeys(string descriptor, FerruleInstance instance, int maximumBytes = 64 * 1024 * 1024)
+        => SerializeMapForceJson(descriptor, instance, maximumBytes, quoteKeys: false);
+
+    /// <summary>Strict JSON with exact Decimal values and quoted ASCII keys.</summary>
+    public static string SerializeMapForceJsonAsciiKeys(string descriptor, FerruleInstance instance, int maximumBytes = 64 * 1024 * 1024)
+        => SerializeMapForceJson(descriptor, instance, maximumBytes, quoteKeys: true);
+
+    private static string SerializeMapForceJson(string descriptor, FerruleInstance instance, int maximumBytes, bool quoteKeys)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(instance);
@@ -19,7 +26,7 @@ public static partial class FerruleJson
         catch (Exception error) when (error is FerruleRuntimeException or JsonException)
         { throw new FerruleMapForceJson5Exception(FerruleMapForceJson5Error.Schema, "Invalid mapped JSON schema.", error); }
         ValidateMapForceSchema(schema, 0);
-        var output = new FerruleMapForceJson5.Output(maximumBytes);
+        var output = new FerruleMapForceJson5.Output(maximumBytes, quoteKeys);
         int remaining = 1_000_000;
         WriteMapForceInstance(output, schema, instance, 0, false, ref remaining);
         return output.ToString();

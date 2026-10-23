@@ -143,8 +143,10 @@ pub use json5::{
     Json5SyntaxResource, JsonFormatError, map_json5_bytes_with, map_json5_with,
 };
 pub use json5_writer::{
-    MapForceJson5Error, format_mapforce_json5_ascii_keys,
-    format_mapforce_json5_ascii_keys_with_limit, serialize_mapforce_json5_ascii_keys,
+    MapForceJson5Error, format_mapforce_json_ascii_keys,
+    format_mapforce_json_ascii_keys_with_limit, format_mapforce_json5_ascii_keys,
+    format_mapforce_json5_ascii_keys_with_limit, serialize_mapforce_json_ascii_keys,
+    serialize_mapforce_json_ascii_keys_with_limit, serialize_mapforce_json5_ascii_keys,
     serialize_mapforce_json5_ascii_keys_with_limit,
 };
 pub use path_hierarchy::{

@@ -31,6 +31,13 @@ public static class FerruleMapForceJson5
 
     /// <summary>Retain member order and duplicates; emit tab/CRLF JSON5 with ASCII property names.</summary>
     public static string FormatAsciiKeys(string document, int maximumBytes = MaximumBytes)
+        => Format(document, maximumBytes, quoteKeys: false);
+
+    /// <summary>Strict quoted-key JSON with native tab/CRLF and Decimal formatting.</summary>
+    public static string FormatStrictAsciiKeys(string document, int maximumBytes = MaximumBytes)
+        => Format(document, maximumBytes, quoteKeys: true);
+
+    private static string Format(string document, int maximumBytes, bool quoteKeys)
     {
         ArgumentNullException.ThrowIfNull(document);
         if (maximumBytes < 0 || maximumBytes > MaximumBytes)
@@ -43,7 +50,7 @@ public static class FerruleMapForceJson5
             using var parsed = JsonDocument.Parse(document, new JsonDocumentOptions { MaxDepth = 64 });
             int remaining = 1_000_000;
             ValidateCount(parsed.RootElement, ref remaining);
-            var output = new Output(maximumBytes);
+            var output = new Output(maximumBytes, quoteKeys);
             output.Value(parsed.RootElement, 0);
             return output.ToString();
         }
@@ -63,7 +70,7 @@ public static class FerruleMapForceJson5
             foreach (var item in value.EnumerateArray()) ValidateCount(item, ref remaining);
     }
 
-    internal sealed class Output(int maximum)
+    internal sealed class Output(int maximum, bool quoteKeys = false)
     {
         private readonly StringBuilder text = new();
         private int bytes;
@@ -101,7 +108,7 @@ public static class FerruleMapForceJson5
         internal void Key(string value)
         {
             if (value.Any(c => c > 127)) throw new FerruleMapForceJson5Exception(FerruleMapForceJson5Error.NonAsciiProperty, "MapForce JSON5 formatting requires ASCII property names.");
-            if (value.Length > 0 && char.IsAsciiLetter(value[0]) && value.All(char.IsAsciiLetterOrDigit)) Add(value);
+            if (!quoteKeys && value.Length > 0 && char.IsAsciiLetter(value[0]) && value.All(char.IsAsciiLetterOrDigit)) Add(value);
             else Quote(value);
         }
 
@@ -134,8 +141,7 @@ public static class FerruleMapForceJson5
                         if (!first) Add(",");
                         first = false;
                         Line(depth + 1);
-                        if (member.Name.Length > 0 && char.IsAsciiLetter(member.Name[0]) && member.Name.All(char.IsAsciiLetterOrDigit)) Add(member.Name);
-                        else Quote(member.Name);
+                        Key(member.Name);
                         Add(": ");
                         Value(member.Value, depth + 1);
                     }
