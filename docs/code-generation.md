@@ -1856,6 +1856,15 @@ by descriptor string identity. Failed preparations are not retained, so errors
 and their order are unchanged. Prepared schemas stay in memory for the process
 lifetime and are not counted by the document limits.
 
+JSON5, XML and X12 endpoints prepare their descriptors the same way. Rust's
+descriptor-taking JSON5, XML and X12 functions use bounded registries keyed by
+descriptor text. C# keys each role's prepared schema or profile by descriptor
+string identity. Each route still applies its own document limits, schema checks
+and per-call budgets in their original order. Rust JSON and JSON5 output text is
+measured before it is written, so an output above its byte limit is refused
+without being materialized. C# X12 and JSON5 byte routes encode the completed
+output directly to UTF-8, without first building the UTF-16 string.
+
 JSON text and property names must contain valid Unicode scalar values. Both
 backends reject malformed UTF-8, unpaired escaped surrogates, and numbers
 outside the finite JSON number domain throughout the input document, including
@@ -3423,3 +3432,8 @@ values and previously accepted buffers may coexist. Runtime and vendored source
 files are unchanged. Adding a public `XmlOutputMode` variant requires downstream
 exhaustive matches to include the new case; old mapping-specific APIs and their
 result meanings remain unchanged.
+
+The Rust JSON, JSON5 and X12 registries each retain at most
+64 descriptors and 4 MiB of descriptor text; the XML registry allows 8 MiB.
+A full registry starts over, and an oversized descriptor is prepared only for
+that call. Document validation, UTF-8 checks and work budgets remain per call.

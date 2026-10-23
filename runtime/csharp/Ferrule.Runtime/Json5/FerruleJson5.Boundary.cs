@@ -34,8 +34,7 @@ public static class FerruleJson5
         catch (DecoderFallbackException error)
         { throw new FerruleJson5BoundaryException(FerruleJson5Stage.Encoding, error); }
         // Valid decoded text has the same UTF-8 size. BOM remains input trivia.
-        var output = FerruleJson.ExecuteJson5Accepted(sourceDescriptor, targetDescriptor, decoded, mapping);
-        return StrictUtf8.GetBytes(output);
+        return FerruleJson.ExecuteJson5AcceptedUtf8(sourceDescriptor, targetDescriptor, decoded, mapping);
     }
 
     private static void CheckArguments(

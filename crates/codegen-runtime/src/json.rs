@@ -32,6 +32,7 @@ mod property_names;
 mod required_property_precedence;
 #[cfg(test)]
 mod string_int_range;
+pub(crate) mod text;
 mod unique_items;
 #[cfg(test)]
 mod utf8;

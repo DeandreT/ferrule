@@ -10,6 +10,7 @@ mod adjacency_tree;
 mod aggregate;
 mod context;
 mod csv;
+mod descriptor_registry;
 mod dynamic_document;
 mod dynamic_source;
 mod dynamic_target;
