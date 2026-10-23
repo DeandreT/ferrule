@@ -17,6 +17,7 @@ mod embedded_schema;
 mod join;
 mod json5_boundary;
 mod lower;
+mod mapforce_json5_documents;
 mod model;
 mod owned_admission;
 mod static_document_boundary;
@@ -80,6 +81,9 @@ pub use lower::{
     lower_with_basic_owned_lookup_find, lower_with_basic_owned_recursive_collect,
     lower_with_basic_owned_row_failures, lower_with_basic_owned_sequence_item_at,
     lower_with_basic_owned_sort, lower_with_basic_owned_windows,
+};
+pub use mapforce_json5_documents::{
+    MapForceJson5DocumentError, prepare_csv_to_mapforce_json5_documents,
 };
 pub use model::{
     AggregateFunction, AggregateValue, Binding, DelimitedTextField, DelimitedTextFieldError,

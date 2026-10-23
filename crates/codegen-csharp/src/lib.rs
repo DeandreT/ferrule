@@ -16,10 +16,14 @@ mod error;
 mod filter_map_guard_tests;
 mod json5_output;
 mod literal;
+mod mapforce_json5_documents;
 mod mapping;
 mod owned_basic;
 mod primary_csv;
 mod primary_filename;
+pub use mapforce_json5_documents::{
+    MapForceJson5DocumentEmitError, emit_csv_to_mapforce_json5_documents,
+};
 mod runtime;
 mod static_documents;
 mod x12_output;

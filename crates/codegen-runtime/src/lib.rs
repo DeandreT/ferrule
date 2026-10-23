@@ -131,7 +131,8 @@ pub use json5::{
 };
 pub use json5_writer::{
     MapForceJson5Error, format_mapforce_json5_ascii_keys,
-    format_mapforce_json5_ascii_keys_with_limit,
+    format_mapforce_json5_ascii_keys_with_limit, serialize_mapforce_json5_ascii_keys,
+    serialize_mapforce_json5_ascii_keys_with_limit,
 };
 pub use path_hierarchy::{
     MAX_PATH_HIERARCHY_DEPTH, MAX_PATH_HIERARCHY_ITEMS, owned_path_hierarchy, path_hierarchy,

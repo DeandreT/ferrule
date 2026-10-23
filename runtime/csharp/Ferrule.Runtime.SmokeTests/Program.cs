@@ -21,6 +21,7 @@ internal static partial class Program
 #endif
             ("JSON source complete literal corpus", JsonSourceCorpus),
             ("MapForce-style JSON5 complete byte corpus", MapForceJson5Writer),
+            ("MapForce-style JSON5 typed decimal output", MapForceJson5Typed),
             ("JSON source exact selection and bounded admission", JsonSourceSelectionAndLimits),
             ("JSON source complete occurrence document", JsonSourceOccurrenceDocument),
             ("JSON source exact occurrence identities", JsonSourceOccurrenceIdentity),
