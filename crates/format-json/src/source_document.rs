@@ -4,6 +4,7 @@
 //! values or enforce a schema. Transport, validation annotations, numeric
 //! conversion and mapping orchestration are separate operations.
 
+use ir::{Decimal96, DecimalError};
 use serde::Deserializer;
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde_json::value::RawValue;
@@ -107,6 +108,15 @@ impl JsonSourceValue {
             Content::Number(value) => Some(value),
             _ => None,
         }
+    }
+
+    /// Select a number using the explicit bounded decimal-number policy.
+    /// Other JSON kinds are absent, not coerced. Conversion happens only here:
+    /// parsing and reading the original number spelling remain lossless.
+    /// Plain numbers round in the decimal domain; exponent forms pass through
+    /// binary64 before conversion. Overflow and lexical limits remain errors.
+    pub fn as_decimal_number(&self) -> Result<Option<Decimal96>, DecimalError> {
+        self.number_text().map(Decimal96::parse_number).transpose()
     }
 
     /// Array items in source order; other JSON kinds yield no items.

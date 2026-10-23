@@ -75,6 +75,72 @@ fn exact_selection_preserves_occurrences_and_never_coerces() {
 }
 
 #[test]
+fn explicit_decimal_number_selection_matches_literal_contract() {
+    let cases: Value = serde_json::from_str(include_str!(
+        "../../../conformance/json-source/decimal-selection.json"
+    ))
+    .unwrap();
+    for case in cases.as_array().unwrap() {
+        let text = case["input"].as_str().unwrap();
+        let document = JsonSourceDocument::parse("number", text.as_bytes()).unwrap();
+        let original = document.root().number_text().map(str::to_owned);
+        let result = document.root().as_decimal_number();
+        if case.get("error").is_some() {
+            assert_eq!(result, Err(ir::DecimalError::Overflow), "{text}");
+        } else {
+            assert_eq!(
+                result.unwrap().map(|value| value.to_string()),
+                case["value"].as_str().map(str::to_owned),
+                "{text}"
+            );
+        }
+        assert_eq!(document.root().number_text(), original.as_deref());
+    }
+}
+
+#[test]
+fn numeric_conversion_is_demanded_per_duplicate_without_mutating_source() {
+    let document =
+        JsonSourceDocument::parse("doc", br#"{"n":1.2300,"n":1e999,"n":"1e999","n":3}"#).unwrap();
+    let mut values = document.root().members_named("n");
+    assert_eq!(
+        values
+            .next()
+            .unwrap()
+            .as_decimal_number()
+            .unwrap()
+            .unwrap()
+            .to_string(),
+        "1.23"
+    );
+    let overflow = values.next().unwrap();
+    assert_eq!(overflow.number_text(), Some("1e999"));
+    assert_eq!(
+        overflow.as_decimal_number(),
+        Err(ir::DecimalError::Overflow)
+    );
+    assert_eq!(values.next().unwrap().as_decimal_number(), Ok(None));
+    assert_eq!(
+        values
+            .next()
+            .unwrap()
+            .as_decimal_number()
+            .unwrap()
+            .unwrap()
+            .to_string(),
+        "3"
+    );
+    assert!(values.next().is_none());
+    let text = "1".repeat(ir::MAX_DECIMAL_LEXICAL_BYTES + 1);
+    let document = JsonSourceDocument::parse("large", text.as_bytes()).unwrap();
+    assert_eq!(document.root().number_text(), Some(text.as_str()));
+    assert_eq!(
+        document.root().as_decimal_number(),
+        Err(ir::DecimalError::InputTooLong)
+    );
+}
+
+#[test]
 fn admission_limits_encoding_and_complete_document_failures() {
     let limits = JsonSourceLimits {
         document_bytes: 7,
