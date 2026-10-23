@@ -18,6 +18,7 @@ pub struct ImportedJsonEdiDocument {
     /// Source-free filename program. Evaluate before acquisition, not after the body.
     pub output_filename: Project,
     pub source: ImportedJsonSourceProjection,
+    pub writer_minimums: Vec<mapping::MapForceEdiMinimum>,
 }
 
 fn refuse(reason: impl AsRef<str>) -> MfdError {
@@ -39,6 +40,7 @@ struct Builder {
     ports: BTreeMap<u32, Vec<String>>,
     port_kinds: BTreeMap<u32, String>,
     filename_port: u32,
+    string_targets: BTreeSet<u32>,
     cache: BTreeMap<(u32, Option<u32>, Vec<String>), NodeId>,
     active: BTreeSet<(u32, Option<u32>, Vec<String>)>,
 }
@@ -95,6 +97,8 @@ pub fn import_json_edi_document_with_options(
         let mut warnings = Vec::new();
         let target_schema = schema::read_edi_component(target, &resources, &mut warnings)
             .ok_or_else(|| refuse("target schema did not load"))?;
+        let writer_minimums =
+            schema::read_edi_writer_minimums(target, &resources).map_err(refuse)?;
         if !warnings.is_empty() || target_schema.is_source || target_schema.has_target_node_controls
         {
             return Err(refuse("unresolved target schema or node controls"));
@@ -169,6 +173,23 @@ pub fn import_json_edi_document_with_options(
             ports: source.ports.clone(),
             port_kinds,
             filename_port: source.filename_output_port,
+            string_targets: target_schema
+                .ports
+                .iter()
+                .filter_map(|(key, path)| {
+                    let mut node = &target_schema.schema;
+                    for name in path {
+                        node = node.child(name)?;
+                    }
+                    matches!(
+                        node.kind,
+                        SchemaKind::Scalar {
+                            ty: ScalarType::String
+                        }
+                    )
+                    .then_some(*key)
+                })
+                .collect(),
             cache: BTreeMap::new(),
             active: BTreeSet::new(),
         };
@@ -236,6 +257,7 @@ pub fn import_json_edi_document_with_options(
             document,
             output_filename: filename,
             source,
+            writer_minimums,
         })
     })();
     resources.finish_bindings()?;
@@ -346,6 +368,55 @@ fn pins(component: roxmltree::Node<'_, '_>, kind: &str) -> Result<Vec<Option<u32
 }
 
 impl Builder {
+    // The IR keeps well-formed Unicode. A split surrogate may be replaced only
+    // where it goes directly to the Latin-1 wire or an ASCII equality test.
+    fn require_wire_left(&self, feed: u32) -> Result<(), MfdError> {
+        let function = self
+            .functions
+            .get(&feed)
+            .ok_or_else(|| refuse("unknown left operator"))?;
+        let count = self
+            .functions
+            .get(&self.input(function, 1)?)
+            .and_then(|f| f.parsed.constant.as_ref())
+            .and_then(|(s, t)| (t == "decimal").then(|| s.parse::<f64>().ok()).flatten())
+            .filter(|n| n.is_finite() && *n >= 0.0 && *n <= i32::MAX as f64 && n.fract() == 0.0);
+        if count.is_none() {
+            return Err(refuse("UTF-16 prefix requires a bounded literal count"));
+        }
+        for (input, output) in &self.feeds {
+            if *output != feed || self.string_targets.contains(input) {
+                continue;
+            }
+            let owner = self
+                .functions
+                .values()
+                .find(|f| f.inputs.contains(&Some(*input)))
+                .ok_or_else(|| refuse("unqualified UTF-16 prefix consumer"))?;
+            if owner.parsed.library != "core"
+                || owner.parsed.name != "equal"
+                || owner.inputs.len() != 2
+            {
+                return Err(refuse(
+                    "UTF-16 prefix cannot escape the qualified wire path",
+                ));
+            }
+            let other = owner
+                .inputs
+                .iter()
+                .flatten()
+                .find(|key| **key != *input)
+                .ok_or_else(|| refuse("ambiguous prefix comparison"))?;
+            let literal = self
+                .functions
+                .get(&self.feed(*other)?)
+                .and_then(|f| f.parsed.constant.as_ref());
+            if !literal.is_some_and(|(value, _)| value.is_ascii()) {
+                return Err(refuse("prefix comparison requires an ASCII literal"));
+            }
+        }
+        Ok(())
+    }
     fn alloc(&mut self, node: Node) -> Result<NodeId, MfdError> {
         let id = self.next;
         self.next = self
@@ -535,7 +606,10 @@ impl Builder {
             ("core", "equal") => ("equal", 2),
             ("core", "logical-and") => ("and", 2),
             ("core", "string-length") => ("length", 1),
-            ("lang", "left") => ("left", 2),
+            ("lang", "left") => {
+                self.require_wire_left(feed)?;
+                ("left_utf16_lossy", 2)
+            }
             ("core", "parse-date") => ("parse_date", 2),
             ("core", "format-dateTime") => ("format_datetime_milliseconds", 2),
             _ => {

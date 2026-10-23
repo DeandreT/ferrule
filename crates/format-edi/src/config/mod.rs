@@ -10,6 +10,7 @@ mod files;
 pub mod idoc;
 mod parser;
 pub mod swift;
+mod write_minimums;
 
 #[cfg(test)]
 mod tests;
@@ -96,6 +97,23 @@ pub fn import_config_with_byte_reader(
         selected_messages,
         Files::supplied(authorization_root, reader)?,
     )
+}
+
+pub fn import_mapforce_write_minimums_confined(
+    path: &Path,
+    root: &Path,
+    selected: &[String],
+) -> Result<Vec<mapping::MapForceEdiMinimum>, ConfigError> {
+    write_minimums::read(path, selected, Files::new(root)?)
+}
+
+pub fn import_mapforce_write_minimums_with_byte_reader(
+    path: &Path,
+    root: &Path,
+    selected: &[String],
+    reader: std::rc::Rc<dyn EdiConfigByteReader>,
+) -> Result<Vec<mapping::MapForceEdiMinimum>, ConfigError> {
+    write_minimums::read(path, selected, Files::supplied(root, reader)?)
 }
 
 fn import_config_with_files(

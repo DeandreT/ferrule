@@ -112,3 +112,27 @@ fn escaping_edi_include_is_refused_before_host_read() -> Result<(), Box<dyn std:
     assert_eq!(&*source.calls.borrow(), &[root.join("Envelope.Config")]);
     Ok(())
 }
+
+#[test]
+fn writer_minimums_keep_layout_rules_without_changing_the_ordinary_schema()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = std::env::current_dir()?.join("authored-edi-byte-identities");
+    let values = config::import_mapforce_write_minimums_with_byte_reader(
+        &root.join("Envelope.Config"),
+        &root,
+        &["850".into()],
+        source(&root, ENVELOPE, "850.Config"),
+    )?;
+    let minimum = |parts: &[&str]| {
+        values
+            .iter()
+            .find(|m| m.path.iter().map(String::as_str).eq(parts.iter().copied()))
+            .unwrap()
+            .minimum
+    };
+    assert_eq!(minimum(&["Interchange"]), 1);
+    assert_eq!(minimum(&["Interchange", "Group", "Message_850"]), 0);
+    assert_eq!(minimum(&["Interchange", "Group", "Message_850", "BEG"]), 1);
+    assert_eq!(minimum(&["Interchange", "IEA"]), 0);
+    Ok(())
+}

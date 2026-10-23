@@ -158,6 +158,7 @@ pub(crate) enum BuiltinId {
     IsEmpty,
     Trim,
     Left,
+    LeftUtf16Lossy,
     Right,
     LeftTrim,
     RightTrim,
@@ -353,6 +354,19 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Authoring,
         "Returns leading Unicode characters."
+    ),
+    builtin!(
+        LeftUtf16Lossy,
+        "left_utf16_lossy",
+        "UTF-16 prefix",
+        String,
+        &[parameter("value", String), parameter("count", Numeric)],
+        BuiltinArity::fixed(2),
+        String,
+        true,
+        true,
+        Internal,
+        "Returns a UTF-16 code-unit prefix, replacing a split surrogate with U+FFFD."
     ),
     builtin!(
         Right,

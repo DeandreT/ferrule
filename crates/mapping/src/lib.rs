@@ -25,6 +25,7 @@ mod idoc_native_config;
 mod idoc_native_text;
 mod iteration;
 mod json_source_projection;
+mod edi_scalar_options;
 mod model;
 mod owned_join;
 mod path_hierarchy;
@@ -103,6 +104,9 @@ pub use iteration::{
 pub use json_source_projection::{
     JsonProjectionPlanError, JsonSourceProperty, JsonSourceShape, MAX_JSON_PROJECTION_DEPTH,
     MAX_JSON_PROJECTION_NAME_BYTES, MAX_JSON_PROJECTION_NODES,
+};
+pub use edi_scalar_options::{
+    MapForceEdiMinimum, MapForceEdiScalar, MapForceEdiScalarKind, MapForceX12WriterDescriptor,
 };
 pub use model::{
     AggregateOp, Binding, DynamicBinding, DynamicChild, DynamicSourcePath, EdiConfigDependency,

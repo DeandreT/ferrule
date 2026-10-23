@@ -56,7 +56,9 @@ pub use error::EmitError;
 pub use json5_output::Json5EmitError;
 pub use primary_csv::{PrimaryCsvEmitError, emit_with_primary_csv_acquisition};
 pub use primary_filename::emit_with_primary_filename;
-pub use primary_json::{PrimaryJsonEmitError, emit_with_primary_json_projection};
+pub use primary_json::{
+    PrimaryJsonEmitError, emit_with_mapforce_x12_writer, emit_with_primary_json_projection,
+};
 pub use static_documents::StaticDocumentEmitError;
 pub use x12_output::X12EmitError;
 
