@@ -70,6 +70,7 @@ public static partial class FerruleFunctions
             "parse_time" => ParseTime(arguments),
             "format_date" => FormatDate(arguments),
             "format_datetime" => FormatDateTime(arguments),
+            "format_datetime_milliseconds" => FormatDateTimeMilliseconds(arguments),
             "format_time" => FormatTime(arguments),
             "datetime_add" => DateTimeAdd(arguments),
             "edifact_to_datetime" => EdifactToDateTime(arguments),

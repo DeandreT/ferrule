@@ -129,6 +129,28 @@ pub(super) fn format_datetime(args: &[Value]) -> Result<Value, FunctionError> {
     Ok(Value::String(format_picture(&fields, picture, FUNCTION)?))
 }
 
+pub(super) fn format_datetime_milliseconds(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "format_datetime_milliseconds";
+    if args.len() != 2 {
+        return Err(FunctionError::ArityMismatch {
+            function: FUNCTION,
+            expected: 2,
+            got: args.len(),
+        });
+    }
+    let (value, picture) = format_arguments(args, FUNCTION)?;
+    let Some((date, time)) = value.split_once('T') else {
+        return invalid(FUNCTION);
+    };
+    validate_iso_date(date, FUNCTION)?;
+    validate_iso_time(time, FUNCTION)?;
+    let mut fields = Formattable::from_date(date, FUNCTION)?;
+    fields.set_time(time, FUNCTION)?;
+    let fraction = fields.fraction.as_deref().unwrap_or("");
+    fields.fraction = Some(format!("{:0<3}", &fraction[..fraction.len().min(3)]));
+    Ok(Value::String(format_picture(&fields, picture, FUNCTION)?))
+}
+
 pub(super) fn format_time(args: &[Value]) -> Result<Value, FunctionError> {
     const FUNCTION: &str = "format_time";
     let (value, picture) = format_arguments(args, FUNCTION)?;

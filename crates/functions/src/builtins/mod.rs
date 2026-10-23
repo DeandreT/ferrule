@@ -83,6 +83,7 @@ pub(super) fn call_builtin(
         BuiltinId::Round => round(args),
         BuiltinId::DelayPassthrough => delay_passthrough(args),
         BuiltinId::DateFromDatetime => date_from_datetime(args),
+        BuiltinId::FormatDatetimeMilliseconds => datetime::format_datetime_milliseconds(args),
         BuiltinId::YearFromDatetime => year_from_datetime(args),
         BuiltinId::MonthFromDatetime => month_from_datetime(args),
         BuiltinId::DayFromDatetime => day_from_datetime(args),

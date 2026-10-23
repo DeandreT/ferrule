@@ -1067,7 +1067,7 @@ impl Builder {
             "equal" => ("equal", 2, ScalarType::Bool),
             "string-length" => ("length", 1, ScalarType::Int),
             "parse-dateTime" => ("parse_datetime", 2, ScalarType::String),
-            "format-dateTime" => ("format_datetime", 2, ScalarType::String),
+            "format-dateTime" => ("format_datetime_milliseconds", 2, ScalarType::String),
             "format-date" => ("format_date", 2, ScalarType::String),
             "create-guid" => ("create_guid", 0, ScalarType::String),
             "format-guid-string" => ("format_guid_string", 1, ScalarType::String),
