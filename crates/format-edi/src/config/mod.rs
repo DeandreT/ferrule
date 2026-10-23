@@ -116,6 +116,25 @@ pub fn import_mapforce_write_minimums_with_byte_reader(
     write_minimums::read(path, selected, Files::supplied(root, reader)?)
 }
 
+/// Explicit source occurrence metadata, including scalar fields. Ordinary
+/// schema imports and writer-only minimum tables remain unchanged.
+pub fn import_mapforce_source_minimums_confined(
+    path: &Path,
+    root: &Path,
+    selected: &[String],
+) -> Result<Vec<mapping::MapForceEdiMinimum>, ConfigError> {
+    write_minimums::read_fields(path, selected, Files::new(root)?)
+}
+
+pub fn import_mapforce_source_minimums_with_byte_reader(
+    path: &Path,
+    root: &Path,
+    selected: &[String],
+    reader: std::rc::Rc<dyn EdiConfigByteReader>,
+) -> Result<Vec<mapping::MapForceEdiMinimum>, ConfigError> {
+    write_minimums::read_fields(path, selected, Files::supplied(root, reader)?)
+}
+
 fn import_config_with_files(
     path: &Path,
     selected_messages: &[String],

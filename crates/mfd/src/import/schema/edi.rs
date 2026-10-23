@@ -22,6 +22,21 @@ pub(super) fn writer_minimums(
     component: &roxmltree::Node<'_, '_>,
     resources: &ResourceResolver,
 ) -> Result<Vec<mapping::MapForceEdiMinimum>, String> {
+    minimums(component, resources, false)
+}
+
+pub(super) fn source_minimums(
+    component: &roxmltree::Node<'_, '_>,
+    resources: &ResourceResolver,
+) -> Result<Vec<mapping::MapForceEdiMinimum>, String> {
+    minimums(component, resources, true)
+}
+
+fn minimums(
+    component: &roxmltree::Node<'_, '_>,
+    resources: &ResourceResolver,
+    source_fields: bool,
+) -> Result<Vec<mapping::MapForceEdiMinimum>, String> {
     let text = component
         .children()
         .find(|n| n.has_tag_name("data"))
@@ -45,11 +60,24 @@ pub(super) fn writer_minimums(
         .unwrap_or_default();
     let resolved = config_source::resolve(resources.mapping_path(), Some(resources), declared)?;
     let result = match resolved.bound() {
+        Some(reader) if source_fields => {
+            format_edi::config::import_mapforce_source_minimums_with_byte_reader(
+                resolved.path(),
+                resolved.authorization_root(),
+                &selected,
+                reader.clone(),
+            )
+        }
         Some(reader) => format_edi::config::import_mapforce_write_minimums_with_byte_reader(
             resolved.path(),
             resolved.authorization_root(),
             &selected,
             reader.clone(),
+        ),
+        None if source_fields => format_edi::config::import_mapforce_source_minimums_confined(
+            resolved.path(),
+            resolved.authorization_root(),
+            &selected,
         ),
         None => format_edi::config::import_mapforce_write_minimums_confined(
             resolved.path(),

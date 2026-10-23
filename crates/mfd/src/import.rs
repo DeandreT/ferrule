@@ -76,6 +76,7 @@ mod target_node_function;
 mod target_type_cast;
 mod udf;
 mod unused_xml_source;
+mod x12_document_bodies;
 mod xml_root_view;
 mod xml_serializer;
 
@@ -89,6 +90,10 @@ pub use json_source_projection::{
     ImportedJsonSourceProjection, import_json_source_projection_with_options,
 };
 pub use schema::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
+pub use x12_document_bodies::{
+    ImportedX12DocumentBodies, X12DocumentBody, X12DocumentBodyFormat,
+    import_x12_document_bodies_with_options,
+};
 
 use db_query::is_routine_catalog;
 use function::{
