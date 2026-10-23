@@ -4,6 +4,9 @@ use std::cell::Cell;
 use ir::{Instance, Value};
 use mapping::{NamedSource, OwnedSourceField, OwnedSourceRef, Project, SourceOwner};
 
+use crate::frame_view::latest_owned;
+use crate::source_iteration::PositionFrame;
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum OwnedSourceError {
     #[error("named source owner cannot be empty")]
@@ -601,11 +604,15 @@ impl<'a> OwnedContext<'a> {
         };
         super::resolve::owned_scalar(item, suffix)
     }
-    pub fn position_slot(
+    /// The position of the latest active frame of `owner`, of exactly
+    /// `collection` when one is named, or `None` when that frame's slot names
+    /// no position.
+    pub fn position<'p>(
         &self,
         owner: &SourceOwner,
         collection: Option<&[String]>,
-    ) -> Result<usize, OwnedSourceError> {
+        positions: &'p [PositionFrame],
+    ) -> Result<Option<&'p PositionFrame>, OwnedSourceError> {
         let owner_name = match owner {
             SourceOwner::Primary => None,
             SourceOwner::Named { name } => Some(name.as_str()),
@@ -619,17 +626,14 @@ impl<'a> OwnedContext<'a> {
         )?;
         let key = self.roots.key(owner)?;
         self.endpoint_root(key)?;
-        self.frames
-            .iter()
-            .rev()
-            .find(|frame| {
-                frame.owner == key && collection.is_none_or(|path| frame.collection == path)
-            })
-            .map(|frame| frame.position_slot)
-            .ok_or_else(|| OwnedSourceError::InactiveSourceFrame {
-                owner: owner.clone(),
-                collection: collection.map(<[String]>::to_vec),
-            })
+        latest_owned(&self.frames, positions, |frame| {
+            frame.owner == key && collection.is_none_or(|path| frame.collection == path)
+        })
+        .map(|(_, position)| position)
+        .ok_or_else(|| OwnedSourceError::InactiveSourceFrame {
+            owner: owner.clone(),
+            collection: collection.map(<[String]>::to_vec),
+        })
     }
 
     pub fn row_document_path(
