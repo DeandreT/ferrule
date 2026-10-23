@@ -192,6 +192,8 @@ mod regex_unicode;
 mod required_query_host;
 #[path = "code_generation/required_ref_boundaries.rs"]
 mod required_ref_boundaries;
+#[path = "code_generation/run_manifest.rs"]
+mod run_manifest;
 #[path = "code_generation/runtime_values.rs"]
 mod runtime_values;
 #[path = "code_generation/scalar_algorithms.rs"]

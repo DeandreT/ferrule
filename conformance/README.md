@@ -267,9 +267,13 @@ A portable Basic cohort separates three contracts:
   `FERRULE_CODEGEN_HOST_TARGET_DIR`), isolated .NET CLI/package/temporary
   directories, `DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=false`, warnings denied for
   the Rust host, and retention: a run directory with its per-call host
-  evidence is removed unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`. Failure
-  messages quote a bounded tail of host output. A cohort chooses only its
-  generation profile's lowering and emitters.
+  evidence is removed unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`. A retained
+  run keeps a bounded tail of each command's output under `logs/` and a
+  `RUN-MANIFEST.json` listing every command with its exit status and every
+  retained file with its size and SHA-256; its per-run Cargo target and .NET
+  sandboxes are restorable caches, summarized in the manifest and dropped.
+  Failure messages quote a bounded tail of host output. A cohort chooses only
+  its generation profile's lowering and emitters.
 - **Results.** Plain tests in `crates/cli/tests/code_generation/` compare every
   call of every executor with the oracle and fail on any mismatch or missing
   call. They need no preparation step, success receipt, source fingerprint or
