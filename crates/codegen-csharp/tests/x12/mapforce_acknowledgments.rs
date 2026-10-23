@@ -199,6 +199,7 @@ fn mapforce_acknowledgment_compiled_source_matches_native_reads() {
         &format!("{name}-build"),
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "build",
                 &format!("{name}/Ferrule.Generated.csproj"),
@@ -237,6 +238,7 @@ fn mapforce_acknowledgment_compiled_source_matches_native_reads() {
         "host-build",
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "build",
                 "Harness/Harness.csproj",
@@ -258,6 +260,7 @@ fn mapforce_acknowledgment_compiled_source_matches_native_reads() {
         "host-run",
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "run",
                 "--project",

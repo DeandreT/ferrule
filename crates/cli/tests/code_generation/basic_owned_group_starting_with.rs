@@ -792,6 +792,7 @@ fn run_csharp_host(
         )
     };
     let build = Command::new(dotnet)
+        .dotnet_temp(root)
         .args([
             "build",
             "--configuration",
@@ -838,6 +839,7 @@ fn run_csharp_host(
     )
     .map_err(|error| format!("C# {label} contract: {error}"))?;
     let run = Command::new(dotnet)
+        .dotnet_temp(root)
         .arg(&assembly)
         .args(&arguments)
         .arg(&output)

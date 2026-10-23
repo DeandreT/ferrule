@@ -1,3 +1,7 @@
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+use dotnet_temp::DotnetTemp;
+
 use codegen::{Program, TargetConstruction, TargetScope};
 use ir::{ScalarType, SchemaNode};
 use std::path::PathBuf;
@@ -56,6 +60,7 @@ fn generated_scalar_item_nullability_builds_and_preserves_complete_values()
     std::fs::write(harness.join("Program.cs"), HARNESS)?;
     let build = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(&directory.0)
         .args([
             "build",
             "-warnaserror",
@@ -75,6 +80,7 @@ fn generated_scalar_item_nullability_builds_and_preserves_complete_values()
     );
     let run = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(&directory.0)
         .arg(directory.0.join("Harness/bin/Release/net10.0/Harness.dll"))
         .current_dir(&directory.0)
         .output()?;

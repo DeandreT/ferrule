@@ -35,6 +35,9 @@ mod json5_output_tests;
 mod x12_output_tests;
 
 #[cfg(test)]
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+#[cfg(test)]
 mod dynamic_targets_tests;
 
 #[cfg(test)]
