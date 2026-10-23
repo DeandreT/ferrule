@@ -539,7 +539,7 @@ pub(crate) const COMPATIBILITY_SOURCE: (&str, &str) = (
 
 /// Every vendored runtime source any emitter can add, and the target builder.
 pub(crate) fn vendored_sources() -> impl Iterator<Item = &'static str> {
-    const OPTIONAL: [&str; 7] = [
+    const OPTIONAL: [&str; 9] = [
         DYNAMIC_INPUT_DOCUMENT_OUTPUTS_SOURCE.1,
         COMPATIBILITY_SOURCE.1,
         TARGET_BUILDER_BODY,
@@ -547,6 +547,8 @@ pub(crate) fn vendored_sources() -> impl Iterator<Item = &'static str> {
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvInput.cs"),
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs"),
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvAcquisition.cs"),
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerrulePrimaryDocuments.cs"),
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleLocalPrimaryFiles.cs"),
     ];
     SOURCES
         .iter()

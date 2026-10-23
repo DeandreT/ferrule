@@ -2666,7 +2666,7 @@ fn import_resolved(
     exception::item_ordered::finish(&mut project, item_exception, &mut warnings);
     if let Some(filename) = primary_filename {
         let mut document =
-            mapping::DocumentProject::new(project, mapping::PrimarySourcePlan { filename });
+            mapping::DocumentProject::new(project, mapping::PrimarySourcePlan::new(filename));
         document.prune_unreachable_nodes();
         project = document.project().clone();
     } else {

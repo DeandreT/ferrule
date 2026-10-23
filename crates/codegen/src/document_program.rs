@@ -2,7 +2,9 @@
 
 use std::fmt;
 
-use mapping::{DocumentProject, GlobalFilename, NodeId, PrimaryFilenameError};
+use mapping::{
+    DocumentProject, GlobalFilename, NodeId, PrimaryFileSelection, PrimaryFilenameError,
+};
 
 use crate::{LowerError, Program};
 
@@ -18,6 +20,7 @@ pub enum PrimaryFilenamePlan {
 pub struct DocumentProgram {
     program: Program,
     primary_filename: PrimaryFilenamePlan,
+    primary_selection: PrimaryFileSelection,
 }
 
 impl DocumentProgram {
@@ -27,6 +30,12 @@ impl DocumentProgram {
 
     pub fn primary_filename(&self) -> &PrimaryFilenamePlan {
         &self.primary_filename
+    }
+
+    /// How the filename selects documents; generated document entry points
+    /// pass it to the host rather than letting the host choose.
+    pub fn primary_selection(&self) -> PrimaryFileSelection {
+        self.primary_selection
     }
 }
 
@@ -75,5 +84,6 @@ pub fn lower_document(document: &DocumentProject) -> Result<DocumentProgram, Doc
     Ok(DocumentProgram {
         program,
         primary_filename,
+        primary_selection: document.primary_source().selection,
     })
 }

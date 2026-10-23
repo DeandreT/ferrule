@@ -47,7 +47,7 @@ fn document() -> DocumentProject {
                 ..Default::default()
             },
         },
-        PrimarySourcePlan { filename: 17 },
+        PrimarySourcePlan::new(17),
     )
 }
 
@@ -142,4 +142,42 @@ fn missing_binding_never_uses_a_preview_or_calls_the_host() {
     ));
     assert_eq!(calls.get(), 0);
     assert!(rows.next().is_none());
+}
+
+struct UnreachableHost;
+
+impl format_csv::PrimarySourceHost for UnreachableHost {
+    type Error = std::io::Error;
+
+    fn select(
+        &self,
+        _: &str,
+        _: mapping::PrimaryFileSelection,
+    ) -> Result<Vec<String>, std::io::Error> {
+        panic!("selected for an invalid mapping")
+    }
+
+    fn load(&self, _: &str) -> Result<CsvSourceData, std::io::Error> {
+        panic!("loaded for an invalid mapping")
+    }
+}
+
+#[test]
+fn an_invalid_mapping_is_refused_before_any_filename_selection_or_load() {
+    let document = document();
+    let mut parameters = RuntimeParameters::new();
+    parameters
+        .insert("Input", Value::String("input.csv".into()))
+        .unwrap();
+    let context = ExecutionContext::new(Path::new("authored.mfd")).with_parameters(&parameters);
+    assert!(matches!(
+        engine::run_primary_csv_document(
+            &document,
+            &context,
+            &UnreachableHost,
+            CsvByteDecodingPolicy::StrictUtf8,
+            1,
+        ),
+        Err(engine::PrimaryDocumentRunError::Invalid(issues)) if !issues.is_empty()
+    ));
 }

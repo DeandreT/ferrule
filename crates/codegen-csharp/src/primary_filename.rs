@@ -13,6 +13,12 @@ pub fn emit_with_primary_filename(document: &DocumentProgram) -> Result<Artifact
 /// partial declaration of the mapping source.
 pub(crate) fn library(document: &DocumentProgram) -> Result<Library, EmitError> {
     let mut library = crate::library(document.program())?;
+    add_evaluator(&mut library, document);
+    Ok(library)
+}
+
+/// Declare `EvaluatePrimaryFilename` in a further partial mapping declaration.
+pub(crate) fn add_evaluator(library: &mut Library, document: &DocumentProgram) {
     let expression = match document.primary_filename() {
         PrimaryFilenamePlan::Literal { text, .. } => literal::string(text),
         PrimaryFilenamePlan::Parameter { node, name } => format!(
@@ -23,5 +29,4 @@ pub(crate) fn library(document: &DocumentProgram) -> Result<Library, EmitError> 
     library.extend_mapping(format!(
         "    /// <summary>Resolve filename text only; performs no path interpretation, loading or mapping execution.</summary>\n    public static string EvaluatePrimaryFilename(global::Ferrule.Runtime.FerruleExecutionContext execution)\n    {{\n        global::System.ArgumentNullException.ThrowIfNull(execution);\n        return {expression};\n    }}\n"
     ));
-    Ok(library)
 }

@@ -82,7 +82,8 @@ pub use context::{
     ScopeContext, SourcePathError, clone_scalar, resolve_scalar,
 };
 pub use csv::{
-    CsvBoundaryError, CsvDocumentError, MAX_CSV_DOCUMENT_BYTES, serialize_csv, serialize_csv_bytes,
+    CsvBoundaryError, CsvDocumentError, MAX_CSV_DOCUMENT_BYTES, PrimaryCsvDocumentError,
+    serialize_csv, serialize_csv_bytes,
 };
 pub use dynamic_document::dynamic_document;
 pub use dynamic_source::{
@@ -107,7 +108,8 @@ pub use format_csv::{
     CsvAcquisitionError, CsvByteDecodingPolicy, CsvDocumentRows, CsvFormatError, CsvReadError,
     CsvReadLimit, CsvReadOptions, CsvRowOccurrence, CsvSourceAcquisition, CsvSourceData,
     CsvSourceDocument, CsvSourceError, CsvSourceLoadError, CsvSourceRows, CsvWriteOptions,
-    MAX_CSV_SOURCE_DOCUMENTS, MAX_CSV_SOURCE_PATH_BYTES,
+    LocalFileError, LocalPrimaryFiles, MAX_CSV_SOURCE_DOCUMENTS, MAX_CSV_SOURCE_PATH_BYTES,
+    PrimarySourceHost, acquire_primary_csv_rows,
     from_bytes_with_decoding_policy_bounded as parse_csv_rows_bytes_with_decoding_policy,
     from_bytes_with_options_bounded as parse_csv_rows_bytes,
     from_str_with_options_bounded as parse_csv_rows,
@@ -149,6 +151,7 @@ pub use json5::{
     Json5BoundaryError, Json5BoundaryResource, Json5SyntaxError, Json5SyntaxKind,
     Json5SyntaxResource, JsonFormatError, map_json5_bytes_with, map_json5_with,
 };
+pub use mapping::{EmptyFileSelection, PrimaryFileSelection};
 pub use path_hierarchy::{
     MAX_PATH_HIERARCHY_DEPTH, MAX_PATH_HIERARCHY_ITEMS, owned_path_hierarchy, path_hierarchy,
 };

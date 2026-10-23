@@ -4,7 +4,7 @@ use codegen::{ArtifactSet, CsvDocumentBoundaryError, CsvDocumentBoundaryPolicy, 
 use ir::{ScalarType, SchemaKind};
 
 use crate::Options;
-use crate::composition::ClassPart;
+use crate::composition::{ClassPart, Library};
 use crate::{EmitError, literal};
 use codegen::GenerationProfile;
 
@@ -51,6 +51,22 @@ pub(crate) fn emit(
     policy: &CsvDocumentBoundaryPolicy,
     options: &Options,
 ) -> Result<ArtifactSet, CsvDocumentEmitError> {
+    let library = library(program, policy)?;
+    let profile = if policy.target.raw_delimited_crlf {
+        GenerationProfile::RawDelimitedDocument
+    } else {
+        GenerationProfile::CsvDocument
+    };
+    library
+        .into_artifacts_with(options, profile)
+        .map_err(CsvDocumentEmitError::Emit)
+}
+
+/// The CSV output library with the complete-document companion and its input runtime.
+pub(crate) fn library(
+    program: &Program,
+    policy: &CsvDocumentBoundaryPolicy,
+) -> Result<Library, CsvDocumentEmitError> {
     codegen::validate_csv_document_boundary(program, policy)
         .map_err(|e| CsvDocumentEmitError::Boundary(Box::new(e)))?;
     let mut library =
@@ -66,14 +82,7 @@ pub(crate) fn emit(
             include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs"),
         ),
     ]);
-    let profile = if policy.target.raw_delimited_crlf {
-        GenerationProfile::RawDelimitedDocument
-    } else {
-        GenerationProfile::CsvDocument
-    };
-    library
-        .into_artifacts_with(options, profile)
-        .map_err(CsvDocumentEmitError::Emit)
+    Ok(library)
 }
 
 fn render(program: &Program, policy: &CsvDocumentBoundaryPolicy) -> ClassPart {

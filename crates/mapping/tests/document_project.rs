@@ -1,7 +1,7 @@
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
-    Binding, DocumentProject, GlobalFilename, Graph, Node, PrimaryFilenameError, PrimarySourcePlan,
-    Project, Scope,
+    Binding, DocumentProject, EmptyFileSelection, GlobalFilename, Graph, Node,
+    PrimaryFileSelection, PrimaryFilenameError, PrimarySourcePlan, Project, Scope,
 };
 
 fn project(filename: Node) -> Project {
@@ -48,7 +48,7 @@ fn project(filename: Node) -> Project {
 }
 
 fn wrap(filename: Node) -> DocumentProject {
-    DocumentProject::new(project(filename), PrimarySourcePlan { filename: 1 })
+    DocumentProject::new(project(filename), PrimarySourcePlan::new(1))
 }
 
 #[test]
@@ -100,7 +100,7 @@ fn document_artifact_cannot_be_loaded_as_a_legacy_project() {
     let ordinary_json = serde_json::to_value(&ordinary).unwrap();
     let restored: Project = serde_json::from_value(ordinary_json.clone()).unwrap();
     assert_eq!(serde_json::to_value(restored).unwrap(), ordinary_json);
-    let document = DocumentProject::new(ordinary, PrimarySourcePlan { filename: 1 });
+    let document = DocumentProject::new(ordinary, PrimarySourcePlan::new(1));
     let value = serde_json::to_value(&document).unwrap();
     assert_eq!(value["format"], "ferrule_document_project_v1");
     assert!(serde_json::from_value::<Project>(value.clone()).is_err());
@@ -117,11 +117,54 @@ fn document_artifact_cannot_be_loaded_as_a_legacy_project() {
 }
 
 #[test]
-fn missing_nonstring_and_source_dependent_nodes_are_refused() {
-    let missing = DocumentProject::new(
-        project(Node::Unconnected),
-        PrimarySourcePlan { filename: 999 },
+fn selection_is_additive_in_the_saved_plan() {
+    let direct = wrap(Node::Const {
+        value: Value::String("input.csv".into()),
+    });
+    let value = serde_json::to_value(&direct).unwrap();
+    // Direct plans keep the saved form they had before selection existed.
+    assert_eq!(value["primary_source"], serde_json::json!({"filename": 1}));
+    let mut explicit = value.clone();
+    explicit["primary_source"]["selection"] = serde_json::json!("direct");
+    let restored: DocumentProject = serde_json::from_value(explicit).unwrap();
+    assert_eq!(restored.primary_source(), direct.primary_source());
+
+    let wildcard = DocumentProject::new(
+        direct.project().clone(),
+        PrimarySourcePlan::new(1).with_selection(PrimaryFileSelection::FileNameWildcard {
+            empty: EmptyFileSelection::MapNoDocuments,
+        }),
     );
+    let value = serde_json::to_value(&wildcard).unwrap();
+    assert_eq!(
+        value["primary_source"],
+        serde_json::json!({"filename": 1, "selection": {"file_name_wildcard": {"empty": "map_no_documents"}}})
+    );
+    let decoded = mapping::document_project_file::decode_str(
+        &mapping::document_project_file::encode_pretty(&wildcard).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(decoded.primary_source(), wildcard.primary_source());
+
+    for selection in [
+        serde_json::json!("file_name_wildcard"),
+        serde_json::json!({"file_name_wildcard": {}}),
+        serde_json::json!({"file_name_wildcard": {"empty": "skip"}}),
+        serde_json::json!({"file_name_wildcard": {"empty": "refuse", "network": true}}),
+        serde_json::json!("url"),
+    ] {
+        let mut unknown = value.clone();
+        unknown["primary_source"]["selection"] = selection.clone();
+        assert!(
+            serde_json::from_value::<DocumentProject>(unknown).is_err(),
+            "{selection}"
+        );
+    }
+}
+
+#[test]
+fn missing_nonstring_and_source_dependent_nodes_are_refused() {
+    let missing = DocumentProject::new(project(Node::Unconnected), PrimarySourcePlan::new(999));
     assert_eq!(
         missing.global_filename(),
         Err(PrimaryFilenameError::MissingNode { node: 999 })
@@ -206,7 +249,7 @@ fn pruning_keeps_filename_dependencies_even_when_the_profile_refuses_them() {
             value: Value::String("default.csv".into()),
         },
     );
-    let mut document = DocumentProject::new(source, PrimarySourcePlan { filename: 1 });
+    let mut document = DocumentProject::new(source, PrimarySourcePlan::new(1));
     document.prune_unreachable_nodes();
     assert_eq!(
         document
@@ -245,7 +288,7 @@ fn file_codec_preserves_complete_project_and_float_bits() {
             },
         );
         let before = mapping::project_file::encode_pretty(&mapping).unwrap();
-        let document = DocumentProject::new(mapping, PrimarySourcePlan { filename: 1 });
+        let document = DocumentProject::new(mapping, PrimarySourcePlan::new(1));
         let text = mapping::document_project_file::encode_pretty(&document).unwrap();
         let restored = mapping::document_project_file::decode_bytes(text.as_bytes()).unwrap();
         assert_eq!(
@@ -277,7 +320,7 @@ fn file_codec_refuses_nonfinite_values_and_wrong_artifact_kinds() {
             value: Value::Float(f64::NAN),
         },
     );
-    let document = DocumentProject::new(mapping, PrimarySourcePlan { filename: 1 });
+    let document = DocumentProject::new(mapping, PrimarySourcePlan::new(1));
     assert!(matches!(
         mapping::document_project_file::encode_pretty(&document),
         Err(mapping::FileCodecError::NonFiniteValue { .. })
