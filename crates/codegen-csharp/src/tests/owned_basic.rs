@@ -1,9 +1,9 @@
 //! Prospective private generator controls. No public capability is enabled.
 //! FERRULE_PRIVATE_OWNED_CSHARP_HOST_DIR and FERRULE_PRIVATE_CHECKED_CSHARP_HOST_DIR
-//! retain the generated Mapping, TargetBuilder and complete typed host; those
-//! hosts target a historical runtime API and are not built in this checkout.
-//! FERRULE_PUBLIC_BASIC_CSHARP_HOST_DIR retains the public consumers, which
-//! `owned_basic_consumers` builds and runs without an external campaign.
+//! retain the generated Mapping, TargetBuilder and complete typed host;
+//! FERRULE_PUBLIC_BASIC_CSHARP_HOST_DIR retains the public consumers.
+//! `owned_basic_consumers` builds and runs all of them without an external
+//! campaign.
 //! Ordinary embedded runtime/artifacts and all public emitter routes stay exact.
 use super::*;
 use crate::owned_basic::render_basic_owned_mapping;
@@ -275,10 +275,13 @@ fn private_named_walk_and_legacy_nested_frame_hosts() {
             ],
         ),
     );
+    // The legacy `Ref/Rows` alias position does not follow the owned cursor;
+    // the interpreter returns 1 for both rows (see the Rust backend's
+    // `p04_legacy_alias_position_matches_the_interpreter`).
     let s = retain_host(
         "G439-P04",
         &p,
-        r#"var a=Reach("P04",()=>ExecuteOwnedBasic(Input,Declared,Limits)); ExpectTree(a,"[{\"Value\":\"N1\",\"OwnedPosition\":1,\"LegacyPosition\":1},{\"Value\":\"N2\",\"OwnedPosition\":2,\"LegacyPosition\":2}]");"#,
+        r#"var a=Reach("P04",()=>ExecuteOwnedBasic(Input,Declared,Limits)); ExpectTree(a,"[{\"Value\":\"N1\",\"OwnedPosition\":1,\"LegacyPosition\":1},{\"Value\":\"N2\",\"OwnedPosition\":2,\"LegacyPosition\":1}]");"#,
     );
     assert!(s.contains("WalkOwnedSourceCohort(global::Ferrule.Runtime.FerruleOwnedSourceOwner.Named(\"Ref\"), new string[] { \"Rows\" })"));
     assert_eq!(s.matches("WalkOwnedSourceCohort(").count(), 1);
