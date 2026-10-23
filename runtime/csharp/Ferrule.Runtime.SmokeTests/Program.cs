@@ -142,6 +142,8 @@ internal static partial class Program
             ("JSON prepared schemas match unprepared calls", JsonPreparedSchemasMatchUnpreparedCalls),
             ("JSON prepared schemas isolate concurrent accounting", JsonPreparedSchemasIsolateConcurrentAccounting),
             ("JSON prepared schema allocation accounting", JsonPreparedSchemaAllocationAccounting),
+            ("JSON byte outputs match text outputs", JsonByteOutputsMatchTextOutputs),
+            ("JSON output limit on text and byte routes", JsonOutputLimitOnTextAndByteRoutes),
             ("endpoint prepared codecs match unprepared calls", EndpointPreparedCodecsMatchUnpreparedCalls),
             ("endpoint prepared codecs isolate concurrent calls", EndpointPreparedCodecsIsolateConcurrentCalls),
             ("endpoint byte outputs match text outputs", EndpointByteOutputsMatchTextOutputs),

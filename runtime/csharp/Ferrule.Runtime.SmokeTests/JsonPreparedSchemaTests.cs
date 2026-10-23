@@ -256,9 +256,13 @@ internal static partial class Program
         Row("`ParseBytes`, large, shared descriptor", Allocated(3, () => FerruleJson.ParseBytes(PreparedReportSchema, largeBytes)));
         Row("UTF-8 to UTF-16 decoding of the large input", Allocated(3, () => System.Text.Encoding.UTF8.GetString(largeBytes)));
         Row("`System.Text.Json.JsonDocument` of the large input text", Allocated(3, () => System.Text.Json.JsonDocument.Parse(large).Dispose()));
+        Row("`System.Text.Json.JsonDocument` of the large input bytes", Allocated(3, () => System.Text.Json.JsonDocument.Parse(largeBytes.AsMemory()).Dispose()));
+        Row("`ParseEmbeddedBytes`, large, shared descriptor", Allocated(3, () => FerruleJson.ParseEmbeddedBytes(PreparedReportSchema, largeBytes)));
         Row("`Serialize`, large, shared descriptor", Allocated(3, () => FerruleJson.Serialize(PreparedReportSchema, largeInstance)));
         Row("`SerializeBytes`, large, shared descriptor", Allocated(3, () => FerruleJson.SerializeBytes(PreparedReportSchema, largeInstance)));
         Row("UTF-16 to UTF-8 encoding of the large output", Allocated(3, () => System.Text.Encoding.UTF8.GetBytes(output)));
+        Row("`SerializeEmbeddedCompact`, large, shared descriptor", Allocated(3, () => FerruleJson.SerializeEmbeddedCompact(PreparedReportSchema, largeInstance)));
+        Row("`SerializeEmbeddedCompactBytes`, large, shared descriptor", Allocated(3, () => FerruleJson.SerializeEmbeddedCompactBytes(PreparedReportSchema, largeInstance)));
         var canonical = output[..^1];
         Row("final newline copy of the large output", Allocated(3, () => _ = canonical + "\n"));
     }
