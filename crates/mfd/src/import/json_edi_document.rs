@@ -264,7 +264,12 @@ pub fn import_json_edi_document_with_options(
     result
 }
 
-fn empty_project(source: SchemaNode, target: SchemaNode, graph: Graph, root: Scope) -> Project {
+pub(super) fn empty_project(
+    source: SchemaNode,
+    target: SchemaNode,
+    graph: Graph,
+    root: Scope,
+) -> Project {
     Project {
         source,
         target,
@@ -289,7 +294,7 @@ fn relative(path: &[String], anchor: &[String]) -> Result<Vec<String>, MfdError>
         .map(<[String]>::to_vec)
         .ok_or_else(|| refuse("source expression crosses its document/row owner"))
 }
-fn literal_data(component: roxmltree::Node<'_, '_>) -> bool {
+pub(super) fn literal_data(component: roxmltree::Node<'_, '_>) -> bool {
     let data: Vec<_> = component
         .children()
         .filter(|n| n.has_tag_name("data"))
@@ -311,7 +316,7 @@ fn literal_data(component: roxmltree::Node<'_, '_>) -> bool {
         })
 }
 
-fn function_metadata(component: roxmltree::Node<'_, '_>) -> bool {
+pub(super) fn function_metadata(component: roxmltree::Node<'_, '_>) -> bool {
     component.attributes().all(|attribute| {
         attribute.namespace().is_none()
             && matches!(
@@ -333,7 +338,10 @@ fn function_metadata(component: roxmltree::Node<'_, '_>) -> bool {
                         && !node.children().any(|child| child.is_element()))
         })
 }
-fn pins(component: roxmltree::Node<'_, '_>, kind: &str) -> Result<Vec<Option<u32>>, MfdError> {
+pub(super) fn pins(
+    component: roxmltree::Node<'_, '_>,
+    kind: &str,
+) -> Result<Vec<Option<u32>>, MfdError> {
     let wrappers: Vec<_> = component
         .children()
         .filter(|n| n.has_tag_name(kind))

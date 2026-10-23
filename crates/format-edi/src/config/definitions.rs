@@ -18,6 +18,7 @@ pub(super) struct FieldDef {
     pub(super) node_name: Option<String>,
     pub(super) merged_entries: usize,
     pub(super) repeating: bool,
+    pub(super) minimum: Option<u32>,
     pub(super) disabled: bool,
     pub(super) fixed: Option<String>,
     pub(super) inline_fields: Option<Vec<FieldDef>>,
@@ -289,6 +290,7 @@ pub(super) fn read_field_defs(node: roxmltree::Node<'_, '_>) -> Result<Vec<Field
                 node_name,
                 merged_entries,
                 repeating: has_multiple_occurrences(child),
+                minimum: child.attribute("minOccurs").unwrap_or("1").parse().ok(),
                 disabled: child.attribute("maxOccurs") == Some("0"),
                 fixed: single_allowed_value(child),
                 inline_fields: (!child.has_tag_name("Data"))
