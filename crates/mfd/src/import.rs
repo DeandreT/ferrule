@@ -57,7 +57,7 @@ mod mixed_content;
 mod optional_parser_input;
 mod output_parameter;
 mod pipeline_exception;
-mod presence;
+pub(crate) mod presence;
 mod protobuf_target;
 mod recursive;
 mod scalar_anchor;

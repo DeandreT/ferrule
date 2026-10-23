@@ -115,8 +115,8 @@ fn validate_boundary(
 fn validate_json_schema(schema: &SchemaNode, role: &str) -> Result<(), MfdError> {
     if schema.attribute
         || schema.text
-        || schema.nillable
-        || schema.nullable
+        || !crate::import::presence::xml_non_nil(schema)
+        || !crate::import::presence::json_value_non_null(schema)
         || schema.fixed.is_some()
         || schema.recursive_ref.is_some()
     {
@@ -155,7 +155,7 @@ fn validate_inline_response_constraints(schema: &SchemaNode) -> Result<(), MfdEr
             schema.name
         )));
     }
-    if schema.container_nullable
+    if !crate::import::presence::json_container_non_null(schema)
         || schema.json_any
         || schema.json_allowed_values.is_some()
         || schema.numeric_range.is_some()

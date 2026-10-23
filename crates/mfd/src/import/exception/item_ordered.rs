@@ -413,7 +413,7 @@ fn bounded_schema(root: &SchemaNode) -> bool {
             || !node.xml_repeating_sequences.is_empty()
             || node.xml_type_alternatives
             || node.json_any
-            || node.container_nullable
+            || !crate::import::presence::json_container_non_null(node)
         {
             return false;
         }

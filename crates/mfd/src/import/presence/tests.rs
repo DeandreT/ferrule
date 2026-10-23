@@ -3,14 +3,17 @@
 //!
 //! Each pre-migration predicate is retained as an oracle and compared with its
 //! view-derived replacement over every role-flag combination and every schema
-//! node of every imported fixture design under both import profiles.
+//! node of every imported fixture design under both import profiles. The
+//! `.mfd` export proofs swapped single flag reads for the shared facts, so
+//! those facts are compared with the flags they replaced.
 
 use std::path::{Path, PathBuf};
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
 
 use super::{
-    json_non_null, json_object_items_non_null, json_property_required, json_values_non_null,
+    attribute_required, json_container_non_null, json_non_null, json_object_items_non_null,
+    json_property_required, json_value_non_null, json_values_non_null, xml_non_nil,
 };
 use crate::import::group_by_key::ordinary;
 use crate::import::json_variable::present_record_step;
@@ -229,7 +232,7 @@ fn object_items_non_null_legacy(node: &SchemaNode) -> bool {
 }
 
 /// (site, migrated predicate, retained oracle)
-const SITES: [(&str, Predicate, Predicate); 18] = [
+const SITES: [(&str, Predicate, Predicate); 23] = [
     (
         "group_by_key ordinary",
         ordinary,
@@ -319,6 +322,26 @@ const SITES: [(&str, Predicate, Predicate); 18] = [
         "required item property",
         |node| json_property_required(node, "item"),
         |node| legacy::required_property(node, "item"),
+    ),
+    // `.mfd` export and the item-ordered exception proof: simple content,
+    // database XML, EDI and external-source entry trees, scoped exceptions and
+    // qualified root views.
+    ("XML non-nil", xml_non_nil, |node| !node.nillable),
+    ("JSON value non-null", json_value_non_null, |node| {
+        !node.nullable
+    }),
+    ("JSON container non-null", json_container_non_null, |node| {
+        !node.container_nullable
+    }),
+    (
+        "required attribute use",
+        |node| attribute_required(node) == Some(true),
+        |node| node.xml_attribute_required,
+    ),
+    (
+        "attribute use not required",
+        |node| attribute_required(node) == Some(false),
+        |node| !node.xml_attribute_required,
     ),
 ];
 
@@ -475,13 +498,55 @@ fn independently_authored_presence_and_null_controls() {
     ];
     for node in unproved {
         for (site, current, _) in SITES {
+            // XML-layer facts never consult JSON metadata.
             assert!(
-                !current(&node) || site.starts_with("required"),
+                !current(&node) || site.starts_with("required") || XML_SITES.contains(&site),
                 "{site}: {node:?}"
             );
         }
     }
+    // Contradictory XML roles prove no XML-layer fact, whatever their JSON
+    // metadata.
+    let mut optional_attribute = text().attribute();
+    optional_attribute.xml_optional = true;
+    let mut required_element = text();
+    required_element.xml_attribute_required = true;
+    for node in [optional_attribute, required_element] {
+        for (site, current, _) in SITES.iter().filter(|(site, ..)| XML_SITES.contains(site)) {
+            assert!(!current(&node), "{site}: {node:?}");
+        }
+    }
+
+    // Export facts keep XML nil, scalar null and container null apart.
+    assert!(!xml_non_nil(&text().nillable()));
+    assert!(xml_non_nil(&text().nullable().unwrap()));
+    assert!(!json_value_non_null(&text().nullable().unwrap()));
+    assert!(!json_value_non_null(
+        &text().repeating().nullable().unwrap()
+    ));
+    assert!(json_value_non_null(&text().nillable()));
+    assert!(json_value_non_null(&nullable_object));
+    assert!(!json_container_non_null(&nullable_object));
+    assert!(json_container_non_null(&text().nullable().unwrap()));
+    assert!(!json_container_non_null(
+        &text().repeating().nullable_container().unwrap()
+    ));
+    let mut item_only = SchemaNode::group("Rows", vec![text()]).repeating();
+    item_only.json_object_item_nullable = Some(true);
+    assert!(json_container_non_null(&item_only));
+    let mut required = text().attribute();
+    assert!(required.set_xml_attribute_required(true));
+    assert_eq!(attribute_required(&required), Some(true));
+    assert_eq!(attribute_required(&text().attribute()), Some(false));
+    assert_eq!(attribute_required(&text()), Some(false));
 }
+
+/// Sites that consult only the XML layer.
+const XML_SITES: [&str; 3] = [
+    "XML non-nil",
+    "required attribute use",
+    "attribute use not required",
+];
 
 fn designs(directory: &Path, found: &mut Vec<PathBuf>) {
     let mut entries = std::fs::read_dir(directory)

@@ -544,7 +544,7 @@ fn bounded_shape(project: &Project) -> Result<(), MfdError> {
                 || !node.xml_repeating_sequences.is_empty()
                 || node.xml_type_alternatives
                 || node.json_any
-                || node.container_nullable
+                || !crate::import::presence::json_container_non_null(node)
                 || node.json_contains.is_some()
                 || node.json_dependent_schemas.is_some()
             {
