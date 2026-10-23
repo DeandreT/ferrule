@@ -30,10 +30,14 @@ pub(crate) fn aggregate(
 ) -> Result<Value, EngineError> {
     use mapping::AggregateOp;
     match function {
-        AggregateOp::LastPresentText | AggregateOp::LastDistinctText => {
+        AggregateOp::LastPresentText
+        | AggregateOp::LastDistinctText
+        | AggregateOp::FirstNonemptyText => {
             if arg.is_some() {
                 return Err(functions::FunctionError::InvalidArgument {
-                    function: if function == AggregateOp::LastPresentText {
+                    function: if function == AggregateOp::FirstNonemptyText {
+                        "first_nonempty_text"
+                    } else if function == AggregateOp::LastPresentText {
                         "last_present_text"
                     } else {
                         "last_distinct_text"
@@ -55,7 +59,11 @@ pub(crate) fn aggregate(
                         found: value.type_name(),
                     });
                 };
-                if !distinct || seen.insert(text.as_str()) {
+                if function == AggregateOp::FirstNonemptyText {
+                    if selected.is_none() && !text.is_empty() {
+                        selected = Some(text.clone());
+                    }
+                } else if !distinct || seen.insert(text.as_str()) {
                     selected = Some(text.clone());
                 }
             }

@@ -34,6 +34,7 @@ pub enum AggregateFunction {
     DecimalSum,
     LastPresentText,
     LastDistinctText,
+    FirstNonemptyText,
 }
 
 impl AggregateFunction {
@@ -48,6 +49,7 @@ impl AggregateFunction {
         Self::DecimalSum,
         Self::LastPresentText,
         Self::LastDistinctText,
+        Self::FirstNonemptyText,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -62,6 +64,7 @@ impl AggregateFunction {
             Self::DecimalSum => "decimal_sum",
             Self::LastPresentText => "last_present_text",
             Self::LastDistinctText => "last_distinct_text",
+            Self::FirstNonemptyText => "first_nonempty_text",
         }
     }
 }
@@ -79,6 +82,7 @@ impl From<AggregateOp> for AggregateFunction {
             AggregateOp::DecimalSum => Self::DecimalSum,
             AggregateOp::LastPresentText => Self::LastPresentText,
             AggregateOp::LastDistinctText => Self::LastDistinctText,
+            AggregateOp::FirstNonemptyText => Self::FirstNonemptyText,
         }
     }
 }
