@@ -56,7 +56,9 @@ pub(super) fn apply(
             "presence-based conditionals require a concrete object schema",
         ));
     }
-    if matches!(outer_type, OuterObjectType::NonNullable) && node.container_nullable {
+    if matches!(outer_type, OuterObjectType::NonNullable)
+        && crate::null_layers::container_null(node)?
+    {
         return Err(unsupported(
             name,
             "a non-null object conditional cannot be attached to a nullable imported shape",

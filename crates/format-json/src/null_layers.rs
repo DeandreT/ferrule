@@ -1,9 +1,11 @@
 //! Where the JSON boundary admits explicit null, derived from the effective
 //! JSON view.
 //!
-//! JSON Schema export renders these layers, and the instance reader and both
-//! writers accept or emit `null` from them, so object null, array-container
-//! null, object-item null and scalar value null keep their separate meanings.
+//! JSON Schema export renders these layers, the instance reader and both
+//! writers accept or emit `null` from them, and JSON Schema import reads them
+//! when it composes, compares and intersects imported shapes, so object null,
+//! array-container null, object-item null and scalar value null keep their
+//! separate meanings.
 //! Every reader and writer preflight ([`crate::RecursiveSchemas::new`]) refuses
 //! a schema with any node whose JSON null metadata has no effective
 //! interpretation before a value is read or written.
@@ -109,4 +111,19 @@ pub(crate) fn instance_null(node: &SchemaNode) -> Result<InstanceNull, JsonForma
         single,
         value: layers.value_null,
     })
+}
+
+/// The scalar value, or each scalar item, admits `null`.
+pub(crate) fn value_null(node: &SchemaNode) -> Result<bool, JsonFormatError> {
+    Ok(layers(node)?.value_null)
+}
+
+/// One object occurrence, or one whole array or nested array, admits `null`.
+pub(crate) fn container_null(node: &SchemaNode) -> Result<bool, JsonFormatError> {
+    Ok(layers(node)?.container_null)
+}
+
+/// One singular object, or each object item of an array, admits `null`.
+pub(crate) fn single_null(node: &SchemaNode) -> Result<bool, JsonFormatError> {
+    Ok(instance_null(node)?.single)
 }

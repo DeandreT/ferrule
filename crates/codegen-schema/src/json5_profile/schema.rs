@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use ir::{
-    GroupAlternativeMode, ScalarType, SchemaKind, SchemaNode, XmlAlternativeKind,
-    XmlWildcardProcessContents,
+    EffectiveViewError, GroupAlternativeMode, ScalarType, SchemaKind, SchemaNode,
+    XmlAlternativeKind, XmlWildcardProcessContents,
 };
 
 use super::{
@@ -58,9 +58,7 @@ pub(super) fn validate(root: &SchemaNode) -> Result<Json5ProfileSummary, Json5Pr
                 xml_restricted_alternatives,
                 dynamic,
             } => {
-                if node.nullable {
-                    return Err(unsupported("nullable_group"));
-                }
+                group_json_null(node)?;
                 if !alternatives.is_empty() {
                     return Err(unsupported("kind.alternatives"));
                 }
@@ -155,6 +153,28 @@ fn name(value: &str, total: &mut usize) -> Result<(), Json5ProfileError> {
         Json5ProfileResource::NameBytes,
         MAX_TOTAL_NAME_BYTES,
     )
+}
+
+/// A profile object admits no JSON null of its own. Scalar null on a group has
+/// no effective JSON view; container, object-item and nested-array metadata
+/// are refused field by field before a group is reached.
+pub(super) fn group_json_null(node: &SchemaNode) -> Result<(), Json5ProfileError> {
+    match node.effective_json_nullability() {
+        Ok(_) => Ok(()),
+        Err(EffectiveViewError::ScalarNullOutsideScalar) => Err(unsupported("nullable_group")),
+        Err(EffectiveViewError::ContainerNullOutsideContainer) => {
+            Err(unsupported("container_nullable"))
+        }
+        Err(EffectiveViewError::ObjectItemNullOutsideObjectArray) => {
+            Err(unsupported("json_object_item_nullable"))
+        }
+        Err(EffectiveViewError::InvalidJsonArrayWrapper) => Err(unsupported("json_array_wrapper")),
+        // The JSON layer never reports XML role errors.
+        Err(EffectiveViewError::XmlOptionalOutsideElement) => Err(unsupported("xml_optional")),
+        Err(EffectiveViewError::XmlAttributeRequiredOutsideAttribute) => {
+            Err(unsupported("xml_attribute_required"))
+        }
+    }
 }
 
 fn unsupported(field: &'static str) -> Json5ProfileError {

@@ -599,6 +599,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "Runtime/Json/FerruleJson.PropertyCounts.cs",
         "Runtime/Json/FerruleJson.PropertyDependencies.cs",
         "Runtime/Json/FerruleJson.PropertyNames.cs",
+        "Runtime/Json/FerruleJson.SchemaNode.cs",
         "Runtime/Json/FerruleJson.UniqueItems.cs",
         "Runtime/Json/FerruleJson.cs",
         "Runtime/Json/FerruleJsonSourceDocument.cs",

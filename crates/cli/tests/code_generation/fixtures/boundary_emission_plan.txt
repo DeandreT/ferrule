@@ -167,11 +167,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:18a71becedc80d66
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:5b1183f117499a8c
+csharp       ok:3ce4256d117341da
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:0647e9365cdb04ba
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:5830b10e5edc447a
+csharp_typed ok:8b1f8fdeb70ac4c0
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:92a0a36876024dcb 
 csharp_csv   err:92a0a36876024dcb 
@@ -185,11 +185,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:d2695f639855f60c
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:8b8432e2919795ac
+csharp       ok:9561dd582d1130ba
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:f75c1153123fd9c8
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:efe0ff5e3c70256e
+csharp_typed ok:fb8b3aad78f0d38c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:92a0a36876024dcb 
 csharp_csv   err:92a0a36876024dcb 
@@ -203,11 +203,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:641eac3e7da36776
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:1df9c373c5085c82
+csharp       ok:7bc5de9b00881798
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:ba993bcb376242ec
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:3600bb85e1eb2e42
+csharp_typed ok:c2cfeb4200c71ed8
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:92a0a36876024dcb 
 csharp_csv   err:92a0a36876024dcb 
@@ -221,11 +221,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:4cb93e1d08a38523
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:9b03d97b5786416f
+csharp       ok:d9eae975a9767973
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:f75c1153123fd9c8
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:efe0ff5e3c70256e
+csharp_typed ok:fb8b3aad78f0d38c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:92a0a36876024dcb 
 csharp_csv   err:92a0a36876024dcb 
@@ -239,11 +239,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:bb561abe40d9a0f8
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:9a613c35f0fedb68
+csharp       ok:7474ce48acb1037e
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:2d229e57bcb6e00a
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:f1b1bee231861660
+csharp_typed ok:22c8cbbf3e318926
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -2096,11 +2096,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:3a39c34978b5c171
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:412270a58f397509
+csharp       ok:ca5a452e5b13944d
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:29ecab241c71f102
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:0d90a707e9da2f7b
+csharp_typed ok:daec40c09124f0d7
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:b714713826e4f27b 
 csharp_csv   err:b714713826e4f27b 
@@ -4229,11 +4229,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:e8002f5e4d1e61a8
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:80a4032ed9ba88c2
+csharp       ok:ac3dfc77667c4a58
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:79cc32c0f8b9db23
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2480a64e2121d263
+csharp_typed ok:b4f0fc2cb3942ccf
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:b7d3e821e420eced 
 csharp_csv   err:b7d3e821e420eced 
@@ -4367,11 +4367,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:1b9a944c0529266c
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:2e0c2382e3b08dda
+csharp       ok:630a26bab7ff9060
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:380d0ff6f38ccf7d
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:a68235752c828083
+csharp_typed ok:cc8671c0796dad2f
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:191e077152937cf4 
 csharp_csv   err:191e077152937cf4 
@@ -5699,11 +5699,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:170bdbacda1a636b
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:5b500f3c29bf835b
+csharp       ok:dcb3e3d20d45bef7
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:4109c3cf6194b041
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:143e13f610d7acf7
+csharp_typed ok:ddb7153445bff6ab
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -5894,11 +5894,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:993aeb5437f89152
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:d12c49bcab51459c
+csharp       ok:d82235adc0c63d0a
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:36eb02d986681d05
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:e2dd5f2caa041d17
+csharp_typed ok:1caa6afcc7dad68b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -6086,11 +6086,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:91201ca39210c293
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:cdd76bdd7de89858
+csharp       ok:afc5e2581c7e6c0e
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:d89bc392f2aebf5a
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:e1f5537ff41aaab7
+csharp_typed ok:27632f1985448deb
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:f96aa88cec2d16d1 
 csharp_csv   err:f96aa88cec2d16d1 
@@ -6113,16 +6113,16 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:cefd8e02dca3cab2
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:f5105742f001273e
+csharp       ok:a81090dbebab793c
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:9176f726ccb1b257
+csharp_typed ok:22cb9357eff5734b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:91d642036b1a5463 
 csharp_csv   err:91d642036b1a5463 
 rust_json5   ok:c56fc6abcdb1ed5e
-csharp_json5 ok:dfce68e00add9f39
+csharp_json5 ok:b99550f047ef6a6f
 
 ## xml-requests/base/ordinary (project)
 lower        ok:f045201b35c00da4
@@ -6131,11 +6131,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
 rust         ok:bf9ab68bd4eddfff
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:216be29d40d9a4a6
+csharp       ok:371759823c729774
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:9176f726ccb1b257
+csharp_typed ok:22cb9357eff5734b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6149,11 +6149,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
 rust         ok:6fdcde9a98837bcf
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:0abda02d8856c16e
+csharp       ok:8f46367d9bea478c
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:9176f726ccb1b257
+csharp_typed ok:22cb9357eff5734b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6167,16 +6167,16 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:cefd8e02dca3cab2
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:f5105742f001273e
+csharp       ok:a81090dbebab793c
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:9176f726ccb1b257
+csharp_typed ok:22cb9357eff5734b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:91d642036b1a5463 
 csharp_csv   err:91d642036b1a5463 
 rust_json5   ok:c56fc6abcdb1ed5e
-csharp_json5 ok:dfce68e00add9f39
+csharp_json5 ok:b99550f047ef6a6f
 
 ## xml-requests/base/json-hints (project)
 lower        err:5b8395da76840494 mapping_cannot_be_lowered_for_code
@@ -6203,11 +6203,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:3bd4d8c68494ea15
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:56adc88da2670f6a
+csharp       ok:da5aee0d104e65d0
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:1894777ef714d4c7
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:80ccbf4726bb78f6
+csharp_typed ok:dabde1667682afe4
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:3bfec37f64f83f6a 
 csharp_csv   err:3bfec37f64f83f6a 
@@ -6221,11 +6221,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
 rust         ok:d1c44ebada40eb97
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:112aef5e94acc815
+csharp       ok:df256a760e203f71
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:1894777ef714d4c7
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:80ccbf4726bb78f6
+csharp_typed ok:dabde1667682afe4
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6239,11 +6239,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
 rust         ok:03e30451be512f13
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:e03855a8123e9f58
+csharp       ok:57a820612112e90e
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:4c64b3815f177bc1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7b748df89d8b61c7
+csharp_typed ok:566cc6461872249b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6261,7 +6261,7 @@ csharp       err:b1939476afb1b1ce generated_runtime_cannot_read_embedded_schema
 csharp_api   err:b1939476afb1b1ce generated_runtime_cannot_read_embedded_schema
 rust_typed   ok:4c64b3815f177bc1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7b748df89d8b61c7
+csharp_typed ok:566cc6461872249b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -6281,11 +6281,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:cb3ada42c302f817
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:7148c1ac569f980d
+csharp       ok:e00ac2f2e92d1719
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:927972df8b50e45c
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2a2f632194a55449
+csharp_typed ok:fb2cba1b2d96700d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6299,11 +6299,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:ac03c07441a3e6e0
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:c4d8e787e5058ea0
+csharp       ok:edc9e1c91e8767e6
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:927972df8b50e45c
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2a2f632194a55449
+csharp_typed ok:fb2cba1b2d96700d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6317,11 +6317,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:cb3ada42c302f817
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:7148c1ac569f980d
+csharp       ok:e00ac2f2e92d1719
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:927972df8b50e45c
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2a2f632194a55449
+csharp_typed ok:fb2cba1b2d96700d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6335,11 +6335,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:cb3ada42c302f817
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:7148c1ac569f980d
+csharp       ok:e00ac2f2e92d1719
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:927972df8b50e45c
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2a2f632194a55449
+csharp_typed ok:fb2cba1b2d96700d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6362,11 +6362,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:0d7b8a6968a40717
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:f92cfc38683226cf
+csharp       ok:33b658bdcb1f9013
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:c2145dab1d2cd1f1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7fd7d1f9a89947d4
+csharp_typed ok:65fb118153a31a72
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6380,11 +6380,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:11a4f62ebfaf70b5
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:396da9acf90af91f
+csharp       ok:11cb22bfaea2eac3
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:c2145dab1d2cd1f1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7fd7d1f9a89947d4
+csharp_typed ok:65fb118153a31a72
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6398,11 +6398,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:0d7b8a6968a40717
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:f92cfc38683226cf
+csharp       ok:33b658bdcb1f9013
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:c2145dab1d2cd1f1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7fd7d1f9a89947d4
+csharp_typed ok:65fb118153a31a72
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6416,11 +6416,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:0d7b8a6968a40717
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:f92cfc38683226cf
+csharp       ok:33b658bdcb1f9013
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:c2145dab1d2cd1f1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7fd7d1f9a89947d4
+csharp_typed ok:65fb118153a31a72
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6437,11 +6437,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:5b11d7d443e79cd2
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:102a3c4e52137c70
+csharp       ok:671b8a1872344256
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:c19d9888ff567dd6
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:b5987f8e169bb7a4
+csharp_typed ok:2844548939e4be62
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
 csharp_csv   err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
@@ -6464,11 +6464,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:f4063b13c1318cde
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:6d840a6acd916a80
+csharp       ok:7b389673cd56f106
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:4c7cc5475e5b7361
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:b71d5ed118a71fb8
+csharp_typed ok:9e6f8c48866efc2e
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:82b6789ffc0019e9 
 csharp_csv   err:82b6789ffc0019e9 
@@ -6482,11 +6482,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:f4063b13c1318cde
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:6d840a6acd916a80
+csharp       ok:7b389673cd56f106
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:4c7cc5475e5b7361
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:b71d5ed118a71fb8
+csharp_typed ok:9e6f8c48866efc2e
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:82b6789ffc0019e9 
 csharp_csv   err:82b6789ffc0019e9 
@@ -6509,11 +6509,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:8ee74e2c53085725
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:38518bd2bfb92695
+csharp       ok:4c4b12484285d6f1
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:a6db98b029104543
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:56f0857be2589057
+csharp_typed ok:7ebc643a16465d4b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6527,11 +6527,11 @@ xml_mode     ok:Some(DynamicNamedInputStaticPrimaryDynamicNamedDocuments)
 plan         ok:DynamicNamedInputStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:668147e39216ac68
 rust_api     ok:b6956147feffbaf6 n=72
-csharp       ok:8078090934464e28
+csharp       ok:b809f6dcb7a464be
 csharp_api   ok:5eff987120b2499e n=64
 rust_typed   ok:a6db98b029104543
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:56f0857be2589057
+csharp_typed ok:7ebc643a16465d4b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6545,11 +6545,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:8ee74e2c53085725
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:38518bd2bfb92695
+csharp       ok:4c4b12484285d6f1
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:a6db98b029104543
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:56f0857be2589057
+csharp_typed ok:7ebc643a16465d4b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6563,11 +6563,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:8ee74e2c53085725
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:38518bd2bfb92695
+csharp       ok:4c4b12484285d6f1
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:a6db98b029104543
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:56f0857be2589057
+csharp_typed ok:7ebc643a16465d4b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6590,11 +6590,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:cd82c86cff1e71ff
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:decedd8cc20369d7
+csharp       ok:1235f22f0101adcb
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:8f01ffb3ccb9b3be
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:a71c512bf28e7e4b
+csharp_typed ok:e0c3fab7fb666707
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6608,11 +6608,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:f0b6b2821734589c
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:847c2440f758c544
+csharp       ok:454856a92adb4942
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:8f01ffb3ccb9b3be
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:a71c512bf28e7e4b
+csharp_typed ok:e0c3fab7fb666707
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6626,11 +6626,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:cd82c86cff1e71ff
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:decedd8cc20369d7
+csharp       ok:1235f22f0101adcb
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:8f01ffb3ccb9b3be
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:a71c512bf28e7e4b
+csharp_typed ok:e0c3fab7fb666707
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6644,11 +6644,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:cd82c86cff1e71ff
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:decedd8cc20369d7
+csharp       ok:1235f22f0101adcb
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:8f01ffb3ccb9b3be
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:a71c512bf28e7e4b
+csharp_typed ok:e0c3fab7fb666707
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6671,11 +6671,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:d80c3e9c55fde267
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:9142dc2c4d472b9f
+csharp       ok:f9467451ff08de43
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:db989ea47a0f131b
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:a0c2c2bffc72cde4
+csharp_typed ok:b25d3b7c7d3ff222
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:82b6789ffc0019e9 
 csharp_csv   err:82b6789ffc0019e9 
@@ -6689,11 +6689,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:d80c3e9c55fde267
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:9142dc2c4d472b9f
+csharp       ok:f9467451ff08de43
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:db989ea47a0f131b
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:a0c2c2bffc72cde4
+csharp_typed ok:b25d3b7c7d3ff222
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:82b6789ffc0019e9 
 csharp_csv   err:82b6789ffc0019e9 
@@ -6716,11 +6716,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:2accf243ca8d7e59
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:8283f14693bd7ec7
+csharp       ok:cb47c856aa42739b
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:5f3f03963296dc4e
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:adcc82c4d33209c0
+csharp_typed ok:e4784e9e0514e8c6
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6734,11 +6734,11 @@ xml_mode     ok:Some(DynamicNamedInputStaticPrimaryDynamicNamedDocuments)
 plan         ok:DynamicNamedInputStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:fb90b32296505472
 rust_api     ok:b6956147feffbaf6 n=72
-csharp       ok:a468aac9a877c35e
+csharp       ok:6e992a414def351c
 csharp_api   ok:5eff987120b2499e n=64
 rust_typed   ok:5f3f03963296dc4e
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:adcc82c4d33209c0
+csharp_typed ok:e4784e9e0514e8c6
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6752,11 +6752,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:2accf243ca8d7e59
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:8283f14693bd7ec7
+csharp       ok:cb47c856aa42739b
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:5f3f03963296dc4e
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:adcc82c4d33209c0
+csharp_typed ok:e4784e9e0514e8c6
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6770,11 +6770,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:2accf243ca8d7e59
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:8283f14693bd7ec7
+csharp       ok:cb47c856aa42739b
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:5f3f03963296dc4e
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:adcc82c4d33209c0
+csharp_typed ok:e4784e9e0514e8c6
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6791,11 +6791,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single]
 rust         ok:33b6285197a29257
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:47ce783e4715a57b
+csharp       ok:30292a97b947e2d7
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:2a277f9ce9e07006
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:933845f61d794c77
+csharp_typed ok:8c99043c1033a92b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6827,11 +6827,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[]
 rust         ok:3216067c4ba16681
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:74799565ff69b3b6
+csharp       ok:5573317042585124
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:581a6ef2f3a5e084
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:46527e23f4ebf5a1
+csharp_typed ok:2aa0457039140755
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6845,11 +6845,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:62bff2dc4bb1f9c9
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:aa87d8f62be47d3e
+csharp       ok:e7243569797b0b3c
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:581a6ef2f3a5e084
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:46527e23f4ebf5a1
+csharp_typed ok:2aa0457039140755
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -6863,11 +6863,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single, Single]
 rust         ok:37a27b244501b49f
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:e38fd79b1b5ea373
+csharp       ok:f170e011c40966bf
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:48e9dedf06a483e0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:b52b47f99ed544bc
+csharp_typed ok:811417bbe311b16a
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6890,11 +6890,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single]
 rust         ok:f9f8d8ca8c60171f
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:7afb19ef269d0209
+csharp       ok:698479dbd976b34d
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:361a8caa4a04749d
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:c04699ba615a5b8d
+csharp_typed ok:786a099a5e909599
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6917,11 +6917,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single]
 rust         ok:6c1af4a4c69a9f2f
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:9c0df9fc979fbca9
+csharp       ok:120bec2f830312ad
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:81b1377d0e6b907d
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:f13f83f5d40f913d
+csharp_typed ok:ef48e3cdaa438be9
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6953,11 +6953,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[Single]
 rust         ok:1cc860f4f89bdec6
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:816e4353d60c481a
+csharp       ok:fc3728c0ac164b20
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:80db6715a00d75c6
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:76da1474c2b666e5
+csharp_typed ok:0cc3ecef11c2bae1
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6989,11 +6989,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[Single, Single]
 rust         ok:7721a245fe4605d5
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:80603442f2c27dcd
+csharp       ok:d9f956ff57ce2f59
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:e872418fbda2c14d
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:3d1878853909edee
+csharp_typed ok:4fe2aa85669b190c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7022,11 +7022,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:b5a83f46d6055e20
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:3284d754c7a6ef9a
+csharp       ok:f5f314f70b0fd5a0
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:db5c0c0d8ab555e0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:8617b5ff46aebb6e
+csharp_typed ok:5e79fabee130258c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
 csharp_csv   err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
@@ -7040,11 +7040,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:b5a83f46d6055e20
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:3284d754c7a6ef9a
+csharp       ok:f5f314f70b0fd5a0
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:db5c0c0d8ab555e0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:8617b5ff46aebb6e
+csharp_typed ok:5e79fabee130258c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
 csharp_csv   err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
@@ -7067,11 +7067,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:0910ac6078120c88
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:86bddb8dd0ba5602
+csharp       ok:2fbaa6b951cbc818
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:f9e8fed131fb9fa0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2e554c70afc4a96f
+csharp_typed ok:1557775d77a57173
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7085,11 +7085,11 @@ xml_mode     ok:Some(StaticNamedInputsStaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticNamedInputsStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:a1607e834abe704e
 rust_api     ok:03212f1c27ee709f n=66
-csharp       ok:de13809de3e80ada
+csharp       ok:f1faef0219b8ff60
 csharp_api   ok:cdcd763ce6147a7c n=58
 rust_typed   ok:f9e8fed131fb9fa0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2e554c70afc4a96f
+csharp_typed ok:1557775d77a57173
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7103,11 +7103,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:0910ac6078120c88
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:86bddb8dd0ba5602
+csharp       ok:2fbaa6b951cbc818
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:f9e8fed131fb9fa0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2e554c70afc4a96f
+csharp_typed ok:1557775d77a57173
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7121,11 +7121,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:0910ac6078120c88
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:86bddb8dd0ba5602
+csharp       ok:2fbaa6b951cbc818
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:f9e8fed131fb9fa0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2e554c70afc4a96f
+csharp_typed ok:1557775d77a57173
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7148,11 +7148,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:33907a958ee19886
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:b81dbca5e55d05fe
+csharp       ok:7c47e9d8bb2c177c
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:8b135b7d5da525fe
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:ce5b1492e6f96ed0
+csharp_typed ok:34b3016ac0c6a0f6
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7166,11 +7166,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:2a5797e80ffabe6d
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:d4f8a038fcf3ae8d
+csharp       ok:b38947c840111699
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:8b135b7d5da525fe
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:ce5b1492e6f96ed0
+csharp_typed ok:34b3016ac0c6a0f6
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7184,11 +7184,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:33907a958ee19886
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:b81dbca5e55d05fe
+csharp       ok:7c47e9d8bb2c177c
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:8b135b7d5da525fe
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:ce5b1492e6f96ed0
+csharp_typed ok:34b3016ac0c6a0f6
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7202,11 +7202,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:33907a958ee19886
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:b81dbca5e55d05fe
+csharp       ok:7c47e9d8bb2c177c
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:8b135b7d5da525fe
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:ce5b1492e6f96ed0
+csharp_typed ok:34b3016ac0c6a0f6
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7223,11 +7223,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[]
 rust         ok:2c6def76998b9525
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:1953207f03015060
+csharp       ok:afc9b7dbd0ff2726
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:95f759feb8147ea2
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:90611479d3448c3e
+csharp_typed ok:743bae5f72a0603c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7241,11 +7241,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:0571c324536e6bdc
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:3404b558f7889d84
+csharp       ok:1e29eabc0da64d02
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:95f759feb8147ea2
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:90611479d3448c3e
+csharp_typed ok:743bae5f72a0603c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -7259,11 +7259,11 @@ xml_mode     ok:Some(StaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticPrimaryDynamicNamedDocuments/Structured/[List]
 rust         ok:822302fb71448a0a
 rust_api     ok:8c5a4ef99489545e n=64
-csharp       ok:b514e412767e5660
+csharp       ok:1b6733f142704926
 csharp_api   ok:0ed38a7212f89231 n=56
 rust_typed   ok:a953156ac1598b62
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:b3422645372f45f9
+csharp_typed ok:d0fe30fc1548bd1d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7277,11 +7277,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:edd1d6307f6f79ae
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:a0c6e486418d1b85
+csharp       ok:c597cd6da263a8c1
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:a953156ac1598b62
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:b3422645372f45f9
+csharp_typed ok:d0fe30fc1548bd1d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7295,11 +7295,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:edd1d6307f6f79ae
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:a0c6e486418d1b85
+csharp       ok:c597cd6da263a8c1
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:a953156ac1598b62
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:b3422645372f45f9
+csharp_typed ok:d0fe30fc1548bd1d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7316,11 +7316,11 @@ xml_mode     ok:Some(StaticPrimaryMixedNamedXmlOutputs)
 plan         ok:StaticPrimaryMixedNamedXmlOutputs/Structured/[Single, List, List]
 rust         ok:c3ac8ac04bc0b93a
 rust_api     ok:ce66d1c09bd93e48 n=66
-csharp       ok:8286261abbef7a78
+csharp       ok:f920296d9c53f66e
 csharp_api   ok:6b855d266e167773 n=61
 rust_typed   ok:b5410b58b8748317
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7e0a1e8a26aec3af
+csharp_typed ok:12f333b0d6077033
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7334,11 +7334,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:bd2de64d21e52edc
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:c611a93900fb2f72
+csharp       ok:63100c161c8dc268
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:b5410b58b8748317
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7e0a1e8a26aec3af
+csharp_typed ok:12f333b0d6077033
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7352,11 +7352,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:bd2de64d21e52edc
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:c611a93900fb2f72
+csharp       ok:63100c161c8dc268
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:b5410b58b8748317
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7e0a1e8a26aec3af
+csharp_typed ok:12f333b0d6077033
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7373,11 +7373,11 @@ xml_mode     ok:Some(StaticPrimaryMixedNamedXmlOutputs)
 plan         ok:StaticPrimaryMixedNamedXmlOutputs/Structured/[Single, List]
 rust         ok:308c77d3a1a4ebc4
 rust_api     ok:ce66d1c09bd93e48 n=66
-csharp       ok:4089c135337915e3
+csharp       ok:91457e94dd992b4f
 csharp_api   ok:6b855d266e167773 n=61
 rust_typed   ok:e3dc6eea0f209cc7
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2020af4d43602d31
+csharp_typed ok:8fce926febf79705
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7391,11 +7391,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:a3b2ab1a81a5efae
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:1fd7935e103c614f
+csharp       ok:d8455fab15c25b93
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:e3dc6eea0f209cc7
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2020af4d43602d31
+csharp_typed ok:8fce926febf79705
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7409,11 +7409,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:a3b2ab1a81a5efae
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:1fd7935e103c614f
+csharp       ok:d8455fab15c25b93
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:e3dc6eea0f209cc7
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2020af4d43602d31
+csharp_typed ok:8fce926febf79705
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7430,11 +7430,11 @@ xml_mode     ok:Some(StaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:5b70e05f6301e72b
 rust_api     ok:8c5a4ef99489545e n=64
-csharp       ok:fe5ef763ae38bab7
+csharp       ok:14a1b64f0df43deb
 csharp_api   ok:0ed38a7212f89231 n=56
 rust_typed   ok:c1ed38a5581fcb71
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:c4bae6c633ad7d19
+csharp_typed ok:0cdda26ac909d67d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7448,11 +7448,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:007d4909f81e6cd1
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:81aecf98216f0a26
+csharp       ok:b559840f428dabf4
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:c1ed38a5581fcb71
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:c4bae6c633ad7d19
+csharp_typed ok:0cdda26ac909d67d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7466,11 +7466,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:007d4909f81e6cd1
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:81aecf98216f0a26
+csharp       ok:b559840f428dabf4
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:c1ed38a5581fcb71
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:c4bae6c633ad7d19
+csharp_typed ok:0cdda26ac909d67d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7487,11 +7487,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:d5199c76037165f6
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:c5f88b2b715482f6
+csharp       ok:7ca41af3f6e93de4
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:fcc03ef501eedd89
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:c747a6dafbe81b99
+csharp_typed ok:2f647ce25ce02dfd
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -7514,11 +7514,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:29d051f879dc21c2
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:5bf5f8a417dfd9a9
+csharp       ok:56cba7a827cd61ad
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:fc13fded1fa99cf1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:0a9cbe9cb4bffd05
+csharp_typed ok:2d1f6ab52e79d141
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7532,11 +7532,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:59853b99404cddb5
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:28df42b986e2d9bc
+csharp       ok:3adc4d5b3de5a86a
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:fc13fded1fa99cf1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:0a9cbe9cb4bffd05
+csharp_typed ok:2d1f6ab52e79d141
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7550,11 +7550,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:29d051f879dc21c2
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:5bf5f8a417dfd9a9
+csharp       ok:56cba7a827cd61ad
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:fc13fded1fa99cf1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:0a9cbe9cb4bffd05
+csharp_typed ok:2d1f6ab52e79d141
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7568,11 +7568,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:29d051f879dc21c2
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:5bf5f8a417dfd9a9
+csharp       ok:56cba7a827cd61ad
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:fc13fded1fa99cf1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:0a9cbe9cb4bffd05
+csharp_typed ok:2d1f6ab52e79d141
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7588,11 +7588,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:cb3ada42c302f817
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:7148c1ac569f980d
+csharp       ok:e00ac2f2e92d1719
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:927972df8b50e45c
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2a2f632194a55449
+csharp_typed ok:fb2cba1b2d96700d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7707,11 +7707,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:0d7b8a6968a40717
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:f92cfc38683226cf
+csharp       ok:33b658bdcb1f9013
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:c2145dab1d2cd1f1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7fd7d1f9a89947d4
+csharp_typed ok:65fb118153a31a72
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7826,11 +7826,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:5b11d7d443e79cd2
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:102a3c4e52137c70
+csharp       ok:671b8a1872344256
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:c19d9888ff567dd6
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:b5987f8e169bb7a4
+csharp_typed ok:2844548939e4be62
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
 csharp_csv   err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
@@ -7894,11 +7894,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:f4063b13c1318cde
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:6d840a6acd916a80
+csharp       ok:7b389673cd56f106
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:4c7cc5475e5b7361
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:b71d5ed118a71fb8
+csharp_typed ok:9e6f8c48866efc2e
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:82b6789ffc0019e9 
 csharp_csv   err:82b6789ffc0019e9 
@@ -7979,11 +7979,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:8ee74e2c53085725
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:38518bd2bfb92695
+csharp       ok:4c4b12484285d6f1
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:a6db98b029104543
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:56f0857be2589057
+csharp_typed ok:7ebc643a16465d4b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -8098,11 +8098,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:cd82c86cff1e71ff
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:decedd8cc20369d7
+csharp       ok:1235f22f0101adcb
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:8f01ffb3ccb9b3be
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:a71c512bf28e7e4b
+csharp_typed ok:e0c3fab7fb666707
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -8217,11 +8217,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:d80c3e9c55fde267
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:9142dc2c4d472b9f
+csharp       ok:f9467451ff08de43
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:db989ea47a0f131b
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:a0c2c2bffc72cde4
+csharp_typed ok:b25d3b7c7d3ff222
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:82b6789ffc0019e9 
 csharp_csv   err:82b6789ffc0019e9 
@@ -8302,11 +8302,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:2accf243ca8d7e59
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:8283f14693bd7ec7
+csharp       ok:cb47c856aa42739b
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:5f3f03963296dc4e
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:adcc82c4d33209c0
+csharp_typed ok:e4784e9e0514e8c6
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -8523,11 +8523,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:62bff2dc4bb1f9c9
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:aa87d8f62be47d3e
+csharp       ok:e7243569797b0b3c
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:581a6ef2f3a5e084
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:46527e23f4ebf5a1
+csharp_typed ok:2aa0457039140755
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -9152,11 +9152,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:b5a83f46d6055e20
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:3284d754c7a6ef9a
+csharp       ok:f5f314f70b0fd5a0
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:db5c0c0d8ab555e0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:8617b5ff46aebb6e
+csharp_typed ok:5e79fabee130258c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
 csharp_csv   err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
@@ -9237,11 +9237,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:0910ac6078120c88
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:86bddb8dd0ba5602
+csharp       ok:2fbaa6b951cbc818
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:f9e8fed131fb9fa0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2e554c70afc4a96f
+csharp_typed ok:1557775d77a57173
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -9356,11 +9356,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:33907a958ee19886
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:b81dbca5e55d05fe
+csharp       ok:7c47e9d8bb2c177c
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:8b135b7d5da525fe
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:ce5b1492e6f96ed0
+csharp_typed ok:34b3016ac0c6a0f6
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -9475,11 +9475,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:0571c324536e6bdc
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:3404b558f7889d84
+csharp       ok:1e29eabc0da64d02
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:95f759feb8147ea2
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:90611479d3448c3e
+csharp_typed ok:743bae5f72a0603c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -9543,11 +9543,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:edd1d6307f6f79ae
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:a0c6e486418d1b85
+csharp       ok:c597cd6da263a8c1
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:a953156ac1598b62
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:b3422645372f45f9
+csharp_typed ok:d0fe30fc1548bd1d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -9645,11 +9645,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:bd2de64d21e52edc
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:c611a93900fb2f72
+csharp       ok:63100c161c8dc268
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:b5410b58b8748317
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7e0a1e8a26aec3af
+csharp_typed ok:12f333b0d6077033
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -9747,11 +9747,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:a3b2ab1a81a5efae
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:1fd7935e103c614f
+csharp       ok:d8455fab15c25b93
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:e3dc6eea0f209cc7
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2020af4d43602d31
+csharp_typed ok:8fce926febf79705
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -9849,11 +9849,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:007d4909f81e6cd1
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:81aecf98216f0a26
+csharp       ok:b559840f428dabf4
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:c1ed38a5581fcb71
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:c4bae6c633ad7d19
+csharp_typed ok:0cdda26ac909d67d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -9951,11 +9951,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:29d051f879dc21c2
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:5bf5f8a417dfd9a9
+csharp       ok:56cba7a827cd61ad
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:fc13fded1fa99cf1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:0a9cbe9cb4bffd05
+csharp_typed ok:2d1f6ab52e79d141
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -10071,16 +10071,16 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:cefd8e02dca3cab2
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:f5105742f001273e
+csharp       ok:a81090dbebab793c
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:9176f726ccb1b257
+csharp_typed ok:22cb9357eff5734b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:91d642036b1a5463 
 csharp_csv   err:91d642036b1a5463 
 rust_json5   ok:c56fc6abcdb1ed5e
-csharp_json5 ok:dfce68e00add9f39
+csharp_json5 ok:b99550f047ef6a6f
 
 ## typed-only-controls/oversized-json-descriptor (project)
 lower        ok:94b197e60a064c58
@@ -10093,7 +10093,7 @@ csharp       err:de83ff58769052ac embedded_schema_"Source"_is_2952365_bytes;
 csharp_api   err:de83ff58769052ac embedded_schema_"Source"_is_2952365_bytes;
 rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:9176f726ccb1b257
+csharp_typed ok:22cb9357eff5734b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:91d642036b1a5463 
 csharp_csv   err:91d642036b1a5463 
@@ -10107,11 +10107,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:7f28c64c06b67376
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:ef7581ebcdd8401a
+csharp       ok:31d38ee691977320
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:927972df8b50e45c
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2a2f632194a55449
+csharp_typed ok:fb2cba1b2d96700d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10125,11 +10125,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:bc18b7f1838dc3db
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:59275595c5619f29
+csharp       ok:0209f0ce45ee962d
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:c2145dab1d2cd1f1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7fd7d1f9a89947d4
+csharp_typed ok:65fb118153a31a72
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10143,11 +10143,11 @@ xml_mode     ok:Some(DynamicPrimaryDocuments)
 plan         ok:DynamicPrimaryDocuments/Structured/[]
 rust         ok:f4262e0cdeabc896
 rust_api     ok:ba80083215ff1212 n=60
-csharp       ok:fcc2d7b8f20df1d2
+csharp       ok:0a2a92fb667c0308
 csharp_api   ok:9812803d50615171 n=52
 rust_typed   ok:c19d9888ff567dd6
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:b5987f8e169bb7a4
+csharp_typed ok:2844548939e4be62
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10161,11 +10161,11 @@ xml_mode     ok:Some(DynamicNamedInputDynamicPrimaryDocuments)
 plan         ok:DynamicNamedInputDynamicPrimaryDocuments/Structured/[]
 rust         ok:38fa65ab0eba0c4e
 rust_api     ok:42269fecb77aea6e n=68
-csharp       ok:a4b6b9472457cd37
+csharp       ok:a6ab71cea9ffd16b
 csharp_api   ok:2cbce27c0a0c121e n=60
 rust_typed   ok:4c7cc5475e5b7361
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:b71d5ed118a71fb8
+csharp_typed ok:9e6f8c48866efc2e
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10179,11 +10179,11 @@ xml_mode     ok:Some(DynamicNamedInputStaticPrimaryDynamicNamedDocuments)
 plan         ok:DynamicNamedInputStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:af6617a511a6aa0a
 rust_api     ok:b6956147feffbaf6 n=72
-csharp       ok:70d8f61431e3c040
+csharp       ok:5b960b48a540c846
 csharp_api   ok:5eff987120b2499e n=64
 rust_typed   ok:a6db98b029104543
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:56f0857be2589057
+csharp_typed ok:7ebc643a16465d4b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10197,11 +10197,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:340df5a4d146e0e2
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:b8ec8edb5e62364a
+csharp       ok:9c3bdc96cd8e4d70
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:8f01ffb3ccb9b3be
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:a71c512bf28e7e4b
+csharp_typed ok:e0c3fab7fb666707
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10215,11 +10215,11 @@ xml_mode     ok:Some(DynamicNamedInputDynamicPrimaryDocuments)
 plan         ok:DynamicNamedInputDynamicPrimaryDocuments/Structured/[]
 rust         ok:d3cb50d8f8030c13
 rust_api     ok:42269fecb77aea6e n=68
-csharp       ok:d526afb548ef8090
+csharp       ok:28ae522f774c8736
 csharp_api   ok:2cbce27c0a0c121e n=60
 rust_typed   ok:db989ea47a0f131b
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:a0c2c2bffc72cde4
+csharp_typed ok:b25d3b7c7d3ff222
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10233,11 +10233,11 @@ xml_mode     ok:Some(DynamicNamedInputStaticPrimaryDynamicNamedDocuments)
 plan         ok:DynamicNamedInputStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:65177391a62dbd80
 rust_api     ok:b6956147feffbaf6 n=72
-csharp       ok:bc1809f43934c84e
+csharp       ok:93844b95b37c5c2c
 csharp_api   ok:5eff987120b2499e n=64
 rust_typed   ok:5f3f03963296dc4e
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:adcc82c4d33209c0
+csharp_typed ok:e4784e9e0514e8c6
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10251,11 +10251,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single]
 rust         ok:7f6f97be265951d5
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:cc651ef1de0bffe9
+csharp       ok:18751e5fe61d096d
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:2a277f9ce9e07006
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:933845f61d794c77
+csharp_typed ok:8c99043c1033a92b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10269,11 +10269,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[]
 rust         ok:3216067c4ba16681
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:74799565ff69b3b6
+csharp       ok:5573317042585124
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:581a6ef2f3a5e084
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:46527e23f4ebf5a1
+csharp_typed ok:2aa0457039140755
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10287,11 +10287,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single, Single]
 rust         ok:0d77f8abf3e5e78d
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:073c597bb3997e8d
+csharp       ok:0ab810b80d020699
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:48e9dedf06a483e0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:b52b47f99ed544bc
+csharp_typed ok:811417bbe311b16a
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10305,11 +10305,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single]
 rust         ok:ed2bb5c44877884b
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:6f3f6ca8278414b7
+csharp       ok:9569508107bd3beb
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:361a8caa4a04749d
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:c04699ba615a5b8d
+csharp_typed ok:786a099a5e909599
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10323,11 +10323,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single]
 rust         ok:d6bda133d7ae784b
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:1d792751ad096d83
+csharp       ok:662899ef1763ec2f
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:81b1377d0e6b907d
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:f13f83f5d40f913d
+csharp_typed ok:ef48e3cdaa438be9
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10341,11 +10341,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[Single]
 rust         ok:1e47da794210b59a
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:7e76c488c4b6835a
+csharp       ok:61a87e92461dd4e0
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:80db6715a00d75c6
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:76da1474c2b666e5
+csharp_typed ok:0cc3ecef11c2bae1
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10359,11 +10359,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[Single, Single]
 rust         ok:fe77c3bb80a1a697
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:b5c450c3ddbd3d61
+csharp       ok:313e2cc2f7cc5b95
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:e872418fbda2c14d
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:3d1878853909edee
+csharp_typed ok:4fe2aa85669b190c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10377,11 +10377,11 @@ xml_mode     ok:Some(StaticNamedInputsDynamicPrimaryDocuments)
 plan         ok:StaticNamedInputsDynamicPrimaryDocuments/Structured/[]
 rust         ok:ac989c05f314ccbe
 rust_api     ok:e63970709975cf1f n=62
-csharp       ok:d93e2c459bd144f7
+csharp       ok:91050d193c78feab
 csharp_api   ok:128bbe9b6dc6856a n=54
 rust_typed   ok:db5c0c0d8ab555e0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:8617b5ff46aebb6e
+csharp_typed ok:5e79fabee130258c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10395,11 +10395,11 @@ xml_mode     ok:Some(StaticNamedInputsStaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticNamedInputsStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:980c7f842343a23e
 rust_api     ok:03212f1c27ee709f n=66
-csharp       ok:a73a1619f6827524
+csharp       ok:1631a71611ea1ae2
 csharp_api   ok:cdcd763ce6147a7c n=58
 rust_typed   ok:f9e8fed131fb9fa0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2e554c70afc4a96f
+csharp_typed ok:1557775d77a57173
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10413,11 +10413,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:3bf5fe73d0623e05
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:9ebeede598a5e49d
+csharp       ok:05a3fa3073dd4e89
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:8b135b7d5da525fe
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:ce5b1492e6f96ed0
+csharp_typed ok:34b3016ac0c6a0f6
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10431,11 +10431,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[]
 rust         ok:2c6def76998b9525
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:1953207f03015060
+csharp       ok:afc9b7dbd0ff2726
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:95f759feb8147ea2
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:90611479d3448c3e
+csharp_typed ok:743bae5f72a0603c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10449,11 +10449,11 @@ xml_mode     ok:Some(StaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticPrimaryDynamicNamedDocuments/Structured/[List]
 rust         ok:7f6aa69407aba1aa
 rust_api     ok:8c5a4ef99489545e n=64
-csharp       ok:d559dbb560c2e688
+csharp       ok:d9882b18556023de
 csharp_api   ok:0ed38a7212f89231 n=56
 rust_typed   ok:a953156ac1598b62
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:b3422645372f45f9
+csharp_typed ok:d0fe30fc1548bd1d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10467,11 +10467,11 @@ xml_mode     ok:Some(StaticPrimaryMixedNamedXmlOutputs)
 plan         ok:StaticPrimaryMixedNamedXmlOutputs/Structured/[Single, List, List]
 rust         ok:ae4862ef4cc9c8d4
 rust_api     ok:ce66d1c09bd93e48 n=66
-csharp       ok:1cdd99c3086decce
+csharp       ok:0518903227cc55ac
 csharp_api   ok:6b855d266e167773 n=61
 rust_typed   ok:b5410b58b8748317
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7e0a1e8a26aec3af
+csharp_typed ok:12f333b0d6077033
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10485,11 +10485,11 @@ xml_mode     ok:Some(StaticPrimaryMixedNamedXmlOutputs)
 plan         ok:StaticPrimaryMixedNamedXmlOutputs/Structured/[Single, List]
 rust         ok:a2f46940bab16826
 rust_api     ok:ce66d1c09bd93e48 n=66
-csharp       ok:9daba166a8ef5205
+csharp       ok:6e2cf139594d0841
 csharp_api   ok:6b855d266e167773 n=61
 rust_typed   ok:e3dc6eea0f209cc7
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2020af4d43602d31
+csharp_typed ok:8fce926febf79705
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10503,11 +10503,11 @@ xml_mode     ok:Some(StaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:c55cdb1cdd17eaa9
 rust_api     ok:8c5a4ef99489545e n=64
-csharp       ok:fe7fbe6394e86e05
+csharp       ok:00f29be062d9fc41
 csharp_api   ok:0ed38a7212f89231 n=56
 rust_typed   ok:c1ed38a5581fcb71
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:c4bae6c633ad7d19
+csharp_typed ok:0cdda26ac909d67d
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10521,11 +10521,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:d5199c76037165f6
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:c5f88b2b715482f6
+csharp       ok:7ca41af3f6e93de4
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:fcc03ef501eedd89
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:c747a6dafbe81b99
+csharp_typed ok:2f647ce25ce02dfd
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -10539,11 +10539,11 @@ xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:e63fe577cdf084e3
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:e7f377b0a95d3146
+csharp       ok:4eec3bc7af0303d4
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:fc13fded1fa99cf1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:0a9cbe9cb4bffd05
+csharp_typed ok:2d1f6ab52e79d141
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
