@@ -508,6 +508,7 @@ fn owned_member(
 fn item_context_inputs(node: &Node) -> Vec<NodeId> {
     match node {
         Node::Aggregate { expression, .. } => expression.iter().copied().collect(),
+        Node::DistinctTextMapLast { expression, .. } => vec![*expression],
         Node::OwnedAggregate(aggregate) => aggregate.expression().into_iter().collect(),
         Node::CollectionFind {
             predicate, value, ..

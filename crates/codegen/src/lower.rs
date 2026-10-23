@@ -1552,6 +1552,15 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
             predicate: *predicate,
             value: *value,
         },
+        Node::DistinctTextMapLast {
+            collection,
+            key,
+            expression,
+        } => Expression::DistinctTextMapLast {
+            collection: collection.clone(),
+            key: key.clone(),
+            expression: *expression,
+        },
         Node::Aggregate {
             function,
             collection,

@@ -1228,6 +1228,7 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
         Expression::Aggregate { value, arg, .. } => {
             value.expression().into_iter().chain(*arg).collect()
         }
+        Expression::DistinctTextMapLast { expression, .. } => vec![*expression],
         Expression::JoinAggregate {
             expression, arg, ..
         } => expression.iter().copied().chain(*arg).collect(),
@@ -2348,6 +2349,18 @@ fn render_expression_in_context_with_scalar_item_at(
                 let collection = render_string_path(collection);
                 format!(
                     "{{\n        let candidates = context.collection_find_items(&[{collection}])?;\n        for item_context in candidates {{\n            let predicate = expression_{predicate}(&item_context)?;\n            if collection_find_selected({predicate}, predicate)? {{\n                return expression_{value}(&item_context);\n            }}\n        }}\n        Ok(Value::Null)\n    }}"
+                )
+            }
+            Expression::DistinctTextMapLast {
+                collection,
+                key,
+                expression,
+            } => {
+                let collection = render_string_path(collection);
+                let key = render_string_path(key);
+                let value = call_expression(*expression, "item");
+                format!(
+                    "{legacy_context}.distinct_text_map_last({id}, &[{collection}], &[{key}], |item| {value})"
                 )
             }
             Expression::Aggregate {

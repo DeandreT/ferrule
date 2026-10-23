@@ -1,0 +1,25 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+using I=Ferrule.Runtime.FerruleInstance;
+I Row(FerruleValue? key,string marker,bool skip=false,bool invalid=false,bool fail=false){var fields=new List<FerruleField>{new("Marker",new FerruleScalar(FerruleValue.FromString(marker))),new("Skip",new FerruleScalar(FerruleValue.FromBoolean(skip))),new("Invalid",new FerruleScalar(FerruleValue.FromBoolean(invalid))),new("Fail",new FerruleScalar(FerruleValue.FromBoolean(fail)))};if(key is not null)fields.Add(new("Key",new FerruleScalar(key.Value)));return new FerruleGroup(fields);}
+FerruleValue K(string key)=>FerruleValue.FromString(key);
+I Input(params I[][] documents)=>new FerruleDocumentSet(documents.Select((rows,index)=>new FerruleDocument($"{index}.xml",new FerruleGroup(new[]{new FerruleField("Rows",new FerruleRepeated(rows))}))));
+string? Selected(FerruleDocument document)=>((FerruleGroup)document.Value).TryGetField("Selected",out var value)&&((FerruleScalar)value).Value.Kind!=FerruleValueKind.Null?((FerruleScalar)value).Value.StringValue:null;
+void Check(bool condition){if(!condition)throw new Exception("distinct text map check failed");}
+var execution=new FerruleExecutionContext("mapping","mapping","stable");
+void CheckRows(I[] rows,string? expected,string path,int count){int body=0,file=0;var docs=new List<FerruleDocument>();var result=GeneratedMapping.VisitTargetDocumentsWithClocks(Input(rows),Array.Empty<NamedInput>(),execution,null,()=>"B"+(++body),()=>"F"+(++file),d=>{docs.Add(d);return GeneratedMapping.DocumentDecision<string>.Continue;});Check(result.Completed&&result.Accepted==1&&body==count&&file==count&&Selected(docs[0])==expected&&docs[0].Path==path);}
+CheckRows(new[]{Row(K("A"),"A"),Row(K("B"),"B"),Row(K("A"),"ignored",fail:true)},"B@2:B2","out-B@2:F2.txt",2);
+CheckRows(new[]{Row(null,"missing",fail:true),Row(K(""),"empty"),Row(K(" "),"space",skip:true)},"empty@2:B1","out-empty@2:F1.txt",1);
+CheckRows(new[]{Row(K("A"),"skip",skip:true),Row(K("A"),"ignored",fail:true),Row(K("B"),"B")},"B@3:B1","out-B@3:F1.txt",1);
+CheckRows(new[]{Row(K("A"),"A"),Row(K("B"),"skip",skip:true)},"A@1:B1","out-A@1:F1.txt",1);
+CheckRows(new[]{Row(null,"missing",fail:true)},null,"out-.txt",0);
+CheckRows(new[]{""," ","A","a","é","e\u0301"}.Select(k=>Row(K(k),"last")).ToArray(),"last@6:B6","out-last@6:F6.txt",6);
+int calls=0;string Clock(){calls++;return "t";}
+try{GeneratedMapping.VisitTargetDocumentsWithClocks(Input(new[]{Row(K("A"),"first",fail:true),Row(FerruleValue.FromInt64(3),"bad")}),Array.Empty<NamedInput>(),execution,null,Clock,Clock,_=>GeneratedMapping.DocumentDecision<string>.Continue);throw new Exception("key error missing");}
+catch(GeneratedMapping.DocumentVisitException e){Check(e.Accepted==0&&e.InnerException is FerruleRuntimeException{Error:FerruleRuntimeError.DistinctTextMapKey,Node:50}&&calls==0);}
+try{GeneratedMapping.VisitTargetDocumentsWithClocks(Input(new[]{Row(K("A"),"A"),Row(K("B"),"bad",invalid:true),Row(K("C"),"C")}),Array.Empty<NamedInput>(),execution,null,Clock,Clock,_=>GeneratedMapping.DocumentDecision<string>.Continue);throw new Exception("value error missing");}
+catch(GeneratedMapping.DocumentVisitException e){Check(e.Accepted==0&&e.InnerException is FerruleRuntimeException{Error:FerruleRuntimeError.DistinctTextMapValue,Node:50}&&calls==1);}
+calls=0;var source=Input(new[]{Row(K("A"),"first")},new[]{Row(K("A"),"second")});var saved=new List<FerruleDocument>();
+var complete=GeneratedMapping.VisitTargetDocumentsWithClocks(source,Array.Empty<NamedInput>(),execution,null,Clock,Clock,d=>{saved.Add(d);return GeneratedMapping.DocumentDecision<string>.Continue;});Check(complete.Completed&&complete.Accepted==2&&calls==4&&Selected(saved[1])=="second@1:t");
+calls=0;var stopped=GeneratedMapping.VisitTargetDocumentsWithClocks(source,Array.Empty<NamedInput>(),execution,null,Clock,Clock,_=>GeneratedMapping.DocumentDecision<string>.Break("stop"));Check(!stopped.Completed&&stopped.Accepted==0&&calls==2);
+Console.WriteLine("PASS distinct text map");

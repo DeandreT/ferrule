@@ -1007,7 +1007,8 @@ impl<'a> Admission<'a> {
                 | Expression::SequenceAggregate { .. } => Some(Capability::GeneratedItem),
                 Expression::Aggregate { .. }
                 | Expression::Lookup { .. }
-                | Expression::CollectionFind { .. } => Some(Capability::AggregateLookup),
+                | Expression::CollectionFind { .. }
+                | Expression::DistinctTextMapLast { .. } => Some(Capability::AggregateLookup),
                 Expression::JoinAggregate { .. }
                 | Expression::JoinField { .. }
                 | Expression::JoinPosition { .. } => Some(Capability::Join),
@@ -2178,6 +2179,7 @@ fn validate_basic_owned_with_joins(
             Expression::JoinField { .. } | Expression::JoinPosition { .. } => Capability::Join,
             Expression::Lookup { .. }
             | Expression::CollectionFind { .. }
+            | Expression::DistinctTextMapLast { .. }
             | Expression::Aggregate { .. }
             | Expression::JoinAggregate { .. } => Capability::AggregateLookup,
             Expression::SequenceExists { .. }

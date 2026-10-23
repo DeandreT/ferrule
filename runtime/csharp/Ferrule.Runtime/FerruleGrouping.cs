@@ -252,6 +252,56 @@ public sealed partial class ScopeContext
         return new ReadOnlyCollection<ScopeContext>(contexts);
     }
 
+    /// <summary>Read all exact text keys first, then map their first items in source order.</summary>
+    public FerruleValue DistinctTextMapLast(
+        uint node,
+        IReadOnlyList<string> collection,
+        IReadOnlyList<string> key,
+        Func<ScopeContext, FerruleValue> map,
+        int maximumKeys = 1_000_000,
+        int maximumKeyBytes = 64 * 1024 * 1024)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        if (maximumKeys is < 0 or > 1_000_000 || maximumKeyBytes is < 0 or > 64 * 1024 * 1024)
+            throw new FerruleRuntimeException(FerruleRuntimeError.DistinctTextMapLimit, "Distinct text limits exceed the hard maximum.", node: node);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var selected = new List<ScopeContext>();
+        var utf8 = new System.Text.UTF8Encoding(false, true);
+        int bytes = 0;
+        foreach (var item in AggregateItems(collection))
+        {
+            FerruleInstance? current = item._frames.Count == 0 ? null : item._frames[^1];
+            foreach (var segment in key)
+                current = current is FerruleGroup group && group.TryGetField(segment, out var value) ? value : null;
+            if (current is null || current is FerruleScalar { Value.Kind: FerruleValueKind.Null }) continue;
+            if (current is not FerruleScalar { Value.Kind: FerruleValueKind.String } scalar)
+                throw new FerruleRuntimeException(FerruleRuntimeError.DistinctTextMapKey, "Distinct key must be text or absent.", node: node);
+            string text = scalar.Value.StringValue;
+            if (seen.Contains(text)) continue;
+            if (seen.Count == maximumKeys)
+                throw new FerruleRuntimeException(FerruleRuntimeError.DistinctTextMapLimit, "Distinct key count exceeds the limit.", node: node);
+            int size;
+            try { size = utf8.GetByteCount(text); }
+            catch (System.Text.EncoderFallbackException error)
+            { throw new FerruleRuntimeException(FerruleRuntimeError.DistinctTextMapKey, "Distinct key contains invalid UTF-16.", error, node: node); }
+            if (size > maximumKeyBytes - bytes)
+                throw new FerruleRuntimeException(FerruleRuntimeError.DistinctTextMapLimit, "Distinct key bytes exceed the limit.", node: node);
+            bytes += size;
+            seen.Add(text);
+            selected.Add(item);
+        }
+        var last = FerruleValue.Null;
+        foreach (var item in selected)
+        {
+            var value = map(item);
+            if (value.Kind == FerruleValueKind.Null) continue;
+            if (value.Kind != FerruleValueKind.String)
+                throw new FerruleRuntimeException(FerruleRuntimeError.DistinctTextMapValue, "Distinct mapped value must be text or absent.", node: node);
+            last = value;
+        }
+        return last;
+    }
+
     private sealed class GroupBucket
     {
         internal GroupBucket(FerruleValue? key, GroupMember first, bool retained)

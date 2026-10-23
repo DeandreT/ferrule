@@ -924,6 +924,7 @@ fn node_consumers(graph: &Graph) -> BTreeMap<NodeId, Vec<NodeId>> {
 
 fn node_dependencies(node: &Node) -> Vec<NodeId> {
     match node {
+        Node::DistinctTextMapLast { expression, .. } => vec![*expression],
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
         Node::InvocationCounter {

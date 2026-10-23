@@ -857,6 +857,15 @@ impl<'a> Analysis<'a> {
                     self.queue(namespace, item, *predicate);
                     self.queue(namespace, item, *value);
                 }
+                Expression::DistinctTextMapLast {
+                    collection,
+                    expression,
+                    ..
+                } => {
+                    self.path(collection);
+                    let item = self.child(context, Step::Collection(node, collection.clone()));
+                    self.queue(namespace, item, *expression);
+                }
                 Expression::Aggregate {
                     collection,
                     value,

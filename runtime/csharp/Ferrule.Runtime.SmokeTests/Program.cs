@@ -54,6 +54,7 @@ internal static partial class Program
             ("decimal scalar identity", DecimalValueIdentity),
             ("decimal mapping operations", DecimalMappingOperations),
             ("ordered text selection", OrderedTextSelection),
+            ("distinct text mapping limits", DistinctTextMapLimits),
             ("value maps", ValueMaps),
             ("CSV native scalar lexicals", CsvScalarLexicals),
             ("CSV native scalar refusals", CsvScalarRefusals),

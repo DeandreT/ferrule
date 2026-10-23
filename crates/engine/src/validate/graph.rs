@@ -370,6 +370,50 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
                     );
                 }
             }
+            Node::DistinctTextMapLast {
+                collection, key, ..
+            } => {
+                validate_collection_path(
+                    project,
+                    &location,
+                    collection,
+                    "distinct text map",
+                    issues,
+                );
+                if !key.is_empty() {
+                    validate_collection_value(
+                        project,
+                        &location,
+                        collection,
+                        key,
+                        "distinct text key",
+                        issues,
+                    );
+                }
+                if !source_path_matches(project, collection, |node| {
+                    let mut field = node;
+                    for segment in key {
+                        let Some(child) = field.child(segment) else {
+                            return false;
+                        };
+                        if child.repeating || child.recursive_ref.is_some() {
+                            return false;
+                        }
+                        field = child;
+                    }
+                    matches!(
+                        field.kind,
+                        SchemaKind::Scalar {
+                            ty: ir::ScalarType::String
+                        }
+                    )
+                }) {
+                    issues.push(ValidationIssue::new(
+                        &location,
+                        "distinct text key must identify a String scalar in its collection",
+                    ));
+                }
+            }
             Node::JoinAggregate { join, plan, .. } => {
                 super::join::validate_plan(project, *join, plan, &location, issues)
             }
@@ -789,7 +833,8 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
         | Node::JoinField { collection, .. }
         | Node::Lookup { collection, .. }
         | Node::CollectionFind { collection, .. }
-        | Node::Aggregate { collection, .. } => inspect(collection),
+        | Node::Aggregate { collection, .. }
+        | Node::DistinctTextMapLast { collection, .. } => inspect(collection),
         Node::XmlMixedContent {
             path,
             frame,
@@ -1433,6 +1478,9 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
             ("predicate".into(), *predicate),
             ("value expression".into(), *value),
         ],
+        Node::DistinctTextMapLast { expression, .. } => {
+            vec![("mapped expression".into(), *expression)]
+        }
         Node::SequenceExists {
             sequence,
             predicate,

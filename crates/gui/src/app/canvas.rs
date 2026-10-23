@@ -14,6 +14,7 @@ use crate::canvas_layout::arrange_snarl;
 
 fn node_inputs(node: &Node) -> Vec<NodeId> {
     match node {
+        Node::DistinctTextMapLast { expression, .. } => vec![*expression],
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)

@@ -629,6 +629,43 @@ fn validate_aggregate_paths(
     expressions: &BTreeMap<NodeId, &Expression>,
 ) -> Result<(), ProgramValidationError> {
     for (&node, expression) in expressions {
+        if let Expression::DistinctTextMapLast {
+            collection, key, ..
+        } = expression
+        {
+            let candidates = sources.path_targets(collection);
+            if candidates.is_empty() {
+                return Err(ProgramValidationError::InvalidAggregateCollection {
+                    node,
+                    collection: collection.clone(),
+                });
+            }
+            if !candidates.into_iter().any(|collection| {
+                let mut field = collection.node();
+                for segment in key {
+                    let Some(child) = field.child(segment) else {
+                        return false;
+                    };
+                    if child.repeating || child.recursive_ref.is_some() {
+                        return false;
+                    }
+                    field = child;
+                }
+                matches!(
+                    field.kind,
+                    SchemaKind::Scalar {
+                        ty: ir::ScalarType::String
+                    }
+                )
+            }) {
+                return Err(ProgramValidationError::InvalidDistinctTextKey {
+                    node,
+                    collection: collection.clone(),
+                    key: key.clone(),
+                });
+            }
+            continue;
+        }
         let Expression::Aggregate {
             collection, value, ..
         } = expression

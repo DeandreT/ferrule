@@ -935,6 +935,81 @@ fn eval_expr_inner(
             positions,
             in_progress,
         ),
+        Node::DistinctTextMapLast {
+            collection,
+            key,
+            expression,
+        } => {
+            let items = aggregate_items(context, collection);
+            let mut keys = functions::DistinctTextKeys::default();
+            let mut selected = Vec::new();
+            for (index, item) in items.iter().enumerate() {
+                let mut source = item.instances.last().copied();
+                for segment in key {
+                    source = source.and_then(|item| item.field(segment));
+                }
+                let value = match source {
+                    None => Value::Null,
+                    Some(Instance::Scalar(value)) => value.clone(),
+                    Some(_) => {
+                        return Err(EngineError::DistinctTextMapKind {
+                            node: node_id,
+                            phase: "key",
+                            found: "structured value",
+                        });
+                    }
+                };
+                if keys.admit(&value).map_err(|error| match error {
+                    functions::DistinctTextKeyError::Kind(found) => {
+                        EngineError::DistinctTextMapKind {
+                            node: node_id,
+                            phase: "key",
+                            found,
+                        }
+                    }
+                    functions::DistinctTextKeyError::Limit { resource, maximum } => {
+                        EngineError::DistinctTextMapLimit {
+                            node: node_id,
+                            resource,
+                            maximum,
+                        }
+                    }
+                    functions::DistinctTextKeyError::InvalidLimits => {
+                        unreachable!("default limits")
+                    }
+                })? {
+                    selected.push(index);
+                }
+            }
+            let mut last = Value::Null;
+            for index in selected {
+                let item = &items[index];
+                let mut item_context = context.to_vec();
+                item_context.extend(item.instances.iter().copied());
+                let mut item_positions = positions.to_vec();
+                item_positions.extend(item.positions.iter().cloned());
+                match eval_node_input(
+                    program,
+                    node_id,
+                    *expression,
+                    0,
+                    &item_context,
+                    &item_positions,
+                    in_progress,
+                )? {
+                    Value::Null => {}
+                    value @ Value::String(_) => last = value,
+                    value => {
+                        return Err(EngineError::DistinctTextMapKind {
+                            node: node_id,
+                            phase: "mapped value",
+                            found: value.type_name(),
+                        });
+                    }
+                }
+            }
+            Ok(last)
+        }
         Node::Aggregate {
             function,
             collection,

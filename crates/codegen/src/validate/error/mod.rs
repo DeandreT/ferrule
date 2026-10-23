@@ -270,6 +270,11 @@ pub enum ProgramValidationError {
         node: NodeId,
         collection: Vec<String>,
     },
+    InvalidDistinctTextKey {
+        node: NodeId,
+        collection: Vec<String>,
+        key: Vec<String>,
+    },
     InvalidAggregateValuePath {
         node: NodeId,
         collection: Vec<String>,

@@ -569,6 +569,16 @@ pub enum Node {
         predicate: NodeId,
         value: NodeId,
     },
+    /// Read all item-relative text keys first, keeping the first occurrence of
+    /// each exact key. Then evaluate `expression` for those items in first-seen
+    /// key order and return the last present string. Missing keys are skipped;
+    /// empty and whitespace keys remain distinct. This is not deduplication of
+    /// already evaluated mapped values.
+    DistinctTextMapLast {
+        collection: Vec<String>,
+        key: Vec<String>,
+        expression: NodeId,
+    },
     /// Returns whether any item produced by `sequence` satisfies `predicate`.
     /// The sequence's item node is an owned empty-path `SourceField` that is
     /// available only while evaluating the predicate.
@@ -721,6 +731,7 @@ impl Node {
             Self::CollectionFind {
                 predicate, value, ..
             } => vec![*predicate, *value],
+            Self::DistinctTextMapLast { expression, .. } => vec![*expression],
             Self::SequenceExists {
                 sequence,
                 predicate,

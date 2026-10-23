@@ -185,6 +185,15 @@ pub(in crate::export) fn selector_context_warnings(
                     private.extend(expression);
                     parent.extend(arg);
                 }
+                Node::DistinctTextMapLast {
+                    collection,
+                    expression,
+                    ..
+                } => {
+                    private_xml = true;
+                    owned_anchor = self.source_frames(collection, anchor, &mut owned);
+                    private.push(*expression);
+                }
                 Node::JoinAggregate {
                     plan,
                     expression,
