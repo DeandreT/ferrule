@@ -869,10 +869,10 @@ impl<'a> Admission<'a> {
                         Some(id),
                         None,
                     )?,
-                    // Document metadata exists only for a static document-set
-                    // endpoint; a loaded document carries no member location.
+                    // A static document-set member or an owned dynamic
+                    // endpoint's loaded document carries the location.
                     Node::OwnedSourceDocumentPath(path) => {
-                        self.static_owner(&path.owner, &[], None, Some(id), None)?
+                        self.loaded_owner(&path.owner, &[], None, Some(id), None)?
                     }
                     // The object is an exact owned read; its key stays a
                     // Basic parent-context scalar.

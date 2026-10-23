@@ -89,6 +89,12 @@ pub fn validate_basic_owned_emission_with_capabilities(
                 Capability::XmlOperator
             }
             Expression::OwnedSourceDocumentPath(_) if capabilities.document_sets => continue,
+            Expression::OwnedSourceDocumentPath(path)
+                if capabilities.dynamic_document_paths
+                    && loaded_owner_read(program, &path.owner) =>
+            {
+                continue;
+            }
             Expression::OwnedSourceDocumentPath(_) => Capability::Document,
             Expression::OwnedAggregate(_) if capabilities.search.collection_aggregates => continue,
             Expression::OwnedLookup(_)

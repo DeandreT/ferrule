@@ -1721,10 +1721,10 @@ public sealed partial class FerruleOwnedScopeContext
 {
     // Authenticated synthetic member containers minted only by paired By,
     // AdjacentBy, StartingWith, EndingWith and IntoBlocks. Nested ordinary occurrences remain Items.
-    // A Document roots one document of its owner: a loaded document of an owned
-    // dynamic endpoint inside its loading scope (no Location), or one member of a
-    // document-set endpoint inside the scope walking it (its Location). It is
-    // never a position or an exact occurrence.
+    // A Document roots one document of its owner with its Location: a loaded
+    // document of an owned dynamic endpoint inside its loading scope (the logical
+    // path that loaded it), or one member of a document-set endpoint inside the
+    // scope walking it. It is never a position or an exact occurrence.
     internal readonly record struct Occurrence(int Owner, IReadOnlyList<string> Path, FerruleInstance Item, nuint Index,
         bool GroupMembers = false, bool Document = false, string? Location = null);
     internal readonly record struct Observation(int Owner, IReadOnlyList<string> Path, FerruleInstance Item, nuint Index,

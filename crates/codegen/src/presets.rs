@@ -160,4 +160,8 @@ owned_presets! {
         validate_program_with_basic_owned_document_paths,
         validate_basic_owned_document_path_emission,
         legacy_named_input_admission_plan_with_basic_owned_document_paths;
+    DynamicDocumentPaths => lower_with_basic_owned_dynamic_document_paths,
+        validate_program_with_basic_owned_dynamic_document_paths,
+        validate_basic_owned_dynamic_document_path_emission,
+        legacy_named_input_admission_plan_with_basic_owned_dynamic_document_paths;
 }

@@ -21,7 +21,8 @@ use crate::{Instance, RuntimeError, Value};
 pub struct OwnedDynamicDocuments<'ctx> {
     key: OwnedOwnerKey,
     drivers: Vec<BasicSourceCandidate<'ctx>>,
-    documents: Vec<(usize, Instance)>,
+    /// Each document with its driver row and the logical path it was loaded by.
+    documents: Vec<(usize, String, Instance)>,
 }
 
 /// The loaded set attached to a loading scope's receiving view.
@@ -110,8 +111,8 @@ impl<'ctx> BasicScopeContext<'ctx> {
             }
             let document = loader
                 .load_tagged(source, &logical_path)
-                .map_err(|fault| fault.into_runtime_error(source, logical_path))?;
-            documents.push((index, document));
+                .map_err(|fault| fault.into_runtime_error(source, logical_path.clone()))?;
+            documents.push((index, logical_path, document));
         }
         Ok(OwnedDynamicDocuments {
             key: OwnedOwnerKey::Named(index),
@@ -172,7 +173,7 @@ impl<'ctx> OwnedDynamicDocuments<'ctx> {
         'ctx: 'b,
     {
         let mut entries = Vec::with_capacity(self.documents.len());
-        for (index, document) in &self.documents {
+        for (index, path, document) in &self.documents {
             let driver = &self.drivers[*index];
             let mut context: BasicScopeContext<'b> = driver.context().try_clone_view()?;
             owned_charge(
@@ -186,7 +187,7 @@ impl<'ctx> OwnedDynamicDocuments<'ctx> {
                 collection: Vec::new(),
                 instance: document,
                 index: 0,
-                kind: super::super::OwnedOccurrenceKind::Document { location: None },
+                kind: super::super::OwnedOccurrenceKind::Document { location: path },
             });
             entries.push(LoadedEntry {
                 context,

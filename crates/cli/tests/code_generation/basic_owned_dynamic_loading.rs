@@ -165,7 +165,7 @@ fn owned_dynamic_loading475_profiles_lower_validate_and_emit() -> TestResult<()>
 /// Records every attempted callback; repeated successful documents are read
 /// once and failures are never cached.
 #[derive(Default)]
-struct RecordingLoader {
+pub(super) struct RecordingLoader {
     documents: BTreeMap<(String, String), Instance>,
     calls: RefCell<Vec<String>>,
     reads: RefCell<Vec<String>>,
@@ -216,11 +216,16 @@ fn expected_engine_error(recipe: &Json) -> engine::EngineError {
 fn engine_error_matches(error: &engine::EngineError, recipe: &Json) -> bool {
     match recipe["kind"].as_str() {
         Some("OwnedSource") => {
+            let owner = projects::owner(recipe["owner"].as_str().unwrap_or_default());
+            let cause = match recipe["cause"].as_str() {
+                Some("SourceUnavailable") => engine::OwnedSourceError::SourceUnavailable { owner },
+                Some("MissingDocumentPath") => {
+                    engine::OwnedSourceError::MissingDocumentPath { owner }
+                }
+                _ => panic!("authored owned cause"),
+            };
             matches!(error, engine::EngineError::OwnedSourceAccess { node, source, .. }
-            if node.map(u64::from) == recipe["node"].as_u64()
-                && *source == engine::OwnedSourceError::SourceUnavailable {
-                    owner: projects::owner(recipe["owner"].as_str().unwrap_or_default()),
-                })
+            if node.map(u64::from) == recipe["node"].as_u64() && *source == cause)
         }
         // A legacy host string may surface as the tagged variant; both render
         // the same failure.
@@ -232,6 +237,16 @@ fn engine_error_matches(error: &engine::EngineError, recipe: &Json) -> bool {
 #[test]
 fn owned_dynamic_loading475_interpreter_matches_expected() -> TestResult<()> {
     let (controls, models) = corpus()?;
+    check_interpreter(&controls, &models, CALLS)
+}
+
+/// Run every call of `controls` through the interpreter with a fresh
+/// recording loader, comparing outcomes, attempted callbacks and reads.
+pub(super) fn check_interpreter(
+    controls: &Json,
+    models: &[Project],
+    total: usize,
+) -> TestResult<()> {
     let documents: BTreeMap<(String, String), Instance> = controls["documents"]
         .as_array()
         .ok_or("documents")?
@@ -330,7 +345,7 @@ fn owned_dynamic_loading475_interpreter_matches_expected() -> TestResult<()> {
             }
         }
     }
-    assert_eq!(calls, CALLS);
+    assert_eq!(calls, total);
     assert!(differing.is_empty(), "{differing:#?}");
     Ok(())
 }
@@ -467,36 +482,70 @@ fn host_result(results: &Path, calls: usize, run: &Output) -> Result<(), String>
 #[ignore = "builds and runs one generated Rust host and 6 generated C# hosts; requires cargo and the .NET 10 SDK"]
 fn owned_dynamic_loading475_generated_rust_and_csharp_match_expected() -> TestResult<()> {
     let (controls, models) = corpus()?;
+    let programs = models
+        .iter()
+        .map(codegen::lower_with_basic_owned_dynamic_loading)
+        .collect::<Result<Vec<_>, _>>()?;
+    check_generated_hosts(
+        "dynload475",
+        &controls,
+        &programs,
+        LoaderEmitters {
+            rust: codegen_rust::emit_with_basic_owned_dynamic_loading,
+            csharp: codegen_csharp::emit_with_basic_owned_dynamic_loading,
+        },
+        CALLS,
+    )
+}
+
+/// The loader-taking emitters of one generation profile.
+pub(super) struct LoaderEmitters {
+    pub rust: fn(
+        &codegen::Program,
+        &codegen_rust::Options,
+    ) -> Result<codegen::ArtifactSet, codegen_rust::EmitError>,
+    pub csharp: fn(&codegen::Program) -> Result<codegen::ArtifactSet, codegen_csharp::EmitError>,
+}
+
+/// Emit every Program, then build and run one generated Rust host covering
+/// every model and one generated C# host per model, each with a fresh
+/// recording loader per call. Every call must match in both languages.
+pub(super) fn check_generated_hosts(
+    tag: &str,
+    controls: &Json,
+    programs: &[codegen::Program],
+    emitters: LoaderEmitters,
+    calls: usize,
+) -> TestResult<()> {
     let runtime = runtime_path()?;
-    let temp = TempDir::new("dynload475_hosts")?;
+    let temp = TempDir::new(&format!("{tag}_hosts"))?;
     let root = temp.0.canonicalize()?;
     write_file(
         &root.join("controls.json"),
-        &serde_json::to_vec_pretty(&controls)?,
+        &serde_json::to_vec_pretty(controls)?,
     )?;
     let mut dependencies = String::new();
     let mut dispatch = String::new();
-    for (index, project) in models.iter().enumerate() {
-        let program = codegen::lower_with_basic_owned_dynamic_loading(project)?;
-        let options = rust_options(&format!("dynload475-model{index}"), &runtime);
+    for (index, program) in programs.iter().enumerate() {
+        let options = rust_options(&format!("{tag}-model{index}"), &runtime);
         write_artifacts(
             &root.join(format!("rust-model{index}")),
-            &codegen_rust::emit_with_basic_owned_dynamic_loading(&program, &options)?,
+            &(emitters.rust)(program, &options)?,
         )?;
         write_artifacts(
             &root.join(format!("csharp-model{index}")),
-            &codegen_csharp::emit_with_basic_owned_dynamic_loading(&program)?,
+            &(emitters.csharp)(program)?,
         )?;
         let host = root.join(format!("csharp-host{index}"));
         write_file(&host.join("Host.csproj"), host_project(index).as_bytes())?;
         write_file(
             &host.join("Program.cs"),
             include_str!("basic_owned_dynamic_loading/Host.cs.txt")
-                .replace("@MODEL_CALLS@", &model_calls(&controls, index).to_string())
+                .replace("@MODEL_CALLS@", &model_calls(controls, index).to_string())
                 .as_bytes(),
         )?;
         dependencies.push_str(&format!(
-            "model{index}={{package=\"dynload475-model{index}\",path=\"../rust-model{index}\"}}\n"
+            "model{index}={{package=\"{tag}-model{index}\",path=\"../rust-model{index}\"}}\n"
         ));
         dispatch.push_str(&format!(
             "            {index} => invoke!(model{index}, selection, &source, &inputs, &execution, limits, loader),\n"
@@ -506,7 +555,7 @@ fn owned_dynamic_loading475_generated_rust_and_csharp_match_expected() -> TestRe
         &root.join("rust-host/src/main.rs"),
         include_str!("basic_owned_dynamic_loading/Host.rs.txt")
             .replace("@DISPATCH@", &dispatch)
-            .replace("@CALLS@", &CALLS.to_string())
+            .replace("@CALLS@", &calls.to_string())
             .as_bytes(),
     )?;
     write_file(
@@ -516,7 +565,7 @@ fn owned_dynamic_loading475_generated_rust_and_csharp_match_expected() -> TestRe
     write_file(
         &root.join("rust-host/Cargo.toml"),
         format!(
-            "[package]\nname=\"dynload475-host\"\nversion=\"0.1.0\"\nedition=\"2024\"\npublish=false\n[workspace]\n[dependencies]\ncodegen-runtime={{path={}}}\nserde_json=\"=1.0.150\"\n{dependencies}",
+            "[package]\nname=\"{tag}-host\"\nversion=\"0.1.0\"\nedition=\"2024\"\npublish=false\n[workspace]\n[dependencies]\ncodegen-runtime={{path={}}}\nserde_json=\"=1.0.150\"\n{dependencies}",
             serde_json::to_string(&runtime.display().to_string())?
         )
         .as_bytes(),
@@ -537,11 +586,11 @@ fn owned_dynamic_loading475_generated_rust_and_csharp_match_expected() -> TestRe
         .output()?;
     if build.status.success() {
         let results = root.join("rust-results.json");
-        let run = Command::new(target.join("debug/dynload475-host"))
+        let run = Command::new(target.join(format!("debug/{tag}-host")))
             .arg(root.join("controls.json"))
             .arg(&results)
             .output()?;
-        if let Err(error) = host_result(&results, CALLS, &run) {
+        if let Err(error) = host_result(&results, calls, &run) {
             failures.push(format!("Rust host: {error}"));
         }
     } else {
@@ -565,10 +614,10 @@ fn owned_dynamic_loading475_generated_rust_and_csharp_match_expected() -> TestRe
             scope.spawn(|| {
                 loop {
                     let index = next.fetch_add(1, Ordering::Relaxed);
-                    if index >= MODELS {
+                    if index >= programs.len() {
                         break;
                     }
-                    if let Err(error) = run_csharp_host(&root, &dotnet, &controls, index)
+                    if let Err(error) = run_csharp_host(&root, &dotnet, controls, index)
                         && let Ok(mut failures) = csharp_failures.lock()
                     {
                         failures.push(error);

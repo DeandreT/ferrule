@@ -484,12 +484,12 @@ pub(crate) enum SourceOriginKind<'a> {
     Ordinary,
     GroupWrapper,
     GroupMembers,
-    /// The root of one document of its owner: a loaded document of an owned
-    /// dynamic endpoint, which has no location, or one member of a document-set
-    /// endpoint with its location. It is that endpoint's root inside the scope
-    /// walking it; it is never a position.
+    /// The root of one document of its owner, with its location: a loaded
+    /// document of an owned dynamic endpoint and the logical path that loaded
+    /// it, or one member of a document-set endpoint. It is that endpoint's root
+    /// inside the scope walking it; it is never a position.
     Document {
-        location: Option<&'a str>,
+        location: &'a str,
     },
 }
 
@@ -546,8 +546,9 @@ impl<'a> OwnedContext<'a> {
     pub fn loaded_document(&self, key: OwnerKey) -> Option<&'a Instance> {
         self.document(key).map(|origin| origin.item)
     }
-    /// The location of `owner`'s latest active document-set member. Another
-    /// owner's document and an uniterated set never supply it.
+    /// The location of `owner`'s latest active document: a document-set
+    /// member's location or a loaded document's logical path. Another owner's
+    /// document and an uniterated set never supply it.
     pub fn document_path(&self, owner: &SourceOwner) -> Result<Value, OwnedSourceError> {
         let name = match owner {
             SourceOwner::Primary => None,
@@ -559,9 +560,7 @@ impl<'a> OwnedContext<'a> {
         let key = self.roots.key(owner)?;
         self.endpoint_root(key)?;
         match self.document(key).map(|origin| origin.kind) {
-            Some(SourceOriginKind::Document {
-                location: Some(location),
-            }) => Ok(Value::String(location.to_owned())),
+            Some(SourceOriginKind::Document { location }) => Ok(Value::String(location.to_owned())),
             _ => Err(OwnedSourceError::MissingDocumentPath {
                 owner: owner.clone(),
             }),

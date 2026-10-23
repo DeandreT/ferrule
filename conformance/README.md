@@ -301,8 +301,11 @@ The [`basic-owned-occurrence/`](basic-owned-occurrence/),
 [`basic-owned-windows/`](basic-owned-windows/) and
 [`basic-owned-document-path/`](basic-owned-document-path/) cohorts follow this
 layout with a JSON oracle; the SequenceExists and SequenceAggregate cohorts share the same
-bindings with `cases.rs`. Each cohort README lists its cases and expected
-outcomes. Run one cohort, including its generated hosts, with its harness
+bindings with `cases.rs`. The
+[`basic-owned-dynamic-document-path/`](basic-owned-dynamic-document-path/)
+cohort keeps the same JSON oracle with host documents and recorded loader
+callbacks, run by the owned dynamic-loading hosts. Each cohort README lists its
+cases and expected outcomes. Run one cohort, including its generated hosts, with its harness
 filter, for example:
 
 ```sh

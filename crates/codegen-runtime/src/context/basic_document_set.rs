@@ -16,8 +16,9 @@ use super::{
 use crate::{Instance, RuntimeError, Value};
 
 impl<'ctx> BasicScopeContext<'ctx> {
-    /// The location of the selected owner's latest active document-set
-    /// member; another owner's document never supplies it.
+    /// The location of the selected owner's latest active document, a
+    /// document-set member or a loaded document; another owner's document
+    /// never supplies it.
     pub fn owned_document_path(&self, owner: SourceOwnerRef<'_>) -> Result<Value, RuntimeError> {
         self.budget(owner, &[], None, false)?;
         self.owned.owned_document_path(owner).map_err(Into::into)
@@ -67,7 +68,7 @@ impl<'ctx> BasicScopeContext<'ctx> {
                 instance: member.value(),
                 index: 0,
                 kind: super::super::OwnedOccurrenceKind::Document {
-                    location: Some(member.source_path()),
+                    location: member.source_path(),
                 },
             });
             for candidate in context.walk_owned_source(owner, path)? {
