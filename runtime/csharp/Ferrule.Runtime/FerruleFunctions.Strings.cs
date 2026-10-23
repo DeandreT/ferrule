@@ -78,6 +78,14 @@ public static partial class FerruleFunctions
             return FerruleValue.FromString(string.Empty);
         }
 
+        if (function == "left_utf16_lossy")
+        {
+            var prefix = value[..(int)Math.Min(count, value.Length)];
+            var text = new StringBuilder();
+            foreach (var rune in prefix.EnumerateRunes()) text.Append(rune.ToString());
+            return FerruleValue.FromString(text.ToString());
+        }
+
         var runes = Runes(value);
         if (count >= runes.Count)
         {

@@ -7,16 +7,44 @@ use crate::{EmitError, Options, rust_string};
 pub enum PrimaryJsonEmitError {
     Boundary(JsonProjectionBoundaryError),
     Emit(EmitError),
+    Writer(codegen::MapForceX12WriterError),
 }
 impl std::fmt::Display for PrimaryJsonEmitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Boundary(error) => error.fmt(f),
             Self::Emit(error) => error.fmt(f),
+            Self::Writer(error) => error.fmt(f),
         }
     }
 }
 impl std::error::Error for PrimaryJsonEmitError {}
+
+pub fn emit_with_mapforce_x12_writer(
+    document: &DocumentProgram,
+    options: &Options,
+    shape: &JsonSourceShape,
+    target_options: &mapping::FormatOptions,
+    minimums: &[mapping::MapForceEdiMinimum],
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let descriptor =
+        codegen::prepare_mapforce_x12_writer(document.program(), target_options, minimums)
+            .map_err(PrimaryJsonEmitError::Writer)?;
+    let mut files = emit_with_primary_json_projection(document, options, shape)?.into_files();
+    let source = format!(
+        "\npub fn serialize_mapforce_x12_document(value: &Instance, execution: &ExecutionContext<'_>) -> Result<Vec<u8>, codegen_runtime::X12BoundaryError> {{\n    codegen_runtime::serialize_mapforce_x12_document({}, value, execution)\n}}\n",
+        rust_string(&descriptor)
+    );
+    files
+        .iter_mut()
+        .find(|f| f.path.as_str() == "src/lib.rs")
+        .expect("ordinary Rust artifact")
+        .contents
+        .extend_from_slice(source.as_bytes());
+    ArtifactSet::new(files)
+        .map_err(EmitError::from)
+        .map_err(PrimaryJsonEmitError::Emit)
+}
 
 /// Add lazy primary filename acquisition and typed ordered JSON projection.
 /// The host owns transport, parsing and cleanup; this does not publish output.

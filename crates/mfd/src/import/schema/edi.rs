@@ -18,6 +18,52 @@ mod idoc_text;
 #[path = "edi/variable.rs"]
 mod variable;
 
+pub(super) fn writer_minimums(
+    component: &roxmltree::Node<'_, '_>,
+    resources: &ResourceResolver,
+) -> Result<Vec<mapping::MapForceEdiMinimum>, String> {
+    let text = component
+        .children()
+        .find(|n| n.has_tag_name("data"))
+        .and_then(|n| n.children().find(|n| n.has_tag_name("text")))
+        .ok_or("missing EDI text configuration")?;
+    if text.attribute("kind") != Some("EDIX12") {
+        return Err("MapForce writer requires X12".into());
+    }
+    let declared = text
+        .attribute("config")
+        .ok_or("missing EDI configuration")?;
+    let selected = text
+        .children()
+        .find(|n| n.has_tag_name("messages"))
+        .map(|n| {
+            n.children()
+                .filter(|n| n.has_tag_name("message"))
+                .filter_map(|n| n.attribute("type").map(str::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let resolved = config_source::resolve(resources.mapping_path(), Some(resources), declared)?;
+    let result = match resolved.bound() {
+        Some(reader) => format_edi::config::import_mapforce_write_minimums_with_byte_reader(
+            resolved.path(),
+            resolved.authorization_root(),
+            &selected,
+            reader.clone(),
+        ),
+        None => format_edi::config::import_mapforce_write_minimums_confined(
+            resolved.path(),
+            resolved.authorization_root(),
+            &selected,
+        ),
+    }
+    .map_err(|e| e.to_string());
+    match resolved.bound() {
+        Some(bound) => bound.finish(result),
+        None => result,
+    }
+}
+
 /// Adds design-only ports exposed through transparent components after the
 /// reachable graph is known. The unresolved configuration reference remains
 /// the runtime gate; inferred descendants carry no executable EDI metadata.
