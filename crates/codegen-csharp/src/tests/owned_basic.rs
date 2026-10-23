@@ -1,8 +1,10 @@
 //! Prospective private generator controls. No public capability is enabled.
-//! Set FERRULE_PRIVATE_OWNED_CSHARP_HOST_DIR only in the protected root test
-//! actor to retain the generated Mapping, TargetBuilder, and complete typed host.
-//! Hosts must be compiled against the separately qualified #489 C#204 runtime;
-//! ordinary embedded runtime/artifacts and all public emitter routes stay exact.
+//! FERRULE_PRIVATE_OWNED_CSHARP_HOST_DIR and FERRULE_PRIVATE_CHECKED_CSHARP_HOST_DIR
+//! retain the generated Mapping, TargetBuilder and complete typed host; those
+//! hosts target a historical runtime API and are not built in this checkout.
+//! FERRULE_PUBLIC_BASIC_CSHARP_HOST_DIR retains the public consumers, which
+//! `owned_basic_consumers` builds and runs without an external campaign.
+//! Ordinary embedded runtime/artifacts and all public emitter routes stay exact.
 use super::*;
 use crate::owned_basic::render_basic_owned_mapping;
 use ::mapping::{OwnedPosition, OwnedSourceField, OwnedSourceRef, SourceOwner};

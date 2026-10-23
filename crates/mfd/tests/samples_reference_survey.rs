@@ -72,9 +72,20 @@ fn generate_reference_outputs() -> Result<(), Box<dyn Error>> {
     let samples_root = workspace.join("samples");
     let samples = samples_root.join("ReferenceSamples");
     let reference_app = workspace.join("ref-app/MapForce.exe");
-    if !samples.is_dir() || !reference_app.is_file() {
-        println!("local samples/reference application unavailable; skipped");
-        return Ok(());
+    // An explicit run without its local inputs fails rather than passing.
+    if !samples.is_dir() {
+        return Err(format!(
+            "private compatibility corpus not present at {}",
+            samples.display()
+        )
+        .into());
+    }
+    if !reference_app.is_file() {
+        return Err(format!(
+            "local reference application not present at {}",
+            reference_app.display()
+        )
+        .into());
     }
     require_commands(["Xvfb", "wine", "xdotool", "setsid", "kill"])?;
     require_registered_server()?;
