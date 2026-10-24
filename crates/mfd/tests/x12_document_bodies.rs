@@ -415,6 +415,8 @@ fn native_source_structure_retains_bounds_independently_of_schema_lists() {
     let isa = &root.children[0].children[0];
     assert_eq!(isa.segment.as_deref(), Some("ISA"));
     assert_eq!((isa.minimum, isa.maximum), (0, Some(1)));
+    assert!(root.known_segments.iter().any(|name| name == "ISA"));
+    assert!(root.children[0].children[1].children[1].selection);
     assert!(
         imported
             .source_schema
