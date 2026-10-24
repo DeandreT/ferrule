@@ -277,20 +277,23 @@ pub fn tab(ui: &mut Ui, label: &str, selected: bool, closable: bool) -> TabRespo
         .corner_radius(METRICS.radius)
         .inner_margin(egui::Margin::symmetric(space::MD as i8, space::XS as i8))
         .show(ui, |ui| {
-            ui.spacing_mut().item_spacing.x = space::SM;
-            let label = ui.add(egui::Label::new(label).sense(egui::Sense::click()));
-            if closable
-                && ui
-                    .add(
-                        egui::Button::new(crate::icons::text(Icon::X, METRICS.icon_small))
-                            .frame(false),
-                    )
-                    .on_hover_text("Close tab")
-                    .clicked()
-            {
-                close_clicked = true;
-            }
-            label
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = space::SM;
+                let label = ui.add(egui::Label::new(label).sense(egui::Sense::click()));
+                if closable
+                    && ui
+                        .add(
+                            egui::Button::new(crate::icons::text(Icon::X, METRICS.icon_small))
+                                .frame(false),
+                        )
+                        .on_hover_text("Close tab")
+                        .clicked()
+                {
+                    close_clicked = true;
+                }
+                label
+            })
+            .inner
         });
     let response = inner
         .inner

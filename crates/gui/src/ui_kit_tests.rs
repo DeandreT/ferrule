@@ -84,6 +84,25 @@ fn form_grid_rows_align_labels_and_fill_fields() {
 }
 
 #[test]
+fn closable_tab_keeps_its_close_button_on_the_label_row() {
+    let context = egui::Context::default();
+    crate::theme::ThemeState::default().apply(&context);
+    let mut plain = Rect::NOTHING;
+    let mut closable = Rect::NOTHING;
+    for _ in 0..2 {
+        run(&context, |ui| {
+            plain = tab(ui, "Main mapping", true, false).response.rect;
+            closable = tab(ui, "Main mapping", true, true).response.rect;
+        });
+    }
+    assert!(
+        closable.height() <= plain.height() + METRICS.control_height / 2.0,
+        "close button stacked below the label: plain {plain:?}, closable {closable:?}"
+    );
+    assert!(closable.width() > plain.width());
+}
+
+#[test]
 fn modal_dialogs_centre_in_the_viewport_and_fit_inside_its_margins() {
     let viewport = Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 1000.0));
     let workspace = Rect::from_min_max(Pos2::new(0.0, 80.0), Pos2::new(1600.0, 974.0));
