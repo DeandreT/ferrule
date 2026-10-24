@@ -11,13 +11,12 @@ enum KeyAction {
 
 pub(super) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
     let first_node = first_node_id(graph);
-    ui.horizontal(|ui| {
-        ui.label("  sort key:");
+    crate::ui_kit::section(ui, "Sort", |ui| {
         let mut sorted = scope.has_sort();
         if ui
             .add_enabled(
                 sorted || first_node.is_some(),
-                egui::Checkbox::new(&mut sorted, "sorted"),
+                egui::Checkbox::new(&mut sorted, "Sort items"),
             )
             .on_disabled_hover_text("Add a graph node before enabling sorting")
             .changed()
@@ -30,8 +29,11 @@ pub(super) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
             }
         }
         if let Some(sort_by) = &mut scope.sort_by {
+            ui.horizontal(|ui| {
+                ui.label("Primary key");
+                ui.checkbox(&mut scope.sort_descending, "Descending");
+            });
             node_picker(ui, "sort_by_node", sort_by, graph);
-            ui.checkbox(&mut scope.sort_descending, "descending");
         } else if !scope.sort_then_by.is_empty() {
             ui.label("Primary key is missing");
             if ui
@@ -47,27 +49,44 @@ pub(super) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
         let count = scope.sort_then_by.len();
         let mut action = None;
         for (index, key) in scope.sort_then_by.iter_mut().enumerate() {
-            ui.horizontal(|ui| {
-                ui.label(format!("  then key {}:", index + 1));
-                node_picker(ui, ("sort_then_by_node", index), &mut key.node, graph);
-                ui.checkbox(&mut key.descending, "descending");
-                if ui
-                    .add_enabled(index > 0, egui::Button::new("Up").small())
-                    .on_hover_text("Move sort key earlier")
-                    .clicked()
-                {
-                    action = Some(KeyAction::MoveUp(index));
-                }
-                if ui
-                    .add_enabled(index + 1 < count, egui::Button::new("Down").small())
-                    .on_hover_text("Move sort key later")
-                    .clicked()
-                {
-                    action = Some(KeyAction::MoveDown(index));
-                }
-                if ui.small_button("Remove key").clicked() {
-                    action = Some(KeyAction::Remove(index));
-                }
+            ui.push_id(("sort_key", index), |ui| {
+                ui.group(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("Then key {}", index + 1));
+                        if crate::ui_kit::icon_button(
+                            ui,
+                            lucide_icons::Icon::ArrowUp,
+                            "Move sort key earlier",
+                            (index == 0).then_some("Already the first secondary key"),
+                        )
+                        .clicked()
+                        {
+                            action = Some(KeyAction::MoveUp(index));
+                        }
+                        if crate::ui_kit::icon_button(
+                            ui,
+                            lucide_icons::Icon::ArrowDown,
+                            "Move sort key later",
+                            (index + 1 == count).then_some("Already the last key"),
+                        )
+                        .clicked()
+                        {
+                            action = Some(KeyAction::MoveDown(index));
+                        }
+                        if crate::ui_kit::icon_button(
+                            ui,
+                            lucide_icons::Icon::Trash2,
+                            "Remove sort key",
+                            None,
+                        )
+                        .clicked()
+                        {
+                            action = Some(KeyAction::Remove(index));
+                        }
+                    });
+                    node_picker(ui, ("sort_then_by_node", index), &mut key.node, graph);
+                    ui.checkbox(&mut key.descending, "Descending");
+                });
             });
         }
         match action {

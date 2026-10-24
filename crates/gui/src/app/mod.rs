@@ -130,6 +130,9 @@ fn history_shortcuts() -> [egui::KeyboardShortcut; 3] {
 struct CanvasDocumentState {
     tools_id: egui::Id,
     snarl: Snarl<CanvasNode>,
+    /// A lazily created document's deterministic geometry. Its sidecar entry
+    /// needs custom positions only after nodes move or are arranged.
+    default_layout: Option<Vec<CanvasNodeLayout>>,
     node_sizes: std::collections::BTreeMap<CanvasNode, egui::Vec2>,
     endpoint_scroll: crate::canvas_endpoints::EndpointScrollState,
     search: crate::canvas_search::CanvasSearchState,
@@ -283,6 +286,12 @@ impl MappingWorkspace {
             if target >= project.extra_targets.len() {
                 continue;
             }
+            if nodes.is_empty() {
+                workspace
+                    .target_canvases
+                    .insert(target, CanvasDocumentState::default_target(project, target));
+                continue;
+            }
             let mut snarl = canvas_build::build_named_target_snarl(project, target);
             CanvasLayout::apply_nodes(nodes, &mut snarl);
             workspace
@@ -293,6 +302,13 @@ impl MappingWorkspace {
             let Some(definition) = project.user_functions.get(&function) else {
                 continue;
             };
+            if nodes.is_empty() {
+                workspace.function_canvases.insert(
+                    function,
+                    CanvasDocumentState::with_default_layout(build_function_snarl(definition)),
+                );
+                continue;
+            }
             let mut snarl = build_function_snarl(definition);
             CanvasLayout::apply_nodes(nodes, &mut snarl);
             workspace
@@ -304,6 +320,16 @@ impl MappingWorkspace {
 }
 
 impl CanvasDocumentState {
+    fn default_target(project: &Project, target: usize) -> Self {
+        Self::with_default_layout(canvas_build::build_named_target_snarl(project, target))
+    }
+
+    fn with_default_layout(snarl: Snarl<CanvasNode>) -> Self {
+        let mut canvas = Self::with_snarl(snarl);
+        canvas.default_layout = Some(CanvasLayout::capture_nodes(&canvas.snarl));
+        canvas
+    }
+
     fn main(project: &Project) -> Self {
         Self::with_snarl(build_snarl(project))
     }
@@ -316,6 +342,7 @@ impl CanvasDocumentState {
                 NEXT_TOOLS_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             )),
             snarl,
+            default_layout: None,
             node_sizes: std::collections::BTreeMap::new(),
             endpoint_scroll: crate::canvas_endpoints::EndpointScrollState::default(),
             search: crate::canvas_search::CanvasSearchState::default(),
@@ -441,10 +468,16 @@ struct EditorSnapshot {
     state: EditorState,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 struct EditorState {
     serialized_project: String,
     layout: CanvasLayout,
+}
+
+impl PartialEq for EditorState {
+    fn eq(&self, other: &Self) -> bool {
+        self.serialized_project == other.serialized_project && self.layout.same_view(&other.layout)
+    }
 }
 
 type EditorHistory = EditHistory<EditorSnapshot, graph_commands::GraphCommandRecord>;
@@ -819,12 +852,32 @@ impl CanvasLayout {
         let function_nodes = workspace
             .function_canvases
             .iter()
-            .map(|(&function, canvas)| (function, Self::capture_nodes(&canvas.snarl)))
+            .map(|(&function, canvas)| {
+                let nodes = Self::capture_nodes(&canvas.snarl);
+                (
+                    function,
+                    if canvas.default_layout.as_ref() == Some(&nodes) {
+                        Vec::new()
+                    } else {
+                        nodes
+                    },
+                )
+            })
             .collect();
         let target_nodes = workspace
             .target_canvases
             .iter()
-            .map(|(&target, canvas)| (target, Self::capture_nodes(&canvas.snarl)))
+            .map(|(&target, canvas)| {
+                let nodes = Self::capture_nodes(&canvas.snarl);
+                (
+                    target,
+                    if canvas.default_layout.as_ref() == Some(&nodes) {
+                        Vec::new()
+                    } else {
+                        nodes
+                    },
+                )
+            })
             .collect();
         let mut open_functions = workspace
             .tabs
@@ -903,16 +956,15 @@ impl CanvasLayout {
         }
     }
 
-    /// Equality of the view state alone; the fingerprint follows the project.
+    /// Equality of saved canvas geometry; navigation is persisted opportunistically
+    /// on save, but opening or selecting a tab is not an edit.
     fn same_view(&self, other: &Self) -> bool {
         self.version == other.version
             && self.nodes == other.nodes
-            && self.function_nodes == other.function_nodes
-            && self.target_nodes == other.target_nodes
-            && self.open_functions == other.open_functions
-            && self.open_documents == other.open_documents
-            && self.active_function == other.active_function
-            && self.active_document == other.active_document
+            // Empty entries remember a visited default canvas, not custom
+            // geometry. Ignore only those markers when comparing edits.
+            && self.function_nodes.iter().filter(|(_, nodes)| !nodes.is_empty()).eq(other.function_nodes.iter().filter(|(_, nodes)| !nodes.is_empty()))
+            && self.target_nodes.iter().filter(|(_, nodes)| !nodes.is_empty()).eq(other.target_nodes.iter().filter(|(_, nodes)| !nodes.is_empty()))
     }
 
     fn matches_project(&self, project: &Project) -> bool {

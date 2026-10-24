@@ -161,7 +161,7 @@ fn show_node(
     };
     match &plan.node.kind {
         SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
-            let response = ui.label(text);
+            let response = ui.add(egui::Label::new(text).truncate());
             if focused && focus.is_some_and(|(_, scroll)| scroll) {
                 response.scroll_to_me(None);
             }
@@ -203,8 +203,14 @@ fn show_node(
 
 fn node_hover_text(node: &SchemaNode, leaves: usize, x12_descriptions: bool) -> String {
     crate::x12_tooltips::segment_description(x12_descriptions, &node.name).map_or_else(
-        || format!("{leaves} scalar field(s)"),
-        |description| format!("X12 {}: {description}\n{leaves} scalar field(s)", node.name),
+        || crate::ui_kit::plural(leaves, "scalar field"),
+        |description| {
+            format!(
+                "X12 {}: {description}\n{}",
+                node.name,
+                crate::ui_kit::plural(leaves, "scalar field")
+            )
+        },
     )
 }
 
@@ -316,8 +322,8 @@ mod tests {
 
         assert_eq!(
             node_hover_text(&segment, 1, true),
-            "X12 BEG: Beginning Segment for Purchase Order\n1 scalar field(s)"
+            "X12 BEG: Beginning Segment for Purchase Order\n1 scalar field"
         );
-        assert_eq!(node_hover_text(&segment, 1, false), "1 scalar field(s)");
+        assert_eq!(node_hover_text(&segment, 1, false), "1 scalar field");
     }
 }

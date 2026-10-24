@@ -136,6 +136,16 @@ and broader authoring coverage remain tracked in the
 
 ## Add computed JSON properties
 
+The Inspector separates **Scopes**, **Schema**, and **Rules**. Select a scope
+by its highlighted row; the disclosure arrow only expands its children. Drag
+the divider below the scope tree to give the selected editor more room.
+**Scope** contains child, subtree, and removal actions; **Join** contains the
+join actions available for the selected scope. Function tabs show their input
+and output signature instead of the mapping's scope controls.
+
+Changing the target selector or inspecting a different tab does not edit the
+document. Moving or arranging canvas nodes still changes the saved layout.
+
 On the main or a named-target canvas, select the target object in **Scopes**
 and use **Computed properties**. The target must be an ordinary JSON document
 whose object schema allows additional properties of one **String**, **Int**,
@@ -144,11 +154,11 @@ path whose parent scopes use ordinary construction without iteration,
 filtering, grouping, sorting, or windows.
 
 Prepare the source fields and expressions on the canvas first. Choose
-**+ property**, then select **Name expression** and **Value expression**.
+**Add property**, then select **Name expression** and **Value expression**.
 The name must evaluate to a String; an empty String is a valid property name.
 For example, a name expression producing `display_name` and a value expression
 producing `Ada` add the property `"display_name": "Ada"`. Choose
-**Remove property 1** (or the displayed row number) to remove a listed property.
+the row's **Remove property** trash button to remove a listed property.
 Each named target keeps its own property list.
 
 Properties evaluate in their listed order after the fixed field bindings.

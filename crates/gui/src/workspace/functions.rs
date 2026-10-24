@@ -349,10 +349,7 @@ impl FerruleApp {
         if target >= self.project.extra_targets.len() {
             return false;
         }
-        let canvas = CanvasDocumentState::with_snarl(canvas_build::build_named_target_snarl(
-            &self.project,
-            target,
-        ));
+        let canvas = CanvasDocumentState::default_target(&self.project, target);
         self.mapping_workspace
             .target_canvases
             .insert(target, canvas);
@@ -512,7 +509,7 @@ impl FerruleApp {
         let Some(definition) = self.project.user_functions.get(&function) else {
             return false;
         };
-        let canvas = CanvasDocumentState::with_snarl(build_function_snarl(definition));
+        let canvas = CanvasDocumentState::with_default_layout(build_function_snarl(definition));
         self.mapping_workspace
             .function_canvases
             .insert(function, canvas);

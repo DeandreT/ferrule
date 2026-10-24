@@ -24,7 +24,9 @@ fn context() -> egui::Context {
 fn shapes_at(output: &egui::FullOutput, label: &str) -> Vec<egui::Pos2> {
     fn collect(shape: &egui::epaint::Shape, label: &str, positions: &mut Vec<egui::Pos2>) {
         match shape {
-            egui::epaint::Shape::Text(text) if text.galley.text() == label => {
+            egui::epaint::Shape::Text(text)
+                if crate::test_ui::inspector_label_matches(text.galley.text(), label) =>
+            {
                 positions.push(text.visual_bounding_rect().center());
             }
             egui::epaint::Shape::Vec(shapes) => {

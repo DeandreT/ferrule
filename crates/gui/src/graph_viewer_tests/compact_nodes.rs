@@ -1690,8 +1690,8 @@ fn compact_lookup_popup_preserves_empty_unicode_output_identity_and_disabled_con
         assert!(text_position(&opened, "collection").is_some());
         assert!(text_position(&opened, "value").is_some());
         if collection.is_empty() {
-            assert!(text_position(&opened, "<current rows>").is_some());
-            assert!(text_position(&opened, "<item value>").is_some());
+            assert!(text_position(&opened, "Current rows").is_some());
+            assert!(text_position(&opened, "Current item value").is_some());
         } else {
             assert!(text_position(&opened, "KeyA").is_some());
             assert!(text_position(&opened, "ValueA").is_some());

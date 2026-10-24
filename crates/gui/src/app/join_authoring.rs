@@ -743,78 +743,84 @@ impl FerruleApp {
         let parts = scope_parts(&self.project, &current);
         let mut start = None;
         if self.join_authoring_draft.is_none() {
-            let create =
-                parts.as_ref().is_ok_and(|(scope, _)| empty(scope)) && available.len() >= 2;
-            if ui
-                .add_enabled(enabled && create, egui::Button::new("Join two collections"))
-                .clicked()
-            {
-                let left = &available[0];
-                let right = &available[1];
-                start = Some(Edit::Create {
-                    left: left.path.clone(),
-                    right: right.path.clone(),
-                    keys: vec![EqualityPair {
-                        left: left.fields[0].clone(),
-                        right: right.fields[0].clone(),
-                    }],
-                });
-            }
-            let keys = parts.as_ref().ok().and_then(|(scope, _)| {
-                editable_keys(scope, &available).or_else(|| editable_nary_keys(scope, &available))
-            });
-            if ui
-                .add_enabled(
-                    enabled && keys.is_some(),
-                    egui::Button::new("Edit equality keys"),
-                )
-                .clicked()
-            {
-                start = keys;
-            }
-            let project = parts.as_ref().ok().and_then(|(scope, schema)| {
-                let (join, plan) = scope.join()?;
-                let inputs = plan
-                    .sources()
-                    .map(|source| source.collection().to_vec())
-                    .collect::<Vec<_>>();
-                if inputs.len() != 2
-                    || plan.sources().any(|source| {
-                        source.cardinality() != mapping::JoinSourceCardinality::Repeating
-                    })
+            ui.menu_button("Join", |ui| {
+                let create =
+                    parts.as_ref().is_ok_and(|(scope, _)| empty(scope)) && available.len() >= 2;
+                if ui
+                    .add_enabled(enabled && create, egui::Button::new("Join two collections"))
+                    .on_disabled_hover_text(
+                        "Choose an empty repeating target group and two static row collections",
+                    )
+                    .clicked()
                 {
-                    return None;
+                    let left = &available[0];
+                    let right = &available[1];
+                    start = Some(Edit::Create {
+                        left: left.path.clone(),
+                        right: right.path.clone(),
+                        keys: vec![EqualityPair {
+                            left: left.fields[0].clone(),
+                            right: right.fields[0].clone(),
+                        }],
+                    });
                 }
-                let collection = available.iter().find(|choice| choice.path == inputs[0])?;
-                if !available.iter().any(|choice| choice.path == inputs[1]) {
-                    return None;
+                let keys = parts.as_ref().ok().and_then(|(scope, _)| {
+                    editable_keys(scope, &available)
+                        .or_else(|| editable_nary_keys(scope, &available))
+                });
+                if ui
+                    .add_enabled(
+                        enabled && keys.is_some(),
+                        egui::Button::new("Edit equality keys"),
+                    )
+                    .on_disabled_hover_text(
+                        "Select an editable join scope to change its equality keys",
+                    )
+                    .clicked()
+                {
+                    start = keys;
                 }
-                Some(Edit::Project {
-                    join,
-                    collection: collection.path.clone(),
-                    field: collection.fields[0].clone(),
-                    target: projection_fields(schema, scope).into_iter().next()?,
-                    position: false,
-                })
+                let project = parts.as_ref().ok().and_then(|(scope, schema)| {
+                    let (join, plan) = scope.join()?;
+                    let inputs = plan
+                        .sources()
+                        .map(|source| source.collection().to_vec())
+                        .collect::<Vec<_>>();
+                    if inputs.len() != 2
+                        || plan.sources().any(|source| {
+                            source.cardinality() != mapping::JoinSourceCardinality::Repeating
+                        })
+                    {
+                        return None;
+                    }
+                    let collection = available.iter().find(|choice| choice.path == inputs[0])?;
+                    if !available.iter().any(|choice| choice.path == inputs[1]) {
+                        return None;
+                    }
+                    Some(Edit::Project {
+                        join,
+                        collection: collection.path.clone(),
+                        field: collection.fields[0].clone(),
+                        target: projection_fields(schema, scope).into_iter().next()?,
+                        position: false,
+                    })
+                });
+                if ui
+                    .add_enabled(
+                        enabled && project.is_some(),
+                        egui::Button::new("Add joined output"),
+                    )
+                    .on_disabled_hover_text(
+                        "Select a two-collection join scope with an unbound scalar output",
+                    )
+                    .clicked()
+                {
+                    start = project;
+                }
+                if start.is_some() {
+                    ui.close();
+                }
             });
-            if ui
-                .add_enabled(
-                    enabled && project.is_some(),
-                    egui::Button::new("Add joined output"),
-                )
-                .clicked()
-            {
-                start = project;
-            }
-            match parts {
-                Err(reason) => {
-                    ui.weak(reason);
-                }
-                Ok((scope, _)) if !create && !subtree_has_join(scope) => {
-                    ui.weak("Start from an empty repeating target group with two static row collections.");
-                }
-                _ => {}
-            }
         }
         if let Some(edit) = start {
             self.join_authoring_draft = Some(JoinAuthoringDraft {
