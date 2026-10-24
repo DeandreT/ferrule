@@ -325,23 +325,39 @@ fn show_endpoint_proxy_label(
     } else {
         ""
     };
-    ui.horizontal(|ui| {
-        ui.label(crate::icons::text(
-            if above {
-                lucide_icons::Icon::ChevronUp
-            } else {
-                lucide_icons::Icon::ChevronDown
-            },
-            crate::ui_kit::METRICS.icon_small,
-        ));
-        show_endpoint_label(
-            ui,
-            &label,
-            align,
-            format!("{connection}Scroll to show {hidden} hidden {side} fields {direction}"),
-            false,
-        );
-    });
+    let row = show_endpoint_label(
+        ui,
+        &label,
+        align,
+        format!("{connection}Scroll to show {hidden} hidden {side} fields {direction}"),
+        false,
+    );
+    let icon = egui::WidgetText::from(crate::icons::text(
+        if above {
+            lucide_icons::Icon::ChevronUp
+        } else {
+            lucide_icons::Icon::ChevronDown
+        },
+        crate::ui_kit::METRICS.icon_small,
+    ))
+    .into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Body,
+    );
+    // Endpoint output rows run right-to-left. Paint in the reserved inner
+    // margin instead of allocating an icon beside (and under) the edge pin.
+    let x = if align == egui::Align::Max {
+        row.left() + 2.0
+    } else {
+        row.right() - icon.size().x - 2.0
+    };
+    ui.painter().galley(
+        egui::pos2(x, row.center().y - icon.size().y * 0.5),
+        icon,
+        ui.visuals().text_color(),
+    );
 }
 
 pub struct GraphViewer<'a> {
