@@ -1175,6 +1175,17 @@ owns opening/truncation, cleanup on failure, and successful close before
 acceptance. Serialization errors are returned before the first stream write;
 this API does not implement filesystem or URL selection.
 
+For read-only Windows filename selection, hosts can use
+`select_mapforce_source_filenames` / `FerruleX12.SelectSourceFilenames`.
+Classification uses the untrimmed input, preserves literal paths and URLs, and
+expands local wildcards in filesystem order without returning directories.
+Win32 wildcard matching includes its optional question-mark and final-period
+rules; it is not a regular expression or bracket glob. Rust uses the qualified
+Windows .NET 8.0.22 case profile, including the distinct ordinal suffix fast
+path, rather than its compiler's Unicode table. Explicit limits bound returned
+names, scanned entries and matching work. This function grants no permission to
+open a path and does not implement file or URL loading.
+
 `parse_mapforce_x12_source` / `ParseMapForceSourceBytes` adds a separately selected
 native source value view. It removes ignored tab/CR/LF characters while retaining
 an LF segment terminator, treats empty physical values and empty composites as
