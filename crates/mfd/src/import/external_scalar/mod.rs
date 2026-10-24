@@ -3,7 +3,6 @@ mod java;
 mod lexer;
 mod xquery;
 
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use ir::Value;
@@ -75,7 +74,7 @@ pub(super) fn read(
                 .next()
                 .filter(|method| !method.is_empty())
                 .ok_or_else(|| "C# component has no method name".to_string())?;
-            let picture = csharp::parse(&read_module(&path)?, method)?;
+            let picture = csharp::parse(&resources.read_text(&path, MAX_MODULE_BYTES)?, method)?;
             format_number_expr(picture)
         }
         Module::Java(path) => {
@@ -87,11 +86,11 @@ pub(super) fn read(
                 .next()
                 .filter(|method| !method.is_empty())
                 .ok_or_else(|| "Java component has no method name".to_string())?;
-            let picture = java::parse(&read_module(&path)?, method)?;
+            let picture = java::parse(&resources.read_text(&path, MAX_MODULE_BYTES)?, method)?;
             format_number_expr(picture)
         }
         Module::XQuery(path) => {
-            let source = read_module(&path)?;
+            let source = resources.read_text(&path, MAX_MODULE_BYTES)?;
             xquery::parse(&source, name, inputs.len())?
         }
     };
@@ -126,23 +125,6 @@ fn format_number_expr(picture: String) -> Expr {
         function: "format_number".to_string(),
         args: vec![Expr::Input(0), Expr::Const(Value::String(picture))],
     }
-}
-
-fn read_module(path: &Path) -> Result<String, String> {
-    let mut file = std::fs::File::open(path)
-        .map_err(|error| format!("could not read module `{}`: {error}", path.display()))?;
-    let mut bytes = Vec::new();
-    file.by_ref()
-        .take(MAX_MODULE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| format!("could not read module `{}`: {error}", path.display()))?;
-    if bytes.len() as u64 > MAX_MODULE_BYTES {
-        return Err(format!(
-            "module `{}` exceeds the {MAX_MODULE_BYTES}-byte limit",
-            path.display()
-        ));
-    }
-    String::from_utf8(bytes).map_err(|_| format!("module `{}` is not UTF-8", path.display()))
 }
 
 fn ordered_pins(component: &roxmltree::Node<'_, '_>, container: &str) -> Result<Vec<u32>, String> {

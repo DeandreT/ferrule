@@ -22,6 +22,7 @@ pub(super) struct RenderArgs<'a> {
     pub(super) component_uid: u32,
     pub(super) sibling_suffix: &'a str,
     pub(super) default_output: bool,
+    pub(super) filesystem: bool,
 }
 
 pub(super) fn validate_side(
@@ -74,6 +75,22 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
             side_name(args.side)
         ))
     })?;
+    if !args.filesystem {
+        let root_path = protobuf.schema_path.as_deref().unwrap_or("root.proto");
+        crate::package::validate_path(root_path)?;
+        for file in &protobuf.imports {
+            crate::package::validate_path(&file.path)?;
+        }
+        format_protobuf::SchemaBundle::from_sources(
+            root_path,
+            &protobuf.schema,
+            protobuf
+                .imports
+                .iter()
+                .map(|file| (file.path.as_str(), file.source.as_str())),
+        )
+        .map_err(|_| crate::PackageError::InvalidResource)?;
+    }
     let layout = embedded_layout(protobuf).map_err(|error| {
         unsupported(format!("the embedded protobuf schema is invalid: {error}"))
     })?;

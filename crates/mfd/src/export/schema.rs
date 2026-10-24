@@ -140,6 +140,7 @@ pub(super) fn render_schema_component(
     default_output: bool,
     used_ports: &BTreeSet<u32>,
     file_instance_port: Option<u32>,
+    filesystem: bool,
 ) -> Result<RenderedSchemaComponent, MfdError> {
     if options.protobuf.is_some() {
         return super::protobuf::render(super::protobuf::RenderArgs {
@@ -154,6 +155,7 @@ pub(super) fn render_schema_component(
             component_uid,
             sibling_suffix,
             default_output,
+            filesystem,
         });
     }
     let stem = mfd_path
@@ -229,6 +231,7 @@ pub(super) fn render_schema_component(
                 component_uid,
                 default_output,
                 used_ports,
+                filesystem,
             });
         }
         SideFormat::Xml => {

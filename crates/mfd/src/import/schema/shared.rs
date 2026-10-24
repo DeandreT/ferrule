@@ -26,6 +26,7 @@ pub(super) fn read_json_schema_resource(
 pub(in crate::import) struct XmlSchemaResource {
     path: PathBuf,
     bound: Option<std::rc::Rc<crate::resource::BoundResource>>,
+    package: Option<std::rc::Rc<crate::package::PackageReader>>,
 }
 
 impl std::ops::Deref for XmlSchemaResource {
@@ -40,13 +41,17 @@ impl XmlSchemaResource {
         Self {
             path: path.to_path_buf(),
             bound: None,
+            package: None,
         }
     }
     pub(in crate::import) fn is_bound(&self) -> bool {
-        self.bound.is_some()
+        self.bound.is_some() || self.package.is_some()
     }
 
     pub(in crate::import) fn witness_bytes(&self) -> Option<std::sync::Arc<[u8]>> {
+        if let Some(package) = &self.package {
+            return package.bytes(&self.path).ok();
+        }
         self.bound
             .as_ref()
             .and_then(|bound| bound.bytes(bound.path()).ok())
@@ -57,7 +62,14 @@ impl XmlSchemaResource {
         root: Option<&str>,
         resources: Option<&ResourceResolver>,
     ) -> Result<SchemaNode, format_xml::XmlFormatError> {
-        let result = if let Some(bound) = &self.bound {
+        let result = if let Some(package) = &self.package {
+            format_xml::xsd::import_root_with_byte_reader(
+                &self.path,
+                root,
+                crate::package::virtual_root(),
+                package.clone(),
+            )
+        } else if let Some(bound) = &self.bound {
             bound.finish(format_xml::xsd::import_root_with_byte_reader(
                 &self.path,
                 root,
@@ -83,7 +95,14 @@ impl XmlSchemaResource {
         name: &str,
         resources: Option<&ResourceResolver>,
     ) -> Result<SchemaNode, format_xml::XmlFormatError> {
-        let result = if let Some(bound) = &self.bound {
+        let result = if let Some(package) = &self.package {
+            format_xml::xsd::import_type_with_byte_reader(
+                &self.path,
+                name,
+                crate::package::virtual_root(),
+                package.clone(),
+            )
+        } else if let Some(bound) = &self.bound {
             bound.finish(format_xml::xsd::import_type_with_byte_reader(
                 &self.path,
                 name,
@@ -109,7 +128,14 @@ impl XmlSchemaResource {
         name: &str,
         resources: Option<&ResourceResolver>,
     ) -> Result<Option<String>, format_xml::XmlFormatError> {
-        let result = if let Some(bound) = &self.bound {
+        let result = if let Some(package) = &self.package {
+            format_xml::xsd::import_type_base_with_byte_reader(
+                &self.path,
+                name,
+                crate::package::virtual_root(),
+                package.clone(),
+            )
+        } else if let Some(bound) = &self.bound {
             bound.finish(format_xml::xsd::import_type_base_with_byte_reader(
                 &self.path,
                 name,
@@ -138,12 +164,20 @@ pub(in crate::import) fn resolve_xml_resource(
     description: &str,
 ) -> Result<XmlSchemaResource, String> {
     if let Some(r) = resources {
+        if let Some(package) = r.package() {
+            return Ok(XmlSchemaResource {
+                path: r.resolve_package_file(reference)?,
+                bound: None,
+                package: Some(package.clone()),
+            });
+        }
         if let Some(bound) =
             r.bound_resource(crate::resource::ResourceBindingKindV1::XmlSchema, reference)?
         {
             return Ok(XmlSchemaResource {
                 path: bound.path().to_path_buf(),
                 bound: Some(bound),
+                package: None,
             });
         }
         return r
@@ -218,6 +252,19 @@ pub(in crate::import) fn read_xml_schema_file(
     root: Option<&str>,
     resources: Option<&ResourceResolver>,
 ) -> Result<SchemaNode, XmlSchemaReadError> {
+    if let Some(package) = &schema_path.package
+        && schema_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("dtd"))
+    {
+        let bytes = package
+            .bytes(schema_path)
+            .map_err(|error| XmlSchemaReadError::Other(error.to_string()))?;
+        let text = std::str::from_utf8(&bytes)
+            .map_err(|error| XmlSchemaReadError::Other(error.to_string()))?;
+        return format_xml::dtd::import_root_str(text, root)
+            .map_err(|error| XmlSchemaReadError::Other(error.to_string()));
+    }
     if schema_path.is_bound() {
         return schema_path
             .import_root(root, resources)
@@ -261,6 +308,21 @@ pub(in crate::import) fn read_xsd_metadata_text(
         declared,
         description,
     )?;
+    if resolved.package.is_some()
+        && resolved
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("dtd"))
+    {
+        return Ok(None);
+    }
+    if let Some(package) = &resolved.package {
+        let bytes = package
+            .bytes(&resolved)
+            .map_err(|error| error.to_string())?;
+        return format_xml::xsd::decode_schema_bytes(&bytes, max_bytes)
+            .map(Some)
+            .map_err(|error| error.to_string());
+    }
     if let Some(bound) = &resolved.bound {
         let result = (|| {
             let bytes = bound.bytes(bound.path()).map_err(|e| e.to_string())?;

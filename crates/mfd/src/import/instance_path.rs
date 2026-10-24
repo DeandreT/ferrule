@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-pub(super) fn resolve_static_input(mapping_path: &Path, stored: &str) -> String {
+pub(crate) fn resolve_static_input(mapping_path: &Path, stored: &str) -> String {
     if excluded(stored) {
         return stored.to_string();
     }
