@@ -394,7 +394,9 @@ pub struct DialogResponse<B, F> {
     pub close_requested: bool,
 }
 
-/// Starts a dialog titled `title`. Its id derives from the title unless
+/// Starts a dialog titled `title`. Modal callers must also guard global
+/// keyboard commands while open: egui blocks widgets, not direct input reads.
+/// Its id derives from the title unless
 /// [`Dialog::id_salt`] sets one.
 pub fn dialog<'c>(
     ctx: &'c egui::Context,

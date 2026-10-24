@@ -262,6 +262,7 @@ impl FerruleApp {
             && self.pending_library_generation.is_none()
             && self.pending_dialog.is_none()
             && self.pending_destructive_action.is_none()
+            && self.mfd_import_dialog.is_none()
             && self.new_mapping_setup.is_none()
             && self.extra_source_draft.is_none()
             && self.pending_extra_source_removal.is_none()

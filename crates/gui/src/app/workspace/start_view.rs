@@ -23,8 +23,22 @@ impl FerruleApp {
         let editing_enabled = self.ui_project_editing_enabled();
         let busy = (!editing_enabled).then_some("Unavailable while another operation is running");
         let width = ui_kit::DialogWidth::Narrow.px().min(ui.available_width());
+        let top_space = (ui.available_height() * 0.25).max(ui_kit::space::XXL);
+        egui::ScrollArea::vertical()
+            .id_salt("start_view_scroll")
+            .auto_shrink([false, false])
+            .show(ui, |ui| self.show_start_actions(ui, width, top_space, busy));
+    }
+
+    fn show_start_actions(
+        &mut self,
+        ui: &mut egui::Ui,
+        width: f32,
+        top_space: f32,
+        busy: Option<&str>,
+    ) {
         ui.vertical_centered(|ui| {
-            ui.add_space((ui.available_height() * 0.25).max(ui_kit::space::XXL));
+            ui.add_space(top_space);
             ui.label(TextRole::Title.text("Start a mapping"));
             ui.add_space(ui_kit::space::SM);
             ui_kit::help(ui, "Create a mapping from source and target schemas, open a saved project or import an MFD design.");

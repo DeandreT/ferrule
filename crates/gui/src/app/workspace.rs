@@ -7,6 +7,10 @@ mod inspector;
 #[path = "workspace/start_view.rs"]
 mod start_view;
 
+#[cfg(test)]
+#[path = "workspace/shell_tests.rs"]
+mod shell_tests;
+
 impl FerruleApp {
     fn arrange_focused_canvas(&mut self, mode: ArrangeMode) {
         let document = self.mapping_workspace.focused;
