@@ -21,6 +21,7 @@ internal static partial class Program
 #endif
             ("JSON source complete literal corpus", JsonSourceCorpus),
             ("MapForce-style JSON5 complete byte corpus", MapForceJson5Writer),
+            ("Direct source input ownership and limits", DirectSourceInputs),
             ("MapForce-style JSON5 typed decimal output", MapForceJson5Typed),
             ("Exact source row document paths", SourceRowDocumentPaths),
             ("CSV file sets retain empty files", CsvFileSet),
