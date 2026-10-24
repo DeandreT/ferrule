@@ -8,7 +8,7 @@ use super::*;
 use mapping::{PrimaryRouteError, document_project_file};
 
 #[path = "../../../../conformance/primary-xml-documents/projects.rs"]
-mod projects;
+pub(super) mod projects;
 
 fn emit(
     program: &codegen::DocumentProgram,

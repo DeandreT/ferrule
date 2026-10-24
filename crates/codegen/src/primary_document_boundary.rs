@@ -25,6 +25,8 @@ pub enum PrimaryDocumentBoundaryError {
     Program(ProgramValidationError),
     /// The program has no single-document XML adapter.
     XmlAdapter,
+    /// Strict JSON entry points do not use an XML adapter.
+    JsonAdapter,
     /// An observed XML root view reads one document, not a document set.
     RootViewDocumentSet,
 }
@@ -45,6 +47,9 @@ impl fmt::Display for PrimaryDocumentBoundaryError {
             Self::Program(error) => error.fmt(f),
             Self::XmlAdapter => {
                 f.write_str("primary XML documents require a single-document XML source and target")
+            }
+            Self::JsonAdapter => {
+                f.write_str("primary JSON documents require a strict JSON source and target")
             }
             Self::RootViewDocumentSet => f.write_str(
                 "an observed XML root view cannot read a filename wildcard's document set",
@@ -81,6 +86,19 @@ fn route(
         return Err(PrimaryDocumentBoundaryError::NamedEndpoints);
     }
     Ok(route)
+}
+
+/// Admit strict JSON source/target document plans before any artifact exists.
+pub fn validate_primary_json_documents(
+    document: &DocumentProgram,
+) -> Result<(), PrimaryDocumentBoundaryError> {
+    route(document, PrimaryDocumentFormat::Json)?;
+    let plan = crate::prepare_boundary_emission(document.program(), CompanionSelection::Complete)
+        .map_err(PrimaryDocumentBoundaryError::Program)?;
+    if plan.xml().is_some() {
+        return Err(PrimaryDocumentBoundaryError::JsonAdapter);
+    }
+    Ok(())
 }
 
 /// Admits a complete primary XML document entry point: an XML route without

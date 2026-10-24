@@ -16,6 +16,7 @@ use crate::{DocumentProject, FormatOptions, PrimaryFileSelection, TabularBoundar
 pub enum PrimaryDocumentFormat {
     Csv,
     Xml,
+    Json,
 }
 
 impl PrimaryDocumentFormat {
@@ -23,6 +24,7 @@ impl PrimaryDocumentFormat {
         match self {
             Self::Csv => "CSV",
             Self::Xml => "XML",
+            Self::Json => "JSON",
         }
     }
 }
@@ -158,8 +160,14 @@ fn classify(
     if options.xml_document {
         return Ok(PrimaryDocumentFormat::Xml);
     }
-    if options.json_document || options.json5 || options.json_lines {
-        return refuse("JSON");
+    if options.json5 {
+        return refuse("JSON5");
+    }
+    if options.json_lines {
+        return refuse("JSON Lines");
+    }
+    if options.json_document {
+        return Ok(PrimaryDocumentFormat::Json);
     }
     if options.fixed_width.is_some() {
         return refuse("fixed-width text");
@@ -176,7 +184,9 @@ fn classify(
     match extension.as_deref() {
         Some("csv") => Ok(PrimaryDocumentFormat::Csv),
         Some("xml") => Ok(PrimaryDocumentFormat::Xml),
-        Some("json" | "json5" | "jsonl" | "ndjson") => refuse("JSON"),
+        Some("json") => Ok(PrimaryDocumentFormat::Json),
+        Some("json5") => refuse("JSON5"),
+        Some("jsonl" | "ndjson") => refuse("JSON Lines"),
         Some("edi" | "x12" | "edifact" | "hl7" | "idoc" | "fin" | "swift") => refuse("EDI"),
         Some("xlsx") => refuse("XLSX"),
         Some("db" | "sqlite" | "sqlite3") => refuse("SQLite"),
@@ -206,6 +216,12 @@ impl DocumentProject {
         if target.as_ref().ok() != Some(&format) {
             return Err(match target {
                 Err(error @ PrimaryRouteError::NotAdmitted { .. }) => error,
+                // Extending JSON-to-JSON plans must not change existing mixed
+                // CSV/XML plan refusals into a different error contract.
+                Ok(PrimaryDocumentFormat::Json) => PrimaryRouteError::NotAdmitted {
+                    side: PrimaryRouteSide::Target,
+                    format: "JSON",
+                },
                 _ => PrimaryRouteError::TargetFormat { source: format },
             });
         }
@@ -217,6 +233,19 @@ impl DocumentProject {
         );
         let shape = match format {
             PrimaryDocumentFormat::Csv => PrimaryDocumentShape::Rows,
+            PrimaryDocumentFormat::Json => {
+                if project.root.output_path().is_some() {
+                    return Err(PrimaryRouteError::NotAdmitted {
+                        side: PrimaryRouteSide::Target,
+                        format: "dynamic JSON output documents",
+                    });
+                }
+                if wildcard {
+                    PrimaryDocumentShape::DocumentSet
+                } else {
+                    PrimaryDocumentShape::Document
+                }
+            }
             PrimaryDocumentFormat::Xml => {
                 let options = &project.source_options;
                 if !wildcard && options.local_xml_file_set {
@@ -253,6 +282,9 @@ fn validate_options(
         ..Default::default()
     };
     match format {
+        PrimaryDocumentFormat::Json => {
+            accepted.json_document = options.json_document;
+        }
         PrimaryDocumentFormat::Csv => {
             accepted.tabular_kind = options.tabular_kind;
             accepted.delimiter = options.delimiter;

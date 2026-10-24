@@ -95,6 +95,10 @@ pub fn lower_document(document: &DocumentProject) -> Result<DocumentProgram, Doc
             format: PrimaryDocumentFormat::Xml,
             ..
         }) => crate::lower::lower_primary_xml_documents(project),
+        Ok(PrimaryDocumentRoute {
+            format: PrimaryDocumentFormat::Json,
+            ..
+        }) => crate::lower::lower_primary_json_documents(document),
         _ => crate::lower(project),
     }
     .map_err(DocumentLowerError::Mapping)?;

@@ -11,6 +11,8 @@ use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
 use super::FerruleApp;
 use super::host_parameters::HostParameterEntry;
 
+#[path = "primary_json_document_tests.rs"]
+mod json;
 #[path = "../../../../conformance/primary-filename-documents/projects.rs"]
 mod projects;
 #[path = "../../../../conformance/primary-xml-documents/projects.rs"]

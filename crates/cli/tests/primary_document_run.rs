@@ -11,6 +11,8 @@ use ir::{ScalarType, SchemaNode, Value};
 use mapping::{Binding, DocumentProject, Graph, Node, Project, Scope, ScopeIteration};
 use serde_json::Value as Json;
 
+#[path = "../../../conformance/primary-json-documents/projects.rs"]
+mod json_projects;
 #[path = "../../../conformance/primary-filename-documents/projects.rs"]
 mod projects;
 #[path = "../../../conformance/primary-xml-documents/projects.rs"]
@@ -25,7 +27,7 @@ struct Cohort {
     document: fn(&str) -> DocumentProject,
 }
 
-const COHORTS: [Cohort; 2] = [
+const COHORTS: [Cohort; 3] = [
     Cohort {
         name: "csv",
         cases: include_str!("../../../conformance/primary-filename-documents/cases.json"),
@@ -37,6 +39,12 @@ const COHORTS: [Cohort; 2] = [
         cases: include_str!("../../../conformance/primary-xml-documents/cases.json"),
         models: &xml_projects::MODELS,
         document: xml_projects::document,
+    },
+    Cohort {
+        name: "json",
+        cases: include_str!("../../../conformance/primary-json-documents/cases.json"),
+        models: &json_projects::MODELS,
+        document: json_projects::document,
     },
 ];
 
@@ -70,7 +78,16 @@ impl Drop for TempDir {
 }
 
 fn cases(cohort: &Cohort) -> TestResult<Vec<Json>> {
-    let cases: Json = serde_json::from_str(cohort.cases)?;
+    let mut cases: Json = serde_json::from_str(cohort.cases)?;
+    if cohort.name == "json" {
+        for case in cases["cases"].as_array_mut().ok_or("cases")? {
+            if let Some(output) = case["expected"]["output"].as_str() {
+                let value: Json = serde_json::from_str(output)?;
+                case["expected"]["output"] =
+                    Json::String(serde_json::to_string_pretty(&value)? + "\n");
+            }
+        }
+    }
     Ok(cases["cases"]
         .as_array()
         .ok_or("cases")?

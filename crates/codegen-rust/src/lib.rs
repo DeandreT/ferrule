@@ -36,7 +36,9 @@ mod owned_json_api;
 mod primary_csv;
 mod primary_csv_document;
 mod primary_filename;
+mod primary_json_document;
 mod primary_xml_document;
+pub use primary_json_document::emit_with_primary_json_documents;
 mod scalar_sequence;
 mod selected_json_api;
 

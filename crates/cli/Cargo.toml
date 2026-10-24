@@ -27,6 +27,7 @@ codegen = { workspace = true }
 codegen-schema = { workspace = true }
 codegen-rust = { workspace = true }
 codegen-csharp = { workspace = true }
+codegen-runtime = { workspace = true }
 format-csv = { workspace = true }
 format-xlsx = { workspace = true }
 format-xml = { workspace = true }
@@ -52,7 +53,6 @@ ureq = { workspace = true }
 rustix = { workspace = true }
 
 [dev-dependencies]
-codegen-runtime = { workspace = true }
 flate2 = "1.1"
 roxmltree = { workspace = true }
 rusqlite = { workspace = true }

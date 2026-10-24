@@ -183,6 +183,7 @@ pub(super) fn interpreter(cohort: &Cohort, root: &Path, case: &Json) -> TestResu
     let input = match document.primary_route()?.format {
         mapping::PrimaryDocumentFormat::Csv => "csv",
         mapping::PrimaryDocumentFormat::Xml => "xml",
+        mapping::PrimaryDocumentFormat::Json => "json",
     };
     let mut files = LocalPrimaryFiles::new(&root.join(id))?;
     if let Some(limit) = case["max_document_bytes"].as_u64() {

@@ -158,6 +158,7 @@ filename evaluation or any host call, including when a wildcard would be empty.
 | --- | --- | --- |
 | CSV | `tabular_kind: csv`, or a `.csv` saved path | Every document's rows, in selection then row order; each row keeps its own document origin and local position. |
 | XML | `xml_document`, or a `.xml` saved path | A direct filename: its one document. A filename wildcard: a document set of every selected document in selection order, each member keeping its request as its path and the host's resolved location as its source path. |
+| JSON | `json_document`, or a `.json` saved path | A direct filename: its one strict JSON document. A filename wildcard: an ordered document set, with the same member-path and shared-context semantics as XML. |
 
 An XML document set is read through the engine's ordinary document-set
 iteration, as a local XML file set is: a scope or aggregate path descends into
@@ -169,6 +170,22 @@ schema.
 
 Other formats have no route yet and are refused with a typed `NotAdmitted`
 error naming the format.
+
+JSON5 and JSON Lines are not part of the strict-JSON route. Their explicit
+options and saved-path identities are refused before any host call; their
+syntax is never silently accepted as strict JSON. JSON document-set paths are
+available only under a wildcard document plan, not ordinary single-document
+projects. Named endpoints and dynamic JSON output documents are refused rather
+than dropping outputs. JSON input is bounded to 64 MiB per document and 256 MiB
+in total, charged before parsing each member. Output is measured before writing
+its bounded 64 MiB buffer.
+
+JSON wildcards preserve whole documents, including array roots; they do not
+concatenate JSON arrays as if they were CSV rows. An empty-path iteration at
+the document-set level visits documents, and a nested empty-path iteration
+visits an array member's items. Nonempty collection paths descend through each
+member using the ordinary document-set traversal, allowing grouping and
+aggregation across those collections in one run.
 
 ### Generated entry points
 
@@ -197,8 +214,17 @@ embedded plan alone names the documents, and `PRIMARY_FILE_SELECTION` /
    Saved-path-only XML identities select the same adapter. Rust failures are
   `PrimaryXmlDocumentError::{Acquisition, Assembly, Output}`, where a mapping
   failure is the cause of an `Output`; C# raises
-  `FerrulePrimaryDocumentException`, with the host's or reader's exception as
-  its cause, or `FerruleXmlOutputSetException`.
+   `FerrulePrimaryDocumentException`, with the host's or reader's exception as
+   its cause, or `FerruleXmlOutputSetException`.
+- JSON: `emit_with_primary_json_documents` adds
+  `execute_primary_json_document_bytes` / `ExecutePrimaryJsonDocumentBytes`,
+  with the same selection and shape constants. It uses the existing bounded
+  schema-shaped strict JSON reader and writer. Rust failures are
+  `PrimaryJsonDocumentError::{Acquisition, Assembly, Output}`; the input and
+  output causes are `JsonBoundaryError`. C# preserves acquisition stages in
+  `FerrulePrimaryDocumentException` and mapping/output failures in
+  `FerruleRuntimeException`. C# input byte-limit causes retain the measured
+  `Bytes` and `Maximum` in `FerrulePrimaryJsonInputException`.
 
 ## Local filesystem host
 
@@ -226,7 +252,8 @@ Typed refusals are `Root`, `Uri`, `Rooted`, `Parent`, `InvalidName`,
 wildcard directory or a refused empty match is a selection failure.
 
 The portable cohorts in `conformance/primary-filename-documents` (CSV) and
-`conformance/primary-xml-documents` (XML) compare complete documents, typed
+`conformance/primary-xml-documents` (XML), and
+`conformance/primary-json-documents` (strict JSON) compare complete documents, typed
 failures and the ordered host calls of the interpreter, generated Rust and
 generated C#.
 
@@ -252,9 +279,11 @@ document project.
   generates the document library for the plan's route; `--raw-delimited-crlf`
   selects raw output for a CSV route. The generated identity and compatibility
   manifest options apply, and the manifest records the `primary_csv_document`,
-  `primary_raw_delimited_document` or `primary_xml_document` profile. The
+   `primary_raw_delimited_document`, `primary_xml_document` or
+   `primary_json_document` profile. The
   backends' `Generator::emit_with_primary_csv_documents` and
-  `emit_with_primary_xml_documents` methods return the free functions'
+   `emit_with_primary_xml_documents` and `emit_with_primary_json_documents`
+   methods return the free functions'
   artifacts under default options.
 - The editor opens a document project with its filename plan, saves the plan
   back unchanged and shows an input root (initially the project's folder) and

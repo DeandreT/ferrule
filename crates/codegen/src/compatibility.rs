@@ -166,6 +166,8 @@ pub enum GenerationProfile {
     PrimaryRawDelimitedDocument,
     /// Primary filename document runs with complete XML documents.
     PrimaryXmlDocument,
+    /// Primary filename document runs with complete strict JSON documents.
+    PrimaryJsonDocument,
 }
 
 /// The names a generated library is hosted under.

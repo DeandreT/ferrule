@@ -63,6 +63,7 @@ impl std::error::Error for DocumentFormatError {}
 #[derive(Debug)]
 pub enum PrimaryInputError {
     Csv(CsvSourceError),
+    Json(Box<codegen_runtime::JsonBoundaryError>),
     Document(DocumentFormatError),
 }
 
@@ -70,6 +71,7 @@ impl fmt::Display for PrimaryInputError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Csv(error) => error.fmt(f),
+            Self::Json(error) => error.fmt(f),
             Self::Document(error) => error.fmt(f),
         }
     }
@@ -79,6 +81,7 @@ impl std::error::Error for PrimaryInputError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Csv(error) => Some(error),
+            Self::Json(error) => Some(error.as_ref()),
             Self::Document(error) => Some(error),
         }
     }
@@ -95,6 +98,7 @@ pub enum PrimaryDocumentError<E = LocalFileError> {
     Run(engine::PrimaryDocumentRunError<E, PrimaryInputError>),
     /// The mapped target cannot be written in the route's format.
     Output(DocumentFormatError),
+    JsonOutput(Box<codegen_runtime::JsonBoundaryError>),
     /// The complete output exceeds its byte limit.
     OutputTooLarge {
         maximum: usize,
@@ -108,6 +112,7 @@ impl<E: fmt::Display> fmt::Display for PrimaryDocumentError<E> {
             Self::Root(error) => error.fmt(f),
             Self::Run(error) => error.fmt(f),
             Self::Output(error) => error.fmt(f),
+            Self::JsonOutput(error) => error.fmt(f),
             Self::OutputTooLarge { maximum } => {
                 write!(f, "the primary document output exceeds {maximum} bytes")
             }
@@ -122,6 +127,7 @@ impl<E: std::error::Error + 'static> std::error::Error for PrimaryDocumentError<
             Self::Root(error) => Some(error),
             Self::Run(error) => Some(error),
             Self::Output(error) => Some(error),
+            Self::JsonOutput(error) => Some(error.as_ref()),
             Self::OutputTooLarge { .. } => None,
         }
     }
@@ -179,7 +185,7 @@ pub(crate) fn csv_document_identity(project: &mapping::Project) -> Result<(), &'
 pub fn check_primary_document(document: &DocumentProject) -> anyhow::Result<()> {
     document.primary_route()?;
     document.global_filename()?;
-    let issues = engine::validate(document.project());
+    let issues = engine::validate_primary_document(document);
     if !issues.is_empty() {
         bail!(
             "primary document mapping has {} validation issue(s)",
@@ -195,6 +201,7 @@ fn route_identity(format: PrimaryDocumentFormat) -> &'static Path {
     Path::new(match format {
         PrimaryDocumentFormat::Csv => "document.csv",
         PrimaryDocumentFormat::Xml => "document.xml",
+        PrimaryDocumentFormat::Json => "document.json",
     })
 }
 
@@ -238,6 +245,17 @@ pub fn execute_primary_document(
     document
         .primary_route()
         .map_err(PrimaryDocumentError::Route)?;
+    document.global_filename().map_err(|error| {
+        PrimaryDocumentError::Run(engine::PrimaryDocumentRunError::Acquisition(
+            format_csv::PrimaryAcquisitionError::Filename(error.into()),
+        ))
+    })?;
+    let issues = engine::validate_primary_document(document);
+    if !issues.is_empty() {
+        return Err(PrimaryDocumentError::Run(
+            engine::PrimaryDocumentRunError::Invalid(issues),
+        ));
+    }
     let host = RecordingHost {
         files: LocalPrimaryFiles::new(&policy.input_root)
             .map_err(PrimaryDocumentError::Root)?
@@ -286,6 +304,7 @@ pub fn execute_primary_document_with_host<H: PrimarySourceHost>(
     let mut member_options = project.source_options.clone();
     member_options.local_xml_file_set = false;
     let mut csv = engine::primary_csv_parser(project, CsvByteDecodingPolicy::StrictUtf8);
+    let mut json_budget = codegen_runtime::PrimaryJsonInputBudget::default();
     let output = engine::run_primary_document(
         document,
         &execution,
@@ -293,6 +312,10 @@ pub fn execute_primary_document_with_host<H: PrimarySourceHost>(
         max_documents,
         |request, data| match route.format {
             PrimaryDocumentFormat::Csv => csv(request, data).map_err(PrimaryInputError::Csv),
+            PrimaryDocumentFormat::Json => {
+                parse_primary_json(&project.source, &mut json_budget, &data.bytes)
+                    .map_err(|error| PrimaryInputError::Json(Box::new(error)))
+            }
             PrimaryDocumentFormat::Xml => crate::PayloadDocument::new(identity, &data.bytes)
                 .and_then(|payload| {
                     crate::payload::read_payload(payload, &project.source, &member_options)
@@ -311,6 +334,20 @@ pub fn execute_primary_document_with_host<H: PrimarySourceHost>(
     )
 }
 
+fn parse_primary_json(
+    schema: &ir::SchemaNode,
+    budget: &mut codegen_runtime::PrimaryJsonInputBudget,
+    bytes: &[u8],
+) -> Result<ir::Instance, codegen_runtime::JsonBoundaryError> {
+    budget.charge(bytes.len())?;
+    let schema = serde_json::to_string(schema).map_err(|error| {
+        codegen_runtime::JsonBoundaryError::InvalidEmbeddedSchema {
+            message: error.to_string(),
+        }
+    })?;
+    codegen_runtime::parse_json_bytes(&schema, bytes)
+}
+
 fn render_primary_output<E>(
     route: mapping::PrimaryDocumentRoute,
     target: &ir::SchemaNode,
@@ -319,6 +356,22 @@ fn render_primary_output<E>(
     current_datetime: &str,
     maximum: usize,
 ) -> Result<(Vec<u8>, usize), PrimaryDocumentError<E>> {
+    if route.format == PrimaryDocumentFormat::Json {
+        let schema = serde_json::to_string(target).map_err(|error| {
+            PrimaryDocumentError::JsonOutput(Box::new(
+                codegen_runtime::JsonBoundaryError::InvalidEmbeddedSchema {
+                    message: error.to_string(),
+                },
+            ))
+        })?;
+        let bytes = codegen_runtime::serialize_json_bytes(&schema, output)
+            .map_err(|error| PrimaryDocumentError::JsonOutput(Box::new(error)))?;
+        if bytes.len() > maximum {
+            return Err(PrimaryDocumentError::OutputTooLarge { maximum });
+        }
+        let records = output.as_repeated().map_or(1, |rows| rows.len());
+        return Ok((bytes, records));
+    }
     if route.format == PrimaryDocumentFormat::Csv {
         let rows = output.as_repeated().ok_or_else(|| {
             PrimaryDocumentError::Output(DocumentFormatError(anyhow::anyhow!(
