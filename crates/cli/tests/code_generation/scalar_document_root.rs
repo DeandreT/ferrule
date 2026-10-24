@@ -208,6 +208,7 @@ fn singleton_scalar_document_roots_compiled_complete_oracles() -> TestResult<()>
                     directory.join("src/main.rs"),
                     include_str!("scalar_document_root/Host.rs.txt"),
                 )?;
+                host_policy::name_generated_host(&directory, "scalar-document-root-host")?;
             } else {
                 let host = directory.join("Harness");
                 std::fs::create_dir(&host)?;

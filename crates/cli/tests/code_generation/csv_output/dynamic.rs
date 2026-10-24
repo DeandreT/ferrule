@@ -833,6 +833,7 @@ fn run_dynamic_rust_fixture(output: &Path, mode: &str) -> TestResult<()> {
         assert_eq!(body.matches("\n[workspace]\n").count(), 1);
         std::fs::write(&manifest, body.replacen("\n[workspace]\n", "\nserde_json = { version = \"1.0\", features = [\"preserve_order\"] }\n\n[workspace]\n",1))?;
     }
+    host_policy::name_generated_host(output, "csv-output-dynamic-host")?;
     let mut command = Command::new("cargo");
     command
         .args(["run", "--quiet", "--", mode])

@@ -171,6 +171,7 @@ fn signed_integer_float_bounds_compiled_complete_oracles() -> TestResult<()> {
                     directory.join("src/main.rs"),
                     include_str!("signed_integer_float_bounds/Host.rs.txt"),
                 )?;
+                host_policy::name_generated_host(&directory, "signed-integer-float-bounds-host")?;
             } else {
                 std::fs::create_dir(directory.join("Harness"))?;
                 std::fs::write(directory.join("Harness/Host.csproj"), HARNESS)?;

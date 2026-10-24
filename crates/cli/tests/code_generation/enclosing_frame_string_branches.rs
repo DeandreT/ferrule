@@ -92,6 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         None => root.join("cargo-target"),
     };
+    host_policy::name_generated_host(&rust_output, "enclosing-frame-strings-host")?;
     let rust = Command::new("cargo")
         .args(["run", "--quiet", "--"])
         .arg(&input_path)

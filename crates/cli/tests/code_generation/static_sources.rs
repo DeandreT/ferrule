@@ -259,6 +259,7 @@ fn static_sources_match_engine_and_generated_backends() -> TestResult<()> {
         rust_output.join("src/main.rs"),
         include_str!("fixtures/static_sources_rust_harness.rs.txt"),
     )?;
+    host_policy::name_generated_host(&rust_output, "static-sources-host")?;
     let mut rust_command = Command::new("cargo");
     rust_command
         .args(["run", "--quiet"])

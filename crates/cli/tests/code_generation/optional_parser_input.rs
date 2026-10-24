@@ -55,6 +55,7 @@ fn optional_global_parser_inputs_match_generated_rust_and_csharp() -> TestResult
             rust_output.join("src/main.rs"),
             include_str!("fixtures/optional_parser_input_rust.rs.txt"),
         )?;
+        host_policy::name_generated_host(&rust_output, "optional-parser-input-host")?;
         let mut rust_command = Command::new("cargo");
         rust_command
             .args(["run", "--quiet"])
