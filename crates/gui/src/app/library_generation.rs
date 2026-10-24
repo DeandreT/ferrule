@@ -467,23 +467,16 @@ impl FerruleApp {
         };
         let running = self.pending_library_generation.is_some();
         let interactive = !running && self.pending_dialog.is_none();
-        let mut open = true;
-        let mut generate = false;
-        let mut cancel = false;
-        let mut window = egui::Window::new("Generate Library")
-            .collapsible(false)
-            .default_width(520.0);
-        if interactive {
-            window = window.open(&mut open);
-        }
-        window.show(context, |ui| {
+        let unsupported = filter_map_generation_reason(&self.project, draft.language);
+        let response = crate::ui_kit::dialog(context, crate::ui_kit::DialogKind::Modal, "Generate library")
+            .width(crate::ui_kit::DialogWidth::Medium)
+            .show(|ui| {
             ui.label("Generate library source for the entire project. Changes are saved before generation.");
             ui.add_enabled_ui(interactive, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Language");
+                crate::ui_kit::form_grid(ui, "library_language", |form| { form.row("Language", |ui| {
                     ui.selectable_value(&mut draft.language, LibraryLanguage::Rust, "Rust");
                     ui.selectable_value(&mut draft.language, LibraryLanguage::CSharp, "C#");
-                });
+                }); });
                 ui.checkbox(&mut draft.include_csv_output, "Include CSV output")
                     .on_hover_text("Add CSV output for a flat row table using the mapping's output settings.");
                 if draft.include_csv_output {
@@ -491,8 +484,8 @@ impl FerruleApp {
                 }
                 ui.label("New library folder");
                 ui.horizontal(|ui| {
-                    ui.add(egui::TextEdit::singleline(&mut draft.destination).desired_width(340.0));
-                    if ui.button("Choose parent...").clicked() {
+                    ui.add(crate::ui_kit::text_field(&mut draft.destination, crate::ui_kit::FieldWidth::Large));
+                    if ui.button("Browse parent…").clicked() {
                         let destination =
                             setting_path(self.document.suggested_path(), &draft.destination);
                         self.pending_dialog = Some((
@@ -506,10 +499,9 @@ impl FerruleApp {
                     ui.label("Rust runtime folder");
                     ui.horizontal(|ui| {
                         ui.add(
-                            egui::TextEdit::singleline(&mut draft.runtime_path)
-                                .desired_width(340.0),
+                            crate::ui_kit::text_field(&mut draft.runtime_path, crate::ui_kit::FieldWidth::Large),
                         );
-                        if ui.button("Choose runtime...").clicked() {
+                        if ui.button("Browse runtime…").clicked() {
                             let current =
                                 setting_path(self.document.suggested_path(), &draft.runtime_path);
                             self.pending_dialog =
@@ -522,35 +514,33 @@ impl FerruleApp {
             });
             if let Some(error) = &draft.error {
                 ui.separator();
-                egui::ScrollArea::vertical()
-                    .max_height(160.0)
+                crate::ui_kit::list_area("library_generation_error", crate::ui_kit::ListHeight::Medium)
                     .show(ui, |ui| {
                         ui.colored_label(self.palette.error, error);
                     });
             }
-            let unsupported = filter_map_generation_reason(&self.project, draft.language);
-            if let Some(reason) = unsupported { ui.weak(reason); }
-            ui.separator();
+            if let Some(reason) = filter_map_generation_reason(&self.project, draft.language) { ui.weak(reason); }
+            }, |ui| {
             if running {
                 ui.horizontal(|ui| {
                     ui.spinner();
                     ui.label("Generating library. This window can close when generation finishes.");
                 });
+                None
             } else {
-                ui.horizontal(|ui| {
-                    generate = ui
-                        .add_enabled(interactive && unsupported.is_none(), egui::Button::new("Save and generate"))
-                        .clicked();
-                    cancel = ui
-                        .add_enabled(interactive, egui::Button::new("Cancel"))
-                        .clicked();
-                });
+                crate::ui_kit::dialog_buttons(ui, crate::ui_kit::DialogButton {
+                    label: "Save and generate", disabled_reason: if interactive { unsupported } else { Some("Finish choosing a folder first") }
+                }, Some(crate::ui_kit::DialogButton::new("Cancel").disabled_if(!interactive, "Finish choosing a folder first")), None)
             }
         });
-        if running || (open && !cancel) {
+        if running
+            || !interactive
+            || (!response.close_requested
+                && response.footer != Some(crate::ui_kit::DialogAction::Secondary))
+        {
             self.library_generation_draft = Some(draft);
         }
-        if generate {
+        if response.footer == Some(crate::ui_kit::DialogAction::Primary) {
             self.request_library_generation(context);
         }
     }

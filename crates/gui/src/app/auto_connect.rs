@@ -76,47 +76,39 @@ impl FerruleApp {
         let Some(pending) = self.pending_auto_connect.as_ref() else {
             return;
         };
-        let mut action = None;
-        egui::Window::new("Auto-connect Fields")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .show(ctx, |ui| {
+        let response = crate::ui_kit::dialog(ctx, crate::ui_kit::DialogKind::Modal, "Auto-connect fields")
+            .width(crate::ui_kit::DialogWidth::Medium)
+            .show(|ui| {
                 ui.label(&pending.scope_label);
-                egui::Grid::new("auto_connect_summary")
-                    .num_columns(2)
-                    .spacing([18.0, 6.0])
-                    .show(ui, |ui| {
-                        ui.label("Connect");
-                        ui.strong(pending.plan.connections.len().to_string());
-                        ui.end_row();
-                        ui.label("Skipped: ambiguous");
-                        ui.label(pending.plan.skipped_ambiguous.to_string());
-                        ui.end_row();
-                        ui.label("Skipped: incompatible or unmatched");
-                        ui.label(pending.plan.skipped_incompatible.to_string());
-                        ui.end_row();
-                    });
-                ui.separator();
-                ui.horizontal(|ui| {
-                    if ui.button("Cancel").clicked() {
-                        action = Some(false);
-                    }
-                    if ui
-                        .add_enabled(
-                            !pending.plan.is_empty(),
-                            egui::Button::new("Apply connections"),
-                        )
-                        .clicked()
-                    {
-                        action = Some(true);
-                    }
+                crate::ui_kit::form_grid(ui, "auto_connect_summary", |form| {
+                    form.row("Connections to add", |ui| { ui.strong(pending.plan.connections.len().to_string()); });
+                    form.row("Ambiguous fields", |ui| { ui.label(pending.plan.skipped_ambiguous.to_string()); });
+                    form.row("Incompatible / unmatched", |ui| { ui.label(pending.plan.skipped_incompatible.to_string()); });
                 });
+                if !pending.plan.skipped_fields.is_empty() {
+                    crate::ui_kit::section(ui, "Skipped target fields", |ui| {
+                        for field in &pending.plan.skipped_fields {
+                            ui.add(egui::Label::new(field.target_path.join(" / ")).wrap());
+                            crate::ui_kit::help(ui, field.reason.label());
+                        }
+                    });
+                }
+                if pending.plan.is_empty() {
+                    crate::ui_kit::help(ui, "No compatible, unambiguous connections are available. Existing bindings are kept.");
+                }
+            }, |ui| {
+                crate::ui_kit::dialog_buttons(ui,
+                    crate::ui_kit::DialogButton::new("Apply connections").disabled_if(pending.plan.is_empty(), "No compatible, unambiguous connections are available"),
+                    Some("Cancel".into()), None)
             });
 
-        match action {
-            Some(true) => self.apply_pending_auto_connect(),
-            Some(false) => {
+        match response.footer {
+            Some(crate::ui_kit::DialogAction::Primary) => self.apply_pending_auto_connect(),
+            Some(_) => {
+                self.pending_auto_connect = None;
+                self.status = "auto-connect cancelled".to_owned();
+            }
+            None if response.close_requested => {
                 self.pending_auto_connect = None;
                 self.status = "auto-connect cancelled".to_owned();
             }
@@ -213,5 +205,64 @@ impl FerruleApp {
                 CanvasLayout::apply_nodes(&positions, &mut canvas.snarl);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod dialog_tests {
+    use super::*;
+    use crate::auto_connect::SkipReason;
+    use ir::{ScalarType, SchemaNode};
+
+    #[test]
+    fn skipped_fields_explain_each_counter_without_changing_the_plan() {
+        let source = SchemaNode::group(
+            "Source",
+            vec![
+                SchemaNode::group("One", vec![SchemaNode::scalar("Name", ScalarType::String)]),
+                SchemaNode::group("Two", vec![SchemaNode::scalar("Name", ScalarType::String)]),
+                SchemaNode::scalar("Count", ScalarType::Bool),
+                SchemaNode::scalar("Exact", ScalarType::String),
+            ],
+        );
+        let target = SchemaNode::group(
+            "Target",
+            vec![
+                SchemaNode::scalar("Name", ScalarType::String),
+                SchemaNode::scalar("Count", ScalarType::Int),
+                SchemaNode::scalar("Missing", ScalarType::String),
+                SchemaNode::scalar("Exact", ScalarType::String),
+            ],
+        );
+        let plan = plan_auto_connect(&source, &target, &Scope::default(), &[], None).unwrap();
+        assert_eq!(plan.connections.len(), 1);
+        assert_eq!(plan.connections[0].target_field, "Exact");
+        assert_eq!(plan.skipped_ambiguous, 1);
+        assert_eq!(plan.skipped_incompatible, 2);
+        let details = plan
+            .skipped_fields
+            .iter()
+            .map(|field| (field.target_path.join("/"), field.reason))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            details,
+            vec![
+                ("Name".into(), SkipReason::Ambiguous),
+                ("Count".into(), SkipReason::Incompatible),
+                ("Missing".into(), SkipReason::Unmatched)
+            ]
+        );
+        let scope = Scope {
+            construction: mapping::ScopeConstruction::CopyCurrentSource,
+            ..Default::default()
+        };
+        let plan = plan_auto_connect(&source, &target, &scope, &[], None).unwrap();
+        assert!(plan.is_empty());
+        assert_eq!(plan.skipped_fields.len(), 4);
+        assert!(
+            plan.skipped_fields
+                .iter()
+                .all(|field| field.reason == SkipReason::UnavailableScope)
+        );
     }
 }
