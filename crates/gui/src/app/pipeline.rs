@@ -845,9 +845,9 @@ impl FerruleApp {
         match result {
             Ok(PipelineCompletion::Run(outcome)) => {
                 self.status = format!(
-                    "pipeline completed {} stage(s) and wrote {} file(s)",
-                    outcome.stages_executed.len(),
-                    outcome.artifacts.len()
+                    "pipeline completed {} and wrote {}",
+                    crate::ui_kit::plural(outcome.stages_executed.len(), "stage"),
+                    crate::ui_kit::plural(outcome.artifacts.len(), "file")
                 );
                 let report = crate::run_report::RunReport::from_pipeline_outcome(
                     outcome,
@@ -861,9 +861,9 @@ impl FerruleApp {
             }
             Ok(PipelineCompletion::Preview(outcome)) => {
                 self.status = format!(
-                    "pipeline preview completed {} stage(s) and {} artifact(s)",
-                    outcome.stages_executed.len(),
-                    outcome.artifacts.len()
+                    "pipeline preview completed {} and {}",
+                    crate::ui_kit::plural(outcome.stages_executed.len(), "stage"),
+                    crate::ui_kit::plural(outcome.artifacts.len(), "artifact")
                 );
                 let report = crate::run_report::RunReport::from_pipeline_preview_outcome(
                     outcome,

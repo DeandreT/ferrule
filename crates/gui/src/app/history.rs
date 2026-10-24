@@ -151,8 +151,9 @@ impl FerruleApp {
         if let Some(pending) = self.pending_history.take()
             && pending.before != self.observed_editor
         {
+            let label = snapshot_label(&pending.before.state, &self.observed_editor.state);
             self.history
-                .record(HistoryRecord::Snapshot(pending.before), "Edit mapping");
+                .record(HistoryRecord::Snapshot(pending.before), label);
         }
     }
 
@@ -199,8 +200,9 @@ impl FerruleApp {
             } else {
                 self.commit_pending_history();
                 let previous = self.adopt_observed(current);
+                let label = snapshot_label(&previous.state, &self.observed_editor.state);
                 self.history
-                    .record(HistoryRecord::Snapshot(previous), "Edit mapping");
+                    .record(HistoryRecord::Snapshot(previous), label);
                 return None;
             }
         }
@@ -292,5 +294,14 @@ impl FerruleApp {
                     .error(format!("{action} failed"), error.to_string());
             }
         }
+    }
+}
+
+/// Undo label of a snapshot step: canvas-only changes read as layout edits.
+fn snapshot_label(before: &EditorState, after: &EditorState) -> &'static str {
+    if before.serialized_project == after.serialized_project {
+        "Edit layout"
+    } else {
+        "Edit mapping"
     }
 }

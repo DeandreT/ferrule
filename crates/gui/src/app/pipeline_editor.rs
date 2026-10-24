@@ -261,7 +261,7 @@ impl FerruleApp {
                     editor.error = if issues.is_empty() {
                         None
                     } else {
-                        Some(format!("{} validation issue(s)", issues.len()))
+                        Some(crate::ui_kit::plural(issues.len(), "validation issue"))
                     };
                 }
             });
@@ -322,7 +322,10 @@ impl FerruleApp {
                         && ui
                             .add_enabled(
                                 !unapplied,
-                                egui::Button::new(format!("Add {missing} missing host binding(s)")),
+                                egui::Button::new(format!(
+                                    "Add {}",
+                                    crate::ui_kit::plural(missing, "missing host binding")
+                                )),
                             )
                             .clicked()
                     {
@@ -366,7 +369,7 @@ impl FerruleApp {
                 ui.separator();
                 ui.colored_label(
                     ui.visuals().error_fg_color,
-                    format!("{} validation issue(s)", issues.len()),
+                    crate::ui_kit::plural(issues.len(), "validation issue"),
                 );
                 egui::ScrollArea::vertical()
                     .max_height(110.0)

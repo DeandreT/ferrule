@@ -115,7 +115,7 @@ fn injected_write_failures_keep_saved_bytes_association_and_dirty_state() -> any
     assert_eq!(names, ["project.json", "project.layout.json"]);
 
     app.save_with_continuation(None, &egui::Context::default());
-    assert_eq!(app.status, format!("saved {}", path.display()));
+    assert_eq!(app.status, "saved project.json");
     assert!(!app.is_dirty());
     assert_eq!(
         key(&mapping::project_file::decode_bytes(&std::fs::read(
@@ -203,7 +203,7 @@ fn sidecar_failure_after_publication_stays_recoverable() -> anyhow::Result<()> {
 
     // Saving again completes the sidecar for the published project.
     reopened.save_with_continuation(None, &egui::Context::default());
-    assert_eq!(reopened.status, format!("saved {}", path.display()));
+    assert_eq!(reopened.status, "saved project.json");
     let layout = crate::layout_store::read_layout(&path)?.expect("sidecar is rewritten");
     assert!(layout.matches_project(&published));
     Ok(())
@@ -220,10 +220,7 @@ fn sidecar_failure_is_reported_on_the_saved_document() -> anyhow::Result<()> {
     arm(&layout_path(&path), Fault::BeforePublish);
     app.save_with_continuation(None, &egui::Context::default());
 
-    assert_eq!(
-        app.status,
-        format!("saved {} without canvas layout", path.display())
-    );
+    assert_eq!(app.status, "saved project.json without canvas layout");
     assert!(
         app.diagnostics
             .items()

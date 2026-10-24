@@ -7,10 +7,113 @@ use std::path::Path;
 
 use super::FerruleApp;
 
+/// What an MFD import creates.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum MfdImportTarget {
+    /// Replaces the open project with the imported mapping.
+    Mapping,
+    /// Opens the imported design in the pipeline editor.
+    Pipeline,
+}
+
 impl FerruleApp {
+    /// The import options dialog shown before the MFD file is chosen.
+    pub(super) fn show_mfd_import_dialog(&mut self, ctx: &egui::Context) {
+        let Some(target) = self.mfd_import_dialog else {
+            return;
+        };
+        let title = match target {
+            MfdImportTarget::Mapping => "Import MFD as mapping",
+            MfdImportTarget::Pipeline => "Import MFD as pipeline",
+        };
+        let mut choose_manifest = false;
+        let waiting_for_file = self.pending_dialog.is_some();
+        let response = crate::ui_kit::dialog(ctx, crate::ui_kit::DialogKind::Modal, title)
+            .id_salt("mfd_import")
+            .show(
+                |ui| {
+                    crate::ui_kit::help(
+                        ui,
+                        match target {
+                            MfdImportTarget::Mapping => {
+                                "The imported mapping replaces the open project."
+                            }
+                            MfdImportTarget::Pipeline => {
+                                "The imported design opens in the pipeline editor."
+                            }
+                        },
+                    );
+                    crate::ui_kit::section(ui, "Options", |ui| {
+                        let _ = self.show_mfd_import_options(ui);
+                    });
+                    crate::ui_kit::section(ui, "Package manifest", |ui| {
+                        crate::ui_kit::help(
+                            ui,
+                            "Resolves package-relative schema and resource references.",
+                        );
+                        ui.horizontal(|ui| match &self.mfd_package_manifest {
+                            Some(path) => {
+                                ui.add(egui::Label::new(path).truncate())
+                                    .on_hover_text(path);
+                            }
+                            None => {
+                                ui.weak("None");
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            choose_manifest = ui.button("Choose…").clicked();
+                            if ui
+                                .add_enabled(
+                                    self.mfd_package_manifest.is_some(),
+                                    egui::Button::new("Clear"),
+                                )
+                                .clicked()
+                            {
+                                self.mfd_package_manifest = None;
+                                self.status = "cleared MFD package manifest".to_string();
+                            }
+                        });
+                    });
+                },
+                |ui| {
+                    crate::ui_kit::dialog_buttons(
+                        ui,
+                        crate::ui_kit::DialogButton::new("Choose MFD file…")
+                            .disabled_if(waiting_for_file, "Waiting for the file dialog"),
+                        Some("Cancel".into()),
+                        None,
+                    )
+                },
+            );
+        if choose_manifest {
+            self.pending_dialog = Some((
+                super::DialogKind::BrowseMfdPackageManifest,
+                super::pick_file("ferrule package manifest", &["json"]),
+            ));
+        }
+        match response.footer {
+            Some(crate::ui_kit::DialogAction::Primary) => {
+                self.mfd_import_dialog = None;
+                match target {
+                    MfdImportTarget::Mapping => {
+                        if let Some(action) =
+                            self.request_destructive_action(super::DestructiveAction::ImportMfd)
+                        {
+                            self.perform_destructive_action(action, ctx);
+                        }
+                    }
+                    MfdImportTarget::Pipeline => self.begin_mfd_pipeline_import(),
+                }
+            }
+            Some(crate::ui_kit::DialogAction::Secondary) => self.mfd_import_dialog = None,
+            _ if response.close_requested => self.mfd_import_dialog = None,
+            _ => {}
+        }
+    }
+
     pub(super) fn show_mfd_import_options(&mut self, ui: &mut egui::Ui) -> egui::Response {
         ui.checkbox(&mut self.mfd_item_ordered_exceptions, "Preserve row error order")
-            .on_hover_text("Keep supported row errors in evaluation order. Unsupported exception shapes refuse import. Applies to both MFD import actions for this session.")
+            .on_hover_text("Keep supported row errors in evaluation order. Unsupported exception shapes refuse import. Applies to both MFD imports for this session.")
     }
 
     pub(super) fn mfd_import_options(&self) -> Result<mfd::ImportOptions, mfd::MfdError> {

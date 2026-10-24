@@ -11,33 +11,181 @@ use egui::{
 };
 use serde::{Deserialize, Serialize};
 
-/// Stable dimensions shared by the workspace shell and graph canvas.
+/// Spacing scale for margins, gaps and padding. Layout code picks a step from
+/// this scale instead of a literal so related views stay aligned.
+pub mod space {
+    pub const XS: f32 = 2.0;
+    pub const SM: f32 = 4.0;
+    pub const MD: f32 = 8.0;
+    pub const LG: f32 = 12.0;
+    pub const XL: f32 = 16.0;
+    pub const XXL: f32 = 24.0;
+}
+
+/// Stable dimensions shared by the workspace shell, forms and dialogs. Canvas
+/// geometry keeps its own constants beside the canvas code.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct InteractionMetrics {
+pub struct Metrics {
+    /// Height of buttons, combo boxes and single-line fields.
     pub control_height: f32,
     pub icon_button_size: f32,
     pub icon_size: f32,
+    pub icon_small: f32,
+    pub menu_bar_height: f32,
     pub toolbar_height: f32,
-    pub panel_margin: f32,
-    pub section_spacing: f32,
-    pub node_pin_size: f32,
-    pub node_row_height: f32,
+    pub status_height: f32,
+    pub window_padding: Margin,
+    /// Vertical space between form sections.
+    pub section_gap: f32,
+    /// Vertical space between rows of one form or list.
+    pub row_gap: f32,
+    /// Horizontal space between controls on one row.
+    pub inline_gap: f32,
+    /// Narrowest grid column. egui starts a column at `interact_size.x` and a
+    /// field inside it never asks for more, so fields set their own minimum.
+    pub min_grid_col: f32,
+    /// Distance kept between a dialog and the edge of the area it opens in.
+    pub dialog_margin: f32,
+    pub radius: u8,
+    pub radius_window: u8,
+    pub source_panel: PanelSize,
+    pub inspector_panel: PanelSize,
+    pub diagnostics_height: f32,
 }
 
-pub const METRICS: InteractionMetrics = InteractionMetrics {
-    control_height: 32.0,
-    icon_button_size: 32.0,
+/// Size limits of a resizable side panel.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PanelSize {
+    pub default: f32,
+    pub min: f32,
+    pub max: f32,
+}
+
+pub const METRICS: Metrics = Metrics {
+    control_height: 28.0,
+    icon_button_size: 28.0,
     icon_size: 16.0,
-    toolbar_height: 38.0,
-    panel_margin: 10.0,
-    section_spacing: 12.0,
-    node_pin_size: 12.0,
-    node_row_height: 28.0,
+    icon_small: 14.0,
+    menu_bar_height: 22.0,
+    toolbar_height: 36.0,
+    status_height: 26.0,
+    window_padding: Margin::same(12),
+    section_gap: space::LG,
+    row_gap: 6.0,
+    inline_gap: space::MD,
+    min_grid_col: 48.0,
+    dialog_margin: space::XXL,
+    radius: 4,
+    radius_window: 6,
+    source_panel: PanelSize {
+        default: 220.0,
+        min: 180.0,
+        max: 420.0,
+    },
+    inspector_panel: PanelSize {
+        default: 360.0,
+        min: 260.0,
+        max: 520.0,
+    },
+    diagnostics_height: 120.0,
 };
+
+/// Width of a single-line field. `Fill` takes the rest of its row.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FieldWidth {
+    Small,
+    Medium,
+    Large,
+    Fill,
+}
+
+impl FieldWidth {
+    /// The narrowest the field is laid out. `Fill` starts at the medium width
+    /// and grows with the available space.
+    pub const fn min(self) -> f32 {
+        match self {
+            Self::Small => 80.0,
+            Self::Medium | Self::Fill => 180.0,
+            Self::Large => 280.0,
+        }
+    }
+}
+
+/// Maximum height of a scrolling list.
+#[allow(dead_code, reason = "list heights for area B–E views")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ListHeight {
+    Short,
+    Medium,
+    Tall,
+}
+
+impl ListHeight {
+    pub const fn px(self) -> f32 {
+        match self {
+            Self::Short => 120.0,
+            Self::Medium => 200.0,
+            Self::Tall => 320.0,
+        }
+    }
+}
+
+/// Width of a dialog or tool window.
+#[allow(dead_code, reason = "dialog widths for area B–E windows")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DialogWidth {
+    Narrow,
+    Medium,
+    Wide,
+}
+
+impl DialogWidth {
+    pub const fn px(self) -> f32 {
+        match self {
+            Self::Narrow => 420.0,
+            Self::Medium => 560.0,
+            Self::Wide => 760.0,
+        }
+    }
+}
+
+/// Typographic role of a piece of editor chrome text.
+#[allow(dead_code, reason = "text roles for area B–E views")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextRole {
+    /// Dialog and view titles.
+    Title,
+    /// Section headings inside a panel or dialog.
+    Section,
+    Body,
+    /// Secondary explanations and hints.
+    Help,
+    Mono,
+}
+
+impl TextRole {
+    pub fn font(self) -> FontId {
+        match self {
+            Self::Title => FontId::proportional(16.0),
+            Self::Section | Self::Body => FontId::proportional(14.0),
+            Self::Help => FontId::proportional(12.0),
+            Self::Mono => FontId::monospace(13.0),
+        }
+    }
+
+    pub fn text(self, text: impl Into<String>) -> egui::RichText {
+        let text = egui::RichText::new(text).font(self.font());
+        match self {
+            Self::Title | Self::Section => text.strong(),
+            Self::Help => text.weak(),
+            Self::Body | Self::Mono => text,
+        }
+    }
+}
 
 pub fn top_bar_row(ui: &mut egui::Ui, height: f32, add: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::NONE
-        .inner_margin(Margin::symmetric(0, 3))
+        .inner_margin(Margin::symmetric(0, space::XS as i8))
         .show(ui, |ui| {
             ui.allocate_ui_with_layout(
                 vec2(ui.available_width(), height),
@@ -92,6 +240,12 @@ impl ThemeState {
     /// Installs both ordinary palettes, selects the requested egui theme, and
     /// returns the palette that is active for this frame.
     pub fn apply(self, context: &egui::Context) -> Palette {
+        let palette = self.apply_style(context);
+        context.data_mut(|data| data.insert_temp(active_palette_id(), palette));
+        palette
+    }
+
+    fn apply_style(self, context: &egui::Context) -> Palette {
         context.set_style_of(Theme::Dark, style(ResolvedTheme::Dark));
         context.set_style_of(Theme::Light, style(ResolvedTheme::Light));
 
@@ -127,6 +281,18 @@ impl ThemeState {
         };
         palette(resolved)
     }
+}
+
+fn active_palette_id() -> egui::Id {
+    egui::Id::unique("ferrule_active_palette")
+}
+
+/// The palette the last [`ThemeState::apply`] installed on this context, for
+/// chrome that needs semantic colors egui's visuals do not carry.
+pub fn active_palette(context: &egui::Context) -> Palette {
+    context
+        .data(|data| data.get_temp(active_palette_id()))
+        .unwrap_or_else(|| palette(ResolvedTheme::Dark))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -381,15 +547,19 @@ fn style_from_palette(colors: Palette, dark_mode: bool) -> Style {
         ),
     ]
     .into();
-    style.spacing.item_spacing = vec2(8.0, 6.0);
-    style.spacing.window_margin = Margin::same(10);
-    style.spacing.menu_margin = Margin::same(8);
-    style.spacing.button_padding = vec2(8.0, 4.0);
-    style.spacing.interact_size = vec2(METRICS.control_height, METRICS.control_height);
+    style.spacing.item_spacing = vec2(METRICS.inline_gap, METRICS.row_gap);
+    style.spacing.window_margin = METRICS.window_padding;
+    style.spacing.menu_margin = Margin::same(space::MD as i8);
+    style.spacing.button_padding = vec2(space::MD, space::SM);
+    // A grid column first offers `interact_size.x` to its cells, so this is
+    // also the narrowest a grid field starts; `ui_kit::text_field` widens it.
+    style.spacing.interact_size = vec2(METRICS.min_grid_col, METRICS.control_height);
     style.spacing.icon_width = METRICS.icon_size;
     style.spacing.icon_width_inner = 10.0;
     style.spacing.icon_spacing = 6.0;
-    style.spacing.indent = 22.0;
+    style.spacing.indent = space::XL + space::SM + space::XS;
+    style.spacing.combo_width = FieldWidth::Medium.min();
+    style.spacing.text_edit_width = FieldWidth::Medium.min();
     style.spacing.scroll = egui::style::ScrollStyle::thin();
     style.animation_time = 0.14;
     style.explanation_tooltips = true;
@@ -400,7 +570,7 @@ fn style_from_palette(colors: Palette, dark_mode: bool) -> Style {
 }
 
 fn visuals(colors: Palette, dark_mode: bool) -> Visuals {
-    let radius = CornerRadius::same(4);
+    let radius = CornerRadius::same(METRICS.radius);
     let noninteractive = widget(
         colors.surface,
         colors.surface,
@@ -408,8 +578,11 @@ fn visuals(colors: Palette, dark_mode: bool) -> Visuals {
         colors.text,
         radius,
     );
+    // `bg_fill` paints slider rails, checkbox boxes and scrollbar handles. It
+    // must differ from every surface they sit on (panels, windows, menus and
+    // the scrollbar track), so it uses the border tone rather than a surface.
     let inactive = widget(
-        colors.elevated_surface,
+        colors.border,
         colors.surface,
         colors.border,
         colors.text,
@@ -459,7 +632,7 @@ fn visuals(colors: Palette, dark_mode: bool) -> Visuals {
     visuals.code_bg_color = colors.surface;
     visuals.warn_fg_color = colors.warning;
     visuals.error_fg_color = colors.error;
-    visuals.window_corner_radius = CornerRadius::same(6);
+    visuals.window_corner_radius = CornerRadius::same(METRICS.radius_window);
     visuals.window_shadow = Shadow::NONE;
     visuals.window_fill = colors.elevated_surface;
     visuals.window_stroke = Stroke::new(1.0, colors.strong_border);
@@ -470,6 +643,7 @@ fn visuals(colors: Palette, dark_mode: bool) -> Visuals {
     visuals.collapsing_header_frame = false;
     visuals.indent_has_left_vline = true;
     visuals.interact_cursor = Some(egui::CursorIcon::PointingHand);
+    visuals.slider_trailing_fill = true;
     visuals.disabled_alpha = if dark_mode { 0.62 } else { 0.55 };
     visuals
 }

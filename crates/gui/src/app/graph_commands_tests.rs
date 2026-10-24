@@ -414,7 +414,7 @@ fn snapshot_and_command_steps_interleave_through_undo_and_redo() {
     assert_eq!(
         undone,
         [
-            ("snapshot", Some("Edit mapping".into())),
+            ("snapshot", Some("Edit layout".into())),
             ("state", Some(states[3].clone())),
             ("snapshot", Some("Edit mapping".into())),
             ("state", Some(states[2].clone())),

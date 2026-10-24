@@ -549,9 +549,11 @@ impl FerruleApp {
                                 "Logical input identity"
                             });
                             ui.add(
-                                egui::TextEdit::singleline(&mut draft.input_identity)
-                                    .hint_text("input.json")
-                                    .desired_width(f32::INFINITY),
+                                crate::ui_kit::text_field(
+                                    &mut draft.input_identity,
+                                    crate::ui_kit::FieldWidth::Fill,
+                                )
+                                .hint_text("input.json"),
                             )
                             .on_hover_text(if files {
                                 "Read when the preview starts; the project's source path is \
@@ -562,9 +564,11 @@ impl FerruleApp {
                             ui.end_row();
                             ui.label("Logical output identity");
                             ui.add(
-                                egui::TextEdit::singleline(&mut draft.output_identity)
-                                    .hint_text("output.json")
-                                    .desired_width(f32::INFINITY),
+                                crate::ui_kit::text_field(
+                                    &mut draft.output_identity,
+                                    crate::ui_kit::FieldWidth::Fill,
+                                )
+                                .hint_text("output.json"),
                             )
                             .on_hover_text("Selects the output format; no file is written");
                             ui.end_row();
@@ -918,7 +922,10 @@ impl FerruleApp {
         };
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
-            self.status = format!("preview blocked by {} validation issue(s)", issues.len());
+            self.status = format!(
+                "preview blocked by {}",
+                crate::ui_kit::plural(issues.len(), "validation issue")
+            );
             self.diagnostics.validation(&self.project, issues);
             return;
         }
@@ -1181,8 +1188,9 @@ impl FerruleApp {
                     trace,
                 );
                 self.status = format!(
-                    "previewed {} record(s) for {}",
-                    report.records_written, pending.target_label
+                    "previewed {} for {}",
+                    crate::ui_kit::plural(report.records_written, "record"),
+                    pending.target_label
                 );
                 self.run_report = Some(crate::run_report::RunReportView::new(report));
                 self.show_run_report = true;

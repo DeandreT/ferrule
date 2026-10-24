@@ -226,9 +226,13 @@ impl Diagnostics {
         ui.horizontal(|ui| {
             ui.strong(&self.title);
             let summary = match (errors, warnings) {
-                (0, warnings) => format!("{warnings} warning(s)"),
-                (errors, 0) => format!("{errors} error(s)"),
-                (errors, warnings) => format!("{errors} error(s), {warnings} warning(s)"),
+                (0, warnings) => crate::ui_kit::plural(warnings, "warning"),
+                (errors, 0) => crate::ui_kit::plural(errors, "error"),
+                (errors, warnings) => format!(
+                    "{}, {}",
+                    crate::ui_kit::plural(errors, "error"),
+                    crate::ui_kit::plural(warnings, "warning")
+                ),
             };
             ui.label(summary);
             if ui.button("Clear").clicked() {

@@ -42,6 +42,7 @@ mod target_xml_type;
 #[cfg(test)]
 mod test_ui;
 mod theme;
+mod ui_kit;
 mod value_editor;
 #[cfg(test)]
 #[path = "canvas/vendor_hook_tests.rs"]

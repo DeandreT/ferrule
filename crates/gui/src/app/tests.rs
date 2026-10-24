@@ -1279,7 +1279,10 @@ fn project_without_layout_sidecar_uses_default_layout() {
         canvas_position(&app.main_canvas.snarl, CanvasNode::SourceBlock(0)),
         egui::pos2(0.0, 0.0)
     );
-    assert_eq!(app.status, format!("loaded {}", project_path.display()));
+    assert_eq!(
+        app.status,
+        format!("loaded {}", crate::ui_kit::file_label(&project_path))
+    );
     assert!(!app.is_dirty());
 
     std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
@@ -2732,7 +2735,7 @@ fn debug_preview_steps_before_target_writes_and_continues() {
     app.preview_command(preview_ui::PreviewCommand::Continue);
     wait_for_preview_completion(&mut app);
     assert!(app.show_run_report);
-    assert_eq!(app.status, "previewed 1 record(s) for Primary");
+    assert_eq!(app.status, "previewed 1 record for Primary");
     let report = app.run_report.as_mut().expect("completed preview report");
     assert!(matches!(
         report.report.outputs[0].preview(),
