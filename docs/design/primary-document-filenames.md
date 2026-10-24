@@ -182,3 +182,29 @@ wildcard directory or a refused empty match is a selection failure.
 The portable cohort in `conformance/primary-filename-documents` compares
 complete documents, typed failures and the ordered host calls of the
 interpreter, generated Rust and generated C#.
+
+## Command-line, editor and generation routes
+
+A saved document project is the `document_project` file artifact; it is never
+read as an ordinary project, and an ordinary project is never read as a
+document project.
+
+- `ferrule run-document --project DOCUMENT --input-root DIR` runs it through
+  the local host. `--max-document-bytes` and `--max-documents` bound the
+  selection, `--param NAME=VALUE` supplies parameter filenames and mapping
+  values, and `--output` defaults to the saved target path. Both endpoints need
+  an explicit CSV identity. The output is published by staged replacement only
+  after the whole run succeeds, and never replaces the project or a document
+  the run read. `cli::execute_primary_csv_document` is the same run without
+  publication.
+- `ferrule generate --primary-csv-documents` generates the document library;
+  `--raw-delimited-crlf` selects raw output. The generated identity and
+  compatibility manifest options apply, and the manifest records the
+  `primary_csv_document` or `primary_raw_delimited_document` profile. The
+  backends' `Generator::emit_with_primary_csv_documents` methods return the
+  free functions' artifacts under default options.
+- The editor opens a document project with its filename plan, saves the plan
+  back unchanged and shows an input root (initially the project's folder) and
+  limits in place of the input file. Run publishes through the command-line
+  run; Preview performs the same run in memory. Debug Run, Debug Preview and
+  library generation are not offered for document projects.

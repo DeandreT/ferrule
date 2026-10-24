@@ -10,7 +10,7 @@
 
 use codegen::{
     ArtifactPath, ArtifactSet, CompanionSelection, CompatibilityManifest,
-    CsvDocumentBoundaryPolicy, CsvOutputPolicy, GENERATOR_VERSION, GeneratedFile,
+    CsvDocumentBoundaryPolicy, CsvOutputPolicy, DocumentProgram, GENERATOR_VERSION, GeneratedFile,
     GenerationProfile, LibraryIdentity, MANIFEST_PATH, ManifestSelection, Program, RuntimeBinding,
     RuntimeRecord, X12BoundaryPolicy,
 };
@@ -86,6 +86,22 @@ impl<'a> Generator<'a> {
             GenerationProfile::RawDelimitedDocument
         } else {
             GenerationProfile::CsvDocument
+        };
+        self.finish(artifacts, profile)
+            .map_err(CsvDocumentEmitError::Emit)
+    }
+
+    /// [`crate::emit_with_primary_csv_documents`].
+    pub fn emit_with_primary_csv_documents(
+        &self,
+        document: &DocumentProgram,
+        policy: &CsvDocumentBoundaryPolicy,
+    ) -> Result<ArtifactSet, CsvDocumentEmitError> {
+        let artifacts = crate::emit_with_primary_csv_documents(document, self.options, policy)?;
+        let profile = if policy.target.raw_delimited_crlf {
+            GenerationProfile::PrimaryRawDelimitedDocument
+        } else {
+            GenerationProfile::PrimaryCsvDocument
         };
         self.finish(artifacts, profile)
             .map_err(CsvDocumentEmitError::Emit)

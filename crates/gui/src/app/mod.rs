@@ -94,6 +94,7 @@ mod pipeline_stage_canvas;
 mod pipeline_ui;
 #[path = "preview.rs"]
 mod preview_ui;
+mod primary_document;
 mod primary_xml_input;
 mod rest_run;
 mod route_preflight;
@@ -537,6 +538,8 @@ pub struct FerruleApp {
     mfd_item_ordered_exceptions: bool,
     palette: Palette,
     document: DocumentLocation,
+    /// The filename plan and input policy of an opened document project.
+    primary_document: Option<primary_document::PrimaryDocumentSession>,
     input_path: String,
     output_path: String,
     host_parameters: host_parameters::HostParameterEditor,
@@ -730,6 +733,7 @@ impl Default for FerruleApp {
             mfd_item_ordered_exceptions: false,
             palette: crate::theme::palette(crate::theme::ResolvedTheme::Dark),
             document: DocumentLocation::untitled("project.json"),
+            primary_document: None,
             input_path: String::new(),
             output_path: String::new(),
             host_parameters: Default::default(),
@@ -1053,6 +1057,7 @@ impl FerruleApp {
             DestructiveAction::NewProject => {
                 self.clear_run_report();
                 self.project = blank_project();
+                self.primary_document = None;
                 self.host_parameters = host_parameters::HostParameterEditor::default();
                 self.mapping_workspace.reset();
                 self.main_canvas = CanvasDocumentState::main(&self.project);
@@ -1119,12 +1124,24 @@ impl FerruleApp {
         if self.stage_document_actions_blocked() {
             return;
         }
-        let loaded = (|| -> anyhow::Result<Project> {
+        let loaded = (|| -> anyhow::Result<(Project, Option<mapping::PrimarySourcePlan>)> {
             let bytes = std::fs::read(path)?;
-            Ok(mapping::project_file::decode_bytes(&bytes)?)
+            match mapping::project_file::decode_bytes(&bytes) {
+                Ok(project) => Ok((project, None)),
+                // A document project keeps its filename plan beside the project.
+                Err(error) => match mapping::document_project_file::decode_bytes(&bytes) {
+                    Ok(document) => Ok((
+                        document.project().clone(),
+                        Some(document.primary_source().clone()),
+                    )),
+                    Err(_) => Err(error.into()),
+                },
+            }
         })();
         match loaded {
-            Ok(project) => {
+            Ok((project, plan)) => {
+                self.primary_document =
+                    plan.map(|plan| primary_document::PrimaryDocumentSession::new(plan, path));
                 let (layout, layout_warning) = match read_layout(path) {
                     Ok(layout) => (layout, None),
                     Err(error) => (None, Some(error.to_string())),
@@ -1385,6 +1402,7 @@ impl FerruleApp {
                     self.main_canvas = CanvasDocumentState::main(&imported.project);
                     self.reset_canvas_view();
                     self.project = imported.project;
+                    self.primary_document = None;
                     self.host_parameters = host_parameters::HostParameterEditor::default();
                     self.mapping_workspace.reset();
                     self.mark_unsaved();
@@ -1667,3 +1685,6 @@ mod inspector_commands_tests;
 
 #[cfg(test)]
 mod project_commands_tests;
+
+#[cfg(test)]
+mod primary_document_tests;

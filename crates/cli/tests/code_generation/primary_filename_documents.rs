@@ -318,10 +318,7 @@ fn emit(model: usize, language: &str) -> TestResult<codegen::ArtifactSet> {
         let options = codegen_rust::Options {
             package_name: format!("primary-documents-model{model}"),
             runtime_dependency: codegen_rust::RuntimeDependency::Path(
-                Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../codegen-runtime")
-                    .display()
-                    .to_string(),
+                runtime_path()?.display().to_string(),
             ),
         };
         codegen_rust::emit_with_primary_csv_documents(&program, &options, &policy)?
@@ -358,6 +355,227 @@ fn primary_filename_documents_emit_their_plan_deterministically() -> TestResult<
     Ok(())
 }
 
+/// The configured identity model 1 is generated under in the host test.
+const CONFIGURED_MODEL: usize = 1;
+const CSHARP_IDENTITY: [&str; 3] = ["Acme.Documents", "Acme.Documents", "DocumentMapping"];
+
+/// The canonical runtime path, so every generated crate and host binds one
+/// `codegen-runtime` package.
+fn runtime_path() -> TestResult<PathBuf> {
+    Ok(Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../codegen-runtime")
+        .canonicalize()?)
+}
+
+/// Saves `model`'s document project and generates it with `ferrule generate
+/// --primary-csv-documents`, optionally under a configured identity with the
+/// compatibility manifest.
+fn cli_generate(
+    root: &Path,
+    model: usize,
+    language: &str,
+    configured: bool,
+    output: &Path,
+) -> TestResult<()> {
+    let project = root.join(format!("document-model{model}.json"));
+    if !project.exists() {
+        std::fs::write(
+            &project,
+            document_project_file::encode_pretty(&projects::document(projects::MODELS[model]))?,
+        )?;
+    }
+    let mut command = Command::new(env!("CARGO_BIN_EXE_ferrule"));
+    command
+        .args([
+            "generate",
+            "--primary-csv-documents",
+            "--language",
+            language,
+        ])
+        .arg("--project")
+        .arg(&project)
+        .arg("--out")
+        .arg(output);
+    if language == "rust" {
+        command
+            .arg("--rust-runtime-path")
+            .arg(runtime_path()?)
+            .arg("--rust-package-name")
+            .arg(format!("primary-documents-model{model}"));
+    } else if configured {
+        for (flag, value) in [
+            "--csharp-assembly-name",
+            "--csharp-namespace",
+            "--csharp-class",
+        ]
+        .into_iter()
+        .zip(CSHARP_IDENTITY)
+        {
+            command.arg(flag).arg(value);
+        }
+    }
+    if configured {
+        command.arg("--compatibility-manifest");
+    }
+    let run = command.output()?;
+    if !run.status.success() {
+        return Err(format!(
+            "generate {model}/{language}: {}",
+            String::from_utf8_lossy(&run.stderr)
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn tree(directory: &Path) -> TestResult<BTreeMap<String, Vec<u8>>> {
+    let mut files = BTreeMap::new();
+    let mut pending = vec![directory.to_path_buf()];
+    while let Some(next) = pending.pop() {
+        for entry in std::fs::read_dir(next)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                let relative = path
+                    .strip_prefix(directory)?
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                files.insert(relative, std::fs::read(&path)?);
+            }
+        }
+    }
+    Ok(files)
+}
+
+#[test]
+fn primary_filename_documents_cli_generation_matches_the_emitters() -> TestResult<()> {
+    let directory = TempDir::new("primary_filename_documents_generate")?;
+    for model in 0..projects::MODELS.len() {
+        for language in ["rust", "csharp"] {
+            let output = directory.0.join(format!("{language}-{model}"));
+            cli_generate(&directory.0, model, language, false, &output)?;
+            let mut emitted = BTreeMap::new();
+            for file in emit(model, language)?.files() {
+                emitted.insert(file.path.as_str().to_owned(), file.contents.clone());
+            }
+            assert!(tree(&output)? == emitted, "{model}/{language}");
+        }
+    }
+    // An ordinary project is refused by the document profile, and a document
+    // project by every ordinary profile.
+    let ordinary = directory.0.join("ordinary.json");
+    std::fs::write(
+        &ordinary,
+        mapping::project_file::encode_pretty(projects::document(projects::MODELS[0]).project())?,
+    )?;
+    let saved = directory.0.join("document-model0.json");
+    for (project, flag) in [
+        (&ordinary, Some("--primary-csv-documents")),
+        (&saved, None),
+        (&saved, Some("--csv-document-adapters")),
+    ] {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_ferrule"));
+        command
+            .args(["generate", "--language", "csharp", "--project"])
+            .arg(project)
+            .arg("--out")
+            .arg(directory.0.join("refused"));
+        command.args(flag);
+        let run = command.output()?;
+        assert!(!run.status.success(), "{project:?} {flag:?}");
+        assert!(!directory.0.join("refused").exists());
+    }
+    Ok(())
+}
+
+#[test]
+fn primary_filename_documents_generators_apply_identity_and_manifest() -> TestResult<()> {
+    let document = projects::document(projects::MODELS[CONFIGURED_MODEL]);
+    let program = codegen::lower_document(&document)?;
+    let policy = codegen::CsvDocumentBoundaryPolicy::from_project(document.project())?;
+    let mut raw = policy.clone();
+    raw.target.raw_delimited_crlf = true;
+    raw.target.quote_disabled = true;
+
+    let default = codegen_csharp::Options::default();
+    assert_eq!(
+        codegen_csharp::Generator::new(&default)
+            .emit_with_primary_csv_documents(&program, &policy)?,
+        codegen_csharp::emit_with_primary_csv_documents(&program, &policy)?
+    );
+    let options = codegen_csharp::Options {
+        identity: codegen_csharp::Identity::new(
+            CSHARP_IDENTITY[0],
+            CSHARP_IDENTITY[1],
+            CSHARP_IDENTITY[2],
+        )?,
+        manifest: codegen::ManifestSelection::Included,
+    };
+    let generator = codegen_csharp::Generator::new(&options);
+    let configured = generator.emit_with_primary_csv_documents(&program, &policy)?;
+    let file = |set: &codegen::ArtifactSet, path: &str| -> TestResult<String> {
+        Ok(String::from_utf8(
+            set.files()
+                .iter()
+                .find(|file| file.path.as_str() == path)
+                .ok_or_else(|| format!("missing {path}"))?
+                .contents
+                .clone(),
+        )?)
+    };
+    let manifest =
+        codegen::CompatibilityManifest::from_json(&file(&configured, "ferrule-manifest.json")?)?;
+    assert_eq!(
+        manifest.profile,
+        codegen::GenerationProfile::PrimaryCsvDocument
+    );
+    let companion = file(&configured, "GeneratedMapping.PrimaryCsvDocument.cs")?;
+    assert!(companion.starts_with(
+        "namespace Acme.Documents;
+
+public static partial class DocumentMapping
+"
+    ));
+    assert!(
+        file(&configured, "Acme.Documents.csproj")?
+            .contains("GeneratedMapping.PrimaryCsvDocument.cs")
+    );
+    let raw_manifest = codegen::CompatibilityManifest::from_json(&file(
+        &generator.emit_with_primary_csv_documents(&program, &raw)?,
+        "ferrule-manifest.json",
+    )?)?;
+    assert_eq!(
+        raw_manifest.profile,
+        codegen::GenerationProfile::PrimaryRawDelimitedDocument
+    );
+
+    let options = codegen_rust::Options {
+        package_name: "primary-documents".into(),
+        runtime_dependency: codegen_rust::RuntimeDependency::Path(
+            runtime_path()?.display().to_string(),
+        ),
+    };
+    let plain = codegen_rust::Generator::new(&options);
+    assert_eq!(
+        plain.emit_with_primary_csv_documents(&program, &policy)?,
+        codegen_rust::emit_with_primary_csv_documents(&program, &options, &policy)?
+    );
+    let with = plain
+        .with_manifest(codegen::ManifestSelection::Included)
+        .emit_with_primary_csv_documents(&program, &raw)?;
+    let manifest =
+        codegen::CompatibilityManifest::from_json(&file(&with, "ferrule-manifest.json")?)?;
+    assert_eq!(
+        manifest.profile,
+        codegen::GenerationProfile::PrimaryRawDelimitedDocument
+    );
+    assert!(file(&with, "src/lib.rs")?.ends_with(
+        "\nmod ferrule_compatibility;\npub use ferrule_compatibility::{COMPATIBILITY_MANIFEST, RUNTIME_IDENTITY};\n"
+    ));
+    Ok(())
+}
+
 fn write_artifacts(directory: &Path, artifacts: &codegen::ArtifactSet) -> TestResult<()> {
     for file in artifacts.files() {
         let path = directory.join(file.path.as_str());
@@ -386,10 +604,12 @@ fn primary_filename_documents_generated_rust_and_csharp_match_expected() -> Test
     let rust = root.join("rust-host");
     let mut dependencies = String::new();
     for model in 0..projects::MODELS.len() {
-        write_artifacts(
-            &root.join(format!("rust-model{model}")),
-            &emit(model, "rust")?,
-        )?;
+        let output = root.join(format!("rust-model{model}"));
+        if model == CONFIGURED_MODEL {
+            cli_generate(&root, model, "rust", true, &output)?;
+        } else {
+            write_artifacts(&output, &emit(model, "rust")?)?;
+        }
         dependencies.push_str(&format!(
             "model{model}={{package=\"primary-documents-model{model}\",path=\"../rust-model{model}\"}}\n"
         ));
@@ -403,12 +623,7 @@ fn primary_filename_documents_generated_rust_and_csharp_match_expected() -> Test
         rust.join("Cargo.toml"),
         format!(
             "[package]\nname=\"primary-documents-host\"\nversion=\"0.1.0\"\nedition=\"2024\"\npublish=false\n[workspace]\n[dependencies]\ncodegen-runtime={{path={}}}\nserde_json=\"=1.0.150\"\n{dependencies}",
-            serde_json::to_string(
-                &Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../codegen-runtime")
-                    .display()
-                    .to_string()
-            )?
+            serde_json::to_string(&runtime_path()?.display().to_string())?
         ),
     )?;
     let rust_results = root.join("rust-results.json");
@@ -435,15 +650,26 @@ fn primary_filename_documents_generated_rust_and_csharp_match_expected() -> Test
 
     for model in 0..projects::MODELS.len() {
         let output = root.join(format!("csharp-model{model}"));
-        write_artifacts(&output, &emit(model, "csharp")?)?;
+        let mut harness =
+            include_str!("fixtures/primary_filename_documents_csharp.cs.txt").to_string();
+        let mut library = "Ferrule.Generated";
+        if model == CONFIGURED_MODEL {
+            // Generated through the CLI under a configured identity and manifest.
+            cli_generate(&root, model, "csharp", true, &output)?;
+            harness = harness
+                .replace("using Ferrule.Generated;", "using Acme.Documents;")
+                .replace("GeneratedMapping.", "DocumentMapping.");
+            library = CSHARP_IDENTITY[0];
+        } else {
+            write_artifacts(&output, &emit(model, "csharp")?)?;
+        }
         std::fs::create_dir_all(output.join("Harness"))?;
-        std::fs::write(
-            output.join("Harness/Program.cs"),
-            include_str!("fixtures/primary_filename_documents_csharp.cs.txt"),
-        )?;
+        std::fs::write(output.join("Harness/Program.cs"), harness)?;
         std::fs::write(
             output.join("Harness/Harness.csproj"),
-            r#"<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup><ItemGroup><ProjectReference Include="../Ferrule.Generated.csproj" /></ItemGroup></Project>"#,
+            format!(
+                r#"<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup><ItemGroup><ProjectReference Include="../{library}.csproj" /></ItemGroup></Project>"#
+            ),
         )?;
         let results = output.join("results.json");
         let mut command = dotnet_command(&output);

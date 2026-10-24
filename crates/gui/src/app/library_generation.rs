@@ -250,6 +250,14 @@ impl FerruleApp {
     }
 
     fn request_library_generation(&mut self, context: &egui::Context) {
+        if self.primary_document.is_some() {
+            self.library_generation_failed(
+                "Generate a primary document project with `ferrule generate \
+                 --primary-csv-documents`."
+                    .into(),
+            );
+            return;
+        }
         if let Some(reason) = self
             .library_generation_draft
             .as_ref()

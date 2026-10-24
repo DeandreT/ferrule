@@ -137,6 +137,11 @@ route = "Generated Rust and C# complete CSV document adapters (`generate --csv-d
 scope = "One positional CSV document in and out, including header, BOM, and raw-delimited CRLF output modes"
 record = "conformance/csv-documents/README.md"
 
+[[format.qualified]]
+route = "Primary filename document runs (`run-document`, `generate --primary-csv-documents`, and editor Run and Preview)"
+scope = "Every CSV document a literal or runtime-parameter filename selects beneath an explicit local input root, mapped once into one CSV document"
+record = "conformance/primary-filename-documents/README.md"
+
 [[format]]
 name = "Fixed-width"
 source = "yes"

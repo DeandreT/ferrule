@@ -42,6 +42,7 @@ mod pdf_worker_signal;
 mod pipeline;
 mod pipeline_preview;
 mod preview_inputs;
+mod primary_document;
 mod project_paths;
 mod read_set;
 mod route_capability;
@@ -114,6 +115,11 @@ pub use pipeline_preview::{
     PipelinePreviewOutputIdentity, preview_pipeline_value_payloads, validate_pipeline_preview,
 };
 pub use preview_inputs::{ProjectPreviewInputs, preview_project_value};
+pub use primary_document::{
+    DEFAULT_MAX_PRIMARY_DOCUMENTS, MAX_PRIMARY_DOCUMENT_OUTPUT_BYTES, PrimaryDocumentError,
+    PrimaryDocumentOutput, PrimaryDocumentPolicy, check_primary_csv_document,
+    execute_primary_csv_document, load_document_project, run_primary_csv_document_file,
+};
 pub use project_paths::{
     mapping_identity_relative_to as pipeline_mapping_identity, rebase as rebase_project_paths,
     relocates as project_paths_relocate,

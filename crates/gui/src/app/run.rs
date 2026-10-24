@@ -399,7 +399,14 @@ impl FerruleApp {
             return;
         }
         // Refuse an unsupported route before saving or touching any input.
-        if let Err(error) = self.saved_run_preflight(&runtime_parameters) {
+        let preflight = match &self.primary_document {
+            Some(_) if debug => Err(anyhow::anyhow!(
+                "Debug Run is not available for primary document projects"
+            )),
+            Some(_) => self.primary_document_preflight(),
+            None => self.saved_run_preflight(&runtime_parameters),
+        };
+        if let Err(error) = preflight {
             let title = if debug {
                 "Debug Run blocked"
             } else {
@@ -512,6 +519,19 @@ impl FerruleApp {
         };
         let input_path = nonempty_path(&self.input_path);
         let output_path = nonempty_path(&self.output_path);
+        let document_policy = match self
+            .primary_document
+            .as_ref()
+            .map(super::primary_document::PrimaryDocumentSession::policy)
+            .transpose()
+        {
+            Ok(policy) => policy,
+            Err(error) => {
+                self.status = "run blocked".into();
+                self.diagnostics.error("Run blocked", format!("{error:#}"));
+                return;
+            }
+        };
         let breakpoint = if debug {
             self.file_run_breakpoint
                 .clone()
@@ -600,11 +620,18 @@ impl FerruleApp {
                 let reader = reader.with_controls(reader_controls);
                 reader
             });
-            let result = match &reader {
-                Some(reader) => {
+            let result = match (&document_policy, &reader) {
+                // A document project reads only beneath its input root.
+                (Some(policy), _) => cli::run_primary_csv_document_file(
+                    &project_path,
+                    output_path.as_deref(),
+                    policy,
+                    Some(&runtime_parameters),
+                ),
+                (None, Some(reader)) => {
                     cli::run_project_with_options_and_pdf_reader(&project_path, &options, reader)
                 }
-                None => cli::run_project_with_options(&project_path, &options),
+                (None, None) => cli::run_project_with_options(&project_path, &options),
             };
             let result = result.map_err(|error| {
                 if error.chain().any(|cause| {

@@ -459,9 +459,15 @@ impl FerruleApp {
             ui.separator();
             ui.add_enabled_ui(editing_enabled, |ui| {
                 ui.horizontal_wrapped(|ui| self.show_runtime_paths(ui));
-                self.show_owned_pdf_worker_toggle(ui);
+                // Document runs read CSV only and have no debug route.
+                let documents = self.primary_document.is_some();
+                if !documents {
+                    self.show_owned_pdf_worker_toggle(ui);
+                }
                 self.host_parameters.show(ui);
-                self.show_file_debug_controls(ui);
+                if !documents {
+                    self.show_file_debug_controls(ui);
+                }
             });
             ui.spacing_mut().item_spacing.y = 0.0;
         }
@@ -483,6 +489,15 @@ impl FerruleApp {
     }
 
     fn show_runtime_paths(&mut self, ui: &mut egui::Ui) {
+        if let Some(session) = &mut self.primary_document {
+            ui.vertical(|ui| session.show(ui));
+        } else {
+            self.show_input_path(ui);
+        }
+        self.show_output_path(ui);
+    }
+
+    fn show_input_path(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label("Input");
             ui.add(egui::TextEdit::singleline(&mut self.input_path).desired_width(190.0));
@@ -498,6 +513,9 @@ impl FerruleApp {
                 ));
             }
         });
+    }
+
+    fn show_output_path(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label("Output");
             ui.add(egui::TextEdit::singleline(&mut self.output_path).desired_width(190.0));
