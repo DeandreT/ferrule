@@ -1139,6 +1139,27 @@ not reinterpreted. Unused schema declarations are not output or defaulted.
 The location is not resolved or opened. These methods return bytes only: they do
 not implement native physical-stream failure prefixes or file publication.
 
+To write a materialized body to a host-owned stream, use generated
+`prepare_mapforce_xml` / `PrepareMapForceXml`, then call the returned
+`PreparedMapForceXmlDocument.write_to` /
+`FerrulePreparedMapForceXmlDocument.WriteTo`. Preparation validates the supported
+shape and retains its values without checking XML character encoding. Perform it
+before opening/truncating the output. The synchronous UTF-8 writer preserves the
+native committed-buffer prefix if a later character or stream operation fails.
+The prepared document is reusable; each write starts with a fresh writer buffer.
+
+The selected stream profile follows .NET 8.0.22's 6,144-byte nominal XML buffer,
+including escaped/multibyte overflow and deferred text-cursor commits. It performs
+the native writer's flush/disposal sequence, including cleanup flushes after
+failure, but never closes the supplied stream. The host must close it on every
+path and accept the output only after both writing and closing succeed. A write
+failure is not retried by writer cleanup; earlier accepted files remain the
+host's responsibility. This API does not choose output paths or filesystem/URL
+policy and does not confer qualification on a different runtime or feature profile.
+The selected native call path makes four stream-flush calls on success and two
+after a character-format failure; failed flushes can change the subsequent
+cleanup path. A cleanup failure takes precedence over an earlier failure.
+
 `ImportedX12DocumentBodies.eager_json_document` also retains the original input
 filename parameter in a `DocumentProject`. The matching backend
 `emit_with_primary_eager_x12_json` entry points add `evaluate_primary_filename` /

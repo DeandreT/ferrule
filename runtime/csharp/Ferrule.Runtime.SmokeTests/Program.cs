@@ -24,6 +24,7 @@ internal static partial class Program
             ("Direct source input ownership and limits", DirectSourceInputs),
             ("Deferred XML preparation and materialization", DeferredXmlPreparation),
             ("XML document bytes", XmlDocumentBytes),
+            ("Prepared XML stream ownership and failures", XmlPreparedStream),
             ("JSON5 writer typed decimal output", Json5TypedWriter),
             ("Exact source row document paths", SourceRowDocumentPaths),
             ("CSV file sets retain empty files", CsvFileSet),
