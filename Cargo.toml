@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/edit-ops",
     "crates/editor-ui",
     "crates/json-pattern",
     "crates/mfd-conformance",
@@ -38,6 +39,7 @@ license = "GPL-3.0-only"
 repository = "https://github.com/DeandreT/ferrule"
 
 [workspace.dependencies]
+edit-ops = { path = "crates/edit-ops" }
 editor-ui = { path = "crates/editor-ui" }
 json-pattern = { path = "crates/json-pattern" }
 ir = { path = "crates/ir" }
