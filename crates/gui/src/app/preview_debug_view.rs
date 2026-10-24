@@ -46,7 +46,8 @@ pub(in crate::app) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPh
             ui.separator();
             // Source frames are the bulk of what a paused write shows, so
             // they get half the viewport rather than a fixed sliver.
-            let details_height = (ui.ctx().content_rect().height() * 0.5).max(280.0);
+            let details_height =
+                (ui.ctx().content_rect().height() * 0.5).max(crate::theme::ListHeight::Medium.px());
             egui::ScrollArea::vertical()
                 .id_salt("preview_live_debug_details")
                 .max_height(details_height)

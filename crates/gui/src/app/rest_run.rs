@@ -553,8 +553,8 @@ impl FerruleApp {
                     ui.label(format!("{}: {} bytes", artifact.path.display(), artifact.bytes.len()));
                 }
                 if result.truncated { ui.weak("Preview is limited to 64 KiB. Complete output is retained for this session."); }
-                egui::ScrollArea::both().max_height(300.0).show(ui, |ui| {
-                    ui.add(egui::TextEdit::multiline(&mut result.preview).interactive(false).desired_width(480.0));
+                egui::ScrollArea::both().max_height(crate::theme::ListHeight::Tall.px()).show(ui, |ui| {
+                    ui.add(egui::TextEdit::multiline(&mut result.preview).interactive(false).desired_width(f32::INFINITY));
                 });
             });
             if !open {

@@ -28,7 +28,10 @@ fn show_preview_input(ui: &mut egui::Ui, draft: &mut PreviewDraft, input_size: u
             label
         })
         .inner;
-    let height = (ui.ctx().content_rect().height() * 0.3).clamp(140.0, 360.0);
+    let height = (ui.ctx().content_rect().height() * 0.3).clamp(
+        crate::theme::ListHeight::Short.px(),
+        crate::theme::ListHeight::Tall.px(),
+    );
     egui::ScrollArea::both()
         .id_salt("preview_primary_input_scroll")
         .auto_shrink([false, false])
@@ -59,13 +62,13 @@ pub(super) fn show_breakpoint_input_condition(
             ui.add(
                 egui::TextEdit::singleline(&mut condition.consumer_text)
                     .char_limit(10)
-                    .desired_width(80.0),
+                    .desired_width(crate::theme::FieldWidth::Small.min()),
             );
             ui.label("Input #");
             ui.add(
                 egui::TextEdit::singleline(&mut condition.input_number_text)
                     .char_limit(4)
-                    .desired_width(48.0),
+                    .desired_width(crate::theme::METRICS.min_grid_col),
             );
         }
     });
@@ -75,7 +78,7 @@ pub(super) fn show_breakpoint_input_condition(
             ui.add(
                 egui::TextEdit::singleline(&mut condition.function_text)
                     .char_limit(20)
-                    .desired_width(110.0)
+                    .desired_width(crate::theme::FieldWidth::Medium.min())
                     .hint_text("Optional function ID"),
             );
         });
@@ -130,7 +133,7 @@ pub(super) fn show_breakpoint_expression_condition(
             ui.add(
                 egui::TextEdit::singleline(&mut condition.node_text)
                     .char_limit(10)
-                    .desired_width(100.0)
+                    .desired_width(crate::theme::FieldWidth::Small.min())
                     .hint_text("Graph node ID"),
             );
         }
@@ -141,7 +144,7 @@ pub(super) fn show_breakpoint_expression_condition(
             ui.add(
                 egui::TextEdit::singleline(&mut condition.function_text)
                     .char_limit(20)
-                    .desired_width(110.0)
+                    .desired_width(crate::theme::FieldWidth::Medium.min())
                     .hint_text("Optional function ID"),
             );
         });
@@ -191,7 +194,7 @@ pub(super) fn show_breakpoint_node_condition(
         if condition.enabled {
             ui.add(
                 egui::TextEdit::singleline(&mut condition.text)
-                    .desired_width(100.0)
+                    .desired_width(crate::theme::FieldWidth::Small.min())
                     .hint_text("Graph node ID"),
             );
         }
@@ -222,13 +225,13 @@ pub(super) fn show_breakpoint_source_condition(
             ui.label("Frame from innermost");
             ui.add(
                 egui::TextEdit::singleline(&mut condition.frame_from_inner)
-                    .desired_width(32.0)
+                    .desired_width(crate::theme::METRICS.min_grid_col)
                     .hint_text("0–3"),
             );
             ui.label("Field");
             ui.add(
                 egui::TextEdit::singleline(&mut condition.field)
-                    .desired_width(150.0)
+                    .desired_width(crate::theme::FieldWidth::Medium.min())
                     .hint_text("Immediate field name"),
             );
             egui::ComboBox::from_id_salt(id)
@@ -268,7 +271,7 @@ pub(super) fn show_breakpoint_position_condition(
         if condition.enabled {
             ui.add(
                 egui::TextEdit::singleline(&mut condition.text)
-                    .desired_width(96.0)
+                    .desired_width(crate::theme::FieldWidth::Small.min())
                     .hint_text("1-based active item number"),
             );
         }

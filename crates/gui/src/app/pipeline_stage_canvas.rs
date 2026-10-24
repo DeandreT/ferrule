@@ -353,7 +353,7 @@ impl FerruleApp {
             });
         if !session.editor.diagnostics.is_empty() {
             egui::Panel::bottom(namespace.with("diagnostics"))
-                .default_size(120.0)
+                .default_size(crate::theme::METRICS.diagnostics_height)
                 .show(ui, |ui| {
                     if let Some(diagnostic) = session.editor.diagnostics.show(ui) {
                         session.editor.navigate_to_diagnostic(&diagnostic);

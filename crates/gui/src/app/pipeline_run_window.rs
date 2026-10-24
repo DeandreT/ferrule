@@ -59,8 +59,8 @@ impl FerruleApp {
             (ctx.content_rect().height() - 2.0 * VIEWPORT_MARGIN).max(MIN_WINDOW_HEIGHT);
         let window = egui::Window::new("Run or preview pipeline")
             .collapsible(false)
-            .default_width(650.0)
-            .min_width(480.0)
+            .default_width(crate::theme::DialogWidth::Wide.px())
+            .min_width(crate::theme::DialogWidth::Narrow.px())
             .default_height(DEFAULT_WINDOW_HEIGHT.min(max_height))
             .max_height(max_height)
             .resizable(true);
@@ -136,7 +136,7 @@ impl FerruleApp {
                     ui.small("These paths identify output formats for Preview. Preview does not write files. Dynamic document targets use a base directory.");
                     egui::ScrollArea::vertical()
                         .id_salt("pipeline_preview_formats")
-                        .max_height(160.0)
+                        .max_height(crate::theme::ListHeight::Medium.px())
                         .show(ui, |ui| {
                             egui::Grid::new("pipeline_preview_paths")
                                 .num_columns(2)
@@ -158,7 +158,7 @@ impl FerruleApp {
                     ui.small("Choose files to publish after every stage succeeds. Blank outputs are not saved. Dynamic document targets use a base directory.");
                     egui::ScrollArea::vertical()
                         .id_salt("pipeline_publish_outputs")
-                        .max_height(210.0)
+                        .max_height(crate::theme::ListHeight::Medium.px())
                         .show(ui, |ui| {
                             egui::Grid::new("pipeline_output_paths")
                                 .num_columns(2)

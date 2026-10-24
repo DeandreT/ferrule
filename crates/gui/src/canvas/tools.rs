@@ -870,7 +870,7 @@ pub(crate) fn toolbar(
                         "Choose an exact source and destination. This does not disconnect it.",
                     );
                     egui::ScrollArea::vertical()
-                        .max_height(300.0)
+                        .max_height(crate::theme::ListHeight::Tall.px())
                         .show(ui, |ui| {
                             for (index, edge) in state.picker.iter().enumerate() {
                                 let response = ui.selectable_label(

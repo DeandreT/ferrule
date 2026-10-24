@@ -433,7 +433,7 @@ impl GraphViewer<'_> {
                 } => {
                     egui::ScrollArea::vertical()
                         .id_salt("xml_mixed_content_replacements")
-                        .max_height(180.0)
+                        .max_height(crate::theme::ListHeight::Medium.px())
                         .auto_shrink([false, true])
                         .show(ui, |ui| {
                             ui.add(

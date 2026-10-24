@@ -926,7 +926,10 @@ fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
             egui::ScrollArea::both()
                 .id_salt(("run_output_preview", view.selected_output))
                 .auto_shrink([false, false])
-                .max_height(ui.available_height().max(120.0))
+                .max_height(
+                    ui.available_height()
+                        .max(crate::theme::ListHeight::Short.px()),
+                )
                 .show(ui, |ui| {
                     ui.add(
                         egui::Label::new(egui::RichText::new(content).monospace())
@@ -955,7 +958,10 @@ fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
             egui::ScrollArea::both()
                 .id_salt(("run_binary_preview", view.selected_output))
                 .auto_shrink([false, false])
-                .max_height(ui.available_height().max(120.0))
+                .max_height(
+                    ui.available_height()
+                        .max(crate::theme::ListHeight::Short.px()),
+                )
                 .show(ui, |ui| {
                     ui.add(
                         egui::Label::new(egui::RichText::new(content).monospace())
@@ -980,7 +986,7 @@ fn show_trace(ui: &mut egui::Ui, view: &mut RunReportView) {
         ui.add(
             egui::TextEdit::singleline(&mut view.trace_filter)
                 .hint_text("Filter trace")
-                .desired_width(280.0),
+                .desired_width(crate::theme::FieldWidth::Large.min()),
         );
         if !view.trace_filter.is_empty()
             && crate::icons::button(ui, true, lucide_icons::Icon::X, "Clear trace filter").clicked()
