@@ -4,6 +4,8 @@ use super::*;
 mod command_bar;
 #[path = "workspace/inspector.rs"]
 mod inspector;
+#[path = "workspace/start_view.rs"]
+mod start_view;
 
 impl FerruleApp {
     fn arrange_focused_canvas(&mut self, mode: ArrangeMode) {
@@ -120,7 +122,7 @@ impl FerruleApp {
             self.status = "project is valid".to_string();
             self.diagnostics.clear();
         } else {
-            self.status = format!("{} validation issue(s)", issues.len());
+            self.status = crate::ui_kit::plural(issues.len(), "validation issue");
             self.diagnostics.validation(&self.project, issues);
         }
     }

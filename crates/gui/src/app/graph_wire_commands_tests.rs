@@ -364,7 +364,7 @@ fn wire_commands_interleave_with_removals_and_snapshots() {
         [
             ("command", Some("Disconnect wire".into())),
             ("state", Some(states[3].clone())),
-            ("snapshot", Some("Edit mapping".into())),
+            ("snapshot", Some("Edit layout".into())),
             ("state", Some(states[3].clone())),
             ("command", Some("Remove node".into())),
             ("state", Some(states[2].clone())),
@@ -387,7 +387,7 @@ fn wire_commands_interleave_with_removals_and_snapshots() {
             ("redid Edit mapping".into(), states[1].clone()),
             ("redid Connect wire".into(), states[2].clone()),
             ("redid Remove node".into(), states[3].clone()),
-            ("redid Edit mapping".into(), states[3].clone()),
+            ("redid Edit layout".into(), states[3].clone()),
             ("redid Disconnect wire".into(), states[4].clone()),
         ]
     );

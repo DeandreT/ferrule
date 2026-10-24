@@ -209,15 +209,20 @@ pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut XlsxBoundaryDraft, tar
                             {
                                 ui.label(&field.name);
                                 ui.add(
-                                    egui::TextEdit::singleline(column)
-                                        .char_limit(5)
-                                        .desired_width(80.0),
+                                    crate::ui_kit::text_field(
+                                        column,
+                                        crate::ui_kit::FieldWidth::Small,
+                                    )
+                                    .char_limit(5),
                                 );
                                 if target
                                     && draft.has_header_row
                                     && let Some(header) = draft.headers.get_mut(index)
                                 {
-                                    ui.add(egui::TextEdit::singleline(header).desired_width(180.0));
+                                    ui.add(crate::ui_kit::text_field(
+                                        header,
+                                        crate::ui_kit::FieldWidth::Medium,
+                                    ));
                                 }
                                 ui.end_row();
                             }
