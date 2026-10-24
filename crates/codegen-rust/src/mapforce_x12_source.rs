@@ -40,6 +40,7 @@ pub fn emit_with_mapforce_x12_json(
         .find(|file| file.path.as_str() == "src/lib.rs")
         .ok_or(MapForceSourceEmitError::Artifact)?;
     mapping.contents.extend_from_slice(format!("\npub fn serialize_mapforce_json(value: &codegen_runtime::Instance) -> Result<String, codegen_runtime::MapForceJson5Error> {{\n    codegen_runtime::serialize_mapforce_json_ascii_keys({descriptor:?}, value)\n}}\n").as_bytes());
+    mapping.contents.extend_from_slice(format!("\npub fn write_mapforce_json(value: &codegen_runtime::Instance, output: &mut dyn std::io::Write) -> Result<(), codegen_runtime::MapForceJsonWriteError> {{\n    codegen_runtime::write_mapforce_json_ascii_keys({descriptor:?}, value, output)\n}}\n").as_bytes());
     ArtifactSet::new(files)
         .map_err(EmitError::from)
         .map_err(MapForceSourceEmitError::Emit)

@@ -43,5 +43,29 @@ internal static partial class Program
         Equal(strictExpected, FerruleJson.SerializeMapForceJsonAsciiKeys(anySchema, new FerruleScalar(FerruleValue.FromString(strictInput))));
         Equal(strictExpected, FerruleMapForceJson5.FormatStrictAsciiKeys(strictInput, Encoding.UTF8.GetByteCount(strictExpected)));
         Throws<FerruleMapForceJson5Exception>(() => FerruleMapForceJson5.FormatStrictAsciiKeys(strictInput, Encoding.UTF8.GetByteCount(strictExpected)-1));
+        var stream = new JsonPublicationStream();
+        FerruleJson.WriteMapForceJsonAsciiKeys(anySchema, new FerruleScalar(FerruleValue.FromString(strictInput)), stream);
+        Equal(strictExpected, Encoding.UTF8.GetString(stream.ToArray()));
+        Equal(1, stream.Flushes); Equal(false, stream.Disposed);
+        var failing = new JsonPublicationStream { FailWrite = true };
+        Throws<IOException>(() => FerruleJson.WriteMapForceJsonAsciiKeys(anySchema, new FerruleScalar(FerruleValue.FromString(strictInput)), failing));
+        Equal(0, failing.Flushes); Equal(false, failing.Disposed);
+        var malformed = new JsonPublicationStream();
+        Throws<FerruleMapForceJson5Exception>(() => FerruleJson.WriteMapForceJsonAsciiKeys(anySchema, new FerruleScalar(FerruleValue.FromString("{")), malformed));
+        Equal(0L, malformed.Length); Equal(0, malformed.Flushes);
+    }
+
+    private sealed class JsonPublicationStream : MemoryStream
+    {
+        internal bool FailWrite;
+        internal int Flushes;
+        internal bool Disposed;
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            if (FailWrite) throw new IOException("injected JSON write");
+            base.Write(buffer, offset, count);
+        }
+        public override void Flush() { Flushes++; base.Flush(); }
+        protected override void Dispose(bool disposing) { Disposed = true; base.Dispose(disposing); }
     }
 }

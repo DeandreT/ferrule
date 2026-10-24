@@ -41,7 +41,7 @@ pub fn emit_with_mapforce_x12_json(
         .iter_mut()
         .find(|file| file.path.as_str() == "GeneratedMapping.cs")
         .ok_or(MapForceSourceEmitError::Artifact)?;
-    mapping.contents.extend_from_slice(format!("\npublic static partial class GeneratedMapping\n{{\n    public static string SerializeMapForceJson(global::Ferrule.Runtime.FerruleInstance value) => global::Ferrule.Runtime.FerruleJson.SerializeMapForceJsonAsciiKeys({}, value);\n}}\n",crate::literal::string(&descriptor)).as_bytes());
+    mapping.contents.extend_from_slice(format!("\npublic static partial class GeneratedMapping\n{{\n    public static string SerializeMapForceJson(global::Ferrule.Runtime.FerruleInstance value) => global::Ferrule.Runtime.FerruleJson.SerializeMapForceJsonAsciiKeys({0}, value);\n    public static void WriteMapForceJson(global::Ferrule.Runtime.FerruleInstance value, global::System.IO.Stream output) => global::Ferrule.Runtime.FerruleJson.WriteMapForceJsonAsciiKeys({0}, value, output);\n}}\n",crate::literal::string(&descriptor)).as_bytes());
     ArtifactSet::new(files)
         .map_err(EmitError::from)
         .map_err(MapForceSourceEmitError::Emit)
