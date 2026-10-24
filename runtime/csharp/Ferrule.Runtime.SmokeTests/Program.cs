@@ -22,6 +22,8 @@ internal static partial class Program
             ("JSON source complete literal corpus", JsonSourceCorpus),
             ("MapForce-style JSON5 complete byte corpus", MapForceJson5Writer),
             ("Direct source input ownership and limits", DirectSourceInputs),
+            ("Deferred XML preparation and materialization", DeferredXmlPreparation),
+            ("MapForce XML document bytes", MapForceXmlDocumentBytes),
             ("MapForce-style JSON5 typed decimal output", MapForceJson5Typed),
             ("Exact source row document paths", SourceRowDocumentPaths),
             ("CSV file sets retain empty files", CsvFileSet),

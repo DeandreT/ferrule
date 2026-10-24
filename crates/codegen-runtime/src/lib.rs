@@ -48,6 +48,7 @@ pub use json_projection::{
     MAX_JSON_PROJECTED_VALUES, parse_json_projection_shape, project_json_source_document,
 };
 pub use mapping::JsonSourceShape;
+mod mapforce_xml;
 mod path_hierarchy;
 mod recursive_filter;
 mod runtime_value;
@@ -55,6 +56,9 @@ mod user_function;
 mod value_map;
 mod x12;
 mod xml;
+pub use mapforce_xml::{MapForceXmlError, serialize_mapforce_xml_document};
+mod xml_deferred;
+pub use xml_deferred::{DeferredXmlDocument, DeferredXmlError};
 mod xml_boundary;
 mod xml_mixed_content;
 

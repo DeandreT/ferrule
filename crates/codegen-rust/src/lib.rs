@@ -52,8 +52,9 @@ mod mapforce_x12_source;
 mod x12_api;
 pub use mapforce_x12_source::{
     MapForceSourceEmitError, emit_with_eager_x12_json_message, emit_with_mapforce_x12_json,
-    emit_with_mapforce_x12_source, emit_with_native_primary_eager_x12_json,
-    emit_with_native_x12_source, emit_with_primary_eager_x12_json,
+    emit_with_mapforce_x12_source, emit_with_native_deferred_x12_xml,
+    emit_with_native_primary_eager_x12_json, emit_with_native_x12_source,
+    emit_with_primary_eager_x12_json,
 };
 mod xml_api;
 pub use x12_api::{X12EmitError, emit_with_x12};

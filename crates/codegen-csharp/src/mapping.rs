@@ -83,6 +83,41 @@ public static partial class GeneratedMapping
     )
 }
 
+pub(crate) fn deferred_xml_message_entry(
+    program: &Program,
+    plan: &codegen::DeferredX12XmlMessage,
+) -> String {
+    let mut scopes = Vec::new();
+    add_scope(&program.root, &mut scopes);
+    let filename = add_scope(&program.extra_targets[0].root, &mut scopes);
+    let early = add_scope(&program.extra_targets[1].root, &mut scopes);
+    let late = add_scope(&program.extra_targets[2].root, &mut scopes);
+    let driver = plan
+        .driver
+        .iter()
+        .map(|part| literal::string(part))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        r#"
+public static partial class GeneratedMapping {{
+    public static global::Ferrule.Runtime.FerruleDeferredXmlDocument? PreparePrimaryX12XmlMessage(global::Ferrule.Runtime.ScopeContext context,global::System.Func<string>? bodyClock=null,global::System.Func<string>? filenameClock=null) {{
+        global::System.ArgumentNullException.ThrowIfNull(context);
+        if(context.ResolveSourceField(new string[] {{{driver}}}).Kind==global::Ferrule.Runtime.FerruleValueKind.Null)return null;
+        var body=context.WithDocumentBodyClock(bodyClock);
+        var early=Scope_{early}(body);
+        var filename=(global::Ferrule.Runtime.FerruleGroup)Scope_{filename}(context.WithDocumentFilenameClock(filenameClock));
+        var path=(filename.Fields.FirstOrDefault(field=>field.Name=="Path")?.Value as global::Ferrule.Runtime.FerruleScalar)?.Value ?? global::Ferrule.Runtime.FerruleValue.Null;
+        var member=global::Ferrule.Runtime.FerruleDynamicDocuments.Create({}U,path,early);
+        return new global::Ferrule.Runtime.FerruleDeferredXmlDocument({},member,()=>Scope_{late}(body));
+    }}
+}}
+"#,
+        plan.filename_node,
+        literal::string(&plan.descriptor)
+    )
+}
+
 pub(crate) fn append_basic_owned_json_api(
     program: &Program,
     output: &mut String,

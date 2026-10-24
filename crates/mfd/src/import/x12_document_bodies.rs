@@ -35,8 +35,14 @@ impl X12DocumentBody {
     /// Retain the independently imported filename as a named output after the
     /// eager JSON body. The separate body and filename projects are unchanged.
     pub fn eager_json_project(&self, filename_target: &str) -> Result<Project, MfdError> {
-        if self.format != X12DocumentBodyFormat::Json
-            || filename_target.is_empty()
+        if self.format != X12DocumentBodyFormat::Json {
+            return Err(refuse("eager JSON documents require a JSON body"));
+        }
+        self.with_filename_target(filename_target)
+    }
+
+    fn with_filename_target(&self, filename_target: &str) -> Result<Project, MfdError> {
+        if filename_target.is_empty()
             || self.body.source != self.filename.source
             || !self.body.extra_targets.is_empty()
             || !self.body.extra_sources.is_empty()
@@ -78,6 +84,39 @@ impl X12DocumentBody {
         }
         Ok(project)
     }
+
+    /// Explicitly selected native materialization boundaries, not schema-derived
+    /// defaults. The unchanged full body remains the primary target.
+    pub fn deferred_xml_project(
+        &self,
+        filename_target: &str,
+        early_fields: &[Vec<String>],
+    ) -> Result<Project, MfdError> {
+        if self.format != X12DocumentBodyFormat::Xml {
+            return Err(refuse("deferred XML preparation requires an XML body"));
+        }
+        if matches!(filename_target, "PreparedXmlValues" | "DeferredXmlValues") {
+            return Err(refuse("reserved XML phase target name"));
+        }
+        let mut project = self.with_filename_target(filename_target)?;
+        let (early, late) =
+            mapping::split_xml_preparation(&project.graph, &project.root, early_fields)
+                .map_err(refuse)?;
+        for (name, root) in [("PreparedXmlValues", early), ("DeferredXmlValues", late)] {
+            project.extra_targets.push(mapping::NamedTarget {
+                name: name.into(),
+                path: None,
+                schema: project.target.clone(),
+                options: project.target_options.clone(),
+                root,
+            });
+        }
+        let issues = engine::validate(&project);
+        if !issues.is_empty() {
+            return Err(refuse(format!("XML preparation validation: {issues:?}")));
+        }
+        Ok(project)
+    }
 }
 
 pub struct ImportedX12DocumentBodies {
@@ -109,7 +148,30 @@ impl ImportedX12DocumentBodies {
         let [target] = targets.as_slice() else {
             return Err(refuse("JSON document target is absent or ambiguous"));
         };
-        let mut project = target.eager_json_project(filename_target)?;
+        self.with_primary_filename(target.eager_json_project(filename_target)?)
+    }
+
+    pub fn deferred_xml_document(
+        &self,
+        target_name: &str,
+        filename_target: &str,
+        early_fields: &[Vec<String>],
+    ) -> Result<mapping::DocumentProject, MfdError> {
+        let targets = self
+            .targets
+            .iter()
+            .filter(|t| t.name == target_name)
+            .collect::<Vec<_>>();
+        let [target] = targets.as_slice() else {
+            return Err(refuse("XML document target is absent or ambiguous"));
+        };
+        self.with_primary_filename(target.deferred_xml_project(filename_target, early_fields)?)
+    }
+
+    fn with_primary_filename(
+        &self,
+        mut project: Project,
+    ) -> Result<mapping::DocumentProject, MfdError> {
         let node = project
             .graph
             .nodes

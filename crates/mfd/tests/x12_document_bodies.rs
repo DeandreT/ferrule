@@ -327,6 +327,54 @@ fn xml_scalar_occurrences_retain_schema_and_native_negative_zero() {
         &[text("-0"), text("3")]
     );
     assert!(codegen::lower(&target.body).is_ok());
+    let before = serde_json::to_vec(&target.body).unwrap();
+    let document = imported
+        .deferred_xml_document(&target.name, "ResolvedFilename", &[vec!["Quantity".into()]])
+        .unwrap();
+    let program = codegen::lower_document(&document).unwrap();
+    assert_eq!(program.program().extra_targets.len(), 3);
+    assert_eq!(serde_json::to_vec(&target.body).unwrap(), before);
+    let source = codegen::NativeX12Source {
+        schema: &imported.source_schema,
+        options: &imported.source_options,
+        message: &imported.message_path,
+        encoding: imported.source_encoding,
+        structure: Some(&imported.source_structure),
+    };
+    assert!(
+        codegen::prepare_deferred_x12_xml(
+            program.program(),
+            "ResolvedFilename",
+            &target.driver_path
+        )
+        .is_ok()
+    );
+    // This fixture deliberately has a reduced physical envelope. Phasing must
+    // not weaken the native source companion's structural admission.
+    assert!(matches!(
+        codegen_rust::emit_with_native_deferred_x12_xml(
+            &program,
+            &rust_options(),
+            &source,
+            "ResolvedFilename",
+            &target.driver_path
+        ),
+        Err(codegen_rust::MapForceSourceEmitError::Boundary(_))
+    ));
+    assert!(matches!(
+        codegen_csharp::emit_with_native_deferred_x12_xml(
+            &program,
+            &source,
+            "ResolvedFilename",
+            &target.driver_path
+        ),
+        Err(codegen_csharp::MapForceSourceEmitError::Boundary(_))
+    ));
+    assert!(
+        target
+            .deferred_xml_project("ResolvedFilename", &[vec!["Missing".into()]])
+            .is_err()
+    );
 }
 
 #[test]
