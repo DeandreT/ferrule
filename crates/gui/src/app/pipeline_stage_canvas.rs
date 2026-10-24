@@ -202,14 +202,15 @@ impl FerruleApp {
         else {
             return;
         };
-        let mut apply = false;
-        let mut discard = false;
-        let mut keep = false;
-        egui::Window::new("Unapplied stage mapping changes")
-            .id(egui::Id::unique("pipeline_stage_close_guard"))
-            .collapsible(false)
-            .resizable(false)
-            .show(context, |ui| {
+        let response = crate::ui_kit::dialog(
+            context,
+            crate::ui_kit::DialogKind::Modal,
+            "Unapplied stage mapping changes",
+        )
+        .id_salt("pipeline_stage_close_guard")
+        .width(crate::ui_kit::DialogWidth::Medium)
+        .show(
+            |ui| {
                 ui.label(
                     "Apply the stage mapping to the pipeline, discard this draft, or keep editing.",
                 );
@@ -220,12 +221,20 @@ impl FerruleApp {
                 {
                     ui.colored_label(ui.visuals().error_fg_color, error);
                 }
-                ui.horizontal(|ui| {
-                    apply = ui.button("Apply stage changes").clicked();
-                    discard = ui.button("Discard stage changes").clicked();
-                    keep = ui.button("Keep editing stage").clicked();
-                });
-            });
+            },
+            |ui| {
+                crate::ui_kit::dialog_buttons(
+                    ui,
+                    "Apply stage changes".into(),
+                    Some("Keep editing stage".into()),
+                    Some("Discard stage changes".into()),
+                )
+            },
+        );
+        let apply = response.footer == Some(crate::ui_kit::DialogAction::Primary);
+        let discard = response.footer == Some(crate::ui_kit::DialogAction::Destructive);
+        let keep = response.close_requested
+            || response.footer == Some(crate::ui_kit::DialogAction::Secondary);
         if keep && let Some(session) = self.pipeline_stage_canvas.as_mut() {
             session.close = None;
         }

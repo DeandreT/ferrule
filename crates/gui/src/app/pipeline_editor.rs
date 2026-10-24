@@ -279,10 +279,10 @@ impl FerruleApp {
                 });
             });
             ui.strong("Stages");
-            ui.horizontal_wrapped(|ui| {
-                for (index, stage) in editor.document.pipeline.stages.iter().enumerate() {
-                    if ui
-                        .selectable_label(editor.selected_stage == Some(index), &stage.id)
+                    crate::ui_kit::list_area("pipeline_stages", crate::ui_kit::ListHeight::Short).show(ui, |ui| {
+                        for (index, stage) in editor.document.pipeline.stages.iter().enumerate() {
+                            if ui
+                                .selectable_label(editor.selected_stage == Some(index), format!("{}. {}", index + 1, stage.id))
                         .clicked()
                     {
                         selected = Some(index);
@@ -499,26 +499,27 @@ impl FerruleApp {
         if self.pending_pipeline_editor_action.is_none() {
             return;
         }
-        let mut discard = false;
-        let mut keep = false;
-        egui::Window::new("Unsaved pipeline changes")
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.label("The pipeline has unsaved edits.");
-                ui.horizontal(|ui| {
-                    if ui.button("Keep editing").clicked() {
-                        keep = true;
-                    }
-                    if ui.button("Discard changes").clicked() {
-                        discard = true;
-                    }
-                });
-            });
-        if keep {
+        let response = crate::ui_kit::dialog(
+            ctx,
+            crate::ui_kit::DialogKind::Modal,
+            "Unsaved pipeline changes",
+        )
+        .show(
+            |ui| ui.label("The pipeline has unsaved edits."),
+            |ui| {
+                crate::ui_kit::dialog_buttons(
+                    ui,
+                    "Keep editing".into(),
+                    None,
+                    Some("Discard changes".into()),
+                )
+            },
+        );
+        if response.close_requested || response.footer == Some(crate::ui_kit::DialogAction::Primary)
+        {
             self.pending_pipeline_editor_action = None;
         }
-        if discard {
+        if response.footer == Some(crate::ui_kit::DialogAction::Destructive) {
             self.discard_pending_pipeline_editor_action(ctx);
         }
     }
@@ -703,5 +704,47 @@ fn input_label(input: &PipelineInput) -> String {
             Some(target) => format!("{stage} / {target}"),
             None => format!("{stage} / Primary"),
         },
+    }
+}
+
+#[cfg(test)]
+mod presentation_tests {
+    use super::*;
+    use crate::test_ui::ContextExt as _;
+
+    #[test]
+    fn pending_pipeline_confirmation_blocks_global_mapping_commands() {
+        let app = FerruleApp {
+            pending_pipeline_editor_action: Some(PipelineEditorAction::Close),
+            ..Default::default()
+        };
+        assert!(!app.project_editing_enabled());
+    }
+
+    #[test]
+    fn escape_keeps_editing_instead_of_discarding_pipeline_changes() {
+        let mut app = FerruleApp {
+            pending_pipeline_editor_action: Some(PipelineEditorAction::Close),
+            ..Default::default()
+        };
+        let context = egui::Context::default();
+        crate::icons::install(&context);
+        context.run_test_ui(Default::default(), |ui| {
+            app.show_pipeline_editor_guard(ui.ctx());
+        });
+        context.run_test_ui(
+            egui::RawInput {
+                events: vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+                ..Default::default()
+            },
+            |ui| app.show_pipeline_editor_guard(ui.ctx()),
+        );
+        assert!(app.pending_pipeline_editor_action.is_none());
     }
 }

@@ -533,7 +533,7 @@ impl FerruleApp {
             .width(crate::ui_kit::DialogWidth::Wide)
             .show(|ui| {
                 let mut condition_valid = true;
-                let mut host_parameters_valid = true;
+                let mut host_parameters_valid = self.host_parameters.compile().is_ok();
                 if let Some(session) = &mut self.primary_document {
                     ui.add_enabled_ui(!running && dialog_idle, |ui| {
                         ui.horizontal(|ui| {
@@ -801,21 +801,22 @@ impl FerruleApp {
                         ui.weak("Stopping preview");
                     }
                     None => {
-                        if ui.button("Cancel").clicked() {
-                            action = Some(PreviewAction::Cancel);
-                        }
-                        if ui
-                            .add_enabled(ready && host_parameters_valid, egui::Button::new("Preview"))
-                            .clicked()
-                        {
-                            action = Some(PreviewAction::Execute);
-                        }
-                        if ui
-                            .add_enabled(!documents && ready && host_parameters_valid && condition_valid, egui::Button::new("Debug preview"))
-                            .clicked()
-                        {
-                            action = Some(PreviewAction::Debug);
-                        }
+                        let palette = crate::theme::active_palette(ui.ctx());
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.add_enabled(ready && host_parameters_valid,
+                                egui::Button::new(egui::RichText::new("Preview").color(palette.on_action)).fill(palette.action)).clicked()
+                            {
+                                action = Some(PreviewAction::Execute);
+                            }
+                            if !documents && ui.add_enabled(ready && host_parameters_valid && condition_valid,
+                                egui::Button::new("Debug preview")).clicked()
+                            {
+                                action = Some(PreviewAction::Debug);
+                            }
+                            if ui.button("Cancel").clicked() {
+                                action = Some(PreviewAction::Cancel);
+                            }
+                        });
                     }
                 });
             });

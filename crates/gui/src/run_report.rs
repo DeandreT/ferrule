@@ -736,17 +736,13 @@ fn replay_action(ui: &mut egui::Ui, index: usize, label: &str) -> egui::Response
 }
 
 fn replayable_trace_row(ui: &mut egui::Ui, index: usize, row: String) -> bool {
-    let mut replay = false;
-    ui.horizontal(|ui| {
-        replay = replay_action(ui, index, "Replay").clicked();
-        ui.add(
-            egui::Label::new(egui::RichText::new(&row).monospace())
-                .selectable(true)
-                .wrap_mode(egui::TextWrapMode::Truncate),
-        )
-        .on_hover_text(row);
-    });
-    replay
+    ui.add(
+        egui::Label::new(egui::RichText::new(&row).monospace())
+            .sense(egui::Sense::click())
+            .wrap_mode(egui::TextWrapMode::Truncate),
+    )
+    .on_hover_text(format!("{row}\nClick to replay from event {}", index + 1))
+    .clicked()
 }
 
 fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
