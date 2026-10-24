@@ -622,7 +622,7 @@ impl FerruleApp {
             });
             let result = match (&document_policy, &reader) {
                 // A document project reads only beneath its input root.
-                (Some(policy), _) => cli::run_primary_csv_document_file(
+                (Some(policy), _) => cli::run_primary_document_file(
                     &project_path,
                     output_path.as_deref(),
                     policy,

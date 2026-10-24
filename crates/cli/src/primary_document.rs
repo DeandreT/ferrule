@@ -1,6 +1,6 @@
 //! Saved primary filename document projects: the explicit local filesystem
 //! host, one interpreter run over every selected document, and staged
-//! publication of the one complete CSV output document.
+//! publication of the one complete output document in the route's format.
 //!
 //! The project's saved source path is never read. Filenames resolve only
 //! beneath the host-selected input root, and no network source is reachable.
@@ -13,10 +13,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context as _, bail};
 use format_csv::{
-    CsvByteDecodingPolicy, CsvSourceData, CsvWriteOptions, LocalFileError, LocalPrimaryFiles,
+    CsvByteDecodingPolicy, CsvSourceData, CsvSourceError, LocalFileError, LocalPrimaryFiles,
     PrimarySourceHost,
 };
-use mapping::{DocumentProject, PrimaryFileSelection};
+use mapping::{
+    DocumentProject, PrimaryDocumentFormat, PrimaryDocumentShape, PrimaryFileSelection,
+    PrimaryRouteError,
+};
 
 use crate::{RunOutcome, WrittenOutput, absolute_mapping_path, resolve_run_path};
 
@@ -44,43 +47,82 @@ impl PrimaryDocumentPolicy {
     }
 }
 
-/// Typed failure of one primary document run before publication.
+/// A failure reported by a shared format reader or writer, with its context.
 #[derive(Debug)]
-pub enum PrimaryDocumentError {
-    /// The source or target lacks an explicit CSV format identity.
-    Format {
-        side: &'static str,
-    },
-    /// The input root is unavailable.
-    Root(LocalFileError),
-    Run(engine::PrimaryDocumentRunError<LocalFileError>),
-    Output(format_csv::CsvBoundedError),
-    /// The mapping's primary target is not a repeated row set.
-    OutputShape,
+pub struct DocumentFormatError(anyhow::Error);
+
+impl fmt::Display for DocumentFormatError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:#}", self.0)
+    }
 }
 
-impl fmt::Display for PrimaryDocumentError {
+impl std::error::Error for DocumentFormatError {}
+
+/// Why one loaded primary document could not be read.
+#[derive(Debug)]
+pub enum PrimaryInputError {
+    Csv(CsvSourceError),
+    Document(DocumentFormatError),
+}
+
+impl fmt::Display for PrimaryInputError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Format { side } => write!(
-                f,
-                "a primary document {side} requires an explicit CSV format identity"
-            ),
-            Self::Root(error) => error.fmt(f),
-            Self::Run(error) => error.fmt(f),
-            Self::Output(error) => error.fmt(f),
-            Self::OutputShape => f.write_str("the primary CSV target did not produce rows"),
+            Self::Csv(error) => error.fmt(f),
+            Self::Document(error) => error.fmt(f),
         }
     }
 }
 
-impl std::error::Error for PrimaryDocumentError {
+impl std::error::Error for PrimaryInputError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::Csv(error) => Some(error),
+            Self::Document(error) => Some(error),
+        }
+    }
+}
+
+/// Typed failure of one primary document run before publication; `E` is the
+/// host's failure.
+#[derive(Debug)]
+pub enum PrimaryDocumentError<E = LocalFileError> {
+    /// The saved formats have no primary document route.
+    Route(PrimaryRouteError),
+    /// The input root is unavailable.
+    Root(LocalFileError),
+    Run(engine::PrimaryDocumentRunError<E, PrimaryInputError>),
+    /// The mapped target cannot be written in the route's format.
+    Output(DocumentFormatError),
+    /// The complete output exceeds its byte limit.
+    OutputTooLarge {
+        maximum: usize,
+    },
+}
+
+impl<E: fmt::Display> fmt::Display for PrimaryDocumentError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Route(error) => error.fmt(f),
+            Self::Root(error) => error.fmt(f),
+            Self::Run(error) => error.fmt(f),
+            Self::Output(error) => error.fmt(f),
+            Self::OutputTooLarge { maximum } => {
+                write!(f, "the primary document output exceeds {maximum} bytes")
+            }
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for PrimaryDocumentError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Route(error) => Some(error),
             Self::Root(error) => Some(error),
             Self::Run(error) => Some(error),
             Self::Output(error) => Some(error),
-            Self::Format { .. } | Self::OutputShape => None,
+            Self::OutputTooLarge { .. } => None,
         }
     }
 }
@@ -132,11 +174,10 @@ pub(crate) fn csv_document_identity(project: &mapping::Project) -> Result<(), &'
     Ok(())
 }
 
-/// The refusals of a document run that need no input: both CSV identities,
-/// the filename plan and the embedded mapping.
-pub fn check_primary_csv_document(document: &DocumentProject) -> anyhow::Result<()> {
-    csv_document_identity(document.project())
-        .map_err(|side| PrimaryDocumentError::Format { side })?;
+/// The refusals of a document run that need no input: the route, the
+/// filename plan and the embedded mapping.
+pub fn check_primary_document(document: &DocumentProject) -> anyhow::Result<()> {
+    document.primary_route()?;
     document.global_filename()?;
     let issues = engine::validate(document.project());
     if !issues.is_empty() {
@@ -146,6 +187,15 @@ pub fn check_primary_csv_document(document: &DocumentProject) -> anyhow::Result<
         );
     }
     Ok(())
+}
+
+/// The payload identity a route's documents are read and written under, so
+/// a request's own extension never selects another format.
+fn route_identity(format: PrimaryDocumentFormat) -> &'static Path {
+    Path::new(match format {
+        PrimaryDocumentFormat::Csv => "document.csv",
+        PrimaryDocumentFormat::Xml => "document.xml",
+    })
 }
 
 struct RecordingHost {
@@ -176,22 +226,53 @@ impl PrimarySourceHost for RecordingHost {
 }
 
 /// Runs `document` once over every document its filename selects beneath the
-/// policy's input root and serializes the one complete CSV output. Nothing is
-/// published. `project_path` is the active mapping path seen by the mapping.
-pub fn execute_primary_csv_document(
+/// policy's input root and serializes the one complete output in the route's
+/// format. Nothing is published. `project_path` is the active mapping path
+/// seen by the mapping.
+pub fn execute_primary_document(
     document: &DocumentProject,
     project_path: &Path,
     policy: &PrimaryDocumentPolicy,
     runtime_parameters: Option<&engine::RuntimeParameters>,
 ) -> Result<PrimaryDocumentOutput, PrimaryDocumentError> {
-    let project = document.project();
-    csv_document_identity(project).map_err(|side| PrimaryDocumentError::Format { side })?;
+    document
+        .primary_route()
+        .map_err(PrimaryDocumentError::Route)?;
     let host = RecordingHost {
         files: LocalPrimaryFiles::new(&policy.input_root)
             .map_err(PrimaryDocumentError::Root)?
             .with_max_document_bytes(policy.max_document_bytes),
         documents: RefCell::new(Vec::new()),
     };
+    let (bytes, records) = execute_primary_document_with_host(
+        document,
+        project_path,
+        &host,
+        policy.max_documents,
+        runtime_parameters,
+    )?;
+    let (documents, locations) = host.documents.into_inner().into_iter().unzip();
+    Ok(PrimaryDocumentOutput {
+        bytes,
+        records,
+        documents,
+        locations,
+    })
+}
+
+/// [`execute_primary_document`] through an explicit host. Returns the
+/// complete output and its record count.
+pub fn execute_primary_document_with_host<H: PrimarySourceHost>(
+    document: &DocumentProject,
+    project_path: &Path,
+    host: &H,
+    max_documents: usize,
+    runtime_parameters: Option<&engine::RuntimeParameters>,
+) -> Result<(Vec<u8>, usize), PrimaryDocumentError<H::Error>> {
+    let project = document.project();
+    let route = document
+        .primary_route()
+        .map_err(PrimaryDocumentError::Route)?;
     let current_datetime = jiff::Zoned::now()
         .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
         .to_string();
@@ -200,37 +281,55 @@ pub fn execute_primary_csv_document(
     if let Some(parameters) = runtime_parameters {
         execution = execution.with_parameters(parameters);
     }
-    let output = engine::run_primary_csv_document(
+    let identity = route_identity(route.format);
+    // Each member of a document set is one ordinary document of the source.
+    let mut member_options = project.source_options.clone();
+    member_options.local_xml_file_set = false;
+    let mut csv = engine::primary_csv_parser(project, CsvByteDecodingPolicy::StrictUtf8);
+    let output = engine::run_primary_document(
         document,
         &execution,
-        &host,
-        CsvByteDecodingPolicy::StrictUtf8,
-        policy.max_documents,
+        host,
+        max_documents,
+        |request, data| match route.format {
+            PrimaryDocumentFormat::Csv => csv(request, data).map_err(PrimaryInputError::Csv),
+            PrimaryDocumentFormat::Xml => crate::PayloadDocument::new(identity, &data.bytes)
+                .and_then(|payload| {
+                    crate::payload::read_payload(payload, &project.source, &member_options)
+                })
+                .map_err(|error| PrimaryInputError::Document(DocumentFormatError(error))),
+        },
     )
     .map_err(PrimaryDocumentError::Run)?;
-    let ir::Instance::Repeated(rows) = output else {
-        return Err(PrimaryDocumentError::OutputShape);
-    };
-    let bytes = format_csv::to_bytes_with_options_bounded(
+    let output_identity = project
+        .target_path
+        .as_deref()
+        .map(Path::new)
+        .unwrap_or(identity);
+    let (bytes, records) = crate::payload::render_payload(
+        output_identity,
         &project.target,
-        &rows,
-        &CsvWriteOptions::from(&project.target_options),
-        MAX_PRIMARY_DOCUMENT_OUTPUT_BYTES,
+        &output,
+        &project.target_options,
+        &current_datetime,
     )
-    .map_err(PrimaryDocumentError::Output)?;
-    let (documents, locations) = host.documents.into_inner().into_iter().unzip();
-    Ok(PrimaryDocumentOutput {
-        bytes,
-        records: rows.len(),
-        documents,
-        locations,
-    })
+    .map_err(|error| PrimaryDocumentError::Output(DocumentFormatError(error)))?;
+    if bytes.len() > MAX_PRIMARY_DOCUMENT_OUTPUT_BYTES {
+        return Err(PrimaryDocumentError::OutputTooLarge {
+            maximum: MAX_PRIMARY_DOCUMENT_OUTPUT_BYTES,
+        });
+    }
+    let records = match (route.shape, &output) {
+        (PrimaryDocumentShape::Rows, ir::Instance::Repeated(rows)) => rows.len(),
+        _ => records,
+    };
+    Ok((bytes, records))
 }
 
 /// Loads a saved document project, runs it and publishes the complete output
 /// to `output_path`, or to the project's saved target path when omitted. The
 /// output never replaces the project or a document the run read.
-pub fn run_primary_csv_document_file(
+pub fn run_primary_document_file(
     project_path: &Path,
     output_path: Option<&Path>,
     policy: &PrimaryDocumentPolicy,
@@ -246,7 +345,7 @@ pub fn run_primary_csv_document_file(
         false,
     )?;
     let active = absolute_mapping_path(project_path)?;
-    let output = execute_primary_csv_document(&document, &active, policy, runtime_parameters)?;
+    let output = execute_primary_document(&document, &active, policy, runtime_parameters)?;
     let destination = comparable(&output_path);
     if destination == comparable(project_path)
         || output

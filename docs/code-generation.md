@@ -1149,8 +1149,8 @@ the class members. A `Library` holds that class together with:
   filename evaluator);
 - companion sources, each its own compilation unit holding one partial
   declaration (`GeneratedMapping.Csv.cs`, `.CsvDocument.cs`, `.PrimaryCsv.cs`,
-  `.PrimaryCsvDocument.cs`, `.CsvJson.cs`, `.CsvX12.cs`, `.Json5.cs`, `.X12.cs`
-  and `.Documents.cs`);
+  `.PrimaryCsvDocument.cs`, `.PrimaryXmlDocument.cs`, `.CsvJson.cs`,
+  `.CsvX12.cs`, `.Json5.cs`, `.X12.cs` and `.Documents.cs`);
 - optional runtime sources beyond the fixed runtime set.
 
 Only `Library::into_artifacts` renders text. The class declaration is
@@ -1159,8 +1159,9 @@ rendered from its compile items: the mapping source, then each companion with
 the most recently layered first, then `GeneratedTargetBuilder.cs` and the
 runtime glob. Layered emitters extend the library of the emitter they build
 on: CSV documents extend CSV output, primary CSV acquisition extends the
-primary filename library, and primary CSV documents extend CSV documents with
-the primary filename evaluator. Each layer keeps its own admission ahead of the
+primary filename library, primary CSV documents extend CSV documents with
+the primary filename evaluator, and primary XML documents extend the ordinary
+library and its XML adapter with that evaluator. Each layer keeps its own admission ahead of the
 layer below it.
 
 The Basic owned mappings render their own complete compilation unit, which
@@ -1534,7 +1535,7 @@ not process-memory bounds. Rust preserves input causes in
 mapping-runtime and CSV-writer exceptions.
 
 These APIs take document contents. A saved primary filename document project
-instead generates with `--primary-csv-documents`: its library selects, loads
+instead generates with `--primary-documents`: its library selects, loads
 and maps every document its filename names through a host, as described in
 [primary document filenames](design/primary-document-filenames.md).
 

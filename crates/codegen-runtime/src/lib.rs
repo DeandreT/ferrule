@@ -24,6 +24,7 @@ mod json;
 mod json5;
 mod json_source;
 mod path_hierarchy;
+mod primary_document;
 mod recursive_filter;
 mod runtime_value;
 mod user_function;
@@ -109,7 +110,8 @@ pub use format_csv::{
     CsvReadLimit, CsvReadOptions, CsvRowOccurrence, CsvSourceAcquisition, CsvSourceData,
     CsvSourceDocument, CsvSourceError, CsvSourceLoadError, CsvSourceRows, CsvWriteOptions,
     LocalFileError, LocalPrimaryFiles, MAX_CSV_SOURCE_DOCUMENTS, MAX_CSV_SOURCE_PATH_BYTES,
-    PrimarySourceHost, acquire_primary_csv_rows,
+    PrimaryAcquisitionError, PrimaryAssemblyError, PrimaryDocument, PrimarySourceHost,
+    acquire_primary_csv_rows, acquire_primary_documents, assemble_primary_documents,
     from_bytes_with_decoding_policy_bounded as parse_csv_rows_bytes_with_decoding_policy,
     from_bytes_with_options_bounded as parse_csv_rows_bytes,
     from_str_with_options_bounded as parse_csv_rows,
@@ -151,10 +153,11 @@ pub use json5::{
     Json5BoundaryError, Json5BoundaryResource, Json5SyntaxError, Json5SyntaxKind,
     Json5SyntaxResource, JsonFormatError, map_json5_bytes_with, map_json5_with,
 };
-pub use mapping::{EmptyFileSelection, PrimaryFileSelection};
+pub use mapping::{EmptyFileSelection, PrimaryDocumentShape, PrimaryFileSelection};
 pub use path_hierarchy::{
     MAX_PATH_HIERARCHY_DEPTH, MAX_PATH_HIERARCHY_ITEMS, owned_path_hierarchy, path_hierarchy,
 };
+pub use primary_document::PrimaryXmlDocumentError;
 pub use recursive_filter::{
     OwnedRecursiveFilterPredicate, RecursiveFilterPredicate, owned_recursive_filter,
     recursive_filter,

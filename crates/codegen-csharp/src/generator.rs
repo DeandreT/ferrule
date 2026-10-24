@@ -8,8 +8,9 @@ use codegen::{
 
 use crate::{
     CsvDocumentEmitError, CsvJsonEmitError, CsvX12EmitError, EmitError, Json5EmitError, Options,
-    StaticDocumentEmitError, X12EmitError, csv_document, csv_json, csv_output, csv_x12,
-    json5_output, primary_csv_document, static_documents, x12_output,
+    PrimaryDocumentEmitError, StaticDocumentEmitError, X12EmitError, csv_document, csv_json,
+    csv_output, csv_x12, json5_output, primary_csv_document, primary_xml_document,
+    static_documents, x12_output,
 };
 
 /// One C# generation request. Each method runs the emitter of the free
@@ -73,6 +74,14 @@ impl<'a> Generator<'a> {
         policy: &CsvDocumentBoundaryPolicy,
     ) -> Result<ArtifactSet, CsvDocumentEmitError> {
         primary_csv_document::emit(document, policy, self.options)
+    }
+
+    /// [`crate::emit_with_primary_xml_documents`].
+    pub fn emit_with_primary_xml_documents(
+        &self,
+        document: &DocumentProgram,
+    ) -> Result<ArtifactSet, PrimaryDocumentEmitError> {
+        primary_xml_document::emit(document, self.options)
     }
 
     /// [`crate::emit_with_json5`].
