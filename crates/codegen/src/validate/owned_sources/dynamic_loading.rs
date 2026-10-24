@@ -2,23 +2,42 @@
 //! owned dynamic endpoint with no enclosing iteration of that owner: it walks
 //! the declared driver collection in its receiving context and evaluates the
 //! path expression in each driver item. Exact field and position reads of the
-//! endpoint read its current loaded document. Only the `dynamic_loading`
-//! capability admits them; without it, and in the default emitter, they are refused.
+//! endpoint read its current loaded document, and with `dynamic_document_paths`
+//! its document-path read returns the logical path that loaded it. Only the
+//! `dynamic_loading` capability admits them; without it, and in the default
+//! emitter, they are refused.
 
 use super::admission::{Admission, Ancestor, Visit};
 use super::*;
 
 impl OwnedCapabilities {
     /// Exact field and position reads may name an owned dynamic owner when
-    /// loading is admitted. Loading is orthogonal to source controls,
-    /// consumers and failures.
+    /// loading is admitted, and document-path reads when loaded document
+    /// paths are. Loading is orthogonal to source controls, consumers and
+    /// failures.
     pub(super) fn permits_loaded_read(self, expression: &Expression) -> bool {
         self.dynamic_loading
-            && matches!(
-                expression,
-                Expression::OwnedSourceField(_) | Expression::OwnedPosition(_)
-            )
+            && match expression {
+                Expression::OwnedSourceField(_) | Expression::OwnedPosition(_) => true,
+                Expression::OwnedSourceDocumentPath(_) => self.dynamic_document_paths,
+                _ => false,
+            }
     }
+}
+
+/// Whether `owner` is an owned dynamic endpoint, whose documents only its
+/// loading scopes supply.
+pub(super) fn loaded_owner_read(program: &Program, owner: &mapping::SourceOwner) -> bool {
+    let mapping::SourceOwner::Named { name } = owner else {
+        return false;
+    };
+    program.extra_sources.iter().any(|declaration| {
+        declaration.name == *name
+            && declaration
+                .dynamic
+                .as_ref()
+                .is_some_and(|dynamic| dynamic.driver.owned().is_some())
+    })
 }
 
 /// An owned iteration that loads its endpoint's documents: the declaration,

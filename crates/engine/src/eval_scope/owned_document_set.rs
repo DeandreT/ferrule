@@ -63,7 +63,7 @@ pub(super) fn eval_document_set_scope<'a>(
             path: Vec::new(),
             item: member.value(),
             kind: SourceOriginKind::Document {
-                location: Some(member.source_path()),
+                location: member.source_path(),
             },
         });
         let document_state = OwnedContext {

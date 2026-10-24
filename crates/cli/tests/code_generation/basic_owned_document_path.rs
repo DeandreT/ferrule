@@ -132,8 +132,8 @@ fn basic_docpath451_wire_form_is_strict_and_additive() -> TestResult<()> {
     Ok(())
 }
 
-/// Every other preset, and the ordinary emitters, keep the owned document
-/// path and its document-set walk closed.
+/// Presets without the document-set capability, and the ordinary emitters,
+/// keep the owned document path and its document-set walk closed.
 #[test]
 fn basic_docpath451_other_presets_keep_the_document_path_closed() -> TestResult<()> {
     let project = projects::project("root");
@@ -143,10 +143,10 @@ fn basic_docpath451_other_presets_keep_the_document_path_closed() -> TestResult<
             &program,
             preset.capabilities(),
         );
-        if preset == codegen::OwnedPreset::DocumentPaths {
+        if preset.capabilities().document_sets {
             result?;
         } else {
-            let error = result.expect_err("closed outside the document-path preset");
+            let error = result.expect_err("closed without the document-set capability");
             assert_eq!(
                 capability_refusal(&error),
                 codegen::OwnedSourceCapabilityReason::Document,

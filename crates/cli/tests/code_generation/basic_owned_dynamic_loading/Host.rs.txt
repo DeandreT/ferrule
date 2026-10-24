@@ -1,5 +1,5 @@
 use codegen_runtime::{BasicNamedSourceInput, DynamicSourceLoader, ExecutionContext, Instance,
-    OwnedSourceError, OwnedSourceLimits, RuntimeError, TargetSelection};
+    OwnedSourceError, OwnedSourceIdentity, OwnedSourceLimits, RuntimeError, TargetSelection};
 use serde_json::{Value as Json, json};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -52,6 +52,10 @@ fn error_matches(error: &RuntimeError, recipe: &Json) -> bool {
         "OwnedSource" => {
             let cause = match recipe["cause"].as_str().unwrap() {
                 "SourceUnavailable" => OwnedSourceError::SourceUnavailable { name: recipe["owner"].as_str().unwrap().to_owned() },
+                "MissingDocumentPath" => OwnedSourceError::MissingDocumentPath { owner: match recipe["owner"].as_str().unwrap() {
+                    "Primary" => OwnedSourceIdentity::Primary,
+                    name => OwnedSourceIdentity::Named(name.to_owned()),
+                } },
                 _ => panic!("authored owned cause"),
             };
             // A loading scope's driver walk has no node; an owned read has its own.

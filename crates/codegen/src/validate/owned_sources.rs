@@ -24,6 +24,7 @@ mod basic;
 pub use basic::validate_basic_owned_emission_with_capabilities;
 mod controls;
 mod dynamic_loading;
+use dynamic_loading::loaded_owner_read;
 pub use dynamic_loading::{OwnedDynamicLoading, owned_dynamic_loading};
 
 mod adjacency_tree;

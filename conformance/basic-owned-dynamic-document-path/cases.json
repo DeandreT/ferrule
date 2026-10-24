@@ -1,0 +1,133 @@
+{
+ "version": 1,
+ "documents": [
+  ["Docs", "a.json", ["Group", [["Title", ["String", "A"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]],
+  ["Docs", "b.json", ["Group", [["Title", ["String", "B"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "p2.json"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]],
+  ["Docs", "c.json", ["Group", [["Title", ["String", "C"]], ["Parts", ["Repeated", []]]], {"kind": "Unknown", "identity": null, "literal": null}]],
+  ["Parts", "p1.json", ["Group", [["Name", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}]],
+  ["Parts", "p2.json", ["Group", [["Name", ["String", "P2"]]], {"kind": "Unknown", "identity": null, "literal": null}]]
+ ],
+ "cases": [
+  {
+   "id": "nested-paths",
+   "model": "nested",
+   "loader": true,
+   "source": ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["Label", ["String", "La"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "b.json"]], ["Label", ["String", "Lb"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Catalog", ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "x.json"]], ["Label", ["String", "Lx"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Group", [["Docs", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["Title", ["String", "A"]], ["Label", ["String", "La"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]], ["DocPath", ["String", "a.json"]], ["Name", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "b.json"]], ["Title", ["String", "B"]], ["Label", ["String", "Lb"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]], ["DocPath", ["String", "b.json"]], ["Name", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "p2.json"]], ["DocPath", ["String", "b.json"]], ["Name", ["String", "P2"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}, "calls": ["Docs:a.json", "Docs:b.json", "Parts:p1.json", "Parts:p1.json", "Parts:p2.json"], "reads": ["Docs:a.json", "Docs:b.json", "Parts:p1.json", "Parts:p2.json"]},
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Group", [["Docs", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["Title", ["String", "A"]], ["Label", ["String", "La"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]], ["DocPath", ["String", "a.json"]], ["Name", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "b.json"]], ["Title", ["String", "B"]], ["Label", ["String", "Lb"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]], ["DocPath", ["String", "b.json"]], ["Name", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "p2.json"]], ["DocPath", ["String", "b.json"]], ["Name", ["String", "P2"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}, "calls": ["Docs:a.json", "Docs:b.json", "Parts:p1.json", "Parts:p1.json", "Parts:p2.json"], "reads": ["Docs:a.json", "Docs:b.json", "Parts:p1.json", "Parts:p2.json"]}
+   ]
+  },
+  {
+   "id": "nested-skipped-and-repeated",
+   "model": "nested",
+   "loader": true,
+   "source": ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["Label", ["String", "L1"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Label", ["String", "L2"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["Null"]], ["Label", ["String", "L3"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "a.json"]], ["Label", ["String", "L4"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Catalog", ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "x.json"]], ["Label", ["String", "Lx"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Group", [["Docs", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["Title", ["String", "A"]], ["Label", ["String", "L1"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]], ["DocPath", ["String", "a.json"]], ["Name", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "a.json"]], ["Title", ["String", "A"]], ["Label", ["String", "L4"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]], ["DocPath", ["String", "a.json"]], ["Name", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}, "calls": ["Docs:a.json", "Docs:a.json", "Parts:p1.json", "Parts:p1.json"], "reads": ["Docs:a.json", "Parts:p1.json"]},
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Group", [["Docs", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["Title", ["String", "A"]], ["Label", ["String", "L1"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]], ["DocPath", ["String", "a.json"]], ["Name", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "a.json"]], ["Title", ["String", "A"]], ["Label", ["String", "L4"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]], ["DocPath", ["String", "a.json"]], ["Name", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}, "calls": ["Docs:a.json", "Docs:a.json", "Parts:p1.json", "Parts:p1.json"], "reads": ["Docs:a.json", "Parts:p1.json"]}
+   ]
+  },
+  {
+   "id": "nested-failed-load",
+   "model": "nested",
+   "loader": true,
+   "source": ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["Label", ["String", "La"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "missing.json"]], ["Label", ["String", "Lm"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Catalog", ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "x.json"]], ["Label", ["String", "Lx"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "Load", "source": "Docs", "path": "missing.json", "message": "no document Docs:missing.json"}}, "calls": ["Docs:a.json", "Docs:missing.json"], "reads": ["Docs:a.json", "Docs:missing.json"]},
+    {"selection": "Primary", "expected": {"Err": {"kind": "Load", "source": "Docs", "path": "missing.json", "message": "no document Docs:missing.json"}}, "calls": ["Docs:a.json", "Docs:missing.json"], "reads": ["Docs:a.json", "Docs:missing.json"]}
+   ]
+  },
+  {
+   "id": "nested-no-loader",
+   "model": "nested",
+   "loader": false,
+   "source": ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["Label", ["String", "La"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "b.json"]], ["Label", ["String", "Lb"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Catalog", ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "x.json"]], ["Label", ["String", "Lx"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "MissingLoader", "source": "Docs"}}, "calls": [], "reads": []},
+    {"selection": "Primary", "expected": {"Err": {"kind": "MissingLoader", "source": "Docs"}}, "calls": [], "reads": []}
+   ]
+  },
+  {
+   "id": "named-driver-paths",
+   "model": "named_driver",
+   "loader": true,
+   "source": ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["Label", ["String", "La"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "b.json"]], ["Label", ["String", "Lb"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Catalog", ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "c.json"]], ["Label", ["String", "Lc"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "a.json"]], ["Label", ["String", "La"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Group", [["Docs", ["Repeated", [["Group", [["Path", ["String", "c.json"]], ["Title", ["String", "C"]], ["Label", ["String", "Lc"]], ["Parts", ["Repeated", []]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "a.json"]], ["Title", ["String", "A"]], ["Label", ["String", "La"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]], ["DocPath", ["String", "a.json"]], ["Name", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}, "calls": ["Docs:c.json", "Docs:a.json", "Parts:p1.json"], "reads": ["Docs:c.json", "Docs:a.json", "Parts:p1.json"]},
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Group", [["Docs", ["Repeated", [["Group", [["Path", ["String", "c.json"]], ["Title", ["String", "C"]], ["Label", ["String", "Lc"]], ["Parts", ["Repeated", []]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "a.json"]], ["Title", ["String", "A"]], ["Label", ["String", "La"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]], ["DocPath", ["String", "a.json"]], ["Name", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}, "calls": ["Docs:c.json", "Docs:a.json", "Parts:p1.json"], "reads": ["Docs:c.json", "Docs:a.json", "Parts:p1.json"]}
+   ]
+  },
+  {
+   "id": "sorted-paths",
+   "model": "sorted",
+   "loader": true,
+   "source": ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["Label", ["String", "L1"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "b.json"]], ["Label", ["String", "L2"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "c.json"]], ["Label", ["String", "L3"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Catalog", ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "x.json"]], ["Label", ["String", "Lx"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Group", [["Docs", ["Repeated", [["Group", [["Path", ["String", "c.json"]], ["Title", ["String", "C"]], ["Label", ["String", "L3"]], ["Parts", ["Repeated", []]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "b.json"]], ["Title", ["String", "B"]], ["Label", ["String", "L2"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]], ["DocPath", ["String", "b.json"]], ["Name", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "p2.json"]], ["DocPath", ["String", "b.json"]], ["Name", ["String", "P2"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "a.json"]], ["Title", ["String", "A"]], ["Label", ["String", "L1"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]], ["DocPath", ["String", "a.json"]], ["Name", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}, "calls": ["Docs:a.json", "Docs:b.json", "Docs:c.json", "Parts:p1.json", "Parts:p2.json", "Parts:p1.json"], "reads": ["Docs:a.json", "Docs:b.json", "Docs:c.json", "Parts:p1.json", "Parts:p2.json"]},
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Group", [["Docs", ["Repeated", [["Group", [["Path", ["String", "c.json"]], ["Title", ["String", "C"]], ["Label", ["String", "L3"]], ["Parts", ["Repeated", []]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "b.json"]], ["Title", ["String", "B"]], ["Label", ["String", "L2"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]], ["DocPath", ["String", "b.json"]], ["Name", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "p2.json"]], ["DocPath", ["String", "b.json"]], ["Name", ["String", "P2"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "a.json"]], ["Title", ["String", "A"]], ["Label", ["String", "L1"]], ["Parts", ["Repeated", [["Group", [["Path", ["String", "p1.json"]], ["DocPath", ["String", "a.json"]], ["Name", ["String", "P1"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}, "calls": ["Docs:a.json", "Docs:b.json", "Docs:c.json", "Parts:p1.json", "Parts:p2.json", "Parts:p1.json"], "reads": ["Docs:a.json", "Docs:b.json", "Docs:c.json", "Parts:p1.json", "Parts:p2.json"]}
+   ]
+  },
+  {
+   "id": "outside-read",
+   "model": "outside",
+   "loader": true,
+   "source": ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["Label", ["String", "La"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "b.json"]], ["Label", ["String", "Lb"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Catalog", ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "x.json"]], ["Label", ["String", "Lx"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "OwnedSource", "node": 3, "owner": "Docs", "cause": "SourceUnavailable"}}, "calls": [], "reads": []},
+    {"selection": "Primary", "expected": {"Err": {"kind": "OwnedSource", "node": 3, "owner": "Docs", "cause": "SourceUnavailable"}}, "calls": [], "reads": []}
+   ]
+  },
+  {
+   "id": "unloaded-parts-read",
+   "model": "unloaded_parts",
+   "loader": true,
+   "source": ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["Label", ["String", "La"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "b.json"]], ["Label", ["String", "Lb"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Catalog", ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "x.json"]], ["Label", ["String", "Lx"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "OwnedSource", "node": 4, "owner": "Parts", "cause": "SourceUnavailable"}}, "calls": ["Docs:a.json", "Docs:b.json"], "reads": ["Docs:a.json", "Docs:b.json"]},
+    {"selection": "Primary", "expected": {"Err": {"kind": "OwnedSource", "node": 4, "owner": "Parts", "cause": "SourceUnavailable"}}, "calls": ["Docs:a.json", "Docs:b.json"], "reads": ["Docs:a.json", "Docs:b.json"]}
+   ]
+  },
+  {
+   "id": "primary-path-read",
+   "model": "primary_path",
+   "loader": true,
+   "source": ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["Label", ["String", "La"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "b.json"]], ["Label", ["String", "Lb"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Catalog", ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "x.json"]], ["Label", ["String", "Lx"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "OwnedSource", "node": 5, "owner": "Primary", "cause": "MissingDocumentPath"}}, "calls": ["Docs:a.json", "Docs:b.json"], "reads": ["Docs:a.json", "Docs:b.json"]},
+    {"selection": "Primary", "expected": {"Err": {"kind": "OwnedSource", "node": 5, "owner": "Primary", "cause": "MissingDocumentPath"}}, "calls": ["Docs:a.json", "Docs:b.json"], "reads": ["Docs:a.json", "Docs:b.json"]}
+   ]
+  },
+  {
+   "id": "members-paths",
+   "model": "members",
+   "loader": true,
+   "source": ["DocumentSet", [["m1.xml", "/in/m1.xml", ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["Label", ["String", "L1"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]], ["m2.xml", null, ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "b.json"]], ["Label", ["String", "L2"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "c.json"]], ["Label", ["String", "L3"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]],
+   "inputs": [["Catalog", ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "x.json"]], ["Label", ["String", "Lx"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Group", [["Members", ["Repeated", [["Group", [["Path", ["String", "/in/m1.xml"]], ["Docs", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["MemberPath", ["String", "/in/m1.xml"]], ["Title", ["String", "A"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "m2.xml"]], ["Docs", ["Repeated", [["Group", [["Path", ["String", "b.json"]], ["MemberPath", ["String", "m2.xml"]], ["Title", ["String", "B"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "c.json"]], ["MemberPath", ["String", "m2.xml"]], ["Title", ["String", "C"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}, "calls": ["Docs:a.json", "Docs:b.json", "Docs:c.json"], "reads": ["Docs:a.json", "Docs:b.json", "Docs:c.json"]},
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Group", [["Members", ["Repeated", [["Group", [["Path", ["String", "/in/m1.xml"]], ["Docs", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["MemberPath", ["String", "/in/m1.xml"]], ["Title", ["String", "A"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "m2.xml"]], ["Docs", ["Repeated", [["Group", [["Path", ["String", "b.json"]], ["MemberPath", ["String", "m2.xml"]], ["Title", ["String", "B"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "c.json"]], ["MemberPath", ["String", "m2.xml"]], ["Title", ["String", "C"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]]}, "calls": ["Docs:a.json", "Docs:b.json", "Docs:c.json"], "reads": ["Docs:a.json", "Docs:b.json", "Docs:c.json"]}
+   ]
+  },
+  {
+   "id": "members-plain-primary",
+   "model": "members",
+   "loader": true,
+   "source": ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "a.json"]], ["Label", ["String", "La"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Path", ["String", "b.json"]], ["Label", ["String", "Lb"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Catalog", ["Group", [["Files", ["Repeated", [["Group", [["Path", ["String", "x.json"]], ["Label", ["String", "Lx"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "OwnedSource", "node": 5, "owner": "Primary", "cause": "MissingDocumentPath"}}, "calls": [], "reads": []},
+    {"selection": "Primary", "expected": {"Err": {"kind": "OwnedSource", "node": 5, "owner": "Primary", "cause": "MissingDocumentPath"}}, "calls": [], "reads": []}
+   ]
+  }
+ ]
+}

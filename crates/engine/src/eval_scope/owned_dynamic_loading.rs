@@ -137,10 +137,9 @@ pub(super) fn eval_loading_scope<'a>(
                 });
             }
         };
-        documents.push((
-            index,
-            crate::dynamic_source::load_document(loader, program.restricted, name, path)?,
-        ));
+        let document =
+            crate::dynamic_source::load_document(loader, program.restricted, name, path.clone())?;
+        documents.push((index, path, document));
     }
     eval_documents(
         receiving_program,
@@ -165,7 +164,8 @@ struct Documents<'b, 'q> {
     source: &'q OwnedSourceRef,
     key: OwnerKey,
     drivers: &'b [ObservedExtension<'b>],
-    documents: &'b [(usize, Arc<Instance>)],
+    /// Each document with its driver row and the logical path it was loaded by.
+    documents: &'b [(usize, String, Arc<Instance>)],
     budget: WorkBudget,
 }
 
@@ -189,14 +189,14 @@ fn eval_documents<'b>(
         .expect("basic owned route has a context");
     let access = |error| owned_access_error(trace_scope, error);
     let mut extensions = Vec::new();
-    for (driver_index, document) in loaded.documents {
+    for (driver_index, path, document) in loaded.documents {
         let driver = &loaded.drivers[*driver_index];
         let mut origins = driver.origins.clone();
         origins.push(SourceOrigin {
             owner: loaded.key,
             path: Vec::new(),
             item: document,
-            kind: SourceOriginKind::Document { location: None },
+            kind: SourceOriginKind::Document { location: path },
         });
         let document_state = OwnedContext {
             roots: state.roots,
