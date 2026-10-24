@@ -21,10 +21,12 @@ pub(super) fn owned_editable(scope: &Scope) -> bool {
 /// project already uses ownership, a collection can be chosen with its exact
 /// owner; legacy selections convert only on that explicit choice.
 pub(super) fn show(ui: &mut Ui, scope: &mut Scope, source_paths: &SourcePathCatalog, nested: bool) {
-    ui.horizontal(|ui| {
-        ui.label("source path:");
+    crate::ui_kit::section(ui, "Iteration", |ui| {
         let mut has_source = scope.source_selector().is_some();
-        if ui.checkbox(&mut has_source, "iterates").changed() {
+        if ui
+            .checkbox(&mut has_source, "Iterate source collection")
+            .changed()
+        {
             scope.set_source(has_source.then(Vec::new));
         }
     });
@@ -33,7 +35,7 @@ pub(super) fn show(ui: &mut Ui, scope: &mut Scope, source_paths: &SourcePathCata
         owned_choices
             .then(|| {
                 ui.horizontal(|ui| {
-                    ui.label("  owner:");
+                    ui.label("Source");
                     source_paths.show_owned_collection_picker(
                         ui,
                         "scope_owned_source",
@@ -47,9 +49,10 @@ pub(super) fn show(ui: &mut Ui, scope: &mut Scope, source_paths: &SourcePathCata
     };
     let chosen = match scope.source_selector_mut() {
         Some(mapping::SourceSelectorMut::Legacy(source)) => {
-            ui.horizontal(|ui| {
-                ui.label("  path:");
-                source_paths.show_scope_picker(ui, "scope_source_path", source, nested);
+            crate::ui_kit::form_grid(ui, "source_collection_form", |form| {
+                form.row("Collection", |ui| {
+                    source_paths.show_scope_picker(ui, "scope_source_path", source, nested);
+                });
             });
             owned_picker(ui)
         }
@@ -57,7 +60,7 @@ pub(super) fn show(ui: &mut Ui, scope: &mut Scope, source_paths: &SourcePathCata
             let label = crate::source_ownership::collection_label(&source.owner, &source.path);
             let selected = source.clone();
             ui.horizontal(|ui| {
-                ui.label("  owned:");
+                ui.label("Source");
                 source_paths.show_owned_collection_picker(
                     ui,
                     "scope_owned_source",

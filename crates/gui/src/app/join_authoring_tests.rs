@@ -145,7 +145,7 @@ fn frame(
         },
         |ui| {
             let editing = enabled && app.ui_project_editing_enabled();
-            ui.add_enabled_ui(editing, |ui| app.show_scope_controls(ui));
+            app.show_scope_controls(ui, editing);
             app.show_join_authoring(ui, enabled);
         },
     );
@@ -168,6 +168,14 @@ fn positions(shape: &egui::epaint::Shape, wanted: &str, found: &mut Vec<egui::Po
 }
 
 fn click(app: &mut FerruleApp, context: &egui::Context, enabled: bool, wanted: &str, last: bool) {
+    if matches!(
+        wanted,
+        "Join two collections" | "Edit equality keys" | "Add joined output"
+    ) {
+        click(app, context, enabled, "Join", false);
+    } else if matches!(wanted, "Remove scope" | "Expand subtree" | "Add child") {
+        click(app, context, enabled, "Scope", false);
+    }
     let mut output = frame(app, context, enabled, Vec::new());
     for _ in 0..3 {
         output = frame(app, context, enabled, Vec::new());
@@ -363,7 +371,7 @@ fn join_real_controls_preserve_duplicate_order_nil_exclusion_and_unsaved_preview
     );
     let mut found = Vec::new();
     for shape in &inspector.shapes {
-        positions(&shape.shape, "Join two collections", &mut found);
+        positions(&shape.shape, "Join", &mut found);
     }
     assert!(
         !found.is_empty(),
@@ -2398,16 +2406,19 @@ fn join_key_edit_exhausted_id_imported_owner_and_unsupported_admission_preserve_
         rejected.rebase_history();
         rejected.selected_scope = vec![0];
         let original = state(&rejected);
+        egui::Popup::close_all(&context);
+        click(&mut rejected, &context, true, "Join", false);
         let output = frame(&mut rejected, &context, true, Vec::new());
         let mut shown = Vec::new();
         for shape in &output.shapes {
             positions(&shape.shape, "Edit equality keys", &mut shown);
         }
         assert!(!shown.is_empty());
-        click(&mut rejected, &context, true, "Edit equality keys", false);
+        // The contextual menu retains a disabled action for this saved plan.
         assert!(rejected.join_authoring_draft.is_none());
         assert_eq!(state(&rejected), original);
         assert!(!rejected.can_undo());
+        egui::Popup::close_all(&context);
     }
 }
 

@@ -121,10 +121,14 @@ impl FerruleApp {
             let create = ui.add_enabled(
                 enabled && compatible && current.is_none() && functions_available,
                 egui::Button::new("Use filter/map"),
-            );
-            if !functions_available {
-                create.on_disabled_hover_text("Add filter and map functions with input value and input position parameters first.");
-            } else if create.clicked()
+            ).on_disabled_hover_text(if !functions_available {
+                "Add filter and map functions with input value and input position parameters first."
+            } else if current.is_some() {
+                "This scope already has a generated sequence. Remove it before using filter/map."
+            } else {
+                "Mapping editing is unavailable."
+            });
+            if create.clicked()
                 && let Err(error) = self.create_selected_filter_map()
             {
                 self.status = "sequence edit failed".into();

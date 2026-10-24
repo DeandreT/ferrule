@@ -292,7 +292,7 @@ fn computed_properties_real_preview_lock_and_imported_unsupported_states_stay_ex
             let buttons = texts(&output)
                 .into_iter()
                 .filter_map(|(label, p)| {
-                    ((p.y - point.y).abs() < 4.0 && p.x > point.x && label.contains(": "))
+                    ((p.y - point.y).abs() < 4.0 && p.x > point.x && label.contains(" · #"))
                         .then_some(p)
                 })
                 .collect::<Vec<_>>();
@@ -461,8 +461,14 @@ fn computed_property_profiles_reject_other_domains_owners_and_same_frame_control
         );
         assert!(!candidate.is_dirty() && !candidate.can_undo());
         let before = raw_project(&candidate, &retained, "unavailable-document-original");
-        click_label(&mut candidate, &context, &retained, "+ property");
-        click_label(&mut candidate, &context, &retained, "Remove property 1");
+        if matches!(document, MappingDocument::Function(_)) {
+            let output = settle(&mut candidate, &context, &retained);
+            assert!(visible(&output, "+ property").is_empty());
+            assert!(visible(&output, "Remove property 1").is_empty());
+        } else {
+            click_label(&mut candidate, &context, &retained, "+ property");
+            click_label(&mut candidate, &context, &retained, "Remove property 1");
+        }
         assert_eq!(
             raw_project(&candidate, &retained, "unavailable-document-after"),
             before

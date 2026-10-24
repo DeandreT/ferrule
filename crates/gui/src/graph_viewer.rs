@@ -35,6 +35,11 @@ mod graph_node_ids;
 mod graph_node_presentation;
 #[path = "graph_node_properties.rs"]
 mod graph_node_properties;
+
+/// Shared canvas-header wording for inspector and rule node pickers.
+pub(crate) fn readable_node_label(node: &mapping::Node) -> String {
+    graph_node_presentation::node_label(node)
+}
 #[path = "graph_planned_edits.rs"]
 mod graph_planned_edits;
 #[path = "graph_references.rs"]

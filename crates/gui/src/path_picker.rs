@@ -154,7 +154,8 @@ impl SourcePathCatalog {
         let mut chosen = None;
         egui::ComboBox::from_id_salt(id_salt)
             .selected_text(current)
-            .width(170.0)
+            .width(ui.available_width().max(80.0))
+            .wrap_mode(egui::TextWrapMode::Truncate)
             .show_ui(ui, |ui| {
                 for choice in self.ownership.collections() {
                     if ui
@@ -519,7 +520,8 @@ fn show_path_picker(
         .map_or_else(|| fallback_label(path), |choice| choice.label.clone());
     egui::ComboBox::from_id_salt(id_salt)
         .selected_text(selected)
-        .width(170.0)
+        .width(ui.available_width().max(80.0))
+        .wrap_mode(egui::TextWrapMode::Truncate)
         .show_ui(ui, |ui| {
             for choice in choices {
                 ui.selectable_value(path, choice.path.clone(), &choice.label);
@@ -529,7 +531,7 @@ fn show_path_picker(
 
 fn collection_label(path: &[String]) -> String {
     if path.is_empty() {
-        "<current rows>".to_string()
+        "Current rows".to_string()
     } else {
         path.join(" / ")
     }
@@ -537,7 +539,7 @@ fn collection_label(path: &[String]) -> String {
 
 fn value_label(path: &[String]) -> String {
     if path.is_empty() {
-        "<item value>".to_string()
+        "Current item value".to_string()
     } else {
         path.join(" / ")
     }

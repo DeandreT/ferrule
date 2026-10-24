@@ -106,8 +106,21 @@ pub(crate) fn profile(
 }
 
 pub(crate) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph, profile: Profile) {
-    ui.separator();
-    ui.strong("Computed properties");
+    if let Profile::ReadOnly(reason) = profile
+        && scope.dynamic_bindings.is_empty()
+    {
+        crate::ui_kit::collapsible_section(
+            ui,
+            "computed_properties_unavailable",
+            "Computed properties",
+            false,
+            |ui| {
+                crate::ui_kit::help(ui, reason);
+            },
+        );
+        return;
+    }
+    crate::ui_kit::section(ui, "Computed properties", |_| {});
     // The preceding scope controls can change this owner in the same frame.
     // Recheck it before accepting a property edit based on the earlier profile.
     let profile = if matches!(profile, Profile::ScalarObject(_)) && !plain_scope(scope) {
@@ -134,10 +147,30 @@ pub(crate) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph, profile: Profi
         for (index, binding) in scope.dynamic_bindings.iter_mut().enumerate() {
             ui.push_id(("computed_property", index), |ui| {
                 ui.group(|ui| {
-                    ui.label(format!("Property {}", index + 1));
                     ui.horizontal(|ui| {
-                        ui.label("Name expression");
-                        super::node_picker(ui, "computed_property_name", &mut binding.key, graph);
+                        ui.strong(format!("Property {}", index + 1));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if crate::ui_kit::icon_button(
+                                ui,
+                                lucide_icons::Icon::Trash2,
+                                "Remove property",
+                                None,
+                            )
+                            .clicked()
+                            {
+                                remove = Some(index);
+                            }
+                        });
+                    });
+                    crate::ui_kit::form_grid(ui, "property_name_form", |form| {
+                        form.row("Name expression", |ui| {
+                            super::node_picker(
+                                ui,
+                                "computed_property_name",
+                                &mut binding.key,
+                                graph,
+                            );
+                        });
                     });
                     if !graph.nodes.contains_key(&binding.key) {
                         ui.weak(format!(
@@ -145,26 +178,21 @@ pub(crate) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph, profile: Profi
                             binding.key
                         ));
                     }
-                    ui.horizontal(|ui| {
-                        ui.label("Value expression");
-                        super::node_picker(
-                            ui,
-                            "computed_property_value",
-                            &mut binding.value,
-                            graph,
-                        );
+                    crate::ui_kit::form_grid(ui, "property_value_form", |form| {
+                        form.row("Value expression", |ui| {
+                            super::node_picker(
+                                ui,
+                                "computed_property_value",
+                                &mut binding.value,
+                                graph,
+                            );
+                        });
                     });
                     if !graph.nodes.contains_key(&binding.value) {
                         ui.weak(format!(
                             "Saved value expression #{} is missing.",
                             binding.value
                         ));
-                    }
-                    if ui
-                        .small_button(format!("Remove property {}", index + 1))
-                        .clicked()
-                    {
-                        remove = Some(index);
                     }
                 });
             });
@@ -177,7 +205,7 @@ pub(crate) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph, profile: Profi
     if ui
         .add_enabled(
             editable && first.is_some(),
-            egui::Button::new("+ property").small(),
+            egui::Button::new("Add property"),
         )
         .on_disabled_hover_text(if editable {
             "Add a graph expression before creating a computed property."

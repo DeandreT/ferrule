@@ -118,12 +118,14 @@ fn frame(
     output
 }
 
-fn remove_position(shape: &egui::epaint::Shape) -> Option<egui::Pos2> {
+fn control_position(shape: &egui::epaint::Shape, label: &str) -> Option<egui::Pos2> {
     match shape {
-        egui::epaint::Shape::Text(text) if text.galley.text() == "Remove scope" => {
+        egui::epaint::Shape::Text(text) if text.galley.text() == label => {
             Some(text.visual_bounding_rect().center())
         }
-        egui::epaint::Shape::Vec(shapes) => shapes.iter().find_map(remove_position),
+        egui::epaint::Shape::Vec(shapes) => shapes
+            .iter()
+            .find_map(|shape| control_position(shape, label)),
         _ => None,
     }
 }
@@ -135,10 +137,34 @@ fn click_remove(app: &mut FerruleApp, editing: bool) {
     for _ in 0..3 {
         output = frame(app, &context, editing, vec![]);
     }
+    let menu = output
+        .shapes
+        .iter()
+        .find_map(|shape| control_position(&shape.shape, "Scope"))
+        .expect("Scope menu");
+    for pressed in [true, false] {
+        frame(
+            app,
+            &context,
+            editing,
+            vec![
+                egui::Event::PointerMoved(menu),
+                egui::Event::PointerButton {
+                    pos: menu,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+    }
+    for _ in 0..3 {
+        output = frame(app, &context, editing, vec![]);
+    }
     let position = output
         .shapes
         .iter()
-        .find_map(|shape| remove_position(&shape.shape))
+        .find_map(|shape| control_position(&shape.shape, "Remove scope"))
         .expect("Remove scope control");
     for pressed in [true, false] {
         frame(

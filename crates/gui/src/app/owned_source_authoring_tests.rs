@@ -152,7 +152,9 @@ fn field(owner: SourceOwner, path: &[&str], frame: Option<&[&str]>) -> OwnedSour
 fn shapes_with(output: &egui::FullOutput, label: &str) -> Vec<egui::Pos2> {
     fn collect(shape: &egui::epaint::Shape, label: &str, found: &mut Vec<egui::Pos2>) {
         match shape {
-            egui::epaint::Shape::Text(text) if text.galley.text() == label => {
+            egui::epaint::Shape::Text(text)
+                if crate::test_ui::inspector_label_matches(text.galley.text(), label) =>
+            {
                 found.push(text.visual_bounding_rect().center());
             }
             egui::epaint::Shape::Vec(shapes) => {

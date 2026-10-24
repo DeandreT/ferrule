@@ -167,7 +167,9 @@ fn frame(
 
 fn label_position(shape: &egui::epaint::Shape, wanted: &str, positions: &mut Vec<egui::Pos2>) {
     match shape {
-        egui::epaint::Shape::Text(text) if text.galley.text() == wanted => {
+        egui::epaint::Shape::Text(text)
+            if crate::test_ui::inspector_label_matches(text.galley.text(), wanted) =>
+        {
             positions.push(text.visual_bounding_rect().center());
         }
         egui::epaint::Shape::Vec(shapes) => {
@@ -209,6 +211,35 @@ fn click_nth(app: &mut FerruleApp, context: &egui::Context, label: &str, occurre
 }
 
 fn click(app: &mut FerruleApp, context: &egui::Context, label: &str) {
+    let choice = match label {
+        "Add source rule" => Some("Source collection"),
+        "Add integer range rule" => Some("Integer range"),
+        "Add split text rule" => Some("Split text"),
+        "Add fixed-length text rule" => Some("Fixed-length text"),
+        "Add regex text rule" => Some("Regular expression"),
+        _ => None,
+    };
+    if let Some(choice) = choice {
+        let output = frame(app, context, Vec::new());
+        let mut positions = Vec::new();
+        for shape in &output.shapes {
+            label_position(&shape.shape, "Add rule", &mut positions);
+        }
+        if positions.is_empty() {
+            click_nth(
+                app,
+                context,
+                &format!("Failure rules ({})", app.project.failure_rules.len()),
+                0,
+            );
+        }
+        click_nth(app, context, "Add rule", 0);
+        if !app.ui_project_editing_enabled() {
+            return;
+        }
+        click_nth(app, context, choice, 0);
+        return;
+    }
     click_nth(app, context, label, 0);
 }
 
