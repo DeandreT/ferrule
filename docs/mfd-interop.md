@@ -12,6 +12,10 @@ its immutable schema/configuration entries. Export returns both the complete
 package (including every generated schema sibling) and the ordinary compatibility
 report; `ExportProfile::NativeMfd` rejects known extensions or omissions before
 returning any artifacts. The existing filesystem and CLI APIs remain available.
+Package export also admits the exact emitted bundle through the package importer
+before returning it. Retained schema/presentation references must obey the same
+strict policy as package imports; unsafe aliases refuse instead of merely
+normalizing the output filenames. Re-import warnings join the export report.
 
 Packages admit at most 128 entries, 4 MiB per entry, 16 MiB in total, and 256
 UTF-8 bytes per path. Every entry is a regular byte buffer; no archive extraction,
@@ -23,6 +27,8 @@ schema/configuration references obey the same strict path policy. There is no
 filesystem, catalog, manifest-discovery or network fallback. Missing supplied
 assets refuse with `MfdError::Package` rather than silently substituting an
 entry-tree schema.
+This includes unresolved JSON Pointer targets within supplied JSON Schemas;
+ordinary filesystem imports retain their existing best-effort behavior.
 
 XML/XSD, JSON Schema, ordinary X12/EDIFACT/HL7/TRADACOMS configurations,
 FlexText, PDF templates, XBRL presentation metadata, protobuf bundles and supported
@@ -34,6 +40,10 @@ re-import can require a live database. Unsupported mapping constructs retain the
 ordinary actionable warnings; callers must show those warnings before accepting
 a best-effort project. A warning-free import is not proof of reference-application
 execution equivalence.
+Protobuf dependencies are read lazily from the supplied package. Only reachable
+files consume protobuf graph budgets or undergo source decoding; unrelated
+package entries remain subject to the package's aggregate bounds but cannot
+invalidate an otherwise complete protobuf graph.
 
 ## Import
 

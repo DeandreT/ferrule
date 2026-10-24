@@ -155,6 +155,7 @@ pub(super) fn render_schema_component(
             component_uid,
             sibling_suffix,
             default_output,
+            filesystem,
         });
     }
     let stem = mfd_path

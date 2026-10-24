@@ -330,10 +330,23 @@ pub(crate) fn prepare_package(
         })
         .collect::<Result<Vec<_>, crate::PackageError>>()?;
     let package = crate::MfdPackage::new(design_path, entries)?;
-    Ok(crate::ExportedPackage {
-        package,
-        report: prepared.report,
-    })
+    // Admit the exact emitted references, not just normalized artifact names.
+    // This also covers retained metadata families outside the renderers above.
+    let imported = crate::import_package(&package)?;
+    let mut report = prepared.report;
+    for warning in imported.warnings {
+        let warning = format!("package re-import: {warning}");
+        if !report.warnings.contains(&warning) {
+            report.warnings.push(warning);
+        }
+    }
+    if !report.warnings.is_empty() {
+        report.compatibility = crate::ExportCompatibility::Incomplete;
+    }
+    if profile == ExportProfile::NativeMfd && !report.is_native_compatible() {
+        return Err(MfdError::IncompatibleExport(Box::new(report)));
+    }
+    Ok(crate::ExportedPackage { package, report })
 }
 
 fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdError> {

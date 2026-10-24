@@ -214,6 +214,16 @@ impl format_json::json_schema::JsonSchemaByteReader for PackageReader {
     fn validate_reference(&self, reference: &str) -> std::io::Result<()> {
         self.validate_reference(reference)
     }
+    fn validate_reference_target(&self, _reference: &str, exists: bool) -> std::io::Result<()> {
+        if exists {
+            Ok(())
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                self.refuse(PackageError::InvalidResource),
+            ))
+        }
+    }
 }
 impl format_edi::config::EdiConfigByteReader for PackageReader {
     fn read(&self, path: &Path) -> std::io::Result<Arc<[u8]>> {

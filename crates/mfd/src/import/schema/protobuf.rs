@@ -225,37 +225,20 @@ fn load_schema_bundle(
                     "invalid package protobuf identity".into(),
                 )
             })?;
-        let root_source = resources
-            .read_text(&path, crate::MAX_PACKAGE_FILE_BYTES as u64)
-            .map_err(format_protobuf::ProtobufError::InvalidSchema)?;
-        let source_base = base
-            .strip_prefix(resources.package_root())
-            .unwrap_or(Path::new(""));
-        let sources = package
-            .package
-            .entries()
-            .filter_map(|(name, bytes)| {
-                Path::new(name)
-                    .strip_prefix(source_base)
-                    .ok()
-                    .and_then(|path| crate::package::portable_path(path).ok())
-                    .map(|name| (name, bytes))
-            })
-            .filter(|(name, _)| name != &relative && name.ends_with(".proto"))
-            .map(|(name, bytes)| std::str::from_utf8(bytes).map(|source| (name, source)))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| {
-                format_protobuf::ProtobufError::InvalidSchema(
-                    package.refuse(crate::PackageError::InvalidText).to_string(),
-                )
+        return format_protobuf::SchemaBundle::from_reader(&relative, |name| {
+            crate::package::validate_path(name).map_err(|error| {
+                format_protobuf::ProtobufError::InvalidSchema(package.refuse(error).to_string())
             })?;
-        return format_protobuf::SchemaBundle::from_sources(
-            &relative,
-            &root_source,
-            sources
-                .iter()
-                .map(|(name, source)| (name.as_str(), *source)),
-        )
+            let bytes = package.bytes(&base.join(name)).map_err(|error| {
+                format_protobuf::ProtobufError::InvalidSchema(error.to_string())
+            })?;
+            if std::str::from_utf8(&bytes).is_err() {
+                return Err(format_protobuf::ProtobufError::InvalidSchema(
+                    package.refuse(crate::PackageError::InvalidText).to_string(),
+                ));
+            }
+            Ok(bytes)
+        })
         .inspect_err(|_| {
             package.refuse(crate::PackageError::InvalidResource);
         });

@@ -163,6 +163,9 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
     }
     let mut metadata = format!(" schema=\"{}\"", xml_escape(boundary.taxonomy()));
     if let Some(presentation) = boundary.presentation() {
+        if !args.filesystem {
+            crate::package::validate_path(presentation)?;
+        }
         let _ = write!(metadata, " sps=\"{}\"", xml_escape(presentation));
     }
     if let Some(instance) = args.instance_path {
