@@ -86,6 +86,7 @@ enum ProfilePolicy {
     CsvJson(codegen::CsvJsonBoundaryPolicy),
     PrimaryCsvDocument(codegen::CsvDocumentBoundaryPolicy),
     PrimaryXmlDocument,
+    PrimaryJsonDocument,
 }
 
 /// A lowered design with its admitted profile policy.
@@ -259,6 +260,7 @@ fn prepare_document(
         }
         _ if raw => bail!("raw-delimited CRLF output requires a primary CSV document plan"),
         mapping::PrimaryDocumentFormat::Xml => ProfilePolicy::PrimaryXmlDocument,
+        mapping::PrimaryDocumentFormat::Json => ProfilePolicy::PrimaryJsonDocument,
     };
     let lowered = codegen::lower_document(document).map_err(|error| match error {
         codegen::DocumentLowerError::Mapping(error) => lower_error(error),
@@ -348,6 +350,9 @@ fn emit(
                 ProfilePolicy::PrimaryXmlDocument => generator.emit_with_primary_xml_documents(
                     document.context("a primary document policy has its document plan")?,
                 )?,
+                ProfilePolicy::PrimaryJsonDocument => generator.emit_with_primary_json_documents(
+                    document.context("a primary document policy has its document plan")?,
+                )?,
                 ProfilePolicy::X12(policy) => generator.emit_with_x12(program, policy)?,
                 ProfilePolicy::Json5 => generator.emit_with_json5(program)?,
                 ProfilePolicy::CsvOutput(policy) => {
@@ -378,6 +383,9 @@ fn emit(
                         policy,
                     )?,
                 ProfilePolicy::PrimaryXmlDocument => generator.emit_with_primary_xml_documents(
+                    document.context("a primary document policy has its document plan")?,
+                )?,
+                ProfilePolicy::PrimaryJsonDocument => generator.emit_with_primary_json_documents(
                     document.context("a primary document policy has its document plan")?,
                 )?,
                 ProfilePolicy::CsvJson(policy) => {

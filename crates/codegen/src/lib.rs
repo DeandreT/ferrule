@@ -98,7 +98,9 @@ pub use owned_admission::{
     legacy_named_input_admission_plan_with_owned_capabilities,
 };
 pub use presets::*;
-pub use primary_document_boundary::{PrimaryDocumentBoundaryError, validate_primary_xml_documents};
+pub use primary_document_boundary::{
+    PrimaryDocumentBoundaryError, validate_primary_json_documents, validate_primary_xml_documents,
+};
 pub use static_document_boundary::{
     DocumentBoundaryDescriptor, DocumentBoundaryFormat, DocumentBoundaryOptions,
     NamedDocumentBoundaryDescriptor, NamedDocumentBoundaryOptions, StaticDocumentBoundaryError,

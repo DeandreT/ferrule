@@ -103,6 +103,7 @@ pub use trace::{
 pub use validate::{
     ValidationEndpoint, ValidationIssue, ValidationOwner, ValidationSchemaLocation,
     ValidationSchemaStep, ValidationScopeLocation, ValidationScopeStep, validate,
+    validate_primary_document,
 };
 
 /// One additional named target value produced by a project run.

@@ -1149,7 +1149,7 @@ the class members. A `Library` holds that class together with:
   filename evaluator);
 - companion sources, each its own compilation unit holding one partial
   declaration (`GeneratedMapping.Csv.cs`, `.CsvDocument.cs`, `.PrimaryCsv.cs`,
-  `.PrimaryCsvDocument.cs`, `.PrimaryXmlDocument.cs`, `.CsvJson.cs`,
+  `.PrimaryCsvDocument.cs`, `.PrimaryXmlDocument.cs`, `.PrimaryJsonDocument.cs`, `.CsvJson.cs`,
   `.CsvX12.cs`, `.Json5.cs`, `.X12.cs` and `.Documents.cs`);
 - optional runtime sources beyond the fixed runtime set.
 
@@ -1161,7 +1161,9 @@ runtime glob. Layered emitters extend the library of the emitter they build
 on: CSV documents extend CSV output, primary CSV acquisition extends the
 primary filename library, primary CSV documents extend CSV documents with
 the primary filename evaluator, and primary XML documents extend the ordinary
-library and its XML adapter with that evaluator. Each layer keeps its own admission ahead of the
+library and its XML adapter with that evaluator. Primary JSON documents extend
+the ordinary library and its strict JSON adapter with the evaluator and bounded
+document-set acquisition. Each layer keeps its own admission ahead of the
 layer below it.
 
 The Basic owned mappings render their own complete compilation unit, which

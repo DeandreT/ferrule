@@ -13,7 +13,11 @@ use super::{
     ValidationScopeStep, own_issues, validate_builtin_call, validate_runtime_parameter_name,
 };
 
-pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
+pub(super) fn validate_graph(
+    project: &Project,
+    document_set: bool,
+    issues: &mut Vec<ValidationIssue>,
+) {
     super::primary_root::validate_primary_root_primitives(project, issues);
     if let Err(error) = project.validate_filter_map_v1() {
         issues.push(ValidationIssue::new(&error.location, error.to_string()));
@@ -198,7 +202,8 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
                 }
             }
             Node::SourceDocumentPath
-                if !project.source_options.local_xml_file_set
+                if !document_set
+                    && !project.source_options.local_xml_file_set
                     && !project
                         .extra_sources
                         .iter()

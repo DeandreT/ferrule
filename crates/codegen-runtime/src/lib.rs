@@ -158,6 +158,10 @@ pub use path_hierarchy::{
     MAX_PATH_HIERARCHY_DEPTH, MAX_PATH_HIERARCHY_ITEMS, owned_path_hierarchy, path_hierarchy,
 };
 pub use primary_document::PrimaryXmlDocumentError;
+mod primary_json_document;
+pub use primary_json_document::{
+    MAX_PRIMARY_JSON_INPUT_BYTES, PrimaryJsonDocumentError, PrimaryJsonInputBudget,
+};
 pub use recursive_filter::{
     OwnedRecursiveFilterPredicate, RecursiveFilterPredicate, owned_recursive_filter,
     recursive_filter,

@@ -35,6 +35,7 @@ pub(crate) fn lower_primary_xml_documents(project: &Project) -> Result<Program, 
         validate_program,
         OwnedJoinLowering::Closed,
         Some(request),
+        None,
     )
 }
 
@@ -75,7 +76,19 @@ fn lower_with_policy(
     validator: impl Fn(&Program) -> Result<(), ProgramValidationError>,
     owned_joins: OwnedJoinLowering,
 ) -> Result<Program, LowerError> {
-    lower_with_xml_request(project, validator, owned_joins, None)
+    lower_with_xml_request(project, validator, owned_joins, None, None)
+}
+
+pub(crate) fn lower_primary_json_documents(
+    document: &mapping::DocumentProject,
+) -> Result<Program, LowerError> {
+    lower_with_xml_request(
+        document.project(),
+        validate_program,
+        OwnedJoinLowering::Closed,
+        None,
+        Some(document),
+    )
 }
 
 fn lower_with_xml_request(
@@ -83,8 +96,12 @@ fn lower_with_xml_request(
     validator: impl Fn(&Program) -> Result<(), ProgramValidationError>,
     owned_joins: OwnedJoinLowering,
     xml_request: Option<XmlRequest>,
+    document: Option<&mapping::DocumentProject>,
 ) -> Result<Program, LowerError> {
-    let validation = engine::validate(project);
+    let validation = document.map_or_else(
+        || engine::validate(project),
+        engine::validate_primary_document,
+    );
     if !validation.is_empty() {
         return Err(LowerError::new(
             validation
