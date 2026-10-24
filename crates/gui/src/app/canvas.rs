@@ -623,3 +623,20 @@ mod sequence_item_tests;
 #[cfg(test)]
 #[path = "canvas/endpoint_filter_tests.rs"]
 mod endpoint_filter_tests;
+
+#[cfg(test)]
+#[path = "canvas/visual_tests.rs"]
+mod visual_tests;
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+
+    #[test]
+    fn replacing_a_document_never_reuses_layout_history_or_camera_ownership() {
+        let first = super::super::CanvasDocumentState::with_snarl(Snarl::new());
+        let second = super::super::CanvasDocumentState::with_snarl(Snarl::new());
+        assert_ne!(first.tools_id, second.tools_id);
+        assert_eq!(first.view_generation, second.view_generation);
+    }
+}

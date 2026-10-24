@@ -11,6 +11,8 @@ use egui_snarl::{NodeId, Snarl};
 use crate::canvas::CanvasNode;
 
 const SCREEN_MARGIN: f32 = 12.0;
+const INITIAL_MIN_ZOOM: f32 = 0.6;
+const INITIAL_MAX_ZOOM: f32 = 1.0;
 
 #[derive(Clone, Copy)]
 struct MeasuredNode {
@@ -25,7 +27,6 @@ struct Measurements(BTreeMap<NodeId, MeasuredNode>);
 #[derive(Clone, Copy)]
 struct FitState {
     viewport: Rect,
-    last_frame: u64,
     pending: bool,
     applied_bounds: Option<Rect>,
     minimum_zoom: Option<f32>,
@@ -83,6 +84,17 @@ fn bounds(context: &Context, canvas: Id, snarl: &Snarl<CanvasNode>) -> Option<Re
     (bounds.is_finite() && bounds.is_positive()).then_some(bounds)
 }
 
+fn initial_bounds(context: &Context, canvas: Id, snarl: &Snarl<CanvasNode>) -> Option<Rect> {
+    let connected: std::collections::BTreeSet<_> = snarl.wires()
+        .flat_map(|(from, to)| [from.node, to.node]).collect();
+    let bounds = rectangles(context, canvas, snarl)?.into_iter()
+        .filter(|(id, _)| connected.contains(id)
+            || matches!(snarl[*id], CanvasNode::SourceBlock(_) | CanvasNode::TargetBlock(_)))
+        .fold(Rect::NOTHING, |bounds, (_, rect)| bounds.union(rect));
+    if bounds.is_finite() && bounds.is_positive() { Some(bounds) }
+    else { self::bounds(context, canvas, snarl) }
+}
+
 fn fitted_view(bounds: Rect, viewport: Rect, maximum_zoom: f32) -> Option<FittedView> {
     if !bounds.is_finite()
         || !bounds.is_positive()
@@ -124,6 +136,24 @@ fn fitted_view(bounds: Rect, viewport: Rect, maximum_zoom: f32) -> Option<Fitted
     })
 }
 
+/// Explicit fitting may zoom out far enough to show every node. Automatic
+/// opening instead favors legible text; large graphs remain navigable by pan.
+pub(super) fn request_all(context: &Context, canvas: Id) {
+    context.data_mut(|data| {
+        data.insert_temp(canvas.with("fit_all"), true);
+        data.insert_temp(canvas.with("fit_requested"), true);
+    });
+}
+
+pub(super) fn reset(context: &Context, canvas: Id) {
+    context.data_mut(|data| {
+        data.remove::<FitState>(canvas.with("measured_fit"));
+        data.remove::<bool>(canvas.with("fit_all"));
+        data.remove::<bool>(canvas.with("fit_requested"));
+        data.remove::<Measurements>(canvas.with("fit_node_rects"));
+    });
+}
+
 pub(super) fn begin_frame(
     context: &Context,
     canvas: Id,
@@ -132,27 +162,41 @@ pub(super) fn begin_frame(
     maximum_zoom: f32,
     navigation: bool,
 ) -> (Option<FittedView>, Option<f32>) {
-    let frame = context.cumulative_frame_nr();
     let mut state = context
         .data(|data| data.get_temp::<FitState>(canvas.with("measured_fit")))
         .unwrap_or(FitState {
             viewport,
-            last_frame: frame,
             pending: true,
             applied_bounds: None,
             minimum_zoom: None,
         });
-    state.pending |= viewport != state.viewport || frame > state.last_frame.saturating_add(1);
+    // Resizing a panel or returning to a tab must not discard manual navigation.
+    let requested = context.data_mut(|data| {
+        data.remove_temp::<bool>(canvas.with("fit_requested"))
+            .unwrap_or(false)
+    });
+    state.pending |= requested;
     state.viewport = viewport;
-    state.last_frame = frame;
     if navigation {
         state.pending = false;
     }
     let view = if state.pending {
         state.applied_bounds = bounds(context, canvas, snarl);
-        state
-            .applied_bounds
-            .and_then(|bounds| fitted_view(bounds, viewport, maximum_zoom))
+        state.applied_bounds.and_then(|bounds| {
+            let explicit = context.data(|data| {
+                data.get_temp::<bool>(canvas.with("fit_all"))
+                    .unwrap_or(false)
+            });
+            let framing = if explicit { bounds } else { initial_bounds(context, canvas, snarl).unwrap_or(bounds) };
+            let mut view = fitted_view(framing, viewport, maximum_zoom.min(1.25))?;
+            if !explicit {
+                view.zoom = view.zoom.clamp(
+                    INITIAL_MIN_ZOOM.min(maximum_zoom),
+                    INITIAL_MAX_ZOOM.min(maximum_zoom),
+                );
+            }
+            Some(view)
+        })
     } else {
         None
     };
@@ -171,11 +215,9 @@ pub(super) fn begin_frame(
 
 pub(super) fn end_frame(context: &Context, canvas: Id, snarl: &Snarl<CanvasNode>) {
     let current = bounds(context, canvas, snarl);
-    let frame = context.cumulative_frame_nr();
     let repaint = context.data_mut(|data| {
         let state = data.get_temp_mut_or_insert_with(canvas.with("measured_fit"), || FitState {
             viewport: Rect::NOTHING,
-            last_frame: frame,
             pending: false,
             applied_bounds: None,
             minimum_zoom: None,
@@ -183,7 +225,8 @@ pub(super) fn end_frame(context: &Context, canvas: Id, snarl: &Snarl<CanvasNode>
         if state.pending {
             // First measure, then fit; another measurement pass is needed only
             // when a node's actual frame changed while the fit was settling.
-            state.pending = current.is_some() && !same_bounds(state.applied_bounds, current);
+            state.pending = snarl.node_ids().next().is_some()
+                && (current.is_none() || !same_bounds(state.applied_bounds, current));
         }
         state.pending
     });
@@ -341,7 +384,7 @@ mod tests {
         assert!(
             begin_frame(&context, canvas, wide, &snarl, 2.0, false)
                 .0
-                .is_some()
+                .is_none()
         );
         record();
         end_frame(&context, canvas, &snarl);
@@ -352,8 +395,46 @@ mod tests {
         assert!(
             begin_frame(&context, canvas, wide, &snarl, 2.0, false)
                 .0
-                .is_some()
+                .is_none()
         );
+    }
+
+    #[test]
+    fn initial_view_is_readable_but_explicit_fit_shows_every_node() {
+        let context = Context::default();
+        let canvas = Id::unique("readable-initial-fit");
+        let mut snarl = Snarl::new();
+        let node = snarl.insert_node(Pos2::ZERO, CanvasNode::Graph(1));
+        let viewport = Rect::from_min_size(Pos2::ZERO, egui::vec2(900.0, 700.0));
+        let record = || {
+            context.data_mut(|data| {
+                data.insert_temp(
+                    canvas.with("fit_node_rects"),
+                    Measurements(BTreeMap::from([(
+                        node,
+                        MeasuredNode {
+                            value: CanvasNode::Graph(1),
+                            position: Pos2::ZERO,
+                            rect: Rect::from_min_size(Pos2::ZERO, egui::vec2(10_000.0, 1_000.0)),
+                        },
+                    )])),
+                )
+            })
+        };
+        record();
+        let initial = begin_frame(&context, canvas, viewport, &snarl, 2.0, false)
+            .0
+            .unwrap();
+        assert_eq!(initial.zoom, INITIAL_MIN_ZOOM);
+        request_all(&context, canvas);
+        record();
+        let explicit = begin_frame(&context, canvas, viewport, &snarl, 2.0, false)
+            .0
+            .unwrap();
+        assert!(explicit.zoom < INITIAL_MIN_ZOOM);
+        assert!(viewport.shrink(11.9).contains_rect(
+            transform(explicit) * Rect::from_min_size(Pos2::ZERO, egui::vec2(10_000.0, 1_000.0))
+        ));
     }
 
     #[test]

@@ -35,6 +35,10 @@ pub fn show(
     {
         return None;
     }
+    let collapsed_id = id.with("minimap_collapsed");
+    let collapsed = ui
+        .ctx()
+        .data(|data| data.get_temp::<bool>(collapsed_id).unwrap_or(false));
     let default_size = egui::vec2(
         DEFAULT_MAX_SIZE
             .x
@@ -51,6 +55,11 @@ pub fn show(
         .data(|data| data.get_temp::<egui::Vec2>(size_id))
         .unwrap_or(default_size);
     let size = clamp_size(requested_size, viewport.size());
+    let size = if collapsed {
+        egui::vec2(36.0, 36.0)
+    } else {
+        size
+    };
     let rect = egui::Rect::from_min_size(
         egui::pos2(
             viewport.right() - size.x - MARGIN,
@@ -58,7 +67,9 @@ pub fn show(
         ),
         size,
     );
-    let layer_id = egui::LayerId::new(egui::Order::Foreground, id.with("minimap_layer"));
+    // A canvas sublayer stays above its nodes, but below windows and modals.
+    let layer_id = egui::LayerId::new(ui.layer_id().order, id.with("minimap_layer"));
+    ui.ctx().set_sublayer(ui.layer_id(), layer_id);
     let mut overlay_ui = ui.new_child(
         egui::UiBuilder::new()
             .layer_id(layer_id)
@@ -66,8 +77,9 @@ pub fn show(
             .sense(egui::Sense::hover()),
     );
     overlay_ui.set_clip_rect(viewport);
-    let inner = rect.shrink(INNER_MARGIN);
-    let map = egui::emath::RectTransform::from_to(graph_bounds, fitted_rect(graph_bounds, inner));
+    let response = overlay_ui
+        .interact(rect, id.with("minimap"), egui::Sense::click_and_drag())
+        .on_hover_text("Click to focus; drag to pan");
     let painter = overlay_ui.painter_at(rect);
     painter.rect_filled(rect, 4.0, colors.canvas.to_egui().gamma_multiply(0.94));
     painter.rect_stroke(
@@ -76,6 +88,38 @@ pub fn show(
         egui::Stroke::new(1.0, colors.node_border.to_egui()),
         egui::StrokeKind::Inside,
     );
+    let toggle_rect = egui::Rect::from_min_size(
+        rect.right_top() - egui::vec2(28.0, 0.0),
+        egui::vec2(28.0, 28.0),
+    );
+    let toggle = overlay_ui
+        .put(
+            toggle_rect,
+            egui::Button::new(crate::icons::text(
+                if collapsed {
+                    lucide_icons::Icon::Map
+                } else {
+                    lucide_icons::Icon::ChevronDown
+                },
+                crate::ui_kit::METRICS.icon_small,
+            )),
+        )
+        .on_hover_text(if collapsed {
+            "Show minimap"
+        } else {
+            "Collapse minimap"
+        });
+    if toggle.clicked() {
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(collapsed_id, !collapsed));
+        ui.ctx().request_repaint();
+    }
+    if collapsed {
+        return None;
+    }
+    let mut inner = rect.shrink(INNER_MARGIN);
+    inner.min.y += 16.0;
+    let map = egui::emath::RectTransform::from_to(graph_bounds, fitted_rect(graph_bounds, inner));
 
     let positions = snarl
         .nodes_pos_ids()
@@ -127,9 +171,6 @@ pub fn show(
         resize_corner,
         egui::vec2(RESIZE_GRIP_SIZE, RESIZE_GRIP_SIZE),
     );
-    let response = overlay_ui
-        .interact(rect, id.with("minimap"), egui::Sense::click_and_drag())
-        .on_hover_text("Click to focus; drag to pan");
     let resize_response = overlay_ui
         .interact(resize_rect, id.with("minimap_resize"), egui::Sense::drag())
         .on_hover_cursor(egui::CursorIcon::ResizeNwSe)
@@ -158,6 +199,7 @@ pub fn show(
         .then(|| response.interact_pointer_pos())
         .flatten()
         .filter(|pointer| !resize_rect.contains(*pointer))
+        .filter(|pointer| !toggle_rect.contains(*pointer))
         .map(|pointer| NavigationRequest {
             graph_position: map.inverse().transform_pos_clamped(pointer),
             zoom: response.clicked().then_some(FOCUS_ZOOM),

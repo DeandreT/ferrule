@@ -318,24 +318,30 @@ fn show_endpoint_proxy_label(
     connected: bool,
 ) {
     let direction = if above { "above" } else { "below" };
-    let label = if above {
-        format!("^ {hidden} hidden")
-    } else {
-        format!("v {hidden} hidden")
-    };
+    let label = format!("{hidden} hidden");
     let side = if source { "source" } else { "target" };
     let connection = if connected {
         "Connected offscreen fields are routed through this edge pin. "
     } else {
         ""
     };
-    show_endpoint_label(
-        ui,
-        &label,
-        align,
-        format!("{connection}Scroll to show {hidden} hidden {side} field(s) {direction}"),
-        false,
-    );
+    ui.horizontal(|ui| {
+        ui.label(crate::icons::text(
+            if above {
+                lucide_icons::Icon::ChevronUp
+            } else {
+                lucide_icons::Icon::ChevronDown
+            },
+            crate::ui_kit::METRICS.icon_small,
+        ));
+        show_endpoint_label(
+            ui,
+            &label,
+            align,
+            format!("{connection}Scroll to show {hidden} hidden {side} fields {direction}"),
+            false,
+        );
+    });
 }
 
 pub struct GraphViewer<'a> {
@@ -1662,14 +1668,17 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             |name| format!("Input: {name}"),
                         )
                     }
-                    Some(Node::RuntimeValue { value }) => format!("Runtime: {value:?}"),
+                    Some(node @ Node::RuntimeValue { .. }) => readable_node_label(node),
                     Some(Node::RuntimeParameter { name, ty, .. }) => {
                         let name = if name.is_empty() {
                             "<name required>"
                         } else {
                             name
                         };
-                        format!("Runtime input: {name} ({ty:?})")
+                        format!(
+                            "Run value: {name} ({})",
+                            crate::value_editor::scalar_type_label(*ty)
+                        )
                     }
                     Some(Node::RuntimeParameterDefault { name, ty, .. }) => {
                         let name = if name.is_empty() {
@@ -1677,7 +1686,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         } else {
                             name
                         };
-                        format!("Runtime input: {name} ({ty:?}, optional)")
+                        format!(
+                            "Run value: {name} ({}, optional)",
+                            crate::value_editor::scalar_type_label(*ty)
+                        )
                     }
                     Some(Node::Call { function, .. }) => functions::builtin(function).map_or_else(
                         || format!("Call: {function}"),
@@ -2513,6 +2525,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 egui::PopupCloseBehavior::CloseOnClickOutside
             };
             let properties_width = match self.graph.nodes.get(&node_id) {
+                Some(Node::Const { .. }) => crate::ui_kit::DialogWidth::Narrow.px(),
                 Some(Node::ValueMap { table, .. }) => {
                     crate::value_editor::value_map_editor_width(table.len()) + 22.0
                 }
@@ -2521,6 +2534,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             // Snarl draws pins before headers, so this anchor can come from the
             // previous pass. A newly locked canvas must disable its editor now.
             let properties_enabled = ui.is_enabled() && edit.enabled();
+            let mut done = false;
             egui::Popup::from_response(&edit)
                 .id(popup_id)
                 .open_bool(&mut open)
@@ -2530,12 +2544,35 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 .show(|ui| {
                     ui.set_style(ui.ctx().global_style());
                     ui.set_max_width(properties_width);
-                    ui.add(egui::Label::new(&full_title).wrap());
+                    ui.horizontal(|ui| {
+                        ui.strong(
+                            if matches!(self.graph.nodes.get(&node_id), Some(Node::Const { .. })) {
+                                "Edit constant"
+                            } else {
+                                "Node settings"
+                            },
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            done |= crate::ui_kit::icon_button(
+                                ui,
+                                lucide_icons::Icon::X,
+                                "Close node settings",
+                                None,
+                            )
+                            .clicked();
+                        });
+                    });
                     ui.separator();
+                    if !matches!(self.graph.nodes.get(&node_id), Some(Node::Const { .. })) {
+                        ui.add(egui::Label::new(&full_title).wrap());
+                    }
                     ui.add_enabled_ui(properties_enabled, |ui| {
                         self.show_node_properties(pin, ui, snarl);
                     });
+                    ui.separator();
+                    done |= crate::ui_kit::dialog_buttons(ui, "Done".into(), None, None).is_some();
                 });
+            open &= !done;
             ui.ctx().data_mut(|data| {
                 if open {
                     data.insert_temp(popup_id, true);
@@ -2659,8 +2696,15 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             ui.close();
         }
         let references = self.blocking_references_to(mapping_id);
+        ui.separator();
         let remove = ui
-            .add_enabled(references.is_empty(), egui::Button::new("Remove"))
+            .add_enabled(
+                references.is_empty(),
+                egui::Button::new(
+                    egui::RichText::new("Remove node")
+                        .color(crate::theme::active_palette(ui.ctx()).error),
+                ),
+            )
             .on_disabled_hover_text(format!("Used by: {}", references.join(", ")));
         if remove.clicked() {
             self.remove_snarl_nodes_recorded(&[node], snarl);

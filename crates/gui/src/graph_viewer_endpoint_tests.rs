@@ -561,7 +561,7 @@ fn endpoint_headers_clear_collapse_button_and_keep_canvas_geometry_for_unicode_t
             let filters = shapes
                 .iter()
                 .filter_map(|shape| match shape {
-                    egui::epaint::Shape::Text(text) if text.galley.text() == "Connected fields" => {
+                    egui::epaint::Shape::Text(text) if text.galley.text() == "20/20" => {
                         Some(text.galley.rows.len())
                     }
                     _ => None,
