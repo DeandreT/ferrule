@@ -94,6 +94,16 @@ pub fn import_with_root(
 /// using this reader never reopen the supplied identities as filesystem paths.
 pub trait JsonSchemaByteReader {
     fn read(&self, resource: &std::path::Path) -> std::io::Result<std::sync::Arc<[u8]>>;
+    /// Optional stricter host policy, applied to decoded local resource paths.
+    fn validate_reference(&self, _reference: &str) -> std::io::Result<()> {
+        Ok(())
+    }
+    /// Optional host policy for a schema reference's final JSON Pointer target.
+    /// Checked after the complete graph loads, including cyclic references.
+    /// The default retains the ordinary importer's legacy missing-ref behavior.
+    fn validate_reference_target(&self, _reference: &str, _exists: bool) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 /// Imports a schema and its relative local-file references from immutable host

@@ -13,6 +13,10 @@ use super::ConfigError;
 /// reopen the returned identity or scan for a replacement configuration.
 pub trait EdiConfigByteReader {
     fn read(&self, resource: &Path) -> std::io::Result<Arc<[u8]>>;
+    /// Optional stricter host policy before reference normalization.
+    fn validate_reference(&self, _reference: &str) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 const MAX_FILES: usize = 32;
@@ -154,6 +158,11 @@ impl Files {
     ) -> Result<PathBuf, ConfigError> {
         if self.supplied.is_none() {
             return resolve_sibling(path, relative, &self.root);
+        }
+        if let Some(reader) = &self.supplied {
+            reader
+                .validate_reference(relative)
+                .map_err(|error| ConfigError::Invalid(error.to_string()))?;
         }
         if relative.is_empty()
             || relative.len() > 4096

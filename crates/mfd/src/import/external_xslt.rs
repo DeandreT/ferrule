@@ -1,4 +1,3 @@
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use ir::SchemaKind;
@@ -53,7 +52,7 @@ pub(super) fn read(
         .ok_or_else(|| "component has no function name".to_string())?;
     let input = exactly_one_pin(component, "sources", "input")?;
     let output = exactly_one_pin(component, "targets", "output")?;
-    let text = read_module(&module_path)?;
+    let text = resources.read_text(&module_path, MAX_MODULE_BYTES)?;
     let document = roxmltree::Document::parse(&text)
         .map_err(|error| format!("module `{}` is not XML: {error}", module_path.display()))?;
     let templates = document
@@ -113,23 +112,6 @@ fn module_paths(mapping_path: &Path, library: &str) -> Vec<PathBuf> {
         .into_iter()
         .map(|extension| parent.join(format!("{library}.{extension}")))
         .collect()
-}
-
-fn read_module(path: &Path) -> Result<String, String> {
-    let mut file = std::fs::File::open(path)
-        .map_err(|error| format!("could not read module `{}`: {error}", path.display()))?;
-    let mut bytes = Vec::new();
-    file.by_ref()
-        .take(MAX_MODULE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| format!("could not read module `{}`: {error}", path.display()))?;
-    if bytes.len() as u64 > MAX_MODULE_BYTES {
-        return Err(format!(
-            "module `{}` exceeds the {MAX_MODULE_BYTES}-byte limit",
-            path.display()
-        ));
-    }
-    String::from_utf8(bytes).map_err(|_| format!("module `{}` is not UTF-8", path.display()))
 }
 
 fn exactly_one_pin(

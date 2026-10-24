@@ -108,6 +108,7 @@ struct Loader {
     documents: Vec<Document>,
     total_bytes: usize,
     references: usize,
+    reference_targets: Vec<(usize, String, String)>,
 }
 
 #[derive(Clone, Copy)]
@@ -168,6 +169,7 @@ pub(super) fn load(path: &Path, package_root: &Path) -> Result<LoadedSchema, Jso
         documents: Vec::new(),
         total_bytes: 0,
         references: 0,
+        reference_targets: Vec::new(),
     };
     let root_index = loader.load_document(&root_path, 0)?;
     debug_assert_eq!(root_index, 0);
@@ -201,6 +203,7 @@ pub(super) fn load_with_byte_reader(
         documents: Vec::new(),
         total_bytes: 0,
         references: 0,
+        reference_targets: Vec::new(),
     };
     loader.load_document(&path, 0)?;
     loader.finish()
@@ -253,6 +256,7 @@ pub(super) fn load_inline(text: &str) -> Result<LoadedSchema, JsonFormatError> {
         }],
         total_bytes: text.len(),
         references: 0,
+        reference_targets: Vec::new(),
     };
     loader.rewrite_references(
         &mut value,
@@ -568,6 +572,9 @@ impl Loader {
                     "the resource path contains invalid percent encoding or UTF-8",
                 )
             })?;
+            if let Some(reader) = &self.reader {
+                reader.validate_reference(&decoded)?;
+            }
             if decoded.contains('?')
                 || Path::new(&decoded).is_absolute()
                 || has_uri_scheme(&decoded)
@@ -596,6 +603,10 @@ impl Loader {
             self.load_document(&canonical, reference_depth + 1)?
         };
 
+        if self.reader.is_some() {
+            self.reference_targets
+                .push((target_index, fragment.clone(), reference.to_owned()));
+        }
         if target_index == 0 {
             Ok(format!("#{fragment}"))
         } else {
@@ -606,6 +617,14 @@ impl Loader {
     }
 
     fn finish(mut self) -> Result<LoadedSchema, JsonFormatError> {
+        if let Some(reader) = &self.reader {
+            for (index, fragment, reference) in &self.reference_targets {
+                reader.validate_reference_target(
+                    reference,
+                    self.documents[*index].value.pointer(fragment).is_some(),
+                )?;
+            }
+        }
         let mut root = std::mem::take(&mut self.documents[0].value);
         let mut lexemes = std::mem::take(&mut self.documents[0].lexemes);
         if self.documents.len() == 1 {

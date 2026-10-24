@@ -30,6 +30,7 @@ pub(crate) struct ResourceResolver {
     resource_refusals: RefCell<BTreeSet<String>>,
     bindings: Option<BindingSession>,
     design_snapshot: Option<String>,
+    package: Option<std::rc::Rc<crate::package::PackageReader>>,
 }
 
 impl ResourceResolver {
@@ -75,7 +76,66 @@ impl ResourceResolver {
             resource_refusals: RefCell::default(),
             bindings: None,
             design_snapshot: None,
+            package: None,
         })
+    }
+
+    pub(crate) fn from_package(package: &crate::MfdPackage) -> Result<Self, MfdError> {
+        let root = crate::package::virtual_root().to_path_buf();
+        let mapping_path = root.join(package.design_path());
+        let mapping_directory = mapping_path
+            .parent()
+            .ok_or(crate::PackageError::InvalidPath)?
+            .to_path_buf();
+        Ok(Self {
+            design_snapshot: Some(package.text(Path::new(package.design_path()))?),
+            package: Some(std::rc::Rc::new(crate::package::PackageReader::new(
+                package,
+            ))),
+            mapping_path,
+            mapping_directory,
+            package_root: root,
+            explicit_package_root: true,
+            edi_catalog_roots: Vec::new(),
+            json_schema_catalog_roots: Vec::new(),
+            resource_refusals: RefCell::default(),
+            bindings: None,
+        })
+    }
+
+    pub(crate) fn package(&self) -> Option<&std::rc::Rc<crate::package::PackageReader>> {
+        self.package.as_ref()
+    }
+
+    pub(crate) fn static_input(&self, stored: &str) -> String {
+        if self.package.is_some() {
+            stored.to_owned()
+        } else {
+            crate::import::instance_path::resolve_static_input(&self.mapping_path, stored)
+        }
+    }
+
+    pub(crate) fn read_text(&self, path: &Path, max_bytes: u64) -> Result<String, String> {
+        if let Some(package) = &self.package {
+            let bytes = package.bytes(path).map_err(|error| error.to_string())?;
+            if bytes.len() as u64 > max_bytes {
+                return Err(package
+                    .refuse(crate::PackageError::LimitExceeded)
+                    .to_string());
+            }
+            return String::from_utf8(bytes.to_vec())
+                .map_err(|_| package.refuse(crate::PackageError::InvalidText).to_string());
+        }
+        use std::io::Read;
+        let file = std::fs::File::open(path).map_err(|error| error.to_string())?;
+        let mut bytes = Vec::new();
+        file.take(max_bytes.saturating_add(1))
+            .read_to_end(&mut bytes)
+            .map_err(|error| error.to_string())?;
+        if bytes.len() as u64 > max_bytes {
+            return Err("resource byte limit exceeded".into());
+        }
+        String::from_utf8(bytes).map_err(|error| error.to_string())
     }
 
     pub(crate) fn with_bindings(
@@ -115,6 +175,9 @@ impl ResourceResolver {
     }
 
     pub(crate) fn finish_bindings(&self) -> Result<(), MfdError> {
+        if let Some(package) = &self.package {
+            package.finish()?;
+        }
         match &self.bindings {
             Some(session) => session.finish(),
             None => Ok(()),
@@ -184,6 +247,18 @@ impl ResourceResolver {
         &self,
         candidate: &Path,
     ) -> Result<Option<PathBuf>, String> {
+        if let Some(package) = &self.package {
+            let relative = candidate
+                .strip_prefix(crate::package::virtual_root())
+                .map_err(|_| crate::PackageError::InvalidPath)
+                .and_then(crate::package::portable_path)
+                .map_err(|error| package.refuse(error).to_string())?;
+            return Ok(package
+                .package
+                .get(&relative)
+                .ok()
+                .map(|_| candidate.to_path_buf()));
+        }
         match std::fs::symlink_metadata(candidate) {
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -264,6 +339,15 @@ impl ResourceResolver {
     }
 
     pub(crate) fn import_json_schema(&self, declared: &str) -> Result<ir::SchemaNode, String> {
+        if let Some(package) = &self.package {
+            let path = self.resolve_package_file(declared)?;
+            return format_json::json_schema::import_with_byte_reader(
+                &path,
+                &self.package_root,
+                package.clone(),
+            )
+            .map_err(|error| error.to_string());
+        }
         if let Some(bound) = self.bound_resource(ResourceBindingKindV1::JsonSchema, declared)? {
             return bound
                 .finish(format_json::json_schema::import_with_byte_reader(
@@ -430,6 +514,13 @@ impl ResourceResolver {
         description: &str,
         retain: bool,
     ) -> Result<PathBuf, String> {
+        if let Some(package) = &self.package {
+            // Path-returning callers use filesystem parsers. They must migrate to
+            // supplied bytes before being admitted for memory packages.
+            return Err(package
+                .refuse(crate::PackageError::FilesystemResource)
+                .to_string());
+        }
         if let Some(session) = &self.bindings {
             session.guard_untyped(declared)?;
         }
@@ -473,6 +564,27 @@ impl ResourceResolver {
             ));
         }
         Ok(resolved)
+    }
+
+    pub(crate) fn resolve_package_file(&self, declared: &str) -> Result<PathBuf, String> {
+        let package = self.package.as_ref().ok_or("not a memory package")?;
+        package
+            .package
+            .resolve(declared)
+            .map(|path| self.package_root.join(path))
+            .map_err(|error| package.refuse(error).to_string())
+    }
+
+    pub(crate) fn resolve_byte_file(
+        &self,
+        declared: &str,
+        description: &str,
+    ) -> Result<PathBuf, String> {
+        if self.package.is_some() {
+            self.resolve_package_file(declared)
+        } else {
+            self.resolve_file(declared, description)
+        }
     }
 }
 
