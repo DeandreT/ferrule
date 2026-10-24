@@ -46,6 +46,56 @@ pub fn emit_with_mapforce_x12_json(
 }
 impl std::error::Error for MapForceSourceEmitError {}
 
+/// Compose the original source parameter with lazy host-owned selection/load
+/// and the eager per-message JSON preparation profile.
+pub fn emit_with_primary_eager_x12_json(
+    document: &codegen::DocumentProgram,
+    options: &Options,
+    schema: &SchemaNode,
+    source_options: &FormatOptions,
+    message: &[String],
+    filename_target: &str,
+    driver: &[String],
+) -> Result<ArtifactSet, MapForceSourceEmitError> {
+    let descriptor =
+        codegen::prepare_mapforce_x12_source(document.program(), schema, source_options, message)
+            .map_err(MapForceSourceEmitError::Boundary)?;
+    let artifacts = emit_with_eager_x12_json_message(
+        document.program(),
+        options,
+        schema,
+        source_options,
+        message,
+        filename_target,
+        driver,
+    )?;
+    let mut files = crate::primary_filename::append(artifacts, document)
+        .map_err(MapForceSourceEmitError::Emit)?
+        .into_files();
+    let mapping = files
+        .iter_mut()
+        .find(|file| file.path.as_str() == "src/lib.rs")
+        .ok_or(MapForceSourceEmitError::Artifact)?;
+    mapping.contents.extend_from_slice(format!(r#"
+pub fn parse_primary_x12_document(identity: &str, bytes: &[u8]) -> Result<codegen_runtime::ParsedX12Source, codegen_runtime::X12BoundaryError> {{
+    codegen_runtime::parse_mapforce_x12_source_document({descriptor:?}, identity, bytes)
+}}
+/// Loaders must finish parsing and input cleanup before returning a document.
+pub fn acquire_primary_x12<'a, E: 'a, I: Iterator<Item = Result<String, E>> + 'a>(
+    execution: &ExecutionContext<'a>,
+    select: impl FnOnce(&str) -> Result<I, E> + 'a,
+    load: impl FnMut(&str) -> Result<codegen_runtime::ParsedX12Source, E> + 'a,
+    maximum: usize,
+) -> Result<codegen_runtime::X12SourceAcquisition<'a, RuntimeError, E>, codegen_runtime::X12AcquisitionError<RuntimeError, E>> {{
+    let execution = *execution;
+    codegen_runtime::X12SourceAcquisition::new({descriptor:?}, move || evaluate_primary_filename(&execution), select, load, maximum)
+}}
+"#).as_bytes());
+    ArtifactSet::new(files)
+        .map_err(EmitError::from)
+        .map_err(MapForceSourceEmitError::Emit)
+}
+
 /// Prepare one selected message with eager JSON body evaluation, followed by
 /// filename evaluation. This does not read, serialize, open or publish a file.
 pub fn emit_with_eager_x12_json_message(

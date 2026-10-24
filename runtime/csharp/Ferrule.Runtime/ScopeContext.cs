@@ -103,6 +103,17 @@ public sealed partial class ScopeContext
             executionContext);
     }
 
+    /// <summary>Start a different physical primary input while sharing invocation
+    /// counters. Active and named source frames cannot transition this way.</summary>
+    public ScopeContext? NextPrimarySource(FerruleInstance source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (_frames.Count != 1 || _collections.Count != 0) return null;
+        return new ScopeContext(source, new ReadOnlyCollection<FerruleInstance>(new[] { source }),
+            Array.Empty<CollectionIdentity>(), _executionContext, _dynamicSourceLoader,
+            _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock);
+    }
+
     /// <summary>
     /// Creates a root context with one outer group of named inputs followed by
     /// the primary source. Inner scope items and the primary source therefore

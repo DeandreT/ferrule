@@ -583,6 +583,43 @@ fn generated_source_companion_binds_the_complete_physical_schema_to_its_message(
     .into_files();
     assert!(files.iter().any(|file| file.path.as_str() == "src/lib.rs"
         && String::from_utf8_lossy(&file.contents).contains("prepare_primary_x12_json_message")));
+    let document = imported
+        .eager_json_document(&imported.targets[0].name, "ResolvedFilename")
+        .unwrap();
+    assert_eq!(
+        document.global_filename().unwrap(),
+        mapping::GlobalFilename::Parameter("Input")
+    );
+    let document_program = codegen::lower_document(&document).unwrap();
+    let files = codegen_rust::emit_with_primary_eager_x12_json(
+        &document_program,
+        &rust_options(),
+        &imported.source_schema,
+        &imported.source_options,
+        &imported.message_path,
+        "ResolvedFilename",
+        &imported.targets[0].driver_path,
+    )
+    .unwrap()
+    .into_files();
+    assert!(files.iter().any(|file| file.path.as_str() == "src/lib.rs"
+        && String::from_utf8_lossy(&file.contents).contains("pub fn acquire_primary_x12")));
+    let files = codegen_csharp::emit_with_primary_eager_x12_json(
+        &document_program,
+        &imported.source_schema,
+        &imported.source_options,
+        &imported.message_path,
+        "ResolvedFilename",
+        &imported.targets[0].driver_path,
+    )
+    .unwrap()
+    .into_files();
+    assert!(
+        files
+            .iter()
+            .any(|file| file.path.as_str() == "GeneratedMapping.cs"
+                && String::from_utf8_lossy(&file.contents).contains("AcquirePrimaryX12("))
+    );
     let mut wrong = program.clone();
     wrong.source.name = "UnrelatedMessage".into();
     assert!(

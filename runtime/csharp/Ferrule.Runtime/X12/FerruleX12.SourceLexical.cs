@@ -8,13 +8,26 @@ public static partial class FerruleX12
     /// numeric conversions, calendar validation, file acquisition or publication.</summary>
     public static FerruleInstance ParseMapForceSourceBytes(string descriptor, byte[] bytes)
     {
-        Profile profile = ParseProfile(descriptor);
-        if (profile.MapForce is null || HasFractionalImplied(profile.Root))
-            throw Failure(FerruleX12Error.UnsupportedProfile, "MapForce source projection requires a MapForce envelope without fractional implied decimals.");
+        Profile profile = MapForceSourceProfile(descriptor);
         FerruleInstance lexical = ParseLexicalSourceCore(descriptor, bytes, nativeProjection: true);
         int textBytes = 0;
         return ProjectMapForceSource(profile.Root, lexical, positional: false, segment: false, new Budget(), ref textBytes, 0);
     }
+
+    internal static void ValidateMapForceSourceDescriptor(string descriptor)
+        => _ = MapForceSourceProfile(descriptor);
+
+    private static Profile MapForceSourceProfile(string descriptor)
+    {
+        Profile profile = ParseProfile(descriptor);
+        if (profile.MapForce is null || HasFractionalImplied(profile.Root))
+            throw Failure(FerruleX12Error.UnsupportedProfile, "MapForce source projection requires a MapForce envelope without fractional implied decimals.");
+        return profile;
+    }
+
+    /// <summary>Call within a loader before input cleanup; no file is opened here.</summary>
+    public static FerruleParsedX12Source ParseMapForceSourceDocument(string descriptor, string identity, byte[] bytes)
+        => new(descriptor, new FerruleDocument(identity, ParseMapForceSourceBytes(descriptor, bytes)));
 
     private static bool HasFractionalImplied(Node node) => node.ImpliedPlaces is > 0 || node.Children.Any(HasFractionalImplied);
 
@@ -125,4 +138,60 @@ public static partial class FerruleX12
         Name = node.Name, Type = node.Type is null ? null : "string", Repeating = node.Repeating,
         Fixed = node.Fixed, Count = node.Count, Children = node.Children.Select(LexicalNode).ToArray(),
     };
+}
+
+public sealed class FerruleParsedX12Source
+{
+    internal FerruleParsedX12Source(string descriptor, FerruleDocument document) { Descriptor = descriptor; Document = document; }
+    internal string Descriptor { get; }
+    internal FerruleDocument Document { get; }
+}
+
+public enum FerruleX12AcquisitionStage { Filename, Selection, Request, Load, Limit, Descriptor }
+
+public sealed class FerruleX12AcquisitionException : Exception
+{
+    internal FerruleX12AcquisitionException(FerruleX12AcquisitionStage stage, string message, Exception? cause = null, string? path = null) : base(message, cause) { Stage = stage; Path = path; }
+    public FerruleX12AcquisitionStage Stage { get; }
+    public string? Path { get; }
+}
+
+/// <summary>Lazy, descriptor-bound acquisition. Loaders parse and finish input cleanup before returning.</summary>
+public static class FerruleX12SourceAcquisition
+{
+    public const int MaximumDocuments = 100_000;
+    public static IEnumerable<FerruleDocument> Acquire(string descriptor, Func<string> filename, Func<string, IEnumerable<string>> select, Func<string, FerruleParsedX12Source> load, int maximum)
+    {
+        ArgumentNullException.ThrowIfNull(filename); ArgumentNullException.ThrowIfNull(select); ArgumentNullException.ThrowIfNull(load);
+        FerruleX12.ValidateMapForceSourceDescriptor(descriptor);
+        if (maximum < 0 || maximum > MaximumDocuments) throw new FerruleX12AcquisitionException(FerruleX12AcquisitionStage.Limit, "Invalid X12 source document limit.");
+        return Iterate();
+        IEnumerable<FerruleDocument> Iterate()
+        {
+            string pattern;
+            try { pattern = filename(); }
+            catch (Exception error) { throw new FerruleX12AcquisitionException(FerruleX12AcquisitionStage.Filename, "X12 source filename failed.", error); }
+            IEnumerator<string> requests;
+            try { requests = (select(pattern) ?? throw new InvalidOperationException("Null X12 selection.")).GetEnumerator(); }
+            catch (Exception error) { throw new FerruleX12AcquisitionException(FerruleX12AcquisitionStage.Selection, "X12 source selection failed.", error); }
+            using (requests)
+            {
+                int count = 0;
+                while (true)
+                {
+                    string path; bool next;
+                    try { next = requests.MoveNext(); path = next ? requests.Current : ""; }
+                    catch (Exception error) { throw new FerruleX12AcquisitionException(FerruleX12AcquisitionStage.Request, "X12 source request failed.", error); }
+                    if (!next) yield break;
+                    if (count == maximum) throw new FerruleX12AcquisitionException(FerruleX12AcquisitionStage.Limit, "X12 source document limit reached.");
+                    FerruleParsedX12Source source;
+                    try { source = load(path) ?? throw new InvalidOperationException("Null X12 source document."); }
+                    catch (Exception error) { throw new FerruleX12AcquisitionException(FerruleX12AcquisitionStage.Load, "X12 source load failed.", error, path); }
+                    if (source.Descriptor != descriptor) throw new FerruleX12AcquisitionException(FerruleX12AcquisitionStage.Descriptor, "X12 source used a different descriptor.", path: path);
+                    count++;
+                    yield return source.Document;
+                }
+            }
+        }
+    }
 }
