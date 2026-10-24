@@ -310,6 +310,7 @@ what evidence closes each gate.
   model
 - `crates/functions`: Scalar built-in function library
 - `crates/engine`: Project validation and mapping interpreter
+- `crates/edit-ops`: Typed, replayable headless mapping edits
 
 ### Code generation
 
