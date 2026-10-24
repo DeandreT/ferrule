@@ -180,6 +180,7 @@ fn redundant_scalar_type_siblings_compiled_complete_oracles() -> TestResult<()> 
                 directory.join("src/main.rs"),
                 include_str!("scalar_type_siblings/Host.rs.txt"),
             )?;
+            host_policy::name_generated_host(&directory, "scalar-type-siblings-host")?;
         } else {
             std::fs::create_dir(directory.join("Harness"))?;
             std::fs::write(directory.join("Harness/Host.csproj"), HARNESS)?;

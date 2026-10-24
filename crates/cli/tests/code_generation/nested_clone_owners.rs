@@ -196,6 +196,7 @@ fn declared_nested_clone_owners_compiled_complete_oracles() -> TestResult<()> {
                     directory.join("src/main.rs"),
                     include_str!("nested_clone_owners/Host.rs.txt"),
                 )?;
+                host_policy::name_generated_host(&directory, "nested-clone-owners-host")?;
             } else {
                 let host = directory.join("Harness");
                 std::fs::create_dir(&host)?;

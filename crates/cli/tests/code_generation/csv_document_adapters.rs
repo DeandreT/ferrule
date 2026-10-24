@@ -192,6 +192,7 @@ fn complete_csv_documents_compile_and_execute_in_both_backends() -> TestResult<(
                     output.join("src/main.rs"),
                     include_str!("fixtures/csv_document_rust.rs.txt"),
                 )?;
+                host_policy::name_generated_host(&output, "csv-document-adapters-host")?;
                 let mut command = Command::new("cargo");
                 command.args(["run", "--offline", "--quiet", "--", mode]);
                 command

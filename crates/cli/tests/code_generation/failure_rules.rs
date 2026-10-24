@@ -355,6 +355,7 @@ fn failure_rules_match_engine_and_generated_backends() -> TestResult<()> {
         rust_output.join("src/main.rs"),
         include_str!("fixtures/failure_rules_rust_harness.rs.txt"),
     )?;
+    host_policy::name_generated_host(&rust_output, "failure-rules-host")?;
     let mut rust_command = Command::new("cargo");
     rust_command
         .args(["run", "--quiet"])
@@ -826,6 +827,7 @@ fn generated_tokenizer_cap_matches_native(kind: TokenizerCapKind) -> TestResult<
         }
         None => directory.path.join("cargo-target"),
     };
+    host_policy::name_generated_host(&rust_output, &format!("tokenizer-cap-{}-host", kind.name()))?;
     let mut rust_command = Command::new("cargo");
     rust_command
         .args(["run", "--quiet", "--jobs", "1", "--", kind.name()])

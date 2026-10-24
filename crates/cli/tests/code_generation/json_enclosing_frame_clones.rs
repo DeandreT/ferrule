@@ -111,6 +111,7 @@ fn ordinary_json_implicit_occurrences_match_generated_rust_and_csharp() -> TestR
             rust_output.join("src/main.rs"),
             include_str!("fixtures/json_enclosing_frame_clones_rust.rs.txt"),
         )?;
+        host_policy::name_generated_host(&rust_output, "json-enclosing-frame-clones-host")?;
         let mut rust_command = Command::new("cargo");
         rust_command
             .args(["run", "--quiet"])

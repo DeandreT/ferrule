@@ -629,6 +629,22 @@ impl Drop for JsonBoundaryDirectory {
     }
 }
 
+/// The generated host binary of one boundary case; every caller passes its
+/// own case name, which may carry design labels outside Cargo's target names.
+fn json_boundary_host(name: &str) -> String {
+    let name = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    format!("json-boundary-{name}-host")
+}
+
 fn recorded_json_boundary_command(
     command: &mut Command,
     directory: &Path,
@@ -727,6 +743,7 @@ fn run_generated_boundary_cases_json_with_harnesses(
         }
         None => directory.path.join("cargo-target"),
     };
+    host_policy::name_generated_host(&rust_output, &json_boundary_host(name))?;
     let mut rust_command = Command::new("cargo");
     rust_command
         .args(["run", "--quiet"])

@@ -60,6 +60,7 @@ fn lazy_json_string_substitution_matches_generated_rust_and_csharp() -> TestResu
             rust_output.join("src/main.rs"),
             include_str!("fixtures/lazy_string_substitution_rust.rs.txt"),
         )?;
+        host_policy::name_generated_host(&rust_output, "lazy-string-substitution-host")?;
         let mut rust_command = Command::new("cargo");
         rust_command
             .args(["run", "--quiet"])

@@ -418,6 +418,7 @@ fn value_maps_match_engine_and_generated_backends() -> TestResult<()> {
         }
         None => directory.path.join("cargo-target"),
     };
+    host_policy::name_generated_host(&rust_output, "value-maps-host")?;
     let mut rust_command = Command::new("cargo");
     rust_command
         .args(["run", "--quiet", "--jobs", "1"])
@@ -1060,6 +1061,7 @@ fn isolated_value_map_precision_matches_engine_and_public_generated_hosts() -> T
         Some(path) => PathBuf::from(path),
         None => directory.path.join("cargo-target"),
     };
+    host_policy::name_generated_host(&rust_output, "value-maps-isolated-host")?;
     let mut rust_command = Command::new("cargo");
     rust_command
         .args(["run", "--quiet", "--jobs", "1"])
