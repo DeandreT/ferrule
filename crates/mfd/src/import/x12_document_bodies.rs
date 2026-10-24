@@ -91,6 +91,47 @@ pub struct ImportedX12DocumentBodies {
     pub mapping_path: PathBuf,
 }
 
+impl ImportedX12DocumentBodies {
+    /// Retain the original primary parameter separately from body/filename
+    /// execution. No preview text is supplied as a runtime value.
+    pub fn eager_json_document(
+        &self,
+        target_name: &str,
+        filename_target: &str,
+    ) -> Result<mapping::DocumentProject, MfdError> {
+        let targets = self
+            .targets
+            .iter()
+            .filter(|target| target.name == target_name)
+            .collect::<Vec<_>>();
+        let [target] = targets.as_slice() else {
+            return Err(refuse("JSON document target is absent or ambiguous"));
+        };
+        let mut project = target.eager_json_project(filename_target)?;
+        let node = project
+            .graph
+            .nodes
+            .keys()
+            .next_back()
+            .copied()
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or_else(|| refuse("primary filename node identity overflow"))?;
+        project.graph.nodes.insert(
+            node,
+            Node::RuntimeParameter {
+                name: self.input_parameter.clone(),
+                ty: ScalarType::String,
+                preview: self.input_preview.clone(),
+            },
+        );
+        Ok(mapping::DocumentProject::new(
+            project,
+            mapping::PrimarySourcePlan { filename: node },
+        ))
+    }
+}
+
 fn refuse(reason: impl std::fmt::Display) -> MfdError {
     MfdError::UnsupportedImport(format!("X12 document bodies: {reason}"))
 }

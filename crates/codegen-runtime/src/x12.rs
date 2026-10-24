@@ -28,8 +28,13 @@ pub use interchange_stream::{
 pub use interchange_writer::{
     serialize_mapforce_x12_document, serialize_mapforce_x12_document_with_clock,
 };
+mod acquisition;
 mod source_lexical;
 mod interchange_source;
+pub use acquisition::{
+    MAX_X12_SOURCE_DOCUMENTS, ParsedX12Source, X12AcquisitionError, X12SourceAcquisition,
+    parse_mapforce_x12_source_document,
+};
 #[cfg(test)]
 mod tests;
 mod wire;

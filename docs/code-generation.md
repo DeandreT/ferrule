@@ -1114,6 +1114,25 @@ clock callbacks remain separate and share the original invocation counter state.
 The result is a portable document member, not a written or accepted file. This
 profile does not implement deferred XML evaluation or physical publication.
 
+`ImportedX12DocumentBodies.eager_json_document` also retains the original input
+filename parameter in a `DocumentProject`. The matching backend
+`emit_with_primary_eager_x12_json` entry points add `evaluate_primary_filename` /
+`EvaluatePrimaryFilename`, `parse_primary_x12_document` /
+`ParsePrimaryX12Document`, and `acquire_primary_x12` / `AcquirePrimaryX12`.
+Acquisition defers filename evaluation, selection and loading until enumeration.
+The host loader parses and completes input cleanup before returning the opaque
+`ParsedX12Source` / `FerruleParsedX12Source`. Its descriptor must exactly match
+the acquisition descriptor. A failure terminates that acquisition; it does not
+discard documents the host already accepted.
+
+When visiting several physical inputs, create one root invocation context and
+use `next_primary_source` / `NextPrimarySource` for each loaded document. These
+methods preserve invocation counters and host values, replace the primary root,
+and refuse active collection or named-input contexts. The original context is
+unchanged. The host then visits that input's messages and calls the preparation
+method. The callbacks still own filesystem/URL selection and input close errors;
+the companion neither chooses a transport nor publishes output files.
+
 `parse_mapforce_x12_source` / `ParseMapForceSourceBytes` adds a separately selected
 native source value view. It removes ignored tab/CR/LF characters while retaining
 an LF segment terminator, treats empty physical values and empty composites as

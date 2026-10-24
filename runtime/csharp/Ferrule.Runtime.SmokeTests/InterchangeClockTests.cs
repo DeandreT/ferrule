@@ -78,5 +78,23 @@ internal static partial class Program
         calls.Clear();
         Throws<FerruleX12Exception>(() => FerruleX12.SerializeMapForceDocumentBytesWithClock(descriptor, Group(("Interchange", new FerruleRepeated([]))), context, Clock));
         Equal(0, calls.Count);
+        var acquisitionEvents = new List<string>();
+        var acquisition = FerruleX12SourceAcquisition.Acquire(boundary,
+            () => { acquisitionEvents.Add("filename"); return "pattern"; },
+            path => { acquisitionEvents.Add("select:" + path); return new[] { "a", "b" }; },
+            path => { acquisitionEvents.Add("load:" + path); return FerruleX12.ParseMapForceSourceDocument(boundary, path, Encoding.UTF8.GetBytes(text)); }, 1);
+        Equal(0, acquisitionEvents.Count);
+        using (var iterator = acquisition.GetEnumerator())
+        {
+            Equal(true, iterator.MoveNext()); Equal("a", iterator.Current.Path);
+            Equal(true, acquisitionEvents.SequenceEqual(new[] { "filename", "select:pattern", "load:a" }));
+            try { iterator.MoveNext(); throw new InvalidOperationException("Missing source limit."); }
+            catch (FerruleX12AcquisitionException error) { Equal(FerruleX12AcquisitionStage.Limit, error.Stage); }
+            Equal(false, iterator.MoveNext());
+        }
+        var mismatch = FerruleX12SourceAcquisition.Acquire(boundary, () => "pattern", _ => new[] { "a" },
+            path => FerruleX12.ParseMapForceSourceDocument(boundary + " ", path, Encoding.UTF8.GetBytes(text)), 1);
+        try { _ = mismatch.ToArray(); throw new InvalidOperationException("Missing descriptor refusal."); }
+        catch (FerruleX12AcquisitionException error) { Equal(FerruleX12AcquisitionStage.Descriptor, error.Stage); }
     }
 }

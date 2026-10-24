@@ -48,6 +48,56 @@ pub fn emit_with_mapforce_x12_json(
 }
 impl std::error::Error for MapForceSourceEmitError {}
 
+/// Compose the original source parameter, lazy acquisition and eager JSON body
+/// preparation. Transport and input cleanup remain host-owned.
+pub fn emit_with_primary_eager_x12_json(
+    document: &codegen::DocumentProgram,
+    schema: &SchemaNode,
+    options: &FormatOptions,
+    message: &[String],
+    filename_target: &str,
+    driver: &[String],
+) -> Result<ArtifactSet, MapForceSourceEmitError> {
+    let descriptor =
+        codegen::prepare_mapforce_x12_source(document.program(), schema, options, message)
+            .map_err(MapForceSourceEmitError::Boundary)?;
+    let artifacts = emit_with_eager_x12_json_message(
+        document.program(),
+        schema,
+        options,
+        message,
+        filename_target,
+        driver,
+    )?;
+    let mut files = crate::primary_filename::append(artifacts, document)
+        .map_err(MapForceSourceEmitError::Emit)?
+        .into_files();
+    let mapping = files
+        .iter_mut()
+        .find(|file| file.path.as_str() == "GeneratedMapping.cs")
+        .ok_or(MapForceSourceEmitError::Artifact)?;
+    let descriptor = crate::literal::string(&descriptor);
+    mapping.contents.extend_from_slice(format!(r#"
+public static partial class GeneratedMapping
+{{
+    public static global::Ferrule.Runtime.FerruleParsedX12Source ParsePrimaryX12Document(string identity, byte[] bytes) => global::Ferrule.Runtime.FerruleX12.ParseMapForceSourceDocument({descriptor}, identity, bytes);
+    /// <summary>Loaders finish parsing and input cleanup before returning a document.</summary>
+    public static global::System.Collections.Generic.IEnumerable<global::Ferrule.Runtime.FerruleDocument> AcquirePrimaryX12(
+        global::Ferrule.Runtime.FerruleExecutionContext execution,
+        global::System.Func<string, global::System.Collections.Generic.IEnumerable<string>> select,
+        global::System.Func<string, global::Ferrule.Runtime.FerruleParsedX12Source> load,
+        int maximum)
+    {{
+        global::System.ArgumentNullException.ThrowIfNull(execution);
+        return global::Ferrule.Runtime.FerruleX12SourceAcquisition.Acquire({descriptor}, () => EvaluatePrimaryFilename(execution), select, load, maximum);
+    }}
+}}
+"#).as_bytes());
+    ArtifactSet::new(files)
+        .map_err(EmitError::from)
+        .map_err(MapForceSourceEmitError::Emit)
+}
+
 /// Prepare an eager JSON message before evaluating its filename. Acquisition,
 /// serialization and physical output remain separate host operations.
 pub fn emit_with_eager_x12_json_message(

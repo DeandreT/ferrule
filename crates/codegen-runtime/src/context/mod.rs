@@ -23,6 +23,8 @@ mod join_tests;
 #[cfg(test)]
 mod named_tests;
 #[cfg(test)]
+mod primary_transition_tests;
+#[cfg(test)]
 mod source_field_tests;
 
 pub use basic::{
@@ -196,6 +198,28 @@ impl<'a> ScopeContext<'a> {
             dynamic_source_loader: None,
             filter_map: None,
         }
+    }
+
+    /// Start a different physical primary document in the same invocation.
+    /// Only a plain primary root can transition; active/named frames are refused.
+    /// The original root and its views remain unchanged.
+    pub fn next_primary_source<'b>(&self, source: &'b Instance) -> Option<ScopeContext<'b>>
+    where
+        'a: 'b,
+    {
+        if self.frames.len() != 1
+            || self.frames[0].collection.is_some()
+            || !self.named_inputs.is_empty()
+        {
+            return None;
+        }
+        let mut next = ScopeContext::new(source);
+        next.execution = self.execution;
+        next.invocation_counters = self.invocation_counters.clone();
+        next.document_filename_clock = self.document_filename_clock;
+        next.dynamic_source_loader = self.dynamic_source_loader;
+        next.filter_map = self.filter_map.clone();
+        Some(next)
     }
 
     /// Creates a root context with secondary inputs and host values.
