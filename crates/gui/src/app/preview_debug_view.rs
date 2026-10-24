@@ -75,8 +75,8 @@ pub(in crate::app) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPh
                     ui.strong("Active source frames (outer to inner)");
                     if write.source.omitted_outer_frames > 0 {
                         ui.weak(format!(
-                            "{} outer frame(s) omitted from this bounded view",
-                            write.source.omitted_outer_frames
+                            "{} omitted from this bounded view",
+                            crate::ui_kit::plural(write.source.omitted_outer_frames, "outer frame")
                         ));
                     }
                     if write.source.frames.is_empty() {
@@ -98,7 +98,10 @@ pub(in crate::app) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPh
                                 ));
                             }
                             if frame.omitted_fields > 0 {
-                                ui.weak(format!("{} more field(s) omitted", frame.omitted_fields));
+                                ui.weak(format!(
+                                    "{} omitted",
+                                    crate::ui_kit::plural(frame.omitted_fields, "more field")
+                                ));
                             }
                         });
                     }
@@ -122,8 +125,8 @@ pub(in crate::app) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPh
                     }
                     if write.draft.omitted_fields > 0 {
                         ui.weak(format!(
-                            "{} more field(s) omitted from this bounded view",
-                            write.draft.omitted_fields
+                            "{} omitted from this bounded view",
+                            crate::ui_kit::plural(write.draft.omitted_fields, "more field")
                         ));
                     }
                 });
@@ -283,8 +286,8 @@ fn show_live_expression_context(
     show_primary_root_origin(ui, source.primary_root_origin.as_ref());
     if omitted_outer_positions > 0 {
         ui.weak(format!(
-            "{} outer position(s) omitted",
-            omitted_outer_positions
+            "{} omitted",
+            crate::ui_kit::plural(omitted_outer_positions, "outer position")
         ));
     }
     if position_paths_truncated {
@@ -301,8 +304,8 @@ fn show_live_expression_context(
     ui.strong("Active source frames (outer to inner)");
     if source.omitted_outer_frames > 0 {
         ui.weak(format!(
-            "{} outer frame(s) omitted",
-            source.omitted_outer_frames
+            "{} omitted",
+            crate::ui_kit::plural(source.omitted_outer_frames, "outer frame")
         ));
     }
     for (index, frame) in source.frames.iter().enumerate() {
@@ -316,7 +319,10 @@ fn show_live_expression_context(
                 ui.monospace(format!("{}: {}", field.name, debug_value(&field.preview)));
             }
             if frame.omitted_fields > 0 {
-                ui.weak(format!("{} more field(s) omitted", frame.omitted_fields));
+                ui.weak(format!(
+                    "{} omitted",
+                    crate::ui_kit::plural(frame.omitted_fields, "more field")
+                ));
             }
         });
     }
