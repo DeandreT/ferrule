@@ -87,7 +87,10 @@ pub use lower::{
     lower_with_basic_owned_row_failures, lower_with_basic_owned_sequence_item_at,
     lower_with_basic_owned_sort, lower_with_basic_owned_windows,
 };
-pub use mapforce_json_writer::{MapForceJsonWriterError, prepare_mapforce_json_writer};
+pub use mapforce_json_writer::{
+    EagerX12JsonMessage, MapForceJsonWriterError, prepare_eager_x12_json_message,
+    prepare_mapforce_json_writer,
+};
 pub use mapforce_json5_documents::{
     MapForceJson5DocumentError, prepare_csv_file_set_to_mapforce_json5_documents,
     prepare_csv_to_mapforce_json5_documents,
