@@ -95,7 +95,11 @@ pub fn acquire_native_primary_x12<'a,E:'a,I:Iterator<Item=Result<String,E>>+'a>(
 pub fn serialize_mapforce_xml(value: &Instance, schema_location: Option<&str>) -> Result<Vec<u8>, codegen_runtime::MapForceXmlError> {{
     codegen_runtime::serialize_mapforce_xml_document({:?}, value, schema_location)
 }}
-"#, plan.descriptor).as_bytes());
+/// Prepare XML before opening the host-owned destination stream.
+pub fn prepare_mapforce_xml(value: &Instance, schema_location: Option<&str>) -> Result<codegen_runtime::PreparedMapForceXmlDocument, codegen_runtime::MapForceXmlError> {{
+    codegen_runtime::prepare_mapforce_xml_document({:?}, value, schema_location)
+}}
+"#, plan.descriptor, plan.descriptor).as_bytes());
     ArtifactSet::new(files)
         .map_err(EmitError::from)
         .map_err(MapForceSourceEmitError::Emit)

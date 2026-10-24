@@ -56,7 +56,10 @@ mod user_function;
 mod value_map;
 mod x12;
 mod xml;
-pub use mapforce_xml::{MapForceXmlError, serialize_mapforce_xml_document};
+pub use mapforce_xml::{
+    MapForceXmlError, MapForceXmlWriteError, PreparedMapForceXmlDocument,
+    prepare_mapforce_xml_document, serialize_mapforce_xml_document,
+};
 mod xml_deferred;
 pub use xml_deferred::{DeferredXmlDocument, DeferredXmlError};
 mod xml_boundary;

@@ -4,6 +4,11 @@ use crate::{Instance, Value};
 use ir::{SchemaKind, SchemaNode, XmlNamespace};
 use std::fmt;
 
+mod stream;
+pub use stream::{
+    MapForceXmlWriteError, PreparedMapForceXmlDocument, prepare_mapforce_xml_document,
+};
+
 const MAX_BYTES: usize = 64 * 1024 * 1024;
 const MAX_NODES: usize = 1_000_000;
 
