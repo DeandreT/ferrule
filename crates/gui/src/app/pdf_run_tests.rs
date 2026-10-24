@@ -129,11 +129,7 @@ fn owned_saved_run_publishes_the_exact_mapping_output() {
     app.run_saved(false);
     let status = file_run_status(&app);
     finish_file_run(&mut app, &context);
-    assert!(
-        app.status.starts_with("wrote 1 record(s)"),
-        "{}",
-        app.status
-    );
+    assert!(app.status.starts_with("wrote 1 record"), "{}", app.status);
     assert_eq!(std::fs::read(root.work("out.json")).unwrap(), HELLO_JSON);
     let snapshot = status.snapshot();
     assert_eq!((snapshot.jobs_started, snapshot.jobs_closed), (1, 1));
@@ -228,11 +224,7 @@ fn debug_run_pauses_and_resumes_after_owned_extraction() {
     assert_eq!(std::fs::read(root.work("out.json")).unwrap(), SENTINEL);
     app.file_run_command(run_ui::FileRunCommand::Continue);
     finish_file_run(&mut app, &context);
-    assert!(
-        app.status.starts_with("wrote 1 record(s)"),
-        "{}",
-        app.status
-    );
+    assert!(app.status.starts_with("wrote 1 record"), "{}", app.status);
     assert_eq!(std::fs::read(root.work("out.json")).unwrap(), HELLO_JSON);
 }
 

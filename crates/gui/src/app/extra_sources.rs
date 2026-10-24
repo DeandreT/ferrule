@@ -216,15 +216,19 @@ impl FerruleApp {
                     .spacing([12.0, 8.0])
                     .show(ui, |ui| {
                         ui.strong("Name");
-                        ui.add(egui::TextEdit::singleline(&mut draft.name).desired_width(260.0));
+                        ui.add(crate::ui_kit::text_field(
+                            &mut draft.name,
+                            crate::ui_kit::FieldWidth::Large,
+                        ));
                         ui.end_row();
 
                         ui.strong("Instance");
                         let mut instance_path = draft.instance_path.clone();
                         if ui
-                            .add(
-                                egui::TextEdit::singleline(&mut instance_path).desired_width(260.0),
-                            )
+                            .add(crate::ui_kit::text_field(
+                                &mut instance_path,
+                                crate::ui_kit::FieldWidth::Large,
+                            ))
                             .changed()
                         {
                             draft.set_instance_path(instance_path);
@@ -242,10 +246,12 @@ impl FerruleApp {
                             let mut table = draft.sqlite_table.clone();
                             if ui
                                 .add(
-                                    egui::TextEdit::singleline(&mut table)
-                                        .desired_width(260.0)
-                                        .char_limit(256)
-                                        .hint_text("Existing table name"),
+                                    crate::ui_kit::text_field(
+                                        &mut table,
+                                        crate::ui_kit::FieldWidth::Large,
+                                    )
+                                    .char_limit(256)
+                                    .hint_text("Existing table name"),
                                 )
                                 .changed()
                             {

@@ -394,7 +394,10 @@ impl FerruleApp {
         }
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
-            self.status = format!("run blocked by {} validation issue(s)", issues.len());
+            self.status = format!(
+                "run blocked by {}",
+                crate::ui_kit::plural(issues.len(), "validation issue")
+            );
             self.diagnostics.validation(&self.project, issues);
             return;
         }
@@ -835,9 +838,9 @@ impl FerruleApp {
         match result {
             Ok(outcome) => {
                 self.status = format!(
-                    "wrote {} record(s) to {}",
-                    outcome.records_written,
-                    outcome.output_path.display()
+                    "wrote {} to {}",
+                    crate::ui_kit::plural(outcome.records_written, "record"),
+                    crate::ui_kit::file_label(&outcome.output_path)
                 );
                 let report = crate::run_report::RunReport::from_outcome_with_trace(
                     outcome,

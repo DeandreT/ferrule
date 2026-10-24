@@ -732,9 +732,11 @@ fn show_csv_columns(ui: &mut egui::Ui, draft: &mut CsvBoundaryDraft, source: boo
                 for (index, column) in draft.columns.iter_mut().enumerate() {
                     ui.label(format!("{}", index + 1));
                     ui.add(
-                        egui::TextEdit::singleline(&mut column.name)
-                            .desired_width(250.0)
-                            .char_limit(256),
+                        crate::ui_kit::text_field(
+                            &mut column.name,
+                            crate::ui_kit::FieldWidth::Large,
+                        )
+                        .char_limit(256),
                     );
                     egui::ComboBox::from_id_salt(("new_mapping_column_type", source, index))
                         .selected_text(scalar_type_label(column.ty))
