@@ -84,6 +84,16 @@ internal static partial class Program
             JsonSerializer.Serialize(new { boundary, source_encoding = "latin1", extra = true }),
             JsonSerializer.Serialize(new { boundary }),
         }) Throws<FerruleX12Exception>(() => FerruleX12.ParseMapForceSourceBytes(invalid, Encoding.UTF8.GetBytes(text)));
+        static object Particle(string name, string? segment, uint minimum, uint? maximum, object[] children) => new { name, segment, minimum, maximum, respect_maximum = false, merged_entries = 1, children };
+        var structure = Particle("Envelope", null, 1, 1, [Particle("Interchange", null, 1, null, [Particle("ISA", "ISA", 0, 1, []), Particle("Group", null, 1, null, [Particle("GS", "GS", 0, 1, []), Particle("Message_850", null, 1, null, [Particle("ST", "ST", 1, 1, []), Particle("SE", "SE", 1, 1, [])]), Particle("GE", "GE", 0, 1, [])]), Particle("IEA", "IEA", 0, 1, [])])]);
+        string structural = JsonSerializer.Serialize(new { boundary, source_encoding = "latin1", structure });
+        string structuralExpected = JsonSerializer.Serialize(FerruleX12.ParseMapForceSourceBytes(structural, Encoding.Latin1.GetBytes(text)));
+        foreach (string tail in new[] { "JUNK", "JUNK~", "IEA*2*unused~", "N9*ZZ*unused" }) Equal(structuralExpected, JsonSerializer.Serialize(FerruleX12.ParseMapForceSourceBytes(structural, Encoding.Latin1.GetBytes(text + tail))));
+        Throws<FerruleX12Exception>(() => FerruleX12.ParseMapForceSourceBytes(structural, Encoding.Latin1.GetBytes(text + "ISA")));
+        Throws<FerruleX12Exception>(() => FerruleX12.ParseMapForceSourceBytes(structural, Encoding.Latin1.GetBytes(text.TrimEnd('\r', '\n', '~'))));
+        var invalidStructure = System.Text.Json.Nodes.JsonNode.Parse(structural)!;
+        invalidStructure["structure"]!["children"]!.AsArray().Clear();
+        Throws<FerruleX12Exception>(() => FerruleX12SourceAcquisition.Acquire(invalidStructure.ToJsonString(), () => throw new Exception("must not evaluate"), _ => Array.Empty<string>(), _ => throw new Exception("must not load"), 1));
         for (int fail = 1; fail <= 4; fail++)
         {
             int count = 0;

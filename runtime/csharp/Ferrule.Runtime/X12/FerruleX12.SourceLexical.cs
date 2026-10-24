@@ -11,26 +11,33 @@ public static partial class FerruleX12
     {
         var source = NativeSourceSettings(descriptor);
         Profile profile = MapForceSourceProfile(source.Boundary);
-        FerruleInstance lexical = ParseLexicalSourceCore(source.Boundary, bytes, nativeProjection: true, source.Encoding);
+        FerruleInstance lexical = source.Structure is { } structure
+            ? ParseNativeStructureSource(profile, structure, bytes, source.Encoding)
+            : ParseLexicalSourceCore(source.Boundary, bytes, nativeProjection: true, source.Encoding);
         int textBytes = 0;
         return ProjectMapForceSource(profile.Root, lexical, positional: false, segment: false, new Budget(), ref textBytes, 0);
     }
 
     internal static void ValidateMapForceSourceDescriptor(string descriptor)
-        => _ = MapForceSourceProfile(NativeSourceSettings(descriptor).Boundary);
+    {
+        var source = NativeSourceSettings(descriptor);
+        var profile = MapForceSourceProfile(source.Boundary);
+        if (source.Structure is { } structure) { int count = 0; _ = NativeParticle.Read(structure, profile.Root, 0, ref count); }
+    }
 
-    private static (string Boundary, string Encoding) NativeSourceSettings(string descriptor)
+    private static (string Boundary, string Encoding, JsonElement? Structure) NativeSourceSettings(string descriptor)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         RequireUtf8(descriptor, MaximumSchemaBytes, "X12 source descriptor");
         try
         {
             using var parsed = JsonDocument.Parse(descriptor);
-            if (parsed.RootElement.ValueKind != JsonValueKind.Object || !parsed.RootElement.TryGetProperty("boundary", out var boundary)) return (descriptor, "utf8");
-            if (parsed.RootElement.EnumerateObject().Count() != 2 || boundary.ValueKind != JsonValueKind.String || !parsed.RootElement.TryGetProperty("source_encoding", out var encoding)
+            if (parsed.RootElement.ValueKind != JsonValueKind.Object || !parsed.RootElement.TryGetProperty("boundary", out var boundary)) return (descriptor, "utf8", null);
+            var names = parsed.RootElement.EnumerateObject().Select(p => p.Name).ToArray();
+            if (names.Distinct(StringComparer.Ordinal).Count() != names.Length || names.Any(n => n is not ("boundary" or "source_encoding" or "structure")) || boundary.ValueKind != JsonValueKind.String || !parsed.RootElement.TryGetProperty("source_encoding", out var encoding)
                 || encoding.ValueKind != JsonValueKind.String || encoding.GetString() is not ("utf8" or "latin1"))
                 throw Failure(FerruleX12Error.Schema, "Invalid native X12 source descriptor.");
-            return (boundary.GetString()!, encoding.GetString()!);
+            return (boundary.GetString()!, encoding.GetString()!, parsed.RootElement.TryGetProperty("structure", out var structure) && structure.ValueKind != JsonValueKind.Null ? structure.Clone() : null);
         }
         catch (JsonException) { throw Failure(FerruleX12Error.Schema, "Invalid native X12 source descriptor."); }
     }

@@ -12,12 +12,15 @@ pub fn parse_mapforce_x12_source(
     descriptor_text: &str,
     bytes: &[u8],
 ) -> Result<Instance, X12BoundaryError> {
-    let (profile, encoding) = source_profile(descriptor_text)?;
+    let (profile, encoding, structure) = source_profile(descriptor_text)?;
     input_size(bytes.len())?;
     let text = decode_source(bytes, encoding);
     input_size(text.len())?;
     let text = source_wire_text(&text);
-    let lexical = format_edi::x12::from_str_lexical(&text, &profile.schema)?;
+    let lexical = match structure {
+        Some(structure) => super::source_structure::parse(&text, &profile.schema, &structure)?,
+        None => format_edi::x12::from_str_lexical(&text, &profile.schema)?,
+    };
     let formats = profile
         .lexical
         .iter()
@@ -36,7 +39,14 @@ pub fn parse_mapforce_x12_source(
 
 pub(super) fn source_profile(
     text: &str,
-) -> Result<(Profile, mapping::X12SourceEncoding), X12BoundaryError> {
+) -> Result<
+    (
+        Profile,
+        mapping::X12SourceEncoding,
+        Option<mapping::X12SourceStructure>,
+    ),
+    X12BoundaryError,
+> {
     if text.len() > MAX_EMBEDDED_X12_SCHEMA_BYTES {
         return Err(descriptor(
             "native source descriptor exceeds its byte limit",
@@ -48,6 +58,7 @@ pub(super) fn source_profile(
     struct NativeSourceDescriptor {
         boundary: String,
         source_encoding: mapping::X12SourceEncoding,
+        structure: Option<mapping::X12SourceStructure>,
     }
     // Deserialize the original text, not the Value, so duplicate properties
     // cannot silently replace the bound source policy.
@@ -66,7 +77,11 @@ pub(super) fn source_profile(
         });
     let profile = Profile::parse(boundary)?;
     validate_profile(&profile)?;
-    Ok((profile, encoding))
+    let structure = native.and_then(|source| source.structure);
+    if let Some(structure) = &structure {
+        structure.validate(&profile.schema).map_err(descriptor)?;
+    }
+    Ok((profile, encoding, structure))
 }
 
 fn decode_source(bytes: &[u8], encoding: mapping::X12SourceEncoding) -> String {
@@ -184,7 +199,7 @@ fn project(
 }
 
 // Match .NET Char.IsWhiteSpace rather than a locale or a broad text trim.
-fn whitespace(ch: char) -> bool {
+pub(super) fn whitespace(ch: char) -> bool {
     matches!(ch, '\u{0009}'..='\u{000d}' | '\u{0020}' | '\u{0085}' | '\u{00a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}')
 }
 

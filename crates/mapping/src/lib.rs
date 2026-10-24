@@ -14,6 +14,8 @@ pub use csv_file_set::{
 pub mod document_project_file;
 mod dynamic_field_owned;
 mod edi;
+mod x12_source_structure;
+pub use x12_source_structure::X12SourceStructure;
 mod external_source;
 mod file_codec;
 mod filter_map;

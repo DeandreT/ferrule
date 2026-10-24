@@ -9,6 +9,7 @@ mod definitions;
 mod files;
 pub mod idoc;
 mod parser;
+mod source_structure;
 pub mod swift;
 mod write_minimums;
 
@@ -133,6 +134,23 @@ pub fn import_mapforce_source_minimums_with_byte_reader(
     reader: std::rc::Rc<dyn EdiConfigByteReader>,
 ) -> Result<Vec<mapping::MapForceEdiMinimum>, ConfigError> {
     write_minimums::read_fields(path, selected, Files::supplied(root, reader)?)
+}
+
+pub fn import_x12_source_structure_confined(
+    path: &Path,
+    root: &Path,
+    selected: &[String],
+) -> Result<mapping::X12SourceStructure, ConfigError> {
+    source_structure::read(path, selected, Files::new(root)?)
+}
+
+pub fn import_x12_source_structure_with_byte_reader(
+    path: &Path,
+    root: &Path,
+    selected: &[String],
+    reader: std::rc::Rc<dyn EdiConfigByteReader>,
+) -> Result<mapping::X12SourceStructure, ConfigError> {
+    source_structure::read(path, selected, Files::supplied(root, reader)?)
 }
 
 fn import_config_with_files(

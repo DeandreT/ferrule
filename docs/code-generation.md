@@ -1146,6 +1146,19 @@ are refused. Parsed documents from the native and legacy descriptors are not
 interchangeable. Existing flat-descriptor and non-native generated methods keep
 their UTF-8 fallback, and strict codecs are unchanged.
 
+`ImportedX12DocumentBodies.source_structure` retains the original source
+particle tree independently of the schema's optional/repeated containers.
+Pass it as `NativeX12Source.structure` to select the structural source reader.
+The descriptor then includes a `structure` member, bound to the same physical
+schema. It retains required occurrences, finite/unbounded maxima, merged
+entries and maximum-respect flags. This profile reads matched segments on
+demand: required structure and unterminated matched segments fail, while
+unconsumed trailing text does not become a new file-admission error. Single
+occurrence particles do not consume repeated trailers just because their
+execution-view field is a list. Omitting `structure` preserves the prior
+lexical parser. Native diagnostic messages and every malformed-input rule are
+not implied by this source-value profile.
+
 `parse_mapforce_x12_source` / `ParseMapForceSourceBytes` adds a separately selected
 native source value view. It removes ignored tab/CR/LF characters while retaining
 an LF segment terminator, treats empty physical values and empty composites as

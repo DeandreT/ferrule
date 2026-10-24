@@ -84,6 +84,7 @@ pub struct ImportedX12DocumentBodies {
     pub source_schema: SchemaNode,
     pub source_options: mapping::FormatOptions,
     pub source_encoding: mapping::X12SourceEncoding,
+    pub source_structure: mapping::X12SourceStructure,
     pub source_minimums: Vec<mapping::MapForceEdiMinimum>,
     pub input_parameter: String,
     pub input_preview: Option<String>,
@@ -284,6 +285,8 @@ pub fn import_x12_document_bodies_with_options(
         }
         let source_minimums =
             schema::read_edi_source_minimums(source, &resources).map_err(refuse)?;
+        let source_structure =
+            schema::read_edi_source_structure(source, &resources).map_err(refuse)?;
         let message_names: Vec<_> = source
             .descendants()
             .filter(|n| n.has_tag_name("message"))
@@ -594,6 +597,7 @@ pub fn import_x12_document_bodies_with_options(
             source_schema: source_schema.schema,
             source_options: source_schema.options,
             source_encoding,
+            source_structure,
             source_minimums,
             input_parameter: parameter.name.clone(),
             input_preview: input.parsed.input_preview.clone(),

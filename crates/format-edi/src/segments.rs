@@ -468,6 +468,30 @@ pub(crate) fn read_lexical_segments(
     )
 }
 
+pub(crate) fn read_lexical_segment(
+    node: &SchemaNode,
+    segment: &Segment,
+    component_join: char,
+) -> Result<Instance, EdiFormatError> {
+    let SchemaKind::Group { children, .. } = &node.kind else {
+        return Err(EdiFormatError::UnsupportedSchema(node.name.clone()));
+    };
+    read_segment(
+        node,
+        children,
+        &mut Cursor {
+            segments: std::slice::from_ref(segment),
+            pos: 0,
+        },
+        ReadSyntax {
+            component_join,
+            subcomponent: None,
+            subcomponent_escape: None,
+            lexical: true,
+        },
+    )
+}
+
 fn read_segments_with_syntax(
     schema: &SchemaNode,
     segments: &[Segment],
