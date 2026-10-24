@@ -46,7 +46,7 @@ pub enum GenerateProfile {
     },
     /// Full-row CSV input and strict JSON output; C# only.
     CsvJson,
-    /// A saved primary filename document project: complete CSV document
+    /// A saved primary filename document project: complete document
     /// runs over every document its filename selects.
     PrimaryDocument,
     /// [`Self::PrimaryDocument`] for a CSV route with unescaped CRLF text output.

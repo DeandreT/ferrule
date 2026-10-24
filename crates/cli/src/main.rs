@@ -165,8 +165,8 @@ enum Command {
         #[arg(long, value_name = "FILE")]
         restricted_policy: Option<PathBuf>,
     },
-    /// Run a saved primary filename document project once over every CSV
-    /// document its filename selects beneath an explicit local input root.
+    /// Run a saved primary filename document project once over every document
+    /// its filename selects beneath an explicit local input root.
     /// URIs, rooted and parent paths and symbolic links are refused; no network
     /// source is reachable. The project's saved source path is never read.
     RunDocument {
@@ -175,7 +175,7 @@ enum Command {
         /// Directory every selected filename resolves beneath.
         #[arg(long, value_name = "DIR")]
         input_root: PathBuf,
-        /// Output CSV document; defaults to the project's target_path.
+        /// Output document in the plan's format; defaults to the project's target_path.
         #[arg(long)]
         output: Option<PathBuf>,
         /// Largest accepted input document.
