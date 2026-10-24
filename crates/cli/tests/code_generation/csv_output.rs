@@ -677,6 +677,7 @@ fn run_rust_fixture(output: &Path, mode: &str) -> TestResult<()> {
             .expect("generated directory has a parent")
             .join("cargo-target"),
     };
+    host_policy::name_generated_host(output, &format!("csv-output-{mode}-host"))?;
     let mut command = Command::new("cargo");
     command
         .args(["run", "--quiet", "--jobs", "1", "--", mode])
@@ -1226,6 +1227,7 @@ fn run_named_rust_fixture(output: &Path, mode: &str) -> TestResult<()> {
             .expect("generated directory has a parent")
             .join("cargo-target"),
     };
+    host_policy::name_generated_host(output, &format!("csv-output-named-{mode}-host"))?;
     let mut command = Command::new("cargo");
     command
         .args(["run", "--quiet", "--jobs", "1", "--", mode])

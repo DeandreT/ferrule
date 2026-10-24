@@ -246,6 +246,7 @@ fn user_function_argument_order_compiled_complete_oracles() -> TestResult<()> {
                     directory.join("src/main.rs"),
                     include_str!("user_function_argument_order/Host.rs.txt"),
                 )?;
+                host_policy::name_generated_host(&directory, "user-function-argument-order-host")?;
             } else {
                 let harness = directory.join("Harness");
                 std::fs::create_dir(&harness)?;

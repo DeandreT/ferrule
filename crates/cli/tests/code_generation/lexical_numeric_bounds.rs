@@ -241,6 +241,7 @@ fn lexical_numeric_bounds_compiled_complete_oracles() -> TestResult<()> {
                     directory.join("src/main.rs"),
                     include_str!("lexical_numeric_bounds/Host.rs.txt"),
                 )?;
+                host_policy::name_generated_host(&directory, "lexical-numeric-bounds-host")?;
             } else {
                 std::fs::create_dir(directory.join("Harness"))?;
                 std::fs::write(directory.join("Harness/Host.csproj"), HARNESS)?;

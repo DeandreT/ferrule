@@ -87,6 +87,7 @@ fn required_and_optional_edi_primary_parser_matches_generated_rust_and_csharp() 
             rust_output.join("src/main.rs"),
             include_str!("fixtures/edi_primary_global_json_rust.rs.txt"),
         )?;
+        host_policy::name_generated_host(&rust_output, "edi-primary-global-json-host")?;
         let mut rust_command = Command::new("cargo");
         rust_command
             .args(["run", "--quiet"])

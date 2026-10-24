@@ -57,6 +57,7 @@ fn mixed_parser_object_presence_matches_generated_rust_and_csharp() -> TestResul
             rust_output.join("src/main.rs"),
             include_str!("fixtures/json_parser_object_presence_rust.rs.txt"),
         )?;
+        host_policy::name_generated_host(&rust_output, "json-parser-object-presence-host")?;
         let mut rust_command = Command::new("cargo");
         rust_command
             .args(["run", "--quiet"])

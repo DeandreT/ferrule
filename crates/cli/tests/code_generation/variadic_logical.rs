@@ -205,6 +205,7 @@ fn variadic_logical_compiled_complete_oracles() -> TestResult<()> {
                 directory.join("src/main.rs"),
                 include_str!("variadic_logical/Host.rs.txt"),
             )?;
+            host_policy::name_generated_host(&directory, "variadic-logical-host")?;
         } else {
             std::fs::create_dir(directory.join("Harness"))?;
             std::fs::write(directory.join("Harness/Host.csproj"), HARNESS)?;
