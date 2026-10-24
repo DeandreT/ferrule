@@ -29,6 +29,7 @@ pub use mapforce_writer::{
     serialize_mapforce_x12_document, serialize_mapforce_x12_document_with_clock,
 };
 mod acquisition;
+mod source_fields;
 mod source_lexical;
 mod source_mapforce;
 mod source_structure;
