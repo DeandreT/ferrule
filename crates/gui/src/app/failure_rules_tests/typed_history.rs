@@ -90,3 +90,177 @@ fn failure_rule_edits_moves_and_removals_are_typed_commands_matching_snapshots()
         project.failure_rules.clear();
     });
 }
+
+#[test]
+fn edit_ops_parity_for_source_failure_rule_actions() {
+    use edit_ops::{
+        EditOperation, Expression, FailureIteration, FailureRule, FailureSelection, Index, NodeId,
+        SourceCollection,
+    };
+    let compare = |before: mapping::Project, app: &FerruleApp, operation| {
+        let mut session = edit_ops::EditSession::new(before.clone());
+        session.apply(operation).unwrap();
+        assert_eq!(
+            crate::project_state::model_key(session.project()),
+            crate::project_state::model_key(&app.project)
+        );
+        session.undo().unwrap();
+        assert_eq!(
+            crate::project_state::model_key(session.project()),
+            crate::project_state::model_key(&before)
+        );
+    };
+    let mut app = fixture();
+    let before = app.project.clone();
+    click(&mut app, &context(), "Add source rule");
+    compare(
+        before,
+        &app,
+        EditOperation::AddFailureRule {
+            rule: FailureRule {
+                iteration: FailureIteration::Source {
+                    collection: SourceCollection::Legacy { path: vec![] },
+                },
+                selection: FailureSelection::All {},
+                message: None,
+            },
+        },
+    );
+    let mut app = two_rules();
+    let before = app.project.clone();
+    let ctx = context();
+    click(&mut app, &ctx, "Expression is true");
+    click(&mut app, &ctx, "Expression is false");
+    compare(
+        before,
+        &app,
+        EditOperation::EditFailureRule {
+            index: Index(1),
+            rule: FailureRule {
+                iteration: FailureIteration::Source {
+                    collection: SourceCollection::Legacy { path: vec![] },
+                },
+                selection: FailureSelection::WhenFalse {
+                    expression: Expression::Existing { node: NodeId(0) },
+                },
+                message: None,
+            },
+        },
+    );
+    let mut app = two_rules();
+    let before = app.project.clone();
+    click(&mut app, &context(), "Move up");
+    compare(
+        before,
+        &app,
+        EditOperation::MoveFailureRule {
+            from: Index(1),
+            to: Index(0),
+        },
+    );
+    let mut app = two_rules();
+    let before = app.project.clone();
+    click(&mut app, &context(), "Remove rule");
+    compare(
+        before,
+        &app,
+        EditOperation::RemoveFailureRule { index: Index(1) },
+    );
+}
+
+#[test]
+fn edit_ops_parity_for_generated_failure_rule_creation() {
+    use edit_ops::{
+        EditOperation, Expression, FailureIteration, FailureRule, FailureSelection,
+        GeneratedSequence, NodeId, Scalar,
+    };
+    for label in [
+        "Add integer range rule",
+        "Add split text rule",
+        "Add fixed-length text rule",
+        "Add regex text rule",
+    ] {
+        let mut app = fixture();
+        let before = app.project.clone();
+        click(&mut app, &context(), label);
+        let mapping::FailureIteration::Sequence { sequence } =
+            &app.project.failure_rules[0].iteration
+        else {
+            panic!()
+        };
+        let constant = |id| {
+            let mapping::Node::Const { value } = &app.project.graph.nodes[&id] else {
+                panic!()
+            };
+            let value = match value {
+                ir::Value::Int(value) => Scalar::Int {
+                    text: value.to_string(),
+                },
+                ir::Value::String(value) => Scalar::String {
+                    text: value.clone(),
+                },
+                _ => panic!("unexpected generated-rule default"),
+            };
+            Expression::Constant {
+                id: NodeId(id),
+                value,
+            }
+        };
+        let sequence = match sequence {
+            mapping::SequenceExpr::Generate { from, to, item } => GeneratedSequence::Generate {
+                from: from.map(constant),
+                to: constant(*to),
+                item: NodeId(*item),
+            },
+            mapping::SequenceExpr::Tokenize {
+                input,
+                delimiter,
+                item,
+            } => GeneratedSequence::Tokenize {
+                input: constant(*input),
+                delimiter: constant(*delimiter),
+                item: NodeId(*item),
+            },
+            mapping::SequenceExpr::TokenizeByLength {
+                input,
+                length,
+                item,
+            } => GeneratedSequence::TokenizeByLength {
+                input: constant(*input),
+                length: constant(*length),
+                item: NodeId(*item),
+            },
+            mapping::SequenceExpr::TokenizeRegex {
+                input,
+                pattern,
+                flags,
+                item,
+            } => GeneratedSequence::TokenizeRegex {
+                input: constant(*input),
+                pattern: constant(*pattern),
+                flags: flags.map(constant),
+                item: NodeId(*item),
+            },
+            _ => panic!("unexpected generated-rule kind"),
+        };
+        let mut session = edit_ops::EditSession::new(before.clone());
+        session
+            .apply(EditOperation::AddFailureRule {
+                rule: FailureRule {
+                    iteration: FailureIteration::Generated { sequence },
+                    selection: FailureSelection::All {},
+                    message: None,
+                },
+            })
+            .unwrap();
+        assert_eq!(
+            crate::project_state::model_key(session.project()),
+            crate::project_state::model_key(&app.project)
+        );
+        session.undo().unwrap();
+        assert_eq!(
+            crate::project_state::model_key(session.project()),
+            crate::project_state::model_key(&before)
+        );
+    }
+}

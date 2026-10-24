@@ -1,0 +1,17 @@
+[package]
+name = "edit-ops"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Typed, replayable headless mapping edits"
+
+[dependencies]
+editor-ui.workspace = true
+mapping.workspace = true
+ir.workspace = true
+# Planning needs catalogue metadata, never runtime randomness or UUID creation.
+functions = { path = "../functions", default-features = false }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
