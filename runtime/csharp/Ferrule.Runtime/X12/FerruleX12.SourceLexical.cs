@@ -3,6 +3,65 @@ using System.Text.Json;
 
 namespace Ferrule.Runtime;
 
+public sealed record FerruleSourceBytes(string Identity, byte[] Bytes);
+
+/// <summary>Explicit bounded direct file/HTTP(S) transport. It neither parses
+/// input nor supplies proxy, credential or cookie policy on the host's behalf.</summary>
+public sealed class FerruleDirectSourceReader : IDisposable
+{
+    private readonly System.Net.Http.HttpClient client;
+    private readonly int maximum;
+    private readonly TimeSpan timeout;
+    public FerruleDirectSourceReader(int maximumBytes, TimeSpan timeout)
+    {
+        if (maximumBytes is < 0 or > FerruleX12.MaximumDocumentBytes) throw new ArgumentOutOfRangeException(nameof(maximumBytes));
+        if (timeout <= TimeSpan.Zero || timeout > TimeSpan.FromMinutes(5)) throw new ArgumentOutOfRangeException(nameof(timeout));
+        maximum = maximumBytes;
+        this.timeout = timeout;
+        client = new(new System.Net.Http.HttpClientHandler { UseProxy = false, UseCookies = false, AllowAutoRedirect = true, MaxAutomaticRedirections = 50, AutomaticDecompression = System.Net.DecompressionMethods.None }) { Timeout = timeout };
+    }
+    public FerruleSourceBytes Read(string selected)
+    {
+        ArgumentNullException.ThrowIfNull(selected);
+        string identity = selected.Trim();
+        byte[] bytes;
+        if (identity.IndexOf(':') > 1)
+        {
+            if (!Uri.TryCreate(identity, UriKind.Absolute, out var uri)) throw new IOException("Unsupported direct-source URI.");
+            if (uri.UserInfo.Length != 0) throw new IOException("Source URI credentials require a separate host policy.");
+            if (uri.IsFile) bytes = ReadFile(uri.LocalPath);
+            else if (uri.Scheme is "http" or "https")
+            {
+                try
+                {
+                    using var cancellation = new System.Threading.CancellationTokenSource(timeout);
+                    using var response = client.GetAsync(uri, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, cancellation.Token).GetAwaiter().GetResult();
+                    if (!response.IsSuccessStatusCode) throw new IOException("HTTP source returned status " + (int)response.StatusCode);
+                    using var stream = response.Content.ReadAsStream(); bytes = Bounded(stream, cancellation.Token);
+                }
+                catch (System.Net.Http.HttpRequestException) { throw new IOException("HTTP source could not be loaded."); }
+                catch (OperationCanceledException) { throw new IOException("HTTP source timed out."); }
+            }
+            else throw new IOException("Unsupported direct-source URI.");
+        }
+        else bytes = ReadFile(identity);
+        return new(identity, bytes);
+    }
+    private byte[] ReadFile(string path) { using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read); return Bounded(stream); }
+    private byte[] Bounded(Stream stream, System.Threading.CancellationToken cancellation = default)
+    {
+        using var buffer = new MemoryStream(); var chunk = new byte[8192];
+        while (true)
+        {
+            int count = stream.ReadAsync(chunk.AsMemory(0, Math.Min(chunk.Length, maximum - (int)buffer.Length + 1)), cancellation).AsTask().GetAwaiter().GetResult();
+            if (count == 0) return buffer.ToArray();
+            if (count > maximum - buffer.Length) throw new IOException("Source byte limit exceeded.");
+            buffer.Write(chunk, 0, count);
+        }
+    }
+    public void Dispose() => client.Dispose();
+}
+
 public static partial class FerruleX12
 {
     public static bool HasSourceFilenameWildcard(string value)
