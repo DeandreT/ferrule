@@ -10,6 +10,7 @@ mod document;
 mod edit_history;
 mod graph_command;
 mod graph_edit;
+mod node_input;
 mod project_command;
 mod project_edit;
 mod revision;
@@ -28,6 +29,7 @@ pub use graph_edit::{
     BindingsChange, ChildrenChange, GraphDocument, GraphEditError, GraphPatch, NodeChange,
     ScopeLocation, ScopeStep, SettingChange,
 };
+pub use node_input::{is_hidden_input, set_scalar_input};
 pub use project_edit::{PartChange, ProjectPart, ProjectParts};
 pub use revision::{
     ComponentChange, DocumentRevision, LayoutRevision, RevisionChange, RevisionKeyed,

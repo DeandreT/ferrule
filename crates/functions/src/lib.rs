@@ -8,26 +8,39 @@
 //! collections in scope context, so they live in the engine as
 //! `mapping::Node::Aggregate`.
 
+#[cfg(feature = "runtime")]
 use ir::Value;
 use thiserror::Error;
 
+#[cfg(feature = "runtime")]
 mod builtins;
+#[cfg(feature = "runtime")]
 mod casing;
 mod catalog;
+#[cfg(feature = "runtime")]
 mod datetime;
+#[cfg(feature = "runtime")]
 mod datetime_add;
+#[cfg(feature = "runtime")]
 mod decimal;
+#[cfg(feature = "runtime")]
 mod filepath;
+#[cfg(feature = "runtime")]
 mod flextext;
+#[cfg(feature = "runtime")]
 mod format_number;
+#[cfg(feature = "runtime")]
 mod invocation_counters;
+#[cfg(feature = "runtime")]
 mod json;
+#[cfg(feature = "runtime")]
 mod scalar;
 
 pub use catalog::{
     BuiltinArity, BuiltinCategory, BuiltinDefinition, BuiltinExposure, BuiltinNames,
     BuiltinParameter, ScalarDomain, catalog as builtin_catalog, find as builtin,
 };
+#[cfg(feature = "runtime")]
 pub use invocation_counters::{
     InvocationCounterError, InvocationCounterLimits, InvocationCounters,
 };
@@ -61,12 +74,13 @@ pub enum FunctionError {
 /// Authoring builtin names in stable editor display order.
 pub const BUILTIN_NAMES: BuiltinNames = BuiltinNames;
 
-/// Whether `name` identifies a scalar builtin accepted by [`call`].
+/// Whether `name` identifies a scalar builtin in the authoritative catalogue.
 pub fn is_known(name: &str) -> bool {
     builtin(name).is_some()
 }
 
 /// Dispatches a built-in function call by name.
+#[cfg(feature = "runtime")]
 pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
     let Some(definition) = builtin(name) else {
         return Err(FunctionError::UnknownFunction(name.to_string()));

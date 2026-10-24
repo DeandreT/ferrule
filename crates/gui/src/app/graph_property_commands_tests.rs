@@ -509,6 +509,139 @@ fn scope_setting_edits_are_typed_commands_naming_scope_and_setting() {
 }
 
 #[test]
+fn edit_ops_parity_for_scope_controls_and_binding_retarget() {
+    use edit_ops::{
+        BindingRef, EditOperation, Expression, Index, ScopeRef, SourceCollection, Target,
+    };
+    let at = || ScopeRef {
+        target: Target::Primary {},
+        children: vec![Index(0)],
+    };
+    let compare = |before: mapping::Project, app: &FerruleApp, operation| {
+        let mut session = edit_ops::EditSession::new(before.clone());
+        session.apply(operation).unwrap();
+        assert_eq!(
+            crate::project_state::model_key(session.project()),
+            crate::project_state::model_key(&app.project)
+        );
+        session.undo().unwrap();
+        assert_eq!(
+            crate::project_state::model_key(session.project()),
+            crate::project_state::model_key(&before)
+        );
+    };
+    let mut app = scope_app();
+    let ctx = context();
+    let before = app.project.clone();
+    click(&mut app, &ctx, "filtered", Some(0));
+    compare(
+        before,
+        &app,
+        EditOperation::SetFilter {
+            scope: at(),
+            node: Some(edit_ops::NodeId(SCORE)),
+        },
+    );
+    let before = app.project.clone();
+    click(&mut app, &ctx, "sorted", Some(0));
+    compare(
+        before,
+        &app,
+        EditOperation::SetSort {
+            scope: at(),
+            keys: vec![edit_ops::SortKey {
+                node: edit_ops::NodeId(SCORE),
+                descending: false,
+            }],
+        },
+    );
+    let before = app.project.clone();
+    click(&mut app, &ctx, "iterates", Some(0));
+    compare(
+        before,
+        &app,
+        EditOperation::SetIteration {
+            scope: at(),
+            source: None,
+        },
+    );
+    let before = app.project.clone();
+    click(&mut app, &ctx, "iterates", Some(0));
+    compare(
+        before,
+        &app,
+        EditOperation::SetIteration {
+            scope: at(),
+            source: Some(SourceCollection::Legacy { path: vec![] }),
+        },
+    );
+    let mut app = scope_app();
+    let ctx = context();
+    let before = app.project.clone();
+    click(&mut app, &ctx, "+ binding", Some(0));
+    compare(
+        before,
+        &app,
+        EditOperation::Bind {
+            binding: BindingRef {
+                scope: at(),
+                field: "Score".into(),
+            },
+            expression: Expression::Existing {
+                node: edit_ops::NodeId(SCORE),
+            },
+        },
+    );
+    let before = app.project.clone();
+    click(&mut app, &ctx, "0: field Rows/Score", Some(0));
+    click(&mut app, &ctx, "1: field Rows/Name", None);
+    compare(
+        before,
+        &app,
+        EditOperation::RetargetBinding {
+            binding: BindingRef {
+                scope: at(),
+                field: "Score".into(),
+            },
+            to: BindingRef {
+                scope: at(),
+                field: "Score".into(),
+            },
+            node: edit_ops::NodeId(NAME),
+        },
+    );
+    let mut app = scope_app();
+    let ctx = context();
+    let before = app.project.clone();
+    click(&mut app, &ctx, "none", Some(0));
+    click(&mut app, &ctx, "key", None);
+    compare(
+        before,
+        &app,
+        EditOperation::SetGrouping {
+            scope: at(),
+            grouping: edit_ops::Grouping::By {
+                node: edit_ops::NodeId(SCORE),
+            },
+        },
+    );
+    let mut app = scope_app();
+    let ctx = context();
+    let before = app.project.clone();
+    click(&mut app, &ctx, "x", Some(0));
+    compare(
+        before,
+        &app,
+        EditOperation::RemoveBinding {
+            binding: BindingRef {
+                scope: at(),
+                field: "Name".into(),
+            },
+        },
+    );
+}
+
+#[test]
 fn property_binding_and_scope_commands_interleave_with_earlier_commands_and_snapshots() {
     let mut app = scope_app();
     let context = context();

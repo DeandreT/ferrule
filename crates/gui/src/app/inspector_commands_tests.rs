@@ -125,6 +125,55 @@ fn graph_document(document: MappingDocument) -> GraphDocument {
 const DOCUMENTS: [MappingDocument; 2] = [MappingDocument::Main, MappingDocument::Target(0)];
 
 #[test]
+fn edit_ops_parity_for_child_scope_addition_and_retirement() {
+    for document in DOCUMENTS {
+        let mut app = tree_app(document, Scope::default());
+        let target = match document {
+            MappingDocument::Target(_) => edit_ops::Target::Named {
+                name: "Copy".into(),
+            },
+            _ => edit_ops::Target::Primary {},
+        };
+        let before = app.project.clone();
+        app.add_selected_child_scope("Header");
+        let mut session = edit_ops::EditSession::new(before.clone());
+        session
+            .apply(edit_ops::EditOperation::AddScope {
+                parent: edit_ops::ScopeRef {
+                    target: target.clone(),
+                    children: vec![],
+                },
+                field: "Header".into(),
+            })
+            .unwrap();
+        assert_eq!(
+            crate::project_state::model_key(session.project()),
+            crate::project_state::model_key(&app.project)
+        );
+        session.undo().unwrap();
+        assert_eq!(
+            crate::project_state::model_key(session.project()),
+            crate::project_state::model_key(&before)
+        );
+        let before = app.project.clone();
+        app.remove_selected_target_scope();
+        let mut session = edit_ops::EditSession::new(before);
+        session
+            .apply(edit_ops::EditOperation::RemoveScope {
+                scope: edit_ops::ScopeRef {
+                    target,
+                    children: vec![edit_ops::Index(0)],
+                },
+            })
+            .unwrap();
+        assert_eq!(
+            crate::project_state::model_key(session.project()),
+            crate::project_state::model_key(&app.project)
+        );
+    }
+}
+
+#[test]
 fn child_scope_additions_name_the_parent_and_field_and_match_snapshots() {
     for document in DOCUMENTS {
         let build = || {

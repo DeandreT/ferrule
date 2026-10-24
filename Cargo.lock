@@ -1365,6 +1365,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "edit-ops"
+version = "0.1.0"
+dependencies = [
+ "editor-ui",
+ "functions",
+ "ir",
+ "mapping",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "editor-ui"
 version = "0.1.0"
 dependencies = [
@@ -2241,6 +2254,7 @@ dependencies = [
  "anyhow",
  "calamine",
  "cli",
+ "edit-ops",
  "editor-ui",
  "eframe",
  "egui",

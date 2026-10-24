@@ -2216,3 +2216,6 @@ mod owned_source_nodes_tests;
 
 #[path = "graph_viewer_tests/input_pins.rs"]
 mod input_pin_tests;
+
+#[path = "graph_viewer_tests/edit_ops_parity.rs"]
+mod edit_ops_parity;

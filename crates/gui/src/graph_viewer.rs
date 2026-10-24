@@ -1035,24 +1035,10 @@ impl GraphViewer<'_> {
         let Some(node) = self.graph.nodes.get_mut(&node_id) else {
             return false;
         };
+        if editor_ui::set_scalar_input(node, idx, from_id) {
+            return true;
+        }
         match node {
-            Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => {
-                args[idx] = from_id;
-            }
-            Node::Raise { message } => *message = Some(from_id),
-            Node::RuntimeParameterDefault { default, .. } => *default = from_id,
-            Node::If {
-                condition,
-                then,
-                else_,
-            } => match idx {
-                0 => *condition = from_id,
-                1 => *then = from_id,
-                2 => *else_ = from_id,
-                _ => return false,
-            },
-            Node::ValueMap { input, .. } => *input = from_id,
-            Node::Lookup { matches, .. } => *matches = from_id,
             Node::DynamicSourceField { key, .. } => *key = from_id,
             Node::XmlMixedContent { replacements, .. } => {
                 let Some(replacement) = replacements.get_mut(idx) else {
@@ -1060,13 +1046,6 @@ impl GraphViewer<'_> {
                 };
                 replacement.expression = from_id;
             }
-            Node::CollectionFind {
-                predicate, value, ..
-            } => match idx {
-                0 => *predicate = from_id,
-                1 => *value = from_id,
-                _ => return false,
-            },
             Node::SequenceExists {
                 sequence,
                 predicate,
@@ -1110,10 +1089,7 @@ impl GraphViewer<'_> {
                     return false;
                 }
             }
-            Node::Aggregate {
-                expression, arg, ..
-            }
-            | Node::JoinAggregate {
+            Node::JoinAggregate {
                 expression, arg, ..
             } => {
                 if expression.is_some() && idx == 0 {
@@ -1371,10 +1347,11 @@ impl GraphViewer<'_> {
                 .filter_map(Self::mapping_id)
                 .any(|id| id == needle);
             if !shown
-                && matches!(
-                    self.graph.nodes.get(&needle),
-                    Some(Node::SourceField { .. })
-                )
+                && self
+                    .graph
+                    .nodes
+                    .get(&needle)
+                    .is_some_and(editor_ui::is_hidden_input)
             {
                 self.graph.nodes.remove(&needle);
             }
