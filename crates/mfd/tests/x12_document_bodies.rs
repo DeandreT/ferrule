@@ -114,6 +114,18 @@ fn context() -> engine::ExecutionContext<'static> {
         },
     )
 }
+
+fn rust_options() -> codegen_rust::Options {
+    codegen_rust::Options {
+        package_name: "fixture_generated".into(),
+        runtime_dependency: codegen_rust::RuntimeDependency::Path(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../codegen-runtime")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+    }
+}
 #[test]
 fn reads_original_ports_and_keeps_message_bodies_separate_from_filenames() {
     let imported = imported();
@@ -289,6 +301,7 @@ fn xml_scalar_occurrences_retain_schema_and_native_negative_zero() {
     let imported = fixture.import().unwrap();
     let target = &imported.targets[1];
     assert_eq!(target.format, mfd::X12DocumentBodyFormat::Xml);
+    assert!(target.eager_json_project("ResolvedFilename").is_err());
     assert!(!target.body.target.child("Code").unwrap().repeating);
     let row = |code, qty| {
         group(vec![(
@@ -314,6 +327,36 @@ fn xml_scalar_occurrences_retain_schema_and_native_negative_zero() {
         &[text("-0"), text("3")]
     );
     assert!(codegen::lower(&target.body).is_ok());
+}
+
+#[test]
+fn eager_json_join_preserves_inputs_and_refuses_graph_identity_conflicts() {
+    let mut imported = imported();
+    let target = &mut imported.targets[0];
+    let before = serde_json::to_vec(&target.body).unwrap();
+    let before_name = serde_json::to_vec(&target.filename).unwrap();
+    let joined = target.eager_json_project("ResolvedFilename").unwrap();
+    assert_eq!(joined.extra_targets.len(), 1);
+    assert_eq!(serde_json::to_vec(&target.body).unwrap(), before);
+    assert_eq!(serde_json::to_vec(&target.filename).unwrap(), before_name);
+    let shared = *target
+        .body
+        .graph
+        .nodes
+        .iter()
+        .find(|(id, node)| {
+            matches!(node, mapping::Node::SourceField { .. })
+                && target.filename.graph.nodes.contains_key(*id)
+        })
+        .unwrap()
+        .0;
+    target.filename.graph.nodes.insert(
+        shared,
+        mapping::Node::Const {
+            value: Value::Bool(false),
+        },
+    );
+    assert!(target.eager_json_project("ResolvedFilename").is_err());
 }
 
 #[test]
@@ -481,7 +524,7 @@ fn generated_source_companion_binds_the_complete_physical_schema_to_its_message(
     );
     let strict = codegen_rust::emit_with_mapforce_x12_json(
         &program,
-        &Default::default(),
+        &rust_options(),
         &imported.source_schema,
         &imported.source_options,
         &imported.message_path,
@@ -490,6 +533,56 @@ fn generated_source_companion_binds_the_complete_physical_schema_to_its_message(
     .into_files();
     assert!(strict.iter().any(|file| file.path.as_str() == "src/lib.rs"
         && String::from_utf8_lossy(&file.contents).contains("pub fn serialize_mapforce_json(")));
+    let joined = imported.targets[0]
+        .eager_json_project("ResolvedFilename")
+        .unwrap();
+    let combined = codegen::lower(&joined).unwrap();
+    assert!(
+        codegen::prepare_eager_x12_json_message(
+            &combined,
+            "ResolvedFilename",
+            &imported.targets[0].driver_path
+        )
+        .is_ok()
+    );
+    assert!(
+        codegen::prepare_eager_x12_json_message(
+            &combined,
+            "WrongName",
+            &imported.targets[0].driver_path
+        )
+        .is_err()
+    );
+    let files = codegen_csharp::emit_with_eager_x12_json_message(
+        &combined,
+        &imported.source_schema,
+        &imported.source_options,
+        &imported.message_path,
+        "ResolvedFilename",
+        &imported.targets[0].driver_path,
+    )
+    .unwrap()
+    .into_files();
+    assert!(
+        files
+            .iter()
+            .any(|file| file.path.as_str() == "GeneratedMapping.cs"
+                && String::from_utf8_lossy(&file.contents)
+                    .contains("PreparePrimaryX12JsonMessage"))
+    );
+    let files = codegen_rust::emit_with_eager_x12_json_message(
+        &combined,
+        &rust_options(),
+        &imported.source_schema,
+        &imported.source_options,
+        &imported.message_path,
+        "ResolvedFilename",
+        &imported.targets[0].driver_path,
+    )
+    .unwrap()
+    .into_files();
+    assert!(files.iter().any(|file| file.path.as_str() == "src/lib.rs"
+        && String::from_utf8_lossy(&file.contents).contains("prepare_primary_x12_json_message")));
     let mut wrong = program.clone();
     wrong.source.name = "UnrelatedMessage".into();
     assert!(

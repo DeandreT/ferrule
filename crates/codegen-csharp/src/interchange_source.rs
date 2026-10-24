@@ -48,6 +48,30 @@ pub fn emit_with_mapforce_x12_json(
 }
 impl std::error::Error for MapForceSourceEmitError {}
 
+/// Prepare an eager JSON message before evaluating its filename. Acquisition,
+/// serialization and physical output remain separate host operations.
+pub fn emit_with_eager_x12_json_message(
+    program: &Program,
+    schema: &SchemaNode,
+    options: &FormatOptions,
+    message: &[String],
+    filename_target: &str,
+    driver: &[String],
+) -> Result<ArtifactSet, MapForceSourceEmitError> {
+    let plan = codegen::prepare_eager_x12_json_message(program, filename_target, driver)
+        .map_err(MapForceSourceEmitError::Writer)?;
+    let mut files = emit_with_mapforce_x12_json(program, schema, options, message)?.into_files();
+    let entry = crate::mapping::eager_json_message_entry(program, &plan);
+    let mapping = files
+        .iter_mut()
+        .find(|file| file.path.as_str() == "GeneratedMapping.cs")
+        .ok_or(MapForceSourceEmitError::Artifact)?;
+    mapping.contents.extend_from_slice(entry.as_bytes());
+    ArtifactSet::new(files)
+        .map_err(EmitError::from)
+        .map_err(MapForceSourceEmitError::Emit)
+}
+
 /// Add a bound, byte-oriented source reader without choosing acquisition,
 /// document iteration, filename phases or output publication.
 pub fn emit_with_mapforce_x12_source(
