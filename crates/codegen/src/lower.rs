@@ -22,6 +22,22 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     lower_with_validator(project, validate_program)
 }
 
+/// Validate the original document-set contract while selecting an XML adapter
+/// for its individual members. Saved paths supply identity only on this route.
+pub(crate) fn lower_primary_xml_documents(project: &Project) -> Result<Program, LowerError> {
+    let mut members = project.clone();
+    members.source_options.local_xml_file_set = false;
+    members.source_options.xml_document = true;
+    members.target_options.xml_document = true;
+    let request = XmlRequest::classify(&members)?;
+    lower_with_xml_request(
+        project,
+        validate_program,
+        OwnedJoinLowering::Closed,
+        Some(request),
+    )
+}
+
 /// Lowers a Project and validates it for Basic owned emission under
 /// `capabilities`. Graph lowering and the IR are unchanged; owned join scopes
 /// pass the lowering preflight only when the capability set admits joins.
@@ -59,6 +75,15 @@ fn lower_with_policy(
     validator: impl Fn(&Program) -> Result<(), ProgramValidationError>,
     owned_joins: OwnedJoinLowering,
 ) -> Result<Program, LowerError> {
+    lower_with_xml_request(project, validator, owned_joins, None)
+}
+
+fn lower_with_xml_request(
+    project: &Project,
+    validator: impl Fn(&Program) -> Result<(), ProgramValidationError>,
+    owned_joins: OwnedJoinLowering,
+    xml_request: Option<XmlRequest>,
+) -> Result<Program, LowerError> {
     let validation = engine::validate(project);
     if !validation.is_empty() {
         return Err(LowerError::new(
@@ -90,7 +115,10 @@ fn lower_with_policy(
     if let Some(diagnostic) = owned_document_diagnostic(project, owned_joins) {
         return Err(LowerError::new(vec![diagnostic]));
     }
-    let xml_request = XmlRequest::classify(project)?;
+    let xml_request = match xml_request {
+        Some(request) => request,
+        None => XmlRequest::classify(project)?,
+    };
     let mut diagnostics = Vec::new();
     let mut roots = Vec::new();
     let extra_sources = project

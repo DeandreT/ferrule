@@ -65,7 +65,7 @@ impl FerruleApp {
         let (commands, _command_receiver) = mpsc::channel();
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker = OwnedWorker::spawn("ferrule-preview", move || -> PreviewCompletion {
-            let result = cli::execute_primary_csv_document(
+            let result = cli::execute_primary_document(
                 &document,
                 &project_path,
                 &policy,

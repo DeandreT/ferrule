@@ -46,6 +46,11 @@ route = "Generated Rust and C# XML document APIs"
 scope = "Structured or admitted root-view XML boundaries in the indexed route families"
 record = "docs/generated-xml-qualification-index.md"
 
+[[format.qualified]]
+route = "Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview)"
+scope = "The XML document a literal or runtime-parameter filename names, or the document set a filename wildcard selects, beneath an explicit local input root, mapped once into one XML document"
+record = "conformance/primary-xml-documents/README.md"
+
 [[format]]
 name = "JSON"
 source = "yes"
@@ -138,7 +143,7 @@ scope = "One positional CSV document in and out, including header, BOM, and raw-
 record = "conformance/csv-documents/README.md"
 
 [[format.qualified]]
-route = "Primary filename document runs (`run-document`, `generate --primary-csv-documents`, and editor Run and Preview)"
+route = "Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview)"
 scope = "Every CSV document a literal or runtime-parameter filename selects beneath an explicit local input root, mapped once into one CSV document"
 record = "conformance/primary-filename-documents/README.md"
 
