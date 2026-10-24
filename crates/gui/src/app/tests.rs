@@ -11,6 +11,8 @@ mod auto_connect_item_reuse;
 
 #[path = "pipeline_preview_tests.rs"]
 mod pipeline_preview;
+#[path = "pipeline_run_window_tests.rs"]
+mod pipeline_run_window;
 #[path = "preview_inputs_tests.rs"]
 mod preview_inputs;
 #[path = "preview_layout_tests.rs"]

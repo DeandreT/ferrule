@@ -26,27 +26,31 @@ pub(in crate::app) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPh
         }
         PreviewPhase::Paused(write) => {
             ui.strong("Paused before target-field insertion");
+            let target = match &write.scope.target {
+                engine::TraceTarget::Primary => "Primary",
+                engine::TraceTarget::Named(name) => name,
+            };
+            ui.label(format!("Target: {target}"));
+            let scope = if write.scope.target_path.is_empty() {
+                "<root>".to_string()
+            } else {
+                write.scope.target_path.join(" / ")
+            };
+            ui.label(format!("Scope: {scope}"));
+            ui.label(format!("Pending field: {}", write.field));
+            if write.field_truncated {
+                ui.weak("Field name preview was truncated.");
+            }
+            ui.label(format!("Binding: {}", binding_label(write.binding)));
+            ui.label(format!("Pending value: {}", debug_value(&write.pending)));
+            ui.separator();
+            // Source frames are the bulk of what a paused write shows, so
+            // they get half the viewport rather than a fixed sliver.
+            let details_height = (ui.ctx().content_rect().height() * 0.5).max(280.0);
             egui::ScrollArea::vertical()
                 .id_salt("preview_live_debug_details")
-                .max_height(280.0)
+                .max_height(details_height)
                 .show(ui, |ui| {
-                    let target = match &write.scope.target {
-                        engine::TraceTarget::Primary => "Primary",
-                        engine::TraceTarget::Named(name) => name,
-                    };
-                    ui.label(format!("Target: {target}"));
-                    let scope = if write.scope.target_path.is_empty() {
-                        "<root>".to_string()
-                    } else {
-                        write.scope.target_path.join(" / ")
-                    };
-                    ui.label(format!("Scope: {scope}"));
-                    ui.label(format!("Pending field: {}", write.field));
-                    if write.field_truncated {
-                        ui.weak("Field name preview was truncated.");
-                    }
-                    ui.label(format!("Binding: {:?}", write.binding));
-                    ui.label(format!("Pending value: {}", debug_value(&write.pending)));
                     if write.positions.is_empty() {
                         ui.weak("Source position: <root>");
                     } else {
@@ -67,7 +71,6 @@ pub(in crate::app) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPh
                             ui.label(label);
                         }
                     }
-                    ui.separator();
                     show_primary_root_origin(ui, write.source.primary_root_origin.as_ref());
                     ui.strong("Active source frames (outer to inner)");
                     if write.source.omitted_outer_frames > 0 {
@@ -323,10 +326,41 @@ fn debug_value(value: &engine::DebugInstancePreview) -> String {
     if let Some(scalar) = &value.value {
         let suffix = if scalar.truncated { "…" } else { "" };
         format!("{}: {}{suffix}", scalar.value_type, scalar.preview)
-    } else if let Some(length) = value.length {
-        format!("{:?} ({length} immediate item(s))", value.kind)
     } else {
-        format!("{:?}", value.kind)
+        instance_kind_label(value.kind, value.length)
+    }
+}
+
+/// Names a non-scalar value by its shape and immediate size, as in
+/// "group of 3 fields"; the engine never copies nested contents.
+fn instance_kind_label(kind: engine::TraceOutputKind, length: Option<usize>) -> String {
+    use engine::TraceOutputKind;
+    let (shape, singular, plural) = match kind {
+        TraceOutputKind::Scalar => ("value", "item", "items"),
+        TraceOutputKind::Group => ("group", "field", "fields"),
+        TraceOutputKind::Repeated => ("list", "item", "items"),
+        TraceOutputKind::MappedSequence => ("sequence", "item", "items"),
+        TraceOutputKind::DocumentSet => ("document set", "document", "documents"),
+    };
+    match length {
+        Some(1) => format!("{shape} of 1 {singular}"),
+        Some(length) => format!("{shape} of {length} {plural}"),
+        None => shape.to_owned(),
+    }
+}
+
+/// Says how a pending target field gets its value, by graph node.
+fn binding_label(binding: engine::TraceTargetFieldBinding) -> String {
+    use engine::TraceTargetFieldBinding;
+    match binding {
+        TraceTargetFieldBinding::StaticBinding { value } => format!("value of node #{value}"),
+        TraceTargetFieldBinding::DynamicBinding { key, value } => {
+            format!("value of node #{value}, field named by node #{key}")
+        }
+        TraceTargetFieldBinding::StaticChild => "nested group".to_owned(),
+        TraceTargetFieldBinding::DynamicChild { key } => {
+            format!("nested group named by node #{key}")
+        }
     }
 }
 
@@ -338,21 +372,23 @@ fn annotation_text(value: &engine::DebugAnnotationText) -> String {
     )
 }
 
+/// Shows the primary root's XML type annotation. Only the XML reader records
+/// one, so a source without that fact (JSON, CSV, EDI, an XML root without
+/// type alternatives, or a non-group root) shows no XML section at all.
 fn show_primary_root_origin(ui: &mut egui::Ui, origin: Option<&engine::DebugPrimaryRootOrigin>) {
     use engine::DebugPrimaryRootOrigin;
     let Some(origin) = origin else {
         return;
     };
+    if matches!(
+        origin,
+        DebugPrimaryRootOrigin::NotGroup { .. } | DebugPrimaryRootOrigin::Unknown
+    ) {
+        return;
+    }
     ui.strong("Primary source XML annotation");
     match origin {
-        DebugPrimaryRootOrigin::NotGroup { kind } => {
-            ui.weak(format!(
-                "The primary source is {kind:?}, not a document group."
-            ));
-        }
-        DebugPrimaryRootOrigin::Unknown => {
-            ui.weak("No actual XML annotation was retained for this source.");
-        }
+        DebugPrimaryRootOrigin::NotGroup { .. } | DebugPrimaryRootOrigin::Unknown => {}
         DebugPrimaryRootOrigin::Absent => {
             ui.weak("The XML root had no type annotation.");
         }
@@ -403,8 +439,7 @@ mod root_annotation_render_tests {
     }
 
     #[test]
-    fn annotation_panel_distinguishes_absence_unknown_explicit_and_padded_facts() {
-        let unknown = render(Some(&DebugPrimaryRootOrigin::Unknown));
+    fn annotation_panel_shows_only_retained_xml_annotation_facts() {
         let absent = render(Some(&DebugPrimaryRootOrigin::Absent));
         let explicit = render(Some(&DebugPrimaryRootOrigin::Explicit {
             identity: DebugAnnotationText {
@@ -422,12 +457,20 @@ mod root_annotation_render_tests {
                 truncated: false,
             },
         }));
-        assert!(unknown.contains("No actual XML annotation was retained"));
+        assert!(absent.contains("Primary source XML annotation"));
         assert!(absent.contains("had no type annotation"));
         assert!(explicit.contains("Type: {urn:root}Derived"));
         assert!(padded.contains("Annotation text: \"  t:Derived\\t\""));
         assert!(padded.contains("Resolved type: {urn:root}Derived"));
         assert!(padded.contains("does not select a type view"));
+        // JSON, CSV and other non-XML sources retain no annotation fact.
+        assert!(render(Some(&DebugPrimaryRootOrigin::Unknown)).is_empty());
+        assert!(
+            render(Some(&DebugPrimaryRootOrigin::NotGroup {
+                kind: engine::TraceOutputKind::Repeated,
+            }))
+            .is_empty()
+        );
         assert!(render(None).is_empty());
     }
 
@@ -442,5 +485,148 @@ mod root_annotation_render_tests {
         let before = fact.clone();
         assert!(render(Some(&fact)).contains(&format!("{}…", "é".repeat(160))));
         assert_eq!(fact, before);
+    }
+}
+
+#[cfg(test)]
+mod value_label_tests {
+    use super::*;
+    use crate::test_ui::ContextExt as _;
+    use engine::{TraceOutputKind, TraceTargetFieldBinding};
+
+    #[test]
+    fn every_binding_kind_has_a_readable_label() {
+        let labels = [
+            (
+                TraceTargetFieldBinding::StaticBinding { value: 11 },
+                "value of node #11",
+            ),
+            (
+                TraceTargetFieldBinding::DynamicBinding { key: 3, value: 4 },
+                "value of node #4, field named by node #3",
+            ),
+            (TraceTargetFieldBinding::StaticChild, "nested group"),
+            (
+                TraceTargetFieldBinding::DynamicChild { key: 5 },
+                "nested group named by node #5",
+            ),
+        ];
+        for (binding, expected) in labels {
+            assert_eq!(binding_label(binding), expected);
+        }
+    }
+
+    #[test]
+    fn every_value_kind_names_its_shape_and_size() {
+        let labels = [
+            (TraceOutputKind::Scalar, "value", "value of 2 items"),
+            (TraceOutputKind::Group, "group", "group of 2 fields"),
+            (TraceOutputKind::Repeated, "list", "list of 2 items"),
+            (
+                TraceOutputKind::MappedSequence,
+                "sequence",
+                "sequence of 2 items",
+            ),
+            (
+                TraceOutputKind::DocumentSet,
+                "document set",
+                "document set of 2 documents",
+            ),
+        ];
+        for (kind, unsized_label, sized) in labels {
+            assert_eq!(instance_kind_label(kind, None), unsized_label);
+            assert_eq!(instance_kind_label(kind, Some(2)), sized);
+        }
+        assert_eq!(
+            instance_kind_label(TraceOutputKind::Group, Some(1)),
+            "group of 1 field"
+        );
+        assert_eq!(
+            instance_kind_label(TraceOutputKind::Repeated, Some(0)),
+            "list of 0 items"
+        );
+    }
+
+    fn scalar(value_type: &'static str, preview: &str) -> engine::DebugInstancePreview {
+        engine::DebugInstancePreview {
+            kind: TraceOutputKind::Scalar,
+            value: Some(engine::TraceValue {
+                value_type,
+                preview: preview.into(),
+                truncated: false,
+            }),
+            length: None,
+        }
+    }
+
+    fn paused_write() -> engine::PendingTargetWrite {
+        engine::PendingTargetWrite {
+            scope: engine::TraceScope {
+                source_scope: mapping::SourceScopeLocation::root(
+                    mapping::SourceScopeTarget::Primary,
+                ),
+                target: engine::TraceTarget::Primary,
+                target_path: vec!["Invoices".into()],
+                structural_path: vec![0],
+            },
+            positions: Vec::new(),
+            source: engine::DebugSourceContext {
+                frames: vec![engine::DebugSourceFrame {
+                    preview: engine::DebugInstancePreview {
+                        kind: TraceOutputKind::Group,
+                        value: None,
+                        length: Some(3),
+                    },
+                    fields: vec![engine::DebugDraftField {
+                        name: "Customer".into(),
+                        name_truncated: false,
+                        preview: scalar("string", "ACME"),
+                    }],
+                    omitted_fields: 0,
+                }],
+                omitted_outer_frames: 0,
+                primary_root_origin: Some(engine::DebugPrimaryRootOrigin::Unknown),
+            },
+            source_field_probe: None,
+            field: "Sequence".into(),
+            field_truncated: false,
+            binding: TraceTargetFieldBinding::StaticBinding { value: 11 },
+            pending: scalar("int", "1"),
+            draft: engine::DebugScopeDraft {
+                fields: Vec::new(),
+                omitted_fields: 0,
+            },
+        }
+    }
+
+    #[test]
+    fn paused_write_reads_as_sentences_without_internal_representations() {
+        fn collect(shape: &egui::epaint::Shape, texts: &mut Vec<String>) {
+            match shape {
+                egui::epaint::Shape::Text(text) => texts.push(text.galley.text().to_owned()),
+                egui::epaint::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        collect(shape, texts);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let phase = PreviewPhase::Paused(Box::new(paused_write()));
+        let context = egui::Context::default();
+        let output = context.run_test_ui(Default::default(), |ui| {
+            show_live_debug_state(ui, &phase, true)
+        });
+        let mut texts = Vec::new();
+        for shape in &output.shapes {
+            collect(&shape.shape, &mut texts);
+        }
+        let text = texts.join("\n");
+        assert!(text.contains("Binding: value of node #11"), "{text}");
+        assert!(text.contains("Frame 1: group of 3 fields"), "{text}");
+        assert!(text.contains("Customer: string: ACME"), "{text}");
+        assert!(!text.contains("StaticBinding"), "{text}");
+        assert!(!text.contains("immediate item"), "{text}");
+        assert!(!text.contains("XML annotation"), "{text}");
     }
 }
