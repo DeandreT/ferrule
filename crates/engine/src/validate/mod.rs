@@ -157,6 +157,20 @@ pub(crate) fn validate_filter_map_contexts(project: &Project) -> Vec<ValidationI
 /// names and arities, and cycles without reading input data or evaluating
 /// expressions.
 pub fn validate(project: &Project) -> Vec<ValidationIssue> {
+    validate_in_document_context(project, false)
+}
+
+/// Validate a filename plan's mapping with its explicitly selected document-set
+/// context. Ordinary projects keep their existing source-path admission rules.
+pub fn validate_primary_document(document: &mapping::DocumentProject) -> Vec<ValidationIssue> {
+    let document_set = document.primary_route().is_ok_and(|route| {
+        route.format == mapping::PrimaryDocumentFormat::Json
+            && route.shape == mapping::PrimaryDocumentShape::DocumentSet
+    });
+    validate_in_document_context(document.project(), document_set)
+}
+
+fn validate_in_document_context(project: &Project, document_set: bool) -> Vec<ValidationIssue> {
     let mut issues = Vec::new();
     if project.root.output_path().is_some() && project.target_path.is_some() {
         issues.push(
@@ -482,7 +496,7 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
     dynamic_loading::validate_references(project, &mut issues);
     sqlite_read::validate_sqlite_read(project, &mut issues);
     validate_user_functions(project, &mut issues);
-    validate_graph(project, &mut issues);
+    validate_graph(project, document_set, &mut issues);
     validate_cycles(&project.graph, &mut issues);
     validate_scope(
         project,

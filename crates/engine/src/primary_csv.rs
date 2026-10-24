@@ -116,7 +116,7 @@ pub fn run_primary_document<H: PrimarySourceHost, P>(
         ));
     }
     let project = document.project();
-    let issues = crate::validate(project);
+    let issues = crate::validate_primary_document(document);
     if !issues.is_empty() {
         return Err(PrimaryDocumentRunError::Invalid(issues));
     }
