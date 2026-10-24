@@ -613,6 +613,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "Runtime/X12/FerruleX12.Numeric.cs",
         "Runtime/X12/FerruleX12.Reader.cs",
         "Runtime/X12/FerruleX12.SourceLexical.cs",
+        "Runtime/X12/FerruleX12.SourceStructure.cs",
         "Runtime/X12/FerruleX12.Schema.cs",
         "Runtime/X12/FerruleX12.Writer.cs",
         "Runtime/X12/FerruleX12.cs",
@@ -671,6 +672,8 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         assert_eq!(
             x12,
             std::collections::BTreeSet::from([
+                "FerruleX12.SourceLexical.cs",
+                "FerruleX12.SourceStructure.cs",
                 "FerruleX12.cs",
                 "FerruleX12.Schema.cs",
                 "FerruleX12.Reader.cs",

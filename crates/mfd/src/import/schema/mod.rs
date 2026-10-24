@@ -1628,6 +1628,13 @@ pub(super) fn read_edi_source_minimums(
     edi::source_minimums(component, resources)
 }
 
+pub(super) fn read_edi_source_structure(
+    component: &roxmltree::Node<'_, '_>,
+    resources: &ResourceResolver,
+) -> Result<mapping::X12SourceStructure, String> {
+    edi::source_structure(component, resources)
+}
+
 /// Reads an internal structured UDF parameter as a schema declaration only.
 /// These components are not independent runtime boundaries, so their EDI and
 /// database configuration diagnostics belong to the caller's real component.

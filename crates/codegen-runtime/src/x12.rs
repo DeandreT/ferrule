@@ -31,6 +31,7 @@ pub use interchange_writer::{
 mod acquisition;
 mod source_lexical;
 mod interchange_source;
+mod source_structure;
 pub use acquisition::{
     MAX_X12_SOURCE_DOCUMENTS, ParsedX12Source, X12AcquisitionError, X12SourceAcquisition,
     parse_mapforce_x12_source_document,

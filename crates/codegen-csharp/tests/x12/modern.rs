@@ -480,6 +480,8 @@ fn modern_profiles_compiled_public_boundaries_match_complete_oracles() {
             assert_eq!(
                 paths,
                 std::collections::BTreeSet::from([
+                    "FerruleX12.SourceLexical.cs",
+                    "FerruleX12.SourceStructure.cs",
                     "FerruleX12.cs",
                     "FerruleX12.Schema.cs",
                     "FerruleX12.Reader.cs",

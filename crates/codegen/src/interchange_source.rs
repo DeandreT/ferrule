@@ -9,6 +9,9 @@ pub struct NativeX12Source<'a> {
     pub options: &'a FormatOptions,
     pub message: &'a [String],
     pub encoding: mapping::X12SourceEncoding,
+    /// Select the original structural parser separately from the legacy lexical
+    /// view. Absence preserves the previously supported source parser contract.
+    pub structure: Option<&'a mapping::X12SourceStructure>,
 }
 
 pub fn prepare_native_x12_source(
@@ -17,10 +20,16 @@ pub fn prepare_native_x12_source(
 ) -> Result<String, MapForceX12SourceError> {
     let boundary =
         prepare_mapforce_x12_source(program, source.schema, source.options, source.message)?;
-    let encoded = serde_json::to_string(
-        &serde_json::json!({"boundary":boundary,"source_encoding":source.encoding}),
-    )
-    .map_err(|_| {
+    let mut descriptor = serde_json::json!({"boundary":boundary,"source_encoding":source.encoding});
+    if let Some(structure) = source.structure {
+        structure
+            .validate(source.schema)
+            .map_err(MapForceX12SourceError::Binding)?;
+        descriptor["structure"] = serde_json::to_value(structure).map_err(|_| {
+            MapForceX12SourceError::Binding("native structure serialization failed")
+        })?;
+    }
+    let encoded = serde_json::to_string(&descriptor).map_err(|_| {
         MapForceX12SourceError::Binding("native source descriptor serialization failed")
     })?;
     if encoded.len() > crate::MAX_EMBEDDED_X12_DESCRIPTOR_BYTES {
