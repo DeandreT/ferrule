@@ -618,6 +618,7 @@ enum DialogKind {
     ExportPipelineMfd,
     SaveProjectAs,
     BrowseInput,
+    BrowsePrimaryInputRoot,
     BrowseOutput,
     ImportMfd,
     BrowseMfdPackageManifest,
@@ -1421,6 +1422,11 @@ impl FerruleApp {
             }
             DialogKind::BrowseLibraryRuntime => self.stage_library_runtime_folder(path),
             DialogKind::BrowseInput => self.input_path = path,
+            DialogKind::BrowsePrimaryInputRoot => {
+                if let Some(session) = &mut self.primary_document {
+                    session.input_root = path;
+                }
+            }
             DialogKind::BrowseOutput => self.output_path = path,
             DialogKind::BrowseSourceSchema => {
                 self.stage_mapping_schema(SchemaSide::Source, PathBuf::from(path));

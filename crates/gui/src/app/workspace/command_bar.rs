@@ -503,9 +503,7 @@ impl FerruleApp {
     }
 
     fn show_runtime_paths(&mut self, ui: &mut egui::Ui) {
-        if let Some(session) = &mut self.primary_document {
-            session.show(ui);
-        }
+        self.show_primary_document_settings(ui);
         let documents = self.primary_document.is_some();
         let mut browse = None;
         ui_kit::form_grid(ui, "run_files", |form| {

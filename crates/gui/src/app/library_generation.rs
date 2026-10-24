@@ -216,7 +216,7 @@ pub(super) struct PendingLibraryGeneration {
     language: LibraryLanguage,
 }
 
-fn pick_folder(current: &Path) -> Receiver<Option<String>> {
+pub(super) fn pick_folder(current: &Path) -> Receiver<Option<String>> {
     let (sender, receiver) = mpsc::channel();
     let current = current.to_path_buf();
     std::thread::spawn(move || {

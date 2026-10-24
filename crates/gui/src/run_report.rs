@@ -659,20 +659,20 @@ impl OutputPreview {
 }
 
 pub fn show(ctx: &egui::Context, open: &mut bool, view: &mut RunReportView) {
-    let mut window_open = *open;
+    if !*open {
+        return;
+    }
     let title = match view.report.kind {
         RunReportKind::Run => "Run results",
         RunReportKind::Preview => "Preview results",
         RunReportKind::Pipeline => "Pipeline results",
         RunReportKind::PipelinePreview => "Pipeline preview results",
     };
-    egui::Window::new(title)
-        .open(&mut window_open)
-        .default_size(egui::vec2(860.0, 560.0))
-        .min_size(egui::vec2(520.0, 320.0))
-        .resizable(true)
-        .show(ctx, |ui| show_report(ui, view));
-    *open = window_open;
+    let response = crate::ui_kit::dialog(ctx, crate::ui_kit::DialogKind::Docked, title)
+        .id_salt("run_results")
+        .width(crate::ui_kit::DialogWidth::Wide)
+        .show_body(|ui| show_report(ui, view));
+    *open = !response.close_requested;
 }
 
 fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
@@ -685,29 +685,18 @@ fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
             RunReportKind::PipelinePreview => "Pipeline preview completed",
         });
         ui.separator();
-        ui.label(match view.report.kind {
-            RunReportKind::Run => {
-                format!("Primary: {}", format_records(view.report.records_written))
-            }
-            RunReportKind::Preview | RunReportKind::PipelinePreview => {
-                format!("Records: {}", format_records(view.report.records_written))
-            }
-            RunReportKind::Pipeline => {
-                format!("Records: {}", format_records(view.report.records_written))
-            }
-        });
-        ui.separator();
-        ui.label(format!(
-            "Run time: {}",
-            format_duration(view.report.duration)
-        ));
-        ui.separator();
-        ui.label(format!(
-            "{output_count} output{}",
-            if output_count == 1 { "" } else { "s" }
-        ));
-        ui.separator();
-        ui.label(format!("{} trace events", view.report.trace.events.len()));
+        ui.label(format_duration(view.report.duration));
+        if output_count != 1 {
+            ui.separator();
+            ui.label(crate::ui_kit::plural(output_count, "output"));
+        }
+        if !view.report.trace.events.is_empty() {
+            ui.separator();
+            ui.label(crate::ui_kit::plural(
+                view.report.trace.events.len(),
+                "trace event",
+            ));
+        }
     });
     ui.horizontal(|ui| {
         ui.weak(match view.report.kind {
@@ -764,16 +753,18 @@ fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
     view.selected_output = view
         .selected_output
         .min(view.report.outputs.len().saturating_sub(1));
-    egui::ScrollArea::horizontal()
-        .id_salt("run_output_tabs")
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                for (index, output) in view.report.outputs.iter().enumerate() {
-                    ui.selectable_value(&mut view.selected_output, index, &output.name);
-                }
+    if view.report.outputs.len() > 1 {
+        egui::ScrollArea::horizontal()
+            .id_salt("run_output_tabs")
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    for (index, output) in view.report.outputs.iter().enumerate() {
+                        ui.selectable_value(&mut view.selected_output, index, &output.name);
+                    }
+                });
             });
-        });
-    ui.separator();
+        ui.separator();
+    }
 
     let Some(output) = view.report.outputs.get_mut(view.selected_output) else {
         ui.weak(match view.report.kind {
@@ -898,6 +889,10 @@ fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "run_report/presentation_tests.rs"]
+mod presentation_tests;
 
 fn show_trace(ui: &mut egui::Ui, view: &mut RunReportView) {
     ui.horizontal(|ui| {

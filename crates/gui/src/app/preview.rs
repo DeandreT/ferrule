@@ -499,6 +499,8 @@ impl FerruleApp {
         let input_too_large = input_size > cli::MAX_PAYLOAD_DOCUMENT_BYTES;
         let mut condition_valid = true;
         let mut host_parameters_valid = true;
+        let dialog_idle = self.pending_dialog.is_none();
+        let mut browse_primary_root = false;
         egui::Window::new("Preview mapping")
             .collapsible(false)
             .resizable(true)
@@ -507,13 +509,13 @@ impl FerruleApp {
             .min_size(egui::vec2(520.0, 360.0))
             .show(ctx, |ui| {
                 if let Some(session) = &mut self.primary_document {
-                    ui.add_enabled_ui(!running, |ui| {
+                    ui.add_enabled_ui(!running && dialog_idle, |ui| {
                         ui.horizontal(|ui| {
                             ui.label("Target");
                             ui.strong(draft.target.label());
                         });
                         ui.strong("Primary documents");
-                        session.show(ui);
+                        browse_primary_root = session.show(ui);
                     });
                 }
                 ui.add_enabled_ui(!running, |ui| {
@@ -807,6 +809,9 @@ impl FerruleApp {
                 });
             });
 
+        if browse_primary_root {
+            self.browse_primary_input_root();
+        }
         if action.is_some() {
             ctx.request_repaint();
         }
