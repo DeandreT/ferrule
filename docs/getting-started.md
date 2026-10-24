@@ -45,6 +45,16 @@ rather than an intended default. Saving a draft and successfully executing it ar
 Undo/redo and dirty-state prompts help preserve work during schema changes,
 imports, and closing.
 
+Preview keeps the input editor above the optional run values and debugging
+settings, with actions at the bottom of the dialog. Results show an output
+selector only when a run produces several outputs. Trace and history rows use
+readable node labels; select a trace row to inspect its replay state. Pipeline
+traces keep labels tied to their originating stage.
+
+For filename-based document projects, run settings provide an input-root folder
+picker and a per-document limit in MiB. Diagnostics wrap long messages and offer
+a copy action so the complete failure can be shared without truncation.
+
 ```mermaid
 flowchart LR
     S[Choose schemas and formats] --> C[Create mapping]
