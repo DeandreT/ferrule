@@ -268,10 +268,10 @@ fn edit_constant(app: &mut FerruleApp, context: &egui::Context, old: &str) {
     }
     let mut labels = Vec::new();
     for shape in &output.shapes {
-        text_positions(&shape.shape, &format!("string {old:?}"), &mut labels);
+        text_positions(&shape.shape, &format!("Text · {old:?}"), &mut labels);
         text_positions(
             &shape.shape,
-            &format!("string {old:?} · output"),
+            &format!("Text · {old:?} · output"),
             &mut labels,
         );
     }
@@ -303,7 +303,10 @@ fn edit_constant(app: &mut FerruleApp, context: &egui::Context, old: &str) {
         .nodes
         .iter()
         .filter(|(_, node)| {
-            node.role() == egui::accesskit::Role::TextInput && node.value() == Some(old)
+            matches!(
+                node.role(),
+                egui::accesskit::Role::TextInput | egui::accesskit::Role::MultilineTextInput
+            ) && node.value() == Some(old)
         })
         .collect::<Vec<_>>();
     eprintln!("stage constant popup inputs for {old:?}: {inputs:?}");

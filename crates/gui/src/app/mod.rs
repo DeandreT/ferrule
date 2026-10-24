@@ -1556,7 +1556,6 @@ impl eframe::App for FerruleApp {
         let layout_class = LayoutClass::from_width(ui.available_width());
         if self.last_layout_class != Some(layout_class) {
             self.last_layout_class = Some(layout_class);
-            self.reset_canvas_view();
         }
         let close_requested = ui.ctx().input(|input| input.viewport().close_requested());
         self.poll_dialog_with_close_guard(ui.ctx(), close_requested);

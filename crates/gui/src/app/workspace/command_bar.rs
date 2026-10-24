@@ -439,19 +439,6 @@ impl FerruleApp {
         }
         toolbar_divider(ui);
         // View
-        ui.add_enabled_ui(editing_enabled, |ui| {
-            let button = egui::Button::new(crate::icons::text(Icon::LayoutGrid, METRICS.icon_size))
-                .min_size(egui::Vec2::splat(METRICS.icon_button_size));
-            let (response, _) = egui::containers::menu::MenuButton::from_button(button)
-                .ui(ui, |ui| self.show_arrange_items(ui));
-            let response = response.on_hover_text("Arrange canvas");
-            if !editing_enabled {
-                response.on_disabled_hover_text(format!("Arrange canvas: {BUSY}"));
-            }
-        });
-        if ui_kit::icon_button(ui, Icon::Maximize2, "Fit canvas", busy).clicked() {
-            self.fit_focused_canvas();
-        }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui_kit::icon_button(ui, Icon::Palette, "Appearance", None).clicked() {
                 self.show_appearance_editor = true;

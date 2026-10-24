@@ -221,6 +221,7 @@ fn fit_rendered_frames_main_named_function_and_resize_preserve_complete_editor_s
             egui::vec2(1200.0, 900.0),
             egui::vec2(900.0, 700.0),
         ] {
+            assert!(app.fit_document(document));
             settle(&mut app, &context, size);
             let after = complete_original(&app);
             eprintln!("fit editor after {document:?}/{size:?}: {after:#?}");
@@ -230,8 +231,9 @@ fn fit_rendered_frames_main_named_function_and_resize_preserve_complete_editor_s
     }
     app.mapping_workspace.active = MappingDocument::Main;
     app.mapping_workspace.focused = MappingDocument::Main;
+    let before_return = complete_original(&app);
     settle(&mut app, &context, egui::vec2(900.0, 700.0));
-    assert_complete_visible_frames(&app, &context);
+    assert_eq!(complete_original(&app), before_return);
 }
 
 #[test]
@@ -254,5 +256,87 @@ fn fit_document_only_resets_the_requested_camera() {
             let expected = generations[index].wrapping_add(u64::from(candidate == document));
             assert_eq!(actual[index], expected);
         }
+    }
+}
+
+#[test]
+fn tab_return_and_panel_resize_keep_the_users_camera() {
+    let mut app = fixture();
+    let context = egui::Context::default();
+    crate::icons::install(&context);
+    app.mapping_workspace.active = MappingDocument::Main;
+    app.mapping_workspace.focused = MappingDocument::Main;
+    settle(&mut app, &context, egui::vec2(1200.0, 900.0));
+    let salt = egui::Id::unique("main_mapping_canvas");
+    let before = crate::canvas_keyboard::current_fit_rects(
+        &context,
+        salt,
+        app.main_canvas.view_generation,
+        &app.main_canvas.snarl,
+    )
+    .unwrap()
+    .1;
+    app.mapping_workspace.active = MappingDocument::Function(FunctionId::new(42));
+    settle(&mut app, &context, egui::vec2(1200.0, 900.0));
+    app.mapping_workspace.active = MappingDocument::Main;
+    settle(&mut app, &context, egui::vec2(1200.0, 900.0));
+    let after = crate::canvas_keyboard::current_fit_rects(
+        &context,
+        salt,
+        app.main_canvas.view_generation,
+        &app.main_canvas.snarl,
+    )
+    .unwrap()
+    .1;
+    assert_eq!(before, after, "returning to a tab refitted its camera");
+    for size in [
+        egui::vec2(1200.0, 650.0),
+        egui::vec2(900.0, 700.0),
+        egui::vec2(1200.0, 900.0),
+    ] {
+        settle(&mut app, &context, size);
+        let resized = crate::canvas_keyboard::current_fit_rects(
+            &context,
+            salt,
+            app.main_canvas.view_generation,
+            &app.main_canvas.snarl,
+        )
+        .unwrap()
+        .1;
+        assert_eq!(
+            before, resized,
+            "panel resize or diagnostics opening changed pan/zoom"
+        );
+    }
+}
+
+#[test]
+fn stage_camera_survives_the_diagnostics_panel_opening_and_closing() {
+    let mut app = fixture();
+    app.embedded_stage_namespace = Some(egui::Id::unique("stage-camera-regression"));
+    app.mapping_workspace.active = MappingDocument::Main;
+    let context = egui::Context::default();
+    crate::icons::install(&context);
+    let salt = app.embedded_canvas_id(egui::Id::unique("main_mapping_canvas"));
+    settle(&mut app, &context, egui::vec2(1200.0, 900.0));
+    let before = crate::canvas_keyboard::current_fit_rects(
+        &context,
+        salt,
+        app.main_canvas.view_generation,
+        &app.main_canvas.snarl,
+    )
+    .unwrap()
+    .1;
+    for height in [650.0, 900.0] {
+        settle(&mut app, &context, egui::vec2(1200.0, height));
+        let after = crate::canvas_keyboard::current_fit_rects(
+            &context,
+            salt,
+            app.main_canvas.view_generation,
+            &app.main_canvas.snarl,
+        )
+        .unwrap()
+        .1;
+        assert_eq!(before, after, "stage diagnostics resized the user's camera");
     }
 }

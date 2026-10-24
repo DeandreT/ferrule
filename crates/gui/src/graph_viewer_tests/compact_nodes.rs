@@ -64,7 +64,7 @@ fn output_marks_follow_node_identity_and_preserve_suffixes_and_repeated_prefixes
                 value: Value::String("keep (output)".into()),
             },
             "unused",
-            "string \"keep (output)\"",
+            "Text · \"keep (output)\"",
         ),
         (
             Node::UserFunctionCall {

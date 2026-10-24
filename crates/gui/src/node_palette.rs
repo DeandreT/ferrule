@@ -335,11 +335,13 @@ pub(super) fn show_available(
     }
     state.last_frame = frame;
 
-    ui.set_min_width(280.0);
+    ui.set_width(420.0_f32.min(ui.ctx().content_rect().width() - crate::ui_kit::space::XXL));
+    ui.spacing_mut().interact_size.y = 24.0;
+    ui.spacing_mut().item_spacing.y = crate::ui_kit::space::XS;
     ui.strong("Add node");
     let search = ui.add(
         egui::TextEdit::singleline(&mut state.query)
-            .hint_text("Search nodes")
+            .hint_text("Search names or operations…")
             // The palette handles Enter after the search field processes text.
             .return_key(None)
             .desired_width(f32::INFINITY),
@@ -395,14 +397,15 @@ pub(super) fn show_available(
     } else {
         egui::ScrollArea::vertical()
             .id_salt("node_palette_results")
-            .max_height(340.0)
+            .max_height(crate::ui_kit::ListHeight::Tall.px())
+            .auto_shrink([false, true])
             .show(ui, |ui| {
                 let mut previous_category = None;
                 let mut selected_response = None;
                 for (index, entry) in matches.iter().enumerate() {
                     if previous_category != Some(entry.category) {
                         if previous_category.is_some() {
-                            ui.add_space(4.0);
+                            ui.add_space(crate::ui_kit::space::SM);
                         }
                         ui.weak(entry.category.label());
                         previous_category = Some(entry.category);
@@ -411,9 +414,69 @@ pub(super) fn show_available(
                         || entry.label.to_owned(),
                         |builtin| format!("{}  ·  {}", entry.label, arity_label(builtin)),
                     );
+                    let icon = match entry.category {
+                        Category::Input => lucide_icons::Icon::ArrowRightFromLine,
+                        Category::Logic => lucide_icons::Icon::GitBranch,
+                        Category::Transform => lucide_icons::Icon::ArrowRightLeft,
+                        Category::Collection => lucide_icons::Icon::ListFilter,
+                        Category::Aggregate => lucide_icons::Icon::Sigma,
+                        Category::Builtin(_) => lucide_icons::Icon::FunctionSquare,
+                    };
+                    let description = entry
+                        .documentation
+                        .split('.')
+                        .next()
+                        .unwrap_or(entry.documentation);
+                    let row = egui::Frame::new()
+                        .fill(if index == state.selected {
+                            ui.visuals().selection.bg_fill
+                        } else {
+                            egui::Color32::TRANSPARENT
+                        })
+                        .corner_radius(crate::ui_kit::METRICS.radius)
+                        .inner_margin(egui::Margin::symmetric(4, 1))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.add(
+                                    egui::Label::new(crate::icons::text(
+                                        icon,
+                                        crate::ui_kit::METRICS.icon_small,
+                                    ))
+                                    .selectable(false),
+                                );
+                                ui.allocate_ui_with_layout(
+                                    egui::vec2(180.0, 22.0),
+                                    egui::Layout::left_to_right(egui::Align::Center),
+                                    |ui| {
+                                        ui.add(
+                                            egui::Label::new(&label).truncate().selectable(false),
+                                        );
+                                    },
+                                );
+                                ui.add(
+                                    egui::Label::new(
+                                        crate::ui_kit::TextRole::Help.text(description),
+                                    )
+                                    .truncate()
+                                    .selectable(false),
+                                );
+                            });
+                        });
                     let response = ui
-                        .selectable_label(index == state.selected, label)
+                        .interact(
+                            row.response.rect,
+                            row.response.id.with("choose"),
+                            egui::Sense::click(),
+                        )
                         .on_hover_ui(|ui| show_entry_documentation(ui, entry));
+                    response.widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::Role::Button,
+                            ui.is_enabled(),
+                            index == state.selected,
+                            &label,
+                        )
+                    });
                     #[cfg(test)]
                     tests::observe_palette_response(entry.label, &response, ui.clip_rect());
                     if reveal_selection == Some(index) {
@@ -434,6 +497,9 @@ pub(super) fn show_available(
                 }
             });
     }
+
+    crate::ui_kit::help(ui, "↑ / ↓ to choose · Enter to add · Esc to close");
+    crate::ui_kit::help(ui, "Looking for joins? Add joined collections from Scopes.");
 
     ui.data_mut(|data| {
         if chosen.is_some() {
