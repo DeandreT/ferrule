@@ -44,7 +44,7 @@ mod generated_occurrence;
 mod graph;
 mod group_by_key;
 mod group_projection;
-mod instance_path;
+pub(crate) mod instance_path;
 mod iteration;
 mod join;
 mod json_parser;
@@ -365,6 +365,13 @@ fn hinted_primary_index(sources: &[&SchemaComponent], hint: &PrimarySourceHint) 
 
 pub fn import(path: &Path) -> Result<Imported, MfdError> {
     import_with_options(path, &ImportOptions::default())
+}
+
+pub(crate) fn import_package(package: &crate::MfdPackage) -> Result<Imported, MfdError> {
+    let resources = ResourceResolver::from_package(package)?;
+    let result = import_resolved(&resources, StageSelection::Ordinary, false, false);
+    resources.finish_bindings()?;
+    Ok(result?.imported)
 }
 
 pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Imported, MfdError> {
@@ -2547,7 +2554,7 @@ fn import_resolved(
                 .as_deref()
                 .map(|stored| {
                     if dynamic_path.is_none() {
-                        instance_path::resolve_static_input(path, stored)
+                        resources.static_input(stored)
                     } else {
                         stored.to_string()
                     }
@@ -2586,7 +2593,7 @@ fn import_resolved(
                 builder.static_component_input_path(primary)
             }
         })
-        .map(|stored| instance_path::resolve_static_input(path, &stored));
+        .map(|stored| resources.static_input(&stored));
     let target_path = if root.output_path().is_some() {
         None
     } else if matches!(

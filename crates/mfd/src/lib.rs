@@ -55,7 +55,13 @@ mod export;
 mod import;
 mod json_parser_recipe;
 mod node_inputs;
+mod package;
 mod resource;
+
+pub use package::{
+    ExportedPackage, MAX_PACKAGE_BYTES, MAX_PACKAGE_ENTRIES, MAX_PACKAGE_FILE_BYTES,
+    MAX_PACKAGE_PATH_BYTES, MfdPackage, PackageError, export_package, import_package,
+};
 
 pub use export::{
     ExportCompatibility, ExportCompatibilityFeature, ExportCompatibilityIssue, ExportProfile,
@@ -83,6 +89,8 @@ pub const MAX_MFD_DESIGN_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum MfdError {
+    #[error("package refused: {0}")]
+    Package(#[from] PackageError),
     #[error("cannot export owned source iteration at {scope:?}")]
     UnsupportedSourceIteration { scope: mapping::SourceScopeLocation },
     #[error("cannot export owned failure iteration in failure rule {rule}")]

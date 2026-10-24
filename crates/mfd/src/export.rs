@@ -312,7 +312,39 @@ struct PreparedExport {
     report: ExportReport,
 }
 
+pub(crate) fn prepare_package(
+    project: &Project,
+    design_path: &str,
+    profile: ExportProfile,
+) -> Result<crate::ExportedPackage, MfdError> {
+    let prepared = prepare_export_mode(project, Path::new(design_path), false)?;
+    if profile == ExportProfile::NativeMfd && !prepared.report.is_native_compatible() {
+        return Err(MfdError::IncompatibleExport(Box::new(prepared.report)));
+    }
+    let entries = prepared
+        .artifacts
+        .iter()
+        .map(|(path, contents)| {
+            let path = crate::package::portable_path(path)?;
+            Ok((path, contents.as_bytes()))
+        })
+        .collect::<Result<Vec<_>, crate::PackageError>>()?;
+    let package = crate::MfdPackage::new(design_path, entries)?;
+    Ok(crate::ExportedPackage {
+        package,
+        report: prepared.report,
+    })
+}
+
 fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdError> {
+    prepare_export_mode(project, path, true)
+}
+
+fn prepare_export_mode(
+    project: &Project,
+    path: &Path,
+    filesystem: bool,
+) -> Result<PreparedExport, MfdError> {
     if let Some(input) = project.sqlite_read_inputs().first() {
         return Err(MfdError::UnsupportedInputProfile {
             input: match input.owner {
@@ -390,6 +422,12 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
         }
     }
     let primary_target = &targets[0];
+    if !filesystem
+        && (sources.iter().any(|source| source.format == SideFormat::Db)
+            || targets.iter().any(|target| target.format == SideFormat::Db))
+    {
+        return Err(crate::PackageError::FilesystemResource.into());
+    }
     let mixed_database_pairs = pair_mixed_databases(&sources, &targets);
     let native_database_where = database_where::NativeWhere::plan(project, &sources, &targets);
     let native_query_where =
@@ -941,6 +979,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                 false,
                 &used_ports,
                 source.document_path_port,
+                filesystem,
             )?
         };
         if source_index == 0
@@ -1015,6 +1054,7 @@ fn prepare_export(project: &Project, path: &Path) -> Result<PreparedExport, MfdE
                 target.default_output,
                 &used_ports,
                 target.document_path_port,
+                filesystem,
             )?
         };
         native_datetime_casts.apply_to_target(target_index, target.schema, &mut rendered)?;

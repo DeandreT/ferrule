@@ -13,6 +13,10 @@ use crate::XmlFormatError;
 /// Supplied-reader imports never reopen these identities as filesystem paths.
 pub trait XmlSchemaByteReader {
     fn read(&self, resource: &Path) -> io::Result<Arc<[u8]>>;
+    /// Optional stricter host policy, checked before lexical normalization.
+    fn validate_reference(&self, _reference: &str) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Default)]
@@ -78,6 +82,12 @@ impl SchemaReader {
                     .unwrap_or_else(|| Path::new("."))
                     .join(reference)
             });
+        }
+        if let Some(reader) = &self.supplied
+            && let Err(error) = reader.validate_reference(reference)
+        {
+            self.refuse(error.to_string());
+            return None;
         }
         if reference.is_empty()
             || reference.len() > 4096

@@ -199,6 +199,67 @@ fn load_schema_bundle(
     resources: &ResourceResolver,
     schema_file: &str,
 ) -> Result<format_protobuf::SchemaBundle, format_protobuf::ProtobufError> {
+    if let Some(package) = resources.package() {
+        let path = resources
+            .resolve_package_file(schema_file)
+            .map_err(format_protobuf::ProtobufError::InvalidSchema)?;
+        let mapping_directory = resources
+            .mapping_path()
+            .parent()
+            .unwrap_or(resources.package_root());
+        let bundle_directory = path
+            .strip_prefix(mapping_directory)
+            .ok()
+            .and_then(|relative| relative.components().next())
+            .and_then(|component| component.as_os_str().to_str())
+            .filter(|name| name.ends_with("-protobuf"));
+        let base = bundle_directory
+            .map(|name| mapping_directory.join(name))
+            .unwrap_or_else(|| resources.package_root().to_path_buf());
+        let relative = path
+            .strip_prefix(&base)
+            .ok()
+            .and_then(|path| crate::package::portable_path(path).ok())
+            .ok_or_else(|| {
+                format_protobuf::ProtobufError::InvalidSchema(
+                    "invalid package protobuf identity".into(),
+                )
+            })?;
+        let root_source = resources
+            .read_text(&path, crate::MAX_PACKAGE_FILE_BYTES as u64)
+            .map_err(format_protobuf::ProtobufError::InvalidSchema)?;
+        let source_base = base
+            .strip_prefix(resources.package_root())
+            .unwrap_or(Path::new(""));
+        let sources = package
+            .package
+            .entries()
+            .filter_map(|(name, bytes)| {
+                Path::new(name)
+                    .strip_prefix(source_base)
+                    .ok()
+                    .and_then(|path| crate::package::portable_path(path).ok())
+                    .map(|name| (name, bytes))
+            })
+            .filter(|(name, _)| name != &relative && name.ends_with(".proto"))
+            .map(|(name, bytes)| std::str::from_utf8(bytes).map(|source| (name, source)))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| {
+                format_protobuf::ProtobufError::InvalidSchema(
+                    package.refuse(crate::PackageError::InvalidText).to_string(),
+                )
+            })?;
+        return format_protobuf::SchemaBundle::from_sources(
+            &relative,
+            &root_source,
+            sources
+                .iter()
+                .map(|(name, source)| (name.as_str(), *source)),
+        )
+        .inspect_err(|_| {
+            package.refuse(crate::PackageError::InvalidResource);
+        });
+    }
     let resolved = resources
         .resolve_file(schema_file, "Protocol Buffers schema")
         .map_err(format_protobuf::ProtobufError::InvalidSchema)?;

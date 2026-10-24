@@ -568,6 +568,9 @@ impl Loader {
                     "the resource path contains invalid percent encoding or UTF-8",
                 )
             })?;
+            if let Some(reader) = &self.reader {
+                reader.validate_reference(&decoded)?;
+            }
             if decoded.contains('?')
                 || Path::new(&decoded).is_absolute()
                 || has_uri_scheme(&decoded)

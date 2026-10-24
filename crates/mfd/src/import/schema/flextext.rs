@@ -34,8 +34,9 @@ pub(super) fn read(
         .attribute("config")
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "component has no external configuration path".to_string())?;
-    let config_path = resources.resolve_file(config, "FlexText configuration")?;
-    let parsed = read_configuration(&config_path, config)?;
+    let config_path = resources.resolve_byte_file(config, "FlexText configuration")?;
+    let source = resources.read_text(&config_path, MAX_FLEXTEXT_CONFIGURATION_BYTES as u64)?;
+    let parsed = parse_configuration(&source, config)?;
     let schema = parsed.layout.schema();
     let root =
         child(&data, "root").ok_or_else(|| "component has no visible entry tree".to_string())?;
@@ -131,12 +132,16 @@ fn read_configuration(path: &Path, config: &str) -> Result<ParsedProject, String
     }
     let source = String::from_utf8(bytes)
         .map_err(|_| format!("configuration `{config}` is not valid UTF-8"))?;
+    parse_configuration(&source, config)
+}
+
+fn parse_configuration(source: &str, config: &str) -> Result<ParsedProject, String> {
     if source.contains("<!DOCTYPE") {
         return Err(format!(
             "configuration `{config}` uses a document type declaration"
         ));
     }
-    let document = roxmltree::Document::parse(&source)
+    let document = roxmltree::Document::parse(source)
         .map_err(|error| format!("could not parse configuration `{config}` ({error})"))?;
     if document
         .descendants()

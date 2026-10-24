@@ -37,3 +37,8 @@ format-flextext = { workspace = true }
 format-xbrl = { workspace = true }
 rusqlite = { workspace = true }
 rust_xlsxwriter = { workspace = true }
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dev-dependencies]
+seccompiler = "=0.5.0"
+libc = "=0.2.186"
+rustix = { workspace = true, features = ["thread"] }

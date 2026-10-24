@@ -50,6 +50,63 @@ pub struct SchemaBundle {
 }
 
 impl SchemaBundle {
+    /// Builds a closed graph from immutable host-owned sources. Only reachable
+    /// imports are retained; no identity is opened or resolved on the host.
+    pub fn from_sources<'a>(
+        root_path: &str,
+        root_source: &str,
+        imports: impl IntoIterator<Item = (&'a str, &'a str)>,
+    ) -> Result<Self, ProtobufError> {
+        let canonical = canonical_schema_path(root_path)?;
+        if canonical != root_path {
+            return Err(ProtobufError::schema("noncanonical supplied schema path"));
+        }
+        let root_path = canonical;
+        let mut sources = BTreeMap::new();
+        insert_source(&mut sources, root_path.clone(), root_source)?;
+        let mut total = root_source.len();
+        for (path, source) in imports {
+            if sources.len() >= MAX_SCHEMA_FILES {
+                return Err(ProtobufError::schema("schema graph file limit exceeded"));
+            }
+            total = total
+                .checked_add(source.len())
+                .ok_or_else(|| ProtobufError::schema("schema graph byte count overflowed"))?;
+            if total > MAX_SCHEMA_GRAPH_BYTES {
+                return Err(ProtobufError::schema("schema graph byte limit exceeded"));
+            }
+            let canonical = canonical_schema_path(path)?;
+            if canonical != path {
+                return Err(ProtobufError::schema("noncanonical supplied schema path"));
+            }
+            insert_source(&mut sources, canonical, source)?;
+        }
+        let mut graph = GraphBuilder::new(sources);
+        graph.strict_paths = true;
+        graph.visit(&root_path, 0)?;
+        let root_source = graph
+            .sources
+            .remove(&root_path)
+            .ok_or_else(|| ProtobufError::schema("missing root schema"))?;
+        let mut imports = Vec::new();
+        for path in graph.paths.iter().filter(|path| **path != root_path) {
+            let source = graph
+                .sources
+                .remove(path)
+                .ok_or_else(|| ProtobufError::schema("missing imported schema"))?;
+            imports.push(SchemaFile {
+                path: path.clone(),
+                source,
+            });
+        }
+        graph.resolve()?;
+        Ok(Self {
+            root_path,
+            root_source,
+            imports,
+        })
+    }
+
     /// Reads one traversal-confined schema graph relative to `base`.
     pub fn read_relative(base: &Path, root_path: &str) -> Result<Self, ProtobufError> {
         let base = std::fs::canonicalize(base).map_err(|error| {
@@ -164,6 +221,7 @@ struct GraphBuilder {
     files: Vec<Option<GraphFile>>,
     paths: Vec<String>,
     stack: Vec<String>,
+    strict_paths: bool,
 }
 
 impl GraphBuilder {
@@ -175,6 +233,7 @@ impl GraphBuilder {
             files: Vec::new(),
             paths: Vec::new(),
             stack: Vec::new(),
+            strict_paths: false,
         }
     }
 
@@ -222,6 +281,9 @@ impl GraphBuilder {
         let mut seen = BTreeSet::new();
         for import in &raw.imports {
             let imported_path = resolve_import(path, &import.path)?;
+            if self.strict_paths && imported_path != import.path {
+                return Err(ProtobufError::schema("noncanonical supplied import path"));
+            }
             if !seen.insert(imported_path.clone()) {
                 return Err(ProtobufError::schema(format!(
                     "schema `{path}` imports `{imported_path}` more than once"

@@ -14,18 +14,8 @@ pub(super) fn fact_bindings(
     schema: &SchemaNode,
     namespaces: &[XbrlNamespaceBinding],
 ) -> Result<Vec<XbrlFactBinding>, String> {
-    let path = resources.resolve_file(declared, "XBRL presentation")?;
-    let metadata = std::fs::metadata(&path)
-        .map_err(|error| format!("could not read `{}` ({error})", path.display()))?;
-    if metadata.len() > MAX_SPS_BYTES {
-        return Err(format!(
-            "presentation `{}` exceeds the {} MiB size limit",
-            path.display(),
-            MAX_SPS_BYTES / (1024 * 1024)
-        ));
-    }
-    let text = std::fs::read_to_string(&path)
-        .map_err(|error| format!("could not read `{}` ({error})", path.display()))?;
+    let path = resources.resolve_byte_file(declared, "XBRL presentation")?;
+    let text = resources.read_text(&path, MAX_SPS_BYTES)?;
     let document = roxmltree::Document::parse(&text)
         .map_err(|error| format!("could not parse `{}` ({error})", path.display()))?;
     let types = concept_types(&document)?;
