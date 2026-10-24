@@ -143,7 +143,7 @@ pub(super) fn show(ui: &mut Ui, scope: &mut Scope, profile: ScopeOutputProfile) 
         return;
     }
     ui.horizontal(|ui| {
-        ui.label("output:");
+        ui.label("Output");
         let reason = match profile {
             ScopeOutputProfile::XmlElements => "",
             ScopeOutputProfile::ReadOnly(reason) => reason,

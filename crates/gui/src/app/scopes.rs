@@ -91,7 +91,7 @@ impl FerruleApp {
             .map(|binding| binding.node)
     }
 
-    pub(super) fn show_scope_controls(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn show_scope_controls(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
         let target_index = match self.mapping_workspace.active {
             MappingDocument::Target(index) => Some(index),
             MappingDocument::Main | MappingDocument::Function(_) => None,
@@ -141,7 +141,8 @@ impl FerruleApp {
                     && scope.concatenated().is_none()
             });
         let mut action = None;
-        ui.horizontal(|ui| {
+        ui.menu_button("Scope", |ui| {
+            ui.add_enabled_ui(editing_enabled, |ui| {
             ui.add_enabled_ui(!whole_group_copy && !candidates.is_empty(), |ui| {
                 ui.menu_button("Add child", |ui| {
                     for candidate in &candidates {
@@ -166,24 +167,25 @@ impl FerruleApp {
             if ui
                 .add_enabled(can_expand, egui::Button::new("Expand subtree"))
                 .on_hover_text("Add missing target group scopes below this scope. Configure source iteration separately for repeating groups.")
+                .on_disabled_hover_text(if !editing_enabled { "Mapping editing is unavailable" } else if whole_group_copy { "Whole source group copies already include their complete children" } else { "This scope cannot contain constructed child groups" })
                 .clicked()
             {
                 action = Some(ScopeAction::Expand);
+                ui.close();
             }
             if ui
                 .add_enabled(
                     !self.selected_scope.is_empty() && !joined_subtree,
                     egui::Button::new("Remove scope"),
                 )
-                .on_disabled_hover_text(join_authoring::JOIN_REMOVAL_REASON)
+                .on_disabled_hover_text(if self.selected_scope.is_empty() { "The root scope cannot be removed" } else { join_authoring::JOIN_REMOVAL_REASON })
                 .clicked()
             {
                 action = Some(ScopeAction::Remove);
+                ui.close();
             }
+            });
         });
-        if joined_subtree {
-            ui.weak(join_authoring::JOIN_REMOVAL_REASON);
-        }
 
         if matches!(action, Some(ScopeAction::Expand)) {
             self.expand_selected_target_subtree();

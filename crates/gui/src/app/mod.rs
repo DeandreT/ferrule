@@ -130,6 +130,9 @@ fn history_shortcuts() -> [egui::KeyboardShortcut; 3] {
 struct CanvasDocumentState {
     tools_id: egui::Id,
     snarl: Snarl<CanvasNode>,
+    /// Deterministic geometry for the current semantic revision. Rewiring can
+    /// change arrangement even when every node keeps its identity and position.
+    default_layout_cache: std::cell::RefCell<Option<(String, Vec<CanvasNodeLayout>)>>,
     node_sizes: std::collections::BTreeMap<CanvasNode, egui::Vec2>,
     endpoint_scroll: crate::canvas_endpoints::EndpointScrollState,
     search: crate::canvas_search::CanvasSearchState,
@@ -316,6 +319,7 @@ impl CanvasDocumentState {
                 NEXT_TOOLS_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             )),
             snarl,
+            default_layout_cache: Default::default(),
             node_sizes: std::collections::BTreeMap::new(),
             endpoint_scroll: crate::canvas_endpoints::EndpointScrollState::default(),
             search: crate::canvas_search::CanvasSearchState::default(),
@@ -441,10 +445,16 @@ struct EditorSnapshot {
     state: EditorState,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 struct EditorState {
     serialized_project: String,
     layout: CanvasLayout,
+}
+
+impl PartialEq for EditorState {
+    fn eq(&self, other: &Self) -> bool {
+        self.serialized_project == other.serialized_project && self.layout.same_view(&other.layout)
+    }
 }
 
 type EditorHistory = EditHistory<EditorSnapshot, graph_commands::GraphCommandRecord>;
@@ -802,16 +812,17 @@ fn editor_state(
     let fingerprint = fingerprint_of_key(&serialized_project);
     EditorState {
         serialized_project,
-        layout: CanvasLayout::capture_with_fingerprint(fingerprint, snarl, workspace),
+        layout: CanvasLayout::capture_with_fingerprint(project, fingerprint, snarl, workspace),
     }
 }
 
 impl CanvasLayout {
     fn capture(project: &Project, snarl: &Snarl<CanvasNode>, workspace: &MappingWorkspace) -> Self {
-        Self::capture_with_fingerprint(project_fingerprint(project), snarl, workspace)
+        Self::capture_with_fingerprint(project, project_fingerprint(project), snarl, workspace)
     }
 
     fn capture_with_fingerprint(
+        project: &Project,
         fingerprint: String,
         snarl: &Snarl<CanvasNode>,
         workspace: &MappingWorkspace,
@@ -819,12 +830,30 @@ impl CanvasLayout {
         let function_nodes = workspace
             .function_canvases
             .iter()
-            .map(|(&function, canvas)| (function, Self::capture_nodes(&canvas.snarl)))
+            .map(|(&function, canvas)| {
+                (
+                    function,
+                    Self::capture_document_nodes(canvas, &fingerprint, || {
+                        project
+                            .user_functions
+                            .get(&function)
+                            .map(build_function_snarl)
+                            .unwrap_or_default()
+                    }),
+                )
+            })
             .collect();
         let target_nodes = workspace
             .target_canvases
             .iter()
-            .map(|(&target, canvas)| (target, Self::capture_nodes(&canvas.snarl)))
+            .map(|(&target, canvas)| {
+                (
+                    target,
+                    Self::capture_document_nodes(canvas, &fingerprint, || {
+                        canvas_build::build_named_target_snarl(project, target)
+                    }),
+                )
+            })
             .collect();
         let mut open_functions = workspace
             .tabs
@@ -871,6 +900,29 @@ impl CanvasLayout {
         }
     }
 
+    fn capture_document_nodes(
+        canvas: &CanvasDocumentState,
+        fingerprint: &str,
+        build_default: impl FnOnce() -> Snarl<CanvasNode>,
+    ) -> Vec<CanvasNodeLayout> {
+        let nodes = Self::capture_nodes(&canvas.snarl);
+        let mut baseline = canvas.default_layout_cache.borrow_mut();
+        if baseline.as_ref().is_none_or(|(key, _)| key != fingerprint) {
+            *baseline = Some((
+                fingerprint.to_owned(),
+                Self::capture_nodes(&build_default()),
+            ));
+        }
+        if baseline
+            .as_ref()
+            .is_some_and(|(_, default)| default == &nodes)
+        {
+            Vec::new()
+        } else {
+            nodes
+        }
+    }
+
     fn capture_nodes(snarl: &Snarl<CanvasNode>) -> Vec<CanvasNodeLayout> {
         let mut nodes: Vec<_> = snarl
             .nodes_pos()
@@ -903,16 +955,15 @@ impl CanvasLayout {
         }
     }
 
-    /// Equality of the view state alone; the fingerprint follows the project.
+    /// Equality of saved canvas geometry; navigation is persisted opportunistically
+    /// on save, but opening or selecting a tab is not an edit.
     fn same_view(&self, other: &Self) -> bool {
         self.version == other.version
             && self.nodes == other.nodes
-            && self.function_nodes == other.function_nodes
-            && self.target_nodes == other.target_nodes
-            && self.open_functions == other.open_functions
-            && self.open_documents == other.open_documents
-            && self.active_function == other.active_function
-            && self.active_document == other.active_document
+            // Empty entries remember a visited default canvas, not custom
+            // geometry. Ignore only those markers when comparing edits.
+            && self.function_nodes.iter().filter(|(_, nodes)| !nodes.is_empty()).eq(other.function_nodes.iter().filter(|(_, nodes)| !nodes.is_empty()))
+            && self.target_nodes.iter().filter(|(_, nodes)| !nodes.is_empty()).eq(other.target_nodes.iter().filter(|(_, nodes)| !nodes.is_empty()))
     }
 
     fn matches_project(&self, project: &Project) -> bool {

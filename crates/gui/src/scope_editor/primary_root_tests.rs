@@ -105,7 +105,9 @@ fn click(
 ) {
     fn collect(shape: &egui::epaint::Shape, label: &str, found: &mut Vec<egui::Pos2>) {
         match shape {
-            egui::epaint::Shape::Text(text) if text.galley.text() == label => {
+            egui::epaint::Shape::Text(text)
+                if crate::test_ui::inspector_label_matches(text.galley.text(), label) =>
+            {
                 found.push(text.visual_bounding_rect().center())
             }
             egui::epaint::Shape::Vec(shapes) => {
@@ -175,7 +177,7 @@ fn named_binding_picker_rejects_direct_and_if_call_root_choices() {
             "8: constant String(\"safe\")",
             false,
         );
-        let label = format!("{expression}: {}", node_label(&graph.nodes[&expression]));
+        let label = format!("{} · #{expression}", node_label(&graph.nodes[&expression]));
         click(&context, &mut scope, &graph, false, &label, true);
         assert_eq!(serde_json::to_value(&scope).unwrap(), before);
     }

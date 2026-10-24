@@ -3,7 +3,10 @@ use mapping::{Scope, ScopeConstruction};
 
 pub(super) fn show_reason(ui: &mut Ui) {
     ui.strong("Whole source group copy");
-    ui.weak("Copies every field and nested group. Individual bindings, child scopes and grouping are unavailable.");
+    crate::ui_kit::help(
+        ui,
+        "Copies every field and nested group. Individual bindings, child scopes and grouping are unavailable.",
+    );
 }
 
 /// Check every existing ancestor before a target route can create new scopes.

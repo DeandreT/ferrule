@@ -40,6 +40,7 @@ impl FerruleApp {
             .unwrap_or_else(|| fingerprint_of_key(&serialized_project));
         EditorState {
             layout: CanvasLayout::capture_with_fingerprint(
+                &self.project,
                 fingerprint,
                 &self.main_canvas.snarl,
                 &self.mapping_workspace,
@@ -205,6 +206,10 @@ impl FerruleApp {
                     .record(HistoryRecord::Snapshot(previous), label);
                 return None;
             }
+        } else {
+            // Keep the current navigation for the next edit's undo context,
+            // without treating a tab visit as a document mutation.
+            self.observed_editor.state.layout = current_state.layout;
         }
         self.discard_frame_commands();
 

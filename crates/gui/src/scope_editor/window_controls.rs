@@ -11,57 +11,75 @@ enum WindowAction {
 
 pub(super) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
     let first_node = first_node_id(graph);
-    ui.label("  sequence windows:");
+    crate::ui_kit::section(ui, "Windows", |_| {});
     let count = scope.windows.len();
     let mut action = None;
     for (index, window) in scope.windows.iter_mut().enumerate() {
-        ui.horizontal(|ui| {
-            let mut kind = WindowKind::of(*window);
-            egui::ComboBox::from_id_salt(("window_kind", index))
-                .selected_text(kind.label())
-                .show_ui(ui, |ui| {
-                    for candidate in WindowKind::ALL {
-                        ui.selectable_value(&mut kind, candidate, candidate.label());
+        ui.push_id(("sequence_window", index), |ui| {
+            ui.group(|ui| {
+                ui.horizontal(|ui| {
+                    ui.strong(format!("Window {}", index + 1));
+                    if crate::ui_kit::icon_button(
+                        ui,
+                        lucide_icons::Icon::ArrowUp,
+                        "Apply this window earlier",
+                        (index == 0).then_some("Already the first window"),
+                    )
+                    .clicked()
+                    {
+                        action = Some(WindowAction::MoveUp(index));
+                    }
+                    if crate::ui_kit::icon_button(
+                        ui,
+                        lucide_icons::Icon::ArrowDown,
+                        "Apply this window later",
+                        (index + 1 == count).then_some("Already the last window"),
+                    )
+                    .clicked()
+                    {
+                        action = Some(WindowAction::MoveDown(index));
+                    }
+                    if crate::ui_kit::icon_button(
+                        ui,
+                        lucide_icons::Icon::Trash2,
+                        "Remove window",
+                        None,
+                    )
+                    .clicked()
+                    {
+                        action = Some(WindowAction::Remove(index));
                     }
                 });
-            if kind != WindowKind::of(*window) {
-                *window = kind.with_node(window.nodes().next().unwrap_or(0));
-            }
-            match window {
-                SequenceWindow::SkipFirst { count }
-                | SequenceWindow::First { count }
-                | SequenceWindow::Last { count } => {
-                    node_picker(ui, ("window_count", index), count, graph);
+                let mut kind = WindowKind::of(*window);
+                egui::ComboBox::from_id_salt(("window_kind", index))
+                    .selected_text(kind.label())
+                    .show_ui(ui, |ui| {
+                        for candidate in WindowKind::ALL {
+                            ui.selectable_value(&mut kind, candidate, candidate.label());
+                        }
+                    });
+                if kind != WindowKind::of(*window) {
+                    *window = kind.with_node(window.nodes().next().unwrap_or(0));
                 }
-                SequenceWindow::From { position } => {
-                    node_picker(ui, ("window_position", index), position, graph);
+                match window {
+                    SequenceWindow::SkipFirst { count }
+                    | SequenceWindow::First { count }
+                    | SequenceWindow::Last { count } => {
+                        ui.label("Item count");
+                        node_picker(ui, ("window_count", index), count, graph);
+                    }
+                    SequenceWindow::From { position } => {
+                        ui.label("Start position");
+                        node_picker(ui, ("window_position", index), position, graph);
+                    }
+                    SequenceWindow::FromTo { first, last } => {
+                        ui.label("Start position");
+                        node_picker(ui, ("window_first", index), first, graph);
+                        ui.label("End position");
+                        node_picker(ui, ("window_last", index), last, graph);
+                    }
                 }
-                SequenceWindow::FromTo { first, last } => {
-                    node_picker(ui, ("window_first", index), first, graph);
-                    node_picker(ui, ("window_last", index), last, graph);
-                }
-            }
-            if ui
-                .add_enabled(index > 0, egui::Button::new("Up").small())
-                .on_hover_text("Apply this window earlier")
-                .clicked()
-            {
-                action = Some(WindowAction::MoveUp(index));
-            }
-            if ui
-                .add_enabled(index + 1 < count, egui::Button::new("Down").small())
-                .on_hover_text("Apply this window later")
-                .clicked()
-            {
-                action = Some(WindowAction::MoveDown(index));
-            }
-            if ui
-                .small_button("x")
-                .on_hover_text("Remove window")
-                .clicked()
-            {
-                action = Some(WindowAction::Remove(index));
-            }
+            });
         });
     }
     match action {
@@ -73,8 +91,8 @@ pub(super) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
         None => {}
     }
     if ui
-        .add_enabled(first_node.is_some(), egui::Button::new("+"))
-        .on_hover_text("Add sequence window")
+        .add_enabled(first_node.is_some(), egui::Button::new("Add window"))
+        .on_disabled_hover_text("Add a graph expression before creating a window")
         .clicked()
         && let Some(count) = first_node
     {
@@ -112,11 +130,11 @@ impl WindowKind {
 
     fn label(self) -> &'static str {
         match self {
-            Self::SkipFirst => "skip first",
-            Self::First => "first",
-            Self::From => "from",
-            Self::FromTo => "from to",
-            Self::Last => "last",
+            Self::SkipFirst => "Skip first items",
+            Self::First => "First items",
+            Self::From => "From position",
+            Self::FromTo => "Position range",
+            Self::Last => "Last items",
         }
     }
 

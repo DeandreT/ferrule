@@ -144,12 +144,12 @@ enum GroupingMode {
 impl GroupingMode {
     fn label(self) -> &'static str {
         match self {
-            Self::None => "none",
-            Self::ByKey => "key",
-            Self::AdjacentBy => "adjacent key",
-            Self::StartingWith => "starting predicate",
-            Self::EndingWith => "ending predicate",
-            Self::IntoBlocks => "fixed blocks",
+            Self::None => "No grouping",
+            Self::ByKey => "By key",
+            Self::AdjacentBy => "Adjacent keys",
+            Self::StartingWith => "Starting predicate",
+            Self::EndingWith => "Ending predicate",
+            Self::IntoBlocks => "Fixed-size blocks",
         }
     }
 }
@@ -203,13 +203,13 @@ fn binding_node_ids(
 
 fn generated_sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
     match sequence {
-        mapping::SequenceExpr::Tokenize { .. } => "tokenize",
-        mapping::SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
-        mapping::SequenceExpr::TokenizeRegex { .. } => "tokenize-regexp",
-        mapping::SequenceExpr::Generate { .. } => "generate-sequence",
-        mapping::SequenceExpr::FilterMapV1(_) => "filter/map",
-        mapping::SequenceExpr::RecursiveCollect { .. } => "recursive-collect",
-        mapping::SequenceExpr::OwnedRecursiveCollect(_) => "owned-recursive-collect",
+        mapping::SequenceExpr::Tokenize { .. } => "Split text",
+        mapping::SequenceExpr::TokenizeByLength { .. } => "Fixed-length text",
+        mapping::SequenceExpr::TokenizeRegex { .. } => "Regular expression",
+        mapping::SequenceExpr::Generate { .. } => "Integer range",
+        mapping::SequenceExpr::FilterMapV1(_) => "Filter/map",
+        mapping::SequenceExpr::RecursiveCollect { .. } => "Recursive collection",
+        mapping::SequenceExpr::OwnedRecursiveCollect(_) => "Owned recursive collection",
     }
 }
 
@@ -522,7 +522,7 @@ pub fn show_scope_tree(
     show_scope_node(
         ui,
         root,
-        "root",
+        &mut vec![],
         &mut vec![],
         selected,
         reveal_selected,
@@ -534,46 +534,75 @@ pub fn show_scope_tree(
 fn show_scope_node(
     ui: &mut Ui,
     scope: &Scope,
-    label: &str,
     path: &mut ScopePath,
+    target_path: &mut Vec<String>,
     selected: &ScopePath,
     reveal_selected: bool,
     new_selection: &mut Option<ScopePath>,
 ) {
+    let label = target_path.last().map_or("Root scope", String::as_str);
     let is_selected = path == selected;
-    let title = if is_selected {
-        egui::RichText::new(label).strong()
-    } else {
-        egui::RichText::new(label)
-    };
-    let response = egui::CollapsingHeader::new(title)
-        .id_salt(format!("{path:?}"))
-        .default_open(true)
-        .show(ui, |ui| {
+    let id = ui.make_persistent_id(("scope_disclosure", path.clone()));
+    let mut state =
+        egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true);
+    if reveal_selected && selected.starts_with(path) {
+        state.set_open(true);
+    }
+    let row = ui.horizontal(|ui| {
+        if scope.children.is_empty() {
+            ui.add_space(ui.spacing().indent);
+        } else {
+            state.show_toggle_button(ui, egui::collapsing_header::paint_default_icon);
+        }
+        let response = ui
+            .add_sized(
+                [ui.available_width(), crate::theme::METRICS.control_height],
+                egui::Button::selectable(is_selected, "")
+                    .left_text(label)
+                    .wrap_mode(egui::TextWrapMode::Truncate),
+            )
+            .on_hover_text(if target_path.is_empty() {
+                "Root scope".to_owned()
+            } else {
+                target_path.join(" / ")
+            });
+        if response.clicked() {
+            *new_selection = Some(path.clone());
+        }
+        if is_selected && reveal_selected {
+            response.scroll_to_me(None);
+        }
+    });
+    if !scope.children.is_empty() {
+        let body = |ui: &mut Ui| {
             for (i, child) in scope.children.iter().enumerate() {
                 path.push(i);
                 let child_label = if child.target_field.is_empty() {
-                    format!("child {i}")
+                    format!("Child {}", i + 1)
                 } else {
                     child.target_field.clone()
                 };
+                target_path.push(child_label.clone());
                 show_scope_node(
                     ui,
                     child,
-                    &child_label,
                     path,
+                    target_path,
                     selected,
                     reveal_selected,
                     new_selection,
                 );
                 path.pop();
+                target_path.pop();
             }
-        });
-    if response.header_response.clicked() {
-        *new_selection = Some(path.clone());
-    }
-    if is_selected && reveal_selected {
-        response.header_response.scroll_to_me(None);
+        };
+        // Keep disclosure and selection reachable in deeply nested mappings.
+        // The full target path remains available on every row's tooltip.
+        if ui.available_width() > 180.0 {
+            state.show_body_indented(&row.response, ui, body);
+        } else {
+            state.show_body_unindented(ui, body);
+        }
     }
 }
 
@@ -598,9 +627,9 @@ pub(crate) fn show_scope_editor(
 ) -> Option<crate::target_xml_type::Action> {
     let first_node = first_node_id(graph);
     ui.strong(if scope.target_field.is_empty() {
-        "root scope".to_string()
+        "Root scope".to_string()
     } else {
-        format!("scope: {}", scope.target_field)
+        format!("Scope · {}", scope.target_field)
     });
 
     if let ScopeIteration::OwnedSource { source, .. } = &scope.iteration
@@ -627,8 +656,7 @@ pub(crate) fn show_scope_editor(
         && !source_iteration::owned_editable(scope)
     {
         ui.label("This owned source iteration's construction is not authorable; this saved scope is read-only.");
-        ui.monospace(format!("owner: {:?}", source.owner));
-        ui.monospace(format!("path: {:?}", source.path));
+        ui.monospace(mapping::describe_owned_collection(source));
         if let Some(output_path) = output_path {
             ui.monospace(format!("output path node: {output_path}"));
         }
@@ -677,7 +705,7 @@ pub(crate) fn show_scope_editor(
         }
         ScopeIteration::Sequence(sequence) => {
             ui.horizontal(|ui| {
-                ui.label("iteration:");
+                ui.label("Iteration");
                 ui.label(format!(
                     "generated ({})",
                     generated_sequence_label(sequence)
@@ -686,24 +714,24 @@ pub(crate) fn show_scope_editor(
         }
         ScopeIteration::InnerJoin { id, plan } => {
             ui.horizontal(|ui| {
-                ui.label("iteration:");
+                ui.label("Iteration");
                 ui.label(join_summary(*id, plan));
             });
             for (index, source) in plan.sources().enumerate() {
                 let collection = if source.collection().is_empty() {
-                    "<rows>".to_string()
+                    "Current rows".to_string()
                 } else {
                     source.collection().join("/")
                 };
                 ui.horizontal(|ui| {
-                    ui.label(format!("  input {}:", index + 1));
+                    ui.label(format!("Input {}", index + 1));
                     ui.monospace(collection);
                 });
             }
             for (source, conditions) in plan.stages() {
                 for condition in conditions.iter() {
                     ui.horizontal(|ui| {
-                        ui.label("  on:");
+                        ui.label("Equal keys");
                         ui.monospace(join_condition_label(source, condition));
                     });
                 }
@@ -711,7 +739,7 @@ pub(crate) fn show_scope_editor(
         }
         ScopeIteration::Concatenate(segments) => {
             ui.horizontal(|ui| {
-                ui.label("iteration:");
+                ui.label("Iteration");
                 ui.label(format!("{} ordered row segments", segments.len()));
             });
             return type_action;
@@ -726,20 +754,20 @@ pub(crate) fn show_scope_editor(
 
     if let Some(mut output_path) = scope.output_path() {
         ui.horizontal(|ui| {
-            ui.label("output path node:");
+            ui.label("Output path");
             node_picker(ui, "scope_output_path_node", &mut output_path, graph);
         });
         scope.set_output_path(Some(output_path));
     }
 
     if scope_iterates(scope) {
-        ui.horizontal(|ui| {
-            ui.label("  filter node:");
+        crate::ui_kit::section(ui, "Filter & grouping", |_| {});
+        ui.vertical(|ui| {
             let mut has_filter = scope.filter.is_some();
             if ui
                 .add_enabled(
                     scope.filter.is_some() || first_node.is_some(),
-                    egui::Checkbox::new(&mut has_filter, "filtered"),
+                    egui::Checkbox::new(&mut has_filter, "Filter items"),
                 )
                 .on_disabled_hover_text("Add a graph node before enabling a filter")
                 .changed()
@@ -753,8 +781,8 @@ pub(crate) fn show_scope_editor(
 
         if scope.join().is_none() {
             ui.add_enabled_ui(!whole_group_copy, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("  grouping:");
+                ui.vertical(|ui| {
+                    ui.label("Grouping");
                     let mut mode = grouping_mode(scope);
                     let previous = mode;
                     ui.add_enabled_ui(mode != GroupingMode::None || first_node.is_some(), |ui| {
@@ -808,13 +836,12 @@ pub(crate) fn show_scope_editor(
                     }
                 });
                 if grouping_mode(scope) != GroupingMode::None {
-                    ui.horizontal(|ui| {
-                        ui.label("  after-group filter:");
+                    ui.vertical(|ui| {
                         let mut enabled = scope.post_group_filter.is_some();
                         if ui
                             .add_enabled(
                                 enabled || first_node.is_some(),
-                                egui::Checkbox::new(&mut enabled, "filtered"),
+                                egui::Checkbox::new(&mut enabled, "Filter grouped items"),
                             )
                             .on_disabled_hover_text("Add a graph node before enabling a filter")
                             .changed()
@@ -840,43 +867,61 @@ pub(crate) fn show_scope_editor(
         && !owner.nested
         && crate::primary_root_authoring::flat_binding_scope(scope);
     let first_binding_node = binding_node_ids(graph, primary_root_binding).next();
-    ui.separator();
+    crate::ui_kit::section(ui, "Bindings", |_| {});
     ui.add_enabled_ui(!whole_group_copy, |ui| {
-        ui.label("bindings (target field -> graph node):");
+        if scope.bindings.is_empty() {
+            crate::ui_kit::help(ui, "Connect a target field to a graph expression.");
+        }
         let mut remove_idx = None;
         for (i, binding) in scope.bindings.iter_mut().enumerate() {
-            ui.horizontal(|ui| {
-                egui::ComboBox::from_id_salt(("binding_target", i))
-                    .selected_text(if binding.target_field.is_empty() {
-                        "<target field>"
-                    } else {
-                        crate::target_xml_type::field_label(&binding.target_field)
-                    })
-                    .width(130.0)
-                    .show_ui(ui, |ui| {
-                        for field in target_fields {
-                            ui.selectable_value(
-                                &mut binding.target_field,
-                                field.clone(),
-                                crate::target_xml_type::field_label(field),
-                            );
-                        }
+            ui.push_id(("binding", i), |ui| {
+                ui.group(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.strong(format!("Binding {}", i + 1));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if crate::ui_kit::icon_button(
+                                ui,
+                                lucide_icons::Icon::Trash2,
+                                "Remove binding",
+                                None,
+                            )
+                            .clicked()
+                            {
+                                remove_idx = Some(i);
+                            }
+                        });
                     });
-                ui.label("->");
-                binding_node_picker(
-                    ui,
-                    format!("binding_{i}"),
-                    &mut binding.node,
-                    graph,
-                    primary_root_binding,
-                );
-                if ui
-                    .small_button("x")
-                    .on_hover_text("Remove binding")
-                    .clicked()
-                {
-                    remove_idx = Some(i);
-                }
+                    crate::ui_kit::form_grid(ui, "binding_fields", |form| {
+                        form.row("Target field", |ui| {
+                            egui::ComboBox::from_id_salt(("binding_target", i))
+                                .selected_text(if binding.target_field.is_empty() {
+                                    "Choose field…"
+                                } else {
+                                    crate::target_xml_type::field_label(&binding.target_field)
+                                })
+                                .width(ui.available_width().max(80.0))
+                                .wrap_mode(egui::TextWrapMode::Truncate)
+                                .show_ui(ui, |ui| {
+                                    for field in target_fields {
+                                        ui.selectable_value(
+                                            &mut binding.target_field,
+                                            field.clone(),
+                                            crate::target_xml_type::field_label(field),
+                                        );
+                                    }
+                                });
+                        });
+                        form.row("Expression", |ui| {
+                            binding_node_picker(
+                                ui,
+                                format!("binding_{i}"),
+                                &mut binding.node,
+                                graph,
+                                primary_root_binding,
+                            );
+                        });
+                    });
+                });
             });
         }
         if let Some(i) = remove_idx {
@@ -895,7 +940,7 @@ pub(crate) fn show_scope_editor(
         if ui
             .add_enabled(
                 first_binding_node.is_some() && next_target.is_some(),
-                egui::Button::new("+ binding").small(),
+                egui::Button::new("Add binding"),
             )
             .on_disabled_hover_text(if first_binding_node.is_none() {
                 "Add a graph expression available to this target before creating a binding"
@@ -928,11 +973,13 @@ fn binding_node_picker(
     primary_root_binding: bool,
 ) {
     let current_label = graph.nodes.get(node_id).map_or_else(
-        || "<missing>".to_string(),
-        |node| format!("{node_id}: {}", node_label(node)),
+        || egui::WidgetText::from("Missing expression"),
+        |node| picker_label(ui, node, *node_id),
     );
     egui::ComboBox::from_id_salt(id_salt)
         .selected_text(current_label)
+        .width(ui.available_width().max(80.0))
+        .wrap_mode(egui::TextWrapMode::Truncate)
         .show_ui(ui, |ui| {
             let unavailable = (!primary_root_binding)
                 .then(|| crate::primary_root_authoring::dependent_nodes(graph));
@@ -940,7 +987,7 @@ fn binding_node_picker(
                 if matches!(node, mapping::Node::Unconnected) {
                     continue;
                 }
-                let label = format!("{id}: {}", node_label(node));
+                let label = picker_label(ui, node, id);
                 let allowed = unavailable.as_ref().is_none_or(|nodes| !nodes.contains(&id));
                 let response = ui
                     .add_enabled_ui(allowed, |ui| {
@@ -957,148 +1004,31 @@ fn binding_node_picker(
 }
 
 fn node_label(node: &mapping::Node) -> String {
-    match node {
-        mapping::Node::OwnedSourceField(field) => format!(
-            "owned field {:?} {:?}; frame {:?}",
-            field.source.owner, field.source.path, field.frame
-        ),
-        mapping::Node::OwnedPosition(position) => format!(
-            "owned position {:?} {:?}",
-            position.owner, position.collection
-        ),
-        mapping::Node::OwnedRowDocumentPath(path) => format!(
-            "owned row document path {:?} {:?}",
-            path.owner, path.collection
-        ),
-        mapping::Node::OwnedSourceDocumentPath(path) => {
-            format!("owned document path {:?}", path.owner)
-        }
-        mapping::Node::OwnedLookup(lookup) => format!(
-            "owned lookup {:?} {:?} (read-only)",
-            lookup.collection.owner, lookup.collection.path
-        ),
-        mapping::Node::OwnedCollectionFind(find) => format!(
-            "owned find {:?} {:?} (read-only)",
-            find.collection.owner, find.collection.path
-        ),
-        mapping::Node::OwnedDynamicSourceField(field) => format!(
-            "owned dynamic field {:?} {:?}; frame {:?} (read-only)",
-            field.object.owner, field.object.path, field.frame
-        ),
-        mapping::Node::OwnedXmlSerialize(serializer) => format!(
-            "owned XML serializer {:?} {:?}; frame {:?} (unavailable)",
-            serializer.source.owner, serializer.source.path, serializer.frame
-        ),
-        mapping::Node::OwnedAggregate(aggregate) => format!(
-            "owned aggregate {:?} {:?} {:?} (read-only)",
-            aggregate.function, aggregate.collection.owner, aggregate.collection.path
-        ),
-        mapping::Node::OwnedJoinField(field) => format!(
-            "owned join {} field {:?} {:?} {} (read-only)",
-            field.join.get(),
-            field.collection.owner,
-            field.collection.path,
-            display_path(&field.path)
-        ),
-        mapping::Node::OwnedJoinSourcePosition(position) => format!(
-            "owned join {} source position {:?} {:?} (read-only)",
-            position.join.get(),
-            position.collection.owner,
-            position.collection.path
-        ),
-        mapping::Node::OwnedXmlMixedContent(mixed) => format!(
-            "owned XML mixed content {:?} {:?}; frame {:?} (unavailable)",
-            mixed.source.owner, mixed.source.path, mixed.frame
-        ),
-        mapping::Node::OwnedJoinAggregate(aggregate) => format!(
-            "owned join {} aggregate {:?} (read-only)",
-            aggregate.join.get(),
-            aggregate.function
-        ),
-        mapping::Node::SourceField { path, .. } => format!("field {}", display_path(path)),
-        mapping::Node::SourceDocumentPath => "source document path".to_string(),
-        mapping::Node::SourceRootXmlTypeEquals { .. } => {
-            "primary XML annotation equality".to_string()
-        }
-        mapping::Node::SourceRootField { path, required } => {
-            let title = if *required {
-                "required primary field"
-            } else {
-                "primary field"
-            };
-            format!("{title} {}", display_path(path))
-        }
-        mapping::Node::Position { collection } => {
-            format!("position {}", display_path(collection))
-        }
-        mapping::Node::JoinField {
-            collection, path, ..
-        } => {
-            let mut field = collection.clone();
-            field.extend(path.iter().cloned());
-            format!("joined field {}", display_path(&field))
-        }
-        mapping::Node::JoinPosition { join } => format!("join {} position", join.get()),
-        mapping::Node::Unconnected => "unconnected input".to_string(),
-        mapping::Node::Const { value } => format!("constant {value:?}"),
-        mapping::Node::FunctionParameter { parameter } => {
-            format!("function input {}", parameter.get())
-        }
-        mapping::Node::RuntimeValue { value } => format!("runtime {value:?}"),
-        mapping::Node::RuntimeParameter { name, ty, .. } => {
-            format!("runtime input {name} ({ty:?})")
-        }
-        mapping::Node::RuntimeParameterDefault { name, ty, .. } => {
-            format!("runtime input {name} ({ty:?}, optional)")
-        }
-        mapping::Node::Call { function, .. } => function.clone(),
-        mapping::Node::UserFunctionCall { function, .. } => {
-            format!("user function {}", function.get())
-        }
-        mapping::Node::If { .. } => "if".to_string(),
-        mapping::Node::Raise { .. } => "raise error".to_string(),
-        mapping::Node::ValueMap { .. } => "value map".to_string(),
-        mapping::Node::Lookup { collection, .. } => {
-            format!("lookup {}", display_path(collection))
-        }
-        mapping::Node::DynamicSourceField { object, .. } => {
-            format!("dynamic field {}", display_path(object))
-        }
-        mapping::Node::XmlMixedContent { path, .. } => {
-            format!("XML mixed content {}", display_path(path))
-        }
-        mapping::Node::XmlSerialize { path, .. } => {
-            format!("XML serialize {}", display_path(path))
-        }
-        mapping::Node::CollectionFind { collection, .. } => {
-            format!("find {}", display_path(collection))
-        }
-        mapping::Node::SequenceExists { sequence, .. } => {
-            format!("exists {}", generated_sequence_label(sequence))
-        }
-        mapping::Node::SequenceItemAt { sequence, .. } => {
-            format!("item-at {}", generated_sequence_label(sequence))
-        }
-        mapping::Node::SequenceAggregate {
-            function, sequence, ..
-        } => format!("{function:?} {}", generated_sequence_label(sequence)).to_lowercase(),
-        mapping::Node::Aggregate {
-            function,
-            collection,
-            ..
-        } => format!("{function:?} {}", display_path(collection)).to_lowercase(),
-        mapping::Node::JoinAggregate { function, join, .. } => {
-            format!("{function:?} join {}", join.get()).to_lowercase()
-        }
-    }
+    crate::graph_viewer::readable_node_label(node)
 }
 
-fn display_path(path: &[String]) -> String {
-    if path.is_empty() {
-        "<current>".to_string()
-    } else {
-        path.join("/")
-    }
+fn picker_label(ui: &Ui, node: &mapping::Node, id: NodeId) -> egui::WidgetText {
+    let font_id = egui::TextStyle::Body.resolve(ui.style());
+    let mut job = egui::text::LayoutJob::default();
+    job.append(
+        &node_label(node),
+        0.0,
+        egui::TextFormat {
+            font_id: font_id.clone(),
+            color: ui.visuals().text_color(),
+            ..Default::default()
+        },
+    );
+    job.append(
+        &format!(" · #{id}"),
+        0.0,
+        egui::TextFormat {
+            font_id,
+            color: ui.visuals().weak_text_color(),
+            ..Default::default()
+        },
+    );
+    job.into()
 }
 
 /// The saved child renames of an owned selector's mixed-content construction.
@@ -1107,7 +1037,7 @@ fn owned_mixed_construction_label(elements: &[mapping::XmlMixedContentElement]) 
         "XML mixed content: {}",
         elements
             .iter()
-            .map(|element| format!("{} -> {}", element.source, element.target))
+            .map(|element| format!("{} → {}", element.source, element.target))
             .collect::<Vec<_>>()
             .join(", ")
     )
@@ -1116,6 +1046,10 @@ fn owned_mixed_construction_label(elements: &[mapping::XmlMixedContentElement]) 
 #[cfg(test)]
 #[path = "scope_editor/primary_root_tests.rs"]
 mod primary_root_tests;
+
+#[cfg(test)]
+#[path = "scope_editor/ui_tests.rs"]
+mod ui_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1518,7 +1452,7 @@ mod tests {
         assert!(scope_iterates(&scope));
         assert_eq!(
             generated_sequence_label(scope.sequence().expect("sequence exists")),
-            "tokenize"
+            "Split text"
         );
 
         scope.set_sequence(Some(mapping::SequenceExpr::TokenizeByLength {
@@ -1528,7 +1462,7 @@ mod tests {
         }));
         assert_eq!(
             generated_sequence_label(scope.sequence().expect("sequence exists")),
-            "tokenize-by-length"
+            "Fixed-length text"
         );
 
         scope.set_sequence(Some(mapping::SequenceExpr::Generate {
@@ -1538,7 +1472,7 @@ mod tests {
         }));
         assert_eq!(
             generated_sequence_label(scope.sequence().expect("sequence exists")),
-            "generate-sequence"
+            "Integer range"
         );
 
         scope.set_sequence(None);
