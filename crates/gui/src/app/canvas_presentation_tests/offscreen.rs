@@ -138,13 +138,15 @@ fn scenarios(directory: Option<&Path>) {
             key(&mut harness, egui::Key::Escape);
             assert!(harness.query_by_label("Clear focus").is_none());
 
-            click(&mut harness, "Auto Compact · Preview");
+            click(&mut harness, "Layout");
+            click(&mut harness, "Auto-arrange · preview");
             assert_eq!(positions(harness.state()), before);
             image(&mut harness, "preview");
             click(&mut harness, "Cancel");
             assert_eq!(positions(harness.state()), before);
-            click(&mut harness, "Auto Compact · Preview");
-            click(&mut harness, "Apply");
+            click(&mut harness, "Layout");
+            click(&mut harness, "Auto-arrange · preview");
+            click(&mut harness, "Apply layout");
             let compact = positions(harness.state());
             assert_ne!(compact, before);
             source_label_clears_badge(&harness);

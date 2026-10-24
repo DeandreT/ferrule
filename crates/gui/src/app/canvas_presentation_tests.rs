@@ -29,6 +29,18 @@ fn settle(app: &mut FerruleApp, ctx: &egui::Context) -> egui::FullOutput {
 }
 
 fn button(output: &egui::FullOutput, label: &str) -> egui::Pos2 {
+    let icon;
+    let label = match label {
+        "Undo layout" => {
+            icon = char::from(lucide_icons::Icon::Undo2).to_string();
+            &icon
+        }
+        "Redo layout" => {
+            icon = char::from(lucide_icons::Icon::Redo2).to_string();
+            &icon
+        }
+        label => label,
+    };
     fn find(shape: &egui::epaint::Shape, label: &str) -> Option<egui::Pos2> {
         match shape {
             egui::epaint::Shape::Text(text) if text.galley.text() == label => {
@@ -115,12 +127,14 @@ fn authored_canvas_densities_preview_cancel_apply_and_one_step_undo_preserve_map
             &app.main_canvas.snarl,
         )
         .unwrap();
-        output = click(&mut app, &ctx, button(&output, "Auto Compact · Preview"));
+        output = click(&mut app, &ctx, button(&output, "Layout"));
+        output = click(&mut app, &ctx, button(&output, "Auto-arrange · preview"));
         assert_eq!(positions(&app), before);
         output = click(&mut app, &ctx, button(&output, "Cancel"));
         assert_eq!(positions(&app), before);
-        output = click(&mut app, &ctx, button(&output, "Auto Compact · Preview"));
-        output = click(&mut app, &ctx, button(&output, "Apply"));
+        output = click(&mut app, &ctx, button(&output, "Layout"));
+        output = click(&mut app, &ctx, button(&output, "Auto-arrange · preview"));
+        output = click(&mut app, &ctx, button(&output, "Apply layout"));
         let compact = positions(&app);
         assert_ne!(compact, before);
         let (_, rects) = crate::canvas_keyboard::current_fit_rects(

@@ -47,8 +47,7 @@ struct Change {
 struct State {
     nodes: BTreeSet<CanvasNode>,
     selected: BTreeSet<CanvasNode>,
-    toolbar_top: Option<f32>,
-    fit_changed: bool,
+    fit_requested: bool,
     visual_edges: BTreeMap<(OutPinId, InPinId), Vec<Edge>>,
     edge_visual: BTreeMap<Edge, (OutPinId, InPinId)>,
     widths: BTreeMap<CanvasNode, f32>,
@@ -705,51 +704,79 @@ pub(crate) fn toolbar(
         };
     }
     let mut preview = requested;
-    ui.horizontal_wrapped(|ui| {
-        preview |= ui.button("Auto Compact · Preview").clicked();
-        if ui
-            .checkbox(&mut state.selection_only, "Selected region")
-            .changed()
-        {
-            state.preview = None;
-            state.message.clear();
-        }
-        if !selected.is_empty() && ui.button("Pin / unpin selected").clicked() {
-            state.preview = None;
-            state.message.clear();
-            for node in selected.iter().filter_map(|id| snarl.get_node(*id)) {
-                if !state.pinned.remove(node) {
-                    state.pinned.insert(*node);
+    ui.horizontal(|ui| {
+        ui.menu_button("Layout", |ui| {
+            if ui.button("Auto-arrange · preview").clicked() {
+                preview = true;
+                ui.close();
+            }
+            if ui.button("Arrange left to right").clicked() {
+                let before = positions(snarl);
+                let sizes = state
+                    .measured
+                    .iter()
+                    .map(|(node, geometry)| (*node, geometry.size))
+                    .collect();
+                crate::canvas_layout::arrange_snarl(snarl, &sizes, wire);
+                for (node, position) in before
+                    .iter()
+                    .filter(|(node, _)| state.pinned.contains(node))
+                {
+                    apply_positions(snarl, &BTreeMap::from([(*node, *position)]));
                 }
-            }
-        }
-        ui.small(format!("{} pinned", state.pinned.len()));
-        if state.preview.is_some() {
-            if ui.button("Apply").clicked()
-                && let Some(change) = state.preview.take()
-            {
-                apply_positions(snarl, &change.after);
-                state.undo.push(change);
+                state.undo.push(Change {
+                    before,
+                    after: positions(snarl),
+                });
                 state.redo.clear();
-                state.message.clear();
+                state.preview = None;
+                ui.close();
             }
-            if ui.button("Cancel").clicked() {
+            if ui.button("Fit all nodes").clicked() {
+                state.fit_requested = true;
+                ui.close();
+            }
+            ui.separator();
+            if ui
+                .checkbox(&mut state.selection_only, "Selected region")
+                .changed()
+            {
                 state.preview = None;
                 state.message.clear();
             }
+            if !selected.is_empty() && ui.button("Pin / unpin selected").clicked() {
+                state.preview = None;
+                state.message.clear();
+                for node in selected.iter().filter_map(|id| snarl.get_node(*id)) {
+                    if !state.pinned.remove(node) {
+                        state.pinned.insert(*node);
+                    }
+                }
+            }
+        });
+        if !state.pinned.is_empty() {
+            ui.small(format!("{} pinned", state.pinned.len()));
         }
-        if ui
-            .add_enabled(!state.undo.is_empty(), egui::Button::new("Undo layout"))
-            .clicked()
+        if crate::ui_kit::icon_button(
+            ui,
+            lucide_icons::Icon::Undo2,
+            "Undo layout",
+            state.undo.is_empty().then_some("No layout changes"),
+        )
+        .clicked()
             && let Some(change) = state.undo.pop()
         {
             apply_positions(snarl, &change.before);
             state.redo.push(change);
             state.preview = None;
         }
-        if ui
-            .add_enabled(!state.redo.is_empty(), egui::Button::new("Redo layout"))
-            .clicked()
+        if crate::ui_kit::icon_button(
+            ui,
+            lucide_icons::Icon::Redo2,
+            "Redo layout",
+            state.redo.is_empty().then_some("No layout changes"),
+        )
+        .clicked()
             && let Some(change) = state.redo.pop()
         {
             apply_positions(snarl, &change.after);
@@ -759,9 +786,6 @@ pub(crate) fn toolbar(
     });
     if preview {
         propose(&mut state, snarl, selected, wire, ui.available_width());
-    }
-    if !state.message.is_empty() {
-        ui.small(&state.message);
     }
     if let Some(focus) = state.focus {
         let summary = match focus {
@@ -801,9 +825,6 @@ pub(crate) fn toolbar(
         || ui.ctx().egui_wants_keyboard_input()
         || egui::Popup::is_any_open(ui.ctx())
         || GraphViewer::properties_open(ui.ctx());
-    let top = ui.available_rect_before_wrap().top();
-    state.fit_changed |= state.toolbar_top.is_some_and(|old| (old - top).abs() > 0.5);
-    state.toolbar_top = Some(top);
     let picker_keyboard = !search_open
         && !egui::Popup::is_any_open(ui.ctx())
         && !GraphViewer::properties_open(ui.ctx());
@@ -835,12 +856,17 @@ pub(crate) fn toolbar(
                     choice = state.picker.get(state.cursor).copied();
                 }
             }
-            egui::Window::new("Choose connection")
-                .id(id.with("picker"))
-                .collapsible(false)
-                .resizable(true)
-                .show(ui.ctx(), |ui| {
-                    ui.label(
+            let dialog = crate::ui_kit::dialog(
+                ui.ctx(),
+                crate::ui_kit::DialogKind::Modal,
+                "Choose connection",
+            )
+            .id_salt(id.with("picker"))
+            .width(crate::ui_kit::DialogWidth::Medium)
+            .show(
+                |ui| {
+                    crate::ui_kit::help(
+                        ui,
                         "Choose an exact source and destination. This does not disconnect it.",
                     );
                     egui::ScrollArea::vertical()
@@ -860,11 +886,19 @@ pub(crate) fn toolbar(
                             }
                         });
                     state.reveal_picker_cursor = false;
-                    if ui.button("Cancel").clicked() {
-                        state.picker.clear();
-                        choice = None;
-                    }
-                });
+                },
+                |ui| {
+                    crate::ui_kit::dialog_buttons(ui, "Choose".into(), Some("Cancel".into()), None)
+                },
+            );
+            if dialog.close_requested
+                || dialog.footer == Some(crate::ui_kit::DialogAction::Secondary)
+            {
+                state.picker.clear();
+                choice = None;
+            } else if dialog.footer == Some(crate::ui_kit::DialogAction::Primary) {
+                choice = state.picker.get(state.cursor).copied();
+            }
             ui.ctx().data_mut(|data| data.insert_temp(id, state));
             if let Some(edge) = choice {
                 choose(ui.ctx(), viewer, edge);
@@ -876,6 +910,68 @@ pub(crate) fn toolbar(
         state.bright.clear();
     }
     ui.ctx().data_mut(|data| data.insert_temp(id, state));
+}
+
+/// Preview controls float above the graph without changing its viewport.
+pub(crate) fn preview_actions(
+    ui: &mut egui::Ui,
+    viewport: egui::Rect,
+    snarl: &mut Snarl<CanvasNode>,
+) {
+    let Some(id) = active(ui.ctx()) else {
+        return;
+    };
+    let Some(message) = read(ui.ctx(), |state| {
+        (!state.message.is_empty()).then(|| state.message.clone())
+    })
+    .flatten() else {
+        return;
+    };
+    let rect = egui::Rect::from_min_size(
+        viewport.left_top() + egui::vec2(crate::ui_kit::space::MD, crate::ui_kit::space::MD),
+        egui::vec2((viewport.width() - 16.0).min(640.0), 64.0),
+    );
+    let layer = egui::LayerId::new(ui.layer_id().order, id.with("preview_actions"));
+    ui.ctx().set_sublayer(ui.layer_id(), layer);
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt(id.with("preview_banner"))
+            .layer_id(layer)
+            .max_rect(rect),
+    );
+    child.set_clip_rect(viewport);
+    egui::Frame::popup(ui.style()).show(&mut child, |ui| {
+        crate::ui_kit::help(ui, message);
+        if read(ui.ctx(), |state| state.preview.is_some()).unwrap_or(false) {
+            let action = crate::ui_kit::dialog_buttons(
+                ui,
+                "Apply layout".into(),
+                Some("Cancel".into()),
+                None,
+            );
+            edit(ui.ctx(), |state| match action {
+                Some(crate::ui_kit::DialogAction::Primary) => {
+                    if let Some(change) = state.preview.take() {
+                        apply_positions(snarl, &change.after);
+                        state.undo.push(change);
+                        state.redo.clear();
+                    }
+                    state.message.clear();
+                }
+                Some(crate::ui_kit::DialogAction::Secondary) => {
+                    state.preview = None;
+                    state.message.clear();
+                }
+                _ => {}
+            });
+        } else if ui.button("Dismiss").clicked() {
+            edit(ui.ctx(), |state| state.message.clear());
+        }
+    });
+}
+
+pub(crate) fn take_fit_request(ctx: &egui::Context) -> bool {
+    edit(ctx, |state| std::mem::take(&mut state.fit_requested)).unwrap_or(false)
 }
 
 pub(crate) fn fanout(
@@ -928,13 +1024,25 @@ pub(crate) fn manual_width(ctx: &egui::Context, node: CanvasNode) -> Option<f32>
 }
 
 pub(crate) fn size_controls(ui: &mut egui::Ui, node: CanvasNode) {
-    let mut width = manual_width(ui.ctx(), node).unwrap_or(180.0);
-    if ui
-        .add(egui::Slider::new(&mut width, 60.0..=480.0).text("Card width"))
-        .changed()
-    {
+    let manual = manual_width(ui.ctx(), node);
+    let mut enabled = manual.is_some();
+    let mut width = manual.unwrap_or(180.0);
+    let toggled = ui.checkbox(&mut enabled, "Manual width").changed();
+    let changed = ui
+        .add_enabled(
+            enabled,
+            egui::DragValue::new(&mut width)
+                .range(60.0..=480.0)
+                .suffix(" px"),
+        )
+        .changed();
+    if toggled || changed {
         edit(ui.ctx(), |state| {
-            state.widths.insert(node, width);
+            if enabled {
+                state.widths.insert(node, width);
+            } else {
+                state.widths.remove(&node);
+            }
         });
     }
     if ui.button("Reset to auto size").clicked() {
@@ -954,10 +1062,6 @@ pub(crate) fn take_edit(ctx: &egui::Context, node: CanvasNode) -> bool {
         }
     })
     .unwrap_or(false)
-}
-
-pub(crate) fn consume_fit_change(ctx: &egui::Context) -> bool {
-    edit(ctx, |state| std::mem::take(&mut state.fit_changed)).unwrap_or(false)
 }
 
 pub(crate) fn selected_node(ctx: &egui::Context, node: CanvasNode) -> bool {

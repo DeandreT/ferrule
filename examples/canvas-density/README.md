@@ -7,4 +7,4 @@ This is authored sample data with no external resource dependency.
 The first source field fans out to Exists, If / else and Upper. The last source
 field exercises an offscreen proxy. Search can reveal any unconnected middle
 field in Connected fields mode. Constants include empty, long, multiline and
-Unicode strings. Auto Compact offers a position-only preview before Apply.
+Unicode strings. Layout offers a position-only auto-arrange preview before Apply layout.
