@@ -20,11 +20,51 @@ pub struct AutoConnectPlan {
     pub connections: Vec<PlannedConnection>,
     pub skipped_ambiguous: usize,
     pub skipped_incompatible: usize,
+    pub skipped_fields: Vec<SkippedField>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SkipReason {
+    Ambiguous,
+    Unmatched,
+    Incompatible,
+    UnavailableScope,
+}
+
+impl SkipReason {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Ambiguous => "More than one source field matches",
+            Self::Unmatched => "No matching source field",
+            Self::Incompatible => "Source and target types or repetition do not match",
+            Self::UnavailableScope => "Target scope cannot accept a new binding",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SkippedField {
+    pub target_path: Vec<String>,
+    pub reason: SkipReason,
 }
 
 impl AutoConnectPlan {
     pub fn is_empty(&self) -> bool {
         self.connections.is_empty()
+    }
+
+    fn skip(&mut self, target: &TargetLeaf, reason: SkipReason) {
+        if reason == SkipReason::Ambiguous {
+            self.skipped_ambiguous += 1;
+        } else {
+            self.skipped_incompatible += 1;
+        }
+        let mut target_path = target.chain.clone();
+        target_path.push(target.field.clone());
+        self.skipped_fields.push(SkippedField {
+            target_path,
+            reason,
+        });
     }
 }
 
@@ -68,7 +108,7 @@ pub fn plan_auto_connect(
         match binding_route(selected_scope, relative_parent, &target.field) {
             BindingRoute::Existing => continue,
             BindingRoute::Unavailable => {
-                plan.skipped_incompatible += 1;
+                plan.skip(&target, SkipReason::UnavailableScope);
                 continue;
             }
             BindingRoute::Available => {}
@@ -83,10 +123,9 @@ pub fn plan_auto_connect(
                     target_field: target.field,
                 });
             }
-            CandidateResolution::Ambiguous => plan.skipped_ambiguous += 1,
-            CandidateResolution::Missing | CandidateResolution::Incompatible => {
-                plan.skipped_incompatible += 1;
-            }
+            CandidateResolution::Ambiguous => plan.skip(&target, SkipReason::Ambiguous),
+            CandidateResolution::Missing => plan.skip(&target, SkipReason::Unmatched),
+            CandidateResolution::Incompatible => plan.skip(&target, SkipReason::Incompatible),
         }
     }
     Ok(plan)

@@ -186,38 +186,53 @@ impl FerruleApp {
             &self.project.user_functions,
             self.project.extra_targets.len(),
         );
-        let labels = self.function_names();
         let tabs = self.mapping_workspace.tabs.clone();
         let mut action = None;
-        crate::theme::top_bar_row(ui, 28.0, |ui| {
+        crate::theme::top_bar_row(ui, crate::ui_kit::METRICS.control_height, |ui| {
             ui.horizontal_wrapped(|ui| {
                 for document in tabs {
                     let label = match document {
-                        MappingDocument::Main => "Main Mapping",
+                        MappingDocument::Main => "Main mapping",
                         MappingDocument::Target(index) => self
                             .project
                             .extra_targets
                             .get(index)
                             .map(|target| target.name.as_str())
                             .unwrap_or("Missing target"),
-                        MappingDocument::Function(id) => labels
+                        MappingDocument::Function(id) => self
+                            .project
+                            .user_functions
                             .get(&id)
-                            .map(String::as_str)
+                            .map(|function| function.name.as_str())
                             .unwrap_or("Missing function"),
                     };
-                    let response =
-                        ui.selectable_label(self.mapping_workspace.active == document, label);
-                    if response.clicked() {
+                    let tab = crate::ui_kit::tab(
+                        ui,
+                        label,
+                        self.mapping_workspace.active == document,
+                        !matches!(document, MappingDocument::Main),
+                    );
+                    let response = tab.response;
+                    if tab.close_clicked {
+                        action = Some(TabAction::Close(document));
+                    } else if response.clicked() {
                         action = Some(TabAction::Activate(document));
                     }
                     if let MappingDocument::Function(id) = document {
+                        let response = response.on_hover_text(
+                            self.project
+                                .user_functions
+                                .get(&id)
+                                .map(function_label)
+                                .unwrap_or_default(),
+                        );
                         response.context_menu(|ui| {
-                            if ui.button("Open to side").clicked() {
+                            if ui.button("Open side by side").clicked() {
                                 action = Some(TabAction::Split(id));
                                 ui.close();
                             }
                             if self.embedded_stage_namespace.is_none()
-                                && ui.button("Float").clicked()
+                                && ui.button("Open floating").clicked()
                             {
                                 action = Some(TabAction::Float(id));
                                 ui.close();
@@ -228,37 +243,21 @@ impl FerruleApp {
                             }
                         });
                     }
-                    if !matches!(document, MappingDocument::Main)
-                        && ui
-                            .add(egui::Button::new(crate::icons::text(
-                                lucide_icons::Icon::X,
-                                11.0,
-                            )))
-                            .on_hover_text("Close mapping view")
-                            .clicked()
-                    {
-                        action = Some(TabAction::Close(document));
-                    }
                 }
                 ui.separator();
                 ui.add_enabled_ui(
                     editing_enabled && self.embedded_stage_namespace.is_none(),
                     |ui| {
-                        if crate::icons::button(
-                            ui,
-                            true,
-                            lucide_icons::Icon::Library,
-                            "Function navigator",
-                        )
-                        .clicked()
-                        {
-                            self.show_function_navigator = true;
-                        }
-                        if crate::icons::button(ui, true, lucide_icons::Icon::Plus, "New function")
-                            .clicked()
-                        {
-                            self.new_function_draft = Some(NewFunctionDraft::default());
-                        }
+                        ui.menu_button("Functions", |ui| {
+                            if ui.button("Browse functions…").clicked() {
+                                self.show_function_navigator = true;
+                                ui.close();
+                            }
+                            if ui.button("New function…").clicked() {
+                                self.new_function_draft = Some(NewFunctionDraft::default());
+                                ui.close();
+                            }
+                        });
                     },
                 );
             });
@@ -711,15 +710,12 @@ impl FerruleApp {
             .project
             .user_functions
             .iter()
-            .map(|(&id, function)| (id, function_label(function)))
+            .map(|(&id, function)| (id, function_label(function), function.description.clone()))
             .collect::<Vec<_>>();
         let mut action = None;
-        let mut navigator_open = self.show_function_navigator;
-        egui::Window::new("Functions")
-            .open(&mut navigator_open)
-            .default_size([360.0, 420.0])
-            .resizable(true)
-            .show(ctx, |ui| {
+        let response = crate::ui_kit::dialog(ctx, crate::ui_kit::DialogKind::Docked, "Functions")
+            .width(crate::ui_kit::DialogWidth::Medium)
+            .show_body(|ui| {
                 ui.add(
                     egui::TextEdit::singleline(&mut self.function_search)
                         .hint_text("Search functions")
@@ -733,35 +729,67 @@ impl FerruleApp {
                 }
                 ui.separator();
                 let query = self.function_search.trim().to_ascii_lowercase();
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for (id, label) in &functions {
-                        if !query.is_empty() && !label.to_ascii_lowercase().contains(&query) {
-                            continue;
+                let mut matches = 0;
+                for (id, label, description) in &functions {
+                    if !query.is_empty() && !label.to_ascii_lowercase().contains(&query) {
+                        continue;
+                    }
+                    matches += 1;
+                    ui.strong(label);
+                    if let Some(description) = description {
+                        crate::ui_kit::help(ui, description);
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        if navigation_button(ui, lucide_icons::Icon::PanelTop, "Open in tab", true)
+                            .on_hover_text("Edit this function in a mapping tab")
+                            .clicked()
+                        {
+                            action = Some(TabAction::Activate(MappingDocument::Function(*id)));
                         }
-                        ui.horizontal(|ui| {
-                            if ui.selectable_label(false, label).clicked() {
-                                action = Some(TabAction::Activate(MappingDocument::Function(*id)));
-                            }
-                            if ui.small_button("Side").clicked() {
-                                action = Some(TabAction::Split(*id));
-                            }
-                            if ui.small_button("Float").clicked() {
-                                action = Some(TabAction::Float(*id));
-                            }
-                            if ui
-                                .add_enabled(editing_enabled, egui::Button::new("Add call").small())
-                                .clicked()
-                            {
-                                self.insert_function_call(*id);
-                            }
-                        });
-                    }
-                    if functions.is_empty() {
-                        ui.weak("No user-defined functions");
-                    }
-                });
+                        if navigation_button(
+                            ui,
+                            lucide_icons::Icon::PanelLeft,
+                            "Side by side",
+                            true,
+                        )
+                        .on_hover_text("Edit this function beside the active mapping")
+                        .clicked()
+                        {
+                            action = Some(TabAction::Split(*id));
+                        }
+                        if navigation_button(
+                            ui,
+                            lucide_icons::Icon::ExternalLink,
+                            "Open floating",
+                            true,
+                        )
+                        .on_hover_text("Edit this function in a separate window")
+                        .clicked()
+                        {
+                            action = Some(TabAction::Float(*id));
+                        }
+                        if navigation_button(
+                            ui,
+                            lucide_icons::Icon::CirclePlus,
+                            "Insert call",
+                            editing_enabled,
+                        )
+                        .on_hover_text("Insert a call to this function in the focused mapping")
+                        .on_disabled_hover_text("Finish the current operation before editing")
+                        .clicked()
+                        {
+                            self.insert_function_call(*id);
+                        }
+                    });
+                    ui.separator();
+                }
+                if functions.is_empty() {
+                    ui.weak("No user-defined functions");
+                } else if matches == 0 {
+                    ui.weak("No functions match your search");
+                }
             });
-        self.show_function_navigator = navigator_open;
+        self.show_function_navigator = !response.close_requested;
         match action {
             Some(TabAction::Activate(MappingDocument::Function(function))) => {
                 self.open_function_tab(function)
@@ -777,81 +805,101 @@ impl FerruleApp {
             return;
         };
         let mut keep_open = true;
-        let mut create = false;
-        egui::Window::new("New user-defined function")
-            .collapsible(false)
-            .resizable(true)
-            .default_width(420.0)
-            .show(ctx, |ui| {
-                ui.set_min_width(400.0);
-                egui::Grid::new("new_function_identity").show(ui, |ui| {
-                    ui.label("Library");
-                    ui.add_sized(
-                        [280.0, ui.spacing().interact_size.y],
-                        egui::TextEdit::singleline(&mut draft.library),
-                    );
-                    ui.end_row();
-                    ui.label("Name");
-                    ui.add_sized(
-                        [280.0, ui.spacing().interact_size.y],
-                        egui::TextEdit::singleline(&mut draft.name),
-                    );
-                    ui.end_row();
-                    ui.label("Description");
-                    ui.add_sized(
-                        [280.0, ui.spacing().interact_size.y],
-                        egui::TextEdit::singleline(&mut draft.description),
-                    );
-                    ui.end_row();
+        let validation = self.validate_function_draft(&draft).err();
+        let response = crate::ui_kit::dialog(
+            ctx,
+            crate::ui_kit::DialogKind::Modal,
+            "New user-defined function",
+        )
+        .width(crate::ui_kit::DialogWidth::Medium)
+        .show(
+            |ui| {
+                crate::ui_kit::form_grid(ui, "new_function_identity", |form| {
+                    form.row("Library", |ui| {
+                        function_text(ui, "Function library", &mut draft.library)
+                    });
+                    form.row("Name", |ui| {
+                        function_text(ui, "Function name", &mut draft.name)
+                    });
+                    form.row("Description", |ui| {
+                        function_text(ui, "Function description", &mut draft.description)
+                    });
                 });
                 ui.separator();
                 ui.strong("Inputs");
                 let mut remove = None;
-                for (index, parameter) in draft.parameters.iter_mut().enumerate() {
-                    ui.horizontal(|ui| {
-                        ui.text_edit_singleline(&mut parameter.name);
-                        scalar_type_picker(
-                            ui,
-                            ui.scope_id().with(("parameter", index)),
-                            &mut parameter.ty,
-                        );
-                        if ui.small_button("Remove").clicked() {
-                            remove = Some(index);
+                crate::ui_kit::form_grid(ui, "new_function_signature", |form| {
+                    for (index, parameter) in draft.parameters.iter_mut().enumerate() {
+                        form.row(format!("Input {}", index + 1), |ui| {
+                            ui.add(crate::ui_kit::text_field(
+                                &mut parameter.name,
+                                crate::ui_kit::FieldWidth::Medium,
+                            ));
+                            scalar_type_picker(
+                                ui,
+                                ui.scope_id().with(("parameter", index)),
+                                &mut parameter.ty,
+                            );
+                            if crate::ui_kit::icon_button(
+                                ui,
+                                lucide_icons::Icon::Trash2,
+                                "Remove input",
+                                None,
+                            )
+                            .clicked()
+                            {
+                                remove = Some(index);
+                            }
+                        });
+                    }
+                    form.row("", |ui| {
+                        if ui.button("Add input").clicked() {
+                            draft.parameters.push(ParameterDraft {
+                                name: format!("input{}", draft.parameters.len() + 1),
+                                ty: ScalarType::String,
+                            });
                         }
                     });
-                }
+                    form.row("Output", |ui| {
+                        ui.add(crate::ui_kit::text_field(
+                            &mut draft.output_name,
+                            crate::ui_kit::FieldWidth::Medium,
+                        ));
+                        scalar_type_picker(
+                            ui,
+                            ui.scope_id().with("output"),
+                            &mut draft.output_type,
+                        );
+                    });
+                });
                 if let Some(index) = remove {
                     draft.parameters.remove(index);
                 }
-                if ui.button("Add input").clicked() {
-                    draft.parameters.push(ParameterDraft {
-                        name: format!("input{}", draft.parameters.len() + 1),
-                        ty: ScalarType::String,
-                    });
-                }
-                ui.separator();
-                ui.horizontal(|ui| {
-                    ui.label("Output");
-                    ui.text_edit_singleline(&mut draft.output_name);
-                    scalar_type_picker(ui, ui.scope_id().with("output"), &mut draft.output_type);
-                });
                 if let Some(error) = &draft.error {
                     ui.colored_label(self.palette.error, error);
+                } else if let Some(reason) = &validation {
+                    crate::ui_kit::help(ui, reason);
                 }
-                ui.separator();
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(editing_enabled, egui::Button::new("Create"))
-                        .clicked()
-                    {
-                        create = true;
-                    }
-                    if ui.button("Cancel").clicked() {
-                        keep_open = false;
-                    }
-                });
-            });
-        if create {
+            },
+            |ui| {
+                crate::ui_kit::dialog_buttons(
+                    ui,
+                    crate::ui_kit::DialogButton {
+                        label: "Create",
+                        disabled_reason: if editing_enabled {
+                            validation.as_deref()
+                        } else {
+                            Some("Finish the current operation before editing")
+                        },
+                    },
+                    Some("Cancel".into()),
+                    None,
+                )
+            },
+        );
+        keep_open &= !response.close_requested
+            && response.footer != Some(crate::ui_kit::DialogAction::Secondary);
+        if response.footer == Some(crate::ui_kit::DialogAction::Primary) {
             match self.create_function(&draft) {
                 Ok(function) => {
                     keep_open = false;
@@ -865,7 +913,7 @@ impl FerruleApp {
         }
     }
 
-    fn create_function(&mut self, draft: &NewFunctionDraft) -> Result<FunctionId, String> {
+    fn validate_function_draft(&self, draft: &NewFunctionDraft) -> Result<(), String> {
         let name = draft.name.trim().to_string();
         if name.is_empty() {
             return Err("Function name is required".to_string());
@@ -894,6 +942,13 @@ impl FerruleApp {
         if unique.len() != draft.parameters.len() {
             return Err("Input names must be unique".to_string());
         }
+        Ok(())
+    }
+
+    fn create_function(&mut self, draft: &NewFunctionDraft) -> Result<FunctionId, String> {
+        self.validate_function_draft(draft)?;
+        let name = draft.name.trim().to_string();
+        let library = draft.library.trim().to_string();
         let next = self
             .project
             .user_functions
@@ -965,6 +1020,39 @@ fn function_label(function: &UserFunction) -> String {
     }
 }
 
+fn function_text(ui: &mut egui::Ui, label: &str, value: &mut String) {
+    let response = ui.add(crate::ui_kit::text_field(
+        value,
+        crate::ui_kit::FieldWidth::Large,
+    ));
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, ui.is_enabled(), label));
+}
+
+fn navigation_button(
+    ui: &mut egui::Ui,
+    icon: lucide_icons::Icon,
+    label: &str,
+    enabled: bool,
+) -> egui::Response {
+    let mut job = egui::text::LayoutJob::default();
+    crate::icons::text(icon, crate::theme::METRICS.icon_size).append_to(
+        &mut job,
+        ui.style(),
+        egui::FontSelection::Default,
+        egui::Align::Center,
+    );
+    egui::RichText::new(format!(" {label}")).append_to(
+        &mut job,
+        ui.style(),
+        egui::FontSelection::Default,
+        egui::Align::Center,
+    );
+    let response = ui.add_enabled(enabled, egui::Button::new(job));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
+    response
+}
+
 fn scalar_type_picker(ui: &mut egui::Ui, id: egui::Id, ty: &mut ScalarType) {
     egui::ComboBox::from_id_salt(id)
         .selected_text(scalar_type_label(*ty))
@@ -1004,3 +1092,55 @@ mod lock_tests;
 #[cfg(test)]
 #[path = "functions/allocation_tests.rs"]
 mod allocation_tests;
+
+#[cfg(test)]
+mod dialog_validation_tests {
+    use super::*;
+
+    #[test]
+    fn preflight_and_create_share_validation_without_allocating_ids() {
+        let mut app = FerruleApp::default();
+        let mut draft = NewFunctionDraft::default();
+        assert_eq!(
+            app.validate_function_draft(&draft),
+            Err("Function name is required".into())
+        );
+        assert_eq!(
+            app.create_function(&draft),
+            Err("Function name is required".into())
+        );
+        assert!(app.project.user_functions.is_empty());
+        draft.name = "formatAmount".into();
+        draft.parameters = vec![
+            ParameterDraft {
+                name: "input".into(),
+                ty: ScalarType::String,
+            },
+            ParameterDraft {
+                name: " input ".into(),
+                ty: ScalarType::Int,
+            },
+        ];
+        assert_eq!(
+            app.validate_function_draft(&draft),
+            Err("Input names must be unique".into())
+        );
+        assert_eq!(
+            app.create_function(&draft),
+            Err("Input names must be unique".into())
+        );
+        assert!(app.project.user_functions.is_empty());
+        draft.parameters[1].name.clear();
+        assert_eq!(
+            app.validate_function_draft(&draft),
+            Err("Every input needs a name".into())
+        );
+        draft.parameters.pop();
+        let id = app.create_function(&draft).unwrap();
+        assert_eq!(id, FunctionId::new(1));
+        assert_eq!(
+            app.validate_function_draft(&draft),
+            Err("Library and function name must be unique".into())
+        );
+    }
+}

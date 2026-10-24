@@ -72,39 +72,62 @@ pub(super) fn show_options(
     target: bool,
 ) -> bool {
     ui.strong("Fixed-width layout");
-    ui.weak(format!("Schema: {}", draft.schema_path.display()));
-    ui.horizontal(|ui| {
+    ui.vertical(|ui| {
         ui.label(if target {
             "Output file (optional)"
         } else {
             "Input file (optional)"
         });
-        ui.add(
-            egui::TextEdit::singleline(&mut draft.data_path)
+        let response = ui.add(
+            crate::ui_kit::text_field(&mut draft.data_path, crate::ui_kit::FieldWidth::Fill)
                 .char_limit(4096)
-                .desired_width(380.0)
-                .hint_text(if target { "output.dat" } else { "input.dat" }),
+                .hint_text(if target {
+                    "Optional: output.dat"
+                } else {
+                    "Optional: input.dat"
+                }),
         );
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::Role::TextInput,
+                ui.is_enabled(),
+                if target {
+                    "Target fixed-width path"
+                } else {
+                    "Source fixed-width path"
+                },
+            )
+        });
     });
     ui.weak("Widths count Unicode characters. The file path does not determine this format.");
     if let Ok(fields) = crate::extra_targets::flat_scalar_fields(&draft.schema) {
-        for (field, width) in fields.into_iter().zip(&mut draft.layout.widths) {
-            ui.horizontal(|ui| {
-                ui.label(format!("{} width", field.name));
-                ui.add(
-                    egui::TextEdit::singleline(width)
-                        .char_limit(10)
-                        .desired_width(72.0),
-                );
-            });
-        }
+        crate::ui_kit::form_grid(ui, ("new_mapping_widths", target), |form| {
+            for (field, width) in fields.into_iter().zip(&mut draft.layout.widths) {
+                form.row(format!("{} width", field.name), |ui| {
+                    let response = ui.add(
+                        crate::ui_kit::text_field(width, crate::ui_kit::FieldWidth::Small)
+                            .char_limit(10),
+                    );
+                    response.widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::Role::TextInput,
+                            ui.is_enabled(),
+                            format!(
+                                "{} {} width",
+                                if target { "Target" } else { "Source" },
+                                field.name
+                            ),
+                        )
+                    });
+                });
+            }
+        });
     }
     ui.horizontal(|ui| {
         ui.label("Fill character");
         ui.add(
-            egui::TextEdit::singleline(&mut draft.layout.fill)
-                .char_limit(1)
-                .desired_width(36.0),
+            crate::ui_kit::text_field(&mut draft.layout.fill, crate::ui_kit::FieldWidth::Small)
+                .char_limit(1),
         );
     });
     ui.radio_value(

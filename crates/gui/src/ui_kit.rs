@@ -248,7 +248,6 @@ pub fn pane<R>(ui: &mut Ui, scope: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
 }
 
 /// Response of a [`tab`].
-#[allow(dead_code, reason = "hook for the mapping tab strip (area D)")]
 pub struct TabResponse {
     pub response: Response,
     pub close_clicked: bool,
@@ -256,7 +255,6 @@ pub struct TabResponse {
 
 /// A document tab: the label and an optional inline close button share one
 /// frame; the selected tab is filled with the selection color.
-#[allow(dead_code, reason = "hook for the mapping tab strip (area D)")]
 pub fn tab(ui: &mut Ui, label: &str, selected: bool, closable: bool) -> TabResponse {
     let visuals = ui.visuals();
     let fill = if selected {
@@ -270,33 +268,41 @@ pub fn tab(ui: &mut Ui, label: &str, selected: bool, closable: bool) -> TabRespo
         visuals.widgets.noninteractive.bg_stroke
     };
     let mut close_clicked = false;
-    let inner = egui::Frame::new()
-        .fill(fill)
-        .stroke(stroke)
-        .corner_radius(METRICS.radius)
-        .inner_margin(egui::Margin::symmetric(space::MD as i8, space::XS as i8))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = space::SM;
-                let label = ui.add(egui::Label::new(label).sense(egui::Sense::click()));
-                if closable
-                    && ui
-                        .add(
+    // Register the tab background below its children so it cannot steal the
+    // inline close button's pointer events.
+    let inner = ui.scope_builder(egui::UiBuilder::new().sense(egui::Sense::click()), |ui| {
+        egui::Frame::new()
+            .fill(fill)
+            .stroke(stroke)
+            .corner_radius(METRICS.radius)
+            .inner_margin(egui::Margin::symmetric(space::MD as i8, space::XS as i8))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = space::SM;
+                    let label = ui.add(egui::Label::new(label).sense(egui::Sense::click()));
+                    if closable {
+                        let close = ui.add(
                             egui::Button::new(crate::icons::text(Icon::X, METRICS.icon_small))
                                 .frame(false),
-                        )
-                        .on_hover_text("Close tab")
-                        .clicked()
-                {
-                    close_clicked = true;
-                }
-                label
+                        );
+                        close.widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::Role::Button,
+                                ui.is_enabled(),
+                                "Close tab",
+                            )
+                        });
+                        if close.on_hover_text("Close tab").clicked() {
+                            close_clicked = true;
+                        }
+                    }
+                    label
+                })
+                .inner
             })
             .inner
-        });
-    let response = inner
-        .inner
-        .union(inner.response.interact(egui::Sense::click()));
+    });
+    let response = inner.inner.union(inner.response);
     TabResponse {
         response,
         close_clicked,

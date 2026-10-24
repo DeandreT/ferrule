@@ -30,23 +30,17 @@ pub fn show(
     if !*open {
         return;
     }
-    egui::Window::new("Appearance")
-        .id(egui::Id::unique("appearance_editor"))
-        .open(open)
-        .default_width(540.0)
-        .min_width(420.0)
-        .max_height(720.0)
-        .resizable(true)
-        .show(context, |ui| {
-                         ui.horizontal_wrapped(|ui| {
+    let response = crate::ui_kit::dialog(context, crate::ui_kit::DialogKind::Docked, "Appearance")
+        .id_salt("appearance_editor")
+        .width(crate::ui_kit::DialogWidth::Medium)
+        .show_body(|ui| {
+             ui.horizontal_wrapped(|ui| {
                 ui.selectable_value(tab, AppearanceTab::Theme, "Theme");
                 ui.selectable_value(tab, AppearanceTab::Wires, "Wires");
                 ui.selectable_value(tab, AppearanceTab::Canvas, "Canvas");
             });
             ui.separator();
-            egui::ScrollArea::vertical()
-                .id_salt("appearance_editor_scroll")
-                .show(ui, |ui| match tab {
+            match tab {
                     AppearanceTab::Theme => show_theme(ui, theme),
                     AppearanceTab::Wires => show_wires(ui, appearance, palette),
                     AppearanceTab::Canvas => {
@@ -61,8 +55,9 @@ pub fn show(
                          ui.label("Compact is recommended. Canvas only; menus, dialogs and the inspector keep their normal size.");
                         show_canvas(ui, appearance);
                     }
-                });
+                }
         });
+    *open = !response.close_requested;
 }
 
 fn show_theme(ui: &mut egui::Ui, theme: &mut ThemeState) {
@@ -77,21 +72,28 @@ fn show_theme(ui: &mut egui::Ui, theme: &mut ThemeState) {
         return;
     }
 
-    ui.add_space(8.0);
     ui.horizontal(|ui| {
         ui.checkbox(&mut theme.custom.dark_mode, "Dark controls");
-        ui.separator();
-        if ui.button("Dark colors").clicked() {
-            theme.custom = CustomTheme::from_palette(palette(ResolvedTheme::Dark), true);
-        }
-        if ui.button("Light colors").clicked() {
-            theme.custom = CustomTheme::from_palette(palette(ResolvedTheme::Light), false);
-        }
-        if ui.button("High contrast").clicked() {
-            theme.custom = CustomTheme::from_palette(palette(ResolvedTheme::HighContrast), true);
-        }
+        ui.menu_button("Start from…", |ui| {
+            if ui.button("Dark palette").clicked() {
+                theme.custom = CustomTheme::from_palette(palette(ResolvedTheme::Dark), true);
+                ui.close();
+            }
+            if ui.button("Light palette").clicked() {
+                theme.custom = CustomTheme::from_palette(palette(ResolvedTheme::Light), false);
+                ui.close();
+            }
+            if ui.button("High-contrast palette").clicked() {
+                theme.custom =
+                    CustomTheme::from_palette(palette(ResolvedTheme::HighContrast), true);
+                ui.close();
+            }
+        })
+        .response
+        .on_hover_text(
+            "Replace custom colors with a starting palette; then edit individual colors below",
+        );
     });
-    ui.add_space(8.0);
 
     color_section(ui, "Surfaces", |ui| {
         theme_color(ui, "Background", &mut theme.custom.background);
@@ -148,7 +150,7 @@ fn show_wires(
         }
     });
 
-    ui.add_space(8.0);
+    ui.add_space(crate::ui_kit::space::MD);
     ui.label(RichText::new("Geometry").strong());
     ui.horizontal_wrapped(|ui| {
         if ui
@@ -189,7 +191,7 @@ fn show_wires(
         }
     });
 
-    ui.add_space(8.0);
+    ui.add_space(crate::ui_kit::space::MD);
     let mut width = wire.width();
     if setting_slider(
         ui,
@@ -226,7 +228,7 @@ fn show_wires(
     }
 
     ui.horizontal(|ui| {
-        ui.add_sized([120.0, 24.0], egui::Label::new("Distance behavior"));
+        setting_label(ui, "Distance behavior");
         egui::ComboBox::from_id_salt("wire_frame_adjustment")
             .selected_text(frame_adjustment_label(wire.frame_adjustment()))
             .show_ui(ui, |ui| {
@@ -260,7 +262,7 @@ fn show_canvas(ui: &mut egui::Ui, appearance: &mut EditorAppearance) {
         appearance.set_follow_theme_colors(follow);
     }
 
-    ui.add_space(8.0);
+    ui.add_space(crate::ui_kit::space::MD);
     let mut canvas = *appearance.canvas();
     ui.label(RichText::new("Background").strong());
     let pattern = canvas.pattern();
@@ -313,7 +315,7 @@ fn show_canvas(ui: &mut egui::Ui, appearance: &mut EditorAppearance) {
     appearance.set_canvas(canvas);
 
     if !appearance.follows_theme_colors() {
-        ui.add_space(8.0);
+        ui.add_space(crate::ui_kit::space::MD);
         let mut colors = *appearance.colors();
         color_section(ui, "Canvas colors", |ui| {
             rgba_color(ui, "Canvas", &mut colors.canvas);
@@ -331,15 +333,18 @@ fn show_canvas(ui: &mut egui::Ui, appearance: &mut EditorAppearance) {
             rgba_color(ui, "Warning", &mut colors.warning);
             rgba_color(ui, "Error", &mut colors.error);
         });
-        ui.horizontal(|ui| {
-            if ui.button("Dark colors").clicked() {
+        ui.menu_button("Start from…", |ui| {
+            if ui.button("Dark palette").clicked() {
                 colors = SemanticThemeColors::preset(AppearancePreset::Dark);
+                ui.close();
             }
-            if ui.button("Light colors").clicked() {
+            if ui.button("Light palette").clicked() {
                 colors = SemanticThemeColors::preset(AppearancePreset::Light);
+                ui.close();
             }
-            if ui.button("High contrast").clicked() {
+            if ui.button("High-contrast palette").clicked() {
                 colors = SemanticThemeColors::preset(AppearancePreset::HighContrast);
+                ui.close();
             }
         });
         appearance.set_colors(colors);
@@ -347,14 +352,20 @@ fn show_canvas(ui: &mut egui::Ui, appearance: &mut EditorAppearance) {
 }
 
 fn color_section(ui: &mut egui::Ui, title: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
-    ui.collapsing(RichText::new(title).strong(), add_contents);
+    crate::ui_kit::collapsible_section(
+        ui,
+        ("appearance_colors", title),
+        title,
+        matches!(title, "Surfaces" | "Canvas colors"),
+        add_contents,
+    );
 }
 
 fn theme_color(ui: &mut egui::Ui, label: &str, color: &mut ThemeColor) {
     ui.horizontal(|ui| {
-        ui.add_sized([120.0, 24.0], egui::Label::new(label));
+        setting_label(ui, label);
         let mut value = color.color32();
-        if ui.color_edit_button_srgba(&mut value).changed() {
+        if color_control(ui, label, &mut value) {
             color.set_color32(value);
         }
     });
@@ -362,12 +373,48 @@ fn theme_color(ui: &mut egui::Ui, label: &str, color: &mut ThemeColor) {
 
 fn rgba_color(ui: &mut egui::Ui, label: &str, color: &mut RgbaColor) {
     ui.horizontal(|ui| {
-        ui.add_sized([120.0, 24.0], egui::Label::new(label));
+        setting_label(ui, label);
         let mut value = color.to_egui();
-        if ui.color_edit_button_srgba(&mut value).changed() {
+        if color_control(ui, label, &mut value) {
             color.set_egui(value);
         }
     });
+}
+
+fn setting_label(ui: &mut egui::Ui, label: &str) {
+    ui.allocate_ui_with_layout(
+        egui::vec2(
+            crate::ui_kit::FieldWidth::Medium.min(),
+            ui.spacing().interact_size.y,
+        ),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.label(label);
+        },
+    );
+}
+
+fn color_control(ui: &mut egui::Ui, label: &str, color: &mut egui::Color32) -> bool {
+    ui.push_id(label, |ui| {
+        let swatch = ui.color_edit_button_srgba(color);
+        ui.painter().rect_stroke(swatch.rect, crate::theme::METRICS.radius, Stroke::new(1.0, ui.visuals().strong_text_color()), egui::StrokeKind::Outside);
+        let id = ui.make_persistent_id("hex_draft");
+        let (mut hex, previous) = ui.ctx().data_mut(|data| data.get_temp::<(String, egui::Color32)>(id)).unwrap_or_else(|| (color.to_hex(), *color));
+        if previous != *color { hex = color.to_hex(); }
+        let response = ui.add(crate::ui_kit::text_field(&mut hex, crate::ui_kit::FieldWidth::Small).char_limit(9));
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, ui.is_enabled(), format!("{label} hex")));
+        let mut changed = swatch.changed();
+        if response.changed() && let Ok(parsed) = egui::Color32::from_hex(&hex) {
+            changed |= parsed != *color;
+            *color = parsed;
+        }
+        if egui::Color32::from_hex(&hex).is_err() {
+            response.clone().on_hover_text("Enter #RRGGBB or #RRGGBBAA. The current color stays unchanged until the value is valid.");
+            if response.lost_focus() { hex = color.to_hex(); }
+        }
+        ui.ctx().data_mut(|data| data.insert_temp(id, (hex, *color)));
+        changed
+    }).inner
 }
 
 fn setting_slider(
@@ -379,7 +426,7 @@ fn setting_slider(
 ) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
-        ui.add_sized([120.0, 24.0], egui::Label::new(label));
+        setting_label(ui, label);
         changed = ui
             .add(egui::Slider::new(value, range).suffix(suffix))
             .changed();

@@ -53,7 +53,10 @@ fn frame(
 
 fn label_center(shape: &egui::epaint::Shape, label: &str) -> Option<egui::Pos2> {
     match shape {
-        egui::epaint::Shape::Text(text) if text.galley.text() == label => {
+        egui::epaint::Shape::Text(text)
+            if text.galley.text() == label
+                || text.galley.text().ends_with(&format!(" {label}")) =>
+        {
             Some(text.visual_bounding_rect().center())
         }
         egui::epaint::Shape::Vec(shapes) => {
@@ -131,7 +134,7 @@ fn locked_navigator_cannot_add_calls_to_main_named_or_function_graphs() {
             &context,
             FunctionWindow::Navigator,
             false,
-            "Add call",
+            "Insert call",
         );
         assert_eq!(project_state(&app), before, "locked {document:?}");
 
@@ -140,7 +143,7 @@ fn locked_navigator_cannot_add_calls_to_main_named_or_function_graphs() {
             &context,
             FunctionWindow::Navigator,
             true,
-            "Add call",
+            "Insert call",
         );
         assert_eq!(app.project.graph.nodes.len(), original_nodes + 2);
         assert_eq!(
@@ -167,7 +170,7 @@ fn locked_navigator_cannot_add_calls_to_main_named_or_function_graphs() {
         &context,
         FunctionWindow::Navigator,
         false,
-        "Add call",
+        "Insert call",
     );
     assert_eq!(project_state(&app), before, "locked isolated body");
     click(
@@ -175,7 +178,7 @@ fn locked_navigator_cannot_add_calls_to_main_named_or_function_graphs() {
         &context,
         FunctionWindow::Navigator,
         true,
-        "Add call",
+        "Insert call",
     );
     assert!(app.project.graph.nodes.is_empty());
     let body = &app.project.user_functions[&caller].body;
@@ -206,7 +209,7 @@ fn navigator_keeps_viewing_available_and_blocks_new_function_when_locked() {
         &context,
         FunctionWindow::Navigator,
         false,
-        "local:identity",
+        "Open in tab",
     );
     assert_eq!(
         app.mapping_workspace.active,

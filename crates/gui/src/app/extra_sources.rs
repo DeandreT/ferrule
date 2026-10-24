@@ -205,183 +205,210 @@ impl FerruleApp {
             && draft.csv_dialect_draft.is_none()
             && source_uses_sqlite(draft);
         let mut action = None;
-        egui::Window::new("Add Extra Source")
-            .collapsible(false)
-            .resizable(false)
-            .default_width(520.0)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .show(ctx, |ui| {
-                egui::Grid::new("extra_source_fields")
-                    .num_columns(3)
-                    .spacing([12.0, 8.0])
-                    .show(ui, |ui| {
-                        ui.strong("Name");
-                        ui.add(crate::ui_kit::text_field(
-                            &mut draft.name,
-                            crate::ui_kit::FieldWidth::Large,
-                        ));
-                        ui.end_row();
-
-                        ui.strong("Instance");
-                        let mut instance_path = draft.instance_path.clone();
-                        if ui
-                            .add(crate::ui_kit::text_field(
-                                &mut instance_path,
-                                crate::ui_kit::FieldWidth::Large,
-                            ))
-                            .changed()
-                        {
-                            draft.set_instance_path(instance_path);
-                        }
-                        if ui
-                            .add_enabled(dialog_idle, egui::Button::new("Choose..."))
-                            .clicked()
-                        {
-                            action = Some(ExtraSourceAction::ChooseInstance);
-                        }
-                        ui.end_row();
-
-                        if sqlite_instance {
-                            ui.strong("SQLite table");
-                            let mut table = draft.sqlite_table.clone();
-                            if ui
-                                .add(
-                                    crate::ui_kit::text_field(
-                                        &mut table,
-                                        crate::ui_kit::FieldWidth::Large,
+        let response =
+            crate::ui_kit::dialog(ctx, crate::ui_kit::DialogKind::Modal, "Add extra source")
+                .width(crate::ui_kit::DialogWidth::Medium)
+                .show(
+                    |ui| {
+                        crate::ui_kit::form_grid(ui, "extra_source_fields", |form| {
+                            form.row("Name", |ui| {
+                                let response = ui.add(crate::ui_kit::text_field(
+                                    &mut draft.name,
+                                    crate::ui_kit::FieldWidth::Large,
+                                ));
+                                response.widget_info(|| {
+                                    egui::WidgetInfo::labeled(
+                                        egui::Role::TextInput,
+                                        ui.is_enabled(),
+                                        "Source name",
                                     )
-                                    .char_limit(256)
-                                    .hint_text("Existing table name"),
-                                )
-                                .changed()
-                            {
-                                draft.set_sqlite_table(table);
+                                });
+                            });
+
+                            form.row("Input file", |ui| {
+                                let mut instance_path = draft.instance_path.clone();
+                                let response = ui.add(crate::ui_kit::text_field(
+                                    &mut instance_path,
+                                    crate::ui_kit::FieldWidth::Large,
+                                ));
+                                response.widget_info(|| {
+                                    egui::WidgetInfo::labeled(
+                                        egui::Role::TextInput,
+                                        ui.is_enabled(),
+                                        "Source input file",
+                                    )
+                                });
+                                if response.changed() {
+                                    draft.set_instance_path(instance_path);
+                                }
+                                if ui
+                                    .add_enabled(dialog_idle, egui::Button::new("Browse…"))
+                                    .clicked()
+                                {
+                                    action = Some(ExtraSourceAction::ChooseInstance);
+                                }
+                            });
+
+                            if sqlite_instance {
+                                form.row("SQLite table", |ui| {
+                                    let mut table = draft.sqlite_table.clone();
+                                    if ui
+                                        .add(
+                                            crate::ui_kit::text_field(
+                                                &mut table,
+                                                crate::ui_kit::FieldWidth::Large,
+                                            )
+                                            .char_limit(256)
+                                            .hint_text("Existing table name"),
+                                        )
+                                        .changed()
+                                    {
+                                        draft.set_sqlite_table(table);
+                                    }
+                                    if ui
+                                        .add_enabled(
+                                            dialog_idle && !draft.sqlite_table.trim().is_empty(),
+                                            egui::Button::new("Load table"),
+                                        )
+                                        .clicked()
+                                    {
+                                        action = Some(ExtraSourceAction::LoadSqliteTable);
+                                    }
+                                });
                             }
-                            if ui
+
+                            form.row("Schema / layout", |ui| {
+                                if ui
+                                    .add_enabled(dialog_idle, egui::Button::new("Choose schema…"))
+                                    .clicked()
+                                {
+                                    action = Some(ExtraSourceAction::ChooseSchema);
+                                }
+                                ui.add(
+                                    egui::Label::new(egui::RichText::new(&schema_label).weak())
+                                        .truncate(),
+                                )
+                                .on_hover_text(&schema_label);
+                            });
+                        });
+                        if draft.protobuf_draft.is_some() {
+                            ui.separator();
+                            show_named_source_protobuf(ui, draft);
+                        } else if draft.flextext_draft.is_some() {
+                            ui.separator();
+                            show_named_source_flextext(ui, draft);
+                        } else if draft.fixed_width_draft.is_some() {
+                            ui.separator();
+                            fixed_width::show_options(ui, draft);
+                        } else if draft.csv_dialect_draft.is_some() {
+                            ui.separator();
+                            if let Some(pending) = draft.csv_dialect_draft.as_mut() {
+                                super::csv_dialect_ui::show_fields(
+                                    ui,
+                                    pending,
+                                    &draft.instance_path,
+                                    true,
+                                    "named_source",
+                                );
+                            }
+                            ui.horizontal(|ui| {
+                                if ui.button("Abandon CSV changes").clicked() {
+                                    draft.abandon_csv_dialect();
+                                }
+                                if ui.button("Use path format").clicked() {
+                                    draft.use_path_format();
+                                }
+                                if ui.button("Use XML").clicked() {
+                                    draft.use_path_format();
+                                    draft.options.xml_document = true;
+                                }
+                                if ui.button("Use JSON").clicked() {
+                                    draft.use_path_format();
+                                    draft.options.json_document = true;
+                                }
+                            });
+                        } else {
+                            if !crate::new_mapping::uses_path_format(
+                                &draft.options,
+                                &draft.instance_path,
+                            ) {
+                                ui.separator();
+                                show_configured_source_format(ui, draft);
+                            }
+                            let csv_shape = draft.schema.as_ref().is_some_and(|schema| {
+                                crate::extra_targets::flat_scalar_fields(schema).is_ok()
+                            });
+                            if crate::new_mapping::uses_csv_format(
+                                &draft.options,
+                                &draft.instance_path,
+                            ) {
+                                ui.separator();
+                                let mut editor = crate::new_mapping::CsvDialectDraft::from_options(
+                                    &draft.options,
+                                    &draft.instance_path,
+                                );
+                                if super::csv_dialect_ui::show_fields(
+                                    ui,
+                                    &mut editor,
+                                    &draft.instance_path,
+                                    true,
+                                    "named_source",
+                                ) {
+                                    draft.csv_dialect_draft = Some(editor);
+                                }
+                            } else if csv_shape
+                                && crate::new_mapping::csv_path_compatible(&draft.instance_path)
+                                && (crate::new_mapping::uses_path_format(
+                                    &draft.options,
+                                    &draft.instance_path,
+                                ) || draft.options.csv_text_repair_dependency.is_some())
+                                && ui.button("Configure CSV input").clicked()
+                                && let Err(error) = draft.begin_csv_dialect()
+                            {
+                                ui.colored_label(ui.visuals().error_fg_color, error);
+                            }
+                            if draft.schema.as_ref().is_some_and(|schema| {
+                                crate::extra_targets::flat_scalar_fields(schema).is_ok()
+                            }) && ui
                                 .add_enabled(
-                                    dialog_idle && !draft.sqlite_table.trim().is_empty(),
-                                    egui::Button::new("Load table"),
+                                    dialog_idle,
+                                    egui::Button::new(if draft.options.fixed_width.is_some() {
+                                        "Edit fixed-width layout"
+                                    } else {
+                                        "Configure fixed-width input"
+                                    }),
                                 )
                                 .clicked()
+                                && let Err(error) = draft.begin_fixed_width()
                             {
-                                action = Some(ExtraSourceAction::LoadSqliteTable);
+                                ui.colored_label(ui.visuals().error_fg_color, error);
                             }
-                            ui.end_row();
                         }
-
-                        ui.strong("Schema");
-                        ui.label(schema_label);
-                        if ui
-                            .add_enabled(dialog_idle, egui::Button::new("Choose..."))
-                            .clicked()
-                        {
-                            action = Some(ExtraSourceAction::ChooseSchema);
-                        }
-                        ui.end_row();
-                    });
-                if draft.protobuf_draft.is_some() {
-                    ui.separator();
-                    show_named_source_protobuf(ui, draft);
-                } else if draft.flextext_draft.is_some() {
-                    ui.separator();
-                    show_named_source_flextext(ui, draft);
-                } else if draft.fixed_width_draft.is_some() {
-                    ui.separator();
-                    fixed_width::show_options(ui, draft);
-                } else if draft.csv_dialect_draft.is_some() {
-                    ui.separator();
-                    if let Some(pending) = draft.csv_dialect_draft.as_mut() {
-                        super::csv_dialect_ui::show_fields(
+                    },
+                    |ui| {
+                        crate::ui_kit::dialog_buttons(
                             ui,
-                            pending,
-                            &draft.instance_path,
-                            true,
-                            "named_source",
-                        );
-                    }
-                    ui.horizontal(|ui| {
-                        if ui.button("Abandon CSV changes").clicked() {
-                            draft.abandon_csv_dialect();
-                        }
-                        if ui.button("Use path format").clicked() {
-                            draft.use_path_format();
-                        }
-                        if ui.button("Use XML").clicked() {
-                            draft.use_path_format();
-                            draft.options.xml_document = true;
-                        }
-                        if ui.button("Use JSON").clicked() {
-                            draft.use_path_format();
-                            draft.options.json_document = true;
-                        }
-                    });
-                } else {
-                    if !crate::new_mapping::uses_path_format(&draft.options, &draft.instance_path) {
-                        ui.separator();
-                        show_configured_source_format(ui, draft);
-                    }
-                    let csv_shape = draft.schema.as_ref().is_some_and(|schema| {
-                        crate::extra_targets::flat_scalar_fields(schema).is_ok()
-                    });
-                    if crate::new_mapping::uses_csv_format(&draft.options, &draft.instance_path) {
-                        ui.separator();
-                        let mut editor = crate::new_mapping::CsvDialectDraft::from_options(
-                            &draft.options,
-                            &draft.instance_path,
-                        );
-                        if super::csv_dialect_ui::show_fields(
-                            ui,
-                            &mut editor,
-                            &draft.instance_path,
-                            true,
-                            "named_source",
-                        ) {
-                            draft.csv_dialect_draft = Some(editor);
-                        }
-                    } else if csv_shape
-                        && crate::new_mapping::csv_path_compatible(&draft.instance_path)
-                        && (crate::new_mapping::uses_path_format(
-                            &draft.options,
-                            &draft.instance_path,
-                        ) || draft.options.csv_text_repair_dependency.is_some())
-                        && ui.button("Configure CSV input").clicked()
-                        && let Err(error) = draft.begin_csv_dialect()
-                    {
-                        ui.colored_label(ui.visuals().error_fg_color, error);
-                    }
-                    if draft.schema.as_ref().is_some_and(|schema| {
-                        crate::extra_targets::flat_scalar_fields(schema).is_ok()
-                    }) && ui
-                        .add_enabled(
-                            dialog_idle,
-                            egui::Button::new(if draft.options.fixed_width.is_some() {
-                                "Edit fixed-width layout"
-                            } else {
-                                "Configure fixed-width input"
-                            }),
+                            crate::ui_kit::DialogButton::new("Add source")
+                                .disabled_if(
+                                    !can_add,
+                                    "Enter a name, input file and valid schema / layout",
+                                )
+                                .disabled_if(!dialog_idle, "Finish choosing a file first"),
+                            Some(
+                                crate::ui_kit::DialogButton::new("Cancel")
+                                    .disabled_if(!dialog_idle, "Finish choosing a file first"),
+                            ),
+                            None,
                         )
-                        .clicked()
-                        && let Err(error) = draft.begin_fixed_width()
-                    {
-                        ui.colored_label(ui.visuals().error_fg_color, error);
-                    }
-                }
-                ui.separator();
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(dialog_idle, egui::Button::new("Cancel"))
-                        .clicked()
-                    {
-                        action = Some(ExtraSourceAction::Cancel);
-                    }
-                    if ui
-                        .add_enabled(dialog_idle && can_add, egui::Button::new("Add source"))
-                        .clicked()
-                    {
-                        action = Some(ExtraSourceAction::Add);
-                    }
-                });
-            });
+                    },
+                );
+        if response.close_requested && dialog_idle
+            || response.footer == Some(crate::ui_kit::DialogAction::Secondary)
+        {
+            action = Some(ExtraSourceAction::Cancel);
+        } else if response.footer == Some(crate::ui_kit::DialogAction::Primary) {
+            action = Some(ExtraSourceAction::Add);
+        }
 
         match action {
             Some(ExtraSourceAction::ChooseInstance) => {
@@ -480,26 +507,28 @@ impl FerruleApp {
             return;
         };
         let name = source.name.clone();
-        let mut remove = None;
-        egui::Window::new("Remove Extra Source")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .show(ctx, |ui| {
-                ui.label(format!("Remove {name} from this mapping?"));
-                ui.horizontal(|ui| {
-                    if ui.button("Cancel").clicked() {
-                        remove = Some(false);
-                    }
-                    if ui.button("Remove").clicked() {
-                        remove = Some(true);
-                    }
-                });
-            });
-        match remove {
-            Some(true) => self.remove_project_extra_source(index),
-            Some(false) => self.pending_extra_source_removal = None,
-            None => {}
+        let response =
+            crate::ui_kit::dialog(ctx, crate::ui_kit::DialogKind::Modal, "Remove extra source")
+                .show(
+                    |ui| {
+                        ui.label(format!("Remove {name} from this mapping?"));
+                    },
+                    |ui| {
+                        crate::ui_kit::dialog_buttons(
+                            ui,
+                            "Cancel".into(),
+                            None,
+                            Some("Remove source".into()),
+                        )
+                    },
+                );
+        match response.footer {
+            Some(crate::ui_kit::DialogAction::Destructive) => {
+                self.remove_project_extra_source(index)
+            }
+            Some(_) => self.pending_extra_source_removal = None,
+            None if response.close_requested => self.pending_extra_source_removal = None,
+            None => (),
         }
     }
 }
