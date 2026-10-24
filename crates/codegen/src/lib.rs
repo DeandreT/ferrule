@@ -108,7 +108,7 @@ pub use validate::{
     OwnedSourceCapabilityReason, OwnedSourceDiagnostic, OwnedSourceDiagnosticLocation,
     OwnedSourceDiagnosticOwner, OwnedSourceDiagnosticRequest, OwnedSourceNamespace,
     OwnedSourceSchemaShape, OwnedSourceStructureReason, ProgramValidationError,
-    RecursiveSequencePathRole, SequenceExpressionRole, SequenceOwner,
+    RecursiveSequencePathRole, SequenceExpressionRole, SequenceOwner, XmlDocumentSetInputRefusal,
     is_basic_owned_primary_row_failure, owned_dynamic_loading, owned_expression_emission_error,
     owned_sequence_emission_error, validate_basic_owned_emission_with_capabilities,
     validate_owned_emission, validate_program, validate_program_with_owned_capabilities,

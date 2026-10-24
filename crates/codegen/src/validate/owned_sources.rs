@@ -39,6 +39,7 @@ pub use primary_row_failures::is_basic_owned_primary_row_failure;
 mod recursive_collect;
 pub use recursive_collect::owned_sequence_emission_error;
 mod recursive_filter;
+mod xml_document_sets;
 mod xml_serialize;
 
 fn request(expression: &Expression) -> Option<Request> {

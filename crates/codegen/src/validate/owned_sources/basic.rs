@@ -160,7 +160,7 @@ pub fn validate_basic_owned_emission_with_capabilities(
             },
         ));
     }
-    Ok(())
+    capabilities.check_xml_document_set_inputs(program)
 }
 
 fn basic_scope_refusal(
