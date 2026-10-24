@@ -11,6 +11,61 @@ fn context() -> egui::Context {
     context
 }
 
+#[test]
+fn picker_labels_share_header_wording_and_never_hide_position() {
+    assert_eq!(
+        node_label(&Node::Position {
+            collection: Vec::new()
+        }),
+        "Position"
+    );
+    let call = Node::Call {
+        function: "pad_string_left".into(),
+        args: vec![1, 2, 3],
+    };
+    assert_eq!(node_label(&call), "Pad Left");
+    assert_eq!(node_label(&Node::Unconnected), "Unconnected input");
+    assert_eq!(
+        node_label(&Node::Const {
+            value: ir::Value::Int(42)
+        }),
+        "Integer · 42"
+    );
+    let owned = Node::OwnedLookup(mapping::OwnedLookup {
+        collection: mapping::OwnedSourceRef {
+            owner: mapping::SourceOwner::Primary,
+            path: vec!["Rows".into()],
+        },
+        key: vec!["Key".into()],
+        matches: 1,
+        value: vec!["Value".into()],
+    });
+    assert!(node_label(&owned).contains("Lookup"));
+    assert!(!node_label(&owned).contains("OwnedLookup"));
+}
+
+#[test]
+fn variadic_pins_are_numbered_without_reordering_inputs() {
+    let context = context();
+    let node = Node::Call {
+        function: "concat".into(),
+        args: vec![4, 2, 7],
+    };
+    let output = context.run_test_ui(raw_input(), |ui| {
+        for index in 0..3 {
+            show_input(ui, "value", Some(&node), index);
+        }
+    });
+    let labels: Vec<_> = galleys(&output)
+        .into_iter()
+        .map(|galley| galley.text())
+        .collect();
+    for label in ["value 1", "value 2", "value 3"] {
+        assert!(labels.contains(&label));
+    }
+    assert_eq!(node.evaluated_inputs(), [4, 2, 7]);
+}
+
 fn raw_input() -> egui::RawInput {
     egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
@@ -63,7 +118,7 @@ fn constants_fit_measured_text_in_all_three_densities() {
             assert!((MIN_HEADER_WIDTH..=MAX_HEADER_WIDTH).contains(&longer_width));
             assert_eq!(
                 header(&empty, "Constant", false).unwrap().summary,
-                "string \"\""
+                "Text · \"\""
             );
 
             // Same character count, different glyph widths: no character-count
@@ -98,7 +153,7 @@ fn rendered_headers_use_real_selected_fonts_and_pixel_elision() {
         let galleys = galleys(&output);
         let literal = galleys
             .iter()
-            .find(|galley| galley.text().starts_with("string "))
+            .find(|galley| galley.text().starts_with("Text · "))
             .unwrap();
         assert_eq!(literal.rows.len(), 1);
         assert!(literal.elided);
@@ -185,14 +240,14 @@ fn narrow_text_past_sixteen_characters_is_not_arbitrarily_shortened() {
         let header = header(&node, "Constant", false).unwrap();
         assert_eq!(
             header.summary,
-            "string \"iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii\""
+            "Text · \"iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii\""
         );
         show_header(ui, header, "Constant", None);
     });
     let galleys = galleys(&output);
     let literal = galleys
         .iter()
-        .find(|galley| galley.text().starts_with("string "))
+        .find(|galley| galley.text().starts_with("Text · "))
         .unwrap();
     assert!(!literal.elided);
 }
@@ -202,11 +257,11 @@ fn literal_output_text_is_distinct_from_the_output_node_marker() {
     let node = string_node("keep (output)");
     assert_eq!(
         header(&node, "Constant", false).unwrap().summary,
-        "string \"keep (output)\""
+        "Text · \"keep (output)\""
     );
     assert_eq!(
         header(&node, "Constant (output)", true).unwrap().summary,
-        "string \"keep (output)\" · output",
+        "Text · \"keep (output)\" · output",
     );
 }
 
@@ -227,7 +282,7 @@ fn owned_source_headers_retain_the_complete_owner_and_frame_metadata() {
             .accessible_label
             .contains("Counts exactly this input's active items")
     );
-    assert!(!is_inline(&node));
+    assert!(is_inline(&node));
     assert_eq!(serde_json::to_string(&node).unwrap(), before);
 }
 
@@ -248,7 +303,7 @@ fn owned_row_path_header_keeps_explicit_root_and_named_owner_read_only() {
             .accessible_label
             .contains("Read-only; no owner or ancestor fallback")
     );
-    assert!(!is_inline(&node));
+    assert!(is_inline(&node));
     assert_eq!(serde_json::to_string(&node).unwrap(), before);
 }
 

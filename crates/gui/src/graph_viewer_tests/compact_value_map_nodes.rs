@@ -970,7 +970,7 @@ fn compact_value_map_real_canvas_geometry_pins_hover_and_popup_wheel_isolate_the
                 && (frame.transform.scaling - closed_transform.scaling).abs() < 0.001,
             "opposite wheel input did not restore the literal drag setup view"
         );
-        let literal = positions(&frame.output, "int 1")[0];
+        let literal = positions(&frame.output, "Integer · 1")[0];
         let (drag_id, _, drag_at) = frame
             .pins
             .iter()

@@ -52,10 +52,19 @@ pub(super) fn show_filter(
     total: usize,
     state: &mut crate::canvas_endpoints::EndpointScrollState,
 ) {
-    ui.horizontal_wrapped(|ui| {
-        for (label, connected_only) in [("All fields", false), ("Connected fields", true)] {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = crate::ui_kit::space::XS;
+        for (icon, label, connected_only) in [
+            (lucide_icons::Icon::List, "All fields", false),
+            (lucide_icons::Icon::Cable, "Connected fields", true),
+        ] {
             if ui
-                .selectable_label(state.connected_only(node) == connected_only, label)
+                .add(egui::Button::selectable(
+                    state.connected_only(node) == connected_only,
+                    crate::icons::text(icon, crate::ui_kit::METRICS.icon_small),
+                ))
+                .accessible_name(label)
+                .on_hover_text(label)
                 .clicked()
                 && state.set_connected_only(node, connected_only)
             {
@@ -63,7 +72,7 @@ pub(super) fn show_filter(
             }
         }
         let displayed = state.visible_indices(node, total).len();
-        ui.label(format!("{displayed} / {total}"))
+        ui.add(egui::Label::new(format!("{displayed}/{total}")).extend())
             .on_hover_text(format!(
                 "{} connected fields; {} displayed of {total} schema fields. Search also includes unconnected fields.",
                 state.connected_count(node, total),

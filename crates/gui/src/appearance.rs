@@ -97,6 +97,8 @@ impl CanvasDensity {
             font.size = self.font_size();
         }
         style.spacing.item_spacing = self.item_spacing();
+        style.spacing.icon_width = 12.0;
+        style.spacing.icon_width_inner = 8.0;
         style.spacing.interact_size.y = (self.font_size() + 6.0).max(18.0);
     }
 }
@@ -658,6 +660,9 @@ impl EditorAppearance {
         style.pin_stroke = Some(Stroke::new(1.0, self.colors.node_border.to_egui()));
         style.pin_placement = Some(PinPlacement::Edge);
         style.pin_size = Some(self.density.pin_size());
+        // The whole header remains draggable; do not insert an empty title-sized
+        // drag spacer between the disclosure arrow and the operation's icon.
+        style.header_drag_space = Some(vec2(0.0, 0.0));
         // Empty or icon-only rows must not put adjacent drag targets on top
         // of each other. Text rows may grow beyond this lower bound.
         style.node_layout =

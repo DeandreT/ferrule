@@ -7,10 +7,25 @@ pin retains a larger native hit target.
 
 Constants fit measured text, with a bounded single-line preview and access to the
 complete literal in the editor and tooltip. Empty strings are quoted, and escapes
-make significant whitespace visible. Exists and Not remain separate operations;
+make significant whitespace visible. The constant editor labels its type and value,
+offers multiline text, and closes with **Done**, the close button, or Escape.
+Exists and Not remain separate operations;
 If / else retains its condition, then and else input order. Hover a card or focus
 it to reveal its header pencil, or select a node and press F2. The node context
 menu offers a manual card width and **Reset to auto size**.
+
+## Camera and navigation
+
+Opening a canvas centers its endpoints and connected mapping at a readable 60–100% zoom rather
+than shrinking a large graph to unreadable text. **Fit all nodes** explicitly
+shows the complete graph, with up to 125% magnification. Neither operation moves
+nodes. The corner controls offer small zoom steps and a percentage readout;
+click the percentage to return to 100%. Ctrl+wheel zooms around the pointer.
+Each tab keeps its camera when switching tabs or resizing panels.
+
+The minimap stays on the canvas, below dialogs. Its chevron collapses it to a
+small map button. Click the map to focus a location, drag to pan, or drag its
+top-left grip to resize it.
 
 ## Focus and trace
 
@@ -47,20 +62,22 @@ Scrollbar paint, thumb and hit bounds use the measured real-field list, below
 the complete header and above proxy/footer controls. Tiny or invalid geometry
 does not create an inverted thumb-size clamp or an unbounded hit area.
 
-## Auto Compact
+## Layout
 
-**Auto Compact · Preview** stages outlined positions without changing the saved
+**Layout → Auto-arrange · preview** stages outlined positions without changing the saved
 layout. It uses current measured node and pin geometry and the chosen density;
 it does not shrink text or zoom out to make a layout fit. It extends the existing
 deterministic, wire-aware arranger with measured lane alignment, routing gutters
 and collision handling.
 
 Choose the whole canvas or **Selected region**, and use **Pin / unpin selected**
-to keep anchors fixed. **Apply** changes positions together. **Cancel** changes
+to keep anchors fixed. **Apply layout** changes positions together. **Cancel** changes
 nothing. **Undo layout** and **Redo layout** restore each complete placement in
 one step without changing mapping nodes, ports, argument order or wires. Focus,
 pinning and manual card widths are editor view state; density is a persisted user
-preference. Normal edits and loading an existing layout do not invoke Auto Compact.
+preference. Normal edits and loading an existing layout do not invoke auto-arrange.
+Disconnected cards use a compact shelf below the connected graph on initial
+arrangement; saved sidecar positions are restored unchanged.
 
 Preview waits for valid measured geometry and is bounded to 2,000 nodes and
 8,000 displayed edges. Graph edits invalidate a stale proposal; changed card
