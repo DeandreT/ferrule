@@ -32,6 +32,49 @@ pub(super) fn source_minimums(
     minimums(component, resources, true)
 }
 
+pub(super) fn source_structure(
+    component: &roxmltree::Node<'_, '_>,
+    resources: &ResourceResolver,
+) -> Result<mapping::X12SourceStructure, String> {
+    let text = component
+        .children()
+        .find(|n| n.has_tag_name("data"))
+        .and_then(|n| n.children().find(|n| n.has_tag_name("text")))
+        .ok_or("missing source text configuration")?;
+    let declared = text
+        .attribute("config")
+        .ok_or("missing source configuration")?;
+    let selected = text
+        .children()
+        .find(|n| n.has_tag_name("messages"))
+        .map(|n| {
+            n.children()
+                .filter(|n| n.has_tag_name("message"))
+                .filter_map(|n| n.attribute("type").map(str::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let resolved = config_source::resolve(resources.mapping_path(), Some(resources), declared)?;
+    let result = match resolved.bound() {
+        Some(reader) => format_edi::config::import_x12_source_structure_with_byte_reader(
+            resolved.path(),
+            resolved.authorization_root(),
+            &selected,
+            reader.clone(),
+        ),
+        None => format_edi::config::import_x12_source_structure_confined(
+            resolved.path(),
+            resolved.authorization_root(),
+            &selected,
+        ),
+    }
+    .map_err(|e| e.to_string());
+    match resolved.bound() {
+        Some(bound) => bound.finish(result),
+        None => result,
+    }
+}
+
 fn minimums(
     component: &roxmltree::Node<'_, '_>,
     resources: &ResourceResolver,

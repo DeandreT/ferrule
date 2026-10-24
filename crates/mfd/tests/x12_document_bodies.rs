@@ -406,6 +406,35 @@ fn source_encoding_comes_from_the_original_component() {
 }
 
 #[test]
+fn native_source_structure_retains_bounds_independently_of_schema_lists() {
+    let imported = imported();
+    let root = &imported.source_structure;
+    root.validate(&imported.source_schema).unwrap();
+    assert_eq!(root.name, "Envelope");
+    assert_eq!(root.children[0].maximum, None);
+    let isa = &root.children[0].children[0];
+    assert_eq!(isa.segment.as_deref(), Some("ISA"));
+    assert_eq!((isa.minimum, isa.maximum), (0, Some(1)));
+    assert!(
+        imported
+            .source_schema
+            .child("Interchange")
+            .unwrap()
+            .child("ISA")
+            .unwrap()
+            .repeating
+    );
+    let fixture = Fixture::new();
+    fixture.change("Envelope.Config", |text| {
+        text.replace(
+            "ref=\"ISA\" minOccurs=\"0\"",
+            "ref=\"ISA\" minOccurs=\"0\" maxOccurs=\"invalid\"",
+        )
+    });
+    assert!(fixture.import().is_err());
+}
+
+#[test]
 fn unsupported_native_source_encoding_flags_are_refused() {
     for settings in [
         "encoding=\"1\" byteorder=\"2\" byteordermark=\"0\"",

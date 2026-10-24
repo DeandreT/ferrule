@@ -436,6 +436,16 @@ pub fn from_str_lexical(text: &str, schema: &SchemaNode) -> Result<Instance, Edi
     crate::segments::read_lexical_segments(schema, &segments, component)
 }
 
+/// Project one already selected lexical segment. The caller owns native source
+/// grammar, token acquisition and diagnostics; this does not validate a file.
+pub fn project_lexical_segment(
+    schema: &SchemaNode,
+    segment: &crate::Segment,
+    component_separator: char,
+) -> Result<Instance, EdiFormatError> {
+    crate::segments::read_lexical_segment(schema, segment, component_separator)
+}
+
 /// Reads X12 using retained boundary syntax. Declared separators are checked
 /// against the ISA envelope, and the optional release character is decoded.
 pub fn read_with_separators(

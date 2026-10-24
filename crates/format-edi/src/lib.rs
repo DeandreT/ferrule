@@ -13,6 +13,7 @@ pub mod edifact;
 pub mod hl7;
 pub mod idoc;
 mod segments;
+pub use segments::Segment;
 pub mod swift;
 #[cfg(test)]
 mod test_support;

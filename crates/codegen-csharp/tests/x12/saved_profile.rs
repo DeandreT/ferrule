@@ -657,6 +657,8 @@ fn compiled_profile_public_apis_match_complete_authored_oracles() {
         assert_eq!(
             runtime_paths,
             std::collections::BTreeSet::from([
+                "FerruleX12.SourceLexical.cs",
+                "FerruleX12.SourceStructure.cs",
                 "FerruleX12.cs",
                 "FerruleX12.Schema.cs",
                 "FerruleX12.Reader.cs",
