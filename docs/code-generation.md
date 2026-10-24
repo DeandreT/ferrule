@@ -1114,6 +1114,31 @@ clock callbacks remain separate and share the original invocation counter state.
 The result is a portable document member, not a written or accepted file. This
 profile does not implement deferred XML evaluation or physical publication.
 
+For explicit XML phases, use `X12DocumentBody.deferred_xml_project` or
+`ImportedX12DocumentBodies.deferred_xml_document` with the independently established
+early-field paths. This retains the original full-body and filename graphs and
+adds disjoint preparation/materialization targets. The field list is not inferred
+from schema cardinality. Unknown or duplicate paths, unsupported scope controls,
+and shared stateful expressions crossing the phase boundary are refused.
+
+Both backends' `emit_with_native_deferred_x12_xml` adds
+`prepare_primary_x12_xml_message` / `PreparePrimaryX12XmlMessage`. Preparation
+checks the driver, evaluates the early target, then evaluates the filename.
+`DeferredXmlDocument.materialize` / `FerruleDeferredXmlDocument.Materialize`
+re-evaluates the late target and merges corresponding occurrences in schema order.
+Saved early values and counters are not re-evaluated; overlapping scalars and
+mismatched occurrence ownership fail rather than being silently combined.
+
+The generated `serialize_mapforce_xml` / `SerializeMapForceXml` takes an already
+materialized body and an explicit, optional schema-location literal. Its bounded
+element-only profile preserves a single namespace, String/Int/Bool values,
+schema order, mapped occurrences, tab/CRLF layout and a lowercase `utf-8`
+declaration without a BOM or trailing newline. Empty elements use ` />`; text
+line endings normalize to CRLF. Unsupported active nodes or values are refused,
+not reinterpreted. Unused schema declarations are not output or defaulted.
+The location is not resolved or opened. These methods return bytes only: they do
+not implement native physical-stream failure prefixes or file publication.
+
 `ImportedX12DocumentBodies.eager_json_document` also retains the original input
 filename parameter in a `DocumentProject`. The matching backend
 `emit_with_primary_eager_x12_json` entry points add `evaluate_primary_filename` /

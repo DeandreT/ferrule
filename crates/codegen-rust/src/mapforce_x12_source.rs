@@ -9,6 +9,7 @@ pub enum MapForceSourceEmitError {
     Writer(codegen::MapForceJsonWriterError),
     Emit(EmitError),
     Artifact,
+    Xml(codegen::DeferredXmlPlanError),
 }
 impl std::fmt::Display for MapForceSourceEmitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -17,6 +18,7 @@ impl std::fmt::Display for MapForceSourceEmitError {
             Self::Writer(error) => error.fmt(f),
             Self::Emit(error) => error.fmt(f),
             Self::Artifact => f.write_str("missing ordinary Rust mapping artifact"),
+            Self::Xml(error) => error.fmt(f),
         }
     }
 }
@@ -46,6 +48,58 @@ pub fn emit_with_mapforce_x12_json(
         .map_err(MapForceSourceEmitError::Emit)
 }
 impl std::error::Error for MapForceSourceEmitError {}
+
+pub fn emit_with_native_deferred_x12_xml(
+    document: &codegen::DocumentProgram,
+    options: &Options,
+    source: &codegen::NativeX12Source<'_>,
+    filename_target: &str,
+    driver: &[String],
+) -> Result<ArtifactSet, MapForceSourceEmitError> {
+    let plan = codegen::prepare_deferred_x12_xml(document.program(), filename_target, driver)
+        .map_err(MapForceSourceEmitError::Xml)?;
+    let descriptor = codegen::prepare_native_x12_source(document.program(), source)
+        .map_err(MapForceSourceEmitError::Boundary)?;
+    let artifacts = emit_with_native_x12_source(document.program(), options, source)?;
+    let mut files = crate::primary_filename::append(artifacts, document)
+        .map_err(MapForceSourceEmitError::Emit)?
+        .into_files();
+    let mapping = files
+        .iter_mut()
+        .find(|f| f.path.as_str() == "src/lib.rs")
+        .ok_or(MapForceSourceEmitError::Artifact)?;
+    let driver = plan
+        .driver
+        .iter()
+        .map(|p| format!("{p:?}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    mapping.contents.extend_from_slice(format!(r#"
+pub fn prepare_primary_x12_xml_message<'a>(context:&ScopeContext<'a>,body_clock:Option<&'a dyn codegen_runtime::DocumentBodyClock>,filename_clock:Option<&'a dyn codegen_runtime::DocumentFilenameClock>)->Result<Option<codegen_runtime::DeferredXmlDocument<'a>>,RuntimeError> {{
+    if matches!(context.resolve_source_field(&[{driver}])?,Value::Null) {{return Ok(None);}}
+    let body_context=context.clone().with_document_body_clock(body_clock);
+    let early=scope_extra_1(&body_context)?;
+    let filename=scope_extra_0(&context.clone().with_document_filename_clock(filename_clock))?;
+    let path=filename.field("Path").and_then(Instance::as_scalar).cloned().unwrap_or(Value::Null);
+    let member=codegen_runtime::dynamic_document({},path,early)?;
+    Ok(Some(codegen_runtime::DeferredXmlDocument::new({:?},member,move||scope_extra_2(&body_context))))
+}}
+pub fn acquire_native_primary_x12<'a,E:'a,I:Iterator<Item=Result<String,E>>+'a>(execution:&ExecutionContext<'a>,select:impl FnOnce(&str)->Result<I,E>+'a,load:impl FnMut(&str)->Result<codegen_runtime::ParsedX12Source,E>+'a,maximum:usize)->Result<codegen_runtime::X12SourceAcquisition<'a,RuntimeError,E>,codegen_runtime::X12AcquisitionError<RuntimeError,E>> {{
+    let execution=*execution;
+    codegen_runtime::X12SourceAcquisition::new({descriptor:?},move||evaluate_primary_filename(&execution),select,load,maximum)
+}}
+"#,plan.filename_node,plan.descriptor).as_bytes());
+    mapping.contents.extend_from_slice(format!(r#"
+/// Serialize a materialized element-only XML body. The schema location is
+/// explicit literal metadata; this does not open or accept an output file.
+pub fn serialize_mapforce_xml(value: &Instance, schema_location: Option<&str>) -> Result<Vec<u8>, codegen_runtime::MapForceXmlError> {{
+    codegen_runtime::serialize_mapforce_xml_document({:?}, value, schema_location)
+}}
+"#, plan.descriptor).as_bytes());
+    ArtifactSet::new(files)
+        .map_err(EmitError::from)
+        .map_err(MapForceSourceEmitError::Emit)
+}
 
 pub fn emit_with_native_x12_source(
     program: &Program,

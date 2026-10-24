@@ -9,6 +9,7 @@ pub enum MapForceSourceEmitError {
     Writer(codegen::MapForceJsonWriterError),
     Emit(EmitError),
     Artifact,
+    Xml(codegen::DeferredXmlPlanError),
 }
 impl std::fmt::Display for MapForceSourceEmitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -17,6 +18,7 @@ impl std::fmt::Display for MapForceSourceEmitError {
             Self::Writer(error) => error.fmt(f),
             Self::Emit(error) => error.fmt(f),
             Self::Artifact => f.write_str("missing ordinary C# mapping artifact"),
+            Self::Xml(error) => error.fmt(f),
         }
     }
 }
@@ -47,6 +49,48 @@ pub fn emit_with_mapforce_x12_json(
         .map_err(MapForceSourceEmitError::Emit)
 }
 impl std::error::Error for MapForceSourceEmitError {}
+
+pub fn emit_with_native_deferred_x12_xml(
+    document: &codegen::DocumentProgram,
+    source: &codegen::NativeX12Source<'_>,
+    filename_target: &str,
+    driver: &[String],
+) -> Result<ArtifactSet, MapForceSourceEmitError> {
+    let plan = codegen::prepare_deferred_x12_xml(document.program(), filename_target, driver)
+        .map_err(MapForceSourceEmitError::Xml)?;
+    let descriptor = codegen::prepare_native_x12_source(document.program(), source)
+        .map_err(MapForceSourceEmitError::Boundary)?;
+    let artifacts = emit_with_native_x12_source(document.program(), source)?;
+    let mut files = crate::primary_filename::append(artifacts, document)
+        .map_err(MapForceSourceEmitError::Emit)?
+        .into_files();
+    let mapping = files
+        .iter_mut()
+        .find(|f| f.path.as_str() == "GeneratedMapping.cs")
+        .ok_or(MapForceSourceEmitError::Artifact)?;
+    mapping.contents.extend_from_slice(
+        crate::mapping::deferred_xml_message_entry(document.program(), &plan).as_bytes(),
+    );
+    let xml_descriptor = crate::literal::string(&plan.descriptor);
+    mapping.contents.extend_from_slice(format!(r#"
+public static partial class GeneratedMapping {{
+    /// <summary>Serialize a materialized element-only XML body, without opening or accepting a file.</summary>
+    public static byte[] SerializeMapForceXml(global::Ferrule.Runtime.FerruleInstance value, string? schemaLocation) =>
+        global::Ferrule.Runtime.FerruleMapForceXml.SerializeDocument({xml_descriptor}, value, schemaLocation);
+}}
+"#).as_bytes());
+    let descriptor = crate::literal::string(&descriptor);
+    mapping.contents.extend_from_slice(format!(r#"
+public static partial class GeneratedMapping {{
+    public static global::System.Collections.Generic.IEnumerable<global::Ferrule.Runtime.FerruleDocument> AcquireNativePrimaryX12(global::Ferrule.Runtime.FerruleExecutionContext execution,global::System.Func<string,global::System.Collections.Generic.IEnumerable<string>> select,global::System.Func<string,global::Ferrule.Runtime.FerruleParsedX12Source> load,int maximum) {{
+        return global::Ferrule.Runtime.FerruleX12SourceAcquisition.Acquire({descriptor},()=>EvaluatePrimaryFilename(execution),select,load,maximum);
+    }}
+}}
+"#).as_bytes());
+    ArtifactSet::new(files)
+        .map_err(EmitError::from)
+        .map_err(MapForceSourceEmitError::Emit)
+}
 
 pub fn emit_with_native_x12_source(
     program: &Program,
