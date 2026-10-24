@@ -110,72 +110,6 @@ fn parse_document_mebibytes(text: &str) -> Option<f64> {
     (bytes.is_finite() && bytes >= 1.0 && bytes <= u64::MAX as f64).then_some(bytes.round())
 }
 
-#[cfg(test)]
-mod size_tests {
-    use super::{format_document_mebibytes, parse_document_mebibytes};
-
-    #[test]
-    fn document_sizes_use_mebibytes_without_changing_the_stored_unit() {
-        assert_eq!(format_document_mebibytes(8_388_608.0), "8");
-        assert_eq!(format_document_mebibytes(1_572_864.0), "1.5");
-        assert_eq!(parse_document_mebibytes("8"), Some(8_388_608.0));
-        assert_eq!(parse_document_mebibytes("1.5 MiB"), Some(1_572_864.0));
-    }
-
-    #[test]
-    fn document_size_entry_rejects_invalid_or_nonfinite_limits() {
-        for text in ["", "zero", "0", "-1", "NaN", "inf", "1e100"] {
-            assert_eq!(parse_document_mebibytes(text), None, "{text}");
-        }
-    }
-
-    #[test]
-    fn choosing_an_input_folder_updates_only_the_document_run_setting() {
-        use super::super::{DialogKind, FerruleApp};
-        use super::PrimaryDocumentSession;
-
-        let mut app = FerruleApp::default();
-        app.primary_document = Some(PrimaryDocumentSession::new(
-            mapping::PrimarySourcePlan::new(0),
-            std::path::Path::new("/demo/project.json"),
-        ));
-        let original_project = serde_json::to_value(&app.project).unwrap();
-        let original_input = app.input_path.clone();
-        let (send, receive) = std::sync::mpsc::channel();
-        app.pending_dialog = Some((DialogKind::BrowsePrimaryInputRoot, receive));
-        send.send(Some("/demo/selected".to_owned())).unwrap();
-        app.poll_dialog(&egui::Context::default());
-        assert_eq!(
-            app.primary_document.as_ref().unwrap().input_root,
-            "/demo/selected"
-        );
-        assert_eq!(app.input_path, original_input);
-        assert_eq!(
-            serde_json::to_value(&app.project).unwrap(),
-            original_project
-        );
-        assert!(app.pending_dialog.is_none());
-    }
-
-    #[test]
-    fn cancelling_the_input_folder_picker_keeps_the_current_folder() {
-        use super::super::{DialogKind, FerruleApp};
-        use super::PrimaryDocumentSession;
-
-        let mut app = FerruleApp::default();
-        app.primary_document = Some(PrimaryDocumentSession::new(
-            mapping::PrimarySourcePlan::new(0),
-            std::path::Path::new("/demo/project.json"),
-        ));
-        let (send, receive) = std::sync::mpsc::channel();
-        app.pending_dialog = Some((DialogKind::BrowsePrimaryInputRoot, receive));
-        send.send(None).unwrap();
-        app.poll_dialog(&egui::Context::default());
-        assert_eq!(app.primary_document.as_ref().unwrap().input_root, "/demo");
-        assert!(app.pending_dialog.is_none());
-    }
-}
-
 impl FerruleApp {
     pub(super) fn show_primary_document_settings(&mut self, ui: &mut egui::Ui) {
         let dialog_idle = self.pending_dialog.is_none();
@@ -200,13 +134,82 @@ impl FerruleApp {
         }
     }
 
-    /// The run-time refusals that need no input: the document route, the
-    /// filename plan and the mapping.
+    /// Checks the document route, filename plan and mapping before input is acquired.
     pub(super) fn primary_document_preflight(&self) -> anyhow::Result<()> {
         let Some(session) = &self.primary_document else {
             return Ok(());
         };
         session.policy()?;
         cli::check_primary_document(&session.document(&self.project))
+    }
+}
+
+#[cfg(test)]
+mod size_tests {
+    use super::{format_document_mebibytes, parse_document_mebibytes};
+
+    #[test]
+    fn document_sizes_use_mebibytes_without_changing_the_stored_unit() {
+        assert_eq!(format_document_mebibytes(8_388_608.0), "8");
+        assert_eq!(format_document_mebibytes(1_572_864.0), "1.5");
+        assert_eq!(parse_document_mebibytes("8"), Some(8_388_608.0));
+        assert_eq!(parse_document_mebibytes("1.5 MiB"), Some(1_572_864.0));
+    }
+
+    #[test]
+    fn document_size_entry_rejects_invalid_or_nonfinite_limits() {
+        for text in ["", "zero", "0", "-1", "NaN", "inf", "1e100"] {
+            assert_eq!(parse_document_mebibytes(text), None, "{text}");
+        }
+    }
+
+    #[test]
+    fn choosing_an_input_folder_updates_only_the_document_run_setting() {
+        use super::super::{DialogKind, FerruleApp};
+        use super::PrimaryDocumentSession;
+
+        let mut app = FerruleApp {
+            primary_document: Some(PrimaryDocumentSession::new(
+                mapping::PrimarySourcePlan::new(0),
+                std::path::Path::new("/demo/project.json"),
+            )),
+            ..Default::default()
+        };
+        let original_project = serde_json::to_value(&app.project).unwrap();
+        let original_input = app.input_path.clone();
+        let (send, receive) = std::sync::mpsc::channel();
+        app.pending_dialog = Some((DialogKind::BrowsePrimaryInputRoot, receive));
+        send.send(Some("/demo/selected".to_owned())).unwrap();
+        app.poll_dialog(&egui::Context::default());
+        assert_eq!(
+            app.primary_document.as_ref().unwrap().input_root,
+            "/demo/selected"
+        );
+        assert_eq!(app.input_path, original_input);
+        assert_eq!(
+            serde_json::to_value(&app.project).unwrap(),
+            original_project
+        );
+        assert!(app.pending_dialog.is_none());
+    }
+
+    #[test]
+    fn cancelling_the_input_folder_picker_keeps_the_current_folder() {
+        use super::super::{DialogKind, FerruleApp};
+        use super::PrimaryDocumentSession;
+
+        let mut app = FerruleApp {
+            primary_document: Some(PrimaryDocumentSession::new(
+                mapping::PrimarySourcePlan::new(0),
+                std::path::Path::new("/demo/project.json"),
+            )),
+            ..Default::default()
+        };
+        let (send, receive) = std::sync::mpsc::channel();
+        app.pending_dialog = Some((DialogKind::BrowsePrimaryInputRoot, receive));
+        send.send(None).unwrap();
+        app.poll_dialog(&egui::Context::default());
+        assert_eq!(app.primary_document.as_ref().unwrap().input_root, "/demo");
+        assert!(app.pending_dialog.is_none());
     }
 }

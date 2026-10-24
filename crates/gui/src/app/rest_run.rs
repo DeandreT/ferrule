@@ -250,6 +250,27 @@ impl RestRunResult {
 }
 
 impl FerruleApp {
+    /// Explains unavailable request routes without reading files or requesting
+    /// network approval.
+    pub(super) fn rest_run_unavailable_reason(&self) -> Option<String> {
+        if self.primary_document.is_some() {
+            return Some("Document projects do not run JSON requests.".into());
+        }
+        let project_path = self
+            .document
+            .saved_path()
+            .unwrap_or_else(|| self.document.suggested_path());
+        rest_run_preflight(&self.project, project_path)
+            .err()
+            .map(|error| refusal_message(&error))
+            .or_else(|| {
+                self.document
+                    .saved_path()
+                    .is_none()
+                    .then(|| "Save the mapping before running a JSON request.".into())
+            })
+    }
+
     pub(super) fn rest_run_busy(&self) -> bool {
         // Existing external-action entry points share this ownership guard.
         self.rest_run_draft.is_some()

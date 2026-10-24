@@ -76,9 +76,7 @@ fn action_after_scrolling(
         frame(app, context, viewport, Vec::new());
     }
     let window = context
-        .memory(|memory| {
-            memory.area_rect(egui::Id::unique(("ferrule_dialog", "preview_mapping")))
-        })
+        .memory(|memory| memory.area_rect(egui::Id::unique(("ferrule_dialog", "preview_mapping"))))
         .expect("actual Preview window");
     let view = egui::Rect::from_min_size(egui::Pos2::ZERO, viewport);
     assert!(window.is_finite() && view.contains_rect(window));

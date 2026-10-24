@@ -247,7 +247,13 @@ impl FerruleApp {
             if menu_item(ui, "Preview…", None, preview_blocked) {
                 self.begin_preview();
             }
-            if menu_item(ui, "Run JSON request…", None, None) {
+            let request_unavailable = self.rest_run_unavailable_reason();
+            if menu_item(
+                ui,
+                "Run JSON request…",
+                None,
+                request_unavailable.as_deref(),
+            ) {
                 self.begin_rest_run();
             }
             ui.separator();

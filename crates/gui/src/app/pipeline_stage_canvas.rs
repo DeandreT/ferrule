@@ -256,9 +256,16 @@ impl FerruleApp {
         let mut cancel = false;
         session.editor.handle_history_shortcuts(&context, enabled);
         egui::Panel::top(namespace.with("toolbar")).show(ui, |ui| {
+            egui::Frame::new()
+                .inner_margin(egui::Margin::symmetric(
+                    crate::theme::space::MD as i8,
+                    crate::theme::space::SM as i8,
+                ))
+                .show(ui, |ui| {
             ui.strong(format!("Pipeline stage: {}", session.stage_id));
-            ui.small(session.path.display().to_string());
-            ui.weak("Edit this embedded mapping. Boundary schemas and paths are fixed; canvas layout is temporary.");
+            ui.label(crate::ui_kit::file_label(&session.path))
+                .on_hover_text(session.path.display().to_string());
+            crate::ui_kit::help(ui, "Edit this embedded mapping. Boundary schemas and paths are fixed; canvas layout is temporary.");
             ui.add_enabled_ui(enabled, |ui| {
                 ui.horizontal(|ui| {
                     apply = ui.button("Apply stage mapping").clicked();
@@ -282,7 +289,24 @@ impl FerruleApp {
                 session.editor.show_mapping_tabs(ui, enabled);
             });
             if let Some(error) = &session.error { ui.colored_label(ui.visuals().error_fg_color, error); }
+                });
         });
+        egui::Panel::bottom(namespace.with("status"))
+            .exact_size(crate::theme::METRICS.status_height)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(if session.editor.is_dirty() {
+                        "Stage changes not applied"
+                    } else {
+                        "No unapplied stage changes"
+                    });
+                    if !session.editor.status.is_empty() {
+                        ui.separator();
+                        ui.add(egui::Label::new(&session.editor.status).truncate())
+                            .on_hover_text(&session.editor.status);
+                    }
+                });
+            });
         egui::Panel::left(namespace.with("sources"))
             .default_size(220.0)
             .show(ui, |ui| {
