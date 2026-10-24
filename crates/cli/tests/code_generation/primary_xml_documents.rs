@@ -212,6 +212,96 @@ fn primary_xml_documents_generators_apply_identity_and_manifest() -> TestResult<
 }
 
 #[test]
+fn primary_xml_document_preflight_refuses_named_and_conflicting_boundaries() -> TestResult<()> {
+    for model in ["literal_direct", "parameter_wildcard_map_no_documents"] {
+        let base = projects::document(model);
+        for kind in 0..4 {
+            let mut project = base.project().clone();
+            match kind {
+                0 => project.extra_sources.push(mapping::NamedSource {
+                    name: "Other".into(),
+                    path: "missing.xml".into(),
+                    schema: project.source.clone(),
+                    options: mapping::FormatOptions {
+                        xml_document: true,
+                        ..Default::default()
+                    },
+                    dynamic_path: None,
+                }),
+                1 => project.extra_targets.push(mapping::NamedTarget {
+                    name: "Other".into(),
+                    path: Some("other.xml".into()),
+                    schema: project.target.clone(),
+                    options: project.target_options.clone(),
+                    root: project.root.clone(),
+                }),
+                2 => project.source_options.json_document = true,
+                _ => project.target_options.json_document = true,
+            }
+            let document = mapping::DocumentProject::new(project, base.primary_source().clone());
+            let expected = document.primary_route().unwrap_err().to_string();
+            if let Ok(program) = codegen::lower_document(&document) {
+                assert!(
+                    codegen_rust::emit_with_primary_xml_documents(
+                        &program,
+                        &harness::rust_options(&COHORT, 0)?
+                    )
+                    .is_err()
+                );
+                assert!(codegen_csharp::emit_with_primary_xml_documents(&program).is_err());
+            }
+            let directory = TempDir::new("primary_xml_document_preflight")?;
+            let saved = directory.0.join("document.json");
+            let output = directory.0.join("generated");
+            std::fs::write(&saved, document_project_file::encode_pretty(&document)?)?;
+            for language in ["rust", "csharp"] {
+                let mut command = Command::new(env!("CARGO_BIN_EXE_ferrule"));
+                command
+                    .args([
+                        "generate",
+                        "--primary-documents",
+                        "--language",
+                        language,
+                        "--project",
+                    ])
+                    .arg(&saved)
+                    .arg("--out")
+                    .arg(&output);
+                if language == "rust" {
+                    command
+                        .arg("--rust-runtime-path")
+                        .arg(harness::runtime_path()?);
+                }
+                let run = command.output()?;
+                assert!(!run.status.success());
+                assert!(
+                    String::from_utf8_lossy(&run.stderr).contains(&expected),
+                    "{}",
+                    String::from_utf8_lossy(&run.stderr)
+                );
+                assert!(!output.exists());
+            }
+        }
+    }
+    // Member-adapter selection must not weaken validation of the original
+    // document-set contract for SourceDocumentPath.
+    let base = projects::document("document_paths");
+    assert!(engine::validate(base.project()).is_empty());
+    codegen::lower_document(&base)?;
+    let mut invalid = base.project().clone();
+    invalid.source_options.local_xml_file_set = false;
+    assert!(!engine::validate(&invalid).is_empty());
+    assert!(
+        codegen::lower_document(&mapping::DocumentProject::new(
+            invalid,
+            base.primary_source().clone()
+        ))
+        .is_err()
+    );
+    Ok(())
+}
+
+#[test]
 #[ignore = "builds one generated Rust host and one generated C# host per model; requires cargo and the .NET 10 SDK"]
 fn primary_xml_documents_generated_rust_and_csharp_match_expected() -> TestResult<()> {
     harness::check_generated_hosts(&COHORT)

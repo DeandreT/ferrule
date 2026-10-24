@@ -3,7 +3,7 @@
 use std::fmt;
 
 use mapping::{
-    DocumentProject, GlobalFilename, NodeId, PrimaryDocumentRoute, PrimaryDocumentShape,
+    DocumentProject, GlobalFilename, NodeId, PrimaryDocumentFormat, PrimaryDocumentRoute,
     PrimaryFileSelection, PrimaryFilenameError, PrimaryRouteError,
 };
 
@@ -91,16 +91,10 @@ pub fn lower_document(document: &DocumentProject) -> Result<DocumentProgram, Doc
     let primary_route = document.primary_route();
     let project = document.project();
     let program = match primary_route {
-        // The plan assembles the document set itself; each member is one
-        // ordinary XML document, so the XML adapter is decided on its options.
         Ok(PrimaryDocumentRoute {
-            shape: PrimaryDocumentShape::DocumentSet,
+            format: PrimaryDocumentFormat::Xml,
             ..
-        }) if project.source_options.local_xml_file_set => {
-            let mut members = project.clone();
-            members.source_options.local_xml_file_set = false;
-            crate::lower(&members)
-        }
+        }) => crate::lower::lower_primary_xml_documents(project),
         _ => crate::lower(project),
     }
     .map_err(DocumentLowerError::Mapping)?;

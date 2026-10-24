@@ -6,7 +6,7 @@ emitters, in the interpreter, generated Rust and generated C#, all using the
 explicit local filesystem host. See
 [the design](../../docs/design/primary-document-filenames.md).
 
-- [`projects.rs`](projects.rs) builds three document plans over one grouped
+- [`projects.rs`](projects.rs) builds document plans over one grouped
   mapping from an `Orders` source to a `Summary` target: orders with equal
   `Key` combine into one `Group` in first-seen order across every selected
   document, `Text` joins with `+`, `Count` sums and `Status` comes from the
@@ -19,6 +19,10 @@ explicit local filesystem host. See
   - `parameter_wildcard_map_no_documents` (model 2): the `Input` parameter,
     filename wildcard, an empty match mapped as an empty document set; the
     source does not declare `local_xml_file_set`.
+  - `saved_path_identity` (model 3): the direct plan selects XML from saved
+    paths alone, without explicit XML identity flags.
+  - `document_paths` (model 4): visits each selected document and writes its
+    current filename alongside its first order's values.
 - [`cases.json`](cases.json) lists each case's file tree (`files`, `dirs`, and
   `symlinks` for Unix-only cases), runtime parameters, optional document and
   byte limits, the ordered host calls the run reaches, and the complete output
@@ -48,6 +52,8 @@ explicit local filesystem host. See
 | P20 | 2 | A document without orders contributes no groups beside a later document. |
 | P21 | 2 | A missing wildcard directory is a selection failure even when empty matches are mapped. |
 | P22 | 1 | The second document has another root element; the third is never loaded. |
+| P23 | 3 | Saved-path-only XML identities execute in all three backends. |
+| P24 | 4 | Current document paths survive lowering and identify each selected member. |
 
 Expected documents are literal authored values, not output copied from any
 backend. The CLI harness

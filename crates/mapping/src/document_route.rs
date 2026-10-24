@@ -61,6 +61,13 @@ impl fmt::Display for PrimaryRouteSide {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrimaryRouteError {
+    /// A single-output document route cannot acquire or publish named endpoints.
+    NamedEndpoints,
+    /// The selected format does not own all of the boundary's options.
+    IncompatibleOptions {
+        side: PrimaryRouteSide,
+        format: PrimaryDocumentFormat,
+    },
     /// Neither a format option nor a recognized saved path names the format.
     MissingIdentity { side: PrimaryRouteSide },
     /// The format has no primary document route.
@@ -81,6 +88,14 @@ pub enum PrimaryRouteError {
 impl fmt::Display for PrimaryRouteError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::NamedEndpoints => {
+                f.write_str("primary document routes have no named sources or targets")
+            }
+            Self::IncompatibleOptions { side, format } => write!(
+                f,
+                "primary {} document {side} has incompatible format options",
+                format.name()
+            ),
             Self::MissingIdentity { side } => write!(
                 f,
                 "the primary document {side} has no explicit format identity"
@@ -175,6 +190,9 @@ impl DocumentProject {
     /// filename, reading a preview or calling a host.
     pub fn primary_route(&self) -> Result<PrimaryDocumentRoute, PrimaryRouteError> {
         let project = self.project();
+        if !project.extra_sources.is_empty() || !project.extra_targets.is_empty() {
+            return Err(PrimaryRouteError::NamedEndpoints);
+        }
         let format = classify(
             &project.source_options,
             project.source_path.as_deref(),
@@ -191,6 +209,8 @@ impl DocumentProject {
                 _ => PrimaryRouteError::TargetFormat { source: format },
             });
         }
+        validate_options(&project.source_options, format, PrimaryRouteSide::Source)?;
+        validate_options(&project.target_options, format, PrimaryRouteSide::Target)?;
         let wildcard = matches!(
             self.primary_source().selection,
             PrimaryFileSelection::FileNameWildcard { .. }
@@ -217,4 +237,45 @@ impl DocumentProject {
         };
         Ok(PrimaryDocumentRoute { format, shape })
     }
+}
+
+/// Keep unrelated adapters out of a route even when selection returns no files.
+/// Provenance does not select an adapter; every executable option must belong
+/// to the selected format and side.
+fn validate_options(
+    options: &FormatOptions,
+    format: PrimaryDocumentFormat,
+    side: PrimaryRouteSide,
+) -> Result<(), PrimaryRouteError> {
+    let mut accepted = FormatOptions {
+        mfd_decimal_input_names: options.mfd_decimal_input_names.clone(),
+        mfd_optional_parser_input_names: options.mfd_optional_parser_input_names.clone(),
+        ..Default::default()
+    };
+    match format {
+        PrimaryDocumentFormat::Csv => {
+            accepted.tabular_kind = options.tabular_kind;
+            accepted.delimiter = options.delimiter;
+            accepted.csv_quote = options.csv_quote;
+            accepted.csv_quote_disabled = options.csv_quote_disabled;
+            accepted.csv_utf8_bom = options.csv_utf8_bom;
+            accepted.csv_preserve_empty_strings = options.csv_preserve_empty_strings;
+            accepted.has_header_row = options.has_header_row;
+        }
+        PrimaryDocumentFormat::Xml => {
+            accepted.xml_document = options.xml_document;
+            if side == PrimaryRouteSide::Source {
+                accepted.local_xml_file_set = options.local_xml_file_set;
+                accepted.xml_allow_inactive_root_type_members =
+                    options.xml_allow_inactive_root_type_members;
+                accepted.xml_root_view_read_policy = options.xml_root_view_read_policy;
+            } else {
+                accepted.xml_schema_hints = options.xml_schema_hints.clone();
+            }
+        }
+    }
+    if *options != accepted {
+        return Err(PrimaryRouteError::IncompatibleOptions { side, format });
+    }
+    Ok(())
 }

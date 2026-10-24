@@ -116,6 +116,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             0 => run!(model0, &execution, &host, maximum),
             1 => run!(model1, &execution, &host, maximum),
             2 => run!(model2, &execution, &host, maximum),
+            3 => run!(model3, &execution, &host, maximum),
+            4 => run!(model4, &execution, &host, maximum),
             other => return Err(format!("unknown model {other}").into()),
         };
         let mut record = json!({"id": id, "calls": host.calls.take()});

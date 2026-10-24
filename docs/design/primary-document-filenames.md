@@ -151,6 +151,8 @@ document limit, load or input), `Assembly` or `Mapping`.
 `DocumentProject::primary_route` classifies the source by its explicit format
 options, else by the extension of its saved source path, which is used only as
 a format identity and never read. The target must name the same format.
+Named sources and targets and incompatible format options are refused before
+filename evaluation or any host call, including when a wildcard would be empty.
 
 | Format | Identity | Source the mapping reads |
 | --- | --- | --- |
@@ -189,8 +191,10 @@ embedded plan alone names the documents, and `PRIMARY_FILE_SELECTION` /
   `execute_primary_xml_document_bytes` / `ExecutePrimaryXmlDocumentBytes` and
   `PRIMARY_DOCUMENT_SHAPE` / `PrimaryDocumentShape`. Members are read with the
   adapter's structured or observed root-view reader. A plan that declares
-  `local_xml_file_set` is lowered on its member options, because the entry
-  point forms the document set itself. Rust failures are
+   `local_xml_file_set` is validated with its original document-set contract,
+   including current-document-path expressions. Only adapter selection uses
+   member options, because the entry point forms the document set itself.
+   Saved-path-only XML identities select the same adapter. Rust failures are
   `PrimaryXmlDocumentError::{Acquisition, Assembly, Output}`, where a mapping
   failure is the cause of an `Output`; C# raises
   `FerrulePrimaryDocumentException`, with the host's or reader's exception as
@@ -236,11 +240,14 @@ document project.
   the local host. `--max-document-bytes` and `--max-documents` bound the
   selection, `--param NAME=VALUE` supplies parameter filenames and mapping
   values, and `--output` defaults to the saved target path. Documents are read
-  and the target written in the route's format. The output is published by
+   and the target written in the route's format. The output is published by
   staged replacement only after the whole run succeeds, and never replaces the
   project or a document the run read. `cli::execute_primary_document` is the
   same run without publication, and `cli::execute_primary_document_with_host`
-  runs it through any host.
+   runs it through any host.
+   A saved output suffix never changes the admitted format. CSV serialization
+   writes into a bounded output buffer and refuses excess output before
+   publication.
 - `ferrule generate --primary-documents` (also `--primary-csv-documents`)
   generates the document library for the plan's route; `--raw-delimited-crlf`
   selects raw output for a CSV route. The generated identity and compatibility

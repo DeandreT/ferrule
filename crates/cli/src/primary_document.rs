@@ -301,25 +301,58 @@ pub fn execute_primary_document_with_host<H: PrimarySourceHost>(
         },
     )
     .map_err(PrimaryDocumentError::Run)?;
-    let output_identity = project
-        .target_path
-        .as_deref()
-        .map(Path::new)
-        .unwrap_or(identity);
-    let (bytes, records) = crate::payload::render_payload(
-        output_identity,
+    render_primary_output(
+        route,
         &project.target,
-        &output,
         &project.target_options,
+        &output,
         &current_datetime,
+        MAX_PRIMARY_DOCUMENT_OUTPUT_BYTES,
+    )
+}
+
+fn render_primary_output<E>(
+    route: mapping::PrimaryDocumentRoute,
+    target: &ir::SchemaNode,
+    options: &mapping::FormatOptions,
+    output: &ir::Instance,
+    current_datetime: &str,
+    maximum: usize,
+) -> Result<(Vec<u8>, usize), PrimaryDocumentError<E>> {
+    if route.format == PrimaryDocumentFormat::Csv {
+        let rows = output.as_repeated().ok_or_else(|| {
+            PrimaryDocumentError::Output(DocumentFormatError(anyhow::anyhow!(
+                "mapping did not produce a repeating row set for a CSV output"
+            )))
+        })?;
+        let bytes = format_csv::to_bytes_with_options_bounded(
+            target,
+            rows,
+            &format_csv::CsvWriteOptions::from(options),
+            maximum,
+        )
+        .map_err(|error| match error {
+            format_csv::CsvBoundedError::OutputTooLarge { maximum } => {
+                PrimaryDocumentError::OutputTooLarge { maximum }
+            }
+            format_csv::CsvBoundedError::Format(error) => {
+                PrimaryDocumentError::Output(DocumentFormatError(error.into()))
+            }
+        })?;
+        return Ok((bytes, rows.len()));
+    }
+    let (bytes, records) = crate::payload::render_payload(
+        route_identity(route.format),
+        target,
+        output,
+        options,
+        current_datetime,
     )
     .map_err(|error| PrimaryDocumentError::Output(DocumentFormatError(error)))?;
-    if bytes.len() > MAX_PRIMARY_DOCUMENT_OUTPUT_BYTES {
-        return Err(PrimaryDocumentError::OutputTooLarge {
-            maximum: MAX_PRIMARY_DOCUMENT_OUTPUT_BYTES,
-        });
+    if bytes.len() > maximum {
+        return Err(PrimaryDocumentError::OutputTooLarge { maximum });
     }
-    let records = match (route.shape, &output) {
+    let records = match (route.shape, output) {
         (PrimaryDocumentShape::Rows, ir::Instance::Repeated(rows)) => rows.len(),
         _ => records,
     };
@@ -457,3 +490,7 @@ fn publish(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     }
     bail!("could not reserve a staging file for {}", path.display())
 }
+
+#[cfg(test)]
+#[path = "primary_document_tests.rs"]
+mod tests;

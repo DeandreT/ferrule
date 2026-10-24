@@ -7,10 +7,12 @@ use mapping::{
 };
 
 /// Model order is the `model` index the cases and generated hosts use.
-pub const MODELS: [&str; 3] = [
+pub const MODELS: [&str; 5] = [
     "literal_direct",
     "parameter_wildcard",
     "parameter_wildcard_map_no_documents",
+    "saved_path_identity",
+    "document_paths",
 ];
 
 /// The filename node; the literal or parameter node shares this identity.
@@ -136,7 +138,7 @@ fn input_parameter() -> Node {
 
 pub fn document(model: &str) -> DocumentProject {
     let (filename, selection, document_set) = match model {
-        "literal_direct" => (
+        "literal_direct" | "saved_path_identity" => (
             Node::Const {
                 value: Value::String("orders/input.xml".into()),
             },
@@ -144,7 +146,7 @@ pub fn document(model: &str) -> DocumentProject {
             false,
         ),
         // Declares the document set its wildcard selects.
-        "parameter_wildcard" => (
+        "parameter_wildcard" | "document_paths" => (
             input_parameter(),
             PrimaryFileSelection::FileNameWildcard {
                 empty: EmptyFileSelection::Refuse,
@@ -161,8 +163,34 @@ pub fn document(model: &str) -> DocumentProject {
         ),
         other => unreachable!("unknown model {other}"),
     };
+    let mut project = project(filename, document_set);
+    if model == "saved_path_identity" {
+        project.source_options.xml_document = false;
+        project.target_options.xml_document = false;
+    }
+    if model == "document_paths" {
+        project.graph.nodes.insert(21, Node::SourceDocumentPath);
+        project.graph.nodes.insert(
+            4,
+            Node::Call {
+                function: "remove_folder".into(),
+                args: vec![21],
+            },
+        );
+        for (id, field) in [(0, "Key"), (2, "Text"), (3, "Count")] {
+            project.graph.nodes.insert(
+                id,
+                Node::SourceField {
+                    path: vec!["Order".into(), field.into()],
+                    frame: None,
+                },
+            );
+        }
+        project.root.children[0].iteration = ScopeIteration::Source(vec![]);
+        project.root.children[0].group_by = None;
+    }
     DocumentProject::new(
-        project(filename, document_set),
+        project,
         PrimarySourcePlan::new(FILENAME).with_selection(selection),
     )
 }
