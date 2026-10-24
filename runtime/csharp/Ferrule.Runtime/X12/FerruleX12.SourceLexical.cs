@@ -5,6 +5,43 @@ namespace Ferrule.Runtime;
 
 public static partial class FerruleX12
 {
+    public static bool HasSourceFilenameWildcard(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        return value.IndexOfAny(['*', '?']) >= 0 && ((value.Length > 1 && value[1] == ':') || !value.Contains(':'));
+    }
+
+    /// <summary>Read-only local selection. Literal paths and URLs remain
+    /// unchanged. The caller separately authorizes and opens the selected paths.</summary>
+    public static IReadOnlyList<string> SelectSourceFilenames(string value, int maximum = 100000)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        if (maximum is < 0 or > 100000) throw new ArgumentOutOfRangeException(nameof(maximum));
+        if (!HasSourceFilenameWildcard(value)) return maximum == 0 ? throw new InvalidOperationException("Source filename selection exceeded its bounds.") : new[] { value };
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Native filename selection requires Windows.");
+        if (value.Length > 32760) throw new InvalidOperationException("Source filename selection exceeded its bounds.");
+        var selected = new List<string>(); long names = 0; long work = 0; int scanned = 0;
+        try
+        {
+            int split = value.Replace('\\', '/').LastIndexOf('/') + 1;
+            string root = split == 0 ? "." : value[..split];
+            string expression = System.IO.Enumeration.FileSystemName.TranslateWin32Expression(value[split..]);
+            foreach (var item in new DirectoryInfo(root).EnumerateFileSystemInfos("*"))
+            {
+                if (++scanned > 1000000) throw new InvalidOperationException("Source filename selection exceeded its bounds.");
+                if (item is not FileInfo file) continue;
+                work += (long)expression.Length * (file.Name.Length + 1);
+                if (work > 50000000) throw new InvalidOperationException("Source filename selection exceeded its bounds.");
+                if (!System.IO.Enumeration.FileSystemName.MatchesWin32Expression(expression, file.Name, ignoreCase: true)) continue;
+                names += file.FullName.Length;
+                if (selected.Count == maximum || names > 8 * 1024 * 1024) throw new InvalidOperationException("Source filename selection exceeded its bounds.");
+                selected.Add(file.FullName);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { selected.Clear(); }
+        return selected;
+    }
+
     /// <summary>Tolerant native source value projection. It does not perform
     /// numeric conversions, calendar validation, file acquisition or publication.</summary>
     public static FerruleInstance ParseMapForceSourceBytes(string descriptor, byte[] bytes)

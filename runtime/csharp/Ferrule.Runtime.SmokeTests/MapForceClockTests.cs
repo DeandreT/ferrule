@@ -8,6 +8,11 @@ internal static partial class Program
 {
     private static void MapForceClocks()
     {
+        Equal(true, FerruleX12.HasSourceFilenameWildcard("C:\\*.x12"));
+        Equal(false, FerruleX12.HasSourceFilenameWildcard(" C:\\*.x12 "));
+        Equal(false, FerruleX12.HasSourceFilenameWildcard("http://host/*.x12"));
+        Equal(" raw literal ", FerruleX12.SelectSourceFilenames(" raw literal ", 1).Single());
+        Throws<ArgumentOutOfRangeException>(() => FerruleX12.SelectSourceFilenames("literal", -1));
         static object Fields(string name, int count, bool repeating = false) => new
         {
             name, repeating,
