@@ -123,52 +123,6 @@ fn aggregate_label(function: AggregateOp) -> &'static str {
     }
 }
 
-/// The same short, human-readable summary used on the canvas, without IDs.
-pub(crate) fn node_label(node: &Node) -> String {
-    let fallback = match node {
-        Node::Unconnected => "Unconnected input".into(),
-        Node::UserFunctionCall { .. } => "Function call".into(),
-        Node::FunctionParameter { .. } => "Function input".into(),
-        Node::Position { .. } => "Position".into(),
-        Node::JoinPosition { .. } => "Join position".into(),
-        Node::OwnedLookup(lookup) => format!(
-            "{}: Lookup",
-            crate::source_ownership::owner_label(&lookup.collection.owner)
-        ),
-        Node::OwnedCollectionFind(find) => format!(
-            "{}: Find in collection",
-            crate::source_ownership::owner_label(&find.collection.owner)
-        ),
-        Node::OwnedDynamicSourceField(field) => format!(
-            "{}: Property by name",
-            crate::source_ownership::owner_label(&field.object.owner)
-        ),
-        Node::OwnedAggregate(aggregate) => format!(
-            "{}: {}",
-            crate::source_ownership::owner_label(&aggregate.collection.owner),
-            aggregate_label(aggregate.function)
-        ),
-        Node::OwnedJoinField(field) => format!(
-            "{}: Joined field {}",
-            crate::source_ownership::owner_label(&field.collection.owner),
-            field.path.join("/")
-        ),
-        Node::OwnedJoinSourcePosition(position) => format!(
-            "{}: Join source position",
-            crate::source_ownership::owner_label(&position.collection.owner)
-        ),
-        Node::OwnedJoinAggregate(aggregate) => format!(
-            "Join {}: {}",
-            aggregate.join.get(),
-            aggregate_label(aggregate.function)
-        ),
-        _ => "Mapping value".into(),
-    };
-    header(node, &fallback, false)
-        .filter(|header| !header.summary.is_empty())
-        .map_or(fallback, |header| header.summary)
-}
-
 pub(super) fn owned_source_title(node: &Node) -> Option<String> {
     fn owner(owner: &mapping::SourceOwner) -> String {
         match owner {

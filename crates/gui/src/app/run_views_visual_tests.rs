@@ -150,9 +150,7 @@ fn capture_run_views() {
             }
             let mut initialized = false;
             let mut harness = Harness::builder()
-                // The embedded stage still includes the pre-B inspector;
-                // its dropdown labels are covered by the inspector cleanup.
-                .with_accessibility_check(!matches!(view, View::Stage))
+                .with_accessibility_check(true)
                 .with_size((width, height))
                 .with_max_steps(120)
                 .build_ui_state(
