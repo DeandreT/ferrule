@@ -160,7 +160,7 @@ pub fn show(
         viewer.camera_focus = Some((
             transform.0.inverse() * pointer,
             pointer,
-            Some((transform.0.scaling * zoom_delta.powf(0.25)).clamp(0.05, 2.0)),
+            Some(zoom_step(transform.0.scaling, zoom_delta.powf(0.25))),
         ));
     }
     let node_wheel = (!wire_dragging)
@@ -329,6 +329,12 @@ enum Navigation {
     Fit,
 }
 
+fn zoom_step(current: f32, factor: f32) -> f32 {
+    // An explicit fit of an exceptionally large graph may be below 5%.
+    // A subsequent zoom-out must never jump in to the ordinary zoom floor.
+    (current * factor).clamp(current.min(0.05), 2.0)
+}
+
 fn show_navigation(
     ui: &mut egui::Ui,
     id: egui::Id,
@@ -358,7 +364,7 @@ fn show_navigation(
             ui.spacing_mut().item_spacing.x = crate::ui_kit::space::XS;
             if crate::ui_kit::icon_button(ui, lucide_icons::Icon::Minus, "Zoom out", None).clicked()
             {
-                result = Some(Navigation::Zoom((transform.scaling / 1.1).max(0.05)));
+                result = Some(Navigation::Zoom(zoom_step(transform.scaling, 1.0 / 1.1)));
             }
             if ui
                 .button(format!("{:.0}%", transform.scaling * 100.0))
@@ -368,7 +374,7 @@ fn show_navigation(
                 result = Some(Navigation::Zoom(1.0));
             }
             if crate::ui_kit::icon_button(ui, lucide_icons::Icon::Plus, "Zoom in", None).clicked() {
-                result = Some(Navigation::Zoom((transform.scaling * 1.1).min(2.0)));
+                result = Some(Navigation::Zoom(zoom_step(transform.scaling, 1.1)));
             }
             if crate::ui_kit::icon_button(ui, lucide_icons::Icon::Maximize, "Fit all nodes", None)
                 .clicked()
@@ -449,6 +455,14 @@ fn edge_pan_delta(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn precise_zoom_steps_do_not_jump_after_a_very_large_explicit_fit() {
+        assert!((zoom_step(1.0, 1.1) - 1.1).abs() < f32::EPSILON);
+        assert_eq!(zoom_step(0.01, 1.0 / 1.1), 0.01);
+        assert!((zoom_step(0.01, 1.1) - 0.011).abs() < 0.000_001);
+        assert_eq!(zoom_step(2.0, 1.1), 2.0);
+    }
 
     #[test]
     fn edge_pan_uses_distance_pressure_only_during_active_drags() {
