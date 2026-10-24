@@ -16,6 +16,30 @@ use crate::preview::{
     LoadedPreviewSource, PreviewBreakpoint, PreviewDraft, PreviewTarget, ScalarValueType,
 };
 
+fn show_preview_input(ui: &mut egui::Ui, draft: &mut PreviewDraft, input_size: usize) {
+    ui.horizontal(|ui| {
+        ui.strong("Primary input");
+        ui.weak(format!(
+            "{} / {}",
+            format_preview_bytes(input_size),
+            format_preview_bytes(cli::MAX_PAYLOAD_DOCUMENT_BYTES)
+        ));
+    });
+    let height = (ui.ctx().content_rect().height() * 0.3).clamp(140.0, 360.0);
+    egui::ScrollArea::both()
+        .id_salt("preview_primary_input_scroll")
+        .auto_shrink([false, false])
+        .max_height(height)
+        .show(ui, |ui| {
+            ui.add_sized(
+                egui::vec2(ui.available_width(), height),
+                egui::TextEdit::multiline(&mut draft.input_text)
+                    .code_editor()
+                    .desired_width(f32::INFINITY),
+            );
+        });
+}
+
 pub(super) fn show_breakpoint_input_condition(
     ui: &mut egui::Ui,
     condition: &mut BreakpointInputConditionDraft,
@@ -497,17 +521,19 @@ impl FerruleApp {
                 == super::preview_service::PreviewInputSource::ConfiguredFiles;
         let input_size = draft.input_text.len();
         let input_too_large = input_size > cli::MAX_PAYLOAD_DOCUMENT_BYTES;
-        let mut condition_valid = true;
-        let mut host_parameters_valid = true;
+        let footer_ready = std::cell::Cell::new((false, false, false));
         let dialog_idle = self.pending_dialog.is_none();
         let mut browse_primary_root = false;
-        egui::Window::new("Preview mapping")
-            .collapsible(false)
-            .resizable(true)
-            .vscroll(true)
-            .default_size(egui::vec2(760.0, 620.0))
-            .min_size(egui::vec2(520.0, 360.0))
-            .show(ctx, |ui| {
+        let response = crate::ui_kit::dialog(
+            ctx,
+            crate::ui_kit::DialogKind::Docked,
+            "Preview mapping",
+        )
+            .id_salt("preview_mapping")
+            .width(crate::ui_kit::DialogWidth::Wide)
+            .show(|ui| {
+                let mut condition_valid = true;
+                let mut host_parameters_valid = true;
                 if let Some(session) = &mut self.primary_document {
                     ui.add_enabled_ui(!running && dialog_idle, |ui| {
                         ui.horizontal(|ui| {
@@ -576,11 +602,20 @@ impl FerruleApp {
                             ui.end_row();
                         });
                 });
-                ui.add_enabled_ui(!running, |ui| {
-                    host_parameters_valid = self.host_parameters.show(ui);
-                });
+                if !documents && !files && phase.is_none() {
+                    show_preview_input(ui, draft, input_size);
+                }
+                crate::ui_kit::collapsible_section(
+                    ui, "preview_run_values", "Run values", false, |ui| {
+                        ui.add_enabled_ui(!running, |ui| {
+                            host_parameters_valid = self.host_parameters.show(ui);
+                        });
+                    },
+                );
                 // Document previews have no debug route.
                 if !documents {
+                    crate::ui_kit::collapsible_section(
+                        ui, "preview_debugging", "Debugging", false, |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Debug breakpoint");
                         ui.add_enabled_ui(!running, |ui| {
@@ -642,6 +677,7 @@ impl FerruleApp {
                             "Pause at the first graph or function evaluation error",
                         );
                     });
+                    });
                 }
                 if documents {
                     if !documents_ready {
@@ -693,15 +729,6 @@ impl FerruleApp {
                             "Extract file PDFs in an owned worker process",
                         ),
                     );
-                } else {
-                    ui.horizontal(|ui| {
-                        ui.strong("Primary input");
-                        ui.weak(format!(
-                            "{} / {}",
-                            format_preview_bytes(input_size),
-                            format_preview_bytes(cli::MAX_PAYLOAD_DOCUMENT_BYTES)
-                        ));
-                    });
                 }
                 if input_too_large && !files && !documents {
                     ui.colored_label(
@@ -727,26 +754,11 @@ impl FerruleApp {
                         "Inputs are read from the configured files when the preview starts. \
                          Outputs stay in memory; no file is written.",
                     );
-                } else if documents {
-                } else {
-                    let button_height = ui.spacing().interact_size.y;
-                    // The scrolling window can offer unbounded content height.
-                    let editor_height =
-                        (ui.available_height() - button_height - 18.0).clamp(140.0, 360.0);
-                    egui::ScrollArea::both()
-                        .id_salt("preview_primary_input_scroll")
-                        .auto_shrink([false, false])
-                        .max_height(editor_height)
-                        .show(ui, |ui| {
-                            ui.add_sized(
-                                egui::vec2(ui.available_width(), editor_height),
-                                egui::TextEdit::multiline(&mut draft.input_text)
-                                    .code_editor()
-                                    .desired_width(f32::INFINITY),
-                            );
-                        });
                 }
-                ui.separator();
+                let ready = if documents { documents_ready } else { draft.can_execute() };
+                footer_ready.set((ready, host_parameters_valid, condition_valid));
+            }, |ui| {
+                let (ready, host_parameters_valid, condition_valid) = footer_ready.get();
                 ui.horizontal(|ui| match &phase {
                     Some(
                         PreviewPhase::Paused(_)
@@ -792,7 +804,6 @@ impl FerruleApp {
                         if ui.button("Cancel").clicked() {
                             action = Some(PreviewAction::Cancel);
                         }
-                        let ready = if documents { documents_ready } else { draft.can_execute() };
                         if ui
                             .add_enabled(ready && host_parameters_valid, egui::Button::new("Preview"))
                             .clicked()
@@ -809,6 +820,9 @@ impl FerruleApp {
                 });
             });
 
+        if response.close_requested {
+            action = Some(PreviewAction::Cancel);
+        }
         if browse_primary_root {
             self.browse_primary_input_root();
         }
