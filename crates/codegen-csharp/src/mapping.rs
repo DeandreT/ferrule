@@ -50,6 +50,39 @@ pub(crate) fn render_typed(program: &Program) -> Result<String, EmitError> {
     render_with_json_boundaries(program, false)
 }
 
+pub(crate) fn eager_json_message_entry(
+    program: &Program,
+    plan: &codegen::EagerX12JsonMessage,
+) -> String {
+    let mut scopes = Vec::new();
+    let body = add_scope(&program.root, &mut scopes);
+    let filename = add_scope(&program.extra_targets[0].root, &mut scopes);
+    let driver = plan
+        .driver
+        .iter()
+        .map(|part| literal::string(part))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        r#"
+public static partial class GeneratedMapping
+{{
+    /// <summary>Prepare one message. The caller retains one invocation context; no file is opened.</summary>
+    public static global::Ferrule.Runtime.FerruleDocument? PreparePrimaryX12JsonMessage(global::Ferrule.Runtime.ScopeContext context, global::System.Func<string>? bodyClock = null, global::System.Func<string>? filenameClock = null)
+    {{
+        global::System.ArgumentNullException.ThrowIfNull(context);
+        if (context.ResolveSourceField(new string[] {{ {driver} }}).Kind == global::Ferrule.Runtime.FerruleValueKind.Null) return null;
+        var body = Scope_{body}(context.WithDocumentBodyClock(bodyClock));
+        var filename = (global::Ferrule.Runtime.FerruleGroup)Scope_{filename}(context.WithDocumentFilenameClock(filenameClock));
+        var value = filename.Fields.FirstOrDefault(field => field.Name == "Path")?.Value as global::Ferrule.Runtime.FerruleScalar;
+        return global::Ferrule.Runtime.FerruleDynamicDocuments.Create({}U, value?.Value ?? global::Ferrule.Runtime.FerruleValue.Null, body);
+    }}
+}}
+"#,
+        plan.filename_node
+    )
+}
+
 pub(crate) fn append_basic_owned_json_api(
     program: &Program,
     output: &mut String,

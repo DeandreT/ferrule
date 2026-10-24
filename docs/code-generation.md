@@ -1103,6 +1103,17 @@ with that strict primary-target writer. Generated `serialize_mapforce_json` /
 `SerializeMapForceJson` serializes an already evaluated body; it does not evaluate
 the filename or decide when the body should run.
 
+For the separate eager JSON document profile, an imported `X12DocumentBody` can
+produce `eager_json_project(filename_target)`. This preserves its body and filename
+projects and joins their shared graph identities into a primary body plus one
+named filename output. Conflicting identities or an XML body are refused.
+`emit_with_eager_x12_json_message` then adds `prepare_primary_x12_json_message` /
+`PreparePrimaryX12JsonMessage`. Pass one message context: an absent driver produces
+no document; otherwise the complete body evaluates before the filename. The two
+clock callbacks remain separate and share the original invocation counter state.
+The result is a portable document member, not a written or accepted file. This
+profile does not implement deferred XML evaluation or physical publication.
+
 `parse_mapforce_x12_source` / `ParseMapForceSourceBytes` adds a separately selected
 native source value view. It removes ignored tab/CR/LF characters while retaining
 an LF segment terminator, treats empty physical values and empty composites as

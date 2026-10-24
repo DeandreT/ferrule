@@ -31,6 +31,55 @@ pub struct X12DocumentBody {
     pub driver_path: Vec<String>,
 }
 
+impl X12DocumentBody {
+    /// Retain the independently imported filename as a named output after the
+    /// eager JSON body. The separate body and filename projects are unchanged.
+    pub fn eager_json_project(&self, filename_target: &str) -> Result<Project, MfdError> {
+        if self.format != X12DocumentBodyFormat::Json
+            || filename_target.is_empty()
+            || self.body.source != self.filename.source
+            || !self.body.extra_targets.is_empty()
+            || !self.body.extra_sources.is_empty()
+            || !self.filename.extra_sources.is_empty()
+            || !self.filename.extra_targets.is_empty()
+            || !self.filename.failure_rules.is_empty()
+        {
+            return Err(refuse(
+                "eager JSON documents require one body and its same-source filename",
+            ));
+        }
+        let mut project = self.body.clone();
+        for (id, node) in &self.filename.graph.nodes {
+            match project.graph.nodes.get(id) {
+                Some(existing)
+                    if serde_json::to_vec(existing).map_err(refuse)?
+                        != serde_json::to_vec(node).map_err(refuse)? =>
+                {
+                    return Err(refuse("body/filename graph identities conflict"));
+                }
+                Some(_) => {}
+                None => {
+                    project.graph.nodes.insert(*id, node.clone());
+                }
+            }
+        }
+        project.extra_targets.push(mapping::NamedTarget {
+            name: filename_target.into(),
+            path: None,
+            schema: self.filename.target.clone(),
+            options: self.filename.target_options.clone(),
+            root: self.filename.root.clone(),
+        });
+        let issues = engine::validate(&project);
+        if !issues.is_empty() {
+            return Err(refuse(format!(
+                "eager JSON document validation: {issues:?}"
+            )));
+        }
+        Ok(project)
+    }
+}
+
 pub struct ImportedX12DocumentBodies {
     pub source_schema: SchemaNode,
     pub source_options: mapping::FormatOptions,

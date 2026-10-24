@@ -46,6 +46,48 @@ pub fn emit_with_mapforce_x12_json(
 }
 impl std::error::Error for MapForceSourceEmitError {}
 
+/// Prepare one selected message with eager JSON body evaluation, followed by
+/// filename evaluation. This does not read, serialize, open or publish a file.
+pub fn emit_with_eager_x12_json_message(
+    program: &Program,
+    options: &Options,
+    schema: &SchemaNode,
+    source_options: &FormatOptions,
+    message: &[String],
+    filename_target: &str,
+    driver: &[String],
+) -> Result<ArtifactSet, MapForceSourceEmitError> {
+    let plan = codegen::prepare_eager_x12_json_message(program, filename_target, driver)
+        .map_err(MapForceSourceEmitError::Writer)?;
+    let mut files = emit_with_mapforce_x12_json(program, options, schema, source_options, message)?
+        .into_files();
+    let mapping = files
+        .iter_mut()
+        .find(|file| file.path.as_str() == "src/lib.rs")
+        .ok_or(MapForceSourceEmitError::Artifact)?;
+    let driver = plan
+        .driver
+        .iter()
+        .map(|part| format!("{part:?}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    mapping.contents.extend_from_slice(format!(r#"
+/// The caller retains one invocation context while visiting selected messages.
+pub fn prepare_primary_x12_json_message<'a>(context: &ScopeContext<'a>, body_clock: Option<&'a dyn codegen_runtime::DocumentBodyClock>, filename_clock: Option<&'a dyn codegen_runtime::DocumentFilenameClock>) -> Result<Option<codegen_runtime::DocumentMember>, RuntimeError> {{
+    if matches!(context.resolve_source_field(&[{driver}])?, Value::Null) {{ return Ok(None); }}
+    let body_context=context.clone().with_document_body_clock(body_clock);
+    let body=scope_root(&body_context)?;
+    let filename_context=context.clone().with_document_filename_clock(filename_clock);
+    let filename=scope_extra_0(&filename_context)?;
+    let path=filename.field("Path").and_then(Instance::as_scalar).cloned().unwrap_or(Value::Null);
+    Ok(Some(codegen_runtime::dynamic_document({},path,body)?))
+}}
+"#,plan.filename_node).as_bytes());
+    ArtifactSet::new(files)
+        .map_err(EmitError::from)
+        .map_err(MapForceSourceEmitError::Emit)
+}
+
 /// Add a bound source reader; hosts still own file acquisition, message iteration
 /// and all filename/body/publication phases.
 pub fn emit_with_mapforce_x12_source(
