@@ -271,6 +271,27 @@ fn build_boundary_snarl(
             endpoint_block_size(&section.title, &section.pin_labels),
         );
     }
+    let wired = snarl
+        .wires()
+        .flat_map(|(from, to)| [from.node, to.node])
+        .collect::<std::collections::BTreeSet<_>>();
+    for (id, _, canvas) in snarl.nodes_pos_ids() {
+        if !wired.contains(&id)
+            && let CanvasNode::Graph(node) = canvas
+            && let Some(value @ Node::Const { .. }) = project.graph.nodes.get(node)
+        {
+            // Before fonts exist, reserve a conservative bounded header width
+            // for the disconnected shelf. Interactive layout uses measured
+            // frames; saved sidecar positions are restored below unchanged.
+            let width = (crate::graph_viewer::readable_node_label(value)
+                .chars()
+                .count() as f32
+                * 14.0
+                + 64.0)
+                .clamp(100.0, 420.0);
+            initial_sizes.insert(*canvas, egui::vec2(width, 88.0));
+        }
+    }
     arrange_snarl(
         &mut snarl,
         &initial_sizes,
