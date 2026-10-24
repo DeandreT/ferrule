@@ -100,10 +100,21 @@ fn click(
     wanted: &str,
     direction: f32,
 ) -> anyhow::Result<()> {
-    // Keep these original controls in their unchanged 1200x1800 viewport.
-    // Reuse the full-clip, real outer-wheel path exercised separately at
-    // desktop heights; a clipped control is never treated as clickable.
+    // Use the same full-clip pointer/wheel path as the desktop-height check;
+    // a clipped control is never treated as clickable.
     desktop_wizard_click(app, ctx, directory, 1800.0, wanted, direction)
+}
+
+fn configure_workbook_in_card(
+    app: &mut FerruleApp,
+    context: &egui::Context,
+    directory: &TestDirectory,
+    height: f32,
+) -> anyhow::Result<()> {
+    // Once configured, a card no longer offers this menu, so the second call
+    // naturally selects the still-unconfigured target card.
+    desktop_wizard_click(app, context, directory, height, "Use schema with…", -150.0)?;
+    desktop_wizard_click(app, context, directory, height, "Excel workbook", -150.0)
 }
 
 #[test]
@@ -116,12 +127,12 @@ fn flat_workbook_wizard_real_controls_keep_drafts_separate_and_capture_headers()
     setup(&mut app, &directory)?;
     let context = egui::Context::default();
     crate::icons::install(&context);
-    click(&mut app, &context, &directory, "Configure workbook", -150.0)?;
+    configure_workbook_in_card(&mut app, &context, &directory, 1800.0)?;
     assert!(matches!(
         app.new_mapping_setup.as_ref().unwrap().source,
         Some(MappingBoundary::Xlsx(_))
     ));
-    click(&mut app, &context, &directory, "Configure workbook", -150.0)?;
+    configure_workbook_in_card(&mut app, &context, &directory, 1800.0)?;
     click(&mut app, &context, &directory, "Skip header row", 150.0)?;
     click(&mut app, &context, &directory, "Write header row", -150.0)?;
     let source = staged(&mut app, SchemaSide::Source).options(false)?;
@@ -754,12 +765,10 @@ fn desktop_wizard_click(
 }
 
 #[test]
-fn flat_workbook_outer_scroll_reaches_configure_and_create_at_desktop_heights() -> anyhow::Result<()>
-{
+fn flat_workbook_pinned_footer_stays_visible_at_desktop_heights() -> anyhow::Result<()> {
     let mut directory = TestDirectory::new()?;
-    // Enough ordinary fields to fill each bounded 160-pixel inner field list.
-    // The new outer scrolling must expose the real footer in both desktop
-    // heights; this is deliberately independent of the old 1800-pixel helper.
+    // Enough ordinary fields to fill each bounded inner field list. The footer
+    // must stay visible independently of the scrolling format forms.
     let schema = r#"{"title":"Row","type":"object","properties":{"Name":{"type":"string"},"Count":{"type":"integer"},"City":{"type":"string"},"Country":{"type":"string"},"Product":{"type":"string"},"Code":{"type":"string"},"Region":{"type":"string"},"Note":{"type":"string"}},"additionalProperties":false}"#;
     let source_path = directory.path.join("desktop-source.json");
     let target_path = directory.path.join("desktop-target.json");
@@ -774,14 +783,7 @@ fn flat_workbook_outer_scroll_reaches_configure_and_create_at_desktop_heights() 
         app.stage_mapping_schema(SchemaSide::Target, target_path.clone());
         let context = egui::Context::default();
         crate::icons::install(&context);
-        desktop_wizard_click(
-            &mut app,
-            &context,
-            &directory,
-            height,
-            "Configure workbook",
-            -150.0,
-        )?;
+        configure_workbook_in_card(&mut app, &context, &directory, height)?;
         assert!(matches!(
             app.new_mapping_setup.as_ref().unwrap().source,
             Some(MappingBoundary::Xlsx(_))
@@ -790,21 +792,13 @@ fn flat_workbook_outer_scroll_reaches_configure_and_create_at_desktop_heights() 
             app.new_mapping_setup.as_ref().unwrap().target,
             Some(MappingBoundary::Schema(_))
         ));
-        desktop_wizard_click(
-            &mut app,
-            &context,
-            &directory,
-            height,
-            "Configure workbook",
-            -150.0,
-        )?;
+        configure_workbook_in_card(&mut app, &context, &directory, height)?;
         assert!(matches!(
             app.new_mapping_setup.as_ref().unwrap().target,
             Some(MappingBoundary::Xlsx(_))
         ));
-        // Return through real outer-wheel input to the source panel before
-        // proving that its distant footer requires scrolling, regardless of
-        // the previous target-configuration scroll offset.
+        // Reveal the source form through real wheel input if needed; that
+        // navigation must never move the footer out of the desktop viewport.
         desktop_wizard_reveal(
             &mut app,
             &context,
@@ -832,8 +826,8 @@ fn flat_workbook_outer_scroll_reaches_configure_and_create_at_desktop_heights() 
             )?;
         }
         assert!(
-            desktop_wizard_visible(&before_scroll, "Create mapping").is_none(),
-            "the full footer begins outside this fixed desktop viewport"
+            desktop_wizard_visible(&before_scroll, "Create mapping").is_some(),
+            "the full footer stays pinned inside this fixed desktop viewport"
         );
         let footer = desktop_wizard_reveal(
             &mut app,

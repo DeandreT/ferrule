@@ -39,17 +39,31 @@ pub(super) fn show_options(
     target: bool,
 ) {
     crate::new_mapping::show_protobuf_root_message(ui, draft, ("primary", side));
-    ui.horizontal(|ui| {
+    ui.vertical(|ui| {
         ui.label(if target {
             "Output file (optional)"
         } else {
             "Input file (optional)"
         });
-        ui.add(
-            egui::TextEdit::singleline(&mut draft.instance_path)
-                .desired_width(380.0)
-                .hint_text(if target { "output.bin" } else { "input.bin" }),
+        let response = ui.add(
+            crate::ui_kit::text_field(&mut draft.instance_path, crate::ui_kit::FieldWidth::Fill)
+                .hint_text(if target {
+                    "Optional: output.bin"
+                } else {
+                    "Optional: input.bin"
+                }),
         );
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::Role::TextInput,
+                ui.is_enabled(),
+                if target {
+                    "Target protobuf path"
+                } else {
+                    "Source protobuf path"
+                },
+            )
+        });
     });
     ui.weak(
         "The project keeps its schema and local imports. You can choose a data file when running.",

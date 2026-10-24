@@ -182,7 +182,7 @@ fn frame(
 
 fn label_center(shape: &egui::epaint::Shape) -> Option<egui::Pos2> {
     match shape {
-        egui::epaint::Shape::Text(text) if text.galley.text() == "Add call" => {
+        egui::epaint::Shape::Text(text) if text.galley.text().ends_with(" Insert call") => {
             Some(text.visual_bounding_rect().center())
         }
         egui::epaint::Shape::Vec(shapes) => shapes.iter().find_map(label_center),

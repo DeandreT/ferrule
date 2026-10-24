@@ -12,6 +12,10 @@ mod protobuf;
 #[path = "new_mapping/xlsx.rs"]
 mod xlsx;
 
+#[cfg(test)]
+#[path = "new_mapping/dialog_visual_tests.rs"]
+mod dialog_visual_tests;
+
 impl FerruleApp {
     pub(super) fn begin_new_mapping(&mut self) {
         self.new_mapping_setup = Some(NewMappingSetup::default());
@@ -170,218 +174,71 @@ impl FerruleApp {
         let mut action = None;
         let mut refresh_source = false;
 
-        egui::Window::new("New Mapping")
-            .collapsible(false)
-            .resizable(true)
-            .vscroll(true)
-            .default_width(680.0)
-            .min_width(520.0)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .show(ctx, |ui| {
-                ui.strong("Source");
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(boundary_label(setup.source.as_ref()));
-                    if ui
-                        .add_enabled(dialog_idle, egui::Button::new("Choose schema or layout..."))
-                        .clicked()
-                    {
-                        action = Some(NewMappingAction::ChooseSchema(SchemaSide::Source));
-                    }
-                    if ui
-                        .add_enabled(dialog_idle, egui::Button::new("Choose CSV..."))
-                        .clicked()
-                    {
-                        action = Some(NewMappingAction::ChooseCsvSource);
-                    }
-                    if setup.source.as_ref().is_some_and(|boundary| {
-                        matches!(boundary, MappingBoundary::Schema(imported)
-                            if crate::extra_targets::flat_scalar_fields(&imported.schema).is_ok())
-                    }) && ui
-                        .add_enabled(dialog_idle, egui::Button::new("Configure fixed-width"))
-                        .clicked()
-                    {
-                        action = Some(NewMappingAction::ConfigureFixedWidth(SchemaSide::Source));
-                    }
-                    if setup.source.as_ref().is_some_and(|boundary| {
-                        matches!(boundary, MappingBoundary::Schema(imported)
-                            if crate::new_mapping::XlsxBoundaryDraft::supports_schema(&imported.schema))
-                    }) && ui
-                        .add_enabled(dialog_idle, egui::Button::new("Configure workbook"))
-                        .clicked()
-                    {
-                        action = Some(NewMappingAction::ConfigureXlsx(SchemaSide::Source));
-                    }
-                    if ui
-                        .add_enabled(dialog_idle, egui::Button::new("Choose SQLite..."))
-                        .clicked()
-                    {
-                        action = Some(NewMappingAction::ChooseSqlite(SchemaSide::Source));
-                    }
-                });
-                if let Some(MappingBoundary::Csv(draft)) = setup.source.as_mut() {
-                    refresh_source = show_csv_options(ui, draft, "source");
-                    ui.weak("Changing CSV options refreshes column names; selected types stay.");
-                    show_csv_columns(ui, draft, true);
-                    show_csv_preview(ui, draft);
-                    show_csv_validation(ui, draft);
-                }
-                if let Some(MappingBoundary::FixedWidth(draft)) = setup.source.as_mut()
-                    && fixed_width::show_options(ui, draft, false)
-                {
-                    action = Some(NewMappingAction::AbandonFixedWidth(SchemaSide::Source));
-                }
-                if let Some(MappingBoundary::Xlsx(draft)) = setup.source.as_mut()
-                    && ui.add_enabled_ui(dialog_idle, |ui| xlsx::show_options(ui, draft, false)).inner
-                {
-                    action = Some(NewMappingAction::AbandonXlsx(SchemaSide::Source));
-                }
-                if let Some(MappingBoundary::Protobuf(draft)) = setup.source.as_mut() {
-                    protobuf::show_options(ui, draft, "source", false);
-                }
-                if let Some(MappingBoundary::FlexText(draft)) = setup.source.as_mut() {
-                    flextext::show_options(ui, draft, false);
-                }
-                if let Some(MappingBoundary::Sqlite(draft)) = setup.source.as_mut()
-                    && show_sqlite_table(ui, draft, "source", false)
-                {
-                    action = Some(NewMappingAction::LoadSqliteTable(SchemaSide::Source));
-                }
-
-                ui.separator();
-                ui.strong("Target");
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(boundary_label(setup.target.as_ref()));
-                    if ui
-                        .add_enabled(dialog_idle, egui::Button::new("Choose schema or layout..."))
-                        .clicked()
-                    {
-                        action = Some(NewMappingAction::ChooseSchema(SchemaSide::Target));
-                    }
-                    if !matches!(setup.target.as_ref(), Some(MappingBoundary::Csv(_)))
-                        && ui
-                            .add_enabled(dialog_idle, egui::Button::new("Configure CSV"))
-                            .clicked()
-                    {
-                        action = Some(NewMappingAction::ConfigureCsvTarget);
-                    }
-                    if setup.target.as_ref().is_some_and(|boundary| {
-                        matches!(boundary, MappingBoundary::Schema(imported)
-                            if crate::extra_targets::flat_scalar_fields(&imported.schema).is_ok())
-                    }) && ui
-                        .add_enabled(dialog_idle, egui::Button::new("Configure fixed-width"))
-                        .clicked()
-                    {
-                        action = Some(NewMappingAction::ConfigureFixedWidth(SchemaSide::Target));
-                    }
-                    if setup.target.as_ref().is_some_and(|boundary| {
-                        matches!(boundary, MappingBoundary::Schema(imported)
-                            if crate::new_mapping::XlsxBoundaryDraft::supports_schema(&imported.schema))
-                    }) && ui
-                        .add_enabled(dialog_idle, egui::Button::new("Configure workbook"))
-                        .clicked()
-                    {
-                        action = Some(NewMappingAction::ConfigureXlsx(SchemaSide::Target));
-                    }
-                    if ui
-                        .add_enabled(dialog_idle, egui::Button::new("Choose SQLite..."))
-                        .clicked()
-                    {
-                        action = Some(NewMappingAction::ChooseSqlite(SchemaSide::Target));
-                    }
-                });
-                if let Some(MappingBoundary::Csv(draft)) = setup.target.as_mut() {
-                    ui.horizontal(|ui| {
-                        ui.label("Output path");
-                        let was_tsv = draft.path.to_ascii_lowercase().ends_with(".tsv");
-                        if ui
-                            .add(
-                                egui::TextEdit::singleline(&mut draft.path)
-                                    .desired_width(380.0)
-                                    .hint_text("output.csv"),
-                            )
-                            .changed()
-                            && !was_tsv
-                            && draft.path.to_ascii_lowercase().ends_with(".tsv")
-                            && draft.delimiter == ','
-                        {
-                            draft.delimiter = '\t';
-                        }
-                        if ui
-                            .add_enabled(dialog_idle, egui::Button::new("Choose..."))
-                            .clicked()
-                        {
-                            action = Some(NewMappingAction::ChooseCsvTargetOutput);
-                        }
-                    });
-                    show_csv_options(ui, draft, "target");
-                    show_csv_columns(ui, draft, false);
-                    if draft.columns.len() < 256 && ui.button("Add column").clicked() {
-                        draft.columns.push(CsvColumnDraft {
-                            name: String::new(),
-                            ty: ir::ScalarType::String,
+        let response = crate::ui_kit::dialog(ctx, crate::ui_kit::DialogKind::Modal, "New mapping")
+            .width(crate::ui_kit::DialogWidth::Wide)
+            .show(
+                |ui| {
+                    ui.columns(2, |columns| {
+                        egui::Frame::group(columns[0].style()).show(&mut columns[0], |ui| {
+                            if let Some(selected) = show_boundary_picker(
+                                ui,
+                                setup.source.as_ref(),
+                                SchemaSide::Source,
+                                dialog_idle,
+                            ) {
+                                action = Some(selected);
+                            }
+                            refresh_source = show_boundary_options(
+                                ui,
+                                setup.source.as_mut(),
+                                SchemaSide::Source,
+                                dialog_idle,
+                                &mut action,
+                            );
                         });
-                    }
-                    show_csv_validation(ui, draft);
-                }
-                if let Some(MappingBoundary::FixedWidth(draft)) = setup.target.as_mut()
-                    && fixed_width::show_options(ui, draft, true)
-                {
-                    action = Some(NewMappingAction::AbandonFixedWidth(SchemaSide::Target));
-                }
-                if let Some(MappingBoundary::Xlsx(draft)) = setup.target.as_mut()
-                    && ui.add_enabled_ui(dialog_idle, |ui| xlsx::show_options(ui, draft, true)).inner
-                {
-                    action = Some(NewMappingAction::AbandonXlsx(SchemaSide::Target));
-                }
-                if let Some(MappingBoundary::Protobuf(draft)) = setup.target.as_mut() {
-                    protobuf::show_options(ui, draft, "target", true);
-                }
-                if let Some(MappingBoundary::FlexText(draft)) = setup.target.as_mut() {
-                    flextext::show_options(ui, draft, true);
-                }
-                if let Some(MappingBoundary::Sqlite(draft)) = setup.target.as_mut() {
-                    if show_sqlite_table(ui, draft, "target", true) {
-                        action = Some(NewMappingAction::LoadSqliteTable(SchemaSide::Target));
-                    }
-                    ui.horizontal(|ui| {
-                        ui.label("Output path");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut draft.output_path)
-                                .desired_width(380.0)
-                                .hint_text("output.db"),
-                        );
-                        if ui
-                            .add_enabled(dialog_idle, egui::Button::new("Choose..."))
-                            .clicked()
-                        {
-                            action = Some(NewMappingAction::ChooseSqliteTargetOutput);
-                        }
+                        egui::Frame::group(columns[1].style()).show(&mut columns[1], |ui| {
+                            if let Some(selected) = show_boundary_picker(
+                                ui,
+                                setup.target.as_ref(),
+                                SchemaSide::Target,
+                                dialog_idle,
+                            ) {
+                                action = Some(selected);
+                            }
+                            show_boundary_options(
+                                ui,
+                                setup.target.as_mut(),
+                                SchemaSide::Target,
+                                dialog_idle,
+                                &mut action,
+                            );
+                        });
                     });
-                    ui.weak(
-                        "Running the mapping replaces this table's rows in the output database.",
-                    );
-                    show_sqlite_validation(ui, draft, true);
-                }
-
-                ui.separator();
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(dialog_idle, egui::Button::new("Cancel"))
-                        .clicked()
-                    {
-                        action = Some(NewMappingAction::Cancel);
-                    }
-                    if ui
-                        .add_enabled(
-                            dialog_idle && can_create,
-                            egui::Button::new("Create mapping"),
-                        )
-                        .clicked()
-                    {
-                        action = Some(NewMappingAction::Create);
-                    }
-                });
-            });
+                },
+                |ui| {
+                    crate::ui_kit::dialog_buttons(
+                        ui,
+                        crate::ui_kit::DialogButton::new("Create mapping")
+                            .disabled_if(!dialog_idle, "Finish choosing a file first")
+                            .disabled_if(
+                                !can_create,
+                                "Select a source and target and complete their format settings",
+                            ),
+                        Some(
+                            crate::ui_kit::DialogButton::new("Cancel")
+                                .disabled_if(!dialog_idle, "Finish choosing a file first"),
+                        ),
+                        None,
+                    )
+                },
+            );
+        if response.close_requested && dialog_idle
+            || response.footer == Some(crate::ui_kit::DialogAction::Secondary)
+        {
+            action = Some(NewMappingAction::Cancel);
+        } else if response.footer == Some(crate::ui_kit::DialogAction::Primary) {
+            action = Some(NewMappingAction::Create);
+        }
 
         if refresh_source
             && let Some(MappingBoundary::Csv(draft)) = self
@@ -429,7 +286,10 @@ impl FerruleApp {
                 self.stage_mapping_sqlite_table(side);
             }
             Some(NewMappingAction::ConfigureCsvTarget) => {
-                if let Some(setup) = self.new_mapping_setup.as_mut() {
+                if let Some(setup) = self.new_mapping_setup.as_mut()
+                    && !matches!(setup.target.as_ref(), Some(MappingBoundary::Csv(_)))
+                {
+                    // Choosing the active format must not discard its edited draft.
                     setup.target = Some(MappingBoundary::Csv(CsvBoundaryDraft::target()));
                 }
             }
@@ -523,9 +383,188 @@ impl FerruleApp {
     }
 }
 
+fn show_boundary_options(
+    ui: &mut egui::Ui,
+    boundary: Option<&mut MappingBoundary>,
+    side: SchemaSide,
+    dialog_idle: bool,
+    action: &mut Option<NewMappingAction>,
+) -> bool {
+    let target = matches!(side, SchemaSide::Target);
+    let salt = if target { "target" } else { "source" };
+    match boundary {
+        Some(MappingBoundary::Csv(draft)) => {
+            if target {
+                ui.label("Output path (required)");
+                ui.horizontal(|ui| {
+                    let was_tsv = draft.path.to_ascii_lowercase().ends_with(".tsv");
+                    if ui
+                        .add(
+                            crate::ui_kit::text_field(
+                                &mut draft.path,
+                                crate::ui_kit::FieldWidth::Medium,
+                            )
+                            .hint_text("Enter a CSV output path"),
+                        )
+                        .changed()
+                        && !was_tsv
+                        && draft.path.to_ascii_lowercase().ends_with(".tsv")
+                        && draft.delimiter == ','
+                    {
+                        draft.delimiter = '\t';
+                    }
+                    if ui
+                        .add_enabled(dialog_idle, egui::Button::new("Browse…"))
+                        .clicked()
+                    {
+                        *action = Some(NewMappingAction::ChooseCsvTargetOutput);
+                    }
+                });
+            }
+            let refresh = show_csv_options(ui, draft, salt);
+            if !target {
+                crate::ui_kit::help(
+                    ui,
+                    "Changing CSV options refreshes column names; selected types stay.",
+                );
+            }
+            show_csv_columns(ui, draft, !target);
+            if target {
+                if draft.columns.len() < 256 && ui.button("Add column").clicked() {
+                    draft.columns.push(CsvColumnDraft {
+                        name: String::new(),
+                        ty: ir::ScalarType::String,
+                    });
+                }
+            } else {
+                show_csv_preview(ui, draft);
+            }
+            show_csv_validation(ui, draft);
+            return refresh && !target;
+        }
+        Some(MappingBoundary::FixedWidth(draft)) => {
+            if fixed_width::show_options(ui, draft, target) {
+                *action = Some(NewMappingAction::AbandonFixedWidth(side));
+            }
+        }
+        Some(MappingBoundary::Xlsx(draft)) => {
+            if ui
+                .add_enabled_ui(dialog_idle, |ui| xlsx::show_options(ui, draft, target))
+                .inner
+            {
+                *action = Some(NewMappingAction::AbandonXlsx(side));
+            }
+        }
+        Some(MappingBoundary::Protobuf(draft)) => protobuf::show_options(ui, draft, salt, target),
+        Some(MappingBoundary::FlexText(draft)) => flextext::show_options(ui, draft, target),
+        Some(MappingBoundary::Sqlite(draft)) => {
+            if show_sqlite_table(ui, draft, salt, target) {
+                *action = Some(NewMappingAction::LoadSqliteTable(side));
+            }
+            if target {
+                ui.label("Output path (required)");
+                ui.horizontal(|ui| {
+                    ui.add(
+                        crate::ui_kit::text_field(
+                            &mut draft.output_path,
+                            crate::ui_kit::FieldWidth::Medium,
+                        )
+                        .hint_text("Enter a database output path"),
+                    );
+                    if ui
+                        .add_enabled(dialog_idle, egui::Button::new("Browse…"))
+                        .clicked()
+                    {
+                        *action = Some(NewMappingAction::ChooseSqliteTargetOutput);
+                    }
+                });
+                crate::ui_kit::help(
+                    ui,
+                    "Running the mapping replaces this table's rows in the output database.",
+                );
+                show_sqlite_validation(ui, draft, true);
+            }
+        }
+        Some(MappingBoundary::Schema(_)) | None => (),
+    }
+    false
+}
+
+fn show_boundary_picker(
+    ui: &mut egui::Ui,
+    boundary: Option<&MappingBoundary>,
+    side: SchemaSide,
+    enabled: bool,
+) -> Option<NewMappingAction> {
+    let mut action = None;
+    ui.horizontal(|ui| {
+        ui.strong(side.label());
+        ui.add_enabled_ui(enabled, |ui| {
+            ui.menu_button("Choose format…", |ui| {
+                if ui
+                    .button("Schema or layout…")
+                    .on_hover_text("Import XSD, JSON Schema, Protocol Buffers or FlexText")
+                    .clicked()
+                {
+                    action = Some(NewMappingAction::ChooseSchema(side));
+                    ui.close();
+                }
+                if ui.button("CSV / delimited text…").clicked() {
+                    action = Some(match side {
+                        SchemaSide::Source => NewMappingAction::ChooseCsvSource,
+                        SchemaSide::Target => NewMappingAction::ConfigureCsvTarget,
+                    });
+                    ui.close();
+                }
+                if ui.button("SQLite database…").clicked() {
+                    action = Some(NewMappingAction::ChooseSqlite(side));
+                    ui.close();
+                }
+            });
+        });
+    });
+    let label = boundary_label(boundary);
+    ui.add(
+        egui::Label::new(if boundary.is_none() {
+            egui::RichText::new(&label).weak().italics()
+        } else {
+            egui::RichText::new(&label)
+        })
+        .truncate(),
+    )
+    .on_hover_text(&label);
+    if let Some(MappingBoundary::Schema(imported)) = boundary {
+        ui.add_enabled_ui(enabled, |ui| {
+            ui.menu_button("Use schema with…", |ui| {
+                if ui
+                    .add_enabled(
+                        crate::extra_targets::flat_scalar_fields(&imported.schema).is_ok(),
+                        egui::Button::new("Fixed-width text"),
+                    )
+                    .clicked()
+                {
+                    action = Some(NewMappingAction::ConfigureFixedWidth(side));
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(
+                        crate::new_mapping::XlsxBoundaryDraft::supports_schema(&imported.schema),
+                        egui::Button::new("Excel workbook"),
+                    )
+                    .clicked()
+                {
+                    action = Some(NewMappingAction::ConfigureXlsx(side));
+                    ui.close();
+                }
+            });
+        });
+    }
+    action
+}
+
 fn boundary_label(boundary: Option<&MappingBoundary>) -> String {
     match boundary {
-        None => "Not selected".to_owned(),
+        None => "Choose a format to get started".to_owned(),
         Some(MappingBoundary::Schema(imported)) => imported.path.display().to_string(),
         Some(MappingBoundary::Xlsx(draft)) => {
             format!("Workbook: {}", draft.schema_path.display())
@@ -557,13 +596,12 @@ fn show_sqlite_table(
     target: bool,
 ) -> bool {
     let mut load = false;
+    ui.label("Table");
     ui.horizontal(|ui| {
-        ui.label("Table");
         let mut table = draft.table.clone();
         if ui
             .add(
-                egui::TextEdit::singleline(&mut table)
-                    .desired_width(260.0)
+                crate::ui_kit::text_field(&mut table, crate::ui_kit::FieldWidth::Medium)
                     .char_limit(256)
                     .hint_text("Existing table name"),
             )
@@ -585,30 +623,31 @@ fn show_sqlite_table(
         && let ir::SchemaKind::Group { children, .. } = &schema.kind
     {
         ui.label(format!("{} columns from `{}`", children.len(), schema.name));
-        egui::ScrollArea::vertical()
-            .id_salt(("new_mapping_sqlite_columns", side))
-            .max_height(180.0)
-            .show(ui, |ui| {
-                egui::Grid::new(("new_mapping_sqlite_columns_grid", side))
-                    .num_columns(3)
-                    .spacing([12.0, 4.0])
-                    .show(ui, |ui| {
-                        for column in children {
-                            ui.monospace(short_preview_text(&column.name));
-                            let ty = match &column.kind {
-                                ir::SchemaKind::Scalar { ty } => scalar_type_label(*ty),
-                                _ => "Other",
-                            };
-                            ui.label(ty);
-                            if column.value_generation.is_some() {
-                                ui.weak("Generated");
-                            } else {
-                                ui.label("");
-                            }
-                            ui.end_row();
+        crate::ui_kit::list_area(
+            ("new_mapping_sqlite_columns", side),
+            crate::ui_kit::ListHeight::Medium,
+        )
+        .show(ui, |ui| {
+            egui::Grid::new(("new_mapping_sqlite_columns_grid", side))
+                .num_columns(3)
+                .spacing([12.0, 4.0])
+                .show(ui, |ui| {
+                    for column in children {
+                        ui.monospace(short_preview_text(&column.name));
+                        let ty = match &column.kind {
+                            ir::SchemaKind::Scalar { ty } => scalar_type_label(*ty),
+                            _ => "Other",
+                        };
+                        ui.label(ty);
+                        if column.value_generation.is_some() {
+                            ui.weak("Generated");
+                        } else {
+                            ui.label("");
                         }
-                    });
-            });
+                        ui.end_row();
+                    }
+                });
+        });
     }
     if !target {
         show_sqlite_validation(ui, draft, false);
@@ -625,10 +664,11 @@ fn show_sqlite_validation(ui: &mut egui::Ui, draft: &SqliteBoundaryDraft, target
 fn show_csv_options(ui: &mut egui::Ui, draft: &mut CsvBoundaryDraft, side: &str) -> bool {
     let previous = (draft.delimiter, draft.has_header_row, draft.quote_mode);
     let mut quote_character_changed = false;
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut draft.has_header_row, "Header row");
         ui.label("Delimiter");
         egui::ComboBox::from_id_salt(("new_mapping_delimiter", side))
+            .width(crate::ui_kit::FieldWidth::Small.min())
             .selected_text(delimiter_label(draft.delimiter))
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut draft.delimiter, ',', "Comma");
@@ -641,9 +681,8 @@ fn show_csv_options(ui: &mut egui::Ui, draft: &mut CsvBoundaryDraft, side: &str)
             let mut custom = draft.delimiter.to_string();
             if ui
                 .add(
-                    egui::TextEdit::singleline(&mut custom)
-                        .char_limit(1)
-                        .desired_width(28.0),
+                    crate::ui_kit::text_field(&mut custom, crate::ui_kit::FieldWidth::Small)
+                        .char_limit(1),
                 )
                 .changed()
                 && let Some(character) = custom.chars().next()
@@ -655,6 +694,7 @@ fn show_csv_options(ui: &mut egui::Ui, draft: &mut CsvBoundaryDraft, side: &str)
     ui.horizontal(|ui| {
         ui.label("Quoting");
         egui::ComboBox::from_id_salt(("new_mapping_quote", side))
+            .width(crate::ui_kit::FieldWidth::Medium.min())
             .selected_text(quote_mode_label(draft.quote_mode))
             .show_ui(ui, |ui| {
                 ui.selectable_value(
@@ -673,9 +713,11 @@ fn show_csv_options(ui: &mut egui::Ui, draft: &mut CsvBoundaryDraft, side: &str)
             ui.label("Quote");
             quote_character_changed = ui
                 .add(
-                    egui::TextEdit::singleline(&mut draft.custom_quote)
-                        .char_limit(1)
-                        .desired_width(28.0),
+                    crate::ui_kit::text_field(
+                        &mut draft.custom_quote,
+                        crate::ui_kit::FieldWidth::Small,
+                    )
+                    .char_limit(1),
                 )
                 .changed();
         }
@@ -713,46 +755,53 @@ fn show_csv_columns(ui: &mut egui::Ui, draft: &mut CsvBoundaryDraft, source: boo
         "Target columns (output order)"
     });
     let mut remove = None;
-    egui::ScrollArea::vertical()
-        .id_salt(if source {
+    crate::ui_kit::list_area(
+        if source {
             "new_mapping_source_columns"
         } else {
             "new_mapping_target_columns"
+        },
+        crate::ui_kit::ListHeight::Medium,
+    )
+    .show(ui, |ui| {
+        egui::Grid::new(if source {
+            "new_mapping_source_column_grid"
+        } else {
+            "new_mapping_target_column_grid"
         })
-        .max_height(210.0)
+        .num_columns(if source { 3 } else { 4 })
+        .spacing([8.0, 4.0])
         .show(ui, |ui| {
-            egui::Grid::new(if source {
-                "new_mapping_source_column_grid"
-            } else {
-                "new_mapping_target_column_grid"
-            })
-            .num_columns(if source { 3 } else { 4 })
-            .spacing([8.0, 4.0])
-            .show(ui, |ui| {
-                for (index, column) in draft.columns.iter_mut().enumerate() {
-                    ui.label(format!("{}", index + 1));
-                    ui.add(
-                        crate::ui_kit::text_field(
-                            &mut column.name,
-                            crate::ui_kit::FieldWidth::Large,
-                        )
+            for (index, column) in draft.columns.iter_mut().enumerate() {
+                ui.label(format!("{}", index + 1));
+                ui.add(
+                    crate::ui_kit::text_field(&mut column.name, crate::ui_kit::FieldWidth::Medium)
                         .char_limit(256),
-                    );
-                    egui::ComboBox::from_id_salt(("new_mapping_column_type", source, index))
-                        .selected_text(scalar_type_label(column.ty))
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut column.ty, ir::ScalarType::String, "String");
-                            ui.selectable_value(&mut column.ty, ir::ScalarType::Int, "Integer");
-                            ui.selectable_value(&mut column.ty, ir::ScalarType::Float, "Number");
-                            ui.selectable_value(&mut column.ty, ir::ScalarType::Bool, "Boolean");
-                        });
-                    if !source && ui.small_button("Remove").clicked() {
-                        remove = Some(index);
-                    }
-                    ui.end_row();
+                );
+                egui::ComboBox::from_id_salt(("new_mapping_column_type", source, index))
+                    .width(crate::ui_kit::FieldWidth::Small.min())
+                    .selected_text(scalar_type_label(column.ty))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut column.ty, ir::ScalarType::String, "String");
+                        ui.selectable_value(&mut column.ty, ir::ScalarType::Int, "Integer");
+                        ui.selectable_value(&mut column.ty, ir::ScalarType::Float, "Number");
+                        ui.selectable_value(&mut column.ty, ir::ScalarType::Bool, "Boolean");
+                    });
+                if !source
+                    && crate::ui_kit::icon_button(
+                        ui,
+                        lucide_icons::Icon::Trash2,
+                        "Remove column",
+                        None,
+                    )
+                    .clicked()
+                {
+                    remove = Some(index);
                 }
-            });
+                ui.end_row();
+            }
         });
+    });
     if let Some(index) = remove {
         draft.columns.remove(index);
     }
@@ -774,7 +823,7 @@ fn show_csv_preview(ui: &mut egui::Ui, draft: &CsvBoundaryDraft) {
     ));
     egui::ScrollArea::both()
         .id_salt("new_mapping_csv_preview")
-        .max_height(170.0)
+        .max_height(crate::ui_kit::ListHeight::Medium.px())
         .show(ui, |ui| {
             egui::Grid::new("new_mapping_csv_preview_grid")
                 .striped(true)
