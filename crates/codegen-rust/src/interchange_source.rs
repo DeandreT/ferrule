@@ -46,6 +46,79 @@ pub fn emit_with_mapforce_x12_json(
 }
 impl std::error::Error for MapForceSourceEmitError {}
 
+pub fn emit_with_native_x12_source(
+    program: &Program,
+    options: &Options,
+    source: &codegen::NativeX12Source<'_>,
+) -> Result<ArtifactSet, MapForceSourceEmitError> {
+    let descriptor = codegen::prepare_native_x12_source(program, source)
+        .map_err(MapForceSourceEmitError::Boundary)?;
+    let mut files = emit_with_mapforce_x12_source(
+        program,
+        options,
+        source.schema,
+        source.options,
+        source.message,
+    )?
+    .into_files();
+    let mapping = files
+        .iter_mut()
+        .find(|file| file.path.as_str() == "src/lib.rs")
+        .ok_or(MapForceSourceEmitError::Artifact)?;
+    mapping.contents.extend_from_slice(format!(r#"
+pub fn parse_native_primary_x12_source(bytes: &[u8]) -> Result<codegen_runtime::Instance, codegen_runtime::X12BoundaryError> {{ codegen_runtime::parse_mapforce_x12_source({descriptor:?}, bytes) }}
+pub fn parse_native_primary_x12_document(identity: &str, bytes: &[u8]) -> Result<codegen_runtime::ParsedX12Source, codegen_runtime::X12BoundaryError> {{ codegen_runtime::parse_mapforce_x12_source_document({descriptor:?}, identity, bytes) }}
+"#).as_bytes());
+    ArtifactSet::new(files)
+        .map_err(EmitError::from)
+        .map_err(MapForceSourceEmitError::Emit)
+}
+
+/// Retain the original MFD input decoder. The older primary-X12 methods remain
+/// explicit UTF-8-fallback companions; these native methods use the bound policy.
+pub fn emit_with_native_primary_eager_x12_json(
+    document: &codegen::DocumentProgram,
+    options: &Options,
+    source: &codegen::NativeX12Source<'_>,
+    filename_target: &str,
+    driver: &[String],
+) -> Result<ArtifactSet, MapForceSourceEmitError> {
+    let descriptor = codegen::prepare_native_x12_source(document.program(), source)
+        .map_err(MapForceSourceEmitError::Boundary)?;
+    let mut files = emit_with_primary_eager_x12_json(
+        document,
+        options,
+        source.schema,
+        source.options,
+        source.message,
+        filename_target,
+        driver,
+    )?
+    .into_files();
+    let mapping = files
+        .iter_mut()
+        .find(|file| file.path.as_str() == "src/lib.rs")
+        .ok_or(MapForceSourceEmitError::Artifact)?;
+    mapping.contents.extend_from_slice(format!(r#"
+pub fn parse_native_primary_x12_source(bytes: &[u8]) -> Result<codegen_runtime::Instance, codegen_runtime::X12BoundaryError> {{
+    codegen_runtime::parse_mapforce_x12_source({descriptor:?}, bytes)
+}}
+pub fn parse_native_primary_x12_document(identity: &str, bytes: &[u8]) -> Result<codegen_runtime::ParsedX12Source, codegen_runtime::X12BoundaryError> {{
+    codegen_runtime::parse_mapforce_x12_source_document({descriptor:?}, identity, bytes)
+}}
+pub fn acquire_native_primary_x12<'a, E: 'a, I: Iterator<Item = Result<String, E>> + 'a>(
+    execution: &ExecutionContext<'a>, select: impl FnOnce(&str) -> Result<I, E> + 'a,
+    load: impl FnMut(&str) -> Result<codegen_runtime::ParsedX12Source, E> + 'a, maximum: usize,
+) -> Result<codegen_runtime::X12SourceAcquisition<'a, RuntimeError, E>, codegen_runtime::X12AcquisitionError<RuntimeError, E>> {{
+    let execution = *execution;
+    codegen_runtime::X12SourceAcquisition::new({descriptor:?}, move || evaluate_primary_filename(&execution), select, load, maximum)
+}}
+"#).as_bytes());
+    ArtifactSet::new(files)
+        .map_err(EmitError::from)
+        .map_err(MapForceSourceEmitError::Emit)
+}
+
 /// Compose the original source parameter with lazy host-owned selection/load
 /// and the eager per-message JSON preparation profile.
 pub fn emit_with_primary_eager_x12_json(
