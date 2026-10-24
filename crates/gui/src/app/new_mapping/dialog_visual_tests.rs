@@ -483,6 +483,41 @@ fn function_tabs_close_inline_without_changing_the_project() {
     assert!(harness.state().show_function_navigator);
 }
 
+#[test]
+fn embedded_stage_tabs_hide_global_functions_but_keep_function_navigation() {
+    let mut harness = harness("tabs", (1280.0, 800.0));
+    harness.state_mut().embedded_stage_namespace = Some(egui::Id::unique("stage_function_test"));
+    harness.run();
+    assert!(harness.query_by_label("Functions").is_none());
+    harness.get_by_label("Main mapping");
+    harness.get_by_label("formatAmount");
+    harness.get_by_label("Close tab");
+    let before = serde_json::to_value(&harness.state().project).unwrap();
+    harness.get_by_label("Main mapping").click();
+    harness.run();
+    assert_eq!(
+        harness.state().mapping_workspace.active,
+        MappingDocument::Main
+    );
+    harness.get_by_label("formatAmount").click();
+    harness.run();
+    assert!(matches!(
+        harness.state().mapping_workspace.active,
+        MappingDocument::Function(_)
+    ));
+    assert_eq!(
+        serde_json::to_value(&harness.state().project).unwrap(),
+        before
+    );
+    harness.state_mut().embedded_stage_namespace = None;
+    harness.run();
+    harness.get_by_label("Functions").click();
+    harness.run();
+    harness.get_by_label("Browse functions…").click();
+    harness.run();
+    assert!(harness.state().show_function_navigator);
+}
+
 fn replace_text(harness: &mut Harness<'_, FerruleApp>, label: &str, text: &str) {
     harness.get_by_label(label).click();
     harness.run();
@@ -493,6 +528,128 @@ fn replace_text(harness: &mut Harness<'_, FerruleApp>, label: &str, text: &str) 
     harness.run();
     harness.get_by_label(label).type_text(text);
     harness.run();
+}
+
+fn csv_draft_snapshot(draft: &CsvBoundaryDraft) -> serde_json::Value {
+    // Exhaustive destructuring makes a new draft field require coverage here.
+    let CsvBoundaryDraft {
+        path,
+        delimiter,
+        quote_mode,
+        custom_quote,
+        has_header_row,
+        preserve_empty_strings,
+        utf8_bom,
+        columns,
+        preview_rows,
+        sample_error,
+    } = draft;
+    serde_json::json!({
+        "path": path,
+        "delimiter": delimiter.to_string(),
+        "quote_mode": format!("{quote_mode:?}"),
+        "custom_quote": custom_quote,
+        "has_header_row": has_header_row,
+        "preserve_empty_strings": preserve_empty_strings,
+        "utf8_bom": utf8_bom,
+        "columns": columns.iter().map(|column| (&column.name, column.ty)).collect::<Vec<_>>(),
+        "preview_rows": preview_rows,
+        "sample_error": sample_error,
+    })
+}
+
+fn choose_csv_target(harness: &mut Harness<'_, FerruleApp>) {
+    harness
+        .get_all_by_label("Choose format…")
+        .nth(1)
+        .expect("target format menu")
+        .click();
+    harness.run();
+    harness.get_by_label("CSV / delimited text…").click();
+    harness.run();
+}
+
+#[test]
+fn csv_target_format_reselection_preserves_every_edited_draft_field() {
+    for size in [(1600.0, 1000.0), (1280.0, 800.0)] {
+        for sample_error in [None, Some("Retained draft validation error".to_owned())] {
+            let mut harness = harness("wizard-csv", size);
+            let Some(MappingBoundary::Csv(draft)) = harness
+                .state_mut()
+                .new_mapping_setup
+                .as_mut()
+                .unwrap()
+                .target
+                .as_mut()
+            else {
+                panic!("CSV target");
+            };
+            draft.path = "/demo/custom-output.csv".into();
+            draft.delimiter = ';';
+            draft.quote_mode = CsvQuoteMode::Custom;
+            draft.custom_quote = "~".into();
+            draft.has_header_row = false;
+            draft.preserve_empty_strings = true;
+            draft.utf8_bom = true;
+            draft.columns = [
+                ("Customer", ir::ScalarType::String),
+                ("Quantity", ir::ScalarType::Int),
+                ("Amount", ir::ScalarType::Float),
+                ("Active", ir::ScalarType::Bool),
+            ]
+            .into_iter()
+            .map(|(name, ty)| CsvColumnDraft {
+                name: name.into(),
+                ty,
+            })
+            .collect();
+            draft.preview_rows = vec![vec!["Retained preview".into(), "7".into()]];
+            draft.sample_error = sample_error;
+            let before = csv_draft_snapshot(draft);
+            let project_before = serde_json::to_value(&harness.state().project).unwrap();
+            harness.run();
+            for _ in 0..2 {
+                choose_csv_target(&mut harness);
+                let setup = harness.state().new_mapping_setup.as_ref().unwrap();
+                let Some(MappingBoundary::Csv(draft)) = setup.target.as_ref() else {
+                    panic!("CSV target retained");
+                };
+                assert_eq!(csv_draft_snapshot(draft), before);
+                assert!(matches!(
+                    setup.source.as_ref(),
+                    Some(MappingBoundary::Schema(_))
+                ));
+                assert!(harness.state().pending_dialog.is_none());
+                assert_eq!(
+                    serde_json::to_value(&harness.state().project).unwrap(),
+                    project_before
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn csv_target_format_selection_initializes_a_new_or_non_csv_target() {
+    for view in ["wizard-empty", "wizard-schema"] {
+        let mut harness = harness(view, (1280.0, 800.0));
+        harness.run();
+        choose_csv_target(&mut harness);
+        let Some(MappingBoundary::Csv(draft)) = harness
+            .state()
+            .new_mapping_setup
+            .as_ref()
+            .unwrap()
+            .target
+            .as_ref()
+        else {
+            panic!("new CSV target");
+        };
+        assert_eq!(
+            csv_draft_snapshot(draft),
+            csv_draft_snapshot(&CsvBoundaryDraft::target())
+        );
+    }
 }
 
 #[test]

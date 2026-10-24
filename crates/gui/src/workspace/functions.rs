@@ -244,10 +244,9 @@ impl FerruleApp {
                         });
                     }
                 }
-                ui.separator();
-                ui.add_enabled_ui(
-                    editing_enabled && self.embedded_stage_namespace.is_none(),
-                    |ui| {
+                if self.embedded_stage_namespace.is_none() {
+                    ui.separator();
+                    ui.add_enabled_ui(editing_enabled, |ui| {
                         ui.menu_button("Functions", |ui| {
                             if ui.button("Browse functions…").clicked() {
                                 self.show_function_navigator = true;
@@ -258,8 +257,8 @@ impl FerruleApp {
                                 ui.close();
                             }
                         });
-                    },
-                );
+                    });
+                }
             });
         });
         match action {

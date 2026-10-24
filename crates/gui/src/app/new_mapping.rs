@@ -286,7 +286,10 @@ impl FerruleApp {
                 self.stage_mapping_sqlite_table(side);
             }
             Some(NewMappingAction::ConfigureCsvTarget) => {
-                if let Some(setup) = self.new_mapping_setup.as_mut() {
+                if let Some(setup) = self.new_mapping_setup.as_mut()
+                    && !matches!(setup.target.as_ref(), Some(MappingBoundary::Csv(_)))
+                {
+                    // Choosing the active format must not discard its edited draft.
                     setup.target = Some(MappingBoundary::Csv(CsvBoundaryDraft::target()));
                 }
             }
