@@ -21,6 +21,20 @@ pub fn text(icon: Icon, size: f32) -> RichText {
 
 pub fn button(ui: &mut Ui, enabled: bool, icon: Icon, label: impl Into<String>) -> Response {
     let label = label.into();
+    // Disabled buttons still name their action.
+    let disabled_text = label.clone();
+    button_with_disabled_text(ui, enabled, icon, label, disabled_text)
+}
+
+/// An icon button whose tooltip reads `disabled_text` while disabled.
+pub fn button_with_disabled_text(
+    ui: &mut Ui,
+    enabled: bool,
+    icon: Icon,
+    label: impl Into<String>,
+    disabled_text: impl Into<String>,
+) -> Response {
+    let label = label.into();
     let response = ui.add_enabled(
         enabled,
         Button::new(text(icon, crate::theme::METRICS.icon_size)).min_size(egui::vec2(
@@ -29,7 +43,24 @@ pub fn button(ui: &mut Ui, enabled: bool, icon: Icon, label: impl Into<String>) 
         )),
     );
     response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &label));
-    response.on_hover_text(label)
+    // A click usually opens a dialog or menu under the pointer; the tooltip
+    // stays hidden until the pointer leaves the button.
+    let quiet = response.id.with("quiet_tooltip");
+    let suppressed = if response.clicked() {
+        ui.data_mut(|data| data.insert_temp(quiet, true));
+        true
+    } else if response.hovered() {
+        ui.data(|data| data.get_temp::<bool>(quiet).unwrap_or(false))
+    } else {
+        ui.data_mut(|data| data.remove::<bool>(quiet));
+        false
+    };
+    if suppressed {
+        return response;
+    }
+    response
+        .on_hover_text(label)
+        .on_disabled_hover_text(disabled_text.into())
 }
 
 fn family() -> FontFamily {
