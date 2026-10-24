@@ -64,10 +64,7 @@ and a `Docs` read there still returns the enclosing document's path.
 ## Excluded routes
 
 A legacy dynamic named owner has no owned loading scope: the read naming it is
-refused before input acquisition. XML document-set boundary adapters of the
-generated libraries are not owned entry points; that route remains closed
-until its own paired proof
-([#995](https://github.com/DeandreT/ferrule/issues/995)).
+refused before input acquisition.
 
 ## Generation profile
 
@@ -78,7 +75,12 @@ ordinary emitters, `.mfd` export and GUI authoring refuse the read; the GUI
 shows a saved one read-only. Generated libraries receive document sets through
 the typed instance entry points. The `DynamicDocumentPaths` preset
 (`*_with_basic_owned_dynamic_document_paths`) composes owned dynamic loading
-with document sets and also admits the read of a loaded owner.
+with document sets and also admits the read of a loaded owner. The
+`XmlDocumentSets` preset (`*_with_basic_owned_xml_document_sets`) composes the
+document-path profile with XML entry points that read each endpoint as an
+ordered member list, keeping every member's path and resolved location as the
+local XML file-set reader records them
+([portable corpus](../../conformance/basic-owned-xml-document-set/README.md)).
 
 ## Qualification
 

@@ -151,8 +151,11 @@ fn emit_with_owned_capabilities(
     capabilities: codegen::OwnedCapabilities,
 ) -> Result<ArtifactSet, EmitError> {
     codegen::validate_basic_owned_emission_with_capabilities(program, capabilities)?;
-    let generated_mapping =
+    let mut generated_mapping =
         owned_basic::render_public_basic_owned_capability_mapping(program, capabilities)?;
+    if capabilities.xml_document_sets {
+        generated_mapping.push_str(&mapping::render_owned_document_sets(program)?);
+    }
     composition::unit_artifacts(generated_mapping, false)
 }
 
@@ -197,6 +200,7 @@ owned_presets! {
     XmlMixedConstruction => emit_with_basic_owned_xml_mixed_construction;
     DocumentPaths => emit_with_basic_owned_document_paths;
     DynamicDocumentPaths => emit_with_basic_owned_dynamic_document_paths;
+    XmlDocumentSets => emit_with_basic_owned_xml_document_sets;
 }
 
 fn dynamic_input_document_outputs(plan: &BoundaryEmissionPlan<'_>) -> bool {

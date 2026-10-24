@@ -1,0 +1,123 @@
+// Generated Rust host for the owned XML document-set cohort. It calls every
+// case through the text and byte entry points and records each outcome as a
+// portable recipe; the test compares the recipes with the controls.
+use codegen_runtime::{ExecutionContext, Instance, NamedXmlDocumentSet, OwnedSourceError,
+    OwnedSourceIdentity, OwnedSourceLimits, RuntimeError, TargetSelection, XmlDocumentSetInputError,
+    XmlDocumentSetMember, XmlInputSource};
+use serde_json::{Value as Json, json};
+use std::path::{Path, PathBuf};
+#[allow(dead_code)]
+mod codec;
+
+type Members = Vec<(String, Option<String>, String)>;
+type Trees = Vec<(Option<String>, Instance)>;
+
+fn members(recipe: &Json) -> Members {
+    recipe.as_array().unwrap().iter().map(|member| (
+        member[0].as_str().unwrap().to_owned(),
+        member[1].as_str().map(str::to_owned),
+        member[2].as_str().unwrap().to_owned(),
+    )).collect()
+}
+fn borrowed<'a, D: ?Sized>(members: &'a Members, document: fn(&'a str) -> &'a D) -> Vec<XmlDocumentSetMember<'a, D>> {
+    members.iter().map(|(path, resolved, text)| XmlDocumentSetMember {
+        path, resolved_source_path: resolved.as_deref(), document: document(text),
+    }).collect()
+}
+fn text(text: &str) -> &str { text }
+fn identity(owner: &OwnedSourceIdentity) -> Json {
+    match owner { OwnedSourceIdentity::Primary => json!("Primary"), OwnedSourceIdentity::Named(name) => json!(name) }
+}
+fn runtime(error: &RuntimeError) -> Json {
+    let (node, source) = match error {
+        RuntimeError::OwnedSourceAtNode { node, source } => (Some(*node), source),
+        RuntimeError::OwnedSource(source) => (None, source),
+        RuntimeError::UnexpectedNamedSource { name } => return json!({"kind": "UnexpectedNamedSource", "name": name}),
+        RuntimeError::DuplicateNamedSource { name } => return json!({"kind": "DuplicateNamedSource", "name": name}),
+        other => return json!({"kind": "Other", "debug": format!("{other:?}")}),
+    };
+    let (owner, cause) = match source {
+        OwnedSourceError::SourceUnavailable { name } => (json!(name), "SourceUnavailable"),
+        OwnedSourceError::MissingDocumentPath { owner } => (identity(owner), "MissingDocumentPath"),
+        other => return json!({"kind": "Other", "debug": format!("{other:?}")}),
+    };
+    let mut recipe = json!({"kind": "OwnedSource", "owner": owner, "cause": cause});
+    if let Some(node) = node { recipe["node"] = json!(node); }
+    recipe
+}
+fn outcome(result: Result<Trees, XmlDocumentSetInputError>) -> Json {
+    let error = match result {
+        Ok(trees) => return json!({"Ok": trees.iter().map(|(name, tree)| json!([name, codec::encode(tree)])).collect::<Vec<_>>()}),
+        Err(error) => error,
+    };
+    if let Some(member) = &error.member {
+        let owner = match member.source { XmlInputSource::Primary => json!("Primary"), XmlInputSource::Named { name, .. } => json!(name) };
+        return json!({"Err": {"kind": "Member", "owner": owner, "index": member.index, "path": member.path,
+            "boundary": format!("{:?}", error.boundary.kind)}});
+    }
+    match std::error::Error::source(error.boundary.as_ref()).and_then(|source| source.downcast_ref::<RuntimeError>()) {
+        Some(error) => json!({"Err": {"kind": "Mapping", "error": runtime(error)}}),
+        None => json!({"Err": {"kind": "Boundary", "boundary": format!("{:?}", error.boundary.kind), "detail": error.boundary.detail}}),
+    }
+}
+macro_rules! call {
+    ($module:ident, $all:ident, $selected:ident, $selection:expr, $source:expr, $named:expr, $execution:expr, $limits:expr) => {
+        if $selection == "All" {
+            outcome($module::$all($source, $named, Some($execution), $limits).map(|output| {
+                let mut trees: Trees = vec![(None, output.primary)];
+                trees.extend(output.extras.into_iter().map(|extra| (Some(extra.name), extra.instance)));
+                trees
+            }))
+        } else {
+            let target = if $selection == "Primary" { TargetSelection::Primary } else { TargetSelection::Named($selection) };
+            outcome($module::$selected($source, $named, Some($execution), $limits, target).map(|output| match output {
+                $module::SelectedTargetOutput::Primary(instance) => vec![(None, instance)],
+                $module::SelectedTargetOutput::Named(output) => vec![(Some(output.name), output.instance)],
+            }))
+        }
+    };
+}
+macro_rules! invoke {
+    ($module:ident, $selection:expr, $source:expr, $inputs:expr, $execution:expr, $limits:expr, $bytes:expr) => {{
+        if $bytes {
+            let source = borrowed($source, str::as_bytes);
+            let members = $inputs.iter().map(|(_, members)| borrowed(members, str::as_bytes)).collect::<Vec<_>>();
+            let named = $inputs.iter().zip(&members).map(|((name, _), members)| NamedXmlDocumentSet { name, members }).collect::<Vec<_>>();
+            call!($module, execute_xml_bytes_document_sets_with_basic_owned_sources,
+                execute_selected_xml_bytes_document_sets_with_basic_owned_sources, $selection, &source, &named, $execution, $limits)
+        } else {
+            let source = borrowed($source, text);
+            let members = $inputs.iter().map(|(_, members)| borrowed(members, text)).collect::<Vec<_>>();
+            let named = $inputs.iter().zip(&members).map(|((name, _), members)| NamedXmlDocumentSet { name, members }).collect::<Vec<_>>();
+            call!($module, execute_xml_document_sets_with_basic_owned_sources,
+                execute_selected_xml_document_sets_with_basic_owned_sources, $selection, &source, &named, $execution, $limits)
+        }
+    }};
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    assert_eq!(args.len(), 2);
+    let controls: Json = serde_json::from_slice(&std::fs::read(&args[0])?)?;
+    let output = PathBuf::from(&args[1]);
+    std::fs::create_dir(&output)?;
+    let limits = OwnedSourceLimits { max_roots: 16, max_active_frames: 32, max_path_segments: 64, max_metadata_bytes: 16_777_216, max_walk_contexts: 512 };
+    let execution = ExecutionContext::new(Path::new("xmldocset995.mapping"));
+    let mut rows = Vec::new();
+    for case in controls["cases"].as_array().unwrap() {
+        let source = members(&case["source"]);
+        let inputs = case["inputs"].as_array().unwrap().iter()
+            .map(|input| (input[0].as_str().unwrap().to_owned(), members(&input[1]))).collect::<Vec<_>>();
+        for call in case["calls"].as_array().unwrap() {
+            let selection = call["selection"].as_str().unwrap();
+            for bytes in [false, true] {
+                let observed = match case["model"].as_u64().unwrap() {
+@DISPATCH@
+                    _ => panic!("authored model"),
+                };
+                rows.push(json!({"case": case["id"], "selection": selection, "bytes": bytes, "observed": observed}));
+            }
+        }
+    }
+    std::fs::write(output.join("OBSERVATIONS.json"), serde_json::to_vec_pretty(&rows)?)?;
+    Ok(())
+}

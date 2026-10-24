@@ -21,7 +21,11 @@ pub use input_document_outputs::{
 };
 
 mod input_document_set;
-pub use input_document_set::{XmlInputDocumentExecutionError, XmlInputDocumentOwner};
+pub use input_document_set::{
+    NamedXmlDocumentSet, XmlDocumentSetInputError, XmlDocumentSetMember, XmlDocumentSetMemberOwner,
+    XmlDocumentSetText, XmlInputDocumentExecutionError, XmlInputDocumentOwner,
+    admit_xml_document_set_names, parse_xml_document_set, preflight_xml_document_sets,
+};
 
 mod input_set;
 pub use input_set::{
