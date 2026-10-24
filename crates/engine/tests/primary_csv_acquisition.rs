@@ -20,7 +20,7 @@ fn document() -> DocumentProject {
                 vec![SchemaNode::scalar("Text", ScalarType::String)],
             ),
             source_path: Some("must-not-read-preview.csv".into()),
-            target_path: None,
+            target_path: Some("must-not-write-output.csv".into()),
             source_options: Default::default(),
             target_options: Default::default(),
             extra_sources: vec![],
