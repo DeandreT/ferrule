@@ -223,10 +223,9 @@ pub fn icon_toggle(
             label,
         )
     });
-    match disabled_reason {
-        Some(reason) => response.on_disabled_hover_text(format!("{label}: {reason}")),
-        None => response.on_hover_text(label),
-    }
+    let disabled_text =
+        disabled_reason.map_or_else(|| label.to_owned(), |reason| format!("{label}: {reason}"));
+    crate::icons::button_tooltips(ui, response, label, disabled_text)
 }
 
 /// Hosts a pane's content in exactly the space it is given.
