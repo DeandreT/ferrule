@@ -15,6 +15,7 @@ struct Reader<'a> {
     repetition: Option<char>,
     nodes: usize,
     segments: usize,
+    known_segments: &'a [String],
 }
 
 pub(super) fn parse(
@@ -32,6 +33,7 @@ pub(super) fn parse(
         repetition: None,
         nodes: 0,
         segments: 0,
+        known_segments: &structure.known_segments,
     };
     reader.skip();
     if reader.rest().starts_with("ISA") {
@@ -52,23 +54,50 @@ impl Reader<'_> {
     fn rest(&self) -> &str {
         &self.text[self.position..]
     }
-    fn skip(&mut self) {
-        self.position = self.text.len()
-            - self
-                .rest()
-                .trim_start_matches(super::source_mapforce::whitespace)
-                .len();
+    fn separator(&self, ch: char) -> bool {
+        ch == self.element
+            || ch == self.component
+            || ch == self.terminator
+            || Some(ch) == self.repetition
+            || ch == '\0'
     }
-    fn tag(&self) -> &str {
-        let text = self
-            .rest()
-            .trim_start_matches(super::source_mapforce::whitespace);
-        if text.starts_with("ISA") {
-            return "ISA";
+    fn ignorable(&self, ch: char) -> bool {
+        matches!(ch, '\t' | '\r' | '\n') && !self.separator(ch)
+    }
+    fn skip(&mut self) {
+        while let Some(ch) = self.rest().chars().next() {
+            if !super::source_mapforce::whitespace(ch) || self.separator(ch) {
+                break;
+            }
+            self.position += ch.len_utf8();
         }
-        text.split([self.element, self.component, self.terminator])
-            .next()
-            .unwrap_or("")
+    }
+    fn tag(&self) -> String {
+        let text = self.rest();
+        if text.starts_with("ISA") {
+            return "ISA".into();
+        }
+        let mut tag = String::new();
+        let mut escaped = false;
+        for ch in text.chars() {
+            if self.ignorable(ch) {
+                continue;
+            }
+            if escaped {
+                tag.push(ch);
+                escaped = false;
+            } else if ch == '\0' {
+                escaped = true;
+            } else if self.separator(ch) {
+                break;
+            } else {
+                tag.push(ch);
+            }
+            if tag.len() > 32 {
+                break;
+            }
+        }
+        tag
     }
     fn discover(&mut self) -> Result<(), X12BoundaryError> {
         let text = self.rest();
@@ -96,25 +125,28 @@ impl Reader<'_> {
     }
     fn matches(&self, node: &SchemaNode, plan: &X12SourceStructure) -> bool {
         if let Some(id) = &plan.segment {
-            if self.tag() != id {
+            if self.tag() != *id {
                 return false;
             }
             if id == "ISA" {
                 return true;
             }
-            let mut fields = self
-                .rest()
-                .trim_start_matches(super::source_mapforce::whitespace)
-                .split(self.terminator)
-                .next()
-                .unwrap_or("")
-                .split(self.element)
-                .skip(1);
             let SchemaKind::Group { children, .. } = &node.kind else {
                 return false;
             };
-            for child in children {
-                let field = fields.next().unwrap_or("");
+            if children.iter().all(|child| child.fixed.is_none()) {
+                return true;
+            }
+            let Ok((segment, _, _)) = self.scan(id, false) else {
+                return false;
+            };
+            for (index, child) in children.iter().enumerate() {
+                let field = segment
+                    .elements
+                    .get(index)
+                    .and_then(|repeats| repeats.first())
+                    .and_then(|parts| parts.first())
+                    .map_or("", String::as_str);
                 if let Some(fixed) = &child.fixed
                     && field != fixed
                 {
@@ -136,6 +168,78 @@ impl Reader<'_> {
         }
         false
     }
+    fn scan(
+        &self,
+        id: &str,
+        required: bool,
+    ) -> Result<(format_edi::Segment, usize, bool), X12BoundaryError> {
+        let mut fields = vec![vec![vec![String::new()]]];
+        let mut escaped = false;
+        let mut consumed = 0;
+        let mut terminated = false;
+        let mut tokens = 1usize;
+        for ch in self.rest().chars() {
+            consumed += ch.len_utf8();
+            if self.ignorable(ch) {
+                continue;
+            }
+            if escaped {
+                fields
+                    .last_mut()
+                    .unwrap()
+                    .last_mut()
+                    .unwrap()
+                    .last_mut()
+                    .unwrap()
+                    .push(ch);
+                escaped = false;
+            } else if ch == '\0' {
+                if id == "ISA" {
+                    return Err(self.syntax_error("NUL in native ISA"));
+                }
+                escaped = true;
+            } else if ch == self.terminator {
+                terminated = true;
+                break;
+            } else if ch == self.element {
+                fields.push(vec![vec![String::new()]]);
+                tokens += 2;
+            } else if id != "ISA" && Some(ch) == self.repetition {
+                let repeats = fields.last_mut().unwrap();
+                repeats.push(vec![String::new()]);
+                resource("x12_repetitions", repeats.len(), MAX_X12_LOOP_INSTANCES)?;
+                tokens += 2;
+            } else if id != "ISA" && ch == self.component {
+                let parts = fields.last_mut().unwrap().last_mut().unwrap();
+                parts.push(String::new());
+                resource("x12_components", parts.len(), MAX_ELEMENTS)?;
+                tokens += 1;
+            } else {
+                fields
+                    .last_mut()
+                    .unwrap()
+                    .last_mut()
+                    .unwrap()
+                    .last_mut()
+                    .unwrap()
+                    .push(ch);
+            }
+            resource("x12_elements", fields.len() - 1, MAX_ELEMENTS)?;
+            resource("x12_nodes", self.nodes + tokens, MAX_X12_NODES)?;
+        }
+        if required && !terminated {
+            return Err(self.syntax_error("unterminated native X12 segment"));
+        }
+        let elements = fields.into_iter().skip(1).collect();
+        Ok((
+            format_edi::Segment {
+                id: id.into(),
+                elements,
+            },
+            consumed,
+            terminated,
+        ))
+    }
     fn group(
         &mut self,
         node: &SchemaNode,
@@ -151,63 +255,15 @@ impl Reader<'_> {
             if id == "ISA" {
                 self.discover()?;
             }
-            let end = self
-                .rest()
-                .find(self.terminator)
-                .ok_or_else(|| self.syntax_error("unterminated native X12 segment"))?;
-            let raw = &self.rest()[..end];
-            resource(
-                "x12_elements",
-                raw.matches(self.element).count(),
-                MAX_ELEMENTS,
-            )?;
-            let mut tokens = raw.matches(self.element).count();
-            for field in raw.split(self.element).skip(1) {
-                let components = if id == "ISA" {
-                    1
-                } else {
-                    field.matches(self.component).count() + 1
-                };
-                resource("x12_components", components, MAX_ELEMENTS)?;
-                let repeats = self
-                    .repetition
-                    .filter(|_| id != "ISA")
-                    .map_or(1, |separator| field.matches(separator).count() + 1);
-                resource("x12_repetitions", repeats, MAX_X12_LOOP_INSTANCES)?;
-                tokens += components + repeats;
-            }
-            resource("x12_nodes", self.nodes + tokens, MAX_X12_NODES)?;
-            let elements = raw
-                .split(self.element)
-                .skip(1)
-                .map(|field| {
-                    let repeats = if id == "ISA" {
-                        vec![field]
-                    } else {
-                        self.repetition.map_or_else(
-                            || vec![field],
-                            |separator| field.split(separator).collect(),
-                        )
-                    };
-                    repeats
-                        .into_iter()
-                        .map(|repeat| {
-                            if id == "ISA" {
-                                vec![repeat.to_string()]
-                            } else {
-                                repeat.split(self.component).map(str::to_string).collect()
-                            }
-                        })
-                        .collect()
-                })
-                .collect();
-            let segment = format_edi::Segment {
-                id: id.clone(),
-                elements,
-            };
-            let value = format_edi::x12::project_lexical_segment(node, &segment, self.component)?;
+            let (segment, consumed, _) = self.scan(id, true)?;
+            let tokens = segment
+                .elements
+                .iter()
+                .map(|repeats| 1 + repeats.iter().map(|parts| 1 + parts.len()).sum::<usize>())
+                .sum::<usize>();
+            let value = super::source_fields::project(node, &segment)?;
             self.nodes += tokens;
-            self.position += end + self.terminator.len_utf8();
+            self.position += consumed;
             self.segments += 1;
             if self.segments > MAX_X12_SEGMENTS {
                 return Err(descriptor("native X12 segment limit exceeded"));
@@ -229,7 +285,17 @@ impl Reader<'_> {
             let mut items = Vec::new();
             while maximum.is_none_or(|max| items.len() < (max as usize)) {
                 self.skip();
-                if self.rest().is_empty() || !self.matches(child, particle) {
+                if self.rest().is_empty() {
+                    break;
+                }
+                if !self.matches(child, particle) {
+                    let tag = self.tag();
+                    if particle.selection && !tag.is_empty() && !self.known_segments.contains(&tag)
+                    {
+                        return Err(
+                            self.syntax_error("unrecognized segment at native X12 selection")
+                        );
+                    }
                     break;
                 }
                 let before = self.position;

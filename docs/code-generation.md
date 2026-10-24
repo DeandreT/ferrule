@@ -1159,6 +1159,14 @@ execution-view field is a list. Omitting `structure` preserves the prior
 lexical parser. Native diagnostic messages and every malformed-input rule are
 not implied by this source-value profile.
 
+The native structural profile retains message selection and its original
+segment catalog. A failed selection distinguishes an unknown segment from a
+known, out-of-place segment. Its scanner preserves whitespace that is an active
+delimiter and applies the native NUL release character after the ISA header.
+Field projection retains delimiter position: an undeclared component does not
+shift later scalar fields, but a later declared composite may consume it.
+These rules do not alter strict or legacy lexical readers.
+
 `parse_mapforce_x12_source` / `ParseMapForceSourceBytes` adds a separately selected
 native source value view. It removes ignored tab/CR/LF characters while retaining
 an LF segment terminator, treats empty physical values and empty composites as

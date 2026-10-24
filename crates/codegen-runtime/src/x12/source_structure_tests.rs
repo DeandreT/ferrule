@@ -19,6 +19,8 @@ fn fixture() -> (SchemaNode, X12SourceStructure, String) {
                 respect_maximum: false,
                 merged_entries: 1,
                 children: vec![],
+                selection: false,
+                known_segments: vec![],
             },
         )
     }
@@ -40,6 +42,8 @@ fn fixture() -> (SchemaNode, X12SourceStructure, String) {
                 respect_maximum: false,
                 merged_entries: 1,
                 children: plans,
+                selection: false,
+                known_segments: vec![],
             },
         )
     }
@@ -117,4 +121,51 @@ fn punctuation_counts_are_bounded_before_materialization() {
         parse(&wire, &schema, &plan),
         Err(X12BoundaryError::Resource { .. })
     ));
+}
+
+#[test]
+fn source_scanner_preserves_service_whitespace_and_released_characters() {
+    let (schema, plan, wire) = fixture();
+    let field = |wire: &str, name: &str| {
+        let parsed = parse(wire, &schema, &plan).unwrap();
+        parsed.field("Interchange").unwrap().as_repeated().unwrap()[0]
+            .field("Group")
+            .unwrap()
+            .as_repeated()
+            .unwrap()[0]
+            .field("Message_850")
+            .unwrap()
+            .as_repeated()
+            .unwrap()[0]
+            .field("ST")
+            .unwrap()
+            .field(name)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(
+        field(&wire.replace("ST*850*1~", "ST*8\0*50*1~"), "E1"),
+        Instance::Scalar(Value::String("8*50".into()))
+    );
+    assert_eq!(
+        field(&wire.replace("ST*850*1~", "ST*850\\extra*1~"), "E2"),
+        Instance::Scalar(Value::Null)
+    );
+    assert!(parse(&wire.replace('*', "\t"), &schema, &plan).is_ok());
+    assert!(parse(&wire.replace('~', "\n"), &schema, &plan).is_ok());
+    assert!(parse(&wire.replace('~', "\n\n"), &schema, &plan).is_err());
+}
+
+#[test]
+fn mandatory_selection_distinguishes_unknown_from_known_out_of_place_segments() {
+    let (schema, mut plan, wire) = fixture();
+    plan.children[0].children[1].children[1].selection = true;
+    assert!(plan.validate(&schema).is_err());
+    plan.known_segments = ["ISA", "GS", "ST", "SE", "GE", "IEA", "REF"]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    assert!(parse(&wire.replace("GE*1*1~", "ZZZ*X~GE*1*1~"), &schema, &plan).is_err());
+    assert!(parse(&wire.replace("GE*1*1~", "REF*X~GE*1*1~"), &schema, &plan).is_ok());
+    assert!(parse(&(wire + "ZZZ*X~"), &schema, &plan).is_ok());
 }

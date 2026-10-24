@@ -16,10 +16,9 @@ pub fn parse_mapforce_x12_source(
     input_size(bytes.len())?;
     let text = decode_source(bytes, encoding);
     input_size(text.len())?;
-    let text = source_wire_text(&text);
     let lexical = match structure {
         Some(structure) => super::source_structure::parse(&text, &profile.schema, &structure)?,
-        None => format_edi::x12::from_str_lexical(&text, &profile.schema)?,
+        None => format_edi::x12::from_str_lexical(&source_wire_text(&text), &profile.schema)?,
     };
     let formats = profile
         .lexical

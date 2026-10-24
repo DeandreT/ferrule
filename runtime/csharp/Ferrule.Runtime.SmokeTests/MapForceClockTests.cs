@@ -91,6 +91,18 @@ internal static partial class Program
         foreach (string tail in new[] { "JUNK", "JUNK~", "IEA*2*unused~", "N9*ZZ*unused" }) Equal(structuralExpected, JsonSerializer.Serialize(FerruleX12.ParseMapForceSourceBytes(structural, Encoding.Latin1.GetBytes(text + tail))));
         Throws<FerruleX12Exception>(() => FerruleX12.ParseMapForceSourceBytes(structural, Encoding.Latin1.GetBytes(text + "ISA")));
         Throws<FerruleX12Exception>(() => FerruleX12.ParseMapForceSourceBytes(structural, Encoding.Latin1.GetBytes(text.TrimEnd('\r', '\n', '~'))));
+        foreach (var (input, expected) in new[] { ("A\0*B", "A*B"), ("A\0:B", "A:B"), ("A\0\0B", "A\0B"), ("A:B", "A") })
+        {
+            var parsed = FerruleX12.ParseMapForceSourceBytes(structural, Encoding.Latin1.GetBytes(text.Replace("GS*", "GS*" + input, StringComparison.Ordinal)));
+            var parsedInterchange = ((FerruleRepeated)Field(parsed, "Interchange")).Items[0];
+            var parsedGroup = ((FerruleRepeated)Field(parsedInterchange, "Group")).Items[0];
+            var parsedGs = ((FerruleRepeated)Field(parsedGroup, "GS")).Items[0];
+            Equal(expected, ((FerruleScalar)Field(parsedGs, "E01")).Value.StringValue);
+        }
+        string flat = text.Replace("\r", "", StringComparison.Ordinal).Replace("\n", "", StringComparison.Ordinal);
+        _ = FerruleX12.ParseMapForceSourceBytes(structural, Encoding.Latin1.GetBytes(flat.Replace('*', '\t')));
+        _ = FerruleX12.ParseMapForceSourceBytes(structural, Encoding.Latin1.GetBytes(flat.Replace('~', '\n')));
+        Throws<FerruleX12Exception>(() => FerruleX12.ParseMapForceSourceBytes(structural, Encoding.Latin1.GetBytes(flat.Replace("~", "\n\n", StringComparison.Ordinal))));
         var invalidStructure = System.Text.Json.Nodes.JsonNode.Parse(structural)!;
         invalidStructure["structure"]!["children"]!.AsArray().Clear();
         Throws<FerruleX12Exception>(() => FerruleX12SourceAcquisition.Acquire(invalidStructure.ToJsonString(), () => throw new Exception("must not evaluate"), _ => Array.Empty<string>(), _ => throw new Exception("must not load"), 1));

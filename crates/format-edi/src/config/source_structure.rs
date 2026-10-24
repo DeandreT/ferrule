@@ -46,7 +46,15 @@ pub(super) fn read(
         .find(|n| n.has_tag_name("Group"))
         .ok_or_else(|| ConfigError::Invalid("missing source envelope group".into()))?;
     let mut count = 0;
-    walk(envelope, message, &definitions, 0, &mut count)
+    let mut result = walk(envelope, message, &definitions, 0, &mut count)?;
+    result.known_segments = definitions
+        .segments
+        .values()
+        .map(|segment| segment.name.clone())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    Ok(result)
 }
 
 fn unsigned(node: roxmltree::Node<'_, '_>, name: &str, default: u32) -> Result<u32, ConfigError> {
@@ -145,5 +153,7 @@ fn walk(
         respect_maximum,
         merged_entries,
         children,
+        selection: node.has_tag_name("Select"),
+        known_segments: vec![],
     })
 }
