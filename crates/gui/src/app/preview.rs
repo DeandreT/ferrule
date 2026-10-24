@@ -17,14 +17,17 @@ use crate::preview::{
 };
 
 fn show_preview_input(ui: &mut egui::Ui, draft: &mut PreviewDraft, input_size: usize) {
-    ui.horizontal(|ui| {
-        ui.strong("Primary input");
-        ui.weak(format!(
-            "{} / {}",
-            format_preview_bytes(input_size),
-            format_preview_bytes(cli::MAX_PAYLOAD_DOCUMENT_BYTES)
-        ));
-    });
+    let label = ui
+        .horizontal(|ui| {
+            let label = ui.strong("Primary input");
+            ui.weak(format!(
+                "{} / {}",
+                format_preview_bytes(input_size),
+                format_preview_bytes(cli::MAX_PAYLOAD_DOCUMENT_BYTES)
+            ));
+            label
+        })
+        .inner;
     let height = (ui.ctx().content_rect().height() * 0.3).clamp(140.0, 360.0);
     egui::ScrollArea::both()
         .id_salt("preview_primary_input_scroll")
@@ -36,7 +39,8 @@ fn show_preview_input(ui: &mut egui::Ui, draft: &mut PreviewDraft, input_size: u
                 egui::TextEdit::multiline(&mut draft.input_text)
                     .code_editor()
                     .desired_width(f32::INFINITY),
-            );
+            )
+            .labelled_by(label.id);
         });
 }
 
@@ -521,6 +525,12 @@ impl FerruleApp {
                 == super::preview_service::PreviewInputSource::ConfiguredFiles;
         let input_size = draft.input_text.len();
         let input_too_large = input_size > cli::MAX_PAYLOAD_DOCUMENT_BYTES;
+        let conditions_valid = self.preview_value_condition.compile().is_ok()
+            && self.preview_position_condition.compile().is_ok()
+            && self.preview_source_condition.compile().is_ok()
+            && self.preview_node_condition.compile().is_ok()
+            && self.preview_expression_condition.compile().is_ok()
+            && self.preview_input_condition.compile().is_ok();
         let footer_ready = std::cell::Cell::new((false, false, false));
         let dialog_idle = self.pending_dialog.is_none();
         let mut browse_primary_root = false;
@@ -532,7 +542,7 @@ impl FerruleApp {
             .id_salt("preview_mapping")
             .width(crate::ui_kit::DialogWidth::Wide)
             .show(|ui| {
-                let mut condition_valid = true;
+                let mut condition_valid = conditions_valid;
                 let mut host_parameters_valid = self.host_parameters.compile().is_ok();
                 if let Some(session) = &mut self.primary_document {
                     ui.add_enabled_ui(!running && dialog_idle, |ui| {
@@ -617,7 +627,7 @@ impl FerruleApp {
                     crate::ui_kit::collapsible_section(
                         ui, "preview_debugging", "Debugging", false, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label("Debug breakpoint");
+                        let breakpoint_label = ui.label("Debug breakpoint");
                         ui.add_enabled_ui(!running, |ui| {
                             egui::ComboBox::from_id_salt("preview_debug_breakpoint")
                                 .selected_text(
@@ -639,12 +649,12 @@ impl FerruleApp {
                                             breakpoint.label(),
                                         );
                                     }
-                                });
+                                }).response.labelled_by(breakpoint_label.id);
                         });
                     });
                     ui.weak("The selector covers declared static scope writes; runtime-named fields are not listed.");
                     ui.add_enabled_ui(!running, |ui| {
-                        condition_valid = show_breakpoint_value_condition(
+                        condition_valid &= show_breakpoint_value_condition(
                             ui,
                             &mut self.preview_value_condition,
                             "preview_debug_value_type",
@@ -1212,7 +1222,10 @@ impl FerruleApp {
                     crate::ui_kit::plural(report.records_written, "record"),
                     pending.target_label
                 );
-                self.run_report = Some(crate::run_report::RunReportView::new(report));
+                self.run_report = Some(
+                    crate::run_report::RunReportView::new(report)
+                        .with_project_labels(&self.project),
+                );
                 self.show_run_report = true;
                 self.preview_draft = None;
                 self.diagnostics.clear();

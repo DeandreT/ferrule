@@ -855,7 +855,11 @@ impl FerruleApp {
                     pending.started.elapsed(),
                     trace,
                 );
-                self.run_report = Some(crate::run_report::RunReportView::new(report));
+                let mut view = crate::run_report::RunReportView::new(report);
+                if let Some(draft) = &self.pipeline_run_draft {
+                    view = view.with_pipeline_labels(&draft.pipeline);
+                }
+                self.run_report = Some(view);
                 self.show_run_report = true;
                 self.pipeline_run_draft = None;
             }
@@ -871,7 +875,11 @@ impl FerruleApp {
                     pending.started.elapsed(),
                     trace,
                 );
-                self.run_report = Some(crate::run_report::RunReportView::new(report));
+                let mut view = crate::run_report::RunReportView::new(report);
+                if let Some(draft) = &self.pipeline_run_draft {
+                    view = view.with_pipeline_labels(&draft.pipeline);
+                }
+                self.run_report = Some(view);
                 self.show_run_report = true;
                 self.pipeline_run_draft = None;
             }

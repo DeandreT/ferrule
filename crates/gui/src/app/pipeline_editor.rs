@@ -297,8 +297,9 @@ impl FerruleApp {
                         edit_mapping = Some(index);
                     }
                     ui.horizontal(|ui| {
-                        ui.label("Stage ID");
-                        ui.add(crate::ui_kit::text_field(&mut editor.rename_draft, crate::ui_kit::FieldWidth::Medium));
+                        let stage_id_label = ui.label("Stage ID");
+                        ui.add(crate::ui_kit::text_field(&mut editor.rename_draft, crate::ui_kit::FieldWidth::Medium))
+                            .labelled_by(stage_id_label.id);
                         if ui
                             .add_enabled(
                                 editor.rename_draft != stage.id,
@@ -618,7 +619,7 @@ fn show_binding(
 ) -> Option<PipelineEditCommand> {
     let mut edit = None;
     ui.group(|ui| {
-        ui.strong(label);
+        let binding_label = ui.strong(label);
         ui.horizontal(|ui| {
             egui::ComboBox::from_id_salt(("pipeline-binding", stage_index, binding_index))
                 .selected_text(match input {
@@ -669,16 +670,19 @@ fn show_binding(
                             }
                         }
                     }
-                });
+                })
+                .response
+                .labelled_by(binding_label.id);
             if let PipelineInput::Host { name } = input {
                 let draft = drafts
                     .entry((stage_index, binding_index))
                     .or_insert_with(|| name.clone());
-                ui.label("Name");
+                let name_label = ui.label("Name");
                 ui.add(
                     crate::ui_kit::text_field(draft, crate::ui_kit::FieldWidth::Medium)
                         .hint_text("Host input name"),
-                );
+                )
+                .labelled_by(name_label.id);
                 if ui
                     .add_enabled(draft != name, egui::Button::new("Apply name"))
                     .clicked()

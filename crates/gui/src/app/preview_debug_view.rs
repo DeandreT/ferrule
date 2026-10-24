@@ -302,6 +302,9 @@ fn show_live_expression_context(
         ui.label(format!("Source position: {collection} #{}", position.index));
     }
     ui.strong("Active source frames (outer to inner)");
+    if source.frames.is_empty() && source.omitted_outer_frames == 0 {
+        ui.weak("No active source frame was recorded at this point.");
+    }
     if source.omitted_outer_frames > 0 {
         ui.weak(format!(
             "{} omitted",

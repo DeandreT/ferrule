@@ -51,13 +51,13 @@ impl PrimaryDocumentSession {
 
     pub(super) fn selection_label(&self) -> &'static str {
         match self.plan.selection {
-            PrimaryFileSelection::Direct => "One document named by the primary filename",
+            PrimaryFileSelection::Direct => "Read the file selected by the primary filename.",
             PrimaryFileSelection::FileNameWildcard {
                 empty: EmptyFileSelection::Refuse,
-            } => "Every file matching the primary filename wildcard; no match is an error",
+            } => "Read matching files; stop if there are no matches.",
             PrimaryFileSelection::FileNameWildcard {
                 empty: EmptyFileSelection::MapNoDocuments,
-            } => "Every file matching the primary filename wildcard; no match maps no documents",
+            } => "Read matching files; continue with no documents when none match.",
         }
     }
 
@@ -66,32 +66,47 @@ impl PrimaryDocumentSession {
         let mut browse = false;
         crate::ui_kit::form_grid(ui, "primary_document_settings", |form| {
             form.row("Input folder", |ui| {
-                ui.add(crate::ui_kit::text_field(
-                    &mut self.input_root,
-                    crate::ui_kit::FieldWidth::Fill,
-                ))
-                .on_hover_text(
-                    "Primary documents are read only beneath this folder. URIs, rooted \
-                     or parent paths and symbolic links are refused.",
-                );
-                browse = ui.button("Browse…").clicked();
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    browse = ui.button("Browse…").clicked();
+                    ui.add(crate::ui_kit::text_field(
+                        &mut self.input_root,
+                        crate::ui_kit::FieldWidth::Fill,
+                    ))
+                    .on_hover_text(
+                        "Primary documents are read only beneath this folder. URIs, rooted \
+                         or parent paths and symbolic links are refused.",
+                    );
+                });
             });
             form.row("Maximum documents", |ui| {
-                ui.add(egui::DragValue::new(&mut self.max_documents).range(1..=1_000_000));
+                let count =
+                    ui.add(egui::DragValue::new(&mut self.max_documents).range(1..=1_000_000));
+                count.widget_info(|| egui::WidgetInfo {
+                    label: Some("Maximum documents".into()),
+                    ..egui::WidgetInfo::drag_value(ui.is_enabled(), self.max_documents as f64)
+                });
             });
             form.row("Maximum size per document", |ui| {
-                ui.add(
-                    egui::DragValue::new(&mut self.max_document_bytes)
-                        .range(1..=u64::MAX)
-                        .speed(65_536.0)
-                        .suffix(" MiB")
-                        .custom_formatter(|bytes, _| format_document_mebibytes(bytes))
-                        .custom_parser(parse_document_mebibytes),
-                )
-                .on_hover_text(format!(
-                    "{} bytes. One MiB is 1,048,576 bytes.",
-                    self.max_document_bytes
-                ));
+                let size = ui
+                    .add(
+                        egui::DragValue::new(&mut self.max_document_bytes)
+                            .range(1..=u64::MAX)
+                            .speed(65_536.0)
+                            .suffix(" MiB")
+                            .custom_formatter(|bytes, _| format_document_mebibytes(bytes))
+                            .custom_parser(parse_document_mebibytes),
+                    )
+                    .on_hover_text(format!(
+                        "{} bytes. One MiB is 1,048,576 bytes.",
+                        self.max_document_bytes
+                    ));
+                size.widget_info(|| egui::WidgetInfo {
+                    label: Some("Maximum size per document in MiB".into()),
+                    ..egui::WidgetInfo::drag_value(
+                        ui.is_enabled(),
+                        self.max_document_bytes as f64 / 1_048_576.0,
+                    )
+                });
             });
         });
         crate::ui_kit::help(ui, self.selection_label());
@@ -210,6 +225,23 @@ mod size_tests {
         send.send(None).unwrap();
         app.poll_dialog(&egui::Context::default());
         assert_eq!(app.primary_document.as_ref().unwrap().input_root, "/demo");
+        assert!(app.pending_dialog.is_none());
+    }
+
+    #[test]
+    fn document_projects_explain_why_json_requests_are_unavailable() {
+        let app = super::FerruleApp {
+            primary_document: Some(super::PrimaryDocumentSession::new(
+                mapping::PrimarySourcePlan::new(0),
+                std::path::Path::new("/demo/project.json"),
+            )),
+            ..Default::default()
+        };
+        assert_eq!(
+            app.rest_run_unavailable_reason().as_deref(),
+            Some("Document projects do not run JSON requests.")
+        );
+        assert!(app.pending_rest_run.is_none());
         assert!(app.pending_dialog.is_none());
     }
 }

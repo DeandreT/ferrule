@@ -30,7 +30,9 @@ pub(super) fn show_replay(ui: &mut egui::Ui, view: &mut RunReportView) {
     let retained = view.report.trace.events.len();
     ui.horizontal_wrapped(|ui| {
         ui.label(format!(
-            "{retained} retained events (maximum {MAX_TRACE_EVENTS})"
+            "{} retained (maximum {})",
+            crate::ui_kit::plural(retained, "event"),
+            format_count(MAX_TRACE_EVENTS),
         ));
         if view.report.trace.dropped > 0 {
             ui.weak(format!(
@@ -60,24 +62,31 @@ pub(super) fn show_replay(ui: &mut egui::Ui, view: &mut RunReportView) {
             }
         }
         if let Some(index) = view.replay_event {
-            ui.strong(format!("Event {} of {retained}", index + 1));
+            ui.strong(format!(
+                "Event {} of {}",
+                format_count(index + 1),
+                format_count(retained)
+            ));
         }
     });
     show_history_stage_selector(ui, view);
     ui.horizontal_wrapped(|ui| {
-        ui.label("Selected node");
+        let selected_node_label = ui.label("Selected node");
         if let Some(node) = view.history_node {
             egui::ComboBox::from_id_salt("run_replay_node")
-                .selected_text(node.label())
+                .selected_text(view.node_label(node))
                 .show_ui(ui, |ui| {
                     for (&candidate, events) in &view.history_by_node {
-                        ui.selectable_value(
-                            &mut view.history_node,
-                            Some(candidate),
-                            format!("{} ({} events)", candidate.label(), events.len()),
+                        let label = format!(
+                            "{} ({})",
+                            view.node_label(candidate),
+                            crate::ui_kit::plural(events.len(), "event")
                         );
+                        ui.selectable_value(&mut view.history_node, Some(candidate), label);
                     }
-                });
+                })
+                .response
+                .labelled_by(selected_node_label.id);
         } else {
             ui.weak("No node events");
         }
@@ -118,6 +127,9 @@ pub(super) fn replay_event_details_for_view(
 ) -> Option<Vec<String>> {
     let event = view.report.trace.events.get(index)?;
     let mut details = replay_event_details(index, event);
+    if let Some(label) = view.trace_node_label(index, event) {
+        details[0] = format!("{label} · {}", details[0]);
+    }
     if let Some(stage) = view.report.trace.stage_at(index) {
         details.insert(0, format!("Stage: {stage}"));
     }
@@ -128,7 +140,7 @@ pub(super) fn replay_event_details(index: usize, event: &cli::TraceEvent) -> Vec
     let mut details = vec![trace_row(index, event)];
     if let Some(positions) = event_positions(event) {
         let context = if positions.is_empty() {
-            "<root>".to_owned()
+            "Root context".to_owned()
         } else {
             positions
                 .iter()

@@ -168,3 +168,38 @@ fn short_preview_setup_keeps_cancel_visible_without_mutating_the_project() {
         assert_eq!(serde_json::to_value(&app.project).unwrap(), before);
     }
 }
+
+#[test]
+fn collapsed_debugging_keeps_invalid_conditions_disabled() {
+    use egui_kittest::{
+        Harness,
+        kittest::{NodeT as _, Queryable as _},
+    };
+
+    let mut app = preview_app();
+    app.preview_position_condition.enabled = true;
+    app.preview_position_condition.text = "0".into();
+    let mut harness = Harness::builder()
+        .with_size((1280.0, 800.0))
+        .with_accessibility_check(false)
+        .build_ui_state(
+            |ui, app: &mut FerruleApp| {
+                crate::icons::install(ui.ctx());
+                app.show_preview_setup(ui.ctx());
+            },
+            app,
+        );
+    harness.run();
+    assert!(
+        harness
+            .get_by_label("Debug preview")
+            .accesskit_node()
+            .is_disabled()
+    );
+    assert!(
+        !harness
+            .get_by_label("Preview")
+            .accesskit_node()
+            .is_disabled()
+    );
+}

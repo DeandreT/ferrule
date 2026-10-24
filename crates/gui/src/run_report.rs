@@ -372,6 +372,8 @@ pub struct RunReportView {
     source_row_filter: RefCell<Option<source_rows::SourceRowFilter>>,
     selected_source_row: Option<usize>,
     replay_event: Option<usize>,
+    node_labels: BTreeMap<NodeHistoryKey, String>,
+    stage_node_labels: BTreeMap<(usize, NodeHistoryKey), String>,
 }
 
 impl RunReportView {
@@ -395,6 +397,62 @@ impl RunReportView {
             source_row_filter: RefCell::new(None),
             selected_source_row,
             replay_event,
+            node_labels: BTreeMap::new(),
+            stage_node_labels: BTreeMap::new(),
+        }
+    }
+
+    /// Capture readable names from the run's project rather than consulting a
+    /// subsequently edited graph while displaying history.
+    pub fn with_project_labels(mut self, project: &mapping::Project) -> Self {
+        self.node_labels = Self::labels_for_project(project);
+        self
+    }
+
+    pub fn with_pipeline_labels(mut self, pipeline: &mapping::Pipeline) -> Self {
+        for (index, stage_id) in self.report.trace.stages.iter().enumerate() {
+            if let Some(stage) = pipeline.stages.iter().find(|stage| &stage.id == stage_id) {
+                self.stage_node_labels.extend(
+                    Self::labels_for_project(&stage.project)
+                        .into_iter()
+                        .map(|(node, label)| ((index, node), label)),
+                );
+            }
+        }
+        self
+    }
+
+    fn labels_for_project(project: &mapping::Project) -> BTreeMap<NodeHistoryKey, String> {
+        let mut labels = BTreeMap::new();
+        for (&id, node) in &project.graph.nodes {
+            labels.insert(
+                NodeHistoryKey::Graph(id),
+                crate::graph_viewer::readable_node_label(node),
+            );
+        }
+        for (&function_id, function) in &project.user_functions {
+            for (&id, node) in &function.body.nodes {
+                labels.insert(
+                    NodeHistoryKey::Function(function_id, id),
+                    format!(
+                        "{} · {}",
+                        function.name,
+                        crate::graph_viewer::readable_node_label(node)
+                    ),
+                );
+            }
+        }
+        labels
+    }
+
+    fn node_label(&self, node: NodeHistoryKey) -> String {
+        let label = self
+            .history_stage
+            .and_then(|stage| self.stage_node_labels.get(&(usize::from(stage), node)))
+            .or_else(|| self.node_labels.get(&node));
+        match label {
+            Some(label) => format!("{label} ({})", node.label()),
+            None => node.label(),
         }
     }
 
@@ -433,10 +491,25 @@ impl RunReportView {
 
     fn trace_row(&self, index: usize, event: &cli::TraceEvent) -> String {
         let row = trace_row(index, event);
+        let row = match self.trace_node_label(index, event) {
+            Some(label) => format!("{label} · {row}"),
+            None => row,
+        };
         match self.report.trace.stage_at(index) {
             Some(stage) => format!("stage {stage}  {row}"),
             None => row,
         }
+    }
+
+    fn trace_node_label(&self, index: usize, event: &cli::TraceEvent) -> Option<&String> {
+        node_history_key(event).and_then(|node| {
+            self.report
+                .trace
+                .event_stages
+                .get(index)
+                .and_then(|stage| self.stage_node_labels.get(&(usize::from(*stage), node)))
+                .or_else(|| self.node_labels.get(&node))
+        })
     }
 
     fn select_history_stage(&mut self, stage: u16) {
@@ -735,6 +808,18 @@ fn replay_action(ui: &mut egui::Ui, index: usize, label: &str) -> egui::Response
         .on_hover_text(format!("Replay from event {}", index.saturating_add(1)))
 }
 
+fn format_count(count: usize) -> String {
+    let digits = count.to_string();
+    let mut result = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, digit) in digits.chars().enumerate() {
+        if index != 0 && (digits.len() - index).is_multiple_of(3) {
+            result.push(',');
+        }
+        result.push(digit);
+    }
+    result
+}
+
 fn replayable_trace_row(ui: &mut egui::Ui, index: usize, row: String) -> bool {
     ui.add(
         egui::Label::new(egui::RichText::new(&row).monospace())
@@ -916,6 +1001,7 @@ fn show_trace(ui: &mut egui::Ui, view: &mut RunReportView) {
         ui.weak("No matching trace events.");
         return;
     }
+    ui.weak("Node · Event · Source context · Value");
 
     let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 6.0;
     let mut replay_from = None;
@@ -954,19 +1040,22 @@ fn show_history(ui: &mut egui::Ui, view: &mut RunReportView) {
 fn show_node_history(ui: &mut egui::Ui, view: &mut RunReportView) {
     show_history_stage_selector(ui, view);
     ui.horizontal_wrapped(|ui| {
-        ui.label("Node value history");
+        let node_label = ui.label("Node value history");
         if let Some(node) = view.history_node {
             egui::ComboBox::from_id_salt("run_history_node")
-                .selected_text(node.label())
+                .selected_text(view.node_label(node))
                 .show_ui(ui, |ui| {
                     for (&candidate, events) in &view.history_by_node {
-                        ui.selectable_value(
-                            &mut view.history_node,
-                            Some(candidate),
-                            format!("{} ({} events)", candidate.label(), events.len()),
+                        let label = format!(
+                            "{} ({})",
+                            view.node_label(candidate),
+                            crate::ui_kit::plural(events.len(), "event")
                         );
+                        ui.selectable_value(&mut view.history_node, Some(candidate), label);
                     }
-                });
+                })
+                .response
+                .labelled_by(node_label.id);
         }
         if view.report.trace.dropped > 0 {
             ui.weak(format!(
@@ -987,6 +1076,7 @@ fn show_node_history(ui: &mut egui::Ui, view: &mut RunReportView) {
     };
     let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 6.0;
     let mut replay_from = None;
+    ui.weak("Occurrence · Event · Direction · Source context · Value");
     egui::ScrollArea::vertical()
         .id_salt("run_history")
         .auto_shrink([false, false])
@@ -1073,7 +1163,7 @@ fn history_row(occurrence: usize, event_index: usize, event: &cli::TraceEvent) -
         _ => return None,
     };
     let context = if positions.is_empty() {
-        "<root>".to_string()
+        "Root context".to_string()
     } else {
         positions
             .iter()
