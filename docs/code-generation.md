@@ -1186,6 +1186,17 @@ path, rather than its compiler's Unicode table. Explicit limits bound returned
 names, scanned entries and matching work. This function grants no permission to
 open a path and does not implement file or URL loading.
 
+The opt-in Rust `native-source-io` feature exposes `DirectSourceReader`; C# has
+`FerruleDirectSourceReader`. A reader loads bounded bytes from an authorized
+local path, file URI or direct HTTP(S) request, then releases the input before
+returning the trimmed original identity and bytes to a parser. Limits and a
+timeout are explicit. This direct profile supplies no credentials, cookies or
+proxy configuration, refuses URI user information and unsupported schemes, and
+does not disable TLS certificate checks. It is not a claim of general native
+network parity. Keep dependency features and TLS/proxy/cookie policies attached
+to the execution profile being qualified rather than transferring local-file
+qualification to arbitrary servers.
+
 `parse_mapforce_x12_source` / `ParseMapForceSourceBytes` adds a separately selected
 native source value view. It removes ignored tab/CR/LF characters while retaining
 an LF segment terminator, treats empty physical values and empty composites as
