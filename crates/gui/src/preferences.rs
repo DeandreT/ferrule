@@ -9,6 +9,8 @@ const STORAGE_KEY: &str = "ferrule.editor_preferences";
 // Additive appearance fields (including canvas density) migrate through serde
 // defaults without discarding the user's existing theme and wire settings.
 const CURRENT_VERSION: u32 = 1;
+/// Most recently opened or saved projects kept for the start view.
+pub const MAX_RECENT_PROJECTS: usize = 6;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -18,6 +20,8 @@ pub struct EditorPreferences {
     pub appearance: EditorAppearance,
     pub show_minimap: bool,
     pub mfd_package_manifest: Option<String>,
+    /// Project paths, most recent first.
+    pub recent_projects: Vec<String>,
 }
 
 impl EditorPreferences {
@@ -33,8 +37,22 @@ impl EditorPreferences {
             appearance,
             show_minimap,
             mfd_package_manifest,
+            recent_projects: Vec::new(),
         }
     }
+
+    pub fn with_recent_projects(mut self, recent_projects: Vec<String>) -> Self {
+        self.recent_projects = recent_projects;
+        self
+    }
+}
+
+/// Moves `path` to the front of `recent`, dropping duplicates and the
+/// oldest entries beyond [`MAX_RECENT_PROJECTS`].
+pub fn remember_recent_project(recent: &mut Vec<String>, path: String) {
+    recent.retain(|existing| *existing != path);
+    recent.insert(0, path);
+    recent.truncate(MAX_RECENT_PROJECTS);
 }
 
 impl Default for EditorPreferences {
@@ -167,6 +185,28 @@ mod tests {
                 Some("authored-package.json")
             );
         }
+    }
+
+    #[test]
+    fn recent_projects_roundtrip_most_recent_first_without_duplicates() {
+        let mut recent = Vec::new();
+        for index in 0..=MAX_RECENT_PROJECTS {
+            remember_recent_project(&mut recent, format!("p{index}.json"));
+        }
+        remember_recent_project(&mut recent, "p3.json".to_string());
+        assert_eq!(recent.len(), MAX_RECENT_PROJECTS);
+        assert_eq!(recent[0], "p3.json");
+        assert_eq!(recent[1], format!("p{MAX_RECENT_PROJECTS}.json"));
+        assert!(!recent.contains(&"p0.json".to_string()));
+        assert_eq!(recent.iter().filter(|path| *path == "p3.json").count(), 1);
+
+        let preferences = EditorPreferences::default().with_recent_projects(recent.clone());
+        let mut storage = MemoryStorage::default();
+        store(&mut storage, &preferences);
+        assert_eq!(load(Some(&storage)).recent_projects, recent);
+
+        storage.set_string(STORAGE_KEY, r#"{"version":1}"#.to_string());
+        assert!(load(Some(&storage)).recent_projects.is_empty());
     }
 
     #[test]

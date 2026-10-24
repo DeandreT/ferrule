@@ -74,6 +74,7 @@ mod library_generation;
 #[path = "mfd_export.rs"]
 mod mfd_export_ui;
 mod mfd_import;
+use mfd_import::MfdImportTarget;
 mod mfd_pipeline;
 #[path = "new_mapping.rs"]
 mod new_mapping_ui;
@@ -536,6 +537,9 @@ pub struct FerruleApp {
     appearance: EditorAppearance,
     mfd_package_manifest: Option<String>,
     mfd_item_ordered_exceptions: bool,
+    mfd_import_dialog: Option<MfdImportTarget>,
+    /// Recently opened or saved project paths, most recent first.
+    recent_projects: Vec<String>,
     palette: Palette,
     document: DocumentLocation,
     /// The filename plan and input policy of an opened document project.
@@ -731,6 +735,8 @@ impl Default for FerruleApp {
             appearance: EditorAppearance::default(),
             mfd_package_manifest: None,
             mfd_item_ordered_exceptions: false,
+            mfd_import_dialog: None,
+            recent_projects: Vec::new(),
             palette: crate::theme::palette(crate::theme::ResolvedTheme::Dark),
             document: DocumentLocation::untitled("project.json"),
             primary_document: None,
@@ -963,6 +969,7 @@ impl FerruleApp {
             appearance: preferences.appearance,
             show_minimap: preferences.show_minimap,
             mfd_package_manifest: preferences.mfd_package_manifest,
+            recent_projects: preferences.recent_projects,
             ..Self::default()
         }
     }
@@ -1085,28 +1092,45 @@ impl FerruleApp {
         let Some(action) = self.pending_destructive_action else {
             return;
         };
-        let mut choice = None;
-        egui::Window::new("Unsaved changes")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .show(ctx, |ui| {
-                ui.label(format!(
-                    "Save changes to {} before continuing?",
-                    self.document.display_path()
-                ));
-                ui.horizontal(|ui| {
-                    if ui.button("Save").clicked() {
-                        choice = Some(true);
-                    }
-                    if ui.button("Discard").clicked() {
-                        choice = Some(false);
-                    }
-                    if ui.button("Cancel").clicked() {
-                        self.pending_destructive_action = None;
-                    }
-                });
-            });
+        let name = self.document.title();
+        let location = self.document.location_hint();
+        let response =
+            crate::ui_kit::dialog(ctx, crate::ui_kit::DialogKind::Modal, "Unsaved changes").show(
+                |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        ui.label("Save changes to ");
+                        ui.label(egui::RichText::new(&name).strong());
+                        ui.label(" before continuing?");
+                    });
+                    ui.add(
+                        egui::Label::new(crate::ui_kit::TextRole::Help.text(&location)).truncate(),
+                    )
+                    .on_hover_text(&location);
+                },
+                |ui| {
+                    crate::ui_kit::dialog_buttons(
+                        ui,
+                        "Save".into(),
+                        Some("Cancel".into()),
+                        Some("Discard changes".into()),
+                    )
+                },
+            );
+        let choice = match response.footer {
+            Some(crate::ui_kit::DialogAction::Primary) => Some(true),
+            Some(crate::ui_kit::DialogAction::Destructive) => Some(false),
+            Some(crate::ui_kit::DialogAction::Secondary) => {
+                self.pending_destructive_action = None;
+                None
+            }
+            None => {
+                if response.close_requested {
+                    self.pending_destructive_action = None;
+                }
+                None
+            }
+        };
 
         match choice {
             Some(true) => {
@@ -1157,6 +1181,10 @@ impl FerruleApp {
                 self.host_parameters = host_parameters::HostParameterEditor::default();
                 self.mapping_workspace = mapping_workspace;
                 self.document = DocumentLocation::saved(path);
+                crate::preferences::remember_recent_project(
+                    &mut self.recent_projects,
+                    path.display().to_string(),
+                );
                 self.selected_scope.clear();
                 self.mark_clean();
                 self.rebase_history();
@@ -1176,10 +1204,10 @@ impl FerruleApp {
                 } else {
                     self.diagnostics.replace("Loaded project", diagnostics);
                 }
-                self.status = format!("loaded {}", path.display());
+                self.status = format!("loaded {}", crate::ui_kit::file_label(path));
             }
             Err(error) => {
-                self.status = format!("failed to load {}", path.display());
+                self.status = format!("failed to load {}", crate::ui_kit::file_label(path));
                 self.diagnostics.error("Open failed", error.to_string());
             }
         }
@@ -1426,11 +1454,12 @@ impl FerruleApp {
                         self.diagnostics.replace("MFD import", diagnostics);
                     }
                     self.status = if imported.warnings.is_empty() {
-                        format!("imported {path}")
+                        format!("imported {}", crate::ui_kit::file_label(&path))
                     } else {
                         format!(
-                            "imported {path} with {} warning(s)",
-                            imported.warnings.len()
+                            "imported {} with {}",
+                            crate::ui_kit::file_label(&path),
+                            crate::ui_kit::plural(imported.warnings.len(), "warning")
                         )
                     };
                 }
@@ -1460,7 +1489,8 @@ impl eframe::App for FerruleApp {
                 self.appearance,
                 self.show_minimap,
                 self.mfd_package_manifest.clone(),
-            ),
+            )
+            .with_recent_projects(self.recent_projects.clone()),
         );
     }
 
@@ -1519,17 +1549,24 @@ impl eframe::App for FerruleApp {
         });
 
         egui::Panel::bottom("status_bar")
-            .exact_size(28.0)
+            .exact_size(crate::theme::METRICS.status_height)
             .show(ui, |ui| self.show_status_bar(ui));
         if !self.diagnostics.is_empty() {
             let mut navigate = None;
             egui::Panel::bottom("diagnostics_panel")
                 .resizable(true)
-                .default_size(120.0)
+                .default_size(crate::theme::METRICS.diagnostics_height)
                 .show(ui, |ui| navigate = self.diagnostics.show(ui));
             if let Some(diagnostic) = navigate {
                 self.navigate_to_diagnostic(&diagnostic);
             }
+        }
+        crate::ui_kit::set_workspace_rect(ui.ctx(), ui.available_rect_before_wrap());
+
+        if self.is_start_state() {
+            egui::CentralPanel::default().show(ui, |ui| self.show_start_view(ui));
+            self.show_editor_windows(ui, project_editing_enabled, coalesce_history_change);
+            return;
         }
 
         let visibility = WorkspaceVisibility::resolve(
@@ -1540,34 +1577,60 @@ impl eframe::App for FerruleApp {
             self.compact_dock,
             self.narrow_pane,
         );
+        let source_size = crate::theme::METRICS.source_panel;
         if visibility.source_dock {
             egui::Panel::left("source_schema")
-                .default_size(220.0)
-                .min_size(150.0)
-                .max_size(420.0)
+                .resizable(true)
+                .default_size(source_size.default)
+                .min_size(source_size.min)
+                .max_size(source_size.max)
                 .show(ui, |ui| {
-                    self.show_source_explorer(ui, project_editing_enabled)
+                    crate::ui_kit::pane(ui, "source", |ui| {
+                        self.show_source_explorer(ui, project_editing_enabled)
+                    })
                 });
         }
 
+        let inspector_size = crate::theme::METRICS.inspector_panel;
         if visibility.inspector_dock {
             egui::Panel::right("target_schema_and_scopes")
-                .default_size(300.0)
-                .min_size(220.0)
-                .max_size(480.0)
-                .show(ui, |ui| self.show_inspector(ui, project_editing_enabled));
+                .resizable(true)
+                .default_size(inspector_size.default)
+                .min_size(inspector_size.min)
+                .max_size(inspector_size.max)
+                .show(ui, |ui| {
+                    crate::ui_kit::pane(ui, "inspector", |ui| {
+                        self.show_inspector(ui, project_editing_enabled)
+                    })
+                });
         }
 
         egui::CentralPanel::default().show(ui, |ui| match visibility.center {
-            WorkspacePane::Source => {
-                self.show_source_explorer(ui, project_editing_enabled);
-            }
+            WorkspacePane::Source => crate::ui_kit::pane(ui, "source", |ui| {
+                self.show_source_explorer(ui, project_editing_enabled)
+            }),
             WorkspacePane::Canvas => {
                 self.show_mapping_workspace_canvas(ui, project_editing_enabled)
             }
-            WorkspacePane::Inspector => self.show_inspector(ui, project_editing_enabled),
+            WorkspacePane::Inspector => crate::ui_kit::pane(ui, "inspector", |ui| {
+                self.show_inspector(ui, project_editing_enabled)
+            }),
         });
+        self.show_editor_windows(ui, project_editing_enabled, coalesce_history_change);
+    }
+}
 
+impl FerruleApp {
+    /// Windows and dialogs drawn over the workspace, then the per-frame
+    /// history observation and window title.
+    fn show_editor_windows(
+        &mut self,
+        ui: &mut egui::Ui,
+        project_editing_enabled: bool,
+        coalesce_history_change: bool,
+    ) {
+        self.show_run_settings(ui.ctx(), project_editing_enabled);
+        self.show_mfd_import_dialog(ui.ctx());
         crate::appearance_editor::show(
             ui.ctx(),
             &mut self.show_appearance_editor,
@@ -1614,7 +1677,7 @@ impl eframe::App for FerruleApp {
             ui.ctx().request_repaint();
         }
         let marker = if self.observed_dirty() { " *" } else { "" };
-        let name = self.document.display_name();
+        let name = self.document.title();
         ui.ctx()
             .send_viewport_cmd(egui::ViewportCommand::Title(format!(
                 "{name}{marker} - ferrule"

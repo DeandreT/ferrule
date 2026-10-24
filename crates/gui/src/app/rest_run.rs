@@ -262,6 +262,7 @@ impl FerruleApp {
             && self.pending_library_generation.is_none()
             && self.pending_dialog.is_none()
             && self.pending_destructive_action.is_none()
+            && self.mfd_import_dialog.is_none()
             && self.new_mapping_setup.is_none()
             && self.extra_source_draft.is_none()
             && self.pending_extra_source_removal.is_none()
@@ -299,7 +300,10 @@ impl FerruleApp {
         }
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
-            self.status = format!("request blocked by {} validation issue(s)", issues.len());
+            self.status = format!(
+                "request blocked by {}",
+                crate::ui_kit::plural(issues.len(), "validation issue")
+            );
             self.diagnostics.validation(&self.project, issues);
             return;
         }
@@ -522,7 +526,7 @@ impl FerruleApp {
         if let Some(result) = &mut self.rest_run_result {
             let mut open = true;
             egui::Window::new("Live request result (in memory)").id(egui::Id::unique("rest_request_result")).open(&mut open).show(context, |ui| {
-                ui.label(format!("{} record(s); no configured output file was written.", result.outcome.records_written));
+                ui.label(format!("{}; no configured output file was written.", crate::ui_kit::plural(result.outcome.records_written, "record")));
                 if let Some(artifact) = result.outcome.artifacts.first() {
                     ui.label(format!("{}: {} bytes", artifact.path.display(), artifact.bytes.len()));
                 }
