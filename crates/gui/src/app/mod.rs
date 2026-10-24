@@ -130,9 +130,9 @@ fn history_shortcuts() -> [egui::KeyboardShortcut; 3] {
 struct CanvasDocumentState {
     tools_id: egui::Id,
     snarl: Snarl<CanvasNode>,
-    /// A lazily created document's deterministic geometry. Its sidecar entry
-    /// needs custom positions only after nodes move or are arranged.
-    default_layout: Option<Vec<CanvasNodeLayout>>,
+    /// Deterministic geometry for the current semantic revision. Rewiring can
+    /// change arrangement even when every node keeps its identity and position.
+    default_layout_cache: std::cell::RefCell<Option<(String, Vec<CanvasNodeLayout>)>>,
     node_sizes: std::collections::BTreeMap<CanvasNode, egui::Vec2>,
     endpoint_scroll: crate::canvas_endpoints::EndpointScrollState,
     search: crate::canvas_search::CanvasSearchState,
@@ -286,12 +286,6 @@ impl MappingWorkspace {
             if target >= project.extra_targets.len() {
                 continue;
             }
-            if nodes.is_empty() {
-                workspace
-                    .target_canvases
-                    .insert(target, CanvasDocumentState::default_target(project, target));
-                continue;
-            }
             let mut snarl = canvas_build::build_named_target_snarl(project, target);
             CanvasLayout::apply_nodes(nodes, &mut snarl);
             workspace
@@ -302,13 +296,6 @@ impl MappingWorkspace {
             let Some(definition) = project.user_functions.get(&function) else {
                 continue;
             };
-            if nodes.is_empty() {
-                workspace.function_canvases.insert(
-                    function,
-                    CanvasDocumentState::with_default_layout(build_function_snarl(definition)),
-                );
-                continue;
-            }
             let mut snarl = build_function_snarl(definition);
             CanvasLayout::apply_nodes(nodes, &mut snarl);
             workspace
@@ -320,16 +307,6 @@ impl MappingWorkspace {
 }
 
 impl CanvasDocumentState {
-    fn default_target(project: &Project, target: usize) -> Self {
-        Self::with_default_layout(canvas_build::build_named_target_snarl(project, target))
-    }
-
-    fn with_default_layout(snarl: Snarl<CanvasNode>) -> Self {
-        let mut canvas = Self::with_snarl(snarl);
-        canvas.default_layout = Some(CanvasLayout::capture_nodes(&canvas.snarl));
-        canvas
-    }
-
     fn main(project: &Project) -> Self {
         Self::with_snarl(build_snarl(project))
     }
@@ -342,7 +319,7 @@ impl CanvasDocumentState {
                 NEXT_TOOLS_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             )),
             snarl,
-            default_layout: None,
+            default_layout_cache: Default::default(),
             node_sizes: std::collections::BTreeMap::new(),
             endpoint_scroll: crate::canvas_endpoints::EndpointScrollState::default(),
             search: crate::canvas_search::CanvasSearchState::default(),
@@ -835,16 +812,17 @@ fn editor_state(
     let fingerprint = fingerprint_of_key(&serialized_project);
     EditorState {
         serialized_project,
-        layout: CanvasLayout::capture_with_fingerprint(fingerprint, snarl, workspace),
+        layout: CanvasLayout::capture_with_fingerprint(project, fingerprint, snarl, workspace),
     }
 }
 
 impl CanvasLayout {
     fn capture(project: &Project, snarl: &Snarl<CanvasNode>, workspace: &MappingWorkspace) -> Self {
-        Self::capture_with_fingerprint(project_fingerprint(project), snarl, workspace)
+        Self::capture_with_fingerprint(project, project_fingerprint(project), snarl, workspace)
     }
 
     fn capture_with_fingerprint(
+        project: &Project,
         fingerprint: String,
         snarl: &Snarl<CanvasNode>,
         workspace: &MappingWorkspace,
@@ -853,14 +831,15 @@ impl CanvasLayout {
             .function_canvases
             .iter()
             .map(|(&function, canvas)| {
-                let nodes = Self::capture_nodes(&canvas.snarl);
                 (
                     function,
-                    if canvas.default_layout.as_ref() == Some(&nodes) {
-                        Vec::new()
-                    } else {
-                        nodes
-                    },
+                    Self::capture_document_nodes(canvas, &fingerprint, || {
+                        project
+                            .user_functions
+                            .get(&function)
+                            .map(build_function_snarl)
+                            .unwrap_or_default()
+                    }),
                 )
             })
             .collect();
@@ -868,14 +847,11 @@ impl CanvasLayout {
             .target_canvases
             .iter()
             .map(|(&target, canvas)| {
-                let nodes = Self::capture_nodes(&canvas.snarl);
                 (
                     target,
-                    if canvas.default_layout.as_ref() == Some(&nodes) {
-                        Vec::new()
-                    } else {
-                        nodes
-                    },
+                    Self::capture_document_nodes(canvas, &fingerprint, || {
+                        canvas_build::build_named_target_snarl(project, target)
+                    }),
                 )
             })
             .collect();
@@ -921,6 +897,29 @@ impl CanvasLayout {
                 MappingDocument::Function(function) => Some(function),
             },
             active_document: PersistedMappingDocument::from_document(workspace.active),
+        }
+    }
+
+    fn capture_document_nodes(
+        canvas: &CanvasDocumentState,
+        fingerprint: &str,
+        build_default: impl FnOnce() -> Snarl<CanvasNode>,
+    ) -> Vec<CanvasNodeLayout> {
+        let nodes = Self::capture_nodes(&canvas.snarl);
+        let mut baseline = canvas.default_layout_cache.borrow_mut();
+        if baseline.as_ref().is_none_or(|(key, _)| key != fingerprint) {
+            *baseline = Some((
+                fingerprint.to_owned(),
+                Self::capture_nodes(&build_default()),
+            ));
+        }
+        if baseline
+            .as_ref()
+            .is_some_and(|(_, default)| default == &nodes)
+        {
+            Vec::new()
+        } else {
+            nodes
         }
     }
 

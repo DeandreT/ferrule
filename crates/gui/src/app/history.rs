@@ -40,6 +40,7 @@ impl FerruleApp {
             .unwrap_or_else(|| fingerprint_of_key(&serialized_project));
         EditorState {
             layout: CanvasLayout::capture_with_fingerprint(
+                &self.project,
                 fingerprint,
                 &self.main_canvas.snarl,
                 &self.mapping_workspace,

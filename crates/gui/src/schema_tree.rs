@@ -99,6 +99,7 @@ impl SearchQuery {
 
 struct MatchPlan<'a> {
     node: &'a SchemaNode,
+    display_path: String,
     self_matches: bool,
     matches: usize,
     children: Vec<MatchPlan<'a>>,
@@ -112,6 +113,7 @@ impl<'a> MatchPlan<'a> {
             node.name.clone()
         });
         let self_matches = query.matches(node, path);
+        let display_path = path.join(" / ");
         let children = match &node.kind {
             SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => Vec::new(),
             SchemaKind::Group { children, .. } => children
@@ -124,6 +126,7 @@ impl<'a> MatchPlan<'a> {
             usize::from(self_matches) + children.iter().map(|child| child.matches).sum::<usize>();
         Self {
             node,
+            display_path,
             self_matches,
             matches,
             children,
@@ -161,7 +164,9 @@ fn show_node(
     };
     match &plan.node.kind {
         SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
-            let response = ui.add(egui::Label::new(text).truncate());
+            let response = ui
+                .add(egui::Label::new(text).truncate())
+                .on_hover_text(&plan.display_path);
             if focused && focus.is_some_and(|(_, scroll)| scroll) {
                 response.scroll_to_me(None);
             }
@@ -169,33 +174,40 @@ fn show_node(
         SchemaKind::Group { .. } => {
             let leaves = schema_field_count(plan.node);
             let force_open = (filtering && plan.descendant_matches()) || focus_descendant;
-            let response = egui::CollapsingHeader::new(text)
+            let header = egui::CollapsingHeader::new(text)
                 .id_salt(path.clone())
                 .default_open(path.is_empty() || leaves <= 12)
-                .open(force_open.then_some(true))
-                .show(ui, |ui| {
-                    let reveal_children = reveal_subtree || plan.self_matches;
-                    for (index, child) in plan.children.iter().enumerate() {
-                        path.push(index);
-                        show_node(
-                            ui,
-                            child,
-                            path,
-                            filtering,
-                            reveal_children,
-                            x12_descriptions,
-                            focus,
-                        );
-                        path.pop();
-                    }
-                });
+                .open(force_open.then_some(true));
+            let body = |ui: &mut Ui| {
+                let reveal_children = reveal_subtree || plan.self_matches;
+                for (index, child) in plan.children.iter().enumerate() {
+                    path.push(index);
+                    show_node(
+                        ui,
+                        child,
+                        path,
+                        filtering,
+                        reveal_children,
+                        x12_descriptions,
+                        focus,
+                    );
+                    path.pop();
+                }
+            };
+            // Search retains ancestors, so it must obey the same indentation
+            // limit as ordinary browsing in narrow source and target explorers.
+            let response = if ui.available_width() > 180.0 {
+                header.show(ui, body)
+            } else {
+                header.show_unindented(ui, body)
+            };
             if focused && focus.is_some_and(|(_, scroll)| scroll) {
                 response.header_response.scroll_to_me(None);
             }
-            response.header_response.on_hover_text(node_hover_text(
-                plan.node,
-                leaves,
-                x12_descriptions,
+            response.header_response.on_hover_text(format!(
+                "{}\n{}",
+                plan.display_path,
+                node_hover_text(plan.node, leaves, x12_descriptions,)
             ));
         }
     }
@@ -233,6 +245,7 @@ fn node_label(node: &SchemaNode) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ui::ContextExt as _;
     use ir::{ScalarType, ScalarTypeSet};
 
     fn schema() -> SchemaNode {
@@ -325,5 +338,103 @@ mod tests {
             "X12 BEG: Beginning Segment for Purchase Order\n1 scalar field"
         );
         assert_eq!(node_hover_text(&segment, 1, false), "1 scalar field");
+    }
+
+    #[test]
+    fn deep_schema_fields_and_disclosures_fit_source_and_inspector_widths_with_search() {
+        let mut schema = SchemaNode::scalar("Needle", ScalarType::String);
+        for level in (0..20).rev() {
+            schema = SchemaNode::group(format!("Level {level}"), vec![schema]);
+        }
+        fn find(shape: &egui::Shape, label: &str) -> Option<egui::Rect> {
+            match shape {
+                egui::Shape::Text(text) if text.galley.text() == label => {
+                    Some(text.visual_bounding_rect())
+                }
+                egui::Shape::Vec(shapes) => shapes.iter().find_map(|shape| find(shape, label)),
+                _ => None,
+            }
+        }
+        for width in [220.0, 260.0, 360.0] {
+            for query in ["", "needle"] {
+                let ctx = egui::Context::default();
+                let state = SchemaExplorerState {
+                    query: query.into(),
+                };
+                let frame = |events| {
+                    ctx.run_test_ui(
+                        egui::RawInput {
+                            screen_rect: Some(egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                egui::vec2(width, 1000.0),
+                            )),
+                            time: Some(ctx.cumulative_frame_nr() as f64 / 10.0),
+                            events,
+                            ..Default::default()
+                        },
+                        |ui| {
+                            egui::ScrollArea::vertical()
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    show_schema_tree(
+                                        ui,
+                                        &schema,
+                                        &state,
+                                        "deep_schema",
+                                        false,
+                                        None,
+                                    );
+                                });
+                        },
+                    )
+                };
+                let mut output = frame(Vec::new());
+                for _ in 0..4 {
+                    output = frame(Vec::new());
+                }
+                let visible = |output: &egui::FullOutput, label| {
+                    output
+                        .shapes
+                        .iter()
+                        .find_map(|shape| find(&shape.shape, label))
+                };
+                let leaf =
+                    visible(&output, "Needle: String").expect("deep field remains reachable");
+                assert!(
+                    leaf.left() > 0.0 && leaf.right() < width,
+                    "deep field fits {width}px with query {query:?}"
+                );
+                let parent = visible(&output, "Level 19").unwrap();
+                let disclosure = egui::pos2(parent.left() - 10.0, parent.center().y);
+                assert!(disclosure.x > 0.0 && disclosure.x < width);
+                if query.is_empty() {
+                    for pressed in [true, false] {
+                        frame(vec![
+                            egui::Event::PointerMoved(disclosure),
+                            egui::Event::PointerButton {
+                                pos: disclosure,
+                                button: egui::PointerButton::Primary,
+                                pressed,
+                                modifiers: egui::Modifiers::NONE,
+                            },
+                        ]);
+                    }
+                    for _ in 0..8 {
+                        frame(Vec::new());
+                    }
+                    assert!(
+                        visible(&frame(Vec::new()), "Needle: String").is_none(),
+                        "deep disclosure can collapse its field"
+                    );
+                }
+            }
+        }
+        let plan = MatchPlan::build(&schema, &SearchQuery::new("needle"), &mut Vec::new());
+        let mut leaf = &plan;
+        while let Some(child) = leaf.children.first() {
+            leaf = child;
+        }
+        assert!(leaf.display_path.starts_with("Level 0 / Level 1 /"));
+        assert!(leaf.display_path.ends_with("Level 19 / Needle"));
     }
 }

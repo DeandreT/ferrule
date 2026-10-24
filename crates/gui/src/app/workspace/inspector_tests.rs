@@ -331,3 +331,186 @@ fn scope_tree_resize_stays_inside_a_narrow_inspector() {
         }
     }
 }
+
+fn layout_fixture() -> (FerruleApp, mapping::FunctionId) {
+    let mut app = fixture();
+    let graph = mapping::Graph {
+        nodes: [
+            (
+                0,
+                Node::Const {
+                    value: Value::Int(1),
+                },
+            ),
+            (
+                1,
+                Node::Call {
+                    function: "add".into(),
+                    args: vec![0, 0],
+                },
+            ),
+            (
+                2,
+                Node::Call {
+                    function: "add".into(),
+                    args: vec![1, 1],
+                },
+            ),
+            (
+                3,
+                Node::Const {
+                    value: Value::Int(2),
+                },
+            ),
+        ]
+        .into(),
+    };
+    app.project.graph = graph.clone();
+    app.project.target =
+        SchemaNode::group("Output", vec![SchemaNode::scalar("Value", ScalarType::Int)]);
+    app.project.root.bindings[0].node = 2;
+    app.project.extra_targets[0].schema = app.project.target.clone();
+    app.project.extra_targets[0].root = app.project.root.clone();
+    let id = mapping::FunctionId::new(101);
+    app.project.user_functions.insert(
+        id,
+        mapping::UserFunction {
+            library: "local".into(),
+            name: "Chain".into(),
+            description: None,
+            parameters: vec![],
+            output_name: "Value".into(),
+            output_type: ScalarType::Int,
+            body: graph,
+            output: 2,
+        },
+    );
+    app.main_canvas = CanvasDocumentState::main(&app.project);
+    app.mark_clean();
+    app.rebase_history();
+    (app, id)
+}
+
+fn test_canvas(app: &mut FerruleApp, document: MappingDocument) -> &mut CanvasDocumentState {
+    match document {
+        MappingDocument::Target(target) => app
+            .mapping_workspace
+            .target_canvases
+            .get_mut(&target)
+            .unwrap(),
+        MappingDocument::Function(function) => app
+            .mapping_workspace
+            .function_canvases
+            .get_mut(&function)
+            .unwrap(),
+        MappingDocument::Main => unreachable!(),
+    }
+}
+
+#[test]
+fn default_markers_follow_current_topology_and_rewired_positions_survive_reopen_and_undo() {
+    for function in [false, true] {
+        let (mut app, id) = layout_fixture();
+        let document = if function {
+            app.open_function_tab(id);
+            app.ensure_function_canvas(id);
+            MappingDocument::Function(id)
+        } else {
+            app.open_target_tab(0);
+            app.ensure_target_canvas(0);
+            MappingDocument::Target(0)
+        };
+        app.observe_editor_history(std::time::Instant::now(), false);
+        let original = CanvasLayout::capture_nodes(&test_canvas(&mut app, document).snarl);
+        let graph = if function {
+            &mut app.project.user_functions.get_mut(&id).unwrap().body
+        } else {
+            &mut app.project.graph
+        };
+        graph.nodes.insert(
+            2,
+            Node::Call {
+                function: "add".into(),
+                args: vec![3, 3],
+            },
+        );
+        let mut rewired = if function {
+            build_function_snarl(&app.project.user_functions[&id])
+        } else {
+            canvas_build::build_named_target_snarl(&app.project, 0)
+        };
+        assert_ne!(
+            CanvasLayout::capture_nodes(&rewired),
+            original,
+            "rewiring changes deterministic arrangement"
+        );
+        CanvasLayout::apply_nodes(&original, &mut rewired);
+        test_canvas(&mut app, document).snarl = rewired;
+        app.observe_editor_history(std::time::Instant::now(), false);
+        let layout = app.live_state().layout;
+        let stored = if function {
+            &layout.function_nodes[&id]
+        } else {
+            &layout.target_nodes[&0]
+        };
+        assert_eq!(
+            stored, &original,
+            "the old positions must not become a marker for the new topology"
+        );
+        let decoded: CanvasLayout =
+            serde_json::from_str(&serde_json::to_string(&layout).unwrap()).unwrap();
+        app.mapping_workspace = MappingWorkspace::from_layout(&app.project, Some(&decoded));
+        assert_eq!(
+            CanvasLayout::capture_nodes(&test_canvas(&mut app, document).snarl),
+            original
+        );
+        app.mark_clean();
+        app.rebase_history();
+        let canvas = test_canvas(&mut app, document);
+        let node = canvas.snarl.node_ids().next().unwrap().0;
+        canvas.snarl.get_node_info_mut(node).unwrap().pos.x += 47.0;
+        app.observe_editor_history(std::time::Instant::now(), false);
+        app.undo_project();
+        assert_eq!(
+            CanvasLayout::capture_nodes(&test_canvas(&mut app, document).snarl),
+            original
+        );
+        assert!(!app.is_dirty() && !app.observed_dirty());
+        app.redo_project();
+        assert!(app.is_dirty());
+    }
+}
+
+#[test]
+fn returning_to_default_positions_after_move_undo_redo_is_clean_for_targets_and_functions() {
+    for function in [false, true] {
+        let (mut app, id) = layout_fixture();
+        let document = if function {
+            app.open_function_tab(id);
+            app.ensure_function_canvas(id);
+            MappingDocument::Function(id)
+        } else {
+            app.open_target_tab(0);
+            app.ensure_target_canvas(0);
+            MappingDocument::Target(0)
+        };
+        app.observe_editor_history(std::time::Instant::now(), false);
+        app.mark_clean();
+        app.rebase_history();
+        let canvas = test_canvas(&mut app, document);
+        let original = CanvasLayout::capture_nodes(&canvas.snarl);
+        let node = canvas.snarl.node_ids().next().unwrap().0;
+        canvas.snarl.get_node_info_mut(node).unwrap().pos.x += 75.0;
+        app.observe_editor_history(std::time::Instant::now(), false);
+        app.undo_project();
+        assert!(!app.is_dirty());
+        app.redo_project();
+        assert!(app.is_dirty());
+        CanvasLayout::apply_nodes(&original, &mut test_canvas(&mut app, document).snarl);
+        app.observe_editor_history(std::time::Instant::now(), false);
+        assert!(
+            !app.is_dirty() && !app.observed_dirty(),
+            "returning to the saved default origin is clean"
+        );
+    }
+}
