@@ -85,14 +85,25 @@ fn bounds(context: &Context, canvas: Id, snarl: &Snarl<CanvasNode>) -> Option<Re
 }
 
 fn initial_bounds(context: &Context, canvas: Id, snarl: &Snarl<CanvasNode>) -> Option<Rect> {
-    let connected: std::collections::BTreeSet<_> = snarl.wires()
-        .flat_map(|(from, to)| [from.node, to.node]).collect();
-    let bounds = rectangles(context, canvas, snarl)?.into_iter()
-        .filter(|(id, _)| connected.contains(id)
-            || matches!(snarl[*id], CanvasNode::SourceBlock(_) | CanvasNode::TargetBlock(_)))
+    let connected: std::collections::BTreeSet<_> = snarl
+        .wires()
+        .flat_map(|(from, to)| [from.node, to.node])
+        .collect();
+    let bounds = rectangles(context, canvas, snarl)?
+        .into_iter()
+        .filter(|(id, _)| {
+            connected.contains(id)
+                || matches!(
+                    snarl[*id],
+                    CanvasNode::SourceBlock(_) | CanvasNode::TargetBlock(_)
+                )
+        })
         .fold(Rect::NOTHING, |bounds, (_, rect)| bounds.union(rect));
-    if bounds.is_finite() && bounds.is_positive() { Some(bounds) }
-    else { self::bounds(context, canvas, snarl) }
+    if bounds.is_finite() && bounds.is_positive() {
+        Some(bounds)
+    } else {
+        self::bounds(context, canvas, snarl)
+    }
 }
 
 fn fitted_view(bounds: Rect, viewport: Rect, maximum_zoom: f32) -> Option<FittedView> {
@@ -187,7 +198,11 @@ pub(super) fn begin_frame(
                 data.get_temp::<bool>(canvas.with("fit_all"))
                     .unwrap_or(false)
             });
-            let framing = if explicit { bounds } else { initial_bounds(context, canvas, snarl).unwrap_or(bounds) };
+            let framing = if explicit {
+                bounds
+            } else {
+                initial_bounds(context, canvas, snarl).unwrap_or(bounds)
+            };
             let mut view = fitted_view(framing, viewport, maximum_zoom.min(1.25))?;
             if !explicit {
                 view.zoom = view.zoom.clamp(
@@ -435,6 +450,48 @@ mod tests {
         assert!(viewport.shrink(11.9).contains_rect(
             transform(explicit) * Rect::from_min_size(Pos2::ZERO, egui::vec2(10_000.0, 1_000.0))
         ));
+    }
+
+    #[test]
+    fn opening_centers_endpoints_not_the_disconnected_card_shelf() {
+        let context = Context::default();
+        let canvas = Id::unique("connected-opening-bounds");
+        let mut snarl = Snarl::new();
+        let source = snarl.insert_node(Pos2::ZERO, CanvasNode::SourceBlock(0));
+        let target = snarl.insert_node(egui::pos2(600.0, 0.0), CanvasNode::TargetBlock(0));
+        let unused = snarl.insert_node(egui::pos2(0.0, 5000.0), CanvasNode::Graph(7));
+        snarl.connect(
+            egui_snarl::OutPinId {
+                node: source,
+                output: 0,
+            },
+            egui_snarl::InPinId {
+                node: target,
+                input: 0,
+            },
+        );
+        let measured = [source, target, unused].map(|id| {
+            let info = snarl.get_node_info(id).unwrap();
+            (
+                id,
+                MeasuredNode {
+                    value: snarl[id],
+                    position: info.pos,
+                    rect: Rect::from_min_size(info.pos, egui::vec2(200.0, 100.0)),
+                },
+            )
+        });
+        context.data_mut(|data| {
+            data.insert_temp(
+                canvas.with("fit_node_rects"),
+                Measurements(BTreeMap::from(measured)),
+            )
+        });
+        assert_eq!(
+            initial_bounds(&context, canvas, &snarl).unwrap().center(),
+            egui::pos2(400.0, 50.0)
+        );
+        assert_eq!(bounds(&context, canvas, &snarl).unwrap().bottom(), 5100.0);
     }
 
     #[test]
