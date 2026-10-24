@@ -77,6 +77,9 @@ public static partial class GeneratedMapping {{
     /// <summary>Serialize a materialized element-only XML body, without opening or accepting a file.</summary>
     public static byte[] SerializeMapForceXml(global::Ferrule.Runtime.FerruleInstance value, string? schemaLocation) =>
         global::Ferrule.Runtime.FerruleMapForceXml.SerializeDocument({xml_descriptor}, value, schemaLocation);
+    /// <summary>Prepare XML before opening the host-owned destination stream.</summary>
+    public static global::Ferrule.Runtime.FerrulePreparedMapForceXmlDocument PrepareMapForceXml(global::Ferrule.Runtime.FerruleInstance value, string? schemaLocation) =>
+        global::Ferrule.Runtime.FerruleMapForceXml.PrepareDocument({xml_descriptor}, value, schemaLocation);
 }}
 "#).as_bytes());
     let descriptor = crate::literal::string(&descriptor);

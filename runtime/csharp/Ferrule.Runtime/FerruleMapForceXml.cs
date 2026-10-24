@@ -13,6 +13,15 @@ public static class FerruleMapForceXml
 
     public static byte[] SerializeDocument(string descriptor, FerruleInstance value, string? schemaLocation)
     {
+        var document = PrepareDocument(descriptor, value, schemaLocation);
+        using var output = new MemoryStream();
+        document.WriteTo(output);
+        return output.ToArray();
+    }
+
+    /// <summary>Materialize the DOM without opening an output or validating XML character encoding.</summary>
+    public static FerrulePreparedMapForceXmlDocument PrepareDocument(string descriptor, FerruleInstance value, string? schemaLocation)
+    {
         ArgumentNullException.ThrowIfNull(value);
         var unwrapped = FerruleEmbeddedSchema.Unwrap(descriptor, 8 * 1024 * 1024);
         using var schema = JsonDocument.Parse(unwrapped.Payload, new JsonDocumentOptions { MaxDepth = 128 });
@@ -22,7 +31,9 @@ public static class FerruleMapForceXml
         string ns = Namespace(root, "");
         if (ns is "http://www.w3.org/XML/1998/namespace" or "http://www.w3.org/2000/xmlns/" or Xsi)
             throw new InvalidOperationException("Reserved root namespace.");
-        var document = new XmlDocument(); int nodes = 0; long textBytes = 0;
+        var document = new XmlDocument(); int nodes = 0;
+        long textBytes = Encoding.UTF8.GetByteCount(ns) + (long)(schemaLocation is null ? 0 : Encoding.UTF8.GetByteCount(schemaLocation));
+        if (textBytes > MaximumBytes) throw new InvalidOperationException("XML output limit exceeded.");
         Append(root, value, document, document, ns, 0, true, ref nodes, ref textBytes);
         var element = document.DocumentElement ?? throw new InvalidOperationException("Missing document root.");
         if (schemaLocation is not null)
@@ -31,11 +42,16 @@ public static class FerruleMapForceXml
             element.SetAttribute("xmlns:xsi", Xsi);
             element.SetAttribute("schemaLocation", Xsi, schemaLocation);
         }
-        using var output = new BoundedOutput();
-        using (var writer = XmlWriter.Create(output, new XmlWriterSettings {
+        return new FerrulePreparedMapForceXmlDocument(document);
+    }
+
+    internal static void WriteDocument(XmlDocument document, Stream output)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        using var bounded = new BoundedOutput(output);
+        using (var writer = XmlWriter.Create(bounded, new XmlWriterSettings {
             Encoding = new UTF8Encoding(false, true), Indent = true, IndentChars = "\t", NewLineChars = "\r\n", CloseOutput = false
         })) { document.Save(writer); writer.Flush(); }
-        return output.ToArray();
     }
 
     private static bool Flag(JsonElement node, string name) => node.TryGetProperty(name, out var flag) && flag.ValueKind == JsonValueKind.True;
@@ -67,6 +83,8 @@ public static class FerruleMapForceXml
             || (schema.TryGetProperty("xml_wildcard_namespace", out var wildcard) && wildcard.ValueKind != JsonValueKind.Null)
             || Namespace(schema, ns) != ns)
             throw new InvalidOperationException("Active node is outside the element-only namespace profile.");
+        textBytes += name.Length;
+        if (textBytes > MaximumBytes) throw new InvalidOperationException("XML output limit exceeded.");
         var element = document.CreateElement(name, ns); parent.AppendChild(element);
         var kind = schema.GetProperty("kind");
         if (kind.GetProperty("kind").GetString() == "scalar" && value is FerruleScalar scalar)
@@ -95,11 +113,29 @@ public static class FerruleMapForceXml
         }
         else throw new InvalidOperationException("Active value requires a separate XML profile.");
     }
-    private sealed class BoundedOutput : MemoryStream
+    private sealed class BoundedOutput(Stream output) : Stream
     {
+        private long _written;
+        public override bool CanRead => false;
+        public override bool CanSeek => output.CanSeek;
+        public override bool CanWrite => output.CanWrite;
+        public override long Length => output.Length;
+        public override long Position { get => output.Position; set => throw new NotSupportedException(); }
+        public override void Flush() => output.Flush();
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
         public override void Write(byte[] buffer, int offset, int count)
-        { if (count > MaximumBytes - Length) throw new InvalidOperationException("XML output limit exceeded."); base.Write(buffer, offset, count); }
+        { if (count > MaximumBytes - _written) throw new InvalidOperationException("XML output limit exceeded."); output.Write(buffer, offset, count); _written += count; }
         public override void Write(ReadOnlySpan<byte> buffer)
-        { if (buffer.Length > MaximumBytes - Length) throw new InvalidOperationException("XML output limit exceeded."); base.Write(buffer); }
+        { if (buffer.Length > MaximumBytes - _written) throw new InvalidOperationException("XML output limit exceeded."); output.Write(buffer); _written += buffer.Length; }
     }
+}
+
+/// <summary>Reusable prepared XML. Writing never closes or accepts the host's output.</summary>
+public sealed class FerrulePreparedMapForceXmlDocument
+{
+    private readonly XmlDocument _document;
+    internal FerrulePreparedMapForceXmlDocument(XmlDocument document) => _document = document;
+    public void WriteTo(Stream output) => FerruleMapForceXml.WriteDocument(_document, output);
 }
