@@ -11,13 +11,7 @@ pub fn parse_mapforce_x12_source(
     bytes: &[u8],
 ) -> Result<Instance, X12BoundaryError> {
     let profile = Profile::parse(descriptor_text)?;
-    if profile.envelope != EnvelopeProfile::MapForce
-        || profile.implied.iter().any(|value| value.places() != 0)
-    {
-        return Err(descriptor(
-            "MapForce source projection requires a MapForce envelope without fractional implied decimals",
-        ));
-    }
+    validate_profile(&profile)?;
     input_size(bytes.len())?;
     let text = format_csv::decode_bom_aware_non_flushing(bytes);
     input_size(text.len())?;
@@ -37,6 +31,17 @@ pub fn parse_mapforce_x12_source(
         &mut budget,
         0,
     )
+}
+
+pub(super) fn validate_profile(profile: &Profile) -> Result<(), X12BoundaryError> {
+    if profile.envelope != EnvelopeProfile::MapForce
+        || profile.implied.iter().any(|value| value.places() != 0)
+    {
+        return Err(descriptor(
+            "MapForce source projection requires a MapForce envelope without fractional implied decimals",
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Default)]

@@ -58,6 +58,7 @@ internal static partial class Program
             ("double domain", DoubleDomain),
             ("invocation counter state", InvocationCounters),
             ("invocation counter contexts", InvocationCounterContexts),
+            ("primary source invocation transitions", PrimarySourceTransitions),
             ("standalone decimal lexical domain", Decimal96Domain),
             ("standalone decimal arithmetic", Decimal96Arithmetic),
             ("standalone binary64 decimal conversion", Decimal96FloatConversion),
