@@ -15,6 +15,17 @@ public static partial class FerruleJson
     public static string SerializeMapForceJsonAsciiKeys(string descriptor, FerruleInstance instance, int maximumBytes = 64 * 1024 * 1024)
         => SerializeMapForceJson(descriptor, instance, maximumBytes, quoteKeys: true);
 
+    /// <summary>Write and flush an already opened native JSON stream. The host
+    /// closes it and accepts the document only after close succeeds.</summary>
+    public static void WriteMapForceJsonAsciiKeys(string descriptor, FerruleInstance instance, System.IO.Stream output)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        string text = SerializeMapForceJsonAsciiKeys(descriptor, instance);
+        var writer = new System.IO.StreamWriter(output, new System.Text.UTF8Encoding(false, true), 1024, leaveOpen: true);
+        writer.Write(text);
+        writer.Flush();
+    }
+
     private static string SerializeMapForceJson(string descriptor, FerruleInstance instance, int maximumBytes, bool quoteKeys)
     {
         ArgumentNullException.ThrowIfNull(descriptor);

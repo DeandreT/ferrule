@@ -1167,6 +1167,14 @@ Field projection retains delimiter position: an undeclared component does not
 shift later scalar fields, but a later declared composite may consume it.
 These rules do not alter strict or legacy lexical readers.
 
+The eager JSON companion also emits `write_mapforce_json` / `WriteMapForceJson`
+for an already opened output stream. It preserves the native UTF-8 stream's
+1024-UTF-16-unit buffering, flushes once after a successful write, and does not
+dispose the stream or retry a failed write through a cleanup flush. The caller
+owns opening/truncation, cleanup on failure, and successful close before
+acceptance. Serialization errors are returned before the first stream write;
+this API does not implement filesystem or URL selection.
+
 `parse_mapforce_x12_source` / `ParseMapForceSourceBytes` adds a separately selected
 native source value view. It removes ignored tab/CR/LF characters while retaining
 an LF segment terminator, treats empty physical values and empty composites as
