@@ -46,10 +46,10 @@ pub enum GenerateProfile {
     },
     /// Full-row CSV input and strict JSON output; C# only.
     CsvJson,
-    /// A saved primary filename document project: complete CSV document
+    /// A saved primary filename document project: complete document
     /// runs over every document its filename selects.
-    PrimaryCsvDocument,
-    /// [`Self::PrimaryCsvDocument`] with unescaped CRLF text output.
+    PrimaryDocument,
+    /// [`Self::PrimaryDocument`] for a CSV route with unescaped CRLF text output.
     PrimaryRawDelimitedDocument,
 }
 
@@ -69,7 +69,7 @@ impl GenerateProfile {
     fn reads_document_project(self) -> bool {
         matches!(
             self,
-            Self::PrimaryCsvDocument | Self::PrimaryRawDelimitedDocument
+            Self::PrimaryDocument | Self::PrimaryRawDelimitedDocument
         )
     }
 }
@@ -85,6 +85,7 @@ enum ProfilePolicy {
     CsvX12(codegen::CsvX12BoundaryPolicy),
     CsvJson(codegen::CsvJsonBoundaryPolicy),
     PrimaryCsvDocument(codegen::CsvDocumentBoundaryPolicy),
+    PrimaryXmlDocument,
 }
 
 /// A lowered design with its admitted profile policy.
@@ -164,7 +165,7 @@ fn admit_profile(
                 profile == GenerateProfile::RawDelimitedDocument,
             )?)
         }
-        GenerateProfile::PrimaryCsvDocument | GenerateProfile::PrimaryRawDelimitedDocument => {
+        GenerateProfile::PrimaryDocument | GenerateProfile::PrimaryRawDelimitedDocument => {
             bail!("generated primary CSV documents require a saved document project")
         }
         GenerateProfile::CsvJson => {
@@ -250,17 +251,22 @@ fn prepare_document(
     document: &mapping::DocumentProject,
     profile: GenerateProfile,
 ) -> anyhow::Result<PreparedDesign> {
-    let policy = csv_document_policy(
-        document.project(),
-        profile == GenerateProfile::PrimaryRawDelimitedDocument,
-    )?;
+    let raw = profile == GenerateProfile::PrimaryRawDelimitedDocument;
+    let route = document.primary_route()?;
+    let policy = match route.format {
+        mapping::PrimaryDocumentFormat::Csv => {
+            ProfilePolicy::PrimaryCsvDocument(csv_document_policy(document.project(), raw)?)
+        }
+        _ if raw => bail!("raw-delimited CRLF output requires a primary CSV document plan"),
+        mapping::PrimaryDocumentFormat::Xml => ProfilePolicy::PrimaryXmlDocument,
+    };
     let lowered = codegen::lower_document(document).map_err(|error| match error {
         codegen::DocumentLowerError::Mapping(error) => lower_error(error),
         filename => anyhow::Error::new(filename),
     })?;
     Ok(PreparedDesign {
         lowered: Lowered::Document(lowered),
-        policy: ProfilePolicy::PrimaryCsvDocument(policy),
+        policy,
     })
 }
 
@@ -339,6 +345,9 @@ fn emit(
                         document.context("a primary document policy has its document plan")?,
                         policy,
                     )?,
+                ProfilePolicy::PrimaryXmlDocument => generator.emit_with_primary_xml_documents(
+                    document.context("a primary document policy has its document plan")?,
+                )?,
                 ProfilePolicy::X12(policy) => generator.emit_with_x12(program, policy)?,
                 ProfilePolicy::Json5 => generator.emit_with_json5(program)?,
                 ProfilePolicy::CsvOutput(policy) => {
@@ -368,6 +377,9 @@ fn emit(
                         document.context("a primary document policy has its document plan")?,
                         policy,
                     )?,
+                ProfilePolicy::PrimaryXmlDocument => generator.emit_with_primary_xml_documents(
+                    document.context("a primary document policy has its document plan")?,
+                )?,
                 ProfilePolicy::CsvJson(policy) => {
                     generator.emit_with_csv_json_adapters(program, policy)?
                 }

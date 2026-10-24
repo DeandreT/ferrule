@@ -164,6 +164,8 @@ pub enum GenerationProfile {
     PrimaryCsvDocument,
     /// Primary filename document runs with unescaped CRLF text output.
     PrimaryRawDelimitedDocument,
+    /// Primary filename document runs with complete XML documents.
+    PrimaryXmlDocument,
 }
 
 /// The names a generated library is hosted under.

@@ -1,0 +1,130 @@
+use std::cell::RefCell;
+use std::error::Error;
+use std::path::Path;
+
+use codegen_runtime::{
+    CsvSourceData, ExecutionContext, LocalFileError, LocalPrimaryFiles, PrimaryAcquisitionError,
+    PrimaryFileSelection, PrimarySourceHost, PrimaryXmlDocumentError, RuntimeError,
+    RuntimeParameters, Value,
+};
+use serde_json::{Value as Json, json};
+
+struct Recording {
+    inner: LocalPrimaryFiles,
+    calls: RefCell<Vec<String>>,
+}
+
+impl PrimarySourceHost for Recording {
+    type Error = LocalFileError;
+
+    fn select(&self, filename: &str, selection: PrimaryFileSelection) -> Result<Vec<String>, LocalFileError> {
+        self.calls.borrow_mut().push(format!("select:{filename}"));
+        self.inner.select(filename, selection)
+    }
+
+    fn load(&self, request: &str) -> Result<CsvSourceData, LocalFileError> {
+        self.calls.borrow_mut().push(format!("load:{request}"));
+        self.inner.load(request)
+    }
+}
+
+fn local(error: &LocalFileError) -> (&'static str, String) {
+    match error {
+        LocalFileError::Root { path, .. } => ("root", path.display().to_string()),
+        LocalFileError::Uri { scheme } => ("uri", scheme.clone()),
+        LocalFileError::Rooted { filename } => ("rooted", filename.clone()),
+        LocalFileError::Parent { filename } => ("parent", filename.clone()),
+        LocalFileError::InvalidName { filename } => ("invalid_name", filename.clone()),
+        LocalFileError::WildcardDirectory { filename } => ("wildcard_directory", filename.clone()),
+        LocalFileError::NoMatches { filename } => ("no_matches", filename.clone()),
+        LocalFileError::Missing { path } => ("missing", path.clone()),
+        LocalFileError::Symlink { path } => ("symlink", path.clone()),
+        LocalFileError::NotRegular { path } => ("not_regular", path.clone()),
+        LocalFileError::TooLarge { path, .. } => ("too_large", path.clone()),
+        LocalFileError::Io { path, .. } => ("io", path.clone()),
+    }
+}
+
+fn runtime(error: &RuntimeError) -> (&'static str, String) {
+    match error {
+        RuntimeError::MissingRuntimeParameter { name, .. } => ("missing_runtime_parameter", name.clone()),
+        other => ("other", other.to_string()),
+    }
+}
+
+/// The mapping failure inside an output failure, if the mapping failed.
+fn mapping_cause<'a>(error: &'a (dyn Error + 'static)) -> Option<&'a RuntimeError> {
+    let mut next = Some(error);
+    while let Some(error) = next {
+        if let Some(runtime) = error.downcast_ref::<RuntimeError>() {
+            return Some(runtime);
+        }
+        next = error.source();
+    }
+    None
+}
+
+fn classify(error: PrimaryXmlDocumentError<LocalFileError>) -> Json {
+    let (stage, (kind, subject)) = match error {
+        PrimaryXmlDocumentError::Acquisition(error) => match error {
+            PrimaryAcquisitionError::Filename(error) => ("filename", runtime(&error)),
+            PrimaryAcquisitionError::Selection(error) => ("selection", local(&error)),
+            PrimaryAcquisitionError::DirectSelection { found } => ("selection", ("direct", found.to_string())),
+            PrimaryAcquisitionError::Request { path } => ("request", ("invalid", path)),
+            PrimaryAcquisitionError::Load { source, .. } => ("load", local(&source)),
+            PrimaryAcquisitionError::Documents { maximum } => ("documents", ("limit", maximum.to_string())),
+            PrimaryAcquisitionError::Input { path, .. } => ("input", ("xml", path)),
+            PrimaryAcquisitionError::InvalidLimit { maximum } => ("documents", ("invalid_limit", maximum.to_string())),
+        },
+        PrimaryXmlDocumentError::Assembly(error) => ("assembly", ("refused", error.to_string())),
+        PrimaryXmlDocumentError::Output(error) => match mapping_cause(&error) {
+            Some(cause) => ("mapping", runtime(cause)),
+            None => ("output", ("other", error.to_string())),
+        },
+    };
+    json!([stage, kind, subject])
+}
+
+macro_rules! run {
+    ($model:ident, $execution:expr, $host:expr, $maximum:expr) => {
+        $model::execute_primary_xml_document_bytes($execution, $host, $maximum)
+    };
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let arguments: Vec<String> = std::env::args().collect();
+    let cases: Json = serde_json::from_str(&std::fs::read_to_string(&arguments[1])?)?;
+    let root = Path::new(&arguments[2]);
+    let mut results = Vec::new();
+    for case in cases["cases"].as_array().ok_or("cases")? {
+        if case["unix"] == true && !cfg!(unix) {
+            continue;
+        }
+        let id = case["id"].as_str().ok_or("id")?;
+        let mut parameters = RuntimeParameters::new();
+        for (name, value) in case["parameters"].as_object().into_iter().flatten() {
+            parameters.insert(name, Value::String(value.as_str().ok_or("value")?.into()))?;
+        }
+        let execution = ExecutionContext::new(Path::new("authored.mapping")).with_parameters(&parameters);
+        let mut files = LocalPrimaryFiles::new(&root.join(id))?;
+        if let Some(limit) = case["max_document_bytes"].as_u64() {
+            files = files.with_max_document_bytes(limit);
+        }
+        let host = Recording { inner: files, calls: RefCell::new(Vec::new()) };
+        let maximum = case["maximum"].as_u64().unwrap_or(16) as usize;
+        let result = match case["model"].as_u64().ok_or("model")? {
+            0 => run!(model0, &execution, &host, maximum),
+            1 => run!(model1, &execution, &host, maximum),
+            2 => run!(model2, &execution, &host, maximum),
+            other => return Err(format!("unknown model {other}").into()),
+        };
+        let mut record = json!({"id": id, "calls": host.calls.take()});
+        match result {
+            Ok(bytes) => record["output"] = json!(String::from_utf8(bytes)?),
+            Err(error) => record["error"] = classify(error),
+        }
+        results.push(record);
+    }
+    std::fs::write(&arguments[3], serde_json::to_vec_pretty(&results)?)?;
+    Ok(())
+}

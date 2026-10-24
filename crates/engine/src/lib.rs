@@ -86,7 +86,10 @@ pub use policy::{
     DynamicSourceLoadError, ExecutionBudgetKind, ExecutionBudgets, ExecutionPolicy, PathAccess,
     PolicyConfigError, PolicyRefusal, RestrictedCapability, RestrictedPolicy, RootAccess,
 };
-pub use primary_csv::{PrimaryDocumentRunError, acquire_primary_csv, run_primary_csv_document};
+pub use primary_csv::{
+    PrimaryDocumentRunError, acquire_primary_csv, primary_csv_parser, run_primary_csv_document,
+    run_primary_document,
+};
 pub use primary_filename::{PrimaryFilenameEvaluationError, evaluate_primary_filename};
 pub use trace::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind,

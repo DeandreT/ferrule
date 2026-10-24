@@ -1,22 +1,44 @@
 //! `ferrule run-document` and the CLI document run library produce the same
 //! complete documents and typed failures as the interpreter for every
-//! `conformance/primary-filename-documents` case.
+//! primary filename document cohort case.
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use format_csv::{CsvByteDecodingPolicy, CsvWriteOptions, LocalPrimaryFiles};
-use ir::{Instance, ScalarType, SchemaNode, Value};
-use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
+use format_csv::LocalPrimaryFiles;
+use ir::{ScalarType, SchemaNode, Value};
+use mapping::{Binding, DocumentProject, Graph, Node, Project, Scope, ScopeIteration};
 use serde_json::Value as Json;
 
 #[path = "../../../conformance/primary-filename-documents/projects.rs"]
 mod projects;
+#[path = "../../../conformance/primary-xml-documents/projects.rs"]
+mod xml_projects;
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 
-const CASES: &str = include_str!("../../../conformance/primary-filename-documents/cases.json");
+struct Cohort {
+    name: &'static str,
+    cases: &'static str,
+    models: &'static [&'static str],
+    document: fn(&str) -> DocumentProject,
+}
+
+const COHORTS: [Cohort; 2] = [
+    Cohort {
+        name: "csv",
+        cases: include_str!("../../../conformance/primary-filename-documents/cases.json"),
+        models: &projects::MODELS,
+        document: projects::document,
+    },
+    Cohort {
+        name: "xml",
+        cases: include_str!("../../../conformance/primary-xml-documents/cases.json"),
+        models: &xml_projects::MODELS,
+        document: xml_projects::document,
+    },
+];
 
 fn string(name: &str) -> SchemaNode {
     SchemaNode::scalar(name, ScalarType::String)
@@ -47,8 +69,8 @@ impl Drop for TempDir {
     }
 }
 
-fn cases() -> TestResult<Vec<Json>> {
-    let cases: Json = serde_json::from_str(CASES)?;
+fn cases(cohort: &Cohort) -> TestResult<Vec<Json>> {
+    let cases: Json = serde_json::from_str(cohort.cases)?;
     Ok(cases["cases"]
         .as_array()
         .ok_or("cases")?
@@ -94,40 +116,38 @@ fn policy(root: &Path, case: &Json) -> cli::PrimaryDocumentPolicy {
 
 /// The interpreter's complete document, or its failure's display text.
 fn interpreter(
-    document: &mapping::DocumentProject,
+    document: &DocumentProject,
     root: &Path,
     case: &Json,
 ) -> TestResult<Result<Vec<u8>, String>> {
     let policy = policy(root, case);
     let host = LocalPrimaryFiles::new(root)?.with_max_document_bytes(policy.max_document_bytes);
     let parameters = parameters(case)?;
-    let execution =
-        engine::ExecutionContext::new(Path::new("authored.mapping")).with_parameters(&parameters);
-    match engine::run_primary_csv_document(
+    Ok(cli::execute_primary_document_with_host(
         document,
-        &execution,
+        Path::new("authored.mapping"),
         &host,
-        CsvByteDecodingPolicy::StrictUtf8,
         policy.max_documents,
-    ) {
-        Ok(Instance::Repeated(rows)) => Ok(Ok(format_csv::to_bytes_with_options_bounded(
-            &document.project().target,
-            &rows,
-            &CsvWriteOptions::from(&document.project().target_options),
-            cli::MAX_PRIMARY_DOCUMENT_OUTPUT_BYTES,
-        )?)),
-        Ok(_) => Err("non-repeated output".into()),
-        Err(error) => Ok(Err(error.to_string())),
-    }
+        Some(&parameters),
+    )
+    .map(|(bytes, _)| bytes)
+    .map_err(|error| error.to_string()))
 }
 
 #[test]
 fn cli_document_runs_match_the_interpreter_for_every_case() -> TestResult<()> {
-    let temp = TempDir::new("cases")?;
-    for case in cases()? {
+    for cohort in &COHORTS {
+        run_cohort(cohort)?;
+    }
+    Ok(())
+}
+
+fn run_cohort(cohort: &Cohort) -> TestResult<()> {
+    let temp = TempDir::new(cohort.name)?;
+    for case in cases(cohort)? {
         let id = case["id"].as_str().ok_or("id")?;
-        let model = projects::MODELS[case["model"].as_u64().ok_or("model")? as usize];
-        let document = projects::document(model);
+        let model = cohort.models[case["model"].as_u64().ok_or("model")? as usize];
+        let document = (cohort.document)(model);
         let root = temp.0.join("trees").join(id);
         materialize(&root, &case)?;
         let expected = interpreter(&document, &root, &case)?;
@@ -149,7 +169,7 @@ fn cli_document_runs_match_the_interpreter_for_every_case() -> TestResult<()> {
             mapping::document_project_file::encode_pretty(&document)?,
         )?;
         let parameters = parameters(&case)?;
-        let library = cli::execute_primary_csv_document(
+        let library = cli::execute_primary_document(
             &document,
             &project_path,
             &policy(&root, &case),
@@ -164,7 +184,7 @@ fn cli_document_runs_match_the_interpreter_for_every_case() -> TestResult<()> {
         }
 
         // The command publishes exactly that document or nothing.
-        let output = temp.0.join("outputs").join(format!("{id}.csv"));
+        let output = temp.0.join("outputs").join(format!("{id}.out"));
         let mut command = Command::new(env!("CARGO_BIN_EXE_ferrule"));
         command
             .args(["--diagnostics", "json", "run-document", "--project"])
@@ -215,7 +235,8 @@ fn cli_document_runs_match_the_interpreter_for_every_case() -> TestResult<()> {
 }
 
 #[test]
-fn document_runs_refuse_non_csv_identities_missing_roots_and_input_replacement() -> TestResult<()> {
+fn document_runs_refuse_unrouted_identities_missing_roots_and_input_replacement() -> TestResult<()>
+{
     let temp = TempDir::new("refusals")?;
     std::fs::create_dir_all(temp.0.join("orders"))?;
     std::fs::write(temp.0.join("orders/input.csv"), "Key,Text,Count\nk1,x,1\n")?;
@@ -227,16 +248,21 @@ fn document_runs_refuse_non_csv_identities_missing_roots_and_input_replacement()
     let mut parameters = engine::RuntimeParameters::new();
     parameters.insert("Status", Value::String("ok".into()))?;
     assert!(matches!(
-        cli::execute_primary_csv_document(
+        cli::execute_primary_document(
             &json,
             &temp.0.join("project.json"),
             &cli::PrimaryDocumentPolicy::new(&temp.0),
             Some(&parameters),
         ),
-        Err(cli::PrimaryDocumentError::Format { side: "target" })
+        Err(cli::PrimaryDocumentError::Route(
+            mapping::PrimaryRouteError::NotAdmitted {
+                side: mapping::PrimaryRouteSide::Target,
+                format: "JSON"
+            }
+        ))
     ));
     assert!(matches!(
-        cli::execute_primary_csv_document(
+        cli::execute_primary_document(
             &document,
             &temp.0.join("project.json"),
             &cli::PrimaryDocumentPolicy::new(temp.0.join("absent")),
@@ -252,7 +278,7 @@ fn document_runs_refuse_non_csv_identities_missing_roots_and_input_replacement()
     )?;
     for output in [temp.0.join("orders/input.csv"), project_path.clone()] {
         let before = std::fs::read(&output)?;
-        let error = cli::run_primary_csv_document_file(
+        let error = cli::run_primary_document_file(
             &project_path,
             Some(&output),
             &cli::PrimaryDocumentPolicy::new(&temp.0),
@@ -265,7 +291,7 @@ fn document_runs_refuse_non_csv_identities_missing_roots_and_input_replacement()
 
     // The saved target path is the default destination; the saved source
     // path is never read.
-    let outcome = cli::run_primary_csv_document_file(
+    let outcome = cli::run_primary_document_file(
         &project_path,
         None,
         &cli::PrimaryDocumentPolicy::new(&temp.0),

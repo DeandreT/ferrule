@@ -23,6 +23,7 @@ mod lower;
 mod model;
 mod owned_admission;
 mod presets;
+mod primary_document_boundary;
 mod static_document_boundary;
 mod validate;
 mod x12_boundary;
@@ -97,6 +98,7 @@ pub use owned_admission::{
     legacy_named_input_admission_plan_with_owned_capabilities,
 };
 pub use presets::*;
+pub use primary_document_boundary::{PrimaryDocumentBoundaryError, validate_primary_xml_documents};
 pub use static_document_boundary::{
     DocumentBoundaryDescriptor, DocumentBoundaryFormat, DocumentBoundaryOptions,
     NamedDocumentBoundaryDescriptor, NamedDocumentBoundaryOptions, StaticDocumentBoundaryError,

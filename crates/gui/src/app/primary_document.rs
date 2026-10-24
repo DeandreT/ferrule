@@ -57,7 +57,7 @@ impl PrimaryDocumentSession {
             } => "Every file matching the primary filename wildcard; no match is an error",
             PrimaryFileSelection::FileNameWildcard {
                 empty: EmptyFileSelection::MapNoDocuments,
-            } => "Every file matching the primary filename wildcard; no match maps no rows",
+            } => "Every file matching the primary filename wildcard; no match maps no documents",
         }
     }
 
@@ -82,13 +82,13 @@ impl PrimaryDocumentSession {
 }
 
 impl FerruleApp {
-    /// The run-time refusals that need no input: the CSV identities, the
+    /// The run-time refusals that need no input: the document route, the
     /// filename plan and the mapping.
     pub(super) fn primary_document_preflight(&self) -> anyhow::Result<()> {
         let Some(session) = &self.primary_document else {
             return Ok(());
         };
         session.policy()?;
-        cli::check_primary_csv_document(&session.document(&self.project))
+        cli::check_primary_document(&session.document(&self.project))
     }
 }
