@@ -178,3 +178,39 @@ fn limits_and_filename_errors_do_not_load_inputs() {
         Err(X12AcquisitionError::InvalidLimit)
     ));
 }
+
+#[test]
+fn native_source_binding_keeps_encoding_and_rejects_ambiguous_descriptors() {
+    let boundary = descriptor();
+    let native = serde_json::json!({"boundary":boundary,"source_encoding":"latin1"}).to_string();
+    let mut inputs = X12SourceAcquisition::new(
+        &native,
+        || Ok::<_, &str>("p".into()),
+        |_| Ok::<_, &str>(vec![Ok("a".into()), Ok("b".into())].into_iter()),
+        |path| Ok(source(if path == "a" { &native } else { &boundary }, path)),
+        2,
+    )
+    .unwrap();
+    assert!(inputs.next().unwrap().is_ok());
+    assert!(matches!(
+        inputs.next(),
+        Some(Err(X12AcquisitionError::DescriptorMismatch { .. }))
+    ));
+    assert!(inputs.next().is_none());
+    for invalid in [
+        format!(
+            r#"{{"boundary":{0},"source_encoding":"latin1","source_encoding":"utf8"}}"#,
+            serde_json::to_string(&boundary).unwrap()
+        ),
+        format!(
+            r#"{{"boundary":{0},"boundary":{0},"source_encoding":"latin1"}}"#,
+            serde_json::to_string(&boundary).unwrap()
+        ),
+        serde_json::json!({"boundary":boundary,"source_encoding":"latin1","extra":true})
+            .to_string(),
+        serde_json::json!({"boundary":boundary,"source_encoding":"windows1252"}).to_string(),
+        serde_json::json!({"boundary":boundary}).to_string(),
+    ] {
+        assert!(source_mapforce::source_profile(&invalid).is_err());
+    }
+}

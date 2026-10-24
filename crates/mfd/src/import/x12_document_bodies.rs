@@ -83,6 +83,7 @@ impl X12DocumentBody {
 pub struct ImportedX12DocumentBodies {
     pub source_schema: SchemaNode,
     pub source_options: mapping::FormatOptions,
+    pub source_encoding: mapping::X12SourceEncoding,
     pub source_minimums: Vec<mapping::MapForceEdiMinimum>,
     pub input_parameter: String,
     pub input_preview: Option<String>,
@@ -259,6 +260,25 @@ pub fn import_x12_document_bodies_with_options(
         let mut warnings = Vec::new();
         let source_schema = schema::read_edi_component(source, &resources, &mut warnings)
             .ok_or_else(|| refuse("source schema unavailable"))?;
+        let source_text = source
+            .children()
+            .find(|node| node.has_tag_name("data"))
+            .and_then(|node| node.children().find(|node| node.has_tag_name("text")))
+            .ok_or_else(|| refuse("missing X12 source settings"))?;
+        let source_encoding = match source_text.attribute("encoding") {
+            None | Some("1000") => mapping::X12SourceEncoding::Utf8,
+            Some("1") => mapping::X12SourceEncoding::Latin1,
+            _ => return Err(refuse("unsupported native X12 input encoding")),
+        };
+        if source_text
+            .attribute("byteorder")
+            .is_some_and(|value| value != "1")
+            || source_text
+                .attribute("byteordermark")
+                .is_some_and(|value| value != "0")
+        {
+            return Err(refuse("unsupported native X12 encoding flags"));
+        }
         if !source_schema.is_source || !warnings.is_empty() {
             return Err(refuse("source schema is not authoritative"));
         }
@@ -573,6 +593,7 @@ pub fn import_x12_document_bodies_with_options(
         Ok(ImportedX12DocumentBodies {
             source_schema: source_schema.schema,
             source_options: source_schema.options,
+            source_encoding,
             source_minimums,
             input_parameter: parameter.name.clone(),
             input_preview: input.parsed.input_preview.clone(),

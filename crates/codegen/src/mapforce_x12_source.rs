@@ -2,6 +2,35 @@ use crate::{Program, X12BoundaryOptions, X12BoundarySide, X12EnvelopeProfile};
 use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::FormatOptions;
 
+/// The physical source and its explicit native decoder are separate from the
+/// lexical message schema consumed by the mapping body.
+pub struct NativeX12Source<'a> {
+    pub schema: &'a SchemaNode,
+    pub options: &'a FormatOptions,
+    pub message: &'a [String],
+    pub encoding: mapping::X12SourceEncoding,
+}
+
+pub fn prepare_native_x12_source(
+    program: &Program,
+    source: &NativeX12Source<'_>,
+) -> Result<String, MapForceX12SourceError> {
+    let boundary =
+        prepare_mapforce_x12_source(program, source.schema, source.options, source.message)?;
+    let encoded = serde_json::to_string(
+        &serde_json::json!({"boundary":boundary,"source_encoding":source.encoding}),
+    )
+    .map_err(|_| {
+        MapForceX12SourceError::Binding("native source descriptor serialization failed")
+    })?;
+    if encoded.len() > crate::MAX_EMBEDDED_X12_DESCRIPTOR_BYTES {
+        return Err(MapForceX12SourceError::Binding(
+            "native source descriptor exceeds its byte limit",
+        ));
+    }
+    Ok(encoded)
+}
+
 #[derive(Debug)]
 pub enum MapForceX12SourceError {
     Boundary(crate::X12BoundaryPolicyError),

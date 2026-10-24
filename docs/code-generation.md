@@ -1133,6 +1133,19 @@ unchanged. The host then visits that input's messages and calls the preparation
 method. The callbacks still own filesystem/URL selection and input close errors;
 the companion neither chooses a transport nor publishes output files.
 
+For an original's native input encoding, use `NativeX12Source` with
+`emit_with_native_x12_source` or `emit_with_native_primary_eager_x12_json`.
+These add separately named `parse_native_primary_x12_source` /
+`ParseNativePrimaryX12Source` and descriptor-bound native document methods;
+the eager variant also adds `acquire_native_primary_x12` /
+`AcquireNativePrimaryX12`. `ImportedX12DocumentBodies.source_encoding` preserves
+the supported MFD source encoding. The generated descriptor wraps the physical
+boundary with explicit `utf8` or `latin1` fallback; Unicode BOMs override the
+fallback. Duplicate or unknown wrapper fields and unsupported encoding settings
+are refused. Parsed documents from the native and legacy descriptors are not
+interchangeable. Existing flat-descriptor and non-native generated methods keep
+their UTF-8 fallback, and strict codecs are unchanged.
+
 `parse_mapforce_x12_source` / `ParseMapForceSourceBytes` adds a separately selected
 native source value view. It removes ignored tab/CR/LF characters while retaining
 an LF segment terminator, treats empty physical values and empty composites as

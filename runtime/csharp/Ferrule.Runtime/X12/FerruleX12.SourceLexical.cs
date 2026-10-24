@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 
 namespace Ferrule.Runtime;
 
@@ -8,14 +9,31 @@ public static partial class FerruleX12
     /// numeric conversions, calendar validation, file acquisition or publication.</summary>
     public static FerruleInstance ParseMapForceSourceBytes(string descriptor, byte[] bytes)
     {
-        Profile profile = MapForceSourceProfile(descriptor);
-        FerruleInstance lexical = ParseLexicalSourceCore(descriptor, bytes, nativeProjection: true);
+        var source = NativeSourceSettings(descriptor);
+        Profile profile = MapForceSourceProfile(source.Boundary);
+        FerruleInstance lexical = ParseLexicalSourceCore(source.Boundary, bytes, nativeProjection: true, source.Encoding);
         int textBytes = 0;
         return ProjectMapForceSource(profile.Root, lexical, positional: false, segment: false, new Budget(), ref textBytes, 0);
     }
 
     internal static void ValidateMapForceSourceDescriptor(string descriptor)
-        => _ = MapForceSourceProfile(descriptor);
+        => _ = MapForceSourceProfile(NativeSourceSettings(descriptor).Boundary);
+
+    private static (string Boundary, string Encoding) NativeSourceSettings(string descriptor)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        RequireUtf8(descriptor, MaximumSchemaBytes, "X12 source descriptor");
+        try
+        {
+            using var parsed = JsonDocument.Parse(descriptor);
+            if (parsed.RootElement.ValueKind != JsonValueKind.Object || !parsed.RootElement.TryGetProperty("boundary", out var boundary)) return (descriptor, "utf8");
+            if (parsed.RootElement.EnumerateObject().Count() != 2 || boundary.ValueKind != JsonValueKind.String || !parsed.RootElement.TryGetProperty("source_encoding", out var encoding)
+                || encoding.ValueKind != JsonValueKind.String || encoding.GetString() is not ("utf8" or "latin1"))
+                throw Failure(FerruleX12Error.Schema, "Invalid native X12 source descriptor.");
+            return (boundary.GetString()!, encoding.GetString()!);
+        }
+        catch (JsonException) { throw Failure(FerruleX12Error.Schema, "Invalid native X12 source descriptor."); }
+    }
 
     private static Profile MapForceSourceProfile(string descriptor)
     {
@@ -107,11 +125,13 @@ public static partial class FerruleX12
     public static FerruleInstance ParseLexicalSourceBytes(string descriptor, byte[] bytes)
         => ParseLexicalSourceCore(descriptor, bytes, nativeProjection: false);
 
-    private static FerruleInstance ParseLexicalSourceCore(string descriptor, byte[] bytes, bool nativeProjection)
+    private static FerruleInstance ParseLexicalSourceCore(string descriptor, byte[] bytes, bool nativeProjection, string sourceEncoding = "utf8")
     {
         ArgumentNullException.ThrowIfNull(bytes);
         if (bytes.Length > MaximumDocumentBytes) throw Limit("X12 source byte limit exceeded.");
-        string text = FerruleTextDecoding.BomAwareNonFlushing(bytes);
+        bool bom = bytes.AsSpan().StartsWith(new byte[] { 0xef, 0xbb, 0xbf }) || bytes.AsSpan().StartsWith(new byte[] { 0xff, 0xfe })
+            || bytes.AsSpan().StartsWith(new byte[] { 0xfe, 0xff }) || bytes.AsSpan().StartsWith(new byte[] { 0, 0, 0xfe, 0xff });
+        string text = sourceEncoding == "latin1" && !bom ? Encoding.Latin1.GetString(bytes) : FerruleTextDecoding.BomAwareNonFlushing(bytes);
         if (nativeProjection)
         {
             char terminator = text.Length > 105 ? text[105] : '\0';

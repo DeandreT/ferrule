@@ -383,6 +383,54 @@ fn unsupported_metadata_and_port_mutations_are_refused() {
 }
 
 #[test]
+fn source_encoding_comes_from_the_original_component() {
+    let fixture = Fixture::new();
+    assert_eq!(
+        fixture.import().unwrap().source_encoding,
+        mapping::X12SourceEncoding::Utf8
+    );
+    fixture.change("mapping.mfd", |text| {
+        text.replace(
+            "<text type=\"edi\"",
+            "<text encoding=\"1\" byteorder=\"1\" byteordermark=\"0\" type=\"edi\"",
+        )
+    });
+    assert_eq!(
+        fixture.import().unwrap().source_encoding,
+        mapping::X12SourceEncoding::Latin1
+    );
+    fixture.change("mapping.mfd", |text| {
+        text.replace("encoding=\"1\"", "encoding=\"99999\"")
+    });
+    assert!(fixture.import().is_err());
+}
+
+#[test]
+fn unsupported_native_source_encoding_flags_are_refused() {
+    for settings in [
+        "encoding=\"1\" byteorder=\"2\" byteordermark=\"0\"",
+        "encoding=\"1\" byteorder=\"1\" byteordermark=\"1\"",
+    ] {
+        let fixture = Fixture::new();
+        fixture.change("mapping.mfd", |text| {
+            text.replace(
+                "<text type=\"edi\"",
+                &format!("<text {settings} type=\"edi\""),
+            )
+        });
+        assert!(fixture.import().is_err());
+    }
+    let fixture = Fixture::new();
+    fixture.change("mapping.mfd", |text| {
+        text.replace("<text type=\"edi\"", "<text encoding=\"1000\" type=\"edi\"")
+    });
+    assert_eq!(
+        fixture.import().unwrap().source_encoding,
+        mapping::X12SourceEncoding::Utf8
+    );
+}
+
+#[test]
 fn required_metadata_is_explicit_and_does_not_change_writer_minimums() {
     let fixture = Fixture::new();
     let selected = ["850".to_string()];

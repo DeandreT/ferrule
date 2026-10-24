@@ -5,15 +5,16 @@ use mapping::EdiLexicalKind;
 /// Read a MapForce-envelope source without eagerly converting numeric values or
 /// validating date/time calendars. Empty physical values become absent; source
 /// dates/times receive the native lexical view, independently of reached casts.
-/// This does not acquire files, validate every native parser rule, or publish.
+/// A flat descriptor keeps UTF-8 fallback. An explicit native descriptor binds
+/// UTF-8 or Latin-1 fallback; Unicode BOMs override either choice. This does not
+/// acquire files, validate every native parser rule, or publish.
 pub fn parse_mapforce_x12_source(
     descriptor_text: &str,
     bytes: &[u8],
 ) -> Result<Instance, X12BoundaryError> {
-    let profile = Profile::parse(descriptor_text)?;
-    validate_profile(&profile)?;
+    let (profile, encoding) = source_profile(descriptor_text)?;
     input_size(bytes.len())?;
-    let text = format_csv::decode_bom_aware_non_flushing(bytes);
+    let text = decode_source(bytes, encoding);
     input_size(text.len())?;
     let text = source_wire_text(&text);
     let lexical = format_edi::x12::from_str_lexical(&text, &profile.schema)?;
@@ -31,6 +32,53 @@ pub fn parse_mapforce_x12_source(
         &mut budget,
         0,
     )
+}
+
+pub(super) fn source_profile(
+    text: &str,
+) -> Result<(Profile, mapping::X12SourceEncoding), X12BoundaryError> {
+    if text.len() > MAX_EMBEDDED_X12_SCHEMA_BYTES {
+        return Err(descriptor(
+            "native source descriptor exceeds its byte limit",
+        ));
+    }
+    let value: Json = serde_json::from_str(text).map_err(|error| descriptor(error.to_string()))?;
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct NativeSourceDescriptor {
+        boundary: String,
+        source_encoding: mapping::X12SourceEncoding,
+    }
+    // Deserialize the original text, not the Value, so duplicate properties
+    // cannot silently replace the bound source policy.
+    let native = value
+        .get("boundary")
+        .map(|_| serde_json::from_str::<NativeSourceDescriptor>(text))
+        .transpose()
+        .map_err(|error| descriptor(error.to_string()))?;
+    let boundary = native
+        .as_ref()
+        .map_or(text, |source| source.boundary.as_str());
+    let encoding = native
+        .as_ref()
+        .map_or(mapping::X12SourceEncoding::Utf8, |source| {
+            source.source_encoding
+        });
+    let profile = Profile::parse(boundary)?;
+    validate_profile(&profile)?;
+    Ok((profile, encoding))
+}
+
+fn decode_source(bytes: &[u8], encoding: mapping::X12SourceEncoding) -> String {
+    let bom = bytes.starts_with(&[0xef, 0xbb, 0xbf])
+        || bytes.starts_with(&[0xff, 0xfe])
+        || bytes.starts_with(&[0xfe, 0xff])
+        || bytes.starts_with(&[0, 0, 0xfe, 0xff]);
+    if encoding == mapping::X12SourceEncoding::Latin1 && !bom {
+        bytes.iter().map(|byte| char::from(*byte)).collect()
+    } else {
+        format_csv::decode_bom_aware_non_flushing(bytes)
+    }
 }
 
 pub(super) fn validate_profile(profile: &Profile) -> Result<(), X12BoundaryError> {
@@ -329,6 +377,33 @@ mod tests {
         ] {
             assert_eq!(source_date(input), expected);
         }
+    }
+
+    #[test]
+    fn source_encoding_is_explicit_and_boms_override_the_fallback() {
+        use mapping::X12SourceEncoding::{Latin1, Utf8};
+        assert_eq!(
+            decode_source(&[b'c', b'a', b'f', 0xe9], Latin1),
+            "caf\u{e9}"
+        );
+        assert_eq!(
+            decode_source("caf\u{e9}".as_bytes(), Latin1),
+            "caf\u{c3}\u{a9}"
+        );
+        assert_eq!(decode_source("caf\u{e9}".as_bytes(), Utf8), "caf\u{e9}");
+        assert_eq!(
+            decode_source(&[0xef, 0xbb, 0xbf, b'c', b'a', b'f', 0xc3, 0xa9], Latin1),
+            "caf\u{e9}"
+        );
+        assert_eq!(
+            decode_source(&[0xff, 0xfe, b'c', 0, b'a', 0, b'f', 0, 0xe9, 0], Latin1),
+            "caf\u{e9}"
+        );
+        assert_eq!(
+            decode_source(&[0, 0, 0xfe, 0xff, 0, 0, 0, 0xe9], Latin1),
+            "\u{e9}"
+        );
+        assert!(source_profile(r#"{"boundary":"{}","source_encoding":"windows1252"}"#).is_err());
     }
     #[test]
     fn native_times_format_by_utf16_width_without_validation() {

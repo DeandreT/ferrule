@@ -68,6 +68,22 @@ internal static partial class Program
         Equal("2049-13-99", ((FerruleScalar)Field(projectedGs, "E04")).Value.StringValue);
         Equal("ab:CD:ef", ((FerruleScalar)Field(projectedGs, "E05")).Value.StringValue);
         Equal(FerruleValueKind.Null, ((FerruleScalar)Field(projectedGs, "E01")).Value.Kind);
+        var latinDescriptor = JsonSerializer.Serialize(new { boundary, source_encoding = "latin1" });
+        string accentSource = text.Replace("GS*", "GS*é", StringComparison.Ordinal);
+        foreach (byte[] bytes in new[] { Encoding.Latin1.GetBytes(accentSource), Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(accentSource)).ToArray() })
+        {
+            var encoded = FerruleX12.ParseMapForceSourceBytes(latinDescriptor, bytes);
+            var encodedInterchange = ((FerruleRepeated)Field(encoded, "Interchange")).Items[0];
+            var encodedGroup = ((FerruleRepeated)Field(encodedInterchange, "Group")).Items[0];
+            var encodedGs = ((FerruleRepeated)Field(encodedGroup, "GS")).Items[0];
+            Equal("é", ((FerruleScalar)Field(encodedGs, "E01")).Value.StringValue);
+        }
+        foreach (string invalid in new[] {
+            "{\"boundary\":" + JsonSerializer.Serialize(boundary) + ",\"source_encoding\":\"latin1\",\"source_encoding\":\"utf8\"}",
+            JsonSerializer.Serialize(new { boundary, source_encoding = "windows1252" }),
+            JsonSerializer.Serialize(new { boundary, source_encoding = "latin1", extra = true }),
+            JsonSerializer.Serialize(new { boundary }),
+        }) Throws<FerruleX12Exception>(() => FerruleX12.ParseMapForceSourceBytes(invalid, Encoding.UTF8.GetBytes(text)));
         for (int fail = 1; fail <= 4; fail++)
         {
             int count = 0;

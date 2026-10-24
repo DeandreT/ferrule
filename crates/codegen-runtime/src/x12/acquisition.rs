@@ -89,8 +89,7 @@ impl<'a, F: 'a, E: 'a> X12SourceAcquisition<'a, F, E> {
         load: impl FnMut(&str) -> Result<ParsedX12Source, E> + 'a,
         maximum: usize,
     ) -> Result<Self, X12AcquisitionError<F, E>> {
-        let profile = Profile::parse(descriptor_text).map_err(X12AcquisitionError::Boundary)?;
-        source_mapforce::validate_profile(&profile).map_err(X12AcquisitionError::Boundary)?;
+        source_mapforce::source_profile(descriptor_text).map_err(X12AcquisitionError::Boundary)?;
         if maximum > MAX_X12_SOURCE_DOCUMENTS {
             return Err(X12AcquisitionError::InvalidLimit);
         }

@@ -998,6 +998,7 @@ dependencies = [
  "mapping",
  "quick-xml 0.41.0",
  "regex",
+ "serde",
  "serde_json",
 ]
 
