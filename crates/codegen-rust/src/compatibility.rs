@@ -17,8 +17,8 @@ use codegen::{
 
 use crate::identity::{PackageName, runtime_identity};
 use crate::{
-    CsvDocumentEmitError, EmitError, Json5EmitError, Options, RuntimeDependency, X12EmitError,
-    rust_string,
+    CsvDocumentEmitError, EmitError, Json5EmitError, Options, PrimaryDocumentEmitError,
+    RuntimeDependency, X12EmitError, rust_string,
 };
 
 const MODULE_PATH: &str = "src/ferrule_compatibility.rs";
@@ -105,6 +105,16 @@ impl<'a> Generator<'a> {
         };
         self.finish(artifacts, profile)
             .map_err(CsvDocumentEmitError::Emit)
+    }
+
+    /// [`crate::emit_with_primary_xml_documents`].
+    pub fn emit_with_primary_xml_documents(
+        &self,
+        document: &DocumentProgram,
+    ) -> Result<ArtifactSet, PrimaryDocumentEmitError> {
+        let artifacts = crate::emit_with_primary_xml_documents(document, self.options)?;
+        self.finish(artifacts, GenerationProfile::PrimaryXmlDocument)
+            .map_err(PrimaryDocumentEmitError::Emit)
     }
 
     /// [`crate::emit_with_json5`].

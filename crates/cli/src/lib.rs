@@ -116,9 +116,10 @@ pub use pipeline_preview::{
 };
 pub use preview_inputs::{ProjectPreviewInputs, preview_project_value};
 pub use primary_document::{
-    DEFAULT_MAX_PRIMARY_DOCUMENTS, MAX_PRIMARY_DOCUMENT_OUTPUT_BYTES, PrimaryDocumentError,
-    PrimaryDocumentOutput, PrimaryDocumentPolicy, check_primary_csv_document,
-    execute_primary_csv_document, load_document_project, run_primary_csv_document_file,
+    DEFAULT_MAX_PRIMARY_DOCUMENTS, DocumentFormatError, MAX_PRIMARY_DOCUMENT_OUTPUT_BYTES,
+    PrimaryDocumentError, PrimaryDocumentOutput, PrimaryDocumentPolicy, PrimaryInputError,
+    check_primary_document, execute_primary_document, execute_primary_document_with_host,
+    load_document_project, run_primary_document_file,
 };
 pub use project_paths::{
     mapping_identity_relative_to as pipeline_mapping_identity, rebase as rebase_project_paths,

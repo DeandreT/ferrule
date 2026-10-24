@@ -1,22 +1,44 @@
 //! `ferrule run-document` and the CLI document run library produce the same
 //! complete documents and typed failures as the interpreter for every
-//! `conformance/primary-filename-documents` case.
+//! primary filename document cohort case.
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use format_csv::{CsvByteDecodingPolicy, CsvWriteOptions, LocalPrimaryFiles};
-use ir::{Instance, ScalarType, SchemaNode, Value};
-use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
+use format_csv::LocalPrimaryFiles;
+use ir::{ScalarType, SchemaNode, Value};
+use mapping::{Binding, DocumentProject, Graph, Node, Project, Scope, ScopeIteration};
 use serde_json::Value as Json;
 
 #[path = "../../../conformance/primary-filename-documents/projects.rs"]
 mod projects;
+#[path = "../../../conformance/primary-xml-documents/projects.rs"]
+mod xml_projects;
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 
-const CASES: &str = include_str!("../../../conformance/primary-filename-documents/cases.json");
+struct Cohort {
+    name: &'static str,
+    cases: &'static str,
+    models: &'static [&'static str],
+    document: fn(&str) -> DocumentProject,
+}
+
+const COHORTS: [Cohort; 2] = [
+    Cohort {
+        name: "csv",
+        cases: include_str!("../../../conformance/primary-filename-documents/cases.json"),
+        models: &projects::MODELS,
+        document: projects::document,
+    },
+    Cohort {
+        name: "xml",
+        cases: include_str!("../../../conformance/primary-xml-documents/cases.json"),
+        models: &xml_projects::MODELS,
+        document: xml_projects::document,
+    },
+];
 
 fn string(name: &str) -> SchemaNode {
     SchemaNode::scalar(name, ScalarType::String)
@@ -47,8 +69,8 @@ impl Drop for TempDir {
     }
 }
 
-fn cases() -> TestResult<Vec<Json>> {
-    let cases: Json = serde_json::from_str(CASES)?;
+fn cases(cohort: &Cohort) -> TestResult<Vec<Json>> {
+    let cases: Json = serde_json::from_str(cohort.cases)?;
     Ok(cases["cases"]
         .as_array()
         .ok_or("cases")?
@@ -94,40 +116,38 @@ fn policy(root: &Path, case: &Json) -> cli::PrimaryDocumentPolicy {
 
 /// The interpreter's complete document, or its failure's display text.
 fn interpreter(
-    document: &mapping::DocumentProject,
+    document: &DocumentProject,
     root: &Path,
     case: &Json,
 ) -> TestResult<Result<Vec<u8>, String>> {
     let policy = policy(root, case);
     let host = LocalPrimaryFiles::new(root)?.with_max_document_bytes(policy.max_document_bytes);
     let parameters = parameters(case)?;
-    let execution =
-        engine::ExecutionContext::new(Path::new("authored.mapping")).with_parameters(&parameters);
-    match engine::run_primary_csv_document(
+    Ok(cli::execute_primary_document_with_host(
         document,
-        &execution,
+        Path::new("authored.mapping"),
         &host,
-        CsvByteDecodingPolicy::StrictUtf8,
         policy.max_documents,
-    ) {
-        Ok(Instance::Repeated(rows)) => Ok(Ok(format_csv::to_bytes_with_options_bounded(
-            &document.project().target,
-            &rows,
-            &CsvWriteOptions::from(&document.project().target_options),
-            cli::MAX_PRIMARY_DOCUMENT_OUTPUT_BYTES,
-        )?)),
-        Ok(_) => Err("non-repeated output".into()),
-        Err(error) => Ok(Err(error.to_string())),
-    }
+        Some(&parameters),
+    )
+    .map(|(bytes, _)| bytes)
+    .map_err(|error| error.to_string()))
 }
 
 #[test]
 fn cli_document_runs_match_the_interpreter_for_every_case() -> TestResult<()> {
-    let temp = TempDir::new("cases")?;
-    for case in cases()? {
+    for cohort in &COHORTS {
+        run_cohort(cohort)?;
+    }
+    Ok(())
+}
+
+fn run_cohort(cohort: &Cohort) -> TestResult<()> {
+    let temp = TempDir::new(cohort.name)?;
+    for case in cases(cohort)? {
         let id = case["id"].as_str().ok_or("id")?;
-        let model = projects::MODELS[case["model"].as_u64().ok_or("model")? as usize];
-        let document = projects::document(model);
+        let model = cohort.models[case["model"].as_u64().ok_or("model")? as usize];
+        let document = (cohort.document)(model);
         let root = temp.0.join("trees").join(id);
         materialize(&root, &case)?;
         let expected = interpreter(&document, &root, &case)?;
@@ -149,7 +169,7 @@ fn cli_document_runs_match_the_interpreter_for_every_case() -> TestResult<()> {
             mapping::document_project_file::encode_pretty(&document)?,
         )?;
         let parameters = parameters(&case)?;
-        let library = cli::execute_primary_csv_document(
+        let library = cli::execute_primary_document(
             &document,
             &project_path,
             &policy(&root, &case),
@@ -164,7 +184,7 @@ fn cli_document_runs_match_the_interpreter_for_every_case() -> TestResult<()> {
         }
 
         // The command publishes exactly that document or nothing.
-        let output = temp.0.join("outputs").join(format!("{id}.csv"));
+        let output = temp.0.join("outputs").join(format!("{id}.out"));
         let mut command = Command::new(env!("CARGO_BIN_EXE_ferrule"));
         command
             .args(["--diagnostics", "json", "run-document", "--project"])
@@ -215,7 +235,8 @@ fn cli_document_runs_match_the_interpreter_for_every_case() -> TestResult<()> {
 }
 
 #[test]
-fn document_runs_refuse_non_csv_identities_missing_roots_and_input_replacement() -> TestResult<()> {
+fn document_runs_refuse_unrouted_identities_missing_roots_and_input_replacement() -> TestResult<()>
+{
     let temp = TempDir::new("refusals")?;
     std::fs::create_dir_all(temp.0.join("orders"))?;
     std::fs::write(temp.0.join("orders/input.csv"), "Key,Text,Count\nk1,x,1\n")?;
@@ -227,16 +248,21 @@ fn document_runs_refuse_non_csv_identities_missing_roots_and_input_replacement()
     let mut parameters = engine::RuntimeParameters::new();
     parameters.insert("Status", Value::String("ok".into()))?;
     assert!(matches!(
-        cli::execute_primary_csv_document(
+        cli::execute_primary_document(
             &json,
             &temp.0.join("project.json"),
             &cli::PrimaryDocumentPolicy::new(&temp.0),
             Some(&parameters),
         ),
-        Err(cli::PrimaryDocumentError::Format { side: "target" })
+        Err(cli::PrimaryDocumentError::Route(
+            mapping::PrimaryRouteError::NotAdmitted {
+                side: mapping::PrimaryRouteSide::Target,
+                format: "JSON"
+            }
+        ))
     ));
     assert!(matches!(
-        cli::execute_primary_csv_document(
+        cli::execute_primary_document(
             &document,
             &temp.0.join("project.json"),
             &cli::PrimaryDocumentPolicy::new(temp.0.join("absent")),
@@ -252,7 +278,7 @@ fn document_runs_refuse_non_csv_identities_missing_roots_and_input_replacement()
     )?;
     for output in [temp.0.join("orders/input.csv"), project_path.clone()] {
         let before = std::fs::read(&output)?;
-        let error = cli::run_primary_csv_document_file(
+        let error = cli::run_primary_document_file(
             &project_path,
             Some(&output),
             &cli::PrimaryDocumentPolicy::new(&temp.0),
@@ -265,7 +291,7 @@ fn document_runs_refuse_non_csv_identities_missing_roots_and_input_replacement()
 
     // The saved target path is the default destination; the saved source
     // path is never read.
-    let outcome = cli::run_primary_csv_document_file(
+    let outcome = cli::run_primary_document_file(
         &project_path,
         None,
         &cli::PrimaryDocumentPolicy::new(&temp.0),
@@ -296,5 +322,155 @@ fn run_document_requires_an_explicit_input_root() -> TestResult<()> {
         .output()?;
     assert!(!run.status.success());
     assert!(String::from_utf8_lossy(&run.stderr).contains("--input-root"));
+    Ok(())
+}
+
+struct NeverRead;
+
+impl format_csv::PrimarySourceHost for NeverRead {
+    type Error = std::io::Error;
+    fn select(
+        &self,
+        _: &str,
+        _: mapping::PrimaryFileSelection,
+    ) -> Result<Vec<String>, Self::Error> {
+        panic!("a refused route must not select files")
+    }
+    fn load(&self, _: &str) -> Result<format_csv::CsvSourceData, Self::Error> {
+        panic!("a refused route must not load files")
+    }
+}
+
+#[test]
+fn unsupported_endpoints_and_conflicting_options_refuse_before_any_host_call() -> TestResult<()> {
+    use mapping::{PrimaryRouteError, PrimaryRouteSide};
+    let temp = TempDir::new("preflight_controls")?;
+    std::fs::create_dir(temp.0.join("orders"))?;
+    std::fs::create_dir(temp.0.join("in"))?;
+    let mut parameters = engine::RuntimeParameters::new();
+    parameters.insert("Input", Value::String("in/*.xml".into()))?;
+    parameters.insert("Status", Value::String("ok".into()))?;
+    // A missing direct file and an empty wildcard must not hide route errors.
+    for model in ["literal_direct", "parameter_wildcard_map_no_documents"] {
+        let base = xml_projects::document(model);
+        let control = cli::execute_primary_document(
+            &base,
+            Path::new("project.json"),
+            &cli::PrimaryDocumentPolicy::new(&temp.0),
+            Some(&parameters),
+        );
+        if model == "literal_direct" {
+            assert!(matches!(
+                control,
+                Err(cli::PrimaryDocumentError::Run(
+                    engine::PrimaryDocumentRunError::Acquisition(
+                        format_csv::PrimaryAcquisitionError::Load {
+                            source: format_csv::LocalFileError::Missing { .. },
+                            ..
+                        }
+                    )
+                ))
+            ));
+        } else {
+            assert_eq!(
+                control?.bytes,
+                b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Summary>\n</Summary>"
+            );
+        }
+        let mut variants = Vec::new();
+        let mut project = base.project().clone();
+        project.extra_sources.push(mapping::NamedSource {
+            name: "Other".into(),
+            path: "missing.xml".into(),
+            schema: project.source.clone(),
+            options: project.source_options.clone(),
+            dynamic_path: None,
+        });
+        variants.push((project, PrimaryRouteError::NamedEndpoints));
+        let mut project = base.project().clone();
+        project.extra_targets.push(mapping::NamedTarget {
+            name: "Other".into(),
+            path: Some("other.xml".into()),
+            schema: project.target.clone(),
+            options: project.target_options.clone(),
+            root: project.root.clone(),
+        });
+        variants.push((project, PrimaryRouteError::NamedEndpoints));
+        for side in [PrimaryRouteSide::Source, PrimaryRouteSide::Target] {
+            for conflict in 0..3 {
+                let mut project = base.project().clone();
+                let options = if side == PrimaryRouteSide::Source {
+                    &mut project.source_options
+                } else {
+                    &mut project.target_options
+                };
+                match conflict {
+                    0 => options.json_document = true,
+                    1 => options.delimiter = Some('|'),
+                    _ => options.tabular_kind = Some(mapping::TabularBoundaryKind::Csv),
+                }
+                variants.push((
+                    project,
+                    PrimaryRouteError::IncompatibleOptions {
+                        side,
+                        format: mapping::PrimaryDocumentFormat::Xml,
+                    },
+                ));
+            }
+        }
+        for (project, expected) in variants {
+            let document = DocumentProject::new(project, base.primary_source().clone());
+            assert_eq!(document.primary_route(), Err(expected.clone()));
+            assert!(
+                matches!(cli::execute_primary_document(&document, Path::new("project.json"), &cli::PrimaryDocumentPolicy::new(&temp.0), Some(&parameters)),
+                Err(cli::PrimaryDocumentError::Route(error)) if error == expected)
+            );
+            assert!(
+                matches!(cli::execute_primary_document_with_host(&document, Path::new("project.json"), &NeverRead, 4, None),
+                Err(cli::PrimaryDocumentError::Route(error)) if error == expected)
+            );
+            let context = engine::ExecutionContext::new(Path::new("project.json"));
+            assert!(
+                matches!(engine::run_primary_document(&document, &context, &NeverRead, 4, |_, _| -> Result<ir::Instance, std::io::Error> { panic!("unexpected parse") }),
+                Err(engine::PrimaryDocumentRunError::Route(error)) if error == expected)
+            );
+            // Route preflight also precedes opening the local root itself.
+            assert!(
+                matches!(cli::execute_primary_document(&document, Path::new("project.json"), &cli::PrimaryDocumentPolicy::new("missing-root"), None),
+                Err(cli::PrimaryDocumentError::Route(error)) if error == expected)
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn explicit_csv_route_never_redispatches_using_the_output_extension() -> TestResult<()> {
+    let temp = TempDir::new("csv_identity")?;
+    std::fs::create_dir(temp.0.join("orders"))?;
+    std::fs::write(temp.0.join("orders/input.csv"), "Key,Text,Count\nk1,x,1\n")?;
+    let base = projects::document("literal_direct");
+    let mut parameters = engine::RuntimeParameters::new();
+    parameters.insert("Status", Value::String("ok".into()))?;
+    for suffix in ["xlsx", "xml", "json", "unknown"] {
+        let mut project = base.project().clone();
+        project.target_path = Some(format!("output.{suffix}"));
+        let document = DocumentProject::new(project, base.primary_source().clone());
+        let path = temp.0.join("project.json");
+        std::fs::write(
+            &path,
+            mapping::document_project_file::encode_pretty(&document)?,
+        )?;
+        let result = cli::run_primary_document_file(
+            &path,
+            None,
+            &cli::PrimaryDocumentPolicy::new(&temp.0),
+            Some(&parameters),
+        )?;
+        assert_eq!(
+            std::fs::read(result.output_path)?,
+            b"Key,Text,Count,Status\nk1,x,1,ok\n"
+        );
+    }
     Ok(())
 }

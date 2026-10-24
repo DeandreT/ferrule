@@ -118,41 +118,87 @@ document lowering. The APIs neither read saved preview instances nor replace
 the connected expression with a saved path. Ordinary import, pipeline import
 and `ImportProfile::Executable` keep their existing behavior.
 
-## Complete primary CSV documents
+## Complete primary documents
 
 Filename evaluation, selection, loading, parsing, mapping and publication are
 separate stages:
 
-1. The filename plan is evaluated once, without a source instance or preview.
-2. A `format_csv::PrimarySourceHost` receives the filename text and the plan's
+1. The saved format identities decide the document route (below). An
+   unrouted format, an unsupported filename expression and an invalid mapping
+   are refused before the filename is evaluated or any host is called.
+2. The filename plan is evaluated once, without a source instance or preview.
+3. A `format_csv::PrimarySourceHost` receives the filename text and the plan's
    selection mode, and returns logical requests in load order. The host
-   chooses where requests load from; it does not choose the selection mode.
-3. The host loads each request's bytes, which are parsed as one CSV document
-   with its own origin and local row positions.
-4. Only after every selected document is parsed does the ordinary mapping run,
-   once, over the rows of all documents in selection order. Grouping, sorting
-   and aggregation therefore span documents, and every row shares one
+   chooses where requests load from; it does not choose the selection mode. A
+   direct filename must select exactly one request.
+4. The host loads each request's bytes, which are parsed as one document of
+   the route's format. A request's own extension never selects a format.
+5. Only after every selected document is parsed does the ordinary mapping run,
+   once, over the source the route forms from them. Grouping, sorting and
+   aggregation therefore span documents, and every document shares one
    execution context. The mapping never runs per discovered file.
-5. The caller publishes the result.
+6. The caller publishes the result.
 
 The first failure ends the run before any later request is loaded and before
-the mapping runs. `engine::run_primary_csv_document` refuses an unsupported
-filename expression, then validates the embedded mapping, before selecting
-anything, and returns the target instance; failures
-keep their stage (`Invalid`, `Acquisition` with the filename, selection,
-request, document-limit, load or input cause, or `Mapping`).
+the mapping runs. `engine::run_primary_document` takes the per-document
+parser and returns the target instance; `engine::run_primary_csv_document`
+supplies the CSV parser. Failures keep their stage: `Route`, `Invalid`,
+`Acquisition` (filename, selection, direct-selection count, request,
+document limit, load or input), `Assembly` or `Mapping`.
 
-Generated libraries add the same entry point to the CSV document adapters:
-`codegen_rust::emit_with_primary_csv_documents` adds
-`execute_primary_csv_document_bytes` and `PRIMARY_FILE_SELECTION`, and
-`codegen_csharp::emit_with_primary_csv_documents` adds
-`ExecutePrimaryCsvDocumentBytes` and `PrimaryFileSelection`. They take the
-execution context, a host, a byte-decoding policy and a document limit, and
-return one complete CSV document. They accept no filename or document content
-from the caller; the embedded plan alone names the documents. Rust failures
-are `PrimaryCsvDocumentError::{Acquisition, Output}`; C# raises the
-acquisition exception, with the host's exception as its cause, or the mapping
-and CSV output exceptions.
+### Document routes
+
+`DocumentProject::primary_route` classifies the source by its explicit format
+options, else by the extension of its saved source path, which is used only as
+a format identity and never read. The target must name the same format.
+Named sources and targets and incompatible format options are refused before
+filename evaluation or any host call, including when a wildcard would be empty.
+
+| Format | Identity | Source the mapping reads |
+| --- | --- | --- |
+| CSV | `tabular_kind: csv`, or a `.csv` saved path | Every document's rows, in selection then row order; each row keeps its own document origin and local position. |
+| XML | `xml_document`, or a `.xml` saved path | A direct filename: its one document. A filename wildcard: a document set of every selected document in selection order, each member keeping its request as its path and the host's resolved location as its source path. |
+
+An XML document set is read through the engine's ordinary document-set
+iteration, as a local XML file set is: a scope or aggregate path descends into
+every member, so grouping spans documents. A source that declares
+`local_xml_file_set` describes a document set and is refused with a direct
+filename; an observed XML root view describes one document and is refused with
+a filename wildcard. Every member is an ordinary XML document of the source
+schema.
+
+Other formats have no route yet and are refused with a typed `NotAdmitted`
+error naming the format.
+
+### Generated entry points
+
+Generated libraries add the same entry point beside the format's existing
+single-document adapter, and the target uses that adapter's writer. They take
+the execution context, a host and a document limit, and return one complete
+document. They accept no filename or document content from the caller; the
+embedded plan alone names the documents, and `PRIMARY_FILE_SELECTION` /
+`PrimaryFileSelection` records its selection mode.
+
+- CSV: `codegen_rust::emit_with_primary_csv_documents` and
+  `codegen_csharp::emit_with_primary_csv_documents` extend the CSV document
+  adapters with `execute_primary_csv_document_bytes` /
+  `ExecutePrimaryCsvDocumentBytes`, which also take a byte-decoding policy.
+  Rust failures are `PrimaryCsvDocumentError::{Acquisition, Output}`; C#
+  raises the acquisition exception, with the host's exception as its cause,
+  or the mapping and CSV output exceptions.
+- XML: `emit_with_primary_xml_documents` requires a program with the
+  single-document XML adapter and no named endpoints, and adds
+  `execute_primary_xml_document_bytes` / `ExecutePrimaryXmlDocumentBytes` and
+  `PRIMARY_DOCUMENT_SHAPE` / `PrimaryDocumentShape`. Members are read with the
+  adapter's structured or observed root-view reader. A plan that declares
+   `local_xml_file_set` is validated with its original document-set contract,
+   including current-document-path expressions. Only adapter selection uses
+   member options, because the entry point forms the document set itself.
+   Saved-path-only XML identities select the same adapter. Rust failures are
+  `PrimaryXmlDocumentError::{Acquisition, Assembly, Output}`, where a mapping
+  failure is the cause of an `Output`; C# raises
+  `FerrulePrimaryDocumentException`, with the host's or reader's exception as
+  its cause, or `FerruleXmlOutputSetException`.
 
 ## Local filesystem host
 
@@ -179,9 +225,10 @@ Typed refusals are `Root`, `Uri`, `Rooted`, `Parent`, `InvalidName`,
 `TooLarge` and `Io`. A missing direct file is a load failure; a missing
 wildcard directory or a refused empty match is a selection failure.
 
-The portable cohort in `conformance/primary-filename-documents` compares
-complete documents, typed failures and the ordered host calls of the
-interpreter, generated Rust and generated C#.
+The portable cohorts in `conformance/primary-filename-documents` (CSV) and
+`conformance/primary-xml-documents` (XML) compare complete documents, typed
+failures and the ordered host calls of the interpreter, generated Rust and
+generated C#.
 
 ## Command-line, editor and generation routes
 
@@ -192,17 +239,23 @@ document project.
 - `ferrule run-document --project DOCUMENT --input-root DIR` runs it through
   the local host. `--max-document-bytes` and `--max-documents` bound the
   selection, `--param NAME=VALUE` supplies parameter filenames and mapping
-  values, and `--output` defaults to the saved target path. Both endpoints need
-  an explicit CSV identity. The output is published by staged replacement only
-  after the whole run succeeds, and never replaces the project or a document
-  the run read. `cli::execute_primary_csv_document` is the same run without
-  publication.
-- `ferrule generate --primary-csv-documents` generates the document library;
-  `--raw-delimited-crlf` selects raw output. The generated identity and
-  compatibility manifest options apply, and the manifest records the
-  `primary_csv_document` or `primary_raw_delimited_document` profile. The
-  backends' `Generator::emit_with_primary_csv_documents` methods return the
-  free functions' artifacts under default options.
+  values, and `--output` defaults to the saved target path. Documents are read
+   and the target written in the route's format. The output is published by
+  staged replacement only after the whole run succeeds, and never replaces the
+  project or a document the run read. `cli::execute_primary_document` is the
+  same run without publication, and `cli::execute_primary_document_with_host`
+   runs it through any host.
+   A saved output suffix never changes the admitted format. CSV serialization
+   writes into a bounded output buffer and refuses excess output before
+   publication.
+- `ferrule generate --primary-documents` (also `--primary-csv-documents`)
+  generates the document library for the plan's route; `--raw-delimited-crlf`
+  selects raw output for a CSV route. The generated identity and compatibility
+  manifest options apply, and the manifest records the `primary_csv_document`,
+  `primary_raw_delimited_document` or `primary_xml_document` profile. The
+  backends' `Generator::emit_with_primary_csv_documents` and
+  `emit_with_primary_xml_documents` methods return the free functions'
+  artifacts under default options.
 - The editor opens a document project with its filename plan, saves the plan
   back unchanged and shows an input root (initially the project's folder) and
   limits in place of the input file. Run publishes through the command-line

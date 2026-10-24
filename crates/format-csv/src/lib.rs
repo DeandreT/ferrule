@@ -36,7 +36,10 @@ pub use bounded_read::{
 };
 pub use byte_decoding::CsvByteDecodingPolicy;
 pub use local_files::{DEFAULT_LOCAL_DOCUMENT_BYTES, LocalFileError, LocalPrimaryFiles};
-pub use primary_documents::{PrimarySourceHost, acquire_primary_csv_rows};
+pub use primary_documents::{
+    PrimaryAcquisitionError, PrimaryAssemblyError, PrimaryDocument, PrimarySourceHost,
+    acquire_primary_csv_rows, acquire_primary_documents, assemble_primary_documents,
+};
 pub use source_document::{
     CsvDocumentRows, CsvRowOccurrence, CsvSourceDocument, CsvSourceError, CsvSourceLoadError,
     CsvSourceRows, MAX_CSV_SOURCE_DOCUMENTS, MAX_CSV_SOURCE_PATH_BYTES,

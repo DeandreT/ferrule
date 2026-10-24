@@ -22,7 +22,28 @@ pub(crate) fn emit(
 ) -> Result<ArtifactSet, CsvDocumentEmitError> {
     let mut library = crate::csv_document::library(document.program(), policy)?;
     crate::primary_filename::add_evaluator(&mut library, document);
-    let selection = match document.primary_selection() {
+    let selection = selection_literal(document);
+    let code = format!(
+        "    /// <summary>The plan's selection mode; hosts receive it rather than choosing one.</summary>\n    public static readonly global::Ferrule.Runtime.FerrulePrimaryFileSelection PrimaryFileSelection = {selection};\n\n    /// <summary>\n    /// Evaluate the primary filename, let the host select and load, parse every selected\n    /// document, then map once over all rows and return one complete CSV document. The first\n    /// acquisition failure stops before later loads and before mapping. Publishing the bytes\n    /// belongs to the caller.\n    /// </summary>\n    public static byte[] ExecutePrimaryCsvDocumentBytes(global::Ferrule.Runtime.FerruleExecutionContext execution,\n        global::Ferrule.Runtime.IFerrulePrimarySourceHost host, global::Ferrule.Runtime.FerruleCsvByteDecodingPolicy decoding, int maximum)\n    {{\n        global::System.ArgumentNullException.ThrowIfNull(execution);\n        global::System.ArgumentNullException.ThrowIfNull(host);\n        var input = global::Ferrule.Runtime.FerrulePrimaryDocuments.AcquireCsvRows(() => EvaluatePrimaryFilename(execution),\n            PrimaryFileSelection, host, CsvInputFields, CsvInputOptions, decoding, maximum);\n        return ExecuteCsvBytes(input, execution);\n    }}\n"
+    );
+    library.add_companion(
+        "GeneratedMapping.PrimaryCsvDocument.cs",
+        ClassPart::members(code),
+    );
+    library.add_runtime(&PRIMARY_DOCUMENT_RUNTIME);
+    let profile = if policy.target.raw_delimited_crlf {
+        GenerationProfile::PrimaryRawDelimitedDocument
+    } else {
+        GenerationProfile::PrimaryCsvDocument
+    };
+    library
+        .into_artifacts_with(options, profile)
+        .map_err(CsvDocumentEmitError::Emit)
+}
+
+/// The C# literal of the plan's selection mode.
+pub(crate) fn selection_literal(document: &DocumentProgram) -> String {
+    match document.primary_selection() {
         PrimaryFileSelection::Direct => {
             "global::Ferrule.Runtime.FerrulePrimaryFileSelection.Direct".to_string()
         }
@@ -33,34 +54,22 @@ pub(crate) fn emit(
                 EmptyFileSelection::MapNoDocuments => "MapNoDocuments",
             }
         ),
-    };
-    let code = format!(
-        "    /// <summary>The plan's selection mode; hosts receive it rather than choosing one.</summary>\n    public static readonly global::Ferrule.Runtime.FerrulePrimaryFileSelection PrimaryFileSelection = {selection};\n\n    /// <summary>\n    /// Evaluate the primary filename, let the host select and load, parse every selected\n    /// document, then map once over all rows and return one complete CSV document. The first\n    /// acquisition failure stops before later loads and before mapping. Publishing the bytes\n    /// belongs to the caller.\n    /// </summary>\n    public static byte[] ExecutePrimaryCsvDocumentBytes(global::Ferrule.Runtime.FerruleExecutionContext execution,\n        global::Ferrule.Runtime.IFerrulePrimarySourceHost host, global::Ferrule.Runtime.FerruleCsvByteDecodingPolicy decoding, int maximum)\n    {{\n        global::System.ArgumentNullException.ThrowIfNull(execution);\n        global::System.ArgumentNullException.ThrowIfNull(host);\n        var input = global::Ferrule.Runtime.FerrulePrimaryDocuments.AcquireCsvRows(() => EvaluatePrimaryFilename(execution),\n            PrimaryFileSelection, host, CsvInputFields, CsvInputOptions, decoding, maximum);\n        return ExecuteCsvBytes(input, execution);\n    }}\n"
-    );
-    library.add_companion(
-        "GeneratedMapping.PrimaryCsvDocument.cs",
-        ClassPart::members(code),
-    );
-    library.add_runtime(&[
-        (
-            "Runtime/FerruleCsvAcquisition.cs",
-            include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvAcquisition.cs"),
-        ),
-        (
-            "Runtime/FerrulePrimaryDocuments.cs",
-            include_str!("../../../runtime/csharp/Ferrule.Runtime/FerrulePrimaryDocuments.cs"),
-        ),
-        (
-            "Runtime/FerruleLocalPrimaryFiles.cs",
-            include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleLocalPrimaryFiles.cs"),
-        ),
-    ]);
-    let profile = if policy.target.raw_delimited_crlf {
-        GenerationProfile::PrimaryRawDelimitedDocument
-    } else {
-        GenerationProfile::PrimaryCsvDocument
-    };
-    library
-        .into_artifacts_with(options, profile)
-        .map_err(CsvDocumentEmitError::Emit)
+    }
 }
+
+/// The acquisition, host and local filesystem runtime of every primary
+/// document entry point.
+pub(crate) const PRIMARY_DOCUMENT_RUNTIME: [(&str, &str); 3] = [
+    (
+        "Runtime/FerruleCsvAcquisition.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvAcquisition.cs"),
+    ),
+    (
+        "Runtime/FerrulePrimaryDocuments.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerrulePrimaryDocuments.cs"),
+    ),
+    (
+        "Runtime/FerruleLocalPrimaryFiles.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleLocalPrimaryFiles.cs"),
+    ),
+];

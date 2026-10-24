@@ -8,6 +8,7 @@ mod adjacency_owned;
 mod csv_repair;
 mod document_project;
 pub mod document_project_file;
+mod document_route;
 mod dynamic_field_owned;
 mod edi;
 mod external_source;
@@ -56,6 +57,10 @@ pub use csv_repair::{CsvRuntimeDependency, CsvTextRepairCause, CsvTextRepairDepe
 pub use document_project::{
     DocumentProject, DocumentProjectFormat, EmptyFileSelection, GlobalFilename,
     PrimaryFileSelection, PrimaryFilenameError, PrimarySourcePlan,
+};
+pub use document_route::{
+    PrimaryDocumentFormat, PrimaryDocumentRoute, PrimaryDocumentShape, PrimaryRouteError,
+    PrimaryRouteSide,
 };
 pub use dynamic_field_owned::OwnedDynamicSourceField;
 pub use edi::{

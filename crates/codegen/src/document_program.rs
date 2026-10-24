@@ -3,7 +3,8 @@
 use std::fmt;
 
 use mapping::{
-    DocumentProject, GlobalFilename, NodeId, PrimaryFileSelection, PrimaryFilenameError,
+    DocumentProject, GlobalFilename, NodeId, PrimaryDocumentFormat, PrimaryDocumentRoute,
+    PrimaryFileSelection, PrimaryFilenameError, PrimaryRouteError,
 };
 
 use crate::{LowerError, Program};
@@ -21,6 +22,7 @@ pub struct DocumentProgram {
     program: Program,
     primary_filename: PrimaryFilenamePlan,
     primary_selection: PrimaryFileSelection,
+    primary_route: Result<PrimaryDocumentRoute, PrimaryRouteError>,
 }
 
 impl DocumentProgram {
@@ -36,6 +38,12 @@ impl DocumentProgram {
     /// pass it to the host rather than letting the host choose.
     pub fn primary_selection(&self) -> PrimaryFileSelection {
         self.primary_selection
+    }
+
+    /// The complete-document route decided from the saved format identities.
+    /// Filename-only and acquisition companions do not need one.
+    pub fn primary_route(&self) -> Result<PrimaryDocumentRoute, PrimaryRouteError> {
+        self.primary_route.clone()
     }
 }
 
@@ -80,10 +88,20 @@ pub fn lower_document(document: &DocumentProject) -> Result<DocumentProgram, Doc
             name: name.into(),
         },
     };
-    let program = crate::lower(document.project()).map_err(DocumentLowerError::Mapping)?;
+    let primary_route = document.primary_route();
+    let project = document.project();
+    let program = match primary_route {
+        Ok(PrimaryDocumentRoute {
+            format: PrimaryDocumentFormat::Xml,
+            ..
+        }) => crate::lower::lower_primary_xml_documents(project),
+        _ => crate::lower(project),
+    }
+    .map_err(DocumentLowerError::Mapping)?;
     Ok(DocumentProgram {
         program,
         primary_filename,
         primary_selection: document.primary_source().selection,
+        primary_route,
     })
 }

@@ -13,6 +13,8 @@ use super::host_parameters::HostParameterEntry;
 
 #[path = "../../../../conformance/primary-filename-documents/projects.rs"]
 mod projects;
+#[path = "../../../../conformance/primary-xml-documents/projects.rs"]
+mod xml_projects;
 
 fn string(name: &str) -> SchemaNode {
     SchemaNode::scalar(name, ScalarType::String)
@@ -89,8 +91,15 @@ fn document_projects_reopen_and_save_with_their_filename_plan() -> anyhow::Resul
         mapping::project_file::encode_pretty(saved.project())?
     );
 
-    for model in projects::MODELS {
-        let saved = projects::document(model);
+    let plans = projects::MODELS
+        .iter()
+        .map(|model| (format!("csv-{model}"), projects::document(model)))
+        .chain(
+            xml_projects::MODELS
+                .iter()
+                .map(|model| (format!("xml-{model}"), xml_projects::document(model))),
+        );
+    for (model, saved) in plans {
         let path = directory.0.join(format!("{model}.json"));
         std::fs::write(
             &path,
@@ -207,5 +216,78 @@ fn document_failures_are_reported_and_publish_nothing() -> anyhow::Result<()> {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(messages.contains("matched no files"), "{messages}");
+    Ok(())
+}
+
+fn orders(rows: &[(&str, &str, i64)]) -> String {
+    let orders: String = rows
+        .iter()
+        .map(|(key, text, count)| {
+            format!("<Order><Key>{key}</Key><Text>{text}</Text><Count>{count}</Count></Order>")
+        })
+        .collect();
+    format!("<Orders>{orders}</Orders>")
+}
+
+#[test]
+fn xml_document_projects_run_and_preview_one_document_set() -> anyhow::Result<()> {
+    let directory = TestDir::new()?;
+    let documents = directory.0.join("documents/in");
+    std::fs::create_dir_all(&documents)?;
+    std::fs::write(documents.join("a.xml"), orders(&[("k1", "c", 3)]))?;
+    std::fs::write(
+        documents.join("B.xml"),
+        orders(&[("k2", "b", 20), ("k1", "a", 1)]),
+    )?;
+    let path = directory.0.join("orders.json");
+    std::fs::write(
+        &path,
+        mapping::document_project_file::encode_pretty(&xml_projects::document(
+            "parameter_wildcard",
+        ))?,
+    )?;
+    let mut app = FerruleApp::default();
+    app.load_project_from(&path);
+    for (name, value) in [("Input", "in/*.xml"), ("Status", "ok")] {
+        app.host_parameters.entries.push(HostParameterEntry {
+            name: name.into(),
+            value: value.into(),
+        });
+    }
+    app.primary_document
+        .as_mut()
+        .expect("document session")
+        .input_root = directory.0.join("documents").display().to_string();
+    let expected = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Summary>\n  <Group>\n    <Key>k2</Key>\n    <Text>b</Text>\n    <Count>20</Count>\n    <Status>ok</Status>\n  </Group>\n  <Group>\n    <Key>k1</Key>\n    <Text>a+c</Text>\n    <Count>4</Count>\n    <Status>ok</Status>\n  </Group>\n</Summary>";
+    let context = egui::Context::default();
+    app.begin_preview();
+    app.execute_preview();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while app.pending_preview.is_some() && Instant::now() < deadline {
+        app.poll_preview(&context);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(app.pending_preview.is_none(), "{}", app.status);
+    let report = app.run_report.as_mut().expect("preview report");
+    let crate::run_report::OutputPreview::Text { content, .. } = report.report.outputs[0].preview()
+    else {
+        panic!("XML preview");
+    };
+    assert_eq!(content.as_str(), expected);
+    let output = directory.0.join("never-preview-output.xml");
+    assert!(!output.exists());
+    app.run_saved(false);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while app.pending_file_run.is_some() && Instant::now() < deadline {
+        app.poll_file_run(&context);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(app.pending_file_run.is_none(), "{}", app.status);
+    assert_eq!(
+        std::fs::read_to_string(&output)?,
+        expected,
+        "{}",
+        app.status
+    );
     Ok(())
 }

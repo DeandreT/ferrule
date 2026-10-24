@@ -165,8 +165,8 @@ enum Command {
         #[arg(long, value_name = "FILE")]
         restricted_policy: Option<PathBuf>,
     },
-    /// Run a saved primary filename document project once over every CSV
-    /// document its filename selects beneath an explicit local input root.
+    /// Run a saved primary filename document project once over every document
+    /// its filename selects beneath an explicit local input root.
     /// URIs, rooted and parent paths and symbolic links are refused; no network
     /// source is reachable. The project's saved source path is never read.
     RunDocument {
@@ -175,7 +175,7 @@ enum Command {
         /// Directory every selected filename resolves beneath.
         #[arg(long, value_name = "DIR")]
         input_root: PathBuf,
-        /// Output CSV document; defaults to the project's target_path.
+        /// Output document in the plan's format; defaults to the project's target_path.
         #[arg(long)]
         output: Option<PathBuf>,
         /// Largest accepted input document.
@@ -221,7 +221,7 @@ enum Command {
     ))]
     #[command(group(
         clap::ArgGroup::new("csv_document_host")
-            .args(["csv_document_adapters", "primary_csv_documents"])
+            .args(["csv_document_adapters", "primary_documents"])
     ))]
     Generate {
         #[arg(long)]
@@ -266,10 +266,11 @@ enum Command {
         /// Include complete single-document CSV input/output methods in Rust or C#.
         #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters"])]
         csv_document_adapters: bool,
-        /// Generate a saved primary filename document project: complete CSV
-        /// documents over every document its filename selects through a host.
-        #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters", "csv_document_adapters"])]
-        primary_csv_documents: bool,
+        /// Generate a saved primary filename document project: one complete
+        /// document, in the plan's format, over every document its filename
+        /// selects through a host.
+        #[arg(long, alias = "primary-csv-documents", conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters", "csv_document_adapters"])]
+        primary_documents: bool,
         /// Write unescaped target fields and CRLF records; target quoting must be disabled.
         #[arg(long, requires = "csv_document_host")]
         raw_delimited_crlf: bool,
@@ -752,7 +753,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                 max_document_bytes,
                 max_documents,
             };
-            let outcome = cli::run_primary_csv_document_file(
+            let outcome = cli::run_primary_document_file(
                 &project,
                 output.as_deref(),
                 &policy,
@@ -859,7 +860,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             csv_x12_target_envelope_profile,
             csv_json_adapters,
             csv_document_adapters,
-            primary_csv_documents,
+            primary_documents,
             raw_delimited_crlf,
             identity,
         } => {
@@ -886,11 +887,11 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                 }
             };
             let settings = identity.settings(matches!(language, CodegenLanguage::Rust))?;
-            let profile = if primary_csv_documents {
+            let profile = if primary_documents {
                 if raw_delimited_crlf {
                     cli::GenerateProfile::PrimaryRawDelimitedDocument
                 } else {
-                    cli::GenerateProfile::PrimaryCsvDocument
+                    cli::GenerateProfile::PrimaryDocument
                 }
             } else if csv_document_adapters {
                 if raw_delimited_crlf {

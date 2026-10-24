@@ -21,6 +21,7 @@ mod owned_basic;
 mod primary_csv;
 mod primary_csv_document;
 mod primary_filename;
+mod primary_xml_document;
 mod runtime;
 mod static_documents;
 mod x12_output;
@@ -59,6 +60,7 @@ pub use json5_output::Json5EmitError;
 pub use primary_csv::{PrimaryCsvEmitError, emit_with_primary_csv_acquisition};
 pub use primary_csv_document::emit_with_primary_csv_documents;
 pub use primary_filename::emit_with_primary_filename;
+pub use primary_xml_document::{PrimaryDocumentEmitError, emit_with_primary_xml_documents};
 pub use static_documents::StaticDocumentEmitError;
 pub use x12_output::X12EmitError;
 
