@@ -22,6 +22,8 @@ internal static partial class Program
             ("JSON source complete literal corpus", JsonSourceCorpus),
             ("JSON5 writer complete byte corpus", Json5TextWriter),
             ("Direct source input ownership and limits", DirectSourceInputs),
+            ("Deferred XML preparation and materialization", DeferredXmlPreparation),
+            ("XML document bytes", XmlDocumentBytes),
             ("JSON5 writer typed decimal output", Json5TypedWriter),
             ("Exact source row document paths", SourceRowDocumentPaths),
             ("CSV file sets retain empty files", CsvFileSet),
