@@ -400,6 +400,12 @@ fn startup_helper_process() {
             })
         }
         "inherited-file-size" => {
+            let input = root.join("input.data");
+            std::fs::write(&input, HELLO_PDF).unwrap();
+            let fds = descriptors();
+            // Staging is test setup, not part of the inherited-limit check.
+            // A debug fixture can itself be larger than the limit below.
+            let worker = program(&package, "fixture-production");
             // Lower this helper's own hard limit below the fixed 64 MiB file
             // size; the worker inherits it and cannot raise it back.
             let lowered = libc::rlimit {
@@ -407,11 +413,8 @@ fn startup_helper_process() {
                 rlim_max: 32 * 1024 * 1024,
             };
             assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_FSIZE, &lowered) }, 0);
-            let input = root.join("input.data");
-            std::fs::write(&input, HELLO_PDF).unwrap();
-            let fds = descriptors();
             let mut manager = PdfWorkerManager::new(
-                program(&package, "fixture-production"),
+                worker,
                 ScratchPolicy::admit(&scratch, 0).unwrap(),
                 ExclusiveReaperAdmission::for_current_host(),
             )
