@@ -95,7 +95,9 @@ pub use mapforce_json5_documents::{
     MapForceJson5DocumentError, prepare_csv_file_set_to_mapforce_json5_documents,
     prepare_csv_to_mapforce_json5_documents,
 };
-pub use mapforce_x12_source::{MapForceX12SourceError, prepare_mapforce_x12_source};
+pub use mapforce_x12_source::{
+    MapForceX12SourceError, NativeX12Source, prepare_mapforce_x12_source, prepare_native_x12_source,
+};
 pub use mapforce_x12_writer::{MapForceX12WriterError, prepare_mapforce_x12_writer};
 pub use model::{
     AggregateFunction, AggregateValue, Binding, DelimitedTextField, DelimitedTextFieldError,

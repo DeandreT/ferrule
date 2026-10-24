@@ -32,7 +32,8 @@ mod static_documents;
 mod x12_output;
 pub use mapforce_x12_source::{
     MapForceSourceEmitError, emit_with_eager_x12_json_message, emit_with_mapforce_x12_json,
-    emit_with_mapforce_x12_source, emit_with_primary_eager_x12_json,
+    emit_with_mapforce_x12_source, emit_with_native_primary_eager_x12_json,
+    emit_with_native_x12_source, emit_with_primary_eager_x12_json,
 };
 
 #[cfg(test)]

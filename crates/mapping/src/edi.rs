@@ -17,6 +17,16 @@ pub enum EdiBoundaryKind {
     SwiftMt,
 }
 
+/// Explicit default decoder for a native X12 source. Unicode BOMs override it.
+/// This is not an output encoding or a setting for the ordinary strict codec.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum X12SourceEncoding {
+    #[default]
+    Utf8,
+    Latin1,
+}
+
 /// One schema leaf whose XML date/time lexical form is compacted for an EDI
 /// wire representation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

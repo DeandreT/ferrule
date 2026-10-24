@@ -62,7 +62,7 @@ pub use document_project::{
 pub use dynamic_field_owned::OwnedDynamicSourceField;
 pub use edi::{
     EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind,
-    EdiValueConstraint, EdifactAutocomplete, X12Autocomplete, X12Separators,
+    EdiValueConstraint, EdifactAutocomplete, X12Autocomplete, X12Separators, X12SourceEncoding,
 };
 pub use external_source::{
     ExternalHttpHeader, ExternalHttpMode, ExternalPayloadFormat, ExternalSourceOptions,
