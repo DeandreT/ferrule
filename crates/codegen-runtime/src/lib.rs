@@ -26,7 +26,12 @@ pub use json_acquisition::{JsonAcquisitionError, JsonSourceAcquisition};
 mod json5;
 mod json5_writer;
 mod json_stream;
+mod source_filenames;
 pub use json_stream::{MapForceJsonWriteError, write_mapforce_json_ascii_keys};
+pub use source_filenames::{
+    MAX_SOURCE_FILENAME_ENTRIES, SourceFilenameError, has_mapforce_filename_wildcard,
+    select_mapforce_source_filenames,
+};
 mod json_native;
 mod json_projection;
 pub use json_native::{NativeJsonSourceError, parse_native_json_source};
