@@ -451,10 +451,14 @@ impl FerruleApp {
                 return;
             }
         };
-        let input_identity = nonempty_text(&self.input_path)
-            .map(str::to_owned)
-            .or_else(|| self.project.source_path.clone())
-            .unwrap_or_default();
+        let input_identity = match &self.primary_document {
+            // A document project never previews its saved source path.
+            Some(session) => session.input_root.clone(),
+            None => nonempty_text(&self.input_path)
+                .map(str::to_owned)
+                .or_else(|| self.project.source_path.clone())
+                .unwrap_or_default(),
+        };
         self.preview_draft = Some(PreviewDraft::new(target, input_identity, output_identity));
     }
 
@@ -483,8 +487,14 @@ impl FerruleApp {
         let Some(draft) = &mut self.preview_draft else {
             return;
         };
-        let files = self.preview_input_source
-            == super::preview_service::PreviewInputSource::ConfiguredFiles;
+        let documents = self.primary_document.is_some();
+        let documents_ready = self
+            .primary_document
+            .as_ref()
+            .is_none_or(|session| session.policy().is_ok());
+        let files = !documents
+            && self.preview_input_source
+                == super::preview_service::PreviewInputSource::ConfiguredFiles;
         let input_size = draft.input_text.len();
         let input_too_large = input_size > cli::MAX_PAYLOAD_DOCUMENT_BYTES;
         let mut condition_valid = true;
@@ -496,7 +506,20 @@ impl FerruleApp {
             .default_size(egui::vec2(760.0, 620.0))
             .min_size(egui::vec2(520.0, 360.0))
             .show(ctx, |ui| {
+                if let Some(session) = &mut self.primary_document {
+                    ui.add_enabled_ui(!running, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Target");
+                            ui.strong(draft.target.label());
+                        });
+                        ui.strong("Primary documents");
+                        session.show(ui);
+                    });
+                }
                 ui.add_enabled_ui(!running, |ui| {
+                    if documents {
+                        return;
+                    }
                     ui.horizontal(|ui| {
                         ui.label("Primary input");
                         ui.radio_value(
@@ -550,68 +573,78 @@ impl FerruleApp {
                 ui.add_enabled_ui(!running, |ui| {
                     host_parameters_valid = self.host_parameters.show(ui);
                 });
-                ui.horizontal(|ui| {
-                    ui.label("Debug breakpoint");
-                    ui.add_enabled_ui(!running, |ui| {
-                        egui::ComboBox::from_id_salt("preview_debug_breakpoint")
-                            .selected_text(
-                                draft
-                                    .debug_breakpoint
-                                    .as_ref()
-                                    .map_or_else(|| "Every target-field write".to_owned(), PreviewBreakpoint::label),
-                            )
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut draft.debug_breakpoint,
-                                    None,
-                                    "Every target-field write",
-                                );
-                                for breakpoint in &breakpoint_candidates {
+                // Document previews have no debug route.
+                if !documents {
+                    ui.horizontal(|ui| {
+                        ui.label("Debug breakpoint");
+                        ui.add_enabled_ui(!running, |ui| {
+                            egui::ComboBox::from_id_salt("preview_debug_breakpoint")
+                                .selected_text(
+                                    draft
+                                        .debug_breakpoint
+                                        .as_ref()
+                                        .map_or_else(|| "Every target-field write".to_owned(), PreviewBreakpoint::label),
+                                )
+                                .show_ui(ui, |ui| {
                                     ui.selectable_value(
                                         &mut draft.debug_breakpoint,
-                                        Some(breakpoint.clone()),
-                                        breakpoint.label(),
+                                        None,
+                                        "Every target-field write",
                                     );
-                                }
-                            });
+                                    for breakpoint in &breakpoint_candidates {
+                                        ui.selectable_value(
+                                            &mut draft.debug_breakpoint,
+                                            Some(breakpoint.clone()),
+                                            breakpoint.label(),
+                                        );
+                                    }
+                                });
+                        });
                     });
-                });
-                ui.weak("The selector covers declared static scope writes; runtime-named fields are not listed.");
-                ui.add_enabled_ui(!running, |ui| {
-                    condition_valid = show_breakpoint_value_condition(
-                        ui,
-                        &mut self.preview_value_condition,
-                        "preview_debug_value_type",
-                    );
-                    condition_valid &= show_breakpoint_position_condition(
-                        ui,
-                        &mut self.preview_position_condition,
-                    );
-                    condition_valid &= show_breakpoint_source_condition(
-                        ui,
-                        &mut self.preview_source_condition,
-                        "preview_debug_source_type",
-                    );
-                    condition_valid &= show_breakpoint_node_condition(
-                        ui,
-                        &mut self.preview_node_condition,
-                    );
-                    condition_valid &= show_breakpoint_expression_condition(
-                        ui,
-                        &mut self.preview_expression_condition,
-                        "preview_debug_expression_value_type",
-                    );
-                    condition_valid &= show_breakpoint_input_condition(
-                        ui,
-                        &mut self.preview_input_condition,
-                        "preview_debug_input_value_type",
-                    );
-                    ui.checkbox(
-                        &mut self.preview_pause_on_failure,
-                        "Pause at the first graph or function evaluation error",
-                    );
-                });
-                if draft.input_identity.trim().is_empty() {
+                    ui.weak("The selector covers declared static scope writes; runtime-named fields are not listed.");
+                    ui.add_enabled_ui(!running, |ui| {
+                        condition_valid = show_breakpoint_value_condition(
+                            ui,
+                            &mut self.preview_value_condition,
+                            "preview_debug_value_type",
+                        );
+                        condition_valid &= show_breakpoint_position_condition(
+                            ui,
+                            &mut self.preview_position_condition,
+                        );
+                        condition_valid &= show_breakpoint_source_condition(
+                            ui,
+                            &mut self.preview_source_condition,
+                            "preview_debug_source_type",
+                        );
+                        condition_valid &= show_breakpoint_node_condition(
+                            ui,
+                            &mut self.preview_node_condition,
+                        );
+                        condition_valid &= show_breakpoint_expression_condition(
+                            ui,
+                            &mut self.preview_expression_condition,
+                            "preview_debug_expression_value_type",
+                        );
+                        condition_valid &= show_breakpoint_input_condition(
+                            ui,
+                            &mut self.preview_input_condition,
+                            "preview_debug_input_value_type",
+                        );
+                        ui.checkbox(
+                            &mut self.preview_pause_on_failure,
+                            "Pause at the first graph or function evaluation error",
+                        );
+                    });
+                }
+                if documents {
+                    if !documents_ready {
+                        ui.colored_label(
+                            ui.visuals().error_fg_color,
+                            "An input root is required to read primary documents.",
+                        );
+                    }
+                } else if draft.input_identity.trim().is_empty() {
                     ui.colored_label(
                         ui.visuals().error_fg_color,
                         "A logical input identity is required to select the input format.",
@@ -625,7 +658,8 @@ impl FerruleApp {
                         ),
                     );
                 }
-                if draft.output_identity.trim().is_empty() {
+                if documents {
+                } else if draft.output_identity.trim().is_empty() {
                     ui.colored_label(
                         ui.visuals().error_fg_color,
                         "A logical output identity is required to select the output format.",
@@ -640,7 +674,12 @@ impl FerruleApp {
                     );
                 }
                 ui.separator();
-                if files {
+                if documents {
+                    ui.weak(
+                        "Documents are read beneath the input root when the preview \
+                         starts. The output stays in memory; no file is written.",
+                    );
+                } else if files {
                     ui.add_enabled(
                         !running,
                         egui::Checkbox::new(
@@ -658,7 +697,7 @@ impl FerruleApp {
                         ));
                     });
                 }
-                if input_too_large && !files {
+                if input_too_large && !files && !documents {
                     ui.colored_label(
                         ui.visuals().error_fg_color,
                         "Primary input exceeds the 64 MiB per-document limit.",
@@ -682,6 +721,7 @@ impl FerruleApp {
                         "Inputs are read from the configured files when the preview starts. \
                          Outputs stay in memory; no file is written.",
                     );
+                } else if documents {
                 } else {
                     let button_height = ui.spacing().interact_size.y;
                     // The scrolling window can offer unbounded content height.
@@ -746,14 +786,15 @@ impl FerruleApp {
                         if ui.button("Cancel").clicked() {
                             action = Some(PreviewAction::Cancel);
                         }
+                        let ready = if documents { documents_ready } else { draft.can_execute() };
                         if ui
-                            .add_enabled(draft.can_execute() && host_parameters_valid, egui::Button::new("Preview"))
+                            .add_enabled(ready && host_parameters_valid, egui::Button::new("Preview"))
                             .clicked()
                         {
                             action = Some(PreviewAction::Execute);
                         }
                         if ui
-                            .add_enabled(draft.can_execute() && host_parameters_valid && condition_valid, egui::Button::new("Debug preview"))
+                            .add_enabled(!documents && ready && host_parameters_valid && condition_valid, egui::Button::new("Debug preview"))
                             .clicked()
                         {
                             action = Some(PreviewAction::Debug);
@@ -879,6 +920,10 @@ impl FerruleApp {
         if !issues.is_empty() {
             self.status = format!("preview blocked by {} validation issue(s)", issues.len());
             self.diagnostics.validation(&self.project, issues);
+            return;
+        }
+        if self.primary_document.is_some() {
+            self.start_primary_document_preview(debug, runtime_parameters);
             return;
         }
         let Some(draft) = self.preview_draft.as_ref() else {
@@ -1193,6 +1238,9 @@ pub(super) use debug_view::{
     show_live_function_input_debug_state, show_live_function_node_debug_state,
     show_live_input_debug_state, show_live_node_debug_state,
 };
+
+#[path = "preview_documents.rs"]
+mod documents;
 
 #[path = "preview_worker.rs"]
 mod preview_worker;

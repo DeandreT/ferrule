@@ -1473,8 +1473,10 @@ not process-memory bounds. Rust preserves input causes in
 `CsvDocumentError::Output`; C# preserves the existing typed CSV-input,
 mapping-runtime and CSV-writer exceptions.
 
-These APIs take document contents. Filename enumeration, acquisition,
-multi-document partitioning and publication require separate host contracts.
+These APIs take document contents. A saved primary filename document project
+instead generates with `--primary-csv-documents`: its library selects, loads
+and maps every document its filename names through a host, as described in
+[primary document filenames](design/primary-document-filenames.md).
 
 ### Explicit CSV byte decoding
 

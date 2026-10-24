@@ -1,8 +1,8 @@
-use codegen::{ArtifactSet, CsvDocumentBoundaryPolicy, DocumentProgram};
+use codegen::{ArtifactSet, CsvDocumentBoundaryPolicy, DocumentProgram, GenerationProfile};
 use mapping::{EmptyFileSelection, PrimaryFileSelection};
 
-use crate::CsvDocumentEmitError;
 use crate::composition::ClassPart;
+use crate::{CsvDocumentEmitError, Options};
 
 /// Add one complete primary CSV document entry point to the CSV document
 /// adapters: the embedded filename plan and selection mode go to a host that
@@ -11,6 +11,14 @@ use crate::composition::ClassPart;
 pub fn emit_with_primary_csv_documents(
     document: &DocumentProgram,
     policy: &CsvDocumentBoundaryPolicy,
+) -> Result<ArtifactSet, CsvDocumentEmitError> {
+    emit(document, policy, &Options::default())
+}
+
+pub(crate) fn emit(
+    document: &DocumentProgram,
+    policy: &CsvDocumentBoundaryPolicy,
+    options: &Options,
 ) -> Result<ArtifactSet, CsvDocumentEmitError> {
     let mut library = crate::csv_document::library(document.program(), policy)?;
     crate::primary_filename::add_evaluator(&mut library, document);
@@ -47,5 +55,12 @@ pub fn emit_with_primary_csv_documents(
             include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleLocalPrimaryFiles.cs"),
         ),
     ]);
-    library.into_artifacts().map_err(CsvDocumentEmitError::Emit)
+    let profile = if policy.target.raw_delimited_crlf {
+        GenerationProfile::PrimaryRawDelimitedDocument
+    } else {
+        GenerationProfile::PrimaryCsvDocument
+    };
+    library
+        .into_artifacts_with(options, profile)
+        .map_err(CsvDocumentEmitError::Emit)
 }
