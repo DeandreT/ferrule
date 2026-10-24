@@ -47,9 +47,11 @@ pub(super) fn build_function_snarl(function: &UserFunction) -> Snarl<CanvasNode>
             );
         }
     }
+    let mut initial_sizes = std::collections::BTreeMap::new();
+    reserve_disconnected_literals(&snarl, &function.body, &mut initial_sizes);
     arrange_snarl(
         &mut snarl,
-        &std::collections::BTreeMap::new(),
+        &initial_sizes,
         crate::appearance::WireAppearance::default(),
     );
     snarl
@@ -271,6 +273,23 @@ fn build_boundary_snarl(
             endpoint_block_size(&section.title, &section.pin_labels),
         );
     }
+    reserve_disconnected_literals(&snarl, &project.graph, &mut initial_sizes);
+    arrange_snarl(
+        &mut snarl,
+        &initial_sizes,
+        crate::appearance::WireAppearance::default(),
+    );
+    if let Some(nodes) = saved_nodes {
+        CanvasLayout::apply_nodes(nodes, &mut snarl);
+    }
+    snarl
+}
+
+fn reserve_disconnected_literals(
+    snarl: &Snarl<CanvasNode>,
+    graph: &mapping::Graph,
+    sizes: &mut std::collections::BTreeMap<CanvasNode, egui::Vec2>,
+) {
     let wired = snarl
         .wires()
         .flat_map(|(from, to)| [from.node, to.node])
@@ -278,7 +297,7 @@ fn build_boundary_snarl(
     for (id, _, canvas) in snarl.nodes_pos_ids() {
         if !wired.contains(&id)
             && let CanvasNode::Graph(node) = canvas
-            && let Some(value @ Node::Const { .. }) = project.graph.nodes.get(node)
+            && let Some(value @ Node::Const { .. }) = graph.nodes.get(node)
         {
             // Before fonts exist, reserve a conservative bounded header width
             // for the disconnected shelf. Interactive layout uses measured
@@ -289,18 +308,9 @@ fn build_boundary_snarl(
                 * 14.0
                 + 64.0)
                 .clamp(100.0, 420.0);
-            initial_sizes.insert(*canvas, egui::vec2(width, 88.0));
+            sizes.insert(*canvas, egui::vec2(width, 88.0));
         }
     }
-    arrange_snarl(
-        &mut snarl,
-        &initial_sizes,
-        crate::appearance::WireAppearance::default(),
-    );
-    if let Some(nodes) = saved_nodes {
-        CanvasLayout::apply_nodes(nodes, &mut snarl);
-    }
-    snarl
 }
 
 pub(crate) fn endpoint_block_size(title: &str, pin_labels: &[String]) -> egui::Vec2 {
@@ -652,6 +662,45 @@ mod visual_tests;
 #[cfg(test)]
 mod lifecycle_tests {
     use super::*;
+
+    #[test]
+    fn disconnected_function_literals_reserve_readable_header_widths() {
+        let function = UserFunction {
+            library: "local".into(),
+            name: "authored shelf".into(),
+            description: None,
+            parameters: Vec::new(),
+            output_name: "result".into(),
+            output_type: ir::ScalarType::String,
+            output: 0,
+            body: mapping::Graph {
+                nodes: (0..9)
+                    .map(|id| {
+                        (
+                            id,
+                            Node::Const {
+                                value: ir::Value::String(
+                                    "A long authored constant with a complete readable header"
+                                        .into(),
+                                ),
+                            },
+                        )
+                    })
+                    .collect(),
+            },
+        };
+        let before = serde_json::to_string(&function).unwrap();
+        let snarl = build_function_snarl(&function);
+        let positions: Vec<_> = snarl.nodes_pos().map(|(position, _)| position).collect();
+        for (index, position) in positions.iter().enumerate() {
+            for other in &positions[index + 1..] {
+                if position.y == other.y {
+                    assert!((position.x - other.x).abs() >= 420.0);
+                }
+            }
+        }
+        assert_eq!(serde_json::to_string(&function).unwrap(), before);
+    }
 
     #[test]
     fn replacing_a_document_never_reuses_layout_history_or_camera_ownership() {
