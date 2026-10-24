@@ -23,6 +23,10 @@ role = "Scalar built-in function library"
 path = "crates/engine"
 role = "Project validation and mapping interpreter"
 
+[[area.component]]
+path = "crates/edit-ops"
+role = "Typed, replayable headless mapping edits"
+
 [[area]]
 name = "Code generation"
 
