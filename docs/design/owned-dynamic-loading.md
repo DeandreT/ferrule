@@ -76,7 +76,9 @@ dynamic-field profile with owned loading scopes. Inside them, exact owned field
 and position reads see the loaded document; other owned operators over a
 loaded owner, such as owned Lookup, keep the dynamic-owner refusal. Loaded
 endpoints are reserved in the named-input catalogue; owned drivers stay
-demand-driven.
+demand-driven. The `DynamicDocumentPaths` profile also admits the owned
+document-path read of a loaded owner, which returns the logical path that
+loaded its current document (see [document paths](owned-document-path.md#loaded-documents)).
 
 The generated Rust and C# libraries expose loader-taking entry points beside
 the ordinary ones: `execute_with_basic_owned_sources_and_dynamic_source_loader`

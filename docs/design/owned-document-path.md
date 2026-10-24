@@ -49,15 +49,25 @@ first member nor an ancestor answers it. An unsupplied named owner keeps its
 creates no frame. Failure rules, generated items, functions and every closed
 capability context refuse it.
 
+## Loaded documents
+
+Inside an [owned dynamic loading scope](owned-dynamic-loading.md), each loaded
+document roots its owner with the logical path its driver row computed, the
+exact path the host loader was called with. The read naming that owner returns
+it; a host's resolved or cached location is never reported. Rows whose path is
+absent or null load nothing and so have no document, a failed load stops the
+scope before any document is walked, and outside its loading scope the owner
+is unavailable (`SourceUnavailable`). Nested loading keeps each owner's own
+document, so a `Parts` read inside a `Docs` document returns the part's path
+and a `Docs` read there still returns the enclosing document's path.
+
 ## Excluded routes
 
-A dynamic named owner has no document-set member: the read naming a legacy or
-owned dynamic source is refused before input acquisition, and loaded
-documents carry no member location. XML document-set boundary adapters of the
-generated libraries are not owned entry points. Both routes remain closed
-until their own paired proof
-([#994](https://github.com/DeandreT/ferrule/issues/994),
-[#995](https://github.com/DeandreT/ferrule/issues/995)).
+A legacy dynamic named owner has no owned loading scope: the read naming it is
+refused before input acquisition. XML document-set boundary adapters of the
+generated libraries are not owned entry points; that route remains closed
+until its own paired proof
+([#995](https://github.com/DeandreT/ferrule/issues/995)).
 
 ## Generation profile
 
@@ -66,7 +76,9 @@ document-path reads and lets every ungrouped owned scope walk document-set
 members, with filter, sort and window controls. Every other preset, the
 ordinary emitters, `.mfd` export and GUI authoring refuse the read; the GUI
 shows a saved one read-only. Generated libraries receive document sets through
-the typed instance entry points.
+the typed instance entry points. The `DynamicDocumentPaths` preset
+(`*_with_basic_owned_dynamic_document_paths`) composes owned dynamic loading
+with document sets and also admits the read of a loaded owner.
 
 ## Qualification
 
@@ -79,4 +91,13 @@ host test builds generated Rust and C# libraries and checks the same calls:
 ```sh
 cargo test -p cli --test code_generation --features codegen-tests \
   basic_docpath451_generated_rust_and_csharp_match_expected -- --ignored
+```
+
+The [loaded-document corpus](../../conformance/basic-owned-dynamic-document-path/README.md)
+records loaded paths, nested loading, primary document-set members driving
+loads, and the attempted callbacks and physical reads of each call:
+
+```sh
+cargo test -p cli --test code_generation --features codegen-tests \
+  basic_dyndocpath994_generated_rust_and_csharp_match_expected -- --ignored
 ```

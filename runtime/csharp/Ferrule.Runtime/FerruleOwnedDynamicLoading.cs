@@ -15,10 +15,11 @@ public sealed class FerruleOwnedDynamicDocuments
 {
     private readonly int _key;
     private readonly FerruleRetainedSourceCohort _drivers;
-    private readonly (int Driver, FerruleInstance Document)[] _documents;
+    // Each document with its driver row and the logical path it was loaded by.
+    private readonly (int Driver, string Path, FerruleInstance Document)[] _documents;
 
     private FerruleOwnedDynamicDocuments(int key, FerruleRetainedSourceCohort drivers,
-        (int Driver, FerruleInstance Document)[] documents)
+        (int Driver, string Path, FerruleInstance Document)[] documents)
     { _key = key; _drivers = drivers; _documents = documents; }
 
     internal static FerruleOwnedDynamicDocuments Load(FerruleBasicScopeContext context, string source,
@@ -38,12 +39,12 @@ public sealed class FerruleOwnedDynamicDocuments
                 FerruleOwnedSourceErrorKind.UnknownOwner, new FerruleOwnedSourceIdentity(source), source));
         var drivers = context.WalkOwnedSourceCohort(driver, driverPath);
         FerruleDynamicSourceItems.RequireDriverCount(drivers.Count, source);
-        var documents = new List<(int Driver, FerruleInstance Document)>(drivers.Count);
+        var documents = new List<(int Driver, string Path, FerruleInstance Document)>(drivers.Count);
         for (var i = 0; i < drivers.Count; i++)
         {
             var logicalPath = FerruleDynamicSourceItems.LogicalPath(path(drivers[i].Context), source, node);
             if (logicalPath is null) continue;
-            documents.Add((i, FerruleDynamicSourceItems.LoadDocument(loader, source, logicalPath)));
+            documents.Add((i, logicalPath, FerruleDynamicSourceItems.LoadDocument(loader, source, logicalPath)));
         }
         return new FerruleOwnedDynamicDocuments(key, drivers, documents.ToArray());
     }
@@ -62,7 +63,8 @@ public sealed class FerruleOwnedDynamicDocuments
             for (var i = 0; i < entries.Length; i++)
             {
                 var driver = _drivers[_documents[i].Driver];
-                entries[i] = new(driver.Context.WithDocument(_key, _documents[i].Document), driver.Cursor);
+                entries[i] = new(driver.Context.WithDocument(_key, _documents[i].Document, _documents[i].Path),
+                    driver.Cursor);
             }
             return parent.WithLoading(new Loaded(_key, entries));
         }
@@ -103,7 +105,7 @@ public sealed partial class FerruleBasicScopeContext
     internal FerruleBasicScopeContext WithLoading(FerruleOwnedDynamicDocuments.Loaded loading) =>
         new(Roots, LegacyView, _owned, _origins, _legacyContainers) { _loading = loading };
 
-    internal FerruleBasicScopeContext WithDocument(int key, FerruleInstance document, string? location = null) =>
+    internal FerruleBasicScopeContext WithDocument(int key, FerruleInstance document, string location) =>
         new(Roots, LegacyView, _owned.WithDocument(key, document, location), _origins, _legacyContainers);
 }
 
@@ -133,7 +135,7 @@ public sealed partial class FerruleOwnedScopeContext
         return -1;
     }
 
-    internal FerruleOwnedScopeContext WithDocument(int key, FerruleInstance document, string? location = null)
+    internal FerruleOwnedScopeContext WithDocument(int key, FerruleInstance document, string location)
     {
         OwnedSourceAccounting.Limit((nuint)_frames.Length, 1, Roots.Limits.MaxActiveFrames,
             FerruleOwnedSourceLimitKind.Frames);

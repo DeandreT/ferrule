@@ -260,6 +260,7 @@ owned_presets! {
     XmlMixedContent => emit_with_basic_owned_xml_mixed_content;
     XmlMixedConstruction => emit_with_basic_owned_xml_mixed_construction;
     DocumentPaths => emit_with_basic_owned_document_paths;
+    DynamicDocumentPaths => emit_with_basic_owned_dynamic_document_paths;
 }
 
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.

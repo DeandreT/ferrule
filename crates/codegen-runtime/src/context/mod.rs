@@ -724,9 +724,10 @@ enum OwnedOccurrenceKind<'a> {
     // StartingWith / EndingWith / IntoBlocks.
     GroupMembers,
     // The root of one document of its owner, minted only by owned dynamic
-    // loading (no location) and by an owned document-set walk (the member's
-    // location). It roots its owner and is never a position.
-    Document { location: Option<&'a str> },
+    // loading (with the logical path that loaded it) and by an owned
+    // document-set walk (with the member's location). It roots its owner and
+    // is never a position.
+    Document { location: &'a str },
 }
 
 /// An owner-aware view separate from every legacy ScopeContext operation.
@@ -1167,8 +1168,9 @@ impl<'a> OwnedScopeContext<'a> {
         })
     }
 
-    /// The location of the selected owner's latest active document-set
-    /// member. Another owner's document and an uniterated set never supply it.
+    /// The location of the selected owner's latest active document: a
+    /// document-set member's location or a loaded document's logical path.
+    /// Another owner's document and an uniterated set never supply it.
     pub fn owned_document_path(
         &self,
         owner: SourceOwnerRef<'_>,
@@ -1176,9 +1178,9 @@ impl<'a> OwnedScopeContext<'a> {
         self.query_budget(owner, &[], None)?;
         let (key, _) = self.resolve_owned_owner(owner)?;
         match self.document_frame(key).map(|frame| frame.kind) {
-            Some(OwnedOccurrenceKind::Document {
-                location: Some(location),
-            }) => Ok(Value::String(location.to_owned())),
+            Some(OwnedOccurrenceKind::Document { location }) => {
+                Ok(Value::String(location.to_owned()))
+            }
             _ => Err(OwnedSourceError::MissingDocumentPath {
                 owner: self.owned_identity(key),
             }),

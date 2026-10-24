@@ -6163,6 +6163,27 @@ csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sour
 ## basic-owned-document-path/sorted (project)
 lower        err:e49079596b5bf968 ScopeControl
 
+## basic-owned-dynamic-document-path/nested (project)
+lower        err:a34073f9d4b8e2b3 DynamicOwner
+
+## basic-owned-dynamic-document-path/named_driver (project)
+lower        err:a34073f9d4b8e2b3 DynamicOwner
+
+## basic-owned-dynamic-document-path/sorted (project)
+lower        err:f1457c3e0fc01b5c ScopeControl
+
+## basic-owned-dynamic-document-path/outside (project)
+lower        err:88952db7fe39f3a9 DynamicOwner
+
+## basic-owned-dynamic-document-path/unloaded_parts (project)
+lower        err:a34073f9d4b8e2b3 DynamicOwner
+
+## basic-owned-dynamic-document-path/primary_path (project)
+lower        err:a34073f9d4b8e2b3 DynamicOwner
+
+## basic-owned-dynamic-document-path/members (project)
+lower        err:ce3200fd14fd5a72 DynamicOwner
+
 ## xml-requests/base/json (project)
 lower        ok:f9112e1a1c75fd80
 validate     ok
