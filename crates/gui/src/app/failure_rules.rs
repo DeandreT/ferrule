@@ -96,7 +96,7 @@ impl FerruleApp {
                 }); }); });
                 egui::ScrollArea::vertical()
                     .id_salt("failure_rules_scroll")
-                    .max_height(120.0)
+                    .max_height(crate::theme::ListHeight::Short.px())
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                         for (index, rule) in self.project.failure_rules.iter().enumerate() {

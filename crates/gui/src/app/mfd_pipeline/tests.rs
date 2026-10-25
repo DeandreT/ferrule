@@ -1035,9 +1035,9 @@ fn queued_import_guard_locks_mapping_controls_and_shortcuts_until_keep_editing()
         Some(pipeline_editor_ui::PipelineEditorAction::ImportMfd(_))
     ));
     assert!(app.pending_dialog.is_none());
-    // The existing non-UI admission helper has no receiver yet; the exact
-    // helper used by ui() must nevertheless lock every mapping control route.
-    assert!(app.project_editing_enabled());
+    // Both command admission and the UI remain locked behind the modal,
+    // even though it has not opened the native file chooser yet.
+    assert!(!app.project_editing_enabled());
     assert!(!app.ui_project_editing_enabled());
     let context = egui::Context::default();
     crate::icons::install(&context);

@@ -92,7 +92,7 @@ pub(super) fn show_source_rows(ui: &mut egui::Ui, view: &mut RunReportView) {
         ui.add(
             egui::TextEdit::singleline(&mut view.trace_filter)
                 .hint_text("Filter source rows")
-                .desired_width(280.0),
+                .desired_width(crate::theme::FieldWidth::Large.min()),
         );
         if !view.trace_filter.is_empty()
             && crate::icons::button(ui, true, lucide_icons::Icon::X, "Clear row filter").clicked()
@@ -125,7 +125,7 @@ pub(super) fn show_source_rows(ui: &mut egui::Ui, view: &mut RunReportView) {
     let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 6.0;
     egui::ScrollArea::vertical()
         .id_salt("run_source_rows")
-        .max_height(180.0)
+        .max_height(crate::theme::ListHeight::Medium.px())
         .auto_shrink([false, false])
         .show_rows(ui, row_height, rows.len(), |ui, range| {
             for &index in &rows[range] {

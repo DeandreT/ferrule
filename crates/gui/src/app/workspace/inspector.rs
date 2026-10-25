@@ -159,7 +159,7 @@ impl FerruleApp {
             MappingDocument::Main | MappingDocument::Function(_) => None,
         };
         ui.horizontal(|ui| {
-            ui.strong("Target");
+            let target_label = ui.strong("Target");
             egui::ComboBox::from_id_salt("active_target")
                 .width((ui.available_width() - 100.0).max(80.0))
                 .wrap_mode(egui::TextWrapMode::Truncate)
@@ -185,7 +185,9 @@ impl FerruleApp {
                             activate = Some(MappingDocument::Target(index));
                         }
                     }
-                });
+                })
+                .response
+                .labelled_by(target_label.id);
             ui.menu_button("Actions", |ui| {
                 if ui
                     .add_enabled(boundary_editing, egui::Button::new("Add target…"))

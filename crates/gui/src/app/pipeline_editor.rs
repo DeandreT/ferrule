@@ -224,35 +224,34 @@ impl FerruleApp {
         let Some(editor) = &mut self.pipeline_editor else {
             return;
         };
-        let mut visible = true;
         let mut command = None;
         let mut selected = None;
         let mut add_project = false;
         let mut save = false;
         let mut run_saved = false;
-        let mut close = false;
         let mut export_profile = None;
         let mut edit_mapping = None;
         let issues = editor.document.issues();
         let dirty = editor.is_dirty();
         let unapplied = editor.has_unapplied_text();
-        egui::Window::new(if dirty {
-            "Pipeline editor *"
+        let can_save = editor.document.is_dirty() && !unapplied && issues.is_empty();
+        let can_run = !dirty && editor.document.is_saved();
+        let response = crate::ui_kit::dialog(ctx, crate::ui_kit::DialogKind::Docked, if dirty {
+            "Pipeline editor •"
         } else {
             "Pipeline editor"
         })
-        .open(&mut visible)
-        .default_width(730.0)
-        .min_width(550.0)
-        .resizable(true)
-        .show(ctx, |ui| {
+        .id_salt("pipeline_editor")
+        .width(crate::ui_kit::DialogWidth::Wide)
+        .show(|ui| {
             ui.add_enabled_ui(!mfd_busy, |ui| {
-            ui.label(editor.document.path.display().to_string());
-            ui.small("This pipeline document is separate from the open mapping project.");
+            ui.label(crate::ui_kit::file_label(&editor.document.path))
+                .on_hover_text(editor.document.path.display().to_string());
+            crate::ui_kit::help(ui, "This pipeline is separate from the open mapping.");
             ui.separator();
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(!unapplied, egui::Button::new("Add Project as Stage..."))
+                    .add_enabled(!unapplied, egui::Button::new("Add project as stage…"))
                     .clicked()
                 {
                     add_project = true;
@@ -264,11 +263,26 @@ impl FerruleApp {
                         Some(crate::ui_kit::plural(issues.len(), "validation issue"))
                     };
                 }
+                ui.menu_button("Export…", |ui| {
+                    for (label, profile) in [
+                        ("Ferrule MFD…", mfd::ExportProfile::FerruleExtensions),
+                        ("Native MFD…", mfd::ExportProfile::NativeMfd),
+                    ] {
+                        if ui.add_enabled(!unapplied && issues.is_empty(), egui::Button::new(label))
+                            .on_disabled_hover_text("Apply staged text edits and fix pipeline validation issues first")
+                            .clicked()
+                        {
+                            export_profile = Some(profile);
+                            ui.close();
+                        }
+                    }
+                });
             });
-            ui.horizontal_wrapped(|ui| {
-                for (index, stage) in editor.document.pipeline.stages.iter().enumerate() {
-                    if ui
-                        .selectable_label(editor.selected_stage == Some(index), &stage.id)
+            ui.strong("Stages");
+                    crate::ui_kit::list_area("pipeline_stages", crate::ui_kit::ListHeight::Short).show(ui, |ui| {
+                        for (index, stage) in editor.document.pipeline.stages.iter().enumerate() {
+                            if ui
+                                .selectable_label(editor.selected_stage == Some(index), format!("{}. {}", index + 1, stage.id))
                         .clicked()
                     {
                         selected = Some(index);
@@ -283,8 +297,9 @@ impl FerruleApp {
                         edit_mapping = Some(index);
                     }
                     ui.horizontal(|ui| {
-                        ui.label("Stage ID");
-                        ui.text_edit_singleline(&mut editor.rename_draft);
+                        let stage_id_label = ui.label("Stage ID");
+                        ui.add(crate::ui_kit::text_field(&mut editor.rename_draft, crate::ui_kit::FieldWidth::Medium))
+                            .labelled_by(stage_id_label.id);
                         if ui
                             .add_enabled(
                                 editor.rename_draft != stage.id,
@@ -331,8 +346,7 @@ impl FerruleApp {
                     {
                         command = Some(PipelineEditCommand::AddMissingBindings(index));
                     }
-                    egui::ScrollArea::vertical()
-                        .max_height(260.0)
+                    crate::ui_kit::list_area("pipeline_input_bindings", crate::ui_kit::ListHeight::Tall)
                         .show(ui, |ui| {
                             if let Some(edit) = show_binding(
                                 ui,
@@ -371,8 +385,7 @@ impl FerruleApp {
                     ui.visuals().error_fg_color,
                     crate::ui_kit::plural(issues.len(), "validation issue"),
                 );
-                egui::ScrollArea::vertical()
-                    .max_height(110.0)
+                crate::ui_kit::list_area("pipeline_validation_issues", crate::ui_kit::ListHeight::Short)
                     .show(ui, |ui| {
                         for issue in &issues {
                             ui.label(format!("• {issue}"));
@@ -385,11 +398,13 @@ impl FerruleApp {
             if unapplied {
                 ui.weak("Apply staged text edits before saving or changing stages.");
             }
-            ui.separator();
+            });
+        }, |ui| {
+            ui.add_enabled_ui(!mfd_busy, |ui| {
             ui.horizontal(|ui| {
                 if ui
                     .add_enabled(
-                        editor.document.is_dirty() && !unapplied && issues.is_empty(),
+                        can_save,
                         egui::Button::new("Save pipeline"),
                     )
                     .clicked()
@@ -398,31 +413,14 @@ impl FerruleApp {
                 }
                 if ui
                     .add_enabled(
-                        !dirty && editor.document.is_saved(),
-                        egui::Button::new("Run saved pipeline..."),
+                        can_run,
+                        egui::Button::new("Run saved pipeline…"),
                     )
                     .clicked()
                 {
                     run_saved = true;
                 }
-                if ui.button("Close").clicked() {
-                    close = true;
-                }
             });
-            ui.horizontal(|ui| {
-                for (label, profile) in [
-                    ("Export MFD (Ferrule)...", mfd::ExportProfile::FerruleExtensions),
-                    ("Export native MFD...", mfd::ExportProfile::NativeMfd),
-                ] {
-                    if ui.add_enabled(!unapplied && issues.is_empty(), egui::Button::new(label))
-                        .on_disabled_hover_text("Apply staged text edits and fix pipeline validation issues first")
-                        .clicked()
-                    {
-                        export_profile = Some(profile);
-                    }
-                }
-            });
-            ui.weak("Export includes the current applied pipeline edits. Saving the pipeline file is optional.");
             });
         });
         if let Some(index) = edit_mapping {
@@ -493,7 +491,7 @@ impl FerruleApp {
         if let Some(profile) = export_profile {
             self.begin_pipeline_mfd_export(profile);
         }
-        if close || !visible {
+        if response.close_requested {
             self.request_pipeline_editor_action(PipelineEditorAction::Close);
         }
     }
@@ -502,26 +500,27 @@ impl FerruleApp {
         if self.pending_pipeline_editor_action.is_none() {
             return;
         }
-        let mut discard = false;
-        let mut keep = false;
-        egui::Window::new("Unsaved pipeline changes")
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.label("The pipeline has unsaved edits.");
-                ui.horizontal(|ui| {
-                    if ui.button("Keep editing").clicked() {
-                        keep = true;
-                    }
-                    if ui.button("Discard changes").clicked() {
-                        discard = true;
-                    }
-                });
-            });
-        if keep {
+        let response = crate::ui_kit::dialog(
+            ctx,
+            crate::ui_kit::DialogKind::Modal,
+            "Unsaved pipeline changes",
+        )
+        .show(
+            |ui| ui.label("The pipeline has unsaved edits."),
+            |ui| {
+                crate::ui_kit::dialog_buttons(
+                    ui,
+                    "Keep editing".into(),
+                    None,
+                    Some("Discard changes".into()),
+                )
+            },
+        );
+        if response.close_requested || response.footer == Some(crate::ui_kit::DialogAction::Primary)
+        {
             self.pending_pipeline_editor_action = None;
         }
-        if discard {
+        if response.footer == Some(crate::ui_kit::DialogAction::Destructive) {
             self.discard_pending_pipeline_editor_action(ctx);
         }
     }
@@ -620,10 +619,13 @@ fn show_binding(
 ) -> Option<PipelineEditCommand> {
     let mut edit = None;
     ui.group(|ui| {
-        ui.strong(label);
+        let binding_label = ui.strong(label);
         ui.horizontal(|ui| {
             egui::ComboBox::from_id_salt(("pipeline-binding", stage_index, binding_index))
-                .selected_text(input_label(input))
+                .selected_text(match input {
+                    PipelineInput::Host { .. } => "Host input".to_owned(),
+                    _ => input_label(input),
+                })
                 .show_ui(ui, |ui| {
                     if ui
                         .selectable_label(matches!(input, PipelineInput::Host { .. }), "Host input")
@@ -668,12 +670,19 @@ fn show_binding(
                             }
                         }
                     }
-                });
+                })
+                .response
+                .labelled_by(binding_label.id);
             if let PipelineInput::Host { name } = input {
                 let draft = drafts
                     .entry((stage_index, binding_index))
                     .or_insert_with(|| name.clone());
-                ui.add(egui::TextEdit::singleline(draft).hint_text("Host name"));
+                let name_label = ui.label("Name");
+                ui.add(
+                    crate::ui_kit::text_field(draft, crate::ui_kit::FieldWidth::Medium)
+                        .hint_text("Host input name"),
+                )
+                .labelled_by(name_label.id);
                 if ui
                     .add_enabled(draft != name, egui::Button::new("Apply name"))
                     .clicked()
@@ -699,5 +708,47 @@ fn input_label(input: &PipelineInput) -> String {
             Some(target) => format!("{stage} / {target}"),
             None => format!("{stage} / Primary"),
         },
+    }
+}
+
+#[cfg(test)]
+mod presentation_tests {
+    use super::*;
+    use crate::test_ui::ContextExt as _;
+
+    #[test]
+    fn pending_pipeline_confirmation_blocks_global_mapping_commands() {
+        let app = FerruleApp {
+            pending_pipeline_editor_action: Some(PipelineEditorAction::Close),
+            ..Default::default()
+        };
+        assert!(!app.project_editing_enabled());
+    }
+
+    #[test]
+    fn escape_keeps_editing_instead_of_discarding_pipeline_changes() {
+        let mut app = FerruleApp {
+            pending_pipeline_editor_action: Some(PipelineEditorAction::Close),
+            ..Default::default()
+        };
+        let context = egui::Context::default();
+        crate::icons::install(&context);
+        context.run_test_ui(Default::default(), |ui| {
+            app.show_pipeline_editor_guard(ui.ctx());
+        });
+        context.run_test_ui(
+            egui::RawInput {
+                events: vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+                ..Default::default()
+            },
+            |ui| app.show_pipeline_editor_guard(ui.ctx()),
+        );
+        assert!(app.pending_pipeline_editor_action.is_none());
     }
 }

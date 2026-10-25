@@ -598,7 +598,7 @@ fn stage_named_and_function_canvases_edit_same_owned_snapshot_and_cancel_discard
     );
     edit_constant(&mut app, &context, "before");
     assert_eq!(const_text(&child(&app).project, 1), "before-edited");
-    click(&mut app, &context, "Existing functions");
+    click(&mut app, &context, "Stage functions");
     click(&mut app, &context, "local:helper");
     assert_eq!(
         child(&app).mapping_workspace.active,
