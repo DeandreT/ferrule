@@ -48,12 +48,16 @@ pub use json_projection::{
     MAX_JSON_PROJECTED_VALUES, parse_json_projection_shape, project_json_source_document,
 };
 pub use mapping::JsonSourceShape;
+mod mapforce_string_components;
 mod mapforce_xml;
 mod path_hierarchy;
 mod recursive_filter;
 mod runtime_value;
 mod user_function;
 mod value_map;
+pub use mapforce_string_components::{
+    MapForceJsonString, MapForceStringComponentError, MapForceStringInputFallback,
+};
 mod x12;
 mod xml;
 pub use mapforce_xml::{

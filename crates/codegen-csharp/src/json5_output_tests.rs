@@ -57,7 +57,17 @@ fn json5_opt_in_preserves_ordinary_artifacts_and_all_runtime_sources() {
     let after = after.unwrap();
     assert_eq!(before, after);
     assert_eq!(optional, repeated);
-    assert_eq!(runtime::SOURCES.len(), 91);
+    assert_eq!(runtime::SOURCES.len(), 92);
+    let string_components = before
+        .files()
+        .iter()
+        .find(|file| file.path.as_str() == "Runtime/Json/FerruleMapForceStringComponents.cs")
+        .unwrap();
+    assert!(
+        std::str::from_utf8(&string_components.contents)
+            .unwrap()
+            .contains("public sealed class FerruleMapForceJsonString")
+    );
     assert_eq!(
         optional.files().len(),
         before.files().len() + runtime::JSON5_SOURCES.len() + 1
