@@ -387,8 +387,13 @@ order, duplicates or semantic decisions. Nonsemantic working metadata is not par
 of the durable source catalogue. These finite comparisons do not establish
 semantic novelty or whole-product disjointness.
 
-`inventory_complete` remains false. The companion retains the 191 nonleaf,
-319 function-signature and 43 xs:constructor gaps, the separate linked COM API
-manual, unlisted supporting APIs and unresolved source contracts. These sets are
-not asserted disjoint or additive. Independent applicability and behavioral/vendor
-execution evidence remain necessary for every dimension.
+The [supplemental source reviews](mfd-2026r2-source-inventory/README.md) cover the
+191 parent-page bodies, 319 named function leaves and 43 `xs:` constructor leaves.
+The separate COM API catalog is inventoried provisionally without claiming a
+2026r2 release binding. Missing signatures, types, defaults and contradictory
+statements remain explicit; source review does not fill those gaps by inference.
+
+`inventory_complete` remains false while linked supporting APIs, release provenance
+and unresolved source contracts remain open. These sets are not disjoint or
+additive. Independent applicability and behavioral/vendor execution evidence remain
+necessary for every dimension.
