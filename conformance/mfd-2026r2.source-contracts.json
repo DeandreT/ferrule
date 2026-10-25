@@ -450278,7 +450278,7 @@
       },
       {
         "scope": "Generated supporting classes, linked language documentation and installed samples outside retained page bounds",
-        "status": "not inventoried; no completeness inference"
+        "status": "Named public supporting classes and linked platform references are inventoried in the supplemental files. Release-bound generated libraries, installed samples, and the scope of undocumented support classes remain unresolved; see supporting.json installer_artifact_requests."
       }
     ],
     "constraints": [
@@ -450303,6 +450303,14 @@
       "com_api": {
         "file": "mfd-2026r2-source-inventory/com-api.json",
         "release_binding": "unestablished"
+      },
+      "supporting_classes": {
+        "file": "mfd-2026r2-source-inventory/supporting.json",
+        "pages": 4
+      },
+      "external_references": {
+        "file": "mfd-2026r2-source-inventory/external-references.json",
+        "references": 2
       }
     }
   },
