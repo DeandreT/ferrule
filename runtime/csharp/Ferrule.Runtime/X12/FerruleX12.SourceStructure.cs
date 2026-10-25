@@ -93,6 +93,17 @@ public static partial class FerruleX12
             char? repetition = fields[11].Length > 0 && !char.IsLetterOrDigit(fields[11][0]) ? fields[11][0] : null;
             syntax = new(element, fields[16][0], fields[16][1], repetition);
         }
+        // Recognizing a selection header and resolving its qualifier are separate.
+        private static bool StartsWithTag(NativeParticle plan, string tag)
+        {
+            if (plan.Segment is { } id) return id == tag;
+            foreach (var child in plan.Children)
+            {
+                if (StartsWithTag(child, tag)) return true;
+                if (child.Minimum > 0) break;
+            }
+            return false;
+        }
         private bool Matches(NativeParticle plan)
         {
             if (plan.Segment is { } id)
@@ -106,7 +117,12 @@ public static partial class FerruleX12
                 for (int i = 0; i < plan.Node.Children.Length; i++) if (plan.Node.Children[i].Fixed is { } fixedValue && (i < fields.Length ? fields[i].FirstOrDefault()?.FirstOrDefault() ?? "" : "") != fixedValue) return false;
                 return true;
             }
-            foreach (var child in plan.Children) { if (Matches(child)) return true; if (child.Minimum > 0) break; }
+            // Group admission sees the selection header; selection reading resolves its qualifier.
+            foreach (var child in plan.Children)
+            {
+                if ((child.Selection && StartsWithTag(child, Tag())) || Matches(child)) return true;
+                if (child.Minimum > 0) break;
+            }
             return false;
         }
         private (string[][][] Elements, int Consumed) Scan(string id, bool required)
@@ -206,6 +222,7 @@ public static partial class FerruleX12
                     if (!Matches(child))
                     {
                         string tag = Tag();
+                        if (child.Selection && StartsWithTag(child, tag)) throw Failure(FerruleX12Error.Syntax, "Unrecognized native X12 selection qualifier.");
                         if (child.Selection && tag.Length != 0 && !knownSegments.Contains(tag, StringComparer.Ordinal)) throw Failure(FerruleX12Error.Syntax, "Unrecognized segment at native X12 selection.");
                         break;
                     }

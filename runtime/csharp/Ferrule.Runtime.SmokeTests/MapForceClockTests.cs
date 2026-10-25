@@ -108,6 +108,34 @@ internal static partial class Program
         _ = FerruleX12.ParseMapForceSourceBytes(structural, Encoding.Latin1.GetBytes(flat.Replace('*', '\t')));
         _ = FerruleX12.ParseMapForceSourceBytes(structural, Encoding.Latin1.GetBytes(flat.Replace('~', '\n')));
         Throws<FerruleX12Exception>(() => FerruleX12.ParseMapForceSourceBytes(structural, Encoding.Latin1.GetBytes(flat.Replace("~", "\n\n", StringComparison.Ordinal))));
+        var selected = System.Text.Json.Nodes.JsonNode.Parse(structural)!;
+        var selectedBoundary = System.Text.Json.Nodes.JsonNode.Parse(boundary)!;
+        var selectedSchema = System.Text.Json.Nodes.JsonNode.Parse(selectedBoundary["schema"]!.GetValue<string>())!;
+        var st = selectedSchema["kind"]!["children"]![0]!["kind"]!["children"]![1]!["kind"]!["children"]![1]!["kind"]!["children"]![0]!;
+        st["kind"]!["children"]![0]!["fixed"] = "850";
+        selectedBoundary["schema"] = selectedSchema.ToJsonString();
+        selected["boundary"] = selectedBoundary.ToJsonString();
+        selected["structure"]!["known_segments"] = JsonSerializer.SerializeToNode(new[] { "ISA", "GS", "ST", "SE", "GE", "IEA", "REF" });
+        selected["structure"]!["children"]![0]!["children"]![1]!["children"]![1]!["selection"] = true;
+        string selectedDescriptor = selected.ToJsonString();
+        string selectedExpected = JsonSerializer.Serialize(FerruleX12.ParseMapForceSourceBytes(selectedDescriptor, Encoding.Latin1.GetBytes(flat)));
+        foreach (string qualifier in new[] { "UNKNOWN", "999", "" })
+        {
+            Throws<FerruleX12Exception>(() => FerruleX12.ParseMapForceSourceBytes(selectedDescriptor, Encoding.Latin1.GetBytes(flat.Replace("ST*850*", "ST*" + qualifier + "*", StringComparison.Ordinal))));
+            Throws<FerruleX12Exception>(() => FerruleX12.ParseMapForceSourceBytes(selectedDescriptor, Encoding.Latin1.GetBytes(flat.Replace("GE*", "ST*" + qualifier + "*0002~SE*2*0002~GE*", StringComparison.Ordinal))));
+            Throws<FerruleX12Exception>(() => FerruleX12.ParseMapForceSourceBytes(selectedDescriptor, Encoding.Latin1.GetBytes(flat + "ST*" + qualifier + "*0002~")));
+        }
+        _ = FerruleX12.ParseMapForceSourceBytes(selectedDescriptor, Encoding.Latin1.GetBytes(flat.Replace("GE*", "ST*850*0002~SE*2*0002~GE*", StringComparison.Ordinal)));
+        _ = FerruleX12.ParseMapForceSourceBytes(selectedDescriptor, Encoding.Latin1.GetBytes(flat.Replace("GE*", "REF*X~GE*", StringComparison.Ordinal)));
+        var withTrailingMessage = FerruleX12.ParseMapForceSourceBytes(selectedDescriptor, Encoding.Latin1.GetBytes(flat + "ST*850*0002~SE*2*0002~"));
+        var trailingInterchanges = ((FerruleRepeated)Field(withTrailingMessage, "Interchange")).Items;
+        Equal(2, trailingInterchanges.Count);
+        Equal(0, ((FerruleRepeated)Field(trailingInterchanges[1], "ISA")).Items.Count);
+        var trailingGroups = ((FerruleRepeated)Field(trailingInterchanges[1], "Group")).Items;
+        Equal(0, ((FerruleRepeated)Field(trailingGroups[0], "GS")).Items.Count);
+        Equal(2, trailingInterchanges.Sum(interchange => ((FerruleRepeated)Field(interchange, "Group")).Items.Sum(group => ((FerruleRepeated)Field(group, "Message_850")).Items.Count)));
+        Throws<FerruleX12Exception>(() => FerruleX12.ParseMapForceSourceBytes(selectedDescriptor, Encoding.Latin1.GetBytes("JUNK~" + flat)));
+        foreach (string tail in new[] { "JUNK", "ZZZ*X~", "IEA*2*unused~", "GE*2*unused~", "ZZZ*X~ST*UNKNOWN*0002~SE*2*0002~", "ZZZ*X~ST*850*0002~SE*2*0002~" }) Equal(selectedExpected, JsonSerializer.Serialize(FerruleX12.ParseMapForceSourceBytes(selectedDescriptor, Encoding.Latin1.GetBytes(flat + tail))));
         var invalidStructure = System.Text.Json.Nodes.JsonNode.Parse(structural)!;
         invalidStructure["structure"]!["children"]!.AsArray().Clear();
         Throws<FerruleX12Exception>(() => FerruleX12SourceAcquisition.Acquire(invalidStructure.ToJsonString(), () => throw new Exception("must not evaluate"), _ => Array.Empty<string>(), _ => throw new Exception("must not load"), 1));
