@@ -50,6 +50,7 @@ pub(crate) fn type_label(value: &Value) -> &'static str {
         Value::String(_) => "Text",
         Value::Int(_) => "Integer",
         Value::Float(_) => "Decimal",
+        Value::Decimal(_) => "Exact decimal",
         Value::Bool(_) => "Boolean",
         Value::Null => "Null",
         Value::JsonNull(_) => "JSON null",

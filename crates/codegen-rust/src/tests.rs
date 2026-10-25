@@ -29,7 +29,6 @@ mod collection_find;
 mod concatenate;
 mod copy_current_source;
 mod correlated_joins;
-mod decimal_conformance_observers;
 mod dynamic_documents;
 mod dynamic_source;
 mod dynamic_targets;
