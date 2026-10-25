@@ -10,6 +10,8 @@ They do not change the canonical capability ledger or establish execution suppor
 | `functions.json` | 319 named function leaves, parameter tables, language declarations and unresolved contract facets |
 | `constructors.json` | 43 `xs:` constructor leaves and their shared lexical/type statements |
 | `com-api.json` | Separate public COM API catalog; release binding remains unestablished |
+| `supporting.json` | Public I/O classes, wrapper-library exceptions and the named installation-artifact requests |
+| `external-references.json` | Linked historical DOM algorithm and redirected .NET interface contract, kept separate from vendor claims |
 
 The manual reviews use the same pinned PDF and layout-text hashes as the original
 source companion. Line numbers refer to that exact extraction; physical PDF page
@@ -29,6 +31,14 @@ vendor environment. Its scoped catalog-completeness flag does not establish
 Enterprise 2026r2 inventory completeness. The canonical `inventory_complete` flag
 remains false while release provenance, supporting classes and remaining source
 contracts are unresolved.
+
+The public supporting declarations are inventoried, but complete generated
+libraries and installed examples require release-bound artifacts. The requested
+bundles and their provenance requirements are listed in `supporting.json`.
+Undocumented supporting classes are explicitly implementation-private and
+changeable in the manual; including them requires a bounded choice of generation
+fixtures and settings, not an assumption that all possible schema-generated
+classes form a finite catalog.
 
 Run `cargo test -p mfd-conformance --test source_inventory` to validate finite
 coverage, unique source identities and the separation from execution assessments.

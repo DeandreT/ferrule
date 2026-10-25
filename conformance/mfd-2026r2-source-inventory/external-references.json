@@ -1,0 +1,35 @@
+{
+  "format": "mapforce-linked-platform-source-references",
+  "format_version": 1,
+  "purpose": "Document linked platform contracts without transferring them into vendor or Ferrule execution claims.",
+  "assessment_boundary": {
+    "status": "unassessed",
+    "applicability": "unknown",
+    "execution_evidence": []
+  },
+  "references": [
+    {
+      "id": "external.dom-2002.namespace-prefix-lookup",
+      "requested_url": "https://www.w3.org/TR/2002/WD-DOM-Level-3-Core-20021022/namespaces-algorithms.html",
+      "resolved_url": "https://www.w3.org/TR/2002/WD-DOM-Level-3-Core-20021022/namespaces-algorithms.html",
+      "raw_sha256": "bf2ded6f184dfea3f51338d6b1ebd2ae6d60e63dde1e604a682310a5cbe24a75",
+      "source_version": "DOM Level 3 Core Working Draft, 22 October 2002, appendix B.2",
+      "manual_reference_lines": [[60114, 60124], [60979, 60989], [61878, 61885]],
+      "declared_contract": "lookupPrefix searches for a prefix whose namespace binding is valid at the original element. It ignores default namespace declarations and DOM Level 1 nodes; no matching prefix returns null.",
+      "boundary": "A historical W3C working-draft algorithm linked by the vendor manual, not a claim about current DOM implementations, vendor conformance or Ferrule behavior. The algorithm is not copied into the implementation.",
+      "runtime_proof": false
+    },
+    {
+      "id": "external.dotnet.icomparable-compareto",
+      "requested_url": "https://msdn.microsoft.com/en-us/library/system.icomparable.compareto(v=vs.110).aspx",
+      "resolved_url": "https://learn.microsoft.com/en-us/dotnet/api/system.icomparable.compareto?view=net-10.0&redirectedfrom=MSDN",
+      "raw_sha256": "d14558d08893defeb24609f7881f6579a8f897bd6114795d1d41bf50d84968d4",
+      "source_version": "Redirected current Microsoft Learn .NET 10 reference; the original vs.110 page body is not established by this response.",
+      "manual_reference_lines": [[60282, 60288]],
+      "declared_signature": "int IComparable.CompareTo(object obj)",
+      "declared_contract": "The returned integer is negative, zero or positive for preceding, equal or following order. The interface requires a type-specific implementation; an incompatible argument type is documented as ArgumentException, and any object compares greater than null.",
+      "boundary": "These are platform-interface statements, not evidence that the vendor DateTime class implements every behavior. The historical reference URL redirects to a current version, so historical equivalence remains unestablished.",
+      "runtime_proof": false
+    }
+  ]
+}

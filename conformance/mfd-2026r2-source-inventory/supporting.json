@@ -1,0 +1,1257 @@
+{
+  "format": "ferrule-820-private-pinned-supporting-source-review-fragment",
+  "format_version": 1,
+  "target": {
+    "vendor_product": "MapForce",
+    "edition": "Enterprise",
+    "release": "2026r2"
+  },
+  "inventory_complete": false,
+  "purpose": "Finite source-only review of four supporting-class sections; not a complete SDK, installed-artifact inventory, execution qualification or additive parity denominator.",
+  "source_documents": {
+    "manual_pdf": {
+      "id": "mapforce-enterprise-manual-2026r2",
+      "official_url": "https://www.altova.com/documents/MapForceEnterprise.pdf",
+      "sha256": "c6b981b664331329a4ab778c7dce6179ae162d27759c58dc9906d0056d815d68",
+      "release_binding": "Pinned retained Enterprise 2026r2 documentation landing and internal Release 2 text; cover says 2026. Mutable URL is not an installer/runtime binary binding.",
+      "page_numbering": "One-based physical PDF page; distinct from online page identity and printed headers."
+    },
+    "manual_text": {
+      "id": "mapforce-enterprise-manual-2026r2-text",
+      "derived_from": "#/source_documents/manual_pdf",
+      "sha256": "d2fb199b0d69294b525ef7826e1634f9a4249a64f30ce55cf142737c5846e90a",
+      "line_numbering": "One-based LF-delimited lines; form feeds remain within lines."
+    }
+  },
+  "assessment_boundary": {
+    "status": "unassessed",
+    "applicability": "unknown",
+    "execution_evidence": [],
+    "execution_receipts": [],
+    "runtime_proof": false,
+    "rule": "Applies to every record. Source identities are not canonical ledger rows. Documentation language/format claims do not establish vendor execution, Ferrule support or any backend/profile assessment."
+  },
+  "method": {
+    "reviewed_pages": 4,
+    "review_boundary": "Full scoped line ranges, including inline tables and usage text. Ancillary library-generation/integration lines are used only to name finite artifact requests.",
+    "text_hash_reverified": true,
+    "online_pages_used": false,
+    "repository_modified": false,
+    "implementation_copied": false,
+    "normalization": "Only extraction line wraps in class names are joined; raw split fragments remain on those records. Namespace qualification uses each table's introductory sentence. Source misspellings, literal base names and declarations are not corrected."
+  },
+  "coverage": [
+    {
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "official_url": "https://www.altova.com/manual/mapforce/mapforceenterprise/mf_codegen_integrate_changedatatype.html",
+      "section": "16.2.2",
+      "text_lines": [
+        56735,
+        57067
+      ],
+      "physical_pdf_pages": [
+        1380,
+        1381,
+        1382,
+        1383,
+        1384,
+        1385,
+        1386
+      ],
+      "printed_pages": [
+        1380,
+        1381,
+        1382,
+        1383,
+        1384,
+        1385,
+        1386
+      ],
+      "review_state": "reviewed_scoped_content",
+      "named_vendor_classes": 24,
+      "displayed_constructors": 20
+    },
+    {
+      "source_file": "cg_schema_about_cpp.html",
+      "official_url": "https://www.altova.com/manual/mapforce/mapforceenterprise/cg_schema_about_cpp.html",
+      "section": "16.2.3.1 / Error Handling",
+      "text_lines": [
+        57334,
+        57376
+      ],
+      "physical_pdf_pages": [
+        1391
+      ],
+      "printed_pages": [
+        1391
+      ],
+      "review_state": "reviewed_scoped_content",
+      "named_vendor_classes": 10,
+      "shared_method_declarations": 2
+    },
+    {
+      "source_file": "cg_schema_about_csharp.html",
+      "official_url": "https://www.altova.com/manual/mapforce/mapforceenterprise/cg_schema_about_csharp.html",
+      "section": "16.2.3.2 / Error Handling",
+      "text_lines": [
+        57474,
+        57505
+      ],
+      "physical_pdf_pages": [
+        1393
+      ],
+      "printed_pages": [
+        1393
+      ],
+      "review_state": "reviewed_scoped_content",
+      "named_vendor_classes": 4,
+      "platform_exception_references": 5
+    },
+    {
+      "source_file": "cg_schema_about_java.html",
+      "official_url": "https://www.altova.com/manual/mapforce/mapforceenterprise/cg_schema_about_java.html",
+      "section": "16.2.3.3 / Error Handling",
+      "text_lines": [
+        57610,
+        57642
+      ],
+      "physical_pdf_pages": [
+        1395,
+        1396
+      ],
+      "printed_pages": [
+        1395,
+        1396
+      ],
+      "review_state": "reviewed_scoped_content",
+      "named_vendor_classes": 2,
+      "platform_exception_references": 4
+    }
+  ],
+  "counts": {
+    "reviewed_pages": 4,
+    "named_vendor_classes": 40,
+    "io_classes_including_bases": 24,
+    "io_base_classes": 4,
+    "displayed_io_constructors": 20,
+    "vendor_exception_classes": 16,
+    "shared_cpp_exception_methods": 2,
+    "platform_exception_references": 9,
+    "format_matrix_rows": 5,
+    "format_matrix_columns": 6,
+    "format_matrix_cells": 30,
+    "source_usage_contracts": 8,
+    "installer_artifact_request_bundles": 6,
+    "count_rule": "Counts describe distinct record categories in this fragment only; shared methods are not multiplied by ten classes and matrix cells are not constructors. Categories are not an additive product-parity denominator."
+  },
+  "io_classes": [
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.Input",
+      "name": "Altova.IO.Input",
+      "kind": "base_class",
+      "language": "C#",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56796,
+        56798
+      ],
+      "authored_summary": "Named input base for mapping parameters; no constructor or member list is declared here."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.Output",
+      "name": "Altova.IO.Output",
+      "kind": "base_class",
+      "language": "C#",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56796,
+        56798
+      ],
+      "authored_summary": "Named output base for mapping parameters; no constructor or member list is declared here."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.FileInput",
+      "name": "Altova.IO.FileInput",
+      "kind": "constructor_bearing_class",
+      "language": "C#",
+      "category": "Files",
+      "direction": "input",
+      "literal_signature": "Altova.IO.FileInput(string filename)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56801,
+        56801
+      ],
+      "authored_summary": "Accepts a filename for input."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.FileOutput",
+      "name": "Altova.IO.FileOutput",
+      "kind": "constructor_bearing_class",
+      "language": "C#",
+      "category": "Files",
+      "direction": "output",
+      "literal_signature": "Altova.IO.FileOutput(string filename)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56802,
+        56802
+      ],
+      "authored_summary": "Accepts a filename for output."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.StreamInput",
+      "name": "Altova.IO.StreamInput",
+      "kind": "constructor_bearing_class",
+      "language": "C#",
+      "category": "Streams",
+      "direction": "input",
+      "literal_signature": "Altova.IO.StreamInput(System.IO.Stream stream)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56804,
+        56804
+      ],
+      "authored_summary": "Accepts a platform stream for input."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.StreamOutput",
+      "name": "Altova.IO.StreamOutput",
+      "kind": "constructor_bearing_class",
+      "language": "C#",
+      "category": "Streams",
+      "direction": "output",
+      "literal_signature": "Altova.IO.StreamOutput(System.IO.Stream stream)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56805,
+        56805
+      ],
+      "authored_summary": "Accepts a platform stream for output."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.StringInput",
+      "name": "Altova.IO.StringInput",
+      "kind": "constructor_bearing_class",
+      "language": "C#",
+      "category": "Strings",
+      "direction": "input",
+      "literal_signature": "Altova.IO.StringInput(string content)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56813,
+        56813
+      ],
+      "authored_summary": "Accepts string content as input."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.StringOutput",
+      "name": "Altova.IO.StringOutput",
+      "kind": "constructor_bearing_class",
+      "language": "C#",
+      "category": "Strings",
+      "direction": "output",
+      "literal_signature": "Altova.IO.StringOutput(System.Text.StringBuilder sbuilder)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56814,
+        56814
+      ],
+      "authored_summary": "Accepts a StringBuilder as the output destination."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.ReaderInput",
+      "name": "Altova.IO.ReaderInput",
+      "kind": "constructor_bearing_class",
+      "language": "C#",
+      "category": "Reader/Writer",
+      "direction": "input",
+      "literal_signature": "Altova.IO.ReaderInput(System.IO.TextReader reader)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56816,
+        56816
+      ],
+      "authored_summary": "Accepts a text reader for input."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.WriterOutput",
+      "name": "Altova.IO.WriterOutput",
+      "kind": "constructor_bearing_class",
+      "language": "C#",
+      "category": "Reader/Writer",
+      "direction": "output",
+      "literal_signature": "Altova.IO.WriterOutput(System.IO.TextWriter writer)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56817,
+        56817
+      ],
+      "authored_summary": "Accepts a text writer for output."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.DocumentInput",
+      "name": "Altova.IO.DocumentInput",
+      "kind": "constructor_bearing_class",
+      "language": "C#",
+      "category": "DOM documents",
+      "direction": "input",
+      "literal_signature": "Altova.IO.DocumentInput(System.Xml.XmlDocument document)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56819,
+        56819
+      ],
+      "authored_summary": "Accepts a DOM document for input."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.DocumentOutput",
+      "name": "Altova.IO.DocumentOutput",
+      "kind": "constructor_bearing_class",
+      "language": "C#",
+      "category": "DOM documents",
+      "direction": "output",
+      "literal_signature": "Altova.IO.DocumentOutput(System.Xml.XmlDocument document)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56820,
+        56820
+      ],
+      "authored_summary": "Accepts a DOM document as the output destination."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.Input",
+      "name": "com.altova.io.Input",
+      "kind": "base_class",
+      "language": "Java",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56823,
+        56825
+      ],
+      "authored_summary": "Named input base for mapping parameters; no constructor or member list is declared here."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.Output",
+      "name": "com.altova.io.Output",
+      "kind": "base_class",
+      "language": "Java",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56823,
+        56825
+      ],
+      "authored_summary": "Named output base for mapping parameters; no constructor or member list is declared here."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.FileInput",
+      "name": "com.altova.io.FileInput",
+      "kind": "constructor_bearing_class",
+      "language": "Java",
+      "category": "Files",
+      "direction": "input",
+      "literal_signature": "com.altova.io.FileInput(String filename)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56828,
+        56828
+      ],
+      "authored_summary": "Accepts a filename for input."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.FileOutput",
+      "name": "com.altova.io.FileOutput",
+      "kind": "constructor_bearing_class",
+      "language": "Java",
+      "category": "Files",
+      "direction": "output",
+      "literal_signature": "com.altova.io.FileOutput(String filename)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56829,
+        56829
+      ],
+      "authored_summary": "Accepts a filename for output."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.StreamInput",
+      "name": "com.altova.io.StreamInput",
+      "kind": "constructor_bearing_class",
+      "language": "Java",
+      "category": "Streams",
+      "direction": "input",
+      "literal_signature": "com.altova.io.StreamInput(java.io.InputStream stream)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56831,
+        56831
+      ],
+      "authored_summary": "Accepts an InputStream for input."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.StreamOutput",
+      "name": "com.altova.io.StreamOutput",
+      "kind": "constructor_bearing_class",
+      "language": "Java",
+      "category": "Streams",
+      "direction": "output",
+      "literal_signature": "com.altova.io.StreamOutput(String filename)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56832,
+        56832
+      ],
+      "authored_summary": "The stream row literally declares a String filename parameter; no OutputStream overload is inferred.",
+      "uncertainty_refs": [
+        "java-stream-output"
+      ]
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.StringInput",
+      "name": "com.altova.io.StringInput",
+      "kind": "constructor_bearing_class",
+      "language": "Java",
+      "category": "Strings",
+      "direction": "input",
+      "literal_signature": "com.altova.io.StringInput(String content)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56834,
+        56834
+      ],
+      "authored_summary": "Accepts string content as input."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.StringOutput",
+      "name": "com.altova.io.StringOutput",
+      "kind": "constructor_bearing_class",
+      "language": "Java",
+      "category": "Strings",
+      "direction": "output",
+      "literal_signature": "com.altova.io.StringOutput()",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56835,
+        56835
+      ],
+      "authored_summary": "The displayed output constructor takes no arguments."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.ReaderInput",
+      "name": "com.altova.io.ReaderInput",
+      "kind": "constructor_bearing_class",
+      "language": "Java",
+      "category": "Reader/Writer",
+      "direction": "input",
+      "literal_signature": "com.altova.io.ReaderInput(java.io.Reader reader)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56837,
+        56837
+      ],
+      "authored_summary": "Accepts a Reader for input."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.WriterOutput",
+      "name": "com.altova.io.WriterOutput",
+      "kind": "constructor_bearing_class",
+      "language": "Java",
+      "category": "Reader/Writer",
+      "direction": "output",
+      "literal_signature": "com.altova.io.WriterOutput(java.io.Writer writer)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56838,
+        56838
+      ],
+      "authored_summary": "Accepts a Writer for output."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.DocumentInput",
+      "name": "com.altova.io.DocumentInput",
+      "kind": "constructor_bearing_class",
+      "language": "Java",
+      "category": "DOM documents",
+      "direction": "input",
+      "literal_signature": "com.altova.io.DocumentInput(org.w3c.dom.Document document)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56840,
+        56840
+      ],
+      "authored_summary": "Accepts a DOM document for input."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.DocumentOutput",
+      "name": "com.altova.io.DocumentOutput",
+      "kind": "constructor_bearing_class",
+      "language": "Java",
+      "category": "DOM documents",
+      "direction": "output",
+      "literal_signature": "com.altova.io.DocumentOutput(org.w3c.dom.Document document)",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56841,
+        56841
+      ],
+      "authored_summary": "Accepts a DOM document as the output destination."
+    }
+  ],
+  "format_applicability_source_matrix": {
+    "research_id": "enterprise2026r2.supporting.io-format-matrix",
+    "source_file": "mf_codegen_integrate_changedatatype.html",
+    "text_lines": [
+      56735,
+      56770
+    ],
+    "physical_pdf_pages": [
+      1380,
+      1381
+    ],
+    "language_scope_literal": "C# or Java only",
+    "columns": [
+      "XML",
+      "JSON*",
+      "Microsoft Excel*",
+      "EDI (includes X12, HL7)*",
+      "FlexText*",
+      "CSV/Text"
+    ],
+    "rows": [
+      {
+        "name": "Files",
+        "literal_cells": [
+          "Yes",
+          "Yes",
+          "Yes",
+          "Yes",
+          "Yes",
+          "Yes"
+        ],
+        "text_lines": [
+          56758,
+          56758
+        ]
+      },
+      {
+        "name": "Streams",
+        "literal_cells": [
+          "Yes",
+          "Yes",
+          "Yes",
+          "Yes",
+          "Yes",
+          "Yes"
+        ],
+        "text_lines": [
+          56760,
+          56760
+        ]
+      },
+      {
+        "name": "Strings",
+        "literal_cells": [
+          "Yes",
+          "Yes",
+          "–",
+          "Yes",
+          "Yes",
+          "Yes"
+        ],
+        "text_lines": [
+          56762,
+          56762
+        ]
+      },
+      {
+        "name": "Reader/Writer",
+        "displayed_fragments": [
+          "Reader/Writ",
+          "er"
+        ],
+        "literal_cells": [
+          "Yes",
+          "Yes",
+          "–",
+          "Yes",
+          "Yes",
+          "Yes"
+        ],
+        "text_lines": [
+          56764,
+          56765
+        ]
+      },
+      {
+        "name": "DOM documents",
+        "literal_cells": [
+          "Yes",
+          "–",
+          "–",
+          "–",
+          "–",
+          "–"
+        ],
+        "text_lines": [
+          56767,
+          56768
+        ]
+      }
+    ],
+    "footnote": {
+      "literal": "* Formats supported only in MapForce Enterprise Edition",
+      "text_lines": [
+        56770,
+        56770
+      ]
+    },
+    "rule": "Retained documentation claims, separate from constructor/member inventory and assessment applicability. Dash cells are not independently verified exclusions."
+  },
+  "vendor_exception_classes": [
+    {
+      "research_id": "enterprise2026r2.supporting.altova.Error",
+      "name": "altova::Error",
+      "displayed_name": "Error",
+      "language": "C++",
+      "base_class_literal": "std::logic_error",
+      "source_file": "cg_schema_about_cpp.html",
+      "text_lines": [
+        57339,
+        57340
+      ],
+      "authored_summary": "Reports internal logic faults independent of input data."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.altova.Exception",
+      "name": "altova::Exception",
+      "displayed_name": "Exception",
+      "language": "C++",
+      "base_class_literal": "std::runtime_error",
+      "source_file": "cg_schema_about_cpp.html",
+      "text_lines": [
+        57342,
+        57342
+      ],
+      "authored_summary": "Base for runtime errors."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.altova.InvalidArgumentsException",
+      "name": "altova::InvalidArgumentsException",
+      "displayed_name": "InvalidArgumentsException",
+      "language": "C++",
+      "base_class_literal": "Exception",
+      "source_file": "cg_schema_about_cpp.html",
+      "text_lines": [
+        57344,
+        57345
+      ],
+      "authored_summary": "Reports invalid method argument values."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.altova.ConversionException",
+      "name": "altova::ConversionException",
+      "displayed_name": "ConversionException",
+      "language": "C++",
+      "base_class_literal": "Exception",
+      "source_file": "cg_schema_about_cpp.html",
+      "text_lines": [
+        57347,
+        57348
+      ],
+      "authored_summary": "Reports a failed type conversion."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.altova.StringParseException",
+      "name": "altova::StringParseException",
+      "displayed_name": "StringParseException",
+      "language": "C++",
+      "base_class_literal": "ConversionException",
+      "source_file": "cg_schema_about_cpp.html",
+      "text_lines": [
+        57350,
+        57351
+      ],
+      "authored_summary": "Reports failure converting lexical text to a value."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.altova.ValueNotRepresentableException",
+      "name": "altova::ValueNotRepresentableException",
+      "displayed_name_fragments": [
+        "ValueNotRepresentableExcept",
+        "ion"
+      ],
+      "language": "C++",
+      "base_class_literal": "ConversionException",
+      "source_file": "cg_schema_about_cpp.html",
+      "text_lines": [
+        57353,
+        57354
+      ],
+      "authored_summary": "Reports failure representing a value in lexical form."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.altova.OutOfRangeException",
+      "name": "altova::OutOfRangeException",
+      "displayed_name": "OutOfRangeException",
+      "language": "C++",
+      "base_class_literal": "ConversionException",
+      "source_file": "cg_schema_about_cpp.html",
+      "text_lines": [
+        57356,
+        57357
+      ],
+      "authored_summary": "Reports a source value outside the target domain."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.altova.InvalidOperationException",
+      "name": "altova::InvalidOperationException",
+      "displayed_name": "InvalidOperationException",
+      "language": "C++",
+      "base_class_literal": "Exception",
+      "source_file": "cg_schema_about_cpp.html",
+      "text_lines": [
+        57359,
+        57360
+      ],
+      "authored_summary": "Reports an operation invalid in its context."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.altova.DataSourceUnavailableException",
+      "name": "altova::DataSourceUnavailableException",
+      "displayed_name_fragments": [
+        "DataSourceUnavailableExcept",
+        "ion"
+      ],
+      "language": "C++",
+      "base_class_literal": "Exception",
+      "source_file": "cg_schema_about_cpp.html",
+      "text_lines": [
+        57362,
+        57363
+      ],
+      "authored_summary": "Reports an XML instance loading problem."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.altova.DataTargetUnavailableException",
+      "name": "altova::DataTargetUnavailableException",
+      "displayed_name_fragments": [
+        "DataTargetUnavailableExcept",
+        "ion"
+      ],
+      "language": "C++",
+      "base_class_literal": "Exception",
+      "source_file": "cg_schema_about_cpp.html",
+      "text_lines": [
+        57365,
+        57366
+      ],
+      "authored_summary": "Reports an XML instance saving problem."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.ConversionException",
+      "name": "Altova.ConversionException",
+      "displayed_name": "ConversionException",
+      "language": "C#",
+      "base_class_literal": "Exception",
+      "source_file": "cg_schema_about_csharp.html",
+      "text_lines": [
+        57479,
+        57480
+      ],
+      "authored_summary": "Reports a failed type conversion; unqualified base spelling is retained."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.StringParseException",
+      "name": "Altova.StringParseException",
+      "displayed_name": "StringParseException",
+      "language": "C#",
+      "base_class_literal": "ConversionException",
+      "source_file": "cg_schema_about_csharp.html",
+      "text_lines": [
+        57482,
+        57483
+      ],
+      "authored_summary": "Reports failure converting lexical text to a value."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.DataSourceUnavailableException",
+      "name": "Altova.DataSourceUnavailableException",
+      "displayed_name": "DataSourceUnavailableException",
+      "language": "C#",
+      "base_class_literal": "System.Exception",
+      "source_file": "cg_schema_about_csharp.html",
+      "text_lines": [
+        57485,
+        57486
+      ],
+      "authored_summary": "Reports an XML instance loading problem."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.DataTargetUnavailableException",
+      "name": "Altova.DataTargetUnavailableException",
+      "displayed_name": "DataTargetUnavailableException",
+      "language": "C#",
+      "base_class_literal": "System.Exception",
+      "source_file": "cg_schema_about_csharp.html",
+      "text_lines": [
+        57488,
+        57489
+      ],
+      "authored_summary": "Reports an XML instance saving problem."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.SourceInstanceUnvailableException",
+      "name": "com.altova.SourceInstanceUnvailableException",
+      "displayed_name": "SourceInstanceUnvailableException",
+      "language": "Java",
+      "base_class_literal": "Exception",
+      "source_file": "cg_schema_about_java.html",
+      "text_lines": [
+        57616,
+        57617
+      ],
+      "authored_summary": "Reports an XML instance loading problem; the literal Unvailable spelling is preserved.",
+      "uncertainty_refs": [
+        "java-exception-spellings"
+      ]
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.TargetInstanceUnavailableException",
+      "name": "com.altova.TargetInstanceUnavailableException",
+      "displayed_name": "TargetInstanceUnavailableException",
+      "language": "Java",
+      "base_class_literal": "Exception",
+      "source_file": "cg_schema_about_java.html",
+      "text_lines": [
+        57619,
+        57620
+      ],
+      "authored_summary": "Reports an XML instance saving problem."
+    }
+  ],
+  "shared_cpp_exception_methods": [
+    {
+      "research_id": "enterprise2026r2.supporting.cpp-exceptions.message",
+      "literal_signature": "string_type message()",
+      "source_file": "cg_schema_about_cpp.html",
+      "text_lines": [
+        57369,
+        57373
+      ],
+      "applies_to": "All ten exception classes in this C++ table, per the shared introductory sentence.",
+      "authored_summary": "Returns an exception description; encoding and ABI are not declared in this scoped method table."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.cpp-exceptions.inner",
+      "literal_signature": "std::exception inner()",
+      "source_file": "cg_schema_about_cpp.html",
+      "text_lines": [
+        57369,
+        57376
+      ],
+      "applies_to": "All ten exception classes in this C++ table, per the shared introductory sentence.",
+      "authored_summary": "Describes access to the cause or NULL, while the preceding prose describes a pointer and the signature has a value type.",
+      "uncertainty_refs": [
+        "cpp-inner-return"
+      ]
+    }
+  ],
+  "platform_exception_references": [
+    {
+      "research_id": "enterprise2026r2.platform-reference.System.Exception",
+      "name": "System.Exception",
+      "language": "C#",
+      "source_file": "cg_schema_about_csharp.html",
+      "text_lines": [
+        57491,
+        57495
+      ],
+      "authored_summary": "Listed as the platform runtime-error base."
+    },
+    {
+      "research_id": "enterprise2026r2.platform-reference.System.ArgumentException",
+      "name": "System.ArgumentException",
+      "language": "C#",
+      "source_file": "cg_schema_about_csharp.html",
+      "text_lines": [
+        57497,
+        57498
+      ],
+      "authored_summary": "Listed for invalid arguments or failed type conversions."
+    },
+    {
+      "research_id": "enterprise2026r2.platform-reference.System.FormatException",
+      "name": "System.FormatException",
+      "language": "C#",
+      "source_file": "cg_schema_about_csharp.html",
+      "text_lines": [
+        57500,
+        57501
+      ],
+      "authored_summary": "Listed for lexical-to-value conversion failure."
+    },
+    {
+      "research_id": "enterprise2026r2.platform-reference.System.InvalidCastException",
+      "name": "System.InvalidCastException",
+      "language": "C#",
+      "source_file": "cg_schema_about_csharp.html",
+      "text_lines": [
+        57503,
+        57503
+      ],
+      "authored_summary": "Listed for unavailable conversion to another type."
+    },
+    {
+      "research_id": "enterprise2026r2.platform-reference.System.OverflowException",
+      "name": "System.OverflowException",
+      "language": "C#",
+      "source_file": "cg_schema_about_csharp.html",
+      "text_lines": [
+        57505,
+        57505
+      ],
+      "authored_summary": "Listed for a value outside the target domain."
+    },
+    {
+      "research_id": "enterprise2026r2.platform-reference.java.lang.Error",
+      "name": "java.lang.Error",
+      "language": "Java",
+      "source_file": "cg_schema_about_java.html",
+      "text_lines": [
+        57622,
+        57626
+      ],
+      "authored_summary": "Listed for internal logic faults independent of input data."
+    },
+    {
+      "research_id": "enterprise2026r2.platform-reference.java.lang.Exception",
+      "name": "java.lang.Exception",
+      "language": "Java",
+      "source_file": "cg_schema_about_java.html",
+      "text_lines": [
+        57628,
+        57628
+      ],
+      "authored_summary": "Listed as the platform runtime-error base."
+    },
+    {
+      "research_id": "enterprise2026r2.platform-reference.java.lang.IllegalArgumentsException",
+      "name": "java.lang.IllegalArgumentsException",
+      "language": "Java",
+      "source_file": "cg_schema_about_java.html",
+      "text_lines": [
+        57639,
+        57640
+      ],
+      "authored_summary": "Listed for invalid arguments or failed type conversions; the plural Arguments spelling is retained.",
+      "uncertainty_refs": [
+        "java-exception-spellings"
+      ]
+    },
+    {
+      "research_id": "enterprise2026r2.platform-reference.java.lang.ArithmeticException",
+      "name": "java.lang.ArithmeticException",
+      "language": "Java",
+      "source_file": "cg_schema_about_java.html",
+      "text_lines": [
+        57642,
+        57642
+      ],
+      "authored_summary": "Listed for failed numeric type conversion."
+    }
+  ],
+  "source_usage_contracts": [
+    {
+      "research_id": "enterprise2026r2.supporting.io-substitution-workflow",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56735,
+        56793
+      ],
+      "authored_summary": "After generating C# or Java, replace the mapping parameter objects at the Run/run call in the generated console or Java GUI host. The page describes one argument per static source/input plus a final output argument; dynamically processed file components do not appear as these arguments.",
+      "uncertainty_refs": [
+        "host-file-name",
+        "mapping-entry-contract"
+      ]
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.io-example-boundary",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56845,
+        56991
+      ],
+      "authored_summary": "The ConvertProducts example substitutes string input and a string-writer destination for file-backed XML and reads the writer after mapping. Example calls include StreamInput.createInput and Close/close; they do not supply complete declarations for those members. No example implementation or XML payload is reproduced."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.io-open-before-run",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56994,
+        56998
+      ],
+      "authored_summary": "Binary streams and reader/writer objects are expected to be open and ready before the mapping call."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.io-default-close",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56999,
+        57011
+      ],
+      "minimal_member_spellings": [
+        "CloseObjectsAfterRun",
+        "setCloseObjectsAfterRun(false)"
+      ],
+      "authored_summary": "The documented default is to close the stream when run finishes. The C# example assigns false to CloseObjectsAfterRun; the Java example calls setCloseObjectsAfterRun(false). These are usage fragments, not full member declarations."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.java-string-output-access",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        57014,
+        57035
+      ],
+      "minimal_member_spellings": [
+        "getString()"
+      ],
+      "authored_summary": "Java StringOutput takes no constructor argument; getString() retrieves the produced content. The example subsequently calls toString(), but does not declare getString's return type."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.csharp-string-output-append",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        57039,
+        57053
+      ],
+      "authored_summary": "C# StringOutput takes a pre-existing StringBuilder; output appends to any data already in it. The example reads the supplied builder afterward."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.io-example-input-file",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        57056,
+        57059
+      ],
+      "authored_summary": "The later string-output examples still read Products.xml and require it in the working directory; this is distinct from the earlier string-input replacement example."
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.dom-output-empty",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        57062,
+        57067
+      ],
+      "authored_summary": "DocumentOutput requires an empty supplied document; after run that document contains the output and can be manipulated. No ownership or copying guarantee beyond this usage statement is declared."
+    }
+  ],
+  "unresolved_contracts": [
+    {
+      "id": "java-stream-output",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56831,
+        56832
+      ],
+      "question": "Is StreamOutput(String filename) the actual declaration or a documentation error? Preserve it; do not invent java.io.OutputStream or another overload."
+    },
+    {
+      "id": "cpp-inner-return",
+      "source_file": "cg_schema_about_cpp.html",
+      "text_lines": [
+        57369,
+        57376
+      ],
+      "question": "The prose describes an inner-exception pointer and NULL absence, but the table says std::exception inner(). Pointer/reference/value return, lifetime, ownership and actual absence representation remain unresolved."
+    },
+    {
+      "id": "java-exception-spellings",
+      "source_file": "cg_schema_about_java.html",
+      "text_lines": [
+        57616,
+        57642
+      ],
+      "question": "SourceInstanceUnvailableException and java.lang.IllegalArgumentsException are literal source spellings, not silently corrected aliases. Their correspondence to installed declarations is unknown."
+    },
+    {
+      "id": "host-file-name",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56778,
+        56784
+      ],
+      "question": "The C# host is MappingConsole.cs, but the renamed-host example says MyAppConsole.js. The inconsistency is retained rather than treated as a new supported language or corrected filename."
+    },
+    {
+      "id": "mapping-entry-contract",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56786,
+        56793
+      ],
+      "question": "The prose describes static source/input parameters and a final output parameter, not a complete overload family or multi-target/error contract."
+    },
+    {
+      "id": "io-full-api",
+      "source_file": "mf_codegen_integrate_changedatatype.html",
+      "text_lines": [
+        56796,
+        57067
+      ],
+      "question": "Only twenty displayed constructors and four base names are enumerated. Other constructors, factory declarations, return types, visibility, null validation, encoding/BOM rules, buffering, failure behavior and close-on-error semantics are not exhaustively specified. No such overloads or contracts are inferred."
+    },
+    {
+      "id": "exception-full-api",
+      "source_files": [
+        "cg_schema_about_cpp.html",
+        "cg_schema_about_csharp.html",
+        "cg_schema_about_java.html"
+      ],
+      "question": "Exception constructors, full member lists, exact throw sites, payloads and versioned ABI remain unspecified. Unqualified Exception bases are retained without silently qualifying them. The C++ shared methods are not transferred to C# or Java."
+    },
+    {
+      "id": "installer-binding",
+      "question": "Public manual release binding does not bind installed/generated supporting libraries, samples, templates or runtime artifacts to a specific 2026r2 build. Requested bundles are not obtained or inspected."
+    }
+  ],
+  "installer_artifact_requests": {
+    "rule": "Finite requested bundles below have editorial request names, not claimed vendor archive filenames. Obtain only with authorization; retain privately with provenance and hashes. Do not copy proprietary implementation into the repository. No download, installation, code generation or runtime execution occurred in this lane.",
+    "required_provenance": [
+      "Exact product/edition/release/build and architecture",
+      "Installer origin and digest plus installed-file manifest/digests",
+      "Generation settings and input digests for generated bundles",
+      "License/provenance boundaries; private retention only"
+    ],
+    "bundles": [
+      {
+        "request_id": "installer-release-manifest",
+        "request_name": "MapForce Enterprise 2026r2 installer and installed-file provenance bundle",
+        "requested_contents": [
+          "Installer identity and build metadata",
+          "Manifest binding generated-code libraries and installed samples to that build"
+        ],
+        "source_constraint": "The pinned manual is documentation, not an installer manifest. No installer filename, build or digest is invented.",
+        "resolution": "not_obtained"
+      },
+      {
+        "request_id": "csharp-convertproducts-io",
+        "request_name": "C# ConvertProducts generated I/O bundle",
+        "requested_contents": [
+          "ConvertProducts.mfd and its referenced Products.xml and schema resources",
+          "Generated MappingConsole.cs and mapping entry-point declarations",
+          "Generated Altova.IO declarations and associated project metadata"
+        ],
+        "source_file": "mf_codegen_integrate_changedatatype.html",
+        "text_lines": [
+          56845,
+          56888
+        ],
+        "source_constraint": "The page names the installed Tutorials location and the example. Collect the actual dependency manifest; do not guess missing filenames.",
+        "resolution": "not_obtained"
+      },
+      {
+        "request_id": "java-convertproducts-io",
+        "request_name": "Java ConvertProducts generated I/O bundle",
+        "requested_contents": [
+          "Same version-bound ConvertProducts input/dependency manifest",
+          "Generated MappingConsole.java, mapping entry point and com.altova.io declarations",
+          "Project metadata needed to resolve the literal StreamOutput and getString contracts"
+        ],
+        "source_file": "mf_codegen_integrate_changedatatype.html",
+        "text_lines": [
+          56823,
+          56848
+        ],
+        "source_constraint": "Resolve declared APIs from the exact build without treating the manual's String filename signature as an OutputStream declaration.",
+        "resolution": "not_obtained"
+      },
+      {
+        "request_id": "cpp-schema-wrapper",
+        "request_name": "C++ Altova and AltovaXML schema-wrapper bundle",
+        "requested_contents": [
+          "Altova.vcxproj",
+          "AltovaXML/AltovaXML.vcxproj",
+          "Library.vcxproj",
+          "Library.sln",
+          "Referenced headers and declarations for altova exceptions, plus generation/DOM settings"
+        ],
+        "source_file": "cg_integrating_code.html",
+        "text_lines": [
+          57683,
+          57698
+        ],
+        "physical_pdf_pages": [
+          1397
+        ],
+        "source_constraint": "Names come from the Library.xsd illustration; confirm actual schema/project identity and MSXML/Xerces settings. Resolve inner() from declarations, not a guessed pointer correction.",
+        "resolution": "not_obtained"
+      },
+      {
+        "request_id": "csharp-schema-wrapper",
+        "request_name": "C# Altova.dll and AltovaXML.dll schema-wrapper bundle",
+        "requested_contents": [
+          "Altova.dll",
+          "AltovaXML.dll",
+          "YourSchema.dll",
+          "YourSchema.sln and generated declarations/metadata"
+        ],
+        "source_file": "cg_integrating_code.html",
+        "text_lines": [
+          57664,
+          57672
+        ],
+        "physical_pdf_pages": [
+          1396
+        ],
+        "source_constraint": "YourSchema is a source placeholder, not a fixed shipped assembly. Resolve the actual generated schema name; retain exception declarations and dependencies privately.",
+        "resolution": "not_obtained"
+      },
+      {
+        "request_id": "java-schema-wrapper",
+        "request_name": "Java com.altova and com.altova.xml schema-wrapper bundle",
+        "requested_contents": [
+          "Generated com source/package tree",
+          "com.altova and com.altova.xml declarations",
+          "Actual com.YourSchema package and build metadata"
+        ],
+        "source_file": "cg_integrating_code.html",
+        "text_lines": [
+          57721,
+          57733
+        ],
+        "physical_pdf_pages": [
+          1398
+        ],
+        "additional_source": {
+          "text_lines": [
+            57088,
+            57115
+          ],
+          "physical_pdf_pages": [
+            1387
+          ],
+          "authored_summary": "The preceding generation table names com.altova, com.altova.xml and com.YourSchema and identifies the JAXP DOM boundary."
+        },
+        "source_constraint": "The schema package is generated, not a fixed installer artifact; resolve literal Java exception spellings against this build.",
+        "resolution": "not_obtained"
+      }
+    ],
+    "support_library_scope_constraint": {
+      "text_lines": [
+        57126,
+        57128
+      ],
+      "authored_summary": "Other generated supporting libraries are described as changeable internal dependencies, not intended custom integration APIs; unnamed internal classes are not invented as public inventory records."
+    }
+  },
+  "external_reference_boundary": "W3C/Microsoft and other linked platform documentation was not fetched. Platform exceptions are retained solely as references from the pinned manual, not as separately inventoried vendor classes.",
+  "suggested_parent_validation": [
+    "Apply recursive source_only checks: every status is unassessed, applicability unknown, runtime_proof false, execution_evidence/execution_receipts empty.",
+    "Assert unique research IDs across 24 I/O classes, 16 vendor exceptions, two shared methods, nine platform references, eight usage contracts and the matrix record.",
+    "Assert exactly 20 literal constructor records, four I/O base records, ten C++/four C#/two Java vendor exceptions and five C#/four Java platform references.",
+    "Assert all anchored lines fall within their reviewed page range, except explicitly ancillary artifact-request anchors; derive physical pages from the pinned text form feeds.",
+    "Assert the 5 by 6 matrix is separate and its literal dash/Yes cells and Enterprise footnote are unchanged.",
+    "Assert literal Java StreamOutput(String filename), SourceInstanceUnvailableException, java.lang.IllegalArgumentsException and C++ std::exception inner() remain unchanged.",
+    "Keep inventory_complete false and do not mutate canonical IDs, assessments, source/profile support or execution evidence."
+  ]
+}
