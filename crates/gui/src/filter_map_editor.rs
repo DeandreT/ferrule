@@ -220,7 +220,7 @@ fn picker(
 ) {
     let response = egui::ComboBox::from_id_salt(ui.scope_id().with(name))
         .selected_text(label(graph, *value))
-        .width(180.0)
+        .width(crate::theme::editor_size::SCALAR_PICKER)
         .show_ui(ui, |ui| {
             for (&id, node) in &graph.nodes {
                 if !matches!(node, Node::Unconnected)
@@ -264,7 +264,7 @@ fn stage(
     ui.label(name);
     let response = egui::ComboBox::from_id_salt(ui.scope_id().with(name))
         .selected_text(selected)
-        .width(210.0)
+        .width(crate::theme::editor_size::FUNCTION_PICKER)
         .show_ui(ui, |ui| {
             for (&candidate, function) in functions {
                 if signature(function, parameters, output) {

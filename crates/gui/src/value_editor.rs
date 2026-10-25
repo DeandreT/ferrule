@@ -460,7 +460,7 @@ fn edit_map_value(ui: &mut Ui, value: &mut Value, label: &str, stacked: bool) {
     let mut text_changed = false;
     let mut type_and_apply = |ui: &mut Ui, draft: &mut MapCellDraft| {
         let response = egui::ComboBox::from_id_salt("cell_type")
-            .width(52.0)
+            .width(crate::theme::editor_size::TYPE_PICKER)
             .selected_text(draft.kind.label())
             .show_ui(ui, |ui| {
                 for candidate in [

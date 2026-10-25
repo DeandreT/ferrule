@@ -22,6 +22,19 @@ pub mod space {
     pub const XXL: f32 = 24.0;
 }
 
+/// Sizes for specialized editor controls that do not use general form widths.
+pub mod editor_size {
+    pub const TYPE_PICKER: f32 = 52.0;
+    pub const PATH_PICKER: f32 = 170.0;
+    pub const SCALAR_PICKER: f32 = 180.0;
+    pub const JOIN_PICKER: f32 = 200.0;
+    pub const FUNCTION_PICKER: f32 = 210.0;
+    pub const TYPE_PATH_PICKER: f32 = 250.0;
+    pub const INSPECTOR_TREE: f32 = 150.0;
+    pub const PIPELINE_MIN_HEIGHT: f32 = 240.0;
+    pub const PIPELINE_DEFAULT_HEIGHT: f32 = 900.0;
+}
+
 /// Stable dimensions shared by the workspace shell, forms and dialogs. Canvas
 /// geometry keeps its own constants beside the canvas code.
 #[derive(Clone, Copy, Debug, PartialEq)]

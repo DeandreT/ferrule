@@ -143,7 +143,7 @@ fn label(path: &[String]) -> String {
 fn picker(ui: &mut egui::Ui, id: &str, path: &mut Vec<String>, paths: &[Vec<String>]) {
     egui::ComboBox::from_id_salt(id)
         .selected_text(label(path))
-        .width(200.0)
+        .width(crate::theme::editor_size::JOIN_PICKER)
         .show_ui(ui, |ui| {
             for candidate in paths {
                 ui.selectable_value(path, candidate.clone(), label(candidate));
