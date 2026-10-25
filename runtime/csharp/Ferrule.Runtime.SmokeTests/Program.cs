@@ -20,6 +20,10 @@ internal static partial class Program
             ("owned Starting R16 original By-Adjacent conservation", BasicOwnedStartingR16OldProfiles),
 #endif
             ("JSON source complete literal corpus", JsonSourceCorpus),
+            ("String component general selection contract", StringComponentSelectionContract),
+            ("String component general parser limits", StringComponentParserLimits),
+            ("String component general fallback contract", StringComponentFallbackContract),
+            ("String component general fallback limits", StringComponentFallbackLimits),
             ("MapForce-style JSON5 complete byte corpus", MapForceJson5Writer),
             ("Direct source input ownership and limits", DirectSourceInputs),
             ("Deferred XML preparation and materialization", DeferredXmlPreparation),

@@ -1262,6 +1262,26 @@ single-message body input. The host must visit messages with one invocation cont
 file acquisition, filename/body clock phases, output serialization and publication
 remain separate contracts. Fractional implied-decimal source projection is refused.
 
+## Explicit String JSON parsing and lookup
+
+Rust `MapForceJsonString` and C# `FerruleMapForceJsonString` parse a String value
+without schema validation or defaults. They preserve ordered duplicate members
+and lexical numbers; numeric conversion happens only when requested. Root-object
+presence is separate from String-member selection. `strings` / `Strings` skips
+other value kinds, while `first_string` / `FirstString` selects the first matching
+String, including an empty one.
+
+These opt-in helpers accept strict JSON and well-formed Unicode without a leading
+BOM. They use the existing JSON source byte, depth and value limits. They do not
+admit raw control characters or lone surrogates, widen MFD import, or perform I/O.
+
+`MapForceStringInputFallback` / `FerruleMapForceStringInputFallback` applies an
+exact, case-sensitive String table and returns the input unchanged on a miss.
+Tables have unique keys, at most 256 entries and 65,536 combined UTF-8 key/value
+bytes. Absence through `apply_present` / `ApplyPresent` produces no value; a
+reached null or non-String input is an error. Ordinary value-map behavior is
+unchanged.
+
 ## Explicit native JSON-to-X12 input
 
 The primary JSON projection companion retains ordered typed occurrences and
