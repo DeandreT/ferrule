@@ -20,6 +20,8 @@ var binary = GeneratedMapping.ExecuteDocumentBytesOutputsWithHost(bytes, namedBy
 Check(Encoding.UTF8.GetString(binary.Primary) == expected, "bytes parity");
 var selected = GeneratedMapping.ExecuteDocumentSelectedTargetWithHost(text, FerruleTargetSelection.Named("Wire"), named, context);
 Check(selected is SelectedDocumentTargetOutput.Named n && n.Output.Document == expected, "selected named parity");
+var selectedBytes = GeneratedMapping.ExecuteDocumentBytesSelectedTargetWithHost(bytes, FerruleTargetSelection.Named("Wire"), namedBytes, context);
+Check(selectedBytes is SelectedDocumentBytesTargetOutput.Named nb && Encoding.UTF8.GetString(nb.Output.Document) == expected, "selected named bytes parity");
 var primary = GeneratedMapping.ExecuteDocumentBytesSelectedTargetWithHost(bytes, FerruleTargetSelection.Primary(), namedBytes, context);
 Check(primary is SelectedDocumentBytesTargetOutput.Primary p && Encoding.UTF8.GetString(p.Document) == expected, "selected primary parity");
 
@@ -32,6 +34,9 @@ if (v4) customBody = customBody.Replace('*', '^');
 customBody = customBody.Replace("\u0001", "+").Replace("\u0002", "*").Replace("\u0003", "!|").Replace("\u0004", v4 ? "!^" : "^");
 var custom = (v4 ? "UNA;|.!^$" : "UNA;|.! $") + customBody;
 Check(GeneratedMapping.ExecuteDocumentOutputsWithHost(custom, named, context).Primary == expected, "UNA custom syntax");
+var unicodeCustom = custom.Replace("!|", "\u0005").Replace("|", "😀").Replace("\u0005", "|");
+Check(GeneratedMapping.ExecuteDocumentOutputsWithHost(unicodeCustom, named, context).Primary == expected, "UNA Unicode scalar syntax");
+Check(Encoding.UTF8.GetString(GeneratedMapping.ExecuteDocumentBytesOutputsWithHost(Encoding.UTF8.GetBytes(unicodeCustom), namedBytes, context).Primary) == expected, "UNA Unicode byte syntax");
 foreach (var malformed in new[] {
     text.Replace("UNT+3+", "UNT+8+"),
     text.Replace("UNT+3+M11", "UNT+3+WRONG"),
@@ -47,14 +52,14 @@ foreach (var malformed in new[] {
     Refuses(() => GeneratedMapping.ExecuteDocumentOutputsWithHost(text, new[] { new NamedDocumentInput("Reference", malformed), new NamedDocumentInput("Legacy", legacy) }), true);
     Refuses(() => GeneratedMapping.ExecuteDocumentSelectedTargetWithHost(malformed, FerruleTargetSelection.Primary(), named), false);
 }
-Refuses(() => GeneratedMapping.ExecuteDocumentBytesOutputsWithHost(new byte[] { 0xff }, namedBytes), false, false);
-Refuses(() => GeneratedMapping.ExecuteDocumentBytesOutputsWithHost(new byte[64 * 1024 * 1024 + 1], namedBytes), false, false);
+Refuses(() => GeneratedMapping.ExecuteDocumentBytesOutputsWithHost(new byte[] { 0xff }, namedBytes), false, FerruleEdiError.Format);
+Refuses(() => GeneratedMapping.ExecuteDocumentBytesOutputsWithHost(new byte[64 * 1024 * 1024 + 1], namedBytes), false, FerruleEdiError.Limit);
 
-static void Refuses(Action action, bool named, bool envelope = true) {
+static void Refuses(Action action, bool named, FerruleEdiError expected = FerruleEdiError.Envelope) {
     try { action(); throw new Exception("malformed boundary accepted"); }
     catch (DocumentExecutionException error) {
-        Check(error.Boundary is FerruleEdiException, "typed EDI cause");
-        if (envelope) Check(error.Boundary is FerruleEdiException { Code: FerruleEdiError.Envelope, SegmentIndex: >= 0 }, "typed envelope cause");
+        Check(error.Boundary is FerruleEdiException edi && edi.Code == expected, "typed EDI cause");
+        if (expected == FerruleEdiError.Envelope) Check(error.Boundary is FerruleEdiException { SegmentIndex: >= 0 }, "typed envelope location");
         Check(named ? error.Owner is DocumentBoundaryOwner.NamedSource { DeclarationIndex: 0, Name: "Reference" } : error.Owner is DocumentBoundaryOwner.Source, "typed owner");
     }
 }
