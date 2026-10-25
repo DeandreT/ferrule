@@ -124,6 +124,28 @@ fn app_for(view: View) -> FerruleApp {
 }
 
 #[test]
+fn stage_canvas_controls_have_accessible_names() {
+    let mut initialized = false;
+    let mut harness = Harness::builder()
+        .with_size((1600.0, 1000.0))
+        .with_max_steps(120)
+        .build_ui_state(
+            move |ui, app: &mut FerruleApp| {
+                if !initialized {
+                    crate::fonts::install(ui.ctx());
+                    crate::icons::install(ui.ctx());
+                    app.theme.apply(ui.ctx());
+                    ui.ctx().all_styles_mut(|style| style.animation_time = 0.0);
+                    initialized = true;
+                }
+                app.show_pipeline_stage_canvas(ui);
+            },
+            app_for(View::Stage),
+        );
+    harness.run();
+}
+
+#[test]
 #[ignore = "renders run-view screenshots; set FERRULE_RUN_VIEW_SHOTS to a new directory"]
 fn capture_run_views() {
     let output = std::path::PathBuf::from(

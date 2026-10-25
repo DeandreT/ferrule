@@ -303,10 +303,10 @@ pub(crate) fn show(
     }
     egui::ScrollArea::vertical()
         .id_salt(ui.scope_id().with("filter_map_editor_scroll"))
-        .max_height(ui.available_height().clamp(
-            crate::theme::ListHeight::Short.px(),
-            crate::theme::ListHeight::Tall.px(),
-        ))
+        .max_height(
+            ui.available_height()
+                .max(crate::theme::ListHeight::Short.px()),
+        )
         .show(ui, |ui| {
             show_body(ui, sequence, graph, functions, items, consumer, item_at);
         });
