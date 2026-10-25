@@ -9,6 +9,7 @@
 
 mod autocomplete;
 pub mod config;
+pub mod document;
 pub mod edifact;
 pub mod hl7;
 pub mod idoc;
@@ -35,6 +36,11 @@ pub(crate) const MAX_RUNTIME_INPUT_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum EdiFormatError {
+    #[error("EDIFACT envelope segment {segment}: {reason}")]
+    EdifactEnvelope {
+        segment: usize,
+        reason: &'static str,
+    },
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("not an X12 interchange: {0}")]

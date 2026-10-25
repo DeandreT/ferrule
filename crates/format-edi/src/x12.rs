@@ -175,7 +175,7 @@ impl Separators {
         })
     }
 
-    fn validate(self) -> Result<(), EdiFormatError> {
+    pub(crate) fn validate(self) -> Result<(), EdiFormatError> {
         let mut characters = vec![self.element, self.component, self.segment];
         characters.extend(self.repetition);
         characters.extend(self.release);

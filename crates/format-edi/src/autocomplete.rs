@@ -437,6 +437,8 @@ fn complete_edifact_header(
             0,
             &[identifier.as_str(), syntax_version.unwrap_or_default()],
         );
+    } else if let Some(version) = syntax_version {
+        ensure_components(segment, 0, &["", version]);
     }
     let syntax_version = segment
         .elements

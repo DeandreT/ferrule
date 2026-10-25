@@ -1149,7 +1149,8 @@ the class members. A `Library` holds that class together with:
   filename evaluator);
 - companion sources, each its own compilation unit holding one partial
   declaration (`GeneratedMapping.Csv.cs`, `.CsvDocument.cs`, `.PrimaryCsv.cs`,
-  `.PrimaryCsvDocument.cs`, `.PrimaryXmlDocument.cs`, `.PrimaryJsonDocument.cs`, `.CsvJson.cs`,
+  `.PrimaryCsvDocument.cs`, `.PrimaryXmlDocument.cs`, `.PrimaryJsonDocument.cs`,
+  `.PrimaryFixedWidthDocument.cs`, `.PrimaryEdiDocument.cs`, `.CsvJson.cs`,
   `.CsvX12.cs`, `.Json5.cs`, `.X12.cs` and `.Documents.cs`);
 - optional runtime sources beyond the fixed runtime set.
 
@@ -1163,7 +1164,9 @@ primary filename library, primary CSV documents extend CSV documents with
 the primary filename evaluator, and primary XML documents extend the ordinary
 library and its XML adapter with that evaluator. Primary JSON documents extend
 the ordinary library and its strict JSON adapter with the evaluator and bounded
-document-set acquisition. Each layer keeps its own admission ahead of the
+document-set acquisition. Primary EDI documents use the same acquisition model
+with embedded family-specific schemas and options; their package-free codecs
+handle X12, EDIFACT, HL7 v2, TRADACOMS, and IDoc. Each layer keeps its own admission ahead of the
 layer below it.
 
 The Basic owned mappings render their own complete compilation unit, which

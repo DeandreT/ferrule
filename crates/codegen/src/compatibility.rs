@@ -169,6 +169,7 @@ pub enum GenerationProfile {
     /// Primary filename document runs with complete strict JSON documents.
     PrimaryJsonDocument,
     PrimaryFixedWidthDocument,
+    PrimaryEdiDocument,
 }
 
 /// The names a generated library is hosted under.

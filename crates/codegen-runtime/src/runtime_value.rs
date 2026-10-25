@@ -150,6 +150,11 @@ impl<'a> ExecutionContext<'a> {
         self
     }
 
+    /// Stable run timestamp available to physical document writers.
+    pub fn current_datetime(self) -> Option<&'a str> {
+        self.current_datetime
+    }
+
     /// Supplies bounded named scalar inputs for runtime-parameter expressions.
     pub fn with_parameters(mut self, parameters: &'a RuntimeParameters) -> Self {
         self.parameters = Some(parameters);

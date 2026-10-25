@@ -9,6 +9,7 @@ pub use csv_document::{CsvDocumentEmitError, emit_with_csv_document_adapters};
 mod csv_output;
 mod csv_x12;
 mod document_output_types;
+mod edi_runtime;
 mod error;
 #[cfg(test)]
 mod filter_map_guard_tests;
@@ -20,8 +21,10 @@ mod mapping;
 mod owned_basic;
 mod primary_csv;
 mod primary_csv_document;
+mod primary_edi_document;
 mod primary_filename;
 mod primary_fixed_width_document;
+pub use primary_edi_document::emit_with_primary_edi_documents;
 mod primary_json_document;
 pub use primary_fixed_width_document::emit_with_primary_fixed_width_documents;
 mod primary_xml_document;

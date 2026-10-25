@@ -50,6 +50,9 @@ pub struct Segment {
 pub(crate) enum WriteStyle {
     /// `ID+element`-style syntax used by X12 and EDIFACT.
     Delimited,
+    /// EDIFACT selects repetition from each UNB syntax version, retaining an
+    /// explicit default for completed or standalone version-4 output.
+    Edifact { default_v4: bool },
     /// `ID=element`-style syntax used by TRADACOMS.
     Assigned,
     /// HL7 v2 header and escape spelling, including one subcomponent level.
@@ -71,7 +74,7 @@ pub(crate) struct WriteOptions {
     pub interchange_version: Option<[u8; 5]>,
 }
 
-fn schema_segment_id(name: &str) -> Option<&str> {
+pub(crate) fn schema_segment_id(name: &str) -> Option<&str> {
     let candidate = name.strip_prefix("MF_").unwrap_or(name);
     let candidate = candidate
         .rsplit_once('_')
@@ -248,6 +251,41 @@ fn is_scalar_tree(node: &SchemaNode) -> bool {
     }
 }
 
+/// Called only after the document boundary has bounded depth and node count.
+pub(crate) fn validate_document_schema(
+    schema: &SchemaNode,
+    hl7: bool,
+) -> Result<(), EdiFormatError> {
+    fn element(node: &SchemaNode, depth: usize, hl7: bool) -> Result<(), EdiFormatError> {
+        if depth > 0 && node.repeating || depth > usize::from(hl7) + 1 {
+            return Err(EdiFormatError::UnsupportedSchema(node.name.clone()));
+        }
+        if let SchemaKind::Group { children, .. } = &node.kind {
+            for child in children {
+                element(child, depth + 1, hl7)?;
+            }
+        }
+        Ok(())
+    }
+    let mut pending = vec![(schema, true)];
+    while let Some((node, root)) = pending.pop() {
+        match shape_of(node, root)? {
+            Shape::Segment(children) => {
+                for child in children {
+                    element(child, 0, hl7)?;
+                }
+            }
+            Shape::Container(children) => {
+                if children.is_empty() {
+                    return Err(EdiFormatError::UnsupportedSchema(node.name.clone()));
+                }
+                pending.extend(children.iter().map(|child| (child, false)));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Segment schemas that can begin `node`. A repeating leading child is also
 /// the IR spelling for an optional child, so every following sibling remains
 /// a possible start until the first required child is reached.
@@ -302,6 +340,18 @@ pub(crate) fn root_trigger(schema: &SchemaNode) -> Result<&str, EdiFormatError> 
         }
         Shape::Segment(_) => Err(EdiFormatError::UnsupportedSchema(schema.name.clone())),
     }
+}
+
+pub(crate) fn initial_segment_ids(schema: &SchemaNode) -> Result<Vec<&str>, EdiFormatError> {
+    let mut triggers = Vec::new();
+    collect_leading_triggers(schema, true, &mut triggers)?;
+    triggers
+        .into_iter()
+        .map(|node| {
+            schema_segment_id(&node.name)
+                .ok_or_else(|| EdiFormatError::UnsupportedSchema(node.name.clone()))
+        })
+        .collect()
 }
 
 /// Whether `segment` satisfies a segment schema: the IDs must agree and
@@ -766,7 +816,8 @@ pub(crate) fn write_segments_with_encoding(
 ) -> Result<String, EdiFormatError> {
     validate_instance_shape(schema, instance)?;
     let mut out = String::new();
-    write_node(schema, instance, opts, &mut out, true, encoding)?;
+    let mut options = *opts;
+    write_node(schema, instance, &mut options, &mut out, true, encoding)?;
     Ok(out)
 }
 
@@ -786,7 +837,21 @@ pub(crate) fn serialize_segments_with_encoding(
     encoding: Option<SegmentEncoding>,
 ) -> Result<String, EdiFormatError> {
     let mut out = String::new();
+    let mut options = *opts;
+    let opts = &mut options;
     for segment in segments {
+        if let WriteStyle::Edifact { default_v4 } = opts.style
+            && segment.id == "UNB"
+        {
+            let version = segment
+                .elements
+                .first()
+                .and_then(|repeats| repeats.first())
+                .and_then(|parts| parts.get(1));
+            opts.repetition = edifact_v4(version.map(String::as_str))
+                .unwrap_or(default_v4)
+                .then_some('*');
+        }
         let mut serialized = Vec::with_capacity(segment.elements.len());
         for (index, element) in segment.elements.iter().enumerate() {
             if matches!(opts.style, WriteStyle::Hl7 { .. })
@@ -926,7 +991,7 @@ fn instance_shape_error(
 fn write_node(
     node: &SchemaNode,
     instance: &Instance,
-    opts: &WriteOptions,
+    opts: &mut WriteOptions,
     out: &mut String,
     is_root: bool,
     encoding: Option<SegmentEncoding>,
@@ -941,6 +1006,31 @@ fn write_node(
         Shape::Segment(element_schemas) => {
             let segment_id = schema_segment_id(&node.name)
                 .ok_or_else(|| EdiFormatError::UnsupportedSchema(node.name.clone()))?;
+            if let WriteStyle::Edifact { default_v4 } = opts.style
+                && segment_id == "UNB"
+            {
+                let version = element_schemas
+                    .first()
+                    .and_then(|syntax| {
+                        let SchemaKind::Group { children, .. } = &syntax.kind else {
+                            return None;
+                        };
+                        children.get(1).map(|version| (syntax, version))
+                    })
+                    .map(|(syntax, version)| {
+                        scalar_or_fixed(
+                            version,
+                            instance
+                                .field(&syntax.name)
+                                .and_then(|value| value.field(&version.name))
+                                .and_then(Instance::as_scalar),
+                        )
+                    })
+                    .transpose()?;
+                opts.repetition = edifact_v4(version.as_deref())
+                    .unwrap_or(default_v4)
+                    .then_some('*');
+            }
             if matches!(opts.style, WriteStyle::Hl7 { .. })
                 && matches!(segment_id, "FHS" | "BHS" | "MSH")
                 && element_schemas.len() < 2
@@ -1012,7 +1102,7 @@ fn write_node(
 fn serialize_segment(segment_id: &str, elements: &[String], opts: &WriteOptions, out: &mut String) {
     out.push_str(segment_id);
     match opts.style {
-        WriteStyle::Delimited => {
+        WriteStyle::Delimited | WriteStyle::Edifact { .. } => {
             for element in elements {
                 out.push(opts.element);
                 out.push_str(element);
@@ -1051,6 +1141,12 @@ fn serialize_segment(segment_id: &str, elements: &[String], opts: &WriteOptions,
     if !matches!(opts.style, WriteStyle::Hl7 { .. }) {
         out.push('\n');
     }
+}
+
+pub(crate) fn edifact_v4(version: Option<&str>) -> Option<bool> {
+    version
+        .and_then(|version| version.parse::<u32>().ok())
+        .map(|version| version >= 4)
 }
 
 fn write_hl7_header_element(

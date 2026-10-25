@@ -19,6 +19,7 @@ pub enum PrimaryFilenamePlan {
 /// policy or a complete document execution profile.
 #[derive(Debug, Clone)]
 pub struct DocumentProgram {
+    edi: Option<Box<EdiDocumentPolicy>>,
     fixed_width: Option<FixedWidthDocumentPolicy>,
     program: Program,
     primary_filename: PrimaryFilenamePlan,
@@ -27,6 +28,9 @@ pub struct DocumentProgram {
 }
 
 impl DocumentProgram {
+    pub fn edi_policy(&self) -> Option<&EdiDocumentPolicy> {
+        self.edi.as_deref()
+    }
     pub fn fixed_width_policy(&self) -> Option<&FixedWidthDocumentPolicy> {
         self.fixed_width.as_ref()
     }
@@ -49,6 +53,13 @@ impl DocumentProgram {
     pub fn primary_route(&self) -> Result<PrimaryDocumentRoute, PrimaryRouteError> {
         self.primary_route.clone()
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct EdiDocumentPolicy {
+    pub kind: mapping::EdiBoundaryKind,
+    pub source: mapping::FormatOptions,
+    pub target: mapping::FormatOptions,
 }
 
 #[derive(Debug, Clone)]
@@ -106,13 +117,24 @@ pub fn lower_document(document: &DocumentProject) -> Result<DocumentProgram, Doc
             ..
         }) => crate::lower::lower_primary_xml_documents(project),
         Ok(PrimaryDocumentRoute {
-            format: PrimaryDocumentFormat::Json,
+            format: PrimaryDocumentFormat::Json | PrimaryDocumentFormat::Edi(_),
             ..
         }) => crate::lower::lower_primary_json_documents(document),
         _ => crate::lower(project),
     }
     .map_err(DocumentLowerError::Mapping)?;
     Ok(DocumentProgram {
+        edi: match &primary_route {
+            Ok(PrimaryDocumentRoute {
+                format: PrimaryDocumentFormat::Edi(kind),
+                ..
+            }) => Some(Box::new(EdiDocumentPolicy {
+                kind: *kind,
+                source: project.source_options.clone(),
+                target: project.target_options.clone(),
+            })),
+            _ => None,
+        },
         fixed_width: if primary_route
             .as_ref()
             .is_ok_and(|route| route.format == PrimaryDocumentFormat::FixedWidth)

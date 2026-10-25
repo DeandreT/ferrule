@@ -1593,6 +1593,7 @@ name = "engine"
 version = "0.1.0"
 dependencies = [
  "format-csv",
+ "format-edi",
  "format-json",
  "format-xml",
  "functions",
