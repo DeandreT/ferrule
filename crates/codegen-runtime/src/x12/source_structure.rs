@@ -123,6 +123,21 @@ impl Reader<'_> {
         self.repetition = repetition;
         Ok(())
     }
+    // Recognize the selection header before resolving its fixed qualifier.
+    fn starts_with_tag(plan: &X12SourceStructure, tag: &str) -> bool {
+        if let Some(id) = &plan.segment {
+            return id == tag;
+        }
+        for child in &plan.children {
+            if Self::starts_with_tag(child, tag) {
+                return true;
+            }
+            if child.minimum > 0 {
+                break;
+            }
+        }
+        false
+    }
     fn matches(&self, node: &SchemaNode, plan: &X12SourceStructure) -> bool {
         if let Some(id) = &plan.segment {
             if self.tag() != *id {
@@ -159,7 +174,11 @@ impl Reader<'_> {
             return false;
         };
         for (child, plan) in children.iter().zip(&plan.children) {
-            if self.matches(child, plan) {
+            // Group admission recognizes the header; selection reading resolves
+            // the qualifier instead of treating an invalid one as an end marker.
+            if (plan.selection && Self::starts_with_tag(plan, &self.tag()))
+                || self.matches(child, plan)
+            {
                 return true;
             }
             if plan.minimum > 0 {
@@ -290,6 +309,11 @@ impl Reader<'_> {
                 }
                 if !self.matches(child, particle) {
                     let tag = self.tag();
+                    if particle.selection && Self::starts_with_tag(particle, &tag) {
+                        return Err(
+                            self.syntax_error("unrecognized native X12 selection qualifier")
+                        );
+                    }
                     if particle.selection && !tag.is_empty() && !self.known_segments.contains(&tag)
                     {
                         return Err(
