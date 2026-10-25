@@ -1,13 +1,85 @@
-# OVHcloud CI runner
+# Ferrule CI runners: Cleo and Over
 
-Ferrule's native CI and both generated-backend suites run on the repository's
-`ferrule-ovh-quinta` runner when `OVH_RUNNER_ENABLED=true`. Pushes to `main`,
-manual dispatches, and pull requests from branches in `DeandreT/ferrule` can
-use OVH. Fork pull requests run on GitHub's `ubuntu-latest` machines. Existing
-check names and qualification commands are preserved. Website deployment
-continues through the separate Pages workflow.
+Dedicated routing requires `OVH_RUNNER_ENABLED=true`. With that gate unset or
+false, every job stays on `ubuntu-latest`, including explicit host choices.
+Merging or installing this source does not enable the gate. When enabled,
+`CI_RUNNER` selects `auto` (also the empty default), `cleo`, `over`, or
+`github-hosted`. A manual dispatch's `runner` input overrides `CI_RUNNER`.
+Unknown choices fail closed to hosted. Fork pull requests always stay hosted.
+Existing check names, qualification commands, resource admission and evidence
+retention remain unchanged; Pages keeps its separate workflow.
 
-## Host and isolation
+`auto` uses `ferrule-primary`; explicit choices use `ferrule-cleo` or
+`ferrule-over`. Both Cleo workers have the primary and explicit Cleo labels.
+The controller adds primary and legacy `ferrule-ovh` labels only to the known
+Over registration, never removing its explicit or unrelated labels.
+
+## Automatic overflow controller
+
+`runner-failover.py` reads complete GitHub runner inventories. After two
+observations separated by 20–120 seconds with no online idle Cleo worker, it
+adds Over's automatic/legacy labels if Over is online. Both fully busy pools
+and mixed busy/offline pools qualify. One online idle Cleo worker removes those
+labels immediately on the next poll. Missing workers, ambiguous identities,
+nonboolean busy flags and incomplete inventories refuse reconciliation.
+Running jobs are never stopped, restarted or cancelled. Existing queued jobs
+retain their selected labels and may use Over once it becomes eligible.
+
+The controller uses the host's existing GitHub CLI authentication; credentials
+must remain outside runner containers and workflow secrets. It defaults to
+`DeandreT/ferrule`. The separately supported `wareboxes/wareboxes` pool requires
+an explicit `--repository` argument; managing another repository requires its
+own authorization. Repeat that option to manage both pools. API failures leave
+the previous state intact; a partially applied label update is reported as
+incomplete, not as unchanged. A lock prevents overlapping controller runs.
+
+These commands are administrator-operated deployment steps, not prerequisites
+for merging source and not evidence of live qualification:
+
+```sh
+python3 -B scripts/ci/test-runner-failover.py
+python3 -B scripts/ci/test-runner-routing.py
+python3 -B scripts/ci/test-runner-provisioning.py
+# On Vecta, inspect proposals without changing labels or saved state:
+python3 scripts/ci/runner-failover.py --state-dir "$HOME/.local/state/ci-runner-failover" --dry-run
+# Only after separate host approval, install the Ferrule-only 30-second timer:
+bash scripts/ci/install-runner-failover.sh
+```
+
+Source tests do not establish host readiness. Before enabling dedicated routing,
+verify installed helper versions, both Cleo registrations, Over's exact name and
+labels, the controller's API permissions, complete inventories, idle recovery,
+busy/outage confirmation, service persistence and fresh native/codegen builds.
+Do not manufacture outages or interrupt active jobs to qualify these controls.
+Renaming an existing Over registration is a separate idle-time administrator
+operation; the provisioning script retains existing registrations unchanged.
+
+## Cleo persistent workers
+
+Cleo uses rootless Podman on Linux x64, with homes under
+`$HOME/services/ferrule` rather than SteamOS's read-only system partition.
+`provision-cleo-runner.sh 1` creates `ferrule-cleo`; argument `2` creates
+`ferrule-cleo-2`. Each worker has a separate home, checkout, writable caches,
+SDKs and evidence; no Cargo target is shared. The second slot requires the
+first service already in `ferrule-ci.slice`. The installer refuses an existing
+container and requires 32 GiB free. Never replace or stop an active worker.
+
+Each container allows two CPU threads and 5 GiB memory. The shared slice caps
+CPU at four threads, memory at 7 GiB (reclaim starts at 6 GiB), and swap at
+3 GiB. Containers include the current trusted pre-job helpers, including
+`job-evidence.py`; the 16/8 GiB reserve and modern per-job compaction policies
+are the same as Over's. Xvfb provides isolated graphical testing without host
+display sockets, credentials or Docker sockets.
+
+For an approved installation, copy `scripts/ci` to Cleo, then deliver a
+short-lived registration token on stdin to `provision-cleo-runner.sh 1` or `2`.
+Do not put the token in command arguments, files or logs. The resulting Quadlet
+units live in `~/.config/containers/systemd`; persistent homes are
+`services/ferrule/home` and `services/ferrule/slots/2/home`. User service startup
+across boots requires separately verified lingering. A service restart does not
+prove reboot or SteamOS-update qualification.
+
+## Over host and isolation
 
 The existing SSH alias `ovh` connects as `ubuntu` to the Ubuntu x86_64 host
 `quinta`. Provisioning installs a dedicated `ferrule-runner` account, with no
@@ -152,14 +224,15 @@ gh api --method POST repos/DeandreT/ferrule/actions/runners/registration-token \
   --jq .token | ssh ovh 'sudo -n bash /tmp/ferrule-provision-runner.sh'
 gh api repos/DeandreT/ferrule/actions/runners \
   --jq '.runners[] | {name, status, busy, labels}'
-gh variable set OVH_RUNNER_ENABLED --body true --repo DeandreT/ferrule
 ```
 
 Keep shell tracing disabled around the short-lived registration token. The
 installer refuses an active Ferrule service; stop it only after the runner is
 idle before reprovisioning. An existing registration is retained. If replacing
 the machine, remove its old registration through GitHub's runner settings
-first. Labels are `self-hosted`, `Linux`, `X64`, and `ferrule-ovh`. Builds require
+first. New registrations use name `ferrule-over` and labels `self-hosted`,
+`Linux`, `X64`, and `ferrule-over`; only the controller grants automatic labels.
+Existing registrations are not renamed by the installer. Builds require
 16 GiB free for native CI and 8 GiB for codegen after provisioning, even though
 installation itself requires less.
 
@@ -201,7 +274,7 @@ gh variable set OVH_RUNNER_ENABLED --body false --repo DeandreT/ferrule
 ```
 
 Newly scheduled jobs use GitHub-hosted runners. Existing queued or running
-jobs keep their selected runner; cancel and rerun those if necessary. To retire
+jobs keep their selected runner; this setting does not interrupt them. To retire
 OVH entirely, wait for idle, disable the Ferrule service, and remove this runner
 from repository settings. Wareboxes and Valheim services are independent.
 

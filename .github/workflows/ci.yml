@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner choice (dedicated hosts require OVH_RUNNER_ENABLED)
+        type: choice
+        default: auto
+        options: [auto, cleo, over, github-hosted]
 
 permissions:
   contents: read
@@ -25,8 +31,8 @@ env:
 
 jobs:
   test:
-    # Only branches writable by this repository's contributors reach OVH.
-    runs-on: ${{ fromJSON(vars.OVH_RUNNER_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '["self-hosted", "Linux", "X64", "ferrule-ovh"]' || '["ubuntu-latest"]') }}
+    # Dedicated routing is opt-in; forks and unknown choices stay hosted.
+    runs-on: ${{ fromJSON(vars.OVH_RUNNER_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ((inputs.runner || vars.CI_RUNNER || 'auto') == 'cleo' && '["self-hosted", "Linux", "X64", "ferrule-cleo"]' || (inputs.runner || vars.CI_RUNNER || 'auto') == 'over' && '["self-hosted", "Linux", "X64", "ferrule-over"]' || (inputs.runner || vars.CI_RUNNER || 'auto') == 'auto' && '["self-hosted", "Linux", "X64", "ferrule-primary"]') || '["ubuntu-latest"]') }}
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
@@ -35,6 +41,9 @@ jobs:
       - name: CI resource guard tests
         run: |
           bash -n scripts/ci/*.sh
+          python3 -B scripts/ci/test-runner-failover.py
+          python3 -B scripts/ci/test-runner-routing.py
+          python3 -B scripts/ci/test-runner-provisioning.py
           python3 scripts/ci/test-ovh-build.py
           python3 -B scripts/ci/test-reclaim-build-cache.py
           python3 scripts/ci/test-job-evidence.py
@@ -104,7 +113,7 @@ jobs:
   # Compiles the browser demo that site.yml publishes, without packaging or deploying it.
   wasm:
     name: web-demo (wasm32)
-    runs-on: ${{ fromJSON(vars.OVH_RUNNER_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '["self-hosted", "Linux", "X64", "ferrule-ovh"]' || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(vars.OVH_RUNNER_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ((inputs.runner || vars.CI_RUNNER || 'auto') == 'cleo' && '["self-hosted", "Linux", "X64", "ferrule-cleo"]' || (inputs.runner || vars.CI_RUNNER || 'auto') == 'over' && '["self-hosted", "Linux", "X64", "ferrule-over"]' || (inputs.runner || vars.CI_RUNNER || 'auto') == 'auto' && '["self-hosted", "Linux", "X64", "ferrule-primary"]') || '["ubuntu-latest"]') }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5

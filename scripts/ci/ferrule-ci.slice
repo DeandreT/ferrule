@@ -1,0 +1,7 @@
+[Unit]
+Description=Shared Cleo Ferrule build budget
+[Slice]
+CPUQuota=400%
+MemoryHigh=6G
+MemoryMax=7G
+MemorySwapMax=3G
