@@ -8,30 +8,49 @@ use std::fmt;
 
 use codegen::{
     AggregateFunction, AggregateValue, ArtifactPath, ArtifactPathError, ArtifactSet,
-    ArtifactSetError, Binding, Expression, GeneratedFile, GeneratedSequence, GroupingPlan,
-    InnerJoin, IterationOutput, IterationPlan, IterationSource, Program, ProgramValidationError,
-    RuntimeValue, ScalarTargetDomain, SequenceWindow, SortFilterOrder, TargetConstruction,
-    TargetScope, UserFunctionProgram, serialize_embedded_schema, validate_program,
+    ArtifactSetError, Binding, BoundaryEmissionPlan, CompanionSelection, Expression, GeneratedFile,
+    GeneratedSequence, GroupingPlan, InnerJoin, IterationOutput, IterationPlan, IterationSource,
+    Program, ProgramValidationError, RuntimeValue, ScalarTargetDomain, SequenceWindow,
+    SortFilterOrder, TargetConstruction, TargetScope, UserFunctionProgram,
+    serialize_embedded_schema, validate_program,
 };
 use codegen::{CsvOutputError, CsvOutputPolicy, validate_csv_output};
 use ir::{ScalarType, Value};
 use mapping::{FunctionId, FunctionParameterId, NodeId};
 
+mod compatibility;
 mod csv_api;
 mod csv_document;
+pub use compatibility::Generator;
 pub use csv_document::{CsvDocumentEmitError, emit_with_csv_document_adapters};
 mod failure;
+mod identity;
+pub use identity::{
+    MAX_PACKAGE_NAME_BYTES, PackageName, RUNTIME_IDENTITY, RuntimeBindingError, runtime_identity,
+    runtime_identity_at, verify_runtime_path,
+};
 mod json5_api;
+mod json_api;
 mod owned_basic;
 mod owned_json_api;
 mod primary_csv;
+mod primary_csv_document;
+mod primary_edi_document;
 mod primary_filename;
+mod primary_fixed_width_document;
+pub use primary_edi_document::emit_with_primary_edi_documents;
+mod primary_json_document;
+pub use primary_fixed_width_document::emit_with_primary_fixed_width_documents;
+mod primary_xml_document;
+pub use primary_json_document::emit_with_primary_json_documents;
 mod scalar_sequence;
 mod selected_json_api;
 
 pub use json5_api::{Json5EmitError, emit_with_json5};
 pub use primary_csv::{PrimaryCsvEmitError, emit_with_primary_csv_acquisition};
+pub use primary_csv_document::emit_with_primary_csv_documents;
 pub use primary_filename::emit_with_primary_filename;
+pub use primary_xml_document::{PrimaryDocumentEmitError, emit_with_primary_xml_documents};
 mod x12_api;
 mod xml_api;
 pub use x12_api::{X12EmitError, emit_with_x12};
@@ -66,6 +85,7 @@ pub enum EmitError {
     EmbeddedSchema(codegen::EmbeddedSchemaError),
     ArtifactPath(ArtifactPathError),
     ArtifactSet(ArtifactSetError),
+    Manifest(codegen::ManifestError),
 }
 
 impl fmt::Display for EmitError {
@@ -81,15 +101,17 @@ impl fmt::Display for EmitError {
             ),
             Self::CsvOutput(error) => error.fmt(formatter),
             Self::InvalidProgram(error) => error.fmt(formatter),
-            Self::InvalidPackageName(name) => {
-                write!(formatter, "invalid generated Rust package name {name:?}")
-            }
+            Self::InvalidPackageName(name) => match PackageName::new(name) {
+                Err(error) => error.fmt(formatter),
+                Ok(_) => write!(formatter, "invalid generated Rust package name {name:?}"),
+            },
             Self::SchemaSerialization(message) => {
                 write!(formatter, "cannot serialize embedded schema: {message}")
             }
             Self::EmbeddedSchema(error) => error.fmt(formatter),
             Self::ArtifactPath(error) => error.fmt(formatter),
             Self::ArtifactSet(error) => error.fmt(formatter),
+            Self::Manifest(error) => error.fmt(formatter),
         }
     }
 }
@@ -102,6 +124,7 @@ impl std::error::Error for EmitError {
             Self::EmbeddedSchema(error) => Some(error),
             Self::ArtifactPath(error) => Some(error),
             Self::ArtifactSet(error) => Some(error),
+            Self::Manifest(error) => Some(error),
             Self::UnsupportedDecimalValue { .. }
             | Self::UnsupportedFilterMapV1 { .. }
             | Self::InvalidPackageName(_)
@@ -140,15 +163,29 @@ impl From<ArtifactSetError> for EmitError {
     }
 }
 
-/// Emits one buildable Rust library project.
+/// Emits one buildable Rust library project with every companion API.
 pub fn emit(program: &Program, options: &Options) -> Result<ArtifactSet, EmitError> {
-    validate_program(program)?;
+    emit_with_companions(program, options, CompanionSelection::Complete)
+}
+
+/// Emits one buildable Rust library project with the selected companions.
+///
+/// Program validation runs once and its proved boundary plan drives every
+/// renderer. [`CompanionSelection::TypedOnly`] renders only the typed instance
+/// entry points and admits no JSON or XML companion descriptor; refusals that
+/// precede rendering are those of [`emit`].
+pub fn emit_with_companions(
+    program: &Program,
+    options: &Options,
+    companions: CompanionSelection,
+) -> Result<ArtifactSet, EmitError> {
+    let plan = codegen::prepare_boundary_emission(program, companions)?;
     if !valid_package_name(&options.package_name) {
         return Err(EmitError::InvalidPackageName(options.package_name.clone()));
     }
     codegen::validate_owned_emission(program)?;
     let manifest = render_manifest(options);
-    let source = render_source(program)?;
+    let source = render_library(program, &plan)?;
     ArtifactSet::new([
         GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
         GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
@@ -177,19 +214,23 @@ pub fn emit_with_basic_owned_sources(
     .map_err(EmitError::from)
 }
 
-/// Emit only static Basic repeated filters under an explicit native policy.
-/// Default, ordinary and private control-free emission keep their existing gates.
-pub fn emit_with_basic_owned_filters(
+/// Emit the Basic owned library for `capabilities` under a mandatory per-run
+/// native policy. Complete Basic admission precedes the package-name check.
+fn emit_with_owned_capabilities(
     program: &Program,
     options: &Options,
+    capabilities: codegen::OwnedCapabilities,
 ) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_filters(program)?;
+    codegen::validate_basic_owned_emission_with_capabilities(program, capabilities)?;
     if !valid_package_name(&options.package_name) {
         return Err(EmitError::InvalidPackageName(options.package_name.clone()));
     }
-    codegen::validate_basic_owned_filter_emission(program)?;
     let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_filter_source(program)?;
+    let mut source =
+        owned_basic::render_public_basic_owned_capability_source(program, capabilities)?;
+    if capabilities.xml_document_sets {
+        source.push_str(&xml_api::render_owned_document_sets(program)?);
+    }
     ArtifactSet::new([
         GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
         GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
@@ -197,473 +238,48 @@ pub fn emit_with_basic_owned_filters(
     .map_err(EmitError::from)
 }
 
-/// Emit static Basic repeated sorting with an optional filter under an explicit
-/// native policy. Ordinary, private, default and filter-only routes stay closed.
-pub fn emit_with_basic_owned_sort(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_sort(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_sort_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_sort_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
+macro_rules! owned_presets {
+    ($($preset:ident => $emit:ident;)*) => {$(
+        #[doc = concat!(
+            "Emit the Basic owned library for the [`codegen::OwnedPreset::",
+            stringify!($preset),
+            "`] preset with a mandatory per-run native policy. The ordinary emitter and its closed ownership gate are unchanged."
+        )]
+        pub fn $emit(program: &Program, options: &Options) -> Result<ArtifactSet, EmitError> {
+            emit_with_owned_capabilities(program, options, codegen::OwnedPreset::$preset.capabilities())
+        }
+    )*};
 }
 
-/// Emit explicit static Basic windows, optional filter/sort and Group First.
-/// Ordinary, private, filter-only and sort-only routes retain their own gates.
-pub fn emit_with_basic_owned_windows(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_windows(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_window_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_window_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit window-profile targets with explicitly admitted global primary-row
-/// failures. Older emitters retain their failure gates and emitted contracts.
-pub fn emit_with_basic_owned_row_failures(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_row_failures(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_row_failure_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_row_failure_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit static Basic By grouping, member retention and the qualified controls.
-/// Global primary-row failures compose here; older emitters keep their gates.
-pub fn emit_with_basic_owned_group_by(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_group_by(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_group_by_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_group_by_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit an owned path-hierarchy input collection with the EndingWith controls,
-/// scalar ItemAt producers, primary-row failures and owned failure-source walks.
-/// Legacy hierarchies keep the ordinary emitter; every older companion keeps
-/// refusing owned hierarchies.
-pub fn emit_with_basic_owned_path_hierarchy(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_path_hierarchy(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_path_hierarchy_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_path_hierarchy_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit owned XML serialization in Basic target contexts, composing the owned
-/// dynamic source-field companion. Legacy serializers keep the ordinary emitter;
-/// every older companion keeps refusing the owned form.
-pub fn emit_with_basic_owned_xml_serialize(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_xml_serialize(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_xml_serialize_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_xml_serialize_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit mixed-content construction by an owned selector in Basic target
-/// contexts, composing the owned XML mixed-content companion. Legacy,
-/// inherited and grouped constructions keep refusing.
-pub fn emit_with_basic_owned_xml_mixed_construction(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_xml_mixed_construction(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_xml_mixed_construction_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_xml_mixed_construction_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit owned XML mixed-content atomization in Basic target contexts,
-/// composing the owned XML serialization companion. Legacy mixed-content nodes
-/// keep the ordinary emitter; every older companion keeps refusing the owned form.
-pub fn emit_with_basic_owned_xml_mixed_content(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_xml_mixed_content(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_xml_mixed_content_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_xml_mixed_content_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit the qualified Basic By/row-failure profile plus ItemAt over the four
-/// pure scalar producers. Existing emitters and failure-expression gates stay closed.
-pub fn emit_with_basic_owned_sequence_item_at(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_sequence_item_at(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_sequence_item_at_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_sequence_item_at_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit static Basic By/AdjacentBy grouping and scalar ItemAt over the four pure
-/// producers. Existing companions retain their narrower control/consumer gates.
-pub fn emit_with_basic_owned_group_adjacent_by(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_group_adjacent_by(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_group_adjacent_by_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_group_adjacent_by_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit static Basic By/AdjacentBy/StartingWith grouping with scalar ItemAt over
-/// the four pure producers. Prior companions retain their narrower gates.
-pub fn emit_with_basic_owned_group_starting_with(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_group_starting_with(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_group_starting_with_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_group_starting_with_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit static Basic By/AdjacentBy/StartingWith/EndingWith grouping with scalar
-/// ItemAt over the four pure producers. Prior companions retain their narrower gates.
-pub fn emit_with_basic_owned_group_ending_with(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_group_ending_with(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_group_ending_with_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_group_ending_with_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit static Basic By/AdjacentBy/StartingWith/EndingWith/IntoBlocks grouping
-/// with scalar ItemAt over the four pure producers. Prior companions retain
-/// their narrower gates.
-pub fn emit_with_basic_owned_group_into_blocks(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_group_into_blocks(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_group_into_blocks_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_group_into_blocks_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit EndingWith-profile targets with explicitly owned failure-rule walks
-/// over one exact Primary or named endpoint. Older emitters keep refusing them.
-pub fn emit_with_basic_owned_failure_sources(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_failure_sources(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_failure_source_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_failure_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit an owned adjacency-tree row collection with the owned failure-source,
-/// EndingWith, scalar ItemAt and primary-row failure composition. Legacy trees
-/// keep the ordinary emitter; every older companion keeps refusing owned trees.
-pub fn emit_with_basic_owned_adjacency_tree(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_adjacency_tree(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_adjacency_tree_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_adjacency_tree_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit the owned adjacency-tree profile plus SequenceItemAt over explicitly
-/// owned recursive collection walks. Every older emitter keeps refusing them.
-pub fn emit_with_basic_owned_recursive_collect(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_recursive_collect(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_recursive_collect_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_recursive_collect_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit SequenceExists over the four pure producers beside ItemAt and the
-/// qualified By/AdjacentBy/StartingWith/EndingWith profile. Each reached predicate item
-/// copies the receiving paired view; existing emitters keep their gates.
-pub fn emit_with_basic_owned_sequence_exists(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_sequence_exists(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_sequence_exists_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_sequence_exists_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit the owned recursive-collect profile plus recursive filtering of an
-/// owned scope selector. Every older emitter keeps refusing the owned filter.
-pub fn emit_with_basic_owned_recursive_filter(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_recursive_filter(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_recursive_filter_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_recursive_filter_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit owned-recursive-filter-profile targets with explicitly owned Lookup and
-/// CollectionFind over one exact endpoint. Older emitters keep refusing them.
-pub fn emit_with_basic_owned_lookup_find(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_lookup_find(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_lookup_find_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_lookup_find_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit the owned recursive-filter profile plus explicitly owned dynamic
-/// source-field reads. Every older emitter keeps refusing them.
-pub fn emit_with_basic_owned_dynamic_field(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_dynamic_field(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_dynamic_field_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_dynamic_field_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit SequenceAggregate over the four pure producers beside the
-/// SequenceExists profile. Each reached item copies the receiving paired view
-/// for its predicate and value; the reducer argument keeps the receiving view.
-pub fn emit_with_basic_owned_sequence_aggregate(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_sequence_aggregate(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_sequence_aggregate_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_sequence_aggregate_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit owned-search-profile targets with explicitly owned collection
-/// aggregates over one exact endpoint. Older emitters keep refusing them.
-pub fn emit_with_basic_owned_collection_aggregates(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_collection_aggregates(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_collection_aggregates_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_collection_aggregates_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
-}
-
-/// Emit owned-search-profile targets with owned inner joins, their tuple reads
-/// and owned joined aggregates. Older emitters keep refusing both.
-pub fn emit_with_basic_owned_joins(
-    program: &Program,
-    options: &Options,
-) -> Result<ArtifactSet, EmitError> {
-    codegen::validate_program_with_basic_owned_joins(program)?;
-    if !valid_package_name(&options.package_name) {
-        return Err(EmitError::InvalidPackageName(options.package_name.clone()));
-    }
-    codegen::validate_basic_owned_joins_emission(program)?;
-    let manifest = render_manifest(options);
-    let source = owned_basic::render_public_basic_owned_joins_source(program)?;
-    ArtifactSet::new([
-        GeneratedFile::new(ArtifactPath::new("Cargo.toml")?, manifest),
-        GeneratedFile::new(ArtifactPath::new("src/lib.rs")?, source),
-    ])
-    .map_err(EmitError::from)
+owned_presets! {
+    Filters => emit_with_basic_owned_filters;
+    Sort => emit_with_basic_owned_sort;
+    Windows => emit_with_basic_owned_windows;
+    RowFailures => emit_with_basic_owned_row_failures;
+    GroupBy => emit_with_basic_owned_group_by;
+    SequenceItemAt => emit_with_basic_owned_sequence_item_at;
+    GroupAdjacentBy => emit_with_basic_owned_group_adjacent_by;
+    GroupStartingWith => emit_with_basic_owned_group_starting_with;
+    GroupEndingWith => emit_with_basic_owned_group_ending_with;
+    GroupIntoBlocks => emit_with_basic_owned_group_into_blocks;
+    FailureSources => emit_with_basic_owned_failure_sources;
+    PathHierarchy => emit_with_basic_owned_path_hierarchy;
+    AdjacencyTree => emit_with_basic_owned_adjacency_tree;
+    RecursiveCollect => emit_with_basic_owned_recursive_collect;
+    RecursiveFilter => emit_with_basic_owned_recursive_filter;
+    LookupFind => emit_with_basic_owned_lookup_find;
+    DynamicField => emit_with_basic_owned_dynamic_field;
+    DynamicLoading => emit_with_basic_owned_dynamic_loading;
+    CollectionAggregates => emit_with_basic_owned_collection_aggregates;
+    Joins => emit_with_basic_owned_joins;
+    SequenceExists => emit_with_basic_owned_sequence_exists;
+    SequenceAggregate => emit_with_basic_owned_sequence_aggregate;
+    XmlSerialize => emit_with_basic_owned_xml_serialize;
+    XmlMixedContent => emit_with_basic_owned_xml_mixed_content;
+    XmlMixedConstruction => emit_with_basic_owned_xml_mixed_construction;
+    DocumentPaths => emit_with_basic_owned_document_paths;
+    DynamicDocumentPaths => emit_with_basic_owned_dynamic_document_paths;
+    XmlDocumentSets => emit_with_basic_owned_xml_document_sets;
 }
 
 /// Emit the ordinary library with explicitly selected bounded CSV adapters.
@@ -686,14 +302,7 @@ pub fn emit_with_csv_output(
 }
 
 fn valid_package_name(name: &str) -> bool {
-    !name.is_empty()
-        && name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-        && name
-            .bytes()
-            .next()
-            .is_some_and(|byte| byte.is_ascii_alphabetic())
+    PackageName::new(name).is_ok()
 }
 
 fn render_manifest(options: &Options) -> String {
@@ -744,7 +353,16 @@ fn render_selected_target_api(program: &Program, filter_map: bool) -> String {
     output
 }
 
+/// Renders the ordinary library under the complete companion selection.
+#[cfg(test)]
 fn render_source(program: &Program) -> Result<String, EmitError> {
+    render_library(
+        program,
+        &codegen::prepare_boundary_emission(program, CompanionSelection::Complete)?,
+    )
+}
+
+fn render_library(program: &Program, plan: &BoundaryEmissionPlan<'_>) -> Result<String, EmitError> {
     let filter_map = !program.filter_map_v1_sequences().is_empty();
     let mut source = String::from(
         "// Generated by ferrule. Do not edit.\n\
@@ -888,9 +506,13 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
          }\n\n",
     );
     source.push_str(&render_selected_target_api(program, filter_map));
-    source.push_str(&render_json_api(program)?);
-    source.push_str(&selected_json_api::render(program));
-    source.push_str(&xml_api::render(program)?);
+    if plan.json_companions() {
+        source.push_str(&json_api::render(program)?);
+        source.push_str(&selected_json_api::render(program));
+    }
+    if let Some(xml) = plan.xml() {
+        source.push_str(&xml_api::render_plan(program, xml)?);
+    }
 
     let input_names = program
         .extra_sources
@@ -1066,7 +688,16 @@ fn expression_usage(
     program: &Program,
     scopes: &[(String, &TargetScope, Vec<String>, Vec<String>)],
 ) -> BTreeSet<NodeId> {
-    let mut pending = BTreeSet::new();
+    expression_usage_with_roots(program, scopes, [])
+}
+
+/// `expression_usage` plus roots a renderer calls outside scope bodies.
+fn expression_usage_with_roots(
+    program: &Program,
+    scopes: &[(String, &TargetScope, Vec<String>, Vec<String>)],
+    roots: impl IntoIterator<Item = NodeId>,
+) -> BTreeSet<NodeId> {
+    let mut pending = roots.into_iter().collect::<BTreeSet<_>>();
     for (_, scope, _, _) in scopes {
         pending.extend(scope.bindings.iter().map(|binding| binding.expression));
         if let Some(iteration) = &scope.iteration {
@@ -1198,6 +829,7 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
+        | Expression::OwnedSourceDocumentPath(_)
         | Expression::OwnedXmlSerialize(_)
         | Expression::OwnedJoinField(_)
         | Expression::OwnedJoinSourcePosition(_)
@@ -1214,590 +846,6 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
         | Expression::RuntimeValue { .. }
         | Expression::RuntimeParameter { .. } => Vec::new(),
     }
-}
-
-fn render_json_api(program: &Program) -> Result<String, EmitError> {
-    let static_sources = program
-        .extra_sources
-        .iter()
-        .filter(|source| source.dynamic.is_none())
-        .collect::<Vec<_>>();
-    let dynamic_sources = program
-        .extra_sources
-        .iter()
-        .filter(|source| source.dynamic.is_some())
-        .collect::<Vec<_>>();
-    let source_schema =
-        serialize_embedded_schema(&program.source, codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES)?;
-    let target_schema =
-        serialize_embedded_schema(&program.target, codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES)?;
-    let extra_source_schemas = program
-        .extra_sources
-        .iter()
-        .filter(|source| source.dynamic.is_none())
-        .map(|source| {
-            serialize_embedded_schema(&source.source, codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES)
-                .map(|schema| rust_string(&schema))
-                .map_err(EmitError::from)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let dynamic_source_schemas = dynamic_sources
-        .iter()
-        .map(|source| {
-            serialize_embedded_schema(&source.source, codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES)
-                .map(|schema| rust_string(&schema))
-                .map_err(EmitError::from)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let extra_target_schemas = program
-        .extra_targets
-        .iter()
-        .map(|target| {
-            serialize_embedded_schema(&target.target, codegen::MAX_EMBEDDED_JSON_SCHEMA_BYTES)
-                .map(|schema| rust_string(&schema))
-                .map_err(EmitError::from)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let mut output = format!(
-        "#[derive(Clone, Copy, Debug, PartialEq, Eq)]\n\
-         pub struct NamedJsonInput<'a> {{\n\
-             pub name: &'a str,\n\
-             pub document: &'a str,\n\
-         }}\n\n\
-         #[derive(Clone, Copy, Debug, PartialEq, Eq)]\n\
-         pub struct NamedJsonBytesInput<'a> {{\n\
-             pub name: &'a str,\n\
-             pub document: &'a [u8],\n\
-         }}\n\n\
-         #[derive(Clone, Debug, PartialEq, Eq)]\n\
-         pub struct NamedJsonOutput {{\n\
-             pub name: &'static str,\n\
-             pub document: String,\n\
-         }}\n\n\
-         #[derive(Clone, Debug, PartialEq, Eq)]\n\
-         pub struct NamedJsonBytesOutput {{\n\
-             pub name: &'static str,\n\
-             pub document: Vec<u8>,\n\
-         }}\n\n\
-         #[derive(Clone, Debug, PartialEq, Eq)]\n\
-         pub struct JsonExecutionOutputs {{\n\
-             pub primary: String,\n\
-             pub extras: Vec<NamedJsonOutput>,\n\
-         }}\n\n\
-         #[derive(Clone, Debug, PartialEq, Eq)]\n\
-         pub struct JsonBytesExecutionOutputs {{\n\
-             pub primary: Vec<u8>,\n\
-             pub extras: Vec<NamedJsonBytesOutput>,\n\
-         }}\n\n\
-         const SOURCE_JSON_SCHEMA: &str = {};\n\
-         const TARGET_JSON_SCHEMA: &str = {};\n\
-         const EXTRA_TARGET_JSON_SCHEMAS: &[&str] = &[{}];\n\n",
-        rust_string(&source_schema),
-        rust_string(&target_schema),
-        extra_target_schemas.join(", "),
-    );
-    if !static_sources.is_empty() {
-        output.push_str(&format!(
-            "const EXTRA_SOURCE_JSON_SCHEMAS: &[&str] = &[{}];\n\n",
-            extra_source_schemas.join(", ")
-        ));
-    }
-    if !dynamic_sources.is_empty() {
-        output.push_str(&format!(
-            "const DYNAMIC_SOURCE_JSON_SCHEMAS: &[&str] = &[{}];\n\n",
-            dynamic_source_schemas.join(", ")
-        ));
-    }
-    output.push_str(
-        "pub fn execute_json(source: &str) -> Result<String, JsonBoundaryError> {\n\
-             Ok(execute_json_outputs(source)?.primary)\n\
-         }\n\n\
-         pub fn execute_json_with_context(\n\
-             source: &str,\n\
-             execution: &ExecutionContext<'_>,\n\
-         ) -> Result<String, JsonBoundaryError> {\n\
-             Ok(execute_json_outputs_with_context(source, execution)?.primary)\n\
-         }\n\n\
-         pub fn execute_json_with_sources(\n\
-             source: &str,\n\
-             inputs: &[NamedJsonInput<'_>],\n\
-         ) -> Result<String, JsonBoundaryError> {\n\
-             Ok(execute_json_outputs_with_sources(source, inputs)?.primary)\n\
-         }\n\n\
-         pub fn execute_json_with_sources_and_context(\n\
-             source: &str,\n\
-             inputs: &[NamedJsonInput<'_>],\n\
-             execution: &ExecutionContext<'_>,\n\
-         ) -> Result<String, JsonBoundaryError> {\n\
-             Ok(execute_json_outputs_with_sources_and_context(source, inputs, execution)?.primary)\n\
-         }\n\n\
-         pub fn execute_json_outputs(\n\
-             source: &str,\n\
-         ) -> Result<JsonExecutionOutputs, JsonBoundaryError> {\n\
-             execute_json_outputs_with_sources(source, &[])\n\
-         }\n\n\
-         pub fn execute_json_outputs_with_context(\n\
-             source: &str,\n\
-             execution: &ExecutionContext<'_>,\n\
-         ) -> Result<JsonExecutionOutputs, JsonBoundaryError> {\n\
-             execute_json_outputs_with_sources_and_context(source, &[], execution)\n\
-         }\n\n\
-         pub fn execute_json_outputs_with_sources(\n\
-             source: &str,\n\
-             inputs: &[NamedJsonInput<'_>],\n\
-         ) -> Result<JsonExecutionOutputs, JsonBoundaryError> {\n\
-             validate_named_json_input_names(inputs)?;\n\
-             let source = parse_json(SOURCE_JSON_SCHEMA, source)?;\n\
-             let parsed = parse_named_json_inputs(inputs)?;\n\
-             let inputs = parsed\n\
-                 .iter()\n\
-                 .map(|(name, instance)| NamedInput { name, instance })\n\
-                 .collect::<Vec<_>>();\n\
-             serialize_json_outputs(execute_outputs_with_sources(&source, &inputs)?)\n\
-         }\n\n\
-         pub fn execute_json_outputs_with_sources_and_context(\n\
-             source: &str,\n\
-             inputs: &[NamedJsonInput<'_>],\n\
-             execution: &ExecutionContext<'_>,\n\
-         ) -> Result<JsonExecutionOutputs, JsonBoundaryError> {\n\
-             validate_named_json_input_names(inputs)?;\n\
-             let source = parse_json(SOURCE_JSON_SCHEMA, source)?;\n\
-             let parsed = parse_named_json_inputs(inputs)?;\n\
-             let inputs = parsed\n\
-                 .iter()\n\
-                 .map(|(name, instance)| NamedInput { name, instance })\n\
-                 .collect::<Vec<_>>();\n\
-             serialize_json_outputs(execute_outputs_with_sources_and_context(\n\
-                 &source,\n\
-                 &inputs,\n\
-                 execution,\n\
-             )?)\n\
-         }\n\n\
-         pub fn execute_json_bytes(source: &[u8]) -> Result<Vec<u8>, JsonBoundaryError> {\n\
-             Ok(execute_json_bytes_outputs(source)?.primary)\n\
-         }\n\n\
-         pub fn execute_json_bytes_with_context(\n\
-             source: &[u8],\n\
-             execution: &ExecutionContext<'_>,\n\
-         ) -> Result<Vec<u8>, JsonBoundaryError> {\n\
-             Ok(execute_json_bytes_outputs_with_context(source, execution)?.primary)\n\
-         }\n\n\
-         pub fn execute_json_bytes_with_sources(\n\
-             source: &[u8],\n\
-             inputs: &[NamedJsonBytesInput<'_>],\n\
-         ) -> Result<Vec<u8>, JsonBoundaryError> {\n\
-             Ok(execute_json_bytes_outputs_with_sources(source, inputs)?.primary)\n\
-         }\n\n\
-         pub fn execute_json_bytes_with_sources_and_context(\n\
-             source: &[u8],\n\
-             inputs: &[NamedJsonBytesInput<'_>],\n\
-             execution: &ExecutionContext<'_>,\n\
-         ) -> Result<Vec<u8>, JsonBoundaryError> {\n\
-             Ok(execute_json_bytes_outputs_with_sources_and_context(source, inputs, execution)?.primary)\n\
-         }\n\n\
-         pub fn execute_json_bytes_outputs(\n\
-             source: &[u8],\n\
-         ) -> Result<JsonBytesExecutionOutputs, JsonBoundaryError> {\n\
-             execute_json_bytes_outputs_with_sources(source, &[])\n\
-         }\n\n\
-         pub fn execute_json_bytes_outputs_with_context(\n\
-             source: &[u8],\n\
-             execution: &ExecutionContext<'_>,\n\
-         ) -> Result<JsonBytesExecutionOutputs, JsonBoundaryError> {\n\
-             execute_json_bytes_outputs_with_sources_and_context(source, &[], execution)\n\
-         }\n\n\
-         pub fn execute_json_bytes_outputs_with_sources(\n\
-             source: &[u8],\n\
-             inputs: &[NamedJsonBytesInput<'_>],\n\
-         ) -> Result<JsonBytesExecutionOutputs, JsonBoundaryError> {\n\
-             validate_named_json_bytes_input_names(inputs)?;\n\
-             let source = parse_json_bytes(SOURCE_JSON_SCHEMA, source)?;\n\
-             let parsed = parse_named_json_bytes_inputs(inputs)?;\n\
-             let inputs = parsed\n\
-                 .iter()\n\
-                 .map(|(name, instance)| NamedInput { name, instance })\n\
-                 .collect::<Vec<_>>();\n\
-             serialize_json_bytes_outputs(execute_outputs_with_sources(&source, &inputs)?)\n\
-         }\n\n\
-         pub fn execute_json_bytes_outputs_with_sources_and_context(\n\
-             source: &[u8],\n\
-             inputs: &[NamedJsonBytesInput<'_>],\n\
-             execution: &ExecutionContext<'_>,\n\
-         ) -> Result<JsonBytesExecutionOutputs, JsonBoundaryError> {\n\
-             validate_named_json_bytes_input_names(inputs)?;\n\
-             let source = parse_json_bytes(SOURCE_JSON_SCHEMA, source)?;\n\
-             let parsed = parse_named_json_bytes_inputs(inputs)?;\n\
-             let inputs = parsed\n\
-                 .iter()\n\
-                 .map(|(name, instance)| NamedInput { name, instance })\n\
-                 .collect::<Vec<_>>();\n\
-             serialize_json_bytes_outputs(execute_outputs_with_sources_and_context(\n\
-                 &source,\n\
-                 &inputs,\n\
-                 execution,\n\
-             )?)\n\
-         }\n\n",
-    );
-    if !dynamic_sources.is_empty() {
-        output.push_str(
-            "pub fn execute_json_with_dynamic_source_loader(\n\
-                 source: &str,\n\
-                 loader: &dyn DynamicJsonSourceLoader,\n\
-             ) -> Result<String, JsonBoundaryError> {\n\
-                 Ok(execute_json_outputs_with_dynamic_source_loader(source, loader)?.primary)\n\
-             }\n\n\
-             pub fn execute_json_with_sources_and_dynamic_source_loader(\n\
-                 source: &str,\n\
-                 inputs: &[NamedJsonInput<'_>],\n\
-                 loader: &dyn DynamicJsonSourceLoader,\n\
-             ) -> Result<String, JsonBoundaryError> {\n\
-                 Ok(execute_json_outputs_with_sources_and_dynamic_source_loader(source, inputs, loader)?.primary)\n\
-             }\n\n\
-             pub fn execute_json_with_sources_context_and_dynamic_source_loader(\n\
-                 source: &str,\n\
-                 inputs: &[NamedJsonInput<'_>],\n\
-                 execution: &ExecutionContext<'_>,\n\
-                 loader: &dyn DynamicJsonSourceLoader,\n\
-             ) -> Result<String, JsonBoundaryError> {\n\
-                 Ok(execute_json_outputs_with_sources_context_and_dynamic_source_loader(source, inputs, execution, loader)?.primary)\n\
-             }\n\n\
-             pub fn execute_json_outputs_with_dynamic_source_loader(\n\
-                 source: &str,\n\
-                 loader: &dyn DynamicJsonSourceLoader,\n\
-             ) -> Result<JsonExecutionOutputs, JsonBoundaryError> {\n\
-                 execute_json_outputs_with_json_loader(source, &[], None, loader)\n\
-             }\n\n\
-             pub fn execute_json_outputs_with_sources_and_dynamic_source_loader(\n\
-                 source: &str,\n\
-                 inputs: &[NamedJsonInput<'_>],\n\
-                 loader: &dyn DynamicJsonSourceLoader,\n\
-             ) -> Result<JsonExecutionOutputs, JsonBoundaryError> {\n\
-                 execute_json_outputs_with_json_loader(source, inputs, None, loader)\n\
-             }\n\n\
-             pub fn execute_json_outputs_with_sources_context_and_dynamic_source_loader(\n\
-                 source: &str,\n\
-                 inputs: &[NamedJsonInput<'_>],\n\
-                 execution: &ExecutionContext<'_>,\n\
-                 loader: &dyn DynamicJsonSourceLoader,\n\
-             ) -> Result<JsonExecutionOutputs, JsonBoundaryError> {\n\
-                 execute_json_outputs_with_json_loader(source, inputs, Some(execution), loader)\n\
-             }\n\n\
-             fn execute_json_outputs_with_json_loader(\n\
-                 source: &str,\n\
-                 inputs: &[NamedJsonInput<'_>],\n\
-                 execution: Option<&ExecutionContext<'_>>,\n\
-                 loader: &dyn DynamicJsonSourceLoader,\n\
-             ) -> Result<JsonExecutionOutputs, JsonBoundaryError> {\n\
-                 validate_named_json_input_names(inputs)?;\n\
-                 let source = parse_json(SOURCE_JSON_SCHEMA, source)?;\n\
-                 let parsed = parse_named_json_inputs(inputs)?;\n\
-                 let inputs = parsed\n\
-                     .iter()\n\
-                     .map(|(name, instance)| NamedInput { name, instance })\n\
-                     .collect::<Vec<_>>();\n\
-                 let loader = GeneratedDynamicJsonSourceLoader {\n\
-                     loader,\n\
-                     total_bytes: std::cell::Cell::new(0),\n\
-                 };\n\
-                 let outputs = match execution {\n\
-                     Some(execution) => execute_outputs_with_sources_context_and_dynamic_source_loader(\n\
-                         &source,\n\
-                         &inputs,\n\
-                         execution,\n\
-                         &loader,\n\
-                     )?,\n\
-                     None => execute_outputs_with_sources_and_dynamic_source_loader(\n\
-                         &source,\n\
-                         &inputs,\n\
-                         &loader,\n\
-                     )?,\n\
-                 };\n\
-                 serialize_json_outputs(outputs)\n\
-             }\n\n\
-             struct GeneratedDynamicJsonSourceLoader<'a> {\n\
-                 loader: &'a dyn DynamicJsonSourceLoader,\n\
-                 total_bytes: std::cell::Cell<usize>,\n\
-             }\n\n\
-             impl DynamicSourceLoader for GeneratedDynamicJsonSourceLoader<'_> {\n\
-                 fn load(&self, source: &str, path: &str) -> Result<Instance, String> {\n\
-                     let document = self.loader.load(source, path)?;\n\
-                     if document.len() > codegen_runtime::MAX_DYNAMIC_SOURCE_BYTES {\n\
-                         return Err(format!(\n\
-                             \"document exceeds the {}-byte dynamic-source limit\",\n\
-                             codegen_runtime::MAX_DYNAMIC_SOURCE_BYTES,\n\
-                         ));\n\
-                     }\n\
-                     let total = self\n\
-                         .total_bytes\n\
-                         .get()\n\
-                         .checked_add(document.len())\n\
-                         .ok_or_else(|| \"dynamic-source byte total overflowed\".to_string())?;\n\
-                     if total > codegen_runtime::MAX_DYNAMIC_SOURCE_TOTAL_BYTES {\n\
-                         return Err(format!(\n\
-                             \"documents exceed the {}-byte combined dynamic-source limit\",\n\
-                             codegen_runtime::MAX_DYNAMIC_SOURCE_TOTAL_BYTES,\n\
-                         ));\n\
-                     }\n\
-                     self.total_bytes.set(total);\n\
-                     let document = std::str::from_utf8(&document)\n\
-                         .map_err(|error| format!(\"document is not UTF-8: {error}\"))?;\n\
-                     let schema = match source {\n",
-        );
-        for (index, source) in dynamic_sources.iter().enumerate() {
-            output.push_str(&format!(
-                "            {} => DYNAMIC_SOURCE_JSON_SCHEMAS[{index}],\n",
-                rust_string(&source.name),
-            ));
-        }
-        output.push_str(
-            "            _ => return Err(format!(\"undeclared dynamic source {source:?}\")),\n\
-                     };\n\
-                     parse_json(schema, document).map_err(|error| error.to_string())\n\
-                 }\n\
-             }\n\n",
-        );
-    }
-    if static_sources.is_empty() {
-        output.push_str(
-            "fn validate_named_json_input_names(\n\
-                 inputs: &[NamedJsonInput<'_>],\n\
-             ) -> Result<(), JsonBoundaryError> {\n\
-                 if let Some(input) = inputs.first() {\n\
-                     return Err(RuntimeError::UnexpectedNamedSource {\n\
-                         name: input.name.to_string(),\n\
-                     }\n\
-                     .into());\n\
-                 }\n\
-                 Ok(())\n\
-             }\n\n\
-             fn parse_named_json_inputs<'a>(\n\
-                 inputs: &[NamedJsonInput<'a>],\n\
-             ) -> Result<Vec<(&'a str, Instance)>, JsonBoundaryError> {\n\
-                 let _ = inputs;\n\
-                 Ok(Vec::new())\n\
-             }\n\n\
-             fn validate_named_json_bytes_input_names(\n\
-                 inputs: &[NamedJsonBytesInput<'_>],\n\
-             ) -> Result<(), JsonBoundaryError> {\n\
-                 if let Some(input) = inputs.first() {\n\
-                     return Err(RuntimeError::UnexpectedNamedSource {\n\
-                         name: input.name.to_string(),\n\
-                     }\n\
-                     .into());\n\
-                 }\n\
-                 Ok(())\n\
-             }\n\n\
-             fn parse_named_json_bytes_inputs<'a>(\n\
-                 inputs: &[NamedJsonBytesInput<'a>],\n\
-             ) -> Result<Vec<(&'a str, Instance)>, JsonBoundaryError> {\n\
-                 let _ = inputs;\n\
-                 Ok(Vec::new())\n\
-             }\n\n",
-        );
-    } else {
-        output.push_str(
-            "fn validate_named_json_input_names(\n\
-                 inputs: &[NamedJsonInput<'_>],\n\
-             ) -> Result<(), JsonBoundaryError> {\n\
-                 let mut matched = vec![false; EXTRA_SOURCE_NAMES.len()];\n\
-                 for input in inputs {\n\
-                     let index = match input.name {\n",
-        );
-        for (index, source) in static_sources.iter().enumerate() {
-            output.push_str(&format!(
-                "            {} => {index},\n",
-                rust_string(&source.name)
-            ));
-        }
-        output.push_str(
-            "            _ => {\n\
-                             return Err(RuntimeError::UnexpectedNamedSource {\n\
-                                 name: input.name.to_string(),\n\
-                             }\n\
-                             .into());\n\
-                         }\n\
-                     };\n\
-                     if matched[index] {\n\
-                         return Err(RuntimeError::DuplicateNamedSource {\n\
-                             name: EXTRA_SOURCE_NAMES[index],\n\
-                         }\n\
-                         .into());\n\
-                     }\n\
-                     matched[index] = true;\n\
-                 }\n\
-                 for (index, name) in EXTRA_SOURCE_NAMES.iter().copied().enumerate() {\n\
-                     if !matched[index] {\n\
-                         return Err(RuntimeError::MissingNamedSource { name }.into());\n\
-                     }\n\
-                 }\n\
-                 Ok(())\n\
-             }\n\n\
-             fn parse_named_json_inputs<'a>(\n\
-                 inputs: &[NamedJsonInput<'a>],\n\
-             ) -> Result<Vec<(&'a str, Instance)>, JsonBoundaryError> {\n\
-                 let mut parsed = Vec::with_capacity(inputs.len());\n\
-                 for input in inputs {\n\
-                     let schema = match input.name {\n",
-        );
-        for (index, source) in static_sources.iter().enumerate() {
-            output.push_str(&format!(
-                "            {} => EXTRA_SOURCE_JSON_SCHEMAS[{index}],\n",
-                rust_string(&source.name)
-            ));
-        }
-        output.push_str(
-            "            _ => {\n\
-                             return Err(RuntimeError::UnexpectedNamedSource {\n\
-                                 name: input.name.to_string(),\n\
-                             }\n\
-                             .into());\n\
-                         }\n\
-                     };\n\
-                     parsed.push((input.name, parse_json(schema, input.document)?));\n\
-                 }\n\
-                 Ok(parsed)\n\
-             }\n\n\
-             fn validate_named_json_bytes_input_names(\n\
-                 inputs: &[NamedJsonBytesInput<'_>],\n\
-             ) -> Result<(), JsonBoundaryError> {\n\
-                 let mut matched = vec![false; EXTRA_SOURCE_NAMES.len()];\n\
-                 for input in inputs {\n\
-                     let index = match input.name {\n",
-        );
-        for (index, source) in static_sources.iter().enumerate() {
-            output.push_str(&format!(
-                "            {} => {index},\n",
-                rust_string(&source.name)
-            ));
-        }
-        output.push_str(
-            "            _ => {\n\
-                             return Err(RuntimeError::UnexpectedNamedSource {\n\
-                                 name: input.name.to_string(),\n\
-                             }\n\
-                             .into());\n\
-                         }\n\
-                     };\n\
-                     if matched[index] {\n\
-                         return Err(RuntimeError::DuplicateNamedSource {\n\
-                             name: EXTRA_SOURCE_NAMES[index],\n\
-                         }\n\
-                         .into());\n\
-                     }\n\
-                     matched[index] = true;\n\
-                 }\n\
-                 for (index, name) in EXTRA_SOURCE_NAMES.iter().copied().enumerate() {\n\
-                     if !matched[index] {\n\
-                         return Err(RuntimeError::MissingNamedSource { name }.into());\n\
-                     }\n\
-                 }\n\
-                 Ok(())\n\
-             }\n\n\
-             fn parse_named_json_bytes_inputs<'a>(\n\
-                 inputs: &[NamedJsonBytesInput<'a>],\n\
-             ) -> Result<Vec<(&'a str, Instance)>, JsonBoundaryError> {\n\
-                 let mut parsed = Vec::with_capacity(inputs.len());\n\
-                 for input in inputs {\n\
-                     let schema = match input.name {\n",
-        );
-        for (index, source) in static_sources.iter().enumerate() {
-            output.push_str(&format!(
-                "            {} => EXTRA_SOURCE_JSON_SCHEMAS[{index}],\n",
-                rust_string(&source.name)
-            ));
-        }
-        output.push_str(
-            "            _ => {\n\
-                             return Err(RuntimeError::UnexpectedNamedSource {\n\
-                                 name: input.name.to_string(),\n\
-                             }\n\
-                             .into());\n\
-                         }\n\
-                     };\n\
-                     parsed.push((input.name, parse_json_bytes(schema, input.document)?));\n\
-                 }\n\
-                 Ok(parsed)\n\
-             }\n\n",
-        );
-    }
-    output.push_str(
-        "fn serialize_json_outputs(\n\
-             outputs: ExecutionOutputs,\n\
-         ) -> Result<JsonExecutionOutputs, JsonBoundaryError> {\n\
-             if outputs.extras.len() != EXTRA_TARGET_JSON_SCHEMAS.len() {\n\
-                 return Err(JsonBoundaryError::InvalidOutput {\n\
-                     message: \"generated mapping returned an unexpected number of named targets\".to_string(),\n\
-                 });\n\
-             }\n\
-             let primary = serialize_json(TARGET_JSON_SCHEMA, &outputs.primary)?;\n\
-             let extras = outputs\n\
-                 .extras\n\
-                 .into_iter()\n\
-                 .zip(EXTRA_TARGET_JSON_SCHEMAS.iter().copied())\n\
-                 .map(|(output, schema)| {\n\
-                     serialize_json(schema, &output.instance).map(|document| NamedJsonOutput {\n\
-                         name: output.name,\n\
-                         document,\n\
-                     })\n\
-                 })\n\
-                 .collect::<Result<Vec<_>, _>>()?;\n\
-             Ok(JsonExecutionOutputs { primary, extras })\n\
-         }\n\n\
-         fn serialize_json_bytes_outputs(\n\
-             outputs: ExecutionOutputs,\n\
-         ) -> Result<JsonBytesExecutionOutputs, JsonBoundaryError> {\n\
-             if outputs.extras.len() != EXTRA_TARGET_JSON_SCHEMAS.len() {\n\
-                 return Err(JsonBoundaryError::InvalidOutput {\n\
-                     message: \"generated mapping returned an unexpected number of named targets\".to_string(),\n\
-                 });\n\
-             }\n\
-             let primary = serialize_json_bytes(TARGET_JSON_SCHEMA, &outputs.primary)?;\n\
-             let extras = outputs\n\
-                 .extras\n\
-                 .into_iter()\n\
-                 .zip(EXTRA_TARGET_JSON_SCHEMAS.iter().copied())\n\
-                 .map(|(output, schema)| {\n\
-                     serialize_json_bytes(schema, &output.instance).map(|document| NamedJsonBytesOutput {\n\
-                         name: output.name,\n\
-                         document,\n\
-                     })\n\
-                 })\n\
-                 .collect::<Result<Vec<_>, _>>()?;\n\
-             Ok(JsonBytesExecutionOutputs { primary, extras })\n\
-         }\n\n",
-    );
-    output.push_str(
-        "pub fn execute_json_outputs_with_filter_map_controls(\n\
-             source: &str,\n\
-             inputs: &[NamedJsonInput<'_>],\n\
-             execution: Option<&ExecutionContext<'_>>,\n\
-             limits: FilterMapLimits,\n\
-             cancellation: Option<&dyn FilterMapCancellation>,\n\
-         ) -> Result<FilterMapExecution<JsonExecutionOutputs, JsonBoundaryError>, JsonBoundaryError> {\n\
-             validate_named_json_input_names(inputs)?;\n\
-             let source = parse_json(SOURCE_JSON_SCHEMA, source)?;\n\
-             let parsed = parse_named_json_inputs(inputs)?;\n\
-             let inputs = parsed.iter().map(|(name, instance)| NamedInput { name, instance }).collect::<Vec<_>>();\n\
-             let actual = execute_outputs_with_filter_map_controls(&source, &inputs, execution, None, limits, cancellation)?;\n\
-             Ok(FilterMapExecution { counters: actual.counters, outcome: actual.outcome.map_err(JsonBoundaryError::from).and_then(serialize_json_outputs) })\n\
-         }\n\n\
-         pub fn execute_json_bytes_outputs_with_filter_map_controls(\n\
-             source: &[u8],\n\
-             inputs: &[NamedJsonBytesInput<'_>],\n\
-             execution: Option<&ExecutionContext<'_>>,\n\
-             limits: FilterMapLimits,\n\
-             cancellation: Option<&dyn FilterMapCancellation>,\n\
-         ) -> Result<FilterMapExecution<JsonBytesExecutionOutputs, JsonBoundaryError>, JsonBoundaryError> {\n\
-             validate_named_json_bytes_input_names(inputs)?;\n\
-             let source = parse_json_bytes(SOURCE_JSON_SCHEMA, source)?;\n\
-             let parsed = parse_named_json_bytes_inputs(inputs)?;\n\
-             let inputs = parsed.iter().map(|(name, instance)| NamedInput { name, instance }).collect::<Vec<_>>();\n\
-             let actual = execute_outputs_with_filter_map_controls(&source, &inputs, execution, None, limits, cancellation)?;\n\
-             Ok(FilterMapExecution { counters: actual.counters, outcome: actual.outcome.map_err(JsonBoundaryError::from).and_then(serialize_json_bytes_outputs) })\n\
-         }\n\n",
-    );
-    Ok(output)
 }
 
 fn render_user_function(
@@ -1967,6 +1015,7 @@ fn render_expression_in_context_with_scalar_item_at(
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
+            | Expression::OwnedSourceDocumentPath(_)
             | Expression::OwnedDynamicSourceField(_)
             | Expression::OwnedLookup(_)
             | Expression::OwnedCollectionFind(_)
@@ -2676,6 +1725,8 @@ fn render_scope(
     if let Some(iteration) = &scope.iteration {
         if iteration.concatenated().is_some() {
             output.push_str(&render_concatenated_scope(iteration, segment_names));
+        } else if let Some(presence) = iteration.presence() {
+            output.push_str(&render_presence_scope(scope, presence, child_names));
         } else {
             output.push_str(&render_iteration_scope(
                 program,
@@ -2710,6 +1761,22 @@ fn render_concatenated_scope(iteration: &IterationPlan, segment_names: &[String]
         }
         IterationOutput::First => unreachable!("validated scope sequences cannot use First"),
     }
+    output
+}
+
+/// The condition runs once against the parent context, which the constructed
+/// group keeps: optional presence adds no candidate frame or position.
+fn render_presence_scope(
+    scope: &TargetScope,
+    presence: codegen::OptionalPresence,
+    child_names: &[String],
+) -> String {
+    let condition = presence.condition();
+    let mut output = format!(
+        "    if !require_bool({condition}, expression_{condition}(context)?)? {{\n        return Ok(repeated(Vec::new()));\n    }}\n"
+    );
+    output.push_str(&render_scope_item(scope, child_names, "    ", "context"));
+    output.push_str("    Ok(repeated([output]))\n");
     output
 }
 
@@ -2877,7 +1944,8 @@ fn render_grouping_with_prefix(
         ),
         IterationSource::Generated(_)
         | IterationSource::InnerJoin(_)
-        | IterationSource::Concatenate(_) => "None".to_string(),
+        | IterationSource::Concatenate(_)
+        | IterationSource::OptionalPresence(_) => "None".to_string(),
         IterationSource::OwnedInnerJoin(_) => unreachable!("owned join emission gate"),
     };
     let binding = if candidates_are_reassigned {
@@ -3011,7 +2079,10 @@ fn render_source_iteration_candidates(
             .and_then(|candidate| candidate.dynamic.as_ref().map(|plan| (candidate, plan)))
     });
     if let Some((source_program, dynamic)) = dynamic {
-        let driver = render_string_path(dynamic.driver.path());
+        let Some(driver) = dynamic.driver.legacy() else {
+            unreachable!("owned dynamic drivers are refused before legacy emission")
+        };
+        let driver = render_string_path(driver.path());
         let tail = render_string_path(&source_path[1..]);
         output.push_str(&format!(
             "    let dynamic_source_items = DynamicSourceItems::load(\n        context,\n        {},\n        &[{driver}],\n        &[{tail}],\n        {},\n        |driver_context| expression_{}(driver_context),\n    )?;\n    {binding} = dynamic_source_items.contexts();\n",
@@ -3058,6 +2129,9 @@ fn render_iteration_candidates(
         IterationSource::OwnedInnerJoin(_) => unreachable!("owned join emission gate"),
         IterationSource::Concatenate(_) => {
             unreachable!("concatenated scopes render before candidate iteration")
+        }
+        IterationSource::OptionalPresence(_) => {
+            unreachable!("optional-presence scopes render before candidate iteration")
         }
     }
     Ok(())

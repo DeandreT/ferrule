@@ -10,31 +10,10 @@ use codegen::{
 };
 use mapping::{SourceOwner, SourceScopeLocation, SourceScopeStep, SourceScopeTarget};
 
-#[path = "owned_basic_windows.rs"]
-mod windows;
-pub(crate) use windows::render_public_basic_owned_adjacency_tree_source;
-pub(crate) use windows::render_public_basic_owned_collection_aggregates_source;
-pub(crate) use windows::render_public_basic_owned_dynamic_field_source;
-pub(crate) use windows::render_public_basic_owned_failure_source;
-pub(crate) use windows::render_public_basic_owned_group_adjacent_by_source;
-pub(crate) use windows::render_public_basic_owned_group_ending_with_source;
-pub(crate) use windows::render_public_basic_owned_group_into_blocks_source;
-pub(crate) use windows::render_public_basic_owned_group_starting_with_source;
-pub(crate) use windows::render_public_basic_owned_joins_source;
-pub(crate) use windows::render_public_basic_owned_lookup_find_source;
-pub(crate) use windows::render_public_basic_owned_path_hierarchy_source;
-pub(crate) use windows::render_public_basic_owned_recursive_collect_source;
-pub(crate) use windows::render_public_basic_owned_recursive_filter_source;
-pub(crate) use windows::render_public_basic_owned_row_failure_source;
-pub(crate) use windows::render_public_basic_owned_sequence_aggregate_source;
-pub(crate) use windows::render_public_basic_owned_sequence_exists_source;
-pub(crate) use windows::render_public_basic_owned_sequence_item_at_source;
-pub(crate) use windows::render_public_basic_owned_window_source;
-pub(crate) use windows::render_public_basic_owned_xml_mixed_construction_source;
-pub(crate) use windows::render_public_basic_owned_xml_mixed_content_source;
-pub(crate) use windows::render_public_basic_owned_xml_serialize_source;
 #[path = "owned_basic_aggregate.rs"]
 mod aggregate;
+#[path = "owned_basic_dynamic_loading.rs"]
+mod dynamic_loading;
 #[path = "owned_basic_group_by.rs"]
 mod group_by;
 #[path = "owned_basic_joins.rs"]
@@ -43,8 +22,9 @@ mod joins;
 mod rows;
 #[path = "owned_basic_search.rs"]
 mod search;
+#[path = "owned_basic_windows.rs"]
+mod windows;
 pub(super) use aggregate::render_owned_aggregate;
-pub(crate) use group_by::render_public_basic_owned_group_by_source;
 pub(super) use joins::render_owned_join_aggregate;
 pub(super) use search::{render_owned_collection_find, render_owned_lookup};
 
@@ -122,7 +102,13 @@ fn render_basic_owned_source_with_nodes(
         source.push_str(&failure::render_basic(program)?);
     }
     for (name, scope, children, _) in scopes {
-        source.push_str(&render_basic_scope(&name, scope, &children, filter_only));
+        source.push_str(&render_basic_scope(
+            &name,
+            scope,
+            &children,
+            filter_only,
+            false,
+        ));
     }
     Ok(source)
 }
@@ -206,6 +192,9 @@ fn check_scope(
             }
             IterationSource::Concatenate(_) => {
                 return Err(scope_refusal(route, Capability::Concatenate, None));
+            }
+            IterationSource::OptionalPresence(_) => {
+                return Err(scope_refusal(route, Capability::OptionalPresence, None));
             }
             IterationSource::DynamicDocuments(_) => {
                 return Err(scope_refusal(route, Capability::Document, None));
@@ -373,6 +362,7 @@ fn check_inventory(program: &Program, filter_only: bool) -> Result<(), EmitError
             Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
                 | Expression::OwnedRowDocumentPath(_)
+                | Expression::OwnedSourceDocumentPath(_)
                 | Expression::SourceField { .. }
                 | Expression::Position { .. }
                 | Expression::Const { .. }
@@ -464,6 +454,10 @@ pub(super) fn render_owned_access(expression: &Expression) -> Option<String> {
                 "{{ let position = context.owned_position({owner}, {collection})?; Ok(Value::Int(position as i64)) }}"
             ))
         }
+        Expression::OwnedSourceDocumentPath(path) => Some(format!(
+            "context.owned_document_path({})",
+            owner_literal(&path.owner)
+        )),
         Expression::OwnedRowDocumentPath(path) => {
             let owner = owner_literal(&path.owner);
             let collection = path.collection.as_ref().map_or_else(
@@ -568,28 +562,37 @@ pub(super) fn render_owned_xml_mixed_content(
     )
 }
 
+/// The cohort walk of one ordinary or owned Basic selector. With `documents`,
+/// an owned selector also walks the members of a document-set endpoint.
+fn render_scope_walk(input: &IterationSource, documents: bool) -> Option<String> {
+    match input {
+        IterationSource::Source(input) => Some(format!(
+            "context.walk_source_cohort(&[{}])?",
+            render_string_path(input.path())
+        )),
+        IterationSource::OwnedSource(input) => Some(format!(
+            "context.walk_owned_{}source_cohort({}, &[{}])?",
+            if documents { "document_" } else { "" },
+            owner_literal(&input.source().owner),
+            render_string_path(&input.source().path)
+        )),
+        _ => None,
+    }
+}
+
 fn render_basic_scope(
     name: &str,
     scope: &TargetScope,
     children: &[String],
     filter_only: bool,
+    documents: bool,
 ) -> String {
     let mut source = format!(
         "fn {name}(context: &BasicScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n"
     );
     if let Some(iteration) = &scope.iteration {
-        let walk = match iteration.input() {
-            IterationSource::Source(input) => format!(
-                "context.walk_source_cohort(&[{}])?",
-                render_string_path(input.path())
-            ),
-            IterationSource::OwnedSource(input) => format!(
-                "context.walk_owned_source_cohort({}, &[{}])?",
-                owner_literal(&input.source().owner),
-                render_string_path(&input.source().path)
-            ),
-            _ => unreachable!("private Basic inventory checked before rendering"),
-        };
+        let walk = render_scope_walk(iteration.input(), documents)
+            .unwrap_or_else(|| unreachable!("private Basic inventory checked before rendering"));
         if filter_only && let Some(predicate) = iteration.filter() {
             source.push_str(&format!("    let cohort = {walk};\n    let mut outputs = Vec::new();\n    context.visit_filtered_source_cohort(\n        &cohort,\n        |predicate_context| {{\n            let value = expression_{predicate}(predicate_context)?;\n            require_bool({predicate}, value)\n        }},\n        |item_context| {{\n"));
             source.push_str(&render_scope_item(
@@ -768,31 +771,47 @@ fn private_checked_input_reached() {
 "#;
 
 fn render_checked_entries(program: &Program) -> String {
-    let mut source = String::from(
+    render_checked_entries_with_loader(program, false)
+}
+
+/// With `loader`, both private entries also take the optional host loader that
+/// owned dynamic loading scopes request documents from.
+pub(super) fn render_checked_entries_with_loader(program: &Program, loader: bool) -> String {
+    let (parameter, context) = if loader {
+        (
+            ",\n    loader: Option<&'src dyn DynamicSourceLoader>",
+            "    let context = match loader {\n        Some(loader) => roots.root_context_with_dynamic_source_loader(execution, loader)?,\n        None => match execution { Some(e) => roots.root_context_with_execution(e)?, None => roots.root_context()? },\n    };\n",
+        )
+    } else {
+        (
+            "",
+            "    let context = match execution { Some(e) => roots.root_context_with_execution(e)?, None => roots.root_context()? };\n",
+        )
+    };
+    let mut source = format!(
         r#"
-enum PrivateCheckedBasicOutput { All(ExecutionOutputs), Selected(SelectedTargetOutput) }
+enum PrivateCheckedBasicOutput {{ All(ExecutionOutputs), Selected(SelectedTargetOutput) }}
 
 pub(crate) fn execute_checked_private_owned_basic<'name, 'src>(
     source: &'src Instance, supplied: &[BasicNamedSourceInput<'name, 'src>],
-    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits,
-) -> Result<ExecutionOutputs, RuntimeError> {
+    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits{parameter},
+) -> Result<ExecutionOutputs, RuntimeError> {{
     private_checked_factory_reached();
     let roots = BasicSourceRoots::try_from_named_inputs(source, PRIVATE_CHECKED_ALL_INPUTS,
-        supplied.iter().copied().map(|input| { private_checked_input_reached(); input }), limits)?;
-    let context = match execution { Some(e) => roots.root_context_with_execution(e)?, None => roots.root_context()? };
-    match execute_private_checked_basic_context(&context, None)? {
+        supplied.iter().copied().map(|input| {{ private_checked_input_reached(); input }}), limits)?;
+{context}    match execute_private_checked_basic_context(&context, None)? {{
         PrivateCheckedBasicOutput::All(output) => Ok(output),
         PrivateCheckedBasicOutput::Selected(_) => unreachable!("checked all-output route"),
-    }
-}
+    }}
+}}
 
 pub(crate) fn execute_selected_checked_private_owned_basic<'name, 'src>(
     source: &'src Instance, supplied: &[BasicNamedSourceInput<'name, 'src>],
-    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits, selection: TargetSelection<'_>,
-) -> Result<SelectedTargetOutput, RuntimeError> {
-    let (selected, catalogue) = match selection {
+    execution: Option<&ExecutionContext<'src>>, limits: OwnedSourceLimits, selection: TargetSelection<'_>{parameter},
+) -> Result<SelectedTargetOutput, RuntimeError> {{
+    let (selected, catalogue) = match selection {{
         TargetSelection::Primary => (0, PRIVATE_CHECKED_PRIMARY_INPUTS),
-        TargetSelection::Named(name) => match name {
+        TargetSelection::Named(name) => match name {{
 "#,
     );
     for (index, target) in program.extra_targets.iter().enumerate() {
@@ -802,25 +821,24 @@ pub(crate) fn execute_selected_checked_private_owned_basic<'name, 'src>(
             index + 1
         ));
     }
-    source.push_str(r#"            _ => return Err(RuntimeError::UnknownTarget { name: name.to_string() }),
-        },
-    };
+    source.push_str(&format!(r#"            _ => return Err(RuntimeError::UnknownTarget {{ name: name.to_string() }}),
+        }},
+    }};
     private_checked_factory_reached();
     let roots = BasicSourceRoots::try_from_named_inputs(source, catalogue,
-        supplied.iter().copied().map(|input| { private_checked_input_reached(); input }), limits)?;
-    let context = match execution { Some(e) => roots.root_context_with_execution(e)?, None => roots.root_context()? };
-    match execute_private_checked_basic_context(&context, Some(selected))? {
+        supplied.iter().copied().map(|input| {{ private_checked_input_reached(); input }}), limits)?;
+{context}    match execute_private_checked_basic_context(&context, Some(selected))? {{
         PrivateCheckedBasicOutput::Selected(output) => Ok(output),
         PrivateCheckedBasicOutput::All(_) => unreachable!("checked selected-output route"),
-    }
-}
+    }}
+}}
 
 // This checked-only shared context adopts the normalized roots once.
 // Ordinary global source rules run before any selected or all-target output.
 fn execute_private_checked_basic_context(
     context: &BasicScopeContext<'_>, selected: Option<usize>,
-) -> Result<PrivateCheckedBasicOutput, RuntimeError> {
-"#);
+) -> Result<PrivateCheckedBasicOutput, RuntimeError> {{
+"#));
     if !program.failure_rules.is_empty() {
         source.push_str("    evaluate_basic_failure_rules(context)?;\n");
     }
@@ -848,10 +866,21 @@ pub(crate) fn render_public_basic_owned_source(program: &Program) -> Result<Stri
     render_public_basic_owned_source_with_filters(program, false)
 }
 
-pub(crate) fn render_public_basic_owned_filter_source(
+/// Render the public Basic owned library for `capabilities` with the narrowest
+/// renderer that covers them: control-free and filter-only sets keep the
+/// filter renderer's bytes, sort sets the sort renderer's, and every set with
+/// windows or more uses the general renderer.
+pub(crate) fn render_public_basic_owned_capability_source(
     program: &Program,
+    capabilities: codegen::OwnedCapabilities,
 ) -> Result<String, EmitError> {
-    render_public_basic_owned_source_with_filters(program, true)
+    if capabilities.is_within(codegen::OwnedPreset::Filters.capabilities()) {
+        render_public_basic_owned_source_with_filters(program, capabilities.controls.filter)
+    } else if capabilities.is_within(codegen::OwnedPreset::Sort.capabilities()) {
+        render_public_basic_owned_sort_source(program)
+    } else {
+        windows::render_public_basic_owned_capability_source(program, capabilities)
+    }
 }
 
 fn render_public_basic_owned_source_with_filters(
@@ -864,6 +893,7 @@ fn render_public_basic_owned_source_with_filters(
             Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
                 | Expression::OwnedRowDocumentPath(_)
+                | Expression::OwnedSourceDocumentPath(_)
         )
     }) {
         render_checked_basic_owned_source_with_nodes(program, true, filter_only)?
@@ -998,7 +1028,7 @@ fn render_basic_owned_sort_source(
         source.push_str(&failure::render_basic(program)?);
     }
     for (name, scope, children, _) in scopes {
-        source.push_str(&render_basic_sort_scope(&name, scope, &children));
+        source.push_str(&render_basic_sort_scope(&name, scope, &children, false));
     }
     Ok(source)
 }
@@ -1052,6 +1082,9 @@ fn check_sort_scope(
             }
             IterationSource::Concatenate(_) => {
                 return Err(scope_refusal(route, Capability::Concatenate, None));
+            }
+            IterationSource::OptionalPresence(_) => {
+                return Err(scope_refusal(route, Capability::OptionalPresence, None));
             }
             IterationSource::DynamicDocuments(_) => {
                 return Err(scope_refusal(route, Capability::Document, None));
@@ -1185,6 +1218,7 @@ fn check_sort_inventory(program: &Program) -> Result<(), EmitError> {
             Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
                 | Expression::OwnedRowDocumentPath(_)
+                | Expression::OwnedSourceDocumentPath(_)
                 | Expression::SourceField { .. }
                 | Expression::Position { .. }
                 | Expression::Const { .. }
@@ -1211,25 +1245,21 @@ fn check_sort_inventory(program: &Program) -> Result<(), EmitError> {
     Ok(())
 }
 
-fn render_basic_sort_scope(name: &str, scope: &TargetScope, children: &[String]) -> String {
+fn render_basic_sort_scope(
+    name: &str,
+    scope: &TargetScope,
+    children: &[String],
+    documents: bool,
+) -> String {
     let Some(iteration) = &scope.iteration else {
-        return render_basic_scope(name, scope, children, true);
+        return render_basic_scope(name, scope, children, true, documents);
     };
     let Some(sort) = iteration.sort() else {
-        return render_basic_scope(name, scope, children, true);
+        return render_basic_scope(name, scope, children, true, documents);
     };
-    let walk = match iteration.input() {
-        IterationSource::Source(input) => format!(
-            "context.walk_source_cohort(&[{}])?",
-            render_string_path(input.path())
-        ),
-        IterationSource::OwnedSource(input) => format!(
-            "context.walk_owned_source_cohort({}, &[{}])?",
-            owner_literal(&input.source().owner),
-            render_string_path(&input.source().path)
-        ),
-        _ => unreachable!("explicit Basic sorting inventory checked before rendering"),
-    };
+    let walk = render_scope_walk(iteration.input(), documents).unwrap_or_else(|| {
+        unreachable!("explicit Basic sorting inventory checked before rendering")
+    });
     let before =
         iteration.filter().is_none() || sort.filter_order() == SortFilterOrder::FilterThenSort;
     let keys = sort.keys().collect::<Vec<_>>();
@@ -1311,6 +1341,7 @@ pub(crate) fn render_public_basic_owned_sort_source(
             Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
                 | Expression::OwnedRowDocumentPath(_)
+                | Expression::OwnedSourceDocumentPath(_)
         )
     });
     let mut source = render_checked_basic_owned_sort_source(program, owned_leaf_nodes)?;

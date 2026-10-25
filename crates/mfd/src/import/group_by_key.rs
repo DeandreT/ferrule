@@ -14,13 +14,9 @@ const MAX_DEPTH: usize = 64;
 #[cfg(test)]
 mod tests;
 
-fn ordinary(node: &SchemaNode) -> bool {
-    !node.nillable
-        && !node.nullable
-        && !node.container_nullable
-        && !node.json_single_container_nullable()
+pub(super) fn ordinary(node: &SchemaNode) -> bool {
+    super::presence::plain_non_null(node)
         && !node.json_any
-        && !node.json_array_wrapper
         && node.recursive_ref.is_none()
         && node.alternatives().is_empty()
         && node.dynamic_fields().is_none()
@@ -183,7 +179,7 @@ impl GraphBuilder<'_> {
                 schema_node_at(&primary.schema, &rows[..depth]).is_none_or(|node| {
                     !ordinary(node)
                         || !matches!(node.kind, SchemaKind::Group { .. })
-                        || !node.required_fields().contains(&rows[depth])
+                        || !super::presence::json_property_required(node, &rows[depth])
                         || node.repeating && !self.framed.contains(&rows[..depth])
                 })
             })
@@ -228,9 +224,9 @@ impl GraphBuilder<'_> {
                 || (rows.len() + 1..=path.len()).any(|depth| {
                     let parent = schema_node_at(&primary.schema, &path[..depth - 1]);
                     let node = schema_node_at(&primary.schema, &path[..depth]);
-                    !parent
-                        .is_some_and(|parent| parent.required_fields().contains(&path[depth - 1]))
-                        || !node.is_some_and(|node| ordinary(node) && !node.repeating)
+                    !parent.is_some_and(|parent| {
+                        super::presence::json_property_required(parent, &path[depth - 1])
+                    }) || !node.is_some_and(|node| ordinary(node) && !node.repeating)
                 })
             {
                 return None;

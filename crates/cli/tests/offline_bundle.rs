@@ -655,10 +655,8 @@ fn offline_profile_refuses_dynamic_and_http_sources() -> anyhow::Result<()> {
     for mode in ["dynamic", "http"] {
         let mut p = project();
         if mode == "dynamic" {
-            p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-                node: 0,
-                iteration: Vec::new(),
-            });
+            p.extra_sources[0].dynamic_path =
+                Some(mapping::DynamicSourcePath::legacy(0, Vec::new()));
         } else {
             p.source_options.http_get = Some(serde_json::from_str("{}")?);
         }

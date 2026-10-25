@@ -9,6 +9,11 @@
 //! that combined interpretation once from the unchanged saved DTO. They add no
 //! saved fields and do not replace [`SchemaNode`] as the schema model.
 //!
+//! A format boundary that consults only one layer derives that layer alone
+//! with [`SchemaNode::effective_xml_view`] or
+//! [`SchemaNode::effective_json_nullability`], so metadata owned by the other
+//! format cannot change its result.
+//!
 //! The views keep absence, scalar or object JSON null, array-container JSON
 //! null and XML nil as separate facts. Absence is described by
 //! [`EffectivePresence`] and [`EffectiveCardinality`]; a missing occurrence is
@@ -35,6 +40,17 @@ impl EffectiveSchemaView {
 
     pub fn nullability(self) -> EffectiveNullability {
         self.nullability
+    }
+
+    /// The XML layer of this view.
+    pub fn xml(self) -> EffectiveXmlView {
+        EffectiveXmlView {
+            occurrence: match self.cardinality {
+                EffectiveCardinality::Single { presence } => XmlOccurrence::Single { presence },
+                EffectiveCardinality::Repeated { .. } => XmlOccurrence::Repeated,
+            },
+            nil: self.nullability.xml_nil,
+        }
     }
 
     /// Exactly one declared occurrence that admits no null-like value at any
@@ -77,13 +93,44 @@ pub enum RepeatedItems {
 ///
 /// Elements are required unless `xml_optional`; attributes are optional unless
 /// `xml_attribute_required`; simple text content is required. JSON property
-/// presence is owned by the parent's required-property list instead. XML and
+/// presence is owned by the parent's required-property list instead
+/// ([`SchemaNode::json_property_presence`]). XML and
 /// JSON instance readers keep their lenient handling of missing occurrences;
 /// this is the declared presence consulted by schema export and mapping proofs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffectivePresence {
     Required,
     Optional,
+}
+
+/// The XML layer of an effective view: declared occurrence and nil admission.
+///
+/// Construct it with [`SchemaNode::effective_xml_view`] when only the XML
+/// boundary is consulted, or take it from a complete [`EffectiveSchemaView`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectiveXmlView {
+    occurrence: XmlOccurrence,
+    nil: bool,
+}
+
+impl EffectiveXmlView {
+    pub fn occurrence(self) -> XmlOccurrence {
+        self.occurrence
+    }
+
+    /// The XML occurrence may carry `xsi:nil="true"` ([`crate::Value::XmlNil`]).
+    pub fn nil(self) -> bool {
+        self.nil
+    }
+}
+
+/// How many XML occurrences of a node one parent element carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum XmlOccurrence {
+    /// At most one occurrence, with its declared presence.
+    Single { presence: EffectivePresence },
+    /// Repeated elements; a missing collection is an empty collection.
+    Repeated,
 }
 
 /// Which explicit null-like values each format boundary admits at this node.
@@ -188,6 +235,37 @@ impl SchemaNode {
     /// interpreted. Recursive references report their own local occurrence
     /// metadata; their child shape is resolved separately by the formats.
     pub fn effective_view(&self) -> Result<EffectiveSchemaView, EffectiveViewError> {
+        let json = self.effective_json_nullability()?;
+        let xml = self.effective_xml_view()?;
+        // Both layers derive repetition from the same saved flag.
+        let cardinality = match (xml.occurrence, json) {
+            (XmlOccurrence::Single { presence }, _) => EffectiveCardinality::Single { presence },
+            (XmlOccurrence::Repeated, JsonNullability::NestedArrays { .. }) => {
+                EffectiveCardinality::Repeated {
+                    item_count: self.item_count_range,
+                    items: RepeatedItems::NestedArrays,
+                }
+            }
+            (XmlOccurrence::Repeated, _) => EffectiveCardinality::Repeated {
+                item_count: self.item_count_range,
+                items: RepeatedItems::Values,
+            },
+        };
+        Ok(EffectiveSchemaView {
+            cardinality,
+            nullability: EffectiveNullability {
+                xml_nil: xml.nil,
+                json,
+            },
+        })
+    }
+
+    /// Derives only the JSON layer: occurrence, array or nested-array shape
+    /// and where explicit JSON null is admitted.
+    ///
+    /// XML presence and nil metadata are not consulted, so a JSON boundary
+    /// never rejects a schema for XML-only role metadata.
+    pub fn effective_json_nullability(&self) -> Result<JsonNullability, EffectiveViewError> {
         if self.nullable && !self.is_scalar() {
             return Err(EffectiveViewError::ScalarNullOutsideScalar);
         }
@@ -200,67 +278,79 @@ impl SchemaNode {
         if !self.json_array_wrapper_is_valid() {
             return Err(EffectiveViewError::InvalidJsonArrayWrapper);
         }
+        let group = matches!(self.kind, SchemaKind::Group { .. });
+        Ok(if !self.repeating {
+            JsonNullability::Occurrence {
+                null: if group {
+                    self.container_nullable
+                } else {
+                    self.nullable
+                },
+            }
+        } else if self.json_array_wrapper {
+            JsonNullability::NestedArrays {
+                container_null: self.container_nullable,
+            }
+        } else {
+            JsonNullability::Array {
+                container_null: self.container_nullable,
+                item_null: if group {
+                    self.json_single_container_nullable()
+                } else {
+                    self.nullable
+                },
+            }
+        })
+    }
+
+    /// Declared JSON presence of this object's property `name`: required
+    /// when the object's required-property list names it, otherwise optional.
+    ///
+    /// Presence says nothing about null: a required property may still carry
+    /// an explicit JSON null admitted by its own
+    /// [`SchemaNode::effective_json_nullability`]. A scalar has no properties.
+    pub fn json_property_presence(&self, name: &str) -> Option<EffectivePresence> {
+        let SchemaKind::Group { required, .. } = &self.kind else {
+            return None;
+        };
+        Some(if required.iter().any(|field| field == name) {
+            EffectivePresence::Required
+        } else {
+            EffectivePresence::Optional
+        })
+    }
+
+    /// Derives only the XML layer: declared occurrence and `xsi:nil`
+    /// admission.
+    ///
+    /// JSON null and array metadata are not consulted, so an XML boundary
+    /// never rejects a schema for JSON-only role metadata.
+    pub fn effective_xml_view(&self) -> Result<EffectiveXmlView, EffectiveViewError> {
         if !self.xml_optional_is_valid() {
             return Err(EffectiveViewError::XmlOptionalOutsideElement);
         }
         if !self.xml_attribute_required_is_valid() {
             return Err(EffectiveViewError::XmlAttributeRequiredOutsideAttribute);
         }
-        let group = matches!(self.kind, SchemaKind::Group { .. });
-        let (cardinality, json) = if !self.repeating {
-            let presence = if self.attribute {
-                if self.xml_attribute_required {
-                    EffectivePresence::Required
-                } else {
-                    EffectivePresence::Optional
-                }
-            } else if self.xml_optional {
-                EffectivePresence::Optional
-            } else {
-                EffectivePresence::Required
-            };
-            let null = if group {
-                self.container_nullable
-            } else {
-                self.nullable
-            };
-            (
-                EffectiveCardinality::Single { presence },
-                JsonNullability::Occurrence { null },
-            )
-        } else if self.json_array_wrapper {
-            (
-                EffectiveCardinality::Repeated {
-                    item_count: self.item_count_range,
-                    items: RepeatedItems::NestedArrays,
-                },
-                JsonNullability::NestedArrays {
-                    container_null: self.container_nullable,
-                },
-            )
+        let occurrence = if self.repeating {
+            XmlOccurrence::Repeated
         } else {
-            let item_null = if group {
-                self.json_single_container_nullable()
+            let optional = if self.attribute {
+                !self.xml_attribute_required
             } else {
-                self.nullable
+                self.xml_optional
             };
-            (
-                EffectiveCardinality::Repeated {
-                    item_count: self.item_count_range,
-                    items: RepeatedItems::Values,
+            XmlOccurrence::Single {
+                presence: if optional {
+                    EffectivePresence::Optional
+                } else {
+                    EffectivePresence::Required
                 },
-                JsonNullability::Array {
-                    container_null: self.container_nullable,
-                    item_null,
-                },
-            )
+            }
         };
-        Ok(EffectiveSchemaView {
-            cardinality,
-            nullability: EffectiveNullability {
-                xml_nil: self.nillable,
-                json,
-            },
+        Ok(EffectiveXmlView {
+            occurrence,
+            nil: self.nillable,
         })
     }
 }

@@ -229,7 +229,7 @@ fn roots_program() -> Program {
             source: loaded.clone(),
             dynamic: Some(DynamicSourceProgram {
                 path: 10,
-                driver: SourceIteration::new(vec!["Files".into()]),
+                driver: SourceIteration::new(vec!["Files".into()]).into(),
             }),
         },
         NamedSourceProgram {
@@ -237,7 +237,7 @@ fn roots_program() -> Program {
             source: loaded,
             dynamic: Some(DynamicSourceProgram {
                 path: 20,
-                driver: SourceIteration::new(vec!["Files".into()]),
+                driver: SourceIteration::new(vec!["Files".into()]).into(),
             }),
         },
     ];

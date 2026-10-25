@@ -1,7 +1,7 @@
 //! Filesystem `run`: an immutable prepared request, then acquisition,
 //! evaluation and atomic publication of every planned target.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
@@ -12,7 +12,9 @@ use mapping::FormatOptions;
 use crate::cancellation::{CancellableHook, NoDebugHook, check_cancelled};
 use crate::execution_policy::TRUSTED;
 use crate::output_documents::{OutputDestination, TargetOutput, write_target_outputs};
+use crate::payload::PayloadRunOutcome;
 use crate::route_capability::{HostRoute, InputRole, PlannedPublication, RoutePlan, RouteRefusal};
+use crate::sqlite_query::PreparedQuery;
 use crate::{
     ExecutionPolicy, FilesystemPdfReader, FilesystemRunPolicy, ProjectDynamicSourceLoader,
     TargetSelection, TraceSink, absolute_mapping_path, http_url, load_project,
@@ -324,6 +326,35 @@ pub fn run_project_value_with_options(
     run_project_value_with_filesystem_policy(project, project_path, options, None)
 }
 
+/// Previews an in-memory project against its filesystem inputs.
+///
+/// Inputs, including declared SQLite queries, are acquired exactly as by
+/// [`run_project_value_with_options`]; each query connection is closed before
+/// evaluation. Targets are returned as serialized in-memory artifacts and no
+/// file is staged or published.
+pub fn preview_project_value_from_files(
+    project: &mapping::Project,
+    project_path: &Path,
+    options: &RunOptions<'_>,
+) -> anyhow::Result<PayloadRunOutcome> {
+    PreparedFileRun::prepare_preview(project, project_path, options.request())?
+        .preview(&options.observers())
+}
+
+/// Like [`preview_project_value_from_files`], with a caller-owned reader for
+/// configured filesystem PDF inputs. The reader is used exactly where a file
+/// run would read a PDF: the primary once, selected static sources, and
+/// dynamic sources the mapping requests.
+pub fn preview_project_value_from_files_with_pdf_reader(
+    project: &mapping::Project,
+    project_path: &Path,
+    options: &RunOptions<'_>,
+    reader: &dyn FilesystemPdfReader,
+) -> anyhow::Result<PayloadRunOutcome> {
+    PreparedFileRun::prepare_preview(project, project_path, options.request())?
+        .preview_with_pdf_reader(&options.observers(), reader)
+}
+
 /// Loads a filesystem project with a caller-owned PDF reader.
 pub fn run_project_with_options_and_pdf_reader(
     project_path: &Path,
@@ -402,7 +433,25 @@ pub struct PreparedFileRun<'a> {
     targets: Vec<PlannedProjectTarget<'a>>,
     /// None loads every static named source; Some loads only those listed.
     required_static_names: Option<BTreeSet<&'a str>>,
+    /// Declared SQLite queries, validated and bound before any acquisition.
+    primary_query: Option<PreparedQuery>,
+    named_queries: BTreeMap<&'a str, PreparedQuery>,
+    delivery: Delivery,
     plan: RoutePlan,
+}
+
+/// Whether a prepared run publishes files or returns in-memory artifacts.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Delivery {
+    Files,
+    Preview,
+}
+
+/// Evaluated target values handed to the delivery step after every input,
+/// including each declared query connection, has been released.
+enum Evaluated {
+    Selected(engine::SelectedTargetOutput),
+    All(engine::ExecutionOutputs),
 }
 
 impl<'a> PreparedFileRun<'a> {
@@ -410,6 +459,26 @@ impl<'a> PreparedFileRun<'a> {
         project: &'a mapping::Project,
         project_path: &'a Path,
         request: RunRequest<'a>,
+    ) -> anyhow::Result<Self> {
+        Self::prepare_delivery(project, project_path, request, Delivery::Files)
+    }
+
+    /// Prepares a filesystem preview: inputs are acquired exactly as for
+    /// [`Self::prepare`], but targets are rendered in memory and nothing is
+    /// published, so target locations need no write authority.
+    pub fn prepare_preview(
+        project: &'a mapping::Project,
+        project_path: &'a Path,
+        request: RunRequest<'a>,
+    ) -> anyhow::Result<Self> {
+        Self::prepare_delivery(project, project_path, request, Delivery::Preview)
+    }
+
+    fn prepare_delivery(
+        project: &'a mapping::Project,
+        project_path: &'a Path,
+        request: RunRequest<'a>,
+        delivery: Delivery,
     ) -> anyhow::Result<Self> {
         require_valid(project)?;
         let policy = request.policy();
@@ -428,8 +497,10 @@ impl<'a> PreparedFileRun<'a> {
             &targets,
             request.protected_output_paths,
         )?;
-        for target in &targets {
-            policy.authorize_write(target.destination.path())?;
+        if delivery == Delivery::Files {
+            for target in &targets {
+                policy.authorize_write(target.destination.path())?;
+            }
         }
         engine::check_source_ownership_capability_with_observers(
             project,
@@ -477,15 +548,20 @@ impl<'a> PreparedFileRun<'a> {
             plan.acquire_dynamic(name);
         }
         for target in &targets {
-            plan.publish(match &target.destination {
-                OutputDestination::Static(path) => PlannedPublication::File {
+            plan.publish(match (&target.destination, delivery) {
+                (_, Delivery::Preview) => PlannedPublication::Payload {
+                    target: target.name.to_owned(),
+                },
+                (OutputDestination::Static(path), Delivery::Files) => PlannedPublication::File {
                     target: target.name.to_owned(),
                     path: path.clone(),
                 },
-                OutputDestination::DynamicBase(base) => PlannedPublication::Documents {
-                    target: target.name.to_owned(),
-                    base: base.clone(),
-                },
+                (OutputDestination::DynamicBase(base), Delivery::Files) => {
+                    PlannedPublication::Documents {
+                        target: target.name.to_owned(),
+                        base: base.clone(),
+                    }
+                }
             });
         }
         plan.publish_host_artifacts(request.protected_output_paths);
@@ -496,6 +572,35 @@ impl<'a> PreparedFileRun<'a> {
             InputRole::Primary | InputRole::PipelineHost(_) => None,
         })?;
 
+        // Every declared query and binding is checked before any input opens.
+        let primary_query = project
+            .source_options
+            .sqlite_read
+            .as_ref()
+            .map(|profile| {
+                PreparedQuery::prepare(
+                    &InputRole::Primary,
+                    &input_path,
+                    &project.source,
+                    profile,
+                    request.runtime_parameters,
+                )
+            })
+            .transpose()?;
+        let mut named_queries = BTreeMap::new();
+        for extra in static_sources(project, required_static_names.as_ref()) {
+            if let Some(profile) = &extra.options.sqlite_read {
+                let query = PreparedQuery::prepare(
+                    &InputRole::Named(extra.name.clone()),
+                    &named_source_path(project_path, extra),
+                    &extra.schema,
+                    profile,
+                    request.runtime_parameters,
+                )?;
+                named_queries.insert(extra.name.as_str(), query);
+            }
+        }
+
         Ok(Self {
             project,
             project_path,
@@ -503,6 +608,9 @@ impl<'a> PreparedFileRun<'a> {
             input_path,
             targets,
             required_static_names,
+            primary_query,
+            named_queries,
+            delivery,
             plan,
         })
     }
@@ -529,6 +637,93 @@ impl<'a> PreparedFileRun<'a> {
         observers: &RunObservers<'_>,
         reader: Option<&dyn FilesystemPdfReader>,
     ) -> anyhow::Result<RunOutcome> {
+        if self.delivery != Delivery::Files {
+            bail!("a prepared preview returns in-memory artifacts; use `preview`");
+        }
+        let input_path = self.input_path.clone();
+        let output_path = self.targets[0].destination.path().to_path_buf();
+        let request = self.request;
+        let policy = request.policy();
+        let (targets, evaluated, current_datetime) = self.evaluate(observers, reader)?;
+        let written = match &evaluated {
+            Evaluated::Selected(output) => write_selected_target(
+                &targets[0],
+                output,
+                &current_datetime,
+                request.protected_output_paths,
+                policy,
+            )?,
+            Evaluated::All(outputs) => write_all_targets(
+                &targets,
+                outputs,
+                &current_datetime,
+                request.protected_output_paths,
+                policy,
+            )?,
+        };
+
+        Ok(RunOutcome {
+            records_written: written.records,
+            input_path,
+            output_path,
+            primary_outputs: written.primary_outputs,
+            extra_outputs: written.extra_outputs,
+            artifacts: written.artifacts,
+        })
+    }
+
+    /// Acquires and evaluates like [`Self::execute`], then renders every
+    /// planned target in memory. Nothing is staged or published.
+    pub fn preview(self, observers: &RunObservers<'_>) -> anyhow::Result<PayloadRunOutcome> {
+        self.preview_with_optional_pdf_reader(observers, None)
+    }
+
+    /// Previews with a caller-owned reader for configured filesystem PDF inputs.
+    pub fn preview_with_pdf_reader(
+        self,
+        observers: &RunObservers<'_>,
+        reader: &dyn FilesystemPdfReader,
+    ) -> anyhow::Result<PayloadRunOutcome> {
+        self.preview_with_optional_pdf_reader(observers, Some(reader))
+    }
+
+    fn preview_with_optional_pdf_reader(
+        self,
+        observers: &RunObservers<'_>,
+        reader: Option<&dyn FilesystemPdfReader>,
+    ) -> anyhow::Result<PayloadRunOutcome> {
+        if self.delivery != Delivery::Preview {
+            bail!("a prepared file run publishes its targets; use `prepare_preview`");
+        }
+        let project = self.project;
+        let project_path = self.project_path;
+        let output_path = self.request.output_path;
+        let (_, evaluated, current_datetime) = self.evaluate(observers, reader)?;
+        match &evaluated {
+            Evaluated::Selected(output) => crate::payload::render_selected_outcome(
+                project,
+                project_path,
+                output_path,
+                output,
+                &current_datetime,
+            ),
+            Evaluated::All(outputs) => crate::payload::render_all_outcome(
+                project,
+                project_path,
+                output_path,
+                outputs,
+                &current_datetime,
+            ),
+        }
+    }
+
+    /// Acquires every input in plan order, evaluates the selected targets and
+    /// releases all inputs before returning their values.
+    fn evaluate(
+        self,
+        observers: &RunObservers<'_>,
+        reader: Option<&dyn FilesystemPdfReader>,
+    ) -> anyhow::Result<(Vec<PlannedProjectTarget<'a>>, Evaluated, String)> {
         observers.require_declared(self.request.observers)?;
         let Self {
             project,
@@ -537,19 +732,26 @@ impl<'a> PreparedFileRun<'a> {
             input_path,
             targets,
             required_static_names,
+            primary_query,
+            named_queries,
+            delivery: _,
             plan: _,
         } = self;
         let policy = request.policy();
-        let output_path = targets[0].destination.path().to_path_buf();
 
         check_cancelled(observers.cancellation)?;
-        let source_instance = read_instance_with_pdf_reader(
-            &input_path,
-            &project.source,
-            &project.source_options,
-            reader,
-            policy,
-        )?;
+        let source_instance = match &primary_query {
+            Some(query) => {
+                query.acquire(&input_path, &project.source, policy, observers.cancellation)?
+            }
+            None => read_instance_with_pdf_reader(
+                &input_path,
+                &project.source,
+                &project.source_options,
+                reader,
+                policy,
+            )?,
+        };
         let mut read_set = read_set::ReadSet::new(project_path);
         read_set.push_source(&input_path, &source_instance);
 
@@ -558,9 +760,17 @@ impl<'a> PreparedFileRun<'a> {
         for extra in static_sources(project, required_static_names.as_ref()) {
             check_cancelled(observers.cancellation)?;
             let path = named_source_path(project_path, extra);
-            let instance =
-                read_instance_with_pdf_reader(&path, &extra.schema, &extra.options, reader, policy)
-                    .with_context(|| format!("loading extra source `{}`", extra.name))?;
+            let instance = match named_queries.get(extra.name.as_str()) {
+                Some(query) => query.acquire(&path, &extra.schema, policy, observers.cancellation),
+                None => read_instance_with_pdf_reader(
+                    &path,
+                    &extra.schema,
+                    &extra.options,
+                    reader,
+                    policy,
+                ),
+            }
+            .with_context(|| format!("loading extra source `{}`", extra.name))?;
             read_set.push_source(&path, &instance);
             extras.push((extra.name.clone(), instance));
         }
@@ -599,53 +809,27 @@ impl<'a> PreparedFileRun<'a> {
             (None, Some(debug_hook)) => execution = execution.with_debug_hook(debug_hook),
             (None, None) => {}
         }
-        let written = if let Some(selection) = request.target {
-            let output = engine::run_selected_target_with_sources_and_context(
+        let evaluated = if let Some(selection) = request.target {
+            Evaluated::Selected(engine::run_selected_target_with_sources_and_context(
                 project,
                 &source_instance,
                 extras,
                 &execution,
                 selection,
-            )?;
-            allow_output_publication(&request, observers, &mut read_set, &dynamic_loader)?;
-            // Target values own their data; inputs are no longer needed during serialization.
-            drop(dynamic_loader);
-            drop(source_instance);
-            write_selected_target(
-                &targets[0],
-                &output,
-                &current_datetime,
-                request.protected_output_paths,
-                policy,
-            )?
+            )?)
         } else {
-            let outputs = engine::run_outputs_with_sources_and_context(
+            Evaluated::All(engine::run_outputs_with_sources_and_context(
                 project,
                 &source_instance,
                 extras,
                 &execution,
-            )?;
-            allow_output_publication(&request, observers, &mut read_set, &dynamic_loader)?;
-            // Target values own their data; inputs are no longer needed during serialization.
-            drop(dynamic_loader);
-            drop(source_instance);
-            write_all_targets(
-                &targets,
-                &outputs,
-                &current_datetime,
-                request.protected_output_paths,
-                policy,
-            )?
+            )?)
         };
-
-        Ok(RunOutcome {
-            records_written: written.records,
-            input_path,
-            output_path,
-            primary_outputs: written.primary_outputs,
-            extra_outputs: written.extra_outputs,
-            artifacts: written.artifacts,
-        })
+        allow_output_publication(&request, observers, &mut read_set, &dynamic_loader)?;
+        // Target values own their data; inputs are no longer needed during serialization.
+        drop(dynamic_loader);
+        drop(source_instance);
+        Ok((targets, evaluated, current_datetime))
     }
 }
 

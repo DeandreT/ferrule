@@ -248,114 +248,96 @@ mechanics; it does not qualify JSON mapping behavior. Before changing a cell to
 causes. Native export and vendor-backend support require separate release-bound
 execution records, not a source test or a successfully emitted library.
 
-## Ordinary Basic owned windows
+## Portable Basic cohorts
 
-[`basic-owned-windows/`](basic-owned-windows/) is a portable, self-authored finite
-corpus for the explicit Basic-window lowering/emission APIs. Its ten genuine
-`mapping::Project` models produce twelve calls per backend: one `All` call per
-model, plus `Primary` and named-target selections for the operator model. The
-native engine and compiled public Rust/C# callers use typed instances, not JSON
-codecs or a replacement evaluator. All phase-sensitive scopes have explicit
-`OwnedSource` iteration; the nested identity control has proved owned ancestry.
-Unrelated wholly legacy identity routes and the singleton gap are outside this
-corpus.
+A portable Basic cohort separates three contracts:
 
-The frozen models cover all five window operators, composition order, parent
-bounds versus colliding item fields, nested positions/identity, stable ties under
-both filter/sort orders, zero/oversized/reversed windows, explicit repeated
-Scalar construction, and implicit `First` on nonrepeating Group targets. Scalar
-cardinality `First` remains invalid. Failure controls retain node zero and
-`u32::MAX`, eager bounds over empty/emptied cohorts, and predicate/key/bound/target
-priority.
+- **Cases and oracle.** The cohort directory holds self-authored data only:
+  `projects.rs` builds genuine `mapping::Project` models, `cases.json` or
+  `cases.rs` lists each case's model, typed source, supplied named inputs and
+  the complete expected outcome of every call, and `closed.rs` (where present)
+  lists Projects and Programs the profile must refuse. Expected values are
+  written independently, never derived from an executor's return, and are
+  shared by every executor.
+- **Execution bindings.** The test-only
+  [`execution_bindings.rs`](../crates/cli/tests/code_generation/execution_bindings.rs)
+  module launches the interpreter, one generated Rust host covering every
+  model and one generated C# host per model. It owns their build cache (a
+  per-run temporary directory, or the dedicated
+  `FERRULE_CODEGEN_HOST_TARGET_DIR`), isolated .NET CLI/package/temporary
+  directories, `DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=false`, warnings denied for
+  the Rust host, and retention: a run directory with its per-call host
+  evidence is removed unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`. A retained
+  run keeps a bounded tail of each command's output under `logs/` and a
+  `RUN-MANIFEST.json` listing every command with its exit status and every
+  retained file with its size and SHA-256; its per-run Cargo target and .NET
+  sandboxes are restorable caches, summarized in the manifest and dropped.
+  Failure messages quote a bounded tail of host output. A cohort chooses only
+  its generation profile's lowering and emitters.
+- **Results.** Plain tests in `crates/cli/tests/code_generation/` compare every
+  call of every executor with the oracle and fail on any mismatch or missing
+  call. They need no preparation step, success receipt, source fingerprint or
+  earlier campaign. A missing `cargo` or .NET SDK fails the ignored host test;
+  it is never reported as a pass, and the harnesses compile only with the
+  `codegen-tests` feature.
 
-`expected.json` contains independent contract derivations and complete typed
-trees/errors. Its local `$ref` entries only deduplicate literal expected trees;
-the preparer expands them into explicit per-backend rows before execution. It
-never derives an oracle from a subject return. Backend-specific display text and
-CLR `FoundKind` are explicit rather than normalized away. Current native
-calibration is mandatory: even a generated/native agreement is not sufficient
-unless all three independently match these expectations. Review the source
-contract and all expanded expectations before running the corpus.
+`cases.json` trees use the lossless recipe codec shared by the hosts:
+`["Null"]`, `["JsonNull"]`, `["XmlNil"]`, `["Bool", b]`, `["Int", n]`,
+`["String", s]`, `["Float", "<16 hex digits of the IEEE-754 bits>"]`,
+`["Repeated", [items]]`, `["DocumentSet", [[path, resolved or null, tree], ...]]`
+and `["Group", [[name, tree], ...], origin]`, where
+`origin` is the XML type origin (`{"kind": "Unknown", ...}` for ordinary
+groups). An expected outcome is `{"Ok": [[target, tree], ...]}`, with `null`
+naming the primary target, or `{"Err": recipe}` with a typed error recipe that
+each executor converts to its own error value before comparing. Human error
+wording is not part of that typed comparison; a recipe may list the exact C#
+exception messages separately in `csharp_messages`, outermost first, which
+the C# host must reproduce for that many leading exceptions.
 
-Python 3.11+, the repository's Rust toolchain, and .NET 10 are required. Use the
-assigned serialized compiler lane and existing shared Cargo target. Preparation
-does not compile or run mappings; only the explicit `run` command executes its
-25-step plan. All paths below are absolute except the preparer:
+The [`basic-owned-occurrence/`](basic-owned-occurrence/),
+[`basic-owned-filter/`](basic-owned-filter/),
+[`basic-owned-nested-alias/`](basic-owned-nested-alias/),
+[`basic-owned-sort/`](basic-owned-sort/),
+[`basic-owned-windows/`](basic-owned-windows/) and
+[`basic-owned-document-path/`](basic-owned-document-path/) cohorts follow this
+layout with a JSON oracle; the SequenceExists and SequenceAggregate cohorts share the same
+bindings with `cases.rs`. The
+[`basic-owned-dynamic-document-path/`](basic-owned-dynamic-document-path/)
+cohort keeps the same JSON oracle with host documents and recorded loader
+callbacks, run by the owned dynamic-loading hosts. The
+[`basic-owned-xml-document-set/`](basic-owned-xml-document-set/) cohort keeps
+the outcome layout but supplies each endpoint as XML member lists. Each cohort
+README lists its cases and expected outcomes. Run one cohort, including its
+generated hosts, with its harness
+filter, for example:
 
 ```sh
-P=conformance/basic-owned-windows/prepare.py
-python3 "$P" check
-python3 "$P" snapshot --source-root "$PWD" --out "$EVIDENCE/source.json"
+cargo test -p cli --test code_generation --features codegen-tests occurrence640 -- --include-ignored
 ```
 
-Take the snapshot after the backend sources are stable, before their focused
-qualifications. Each successful qualification supplies a JSON receipt with
-`issue` (702 or 703), `qualified: true`, `source_fingerprint` from that snapshot,
-`checks: ["generated_windows", "preserved_sort_filter", "runtime"]`, and
-`commands` containing each actual `argv`, zero `exit_code`, and absolute
-`stdout`/`stderr` file paths. Include the complete current runtime tests (C#
-smoke tests as well as Rust runtime tests). The C# receipt additionally records
-`runtime_dll_sha256` for the freshly built matching `Ferrule.Runtime.dll`.
-Never substitute historical qualification results or a stale DLL.
-
-```sh
-python3 "$P" bind --snapshot "$EVIDENCE/source.json" \
-  --rust-evidence "$EVIDENCE/rust-qualified.json" \
-  --csharp-evidence "$EVIDENCE/csharp-qualified.json" \
-  --runtime-dll "$RUNTIME_DLL" --out "$EVIDENCE/binding.json"
-python3 "$P" prepare --out "$EVIDENCE/window36" --binding "$EVIDENCE/binding.json" \
-  --cargo "$CARGO" --dotnet "$DOTNET" --target "$CARGO_TARGET_DIR"
-python3 "$P" run --plan "$EVIDENCE/window36/COMMAND_PLAN.json"
-```
-
-The binding hashes the current transitive local Rust source closure and complete
-C# runtime/smoke sources, records retained qualification commands, and pins the
-fresh DLL. The runner checks source, fixture, tool and DLL pins before each
-step. Generated artifacts, real Project/Program representations, public
-admission/lowering/emission results, complete stdout/stderr and command receipts
-remain in the new output directory. Typed mapping errors are successful capture
-records, not harness failures; compiler/emission/launcher failures retain the
-reached results and explicitly list later unrun steps.
-
-No caller compares early. The final classifier first seals all 36 original
-capture descriptors in `ALL36_BEFORE_COMPARISON.json`, then compares complete
-outputs and typed error envelopes, including original causes and absent CLR
-metadata. `WINDOW36_CLASSIFICATION.json` separately reports native calibration
-and cross-backend differences. Missing captures cannot qualify. C# exception
-stack/assembly details are retained verbatim, not treated as portable literal
-oracles. Results qualify only this finite ordinary Basic cohort; full window,
-full-error and total-parity flags remain false and the canonical inventory is
-unchanged. Output directories are exclusive: use a fresh directory for each run.
+The owned preset admission record
+(`crates/cli/tests/code_generation/owned_capability_presets.rs`) reads these
+cohorts' models from the same `projects.rs` builders.
 
 ## Basic primary-row failures
 
 The CLI integration module
 [`basic_owned_row_failures.rs`](../crates/cli/tests/code_generation/basic_owned_row_failures.rs)
-qualifies genuine Projects with independently fixed inputs and typed outcomes
-through the native engine and compiled public Rust/C# callers. Preparation and
-consumer execution are separate ignored tests so a coordinator can serialize
-compiler use.
-
-Set `FERRULE_BASIC_ROW808_PREPARE_DIR` to a fresh absolute directory whose parent
-already exists, then run from the repository root:
+checks three genuine Projects and 31 cases with independently fixed inputs and
+typed outcomes through the native engine and compiled public Rust/C# callers.
+The plain test retains the complete model, case, target-selection and public
+API inventory before evaluating any mapping, then compares all 93 interpreter
+calls and the paired public lowering and emission. The ignored test repeats
+that preparation in its own run directory, then builds and runs the generated
+consumers, which check complete typed results rather than error text alone and
+reject missing results. Neither needs an earlier preparation or receipt:
 
 ```sh
 cargo test -p cli --features codegen-tests --test code_generation --locked \
-  basic_owned_row_failures::prepare_basic_owned_row808_three_models_ninety_three_calls \
-  -- --exact --ignored --nocapture --test-threads=1
-cargo test -p cli --features codegen-tests --test code_generation --locked \
-  basic_owned_row_failures::qualify_basic_owned_row808_prepared_generated_consumers \
-  -- --exact --ignored --nocapture --test-threads=1
+  basic_owned_row_failures:: -- --include-ignored
 ```
 
-Preparation retains the complete model, case, target-selection and public API
-inventory before evaluating any mapping. It publishes `SUCCESSFUL-PREPARATION.json`
-only after every native comparison and paired public lowering/emission succeeds.
-The receipt binds source and artifact bytes with SHA256; changed sources or
-fixtures require fresh preparation. Consumer execution verifies that binding,
-records commands and raw outputs, and checks complete typed results rather than
-error text alone. It rejects missing results and preserves failed builds and
-comparisons. Use a fresh evidence directory for each attempt.
+The run directory is removed unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`.
 
 Rust consumers compile with warnings denied. C# uses isolated CLI/package/temp
 directories and normal NuGet restore for any framework reference packs not
@@ -405,8 +387,13 @@ order, duplicates or semantic decisions. Nonsemantic working metadata is not par
 of the durable source catalogue. These finite comparisons do not establish
 semantic novelty or whole-product disjointness.
 
-`inventory_complete` remains false. The companion retains the 191 nonleaf,
-319 function-signature and 43 xs:constructor gaps, the separate linked COM API
-manual, unlisted supporting APIs and unresolved source contracts. These sets are
-not asserted disjoint or additive. Independent applicability and behavioral/vendor
-execution evidence remain necessary for every dimension.
+The [supplemental source reviews](mfd-2026r2-source-inventory/README.md) cover the
+191 parent-page bodies, 319 named function leaves and 43 `xs:` constructor leaves.
+The separate COM API catalog is inventoried provisionally without claiming a
+2026r2 release binding. Missing signatures, types, defaults and contradictory
+statements remain explicit; source review does not fill those gaps by inference.
+
+`inventory_complete` remains false while linked supporting APIs, release provenance
+and unresolved source contracts remain open. These sets are not disjoint or
+additive. Independent applicability and behavioral/vendor execution evidence remain
+necessary for every dimension.

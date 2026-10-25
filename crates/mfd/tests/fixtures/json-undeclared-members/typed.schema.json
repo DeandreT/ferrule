@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "properties": { "Code": { "type": "integer" } },
+  "required": ["code"],
+  "additionalProperties": { "type": "integer", "minimum": 0 }
+}

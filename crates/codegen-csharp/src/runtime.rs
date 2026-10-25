@@ -1,23 +1,3 @@
-pub(crate) const PROJECT: &str = r#"<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <Deterministic>true</Deterministic>
-    <InvariantGlobalization>true</InvariantGlobalization>
-    <RootNamespace>Ferrule.Generated</RootNamespace>
-    <AssemblyName>Ferrule.Generated</AssemblyName>
-    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-  </PropertyGroup>
-  <ItemGroup>
-    <Compile Include="GeneratedMapping.cs" />
-    <Compile Include="GeneratedTargetBuilder.cs" />
-    <Compile Include="Runtime/**/*.cs" />
-  </ItemGroup>
-</Project>
-"#;
-
 pub(crate) const DYNAMIC_INPUT_DOCUMENT_OUTPUTS_SOURCE: (&str, &str) = (
     "Runtime/FerruleXml.DynamicInputDocumentOutputs.cs",
     include_str!(
@@ -25,7 +5,7 @@ pub(crate) const DYNAMIC_INPUT_DOCUMENT_OUTPUTS_SOURCE: (&str, &str) = (
     ),
 );
 
-pub(crate) const SOURCES: [(&str, &str); 86] = [
+pub(crate) const SOURCES: [(&str, &str); 92] = [
     (
         "Runtime/FerruleSourceOrigin.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleSourceOrigin.cs"),
@@ -49,6 +29,10 @@ pub(crate) const SOURCES: [(&str, &str); 86] = [
     (
         "Runtime/FerruleOwnedDynamicField.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleOwnedDynamicField.cs"),
+    ),
+    (
+        "Runtime/FerruleOwnedDynamicLoading.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleOwnedDynamicLoading.cs"),
     ),
     (
         "Runtime/FerruleXml.DynamicInputDocumentSet.cs",
@@ -149,6 +133,10 @@ pub(crate) const SOURCES: [(&str, &str); 86] = [
         include_str!("../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJson.cs"),
     ),
     (
+        "Runtime/Json/FerruleJson.SchemaNode.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJson.SchemaNode.cs"),
+    ),
+    (
         "Runtime/Json/FerruleJson.AllowedValues.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJson.AllowedValues.cs"),
     ),
@@ -183,6 +171,10 @@ pub(crate) const SOURCES: [(&str, &str); 86] = [
         include_str!(
             "../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJson.PatternProperties.cs"
         ),
+    ),
+    (
+        "Runtime/Json/FerruleJson.Prepared.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJson.Prepared.cs"),
     ),
     (
         "Runtime/Json/FerruleJson.PropertyCounts.cs",
@@ -377,6 +369,10 @@ pub(crate) const SOURCES: [(&str, &str); 86] = [
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleXml.Owned.cs"),
     ),
     (
+        "Runtime/FerruleXml.Prepared.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleXml.Prepared.cs"),
+    ),
+    (
         "Runtime/FerruleXmlTypeOrigin.cs",
         include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleXmlTypeOrigin.cs"),
     ),
@@ -394,9 +390,9 @@ pub(crate) const SOURCES: [(&str, &str); 86] = [
     ),
 ];
 
-pub(crate) const TARGET_BUILDER: &str = r#"namespace Ferrule.Generated;
-
-[global::System.Flags]
+macro_rules! target_builder_body {
+    () => {
+        r#"[global::System.Flags]
 internal enum TargetScalarDomain
 {
     String = 1 << 0,
@@ -479,9 +475,19 @@ internal static class TargetBuilder
             _ => null,
         };
 }
-"#;
+"#
+    };
+}
 
-// Optional companions are never part of ordinary SOURCES/PROJECT.
+/// The target builder of the default namespace.
+#[cfg(test)]
+pub(crate) const TARGET_BUILDER: &str =
+    concat!("namespace Ferrule.Generated;\n\n", target_builder_body!());
+
+/// The target builder source after its namespace declaration.
+pub(crate) const TARGET_BUILDER_BODY: &str = target_builder_body!();
+
+// Optional companions are never part of the ordinary SOURCES or project file.
 pub(crate) const JSON5_SOURCES: [(&str, &str); 10] = [
     (
         "Runtime/Json5/FerruleJson5Syntax.cs",
@@ -528,3 +534,30 @@ pub(crate) const JSON5_SOURCES: [(&str, &str); 10] = [
         include_str!("../../../runtime/csharp/Ferrule.Runtime/Json5/FerruleJson.Json5Schema.cs"),
     ),
 ];
+
+/// The compatibility check added with an included manifest.
+pub(crate) const COMPATIBILITY_SOURCE: (&str, &str) = (
+    "Runtime/FerruleCompatibility.cs",
+    include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCompatibility.cs"),
+);
+
+/// Every vendored runtime source any emitter can add, and the target builder.
+pub(crate) fn vendored_sources() -> impl Iterator<Item = &'static str> {
+    const OPTIONAL: [&str; 9] = [
+        DYNAMIC_INPUT_DOCUMENT_OUTPUTS_SOURCE.1,
+        COMPATIBILITY_SOURCE.1,
+        TARGET_BUILDER_BODY,
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsv.cs"),
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvInput.cs"),
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs"),
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvAcquisition.cs"),
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerrulePrimaryDocuments.cs"),
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleLocalPrimaryFiles.cs"),
+    ];
+    SOURCES
+        .iter()
+        .chain(JSON5_SOURCES.iter())
+        .chain(crate::x12_output::X12_SOURCES.iter())
+        .map(|(_, source)| *source)
+        .chain(OPTIONAL)
+}

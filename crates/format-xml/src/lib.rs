@@ -2,6 +2,7 @@
 //! DTD support includes internal parameter entities used as content-model
 //! particles; XML parsing never loads external entity or subset identifiers.
 
+mod declaration;
 pub mod dtd;
 mod file_set;
 mod instance;

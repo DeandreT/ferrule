@@ -372,8 +372,63 @@ fn private_basic_omits_unused_valid_leaves_but_keeps_structural_admission() {
     }
 }
 
-// Ignored generated execution is admitted separately by the root operator. No
-// extra build cache or automatic cleanup is created by these source proposals.
+/// Where one generated-host test builds and runs. Its evidence variable may
+/// name a fresh absolute root, which is always kept; otherwise the run uses a
+/// fresh temporary directory, removed unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`.
+/// `FERRULE_PRIVATE_RUST_BASIC_RUNTIME` may name another runtime source; it
+/// defaults to this checkout's `codegen-runtime`. The cargo target is
+/// `FERRULE_CODEGEN_HOST_TARGET_DIR` when set, else a directory inside the run
+/// (see `host_target`).
+struct HostRun {
+    root: PathBuf,
+    runtime: PathBuf,
+    temporary: Option<PathBuf>,
+}
+
+impl HostRun {
+    fn new(evidence: &str, label: &str) -> Self {
+        let runtime = std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../codegen-runtime")
+                    .canonicalize()
+                    .expect("checkout runtime source")
+            });
+        if let Some(root) = std::env::var_os(evidence) {
+            return Self {
+                root: root.into(),
+                runtime,
+                temporary: None,
+            };
+        }
+        let parent = std::env::temp_dir().join(format!(
+            "ferrule_codegen_rust_{label}_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&parent);
+        fs::create_dir_all(&parent).expect("temporary run directory");
+        Self {
+            root: parent.join("run"),
+            runtime,
+            temporary: Some(parent),
+        }
+    }
+}
+
+impl Drop for HostRun {
+    fn drop(&mut self) {
+        let Some(parent) = &self.temporary else {
+            return;
+        };
+        if std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").as_deref() == Some("1".as_ref()) {
+            eprintln!("retained generated host run at {}", parent.display());
+        } else {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+}
+
 fn retained_file(path: &Path, bytes: &[u8]) {
     let mut file = fs::OpenOptions::new()
         .write(true)
@@ -785,21 +840,14 @@ fn generated_programs() -> Vec<(&'static str, Program, &'static str)> {
 }
 
 #[test]
-#[ignore = "requires separately admitted runtime source, retained evidence root and exclusive generated host target"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn private_basic_generated_typed_corpus_retains_raw_before_assertions() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_EVIDENCE_ROOT")
-            .expect("explicit retained evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PRIVATE_RUST_BASIC_EVIDENCE_ROOT",
+        "private_rust_basic",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME")
-            .expect("explicit qualified runtime source"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "explicit admitted host target; no duplicate cache"
-    );
     fs::create_dir(&root).expect("fresh evidence root; preserve existing evidence");
     fs::create_dir(root.join("src")).unwrap();
     let mut generated = String::new();
@@ -1007,7 +1055,7 @@ const CHECK_P04: &str = r#"
         let source=primary();let reference=reference();let exact=expected([("Value",s("N.exact"))]);let lower=expected([("Value",s("N.lower"))]);let literal=expected([("Value",s("N.literal.primary"))]);let declared=declarations(&reference,&exact,&lower,&literal);
         check_primary("G439-P04",&source,&declared,repeated([
             expected([("Value",s("N1")),("OwnedPosition",i(1)),("LegacyPosition",i(1))]),
-            expected([("Value",s("N2")),("OwnedPosition",i(2)),("LegacyPosition",i(2))]),
+            expected([("Value",s("N2")),("OwnedPosition",i(2)),("LegacyPosition",i(1))]),
         ]));
     }
 }
@@ -1442,7 +1490,7 @@ fn private_source_failure_bridge_keeps_generated_owned_and_dynamic_routes_closed
         source: source_schema(),
         dynamic: Some(codegen::DynamicSourceProgram {
             path: 30,
-            driver: codegen::SourceIteration::new(path(&["Rows"])),
+            driver: codegen::SourceIteration::new(path(&["Rows"])).into(),
         }),
     });
     check_failure_source_error(
@@ -1487,7 +1535,7 @@ fn private_source_failure_bridge_retains_only_potential_ordinary_dependencies() 
         source: source_schema(),
         dynamic: Some(codegen::DynamicSourceProgram {
             path: 30,
-            driver: codegen::SourceIteration::new(path(&["Rows"])),
+            driver: codegen::SourceIteration::new(path(&["Rows"])).into(),
         }),
     });
     let expected = ProgramValidationError::OwnedSource {
@@ -1798,21 +1846,14 @@ fn generated_failure_programs() -> Vec<(&'static str, Program, &'static str)> {
 }
 
 #[test]
-#[ignore = "requires separately admitted runtime source, fresh retained failure evidence root and shared generated host target"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn private_source_failure_generated_corpus_retains_complete_raw_before_assertions() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_FAILURE_EVIDENCE_ROOT")
-            .expect("fresh retained failure evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PRIVATE_RUST_FAILURE_EVIDENCE_ROOT",
+        "private_rust_failure",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME")
-            .expect("explicit qualified runtime source"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "explicit shared target/no duplicate cache"
-    );
     fs::create_dir(&root).expect("fresh evidence namespace");
     fs::create_dir(root.join("src")).unwrap();
     let mut generated = String::new();
@@ -2074,7 +2115,7 @@ fn checked_catalogue_program() -> Program {
     );
     p.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 99,
-        driver: codegen::SourceIteration::new(Vec::new()),
+        driver: codegen::SourceIteration::new(Vec::new()).into(),
     });
     for (name, expression) in [("legacy", 2), ("owned", 3)] {
         p.extra_targets.push(NamedTargetProgram {
@@ -2235,7 +2276,7 @@ fn checked_private_inventory_keeps_potential_unsupported_branches_and_dynamic_fr
     };
     p.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 3,
-        driver: codegen::SourceIteration::new(Vec::new()),
+        driver: codegen::SourceIteration::new(Vec::new()).into(),
     });
     p.expressions[0].expression = Expression::SourceField {
         path: path(&["Value"]),
@@ -2391,20 +2432,14 @@ fn checked_generated_programs() -> Vec<(&'static str, Program, &'static str)> {
 }
 
 #[test]
-#[ignore = "requires explicit checked evidence root, qualified runtime and exclusive shared target admission"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn private_checked_generated_inputs_capture_complete_results_before_comparisons() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_CHECKED_EVIDENCE_ROOT")
-            .expect("fresh checked evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PRIVATE_RUST_CHECKED_EVIDENCE_ROOT",
+        "private_rust_checked",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME").expect("qualified runtime"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one admitted shared target"
-    );
     fs::create_dir(&root).expect("fresh root; retain evidence on refusal");
     fs::create_dir(root.join("src")).unwrap();
     let mut generated = String::new();
@@ -2765,21 +2800,14 @@ fn composed_checked_failure_programs() -> Vec<(&'static str, Program, &'static s
 }
 
 #[test]
-#[ignore = "requires fresh composed evidence root, qualified runtime and one separately admitted shared generated-host target"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn private_checked_global_failure_interactions_retain_full_inputs_returns_and_trace() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_COMPOSED_EVIDENCE_ROOT")
-            .expect("fresh composed evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PRIVATE_RUST_COMPOSED_EVIDENCE_ROOT",
+        "private_rust_composed",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME")
-            .expect("explicit qualified runtime source"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one shared target; no duplicate cache"
-    );
     fs::create_dir(&root).expect("fresh namespace; preserve reached originals on refusal");
     fs::create_dir(root.join("src")).unwrap();
     let mut generated = String::new();
@@ -3272,20 +3300,14 @@ fn public519_host_programs() -> Vec<(&'static str, Program, &'static str)> {
     ]
 }
 #[test]
-#[ignore = "requires independently accepted public proposal, qualified prerequisites, fresh evidence and serial shared generated-host admission"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn public_basic_owned_generated_external_api_retains_all_twelve_reached_results() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PUBLIC_RUST_BASIC_EVIDENCE_ROOT")
-            .expect("fresh public evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PUBLIC_RUST_BASIC_EVIDENCE_ROOT",
+        "public_rust_basic",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME").expect("qualified runtime path"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one separately admitted compatible target"
-    );
     fs::create_dir(&root).expect("fresh namespace, preserve failures");
     fs::create_dir(root.join("src")).unwrap();
     fs::create_dir(root.join("tests")).unwrap();
@@ -3516,20 +3538,14 @@ fn public_basic_owned_literal_import_is_preserved_and_checked_import_is_unique()
     assert!(source.contains("pub enum SelectedTargetOutput"));
 }
 #[test]
-#[ignore = "requires independently accepted import successor and separately admitted external public-consumer compilation"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn public_basic_owned_literal_import_external_consumer_retains_exact_value() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PUBLIC_RUST_BASIC_LITERAL_EVIDENCE_ROOT")
-            .expect("fresh literal evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PUBLIC_RUST_BASIC_LITERAL_EVIDENCE_ROOT",
+        "public_rust_basic_literal",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME").expect("qualified runtime"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one separately admitted compatible target"
-    );
     fs::create_dir(&root).expect("fresh namespace, preserve reached originals");
     fs::create_dir(root.join("src")).unwrap();
     fs::create_dir(root.join("tests")).unwrap();
@@ -3680,7 +3696,7 @@ fn failure586_program() -> Program {
         source: source_schema(),
         dynamic: Some(codegen::DynamicSourceProgram {
             path: 90,
-            driver: codegen::SourceIteration::new(path(&["Rows"])),
+            driver: codegen::SourceIteration::new(path(&["Rows"])).into(),
         }),
     });
     program
@@ -4844,20 +4860,14 @@ fn public582_host_programs() -> Vec<(&'static str, Program, &'static str)> {
     ]
 }
 #[test]
-#[ignore = "requires independently accepted public proposal, qualified prerequisites, fresh evidence and serial shared generated-host admission"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn public_basic_owned_generated_value_maps_retain_all_seven_reached_results() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PUBLIC_RUST_VALUE_MAP_EVIDENCE_ROOT")
-            .expect("fresh public evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PUBLIC_RUST_VALUE_MAP_EVIDENCE_ROOT",
+        "public_rust_value_map",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME").expect("qualified runtime path"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one separately admitted compatible target"
-    );
     fs::create_dir(&root).expect("fresh namespace, preserve failures");
     fs::create_dir(root.join("src")).unwrap();
     fs::create_dir(root.join("tests")).unwrap();
@@ -6031,20 +6041,14 @@ fn public_root_pin632_six_programs_keep_complete_public_source_and_scalar_union_
 }
 
 #[test]
-#[ignore = "requires independently accepted public proposal, qualified prerequisites, fresh evidence and serial shared generated-host admission"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn public_root_pin632_generated_six_programs_retain_all_twenty_two_results() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PUBLIC_RUST_ROOT_PIN632_EVIDENCE_ROOT")
-            .expect("fresh public evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PUBLIC_RUST_ROOT_PIN632_EVIDENCE_ROOT",
+        "public_rust_root_pin632",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME").expect("qualified runtime path"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one separately admitted compatible target"
-    );
     fs::create_dir(&root).expect("fresh namespace, preserve failures");
     fs::create_dir(root.join("src")).unwrap();
     fs::create_dir(root.join("tests")).unwrap();
@@ -7125,21 +7129,14 @@ const FILTER644_MODES: &str = r#"
 "#;
 
 #[test]
-#[ignore = "requires merged common admission/filter prerequisites, fresh evidence and sole Root generated-host compiler admission"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn public_basic_filter_generated_fourteen_programs_retain_all_twenty_four_results() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PUBLIC_RUST_FILTER644_EVIDENCE_ROOT")
-            .expect("fresh public filter evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PUBLIC_RUST_FILTER644_EVIDENCE_ROOT",
+        "public_rust_filter644",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME")
-            .expect("qualified current runtime path"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one separately admitted compatible target"
-    );
     fs::create_dir(&root).expect("fresh namespace; retain failures");
     fs::create_dir(root.join("src")).unwrap();
     fs::create_dir(root.join("tests")).unwrap();
@@ -8138,21 +8135,14 @@ fn public_basic_sort_freezes_six_program_twenty_four_call_inventory_and_prior_fi
 }
 
 #[test]
-#[ignore = "requires merged sorting prerequisites, fresh evidence and sole Root generated-host compiler admission"]
+#[ignore = "builds and runs generated Rust consumers with cargo"]
 fn public_basic_sort_generated_six_programs_retain_all_twenty_four_results() {
-    let root = PathBuf::from(
-        std::env::var_os("FERRULE_PUBLIC_RUST_SORT668_EVIDENCE_ROOT")
-            .expect("fresh public sorting evidence root"),
+    let run = HostRun::new(
+        "FERRULE_PUBLIC_RUST_SORT668_EVIDENCE_ROOT",
+        "public_rust_sort668",
     );
-    let runtime = PathBuf::from(
-        std::env::var_os("FERRULE_PRIVATE_RUST_BASIC_RUNTIME")
-            .expect("qualified current runtime path"),
-    );
+    let (root, runtime) = (run.root.clone(), run.runtime.clone());
     assert!(root.is_absolute() && runtime.is_absolute());
-    assert!(
-        std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR").is_some(),
-        "one separately admitted compatible target"
-    );
     fs::create_dir(&root).expect("fresh namespace; retain failures");
     fs::create_dir(root.join("src")).unwrap();
     fs::create_dir(root.join("tests")).unwrap();
@@ -8248,5 +8238,135 @@ fn public_basic_sort_generated_six_programs_retain_all_twenty_four_results() {
             .expect("complete reached output or call error retained")
             .status
             .success()
+    );
+}
+
+/// p04's legacy `Position` names `Ref/Rows` while the owned cursor walks the
+/// named `Ref` rows. Like the nested-alias cohort's alias positions, it does
+/// not follow the owned cursor: the interpreter returns 1 for both rows, which
+/// `CHECK_P04` expects of the generated host.
+#[test]
+fn p04_legacy_alias_position_matches_the_interpreter() {
+    use ir::{Instance, Value};
+    let s = |text: &str| Instance::Scalar(Value::String(text.into()));
+    let i = |value: i64| Instance::Scalar(Value::Int(value));
+    let g = |fields: Vec<(&str, Instance)>| {
+        Instance::Group(
+            fields
+                .into_iter()
+                .map(|(name, value)| (name.to_owned(), value))
+                .collect::<Vec<_>>()
+                .into(),
+        )
+    };
+    let (_, p04, _) = generated_programs()
+        .into_iter()
+        .find(|(name, _, _)| *name == "p04")
+        .expect("p04 case");
+    let mut graph = mapping::Graph::default();
+    graph.nodes.insert(
+        1,
+        mapping::Node::OwnedSourceField(OwnedSourceField {
+            source: OwnedSourceRef {
+                owner: named("Ref"),
+                path: path(&["Rows", "Value"]),
+            },
+            frame: None,
+        }),
+    );
+    graph.nodes.insert(
+        2,
+        mapping::Node::OwnedPosition(OwnedPosition {
+            owner: named("Ref"),
+            collection: Some(path(&["Rows"])),
+        }),
+    );
+    graph.nodes.insert(
+        3,
+        mapping::Node::Position {
+            collection: path(&["Ref", "Rows"]),
+        },
+    );
+    let project = mapping::Project {
+        source: p04.source.clone(),
+        target: p04.target.clone(),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: p04
+            .extra_sources
+            .iter()
+            .map(|source| mapping::NamedSource {
+                name: source.name.clone(),
+                path: "unused.json".into(),
+                schema: source.source.clone(),
+                options: Default::default(),
+                dynamic_path: None,
+            })
+            .collect(),
+        extra_targets: vec![],
+        failure_rules: vec![],
+        user_functions: Default::default(),
+        graph,
+        root: mapping::Scope {
+            iteration: mapping::ScopeIteration::OwnedSource {
+                source: OwnedSourceRef {
+                    owner: named("Ref"),
+                    path: path(&["Rows"]),
+                },
+                output_path: None,
+            },
+            bindings: ["Value", "OwnedPosition", "LegacyPosition"]
+                .into_iter()
+                .zip(1..)
+                .map(|(target_field, node)| mapping::Binding {
+                    target_field: target_field.into(),
+                    node,
+                })
+                .collect(),
+            ..mapping::Scope::default()
+        },
+    };
+    // The Project is exactly the generated corpus's p04 Program.
+    assert_eq!(codegen::lower(&project).expect("p04 lowers"), p04);
+    let row = |value: &str, counter: Instance| {
+        g(vec![
+            ("Value", s(value)),
+            ("Score", i(1)),
+            ("Details", counter),
+        ])
+    };
+    let reference = g(vec![
+        ("Value", s("N.root")),
+        (
+            "Rows",
+            Instance::Repeated(vec![
+                row("N1", Instance::Scalar(Value::Null)),
+                row("N2", g(vec![("Counter", i(7))])),
+            ]),
+        ),
+    ]);
+    let primary = g(vec![
+        ("Value", s("P.root")),
+        ("Ref", g(vec![("Value", s("P.collision"))])),
+    ]);
+    let actual = engine::run_outputs_with_sources_and_context(
+        &project,
+        &primary,
+        vec![("Ref".into(), reference)],
+        &engine::ExecutionContext::new(Path::new("p04.mapping")),
+    )
+    .expect("p04 runs natively");
+    let expected = |value: &str, owned: i64| {
+        g(vec![
+            ("Value", s(value)),
+            ("OwnedPosition", i(owned)),
+            ("LegacyPosition", i(1)),
+        ])
+    };
+    assert_eq!(
+        actual.primary,
+        Instance::Repeated(vec![expected("N1", 1), expected("N2", 2)])
     );
 }

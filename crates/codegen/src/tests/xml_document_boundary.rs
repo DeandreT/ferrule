@@ -314,7 +314,7 @@ fn observed_compound_stays_strict_without_ordinary_schema_fallback() {
     let mut dynamic = lower(&root_view_static_inputs_project()).unwrap();
     dynamic.extra_sources[0].dynamic = Some(crate::DynamicSourceProgram {
         path: 0,
-        driver: SourceIteration::new(Vec::new()),
+        driver: SourceIteration::new(Vec::new()).into(),
     });
     assert!(
         validate_program(&dynamic).is_err(),
@@ -1241,10 +1241,8 @@ fn observed_combined_preserves_static_input_options_and_complete_policy_refusals
             }
             3 => invalid.extra_sources[0].schema = project.source.clone(),
             4 => {
-                invalid.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-                    node: 6,
-                    iteration: Vec::new(),
-                })
+                invalid.extra_sources[0].dynamic_path =
+                    Some(mapping::DynamicSourcePath::legacy(6, Vec::new()))
             }
             5 => {
                 if let SchemaKind::Group { children, .. } =

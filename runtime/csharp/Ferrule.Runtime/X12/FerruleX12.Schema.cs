@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 
@@ -46,6 +47,25 @@ public static partial class FerruleX12
         internal Syntax OutputSyntax => Separators ?? new('*', ':', '~', SelectedVersion.Modern ? '^' : null);
         // Declared envelope owner collections report occurrence-indexed paths.
         internal bool IndexedPaths => Grouped is not null || MapForce is not null;
+    }
+
+    // Generated descriptor constants are interned, so each X12 descriptor is
+    // parsed once per process for input and once for output, and the profile is
+    // shared by repeated and concurrent calls. The tables compare keys by
+    // reference and do not keep them alive. A profile is never modified after
+    // ParseProfile returns; every call keeps its own segments, Budget and output
+    // byte count. Only successful preparations are retained; a rejected
+    // descriptor is parsed again by every call and throws its original error.
+    private static readonly ConditionalWeakTable<string, Profile> PreparedInputProfiles = new();
+    private static readonly ConditionalWeakTable<string, Profile> PreparedOutputProfiles = new();
+
+    private static Profile PreparedProfile(string descriptor, bool input)
+    {
+        if (descriptor is null) return ParseProfile(descriptor!, input);
+        var prepared = input ? PreparedInputProfiles : PreparedOutputProfiles;
+        if (prepared.TryGetValue(descriptor, out Profile? profile)) return profile;
+        Profile parsed = ParseProfile(descriptor, input);
+        return prepared.GetValue(descriptor, _ => parsed);
     }
 
     private static Profile ParseProfile(string descriptor, bool input = true)

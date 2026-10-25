@@ -6,6 +6,10 @@ license.workspace = true
 repository.workspace = true
 description = "Built-in function library (string/math/date/aggregate/node-set) plus user-defined function hooks"
 
+[features]
+default = ["runtime"]
+runtime = ["dep:uuid", "dep:rand"]
+
 [dependencies]
 ir = { workspace = true }
 format-json = { workspace = true }
@@ -14,5 +18,5 @@ mapping = { workspace = true }
 regex = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-uuid = { workspace = true }
-rand = { workspace = true }
+uuid = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }

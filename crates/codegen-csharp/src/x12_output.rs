@@ -2,14 +2,20 @@ use std::fmt;
 
 use codegen::{ArtifactSet, Program, X12BoundaryPolicy, X12BoundaryPolicyError};
 
-use crate::{EmitError, file, literal};
+use crate::Options;
+use crate::composition::ClassPart;
+use crate::{EmitError, literal};
+use codegen::GenerationProfile;
 
 /// Failures from explicitly selected generated raw X12 adapters.
 #[derive(Debug)]
 pub enum X12EmitError {
     Policy(X12BoundaryPolicyError),
     Ordinary(EmitError),
-    ArtifactInvariant { path: &'static str },
+    /// Retained for API compatibility; structural composition never produces it.
+    ArtifactInvariant {
+        path: &'static str,
+    },
 }
 
 impl fmt::Display for X12EmitError {
@@ -46,34 +52,12 @@ impl From<EmitError> for X12EmitError {
 pub(crate) fn emit(
     program: &Program,
     policy: &X12BoundaryPolicy,
+    options: &Options,
 ) -> Result<ArtifactSet, X12EmitError> {
     let profile = codegen::prepare_x12_boundary(program, policy).map_err(X12EmitError::Policy)?;
     // Validate the complete optional boundary before ordinary artifacts exist.
-    let mut files = crate::emit(program)?.into_files();
-    for (path, before, after) in [
-        (
-            "GeneratedMapping.cs",
-            "public static class GeneratedMapping\n{",
-            "public static partial class GeneratedMapping\n{",
-        ),
-        (
-            "Ferrule.Generated.csproj",
-            "    <Compile Include=\"GeneratedMapping.cs\" />\n",
-            "    <Compile Include=\"GeneratedMapping.cs\" />\n    <Compile Include=\"GeneratedMapping.X12.cs\" />\n",
-        ),
-    ] {
-        let generated = files
-            .iter_mut()
-            .find(|generated| generated.path.as_str() == path)
-            .ok_or(X12EmitError::ArtifactInvariant { path })?;
-        let source = std::str::from_utf8(&generated.contents)
-            .map_err(|_| X12EmitError::ArtifactInvariant { path })?;
-        if source.matches(before).count() != 1 {
-            return Err(X12EmitError::ArtifactInvariant { path });
-        }
-        generated.contents = source.replacen(before, after, 1).into_bytes();
-    }
-    files.push(file(
+    let mut library = crate::library(program)?;
+    library.add_companion(
         "GeneratedMapping.X12.cs",
         render(
             &profile.source_descriptor,
@@ -81,12 +65,10 @@ pub(crate) fn emit(
             profile.source_x12,
             profile.target_x12,
         ),
-    )?);
-    for (path, source) in X12_SOURCES {
-        files.push(file(path, source)?);
-    }
-    ArtifactSet::new(files)
-        .map_err(EmitError::from)
+    );
+    library.add_runtime(&X12_SOURCES);
+    library
+        .into_artifacts_with(options, GenerationProfile::X12)
         .map_err(X12EmitError::from)
 }
 
@@ -125,10 +107,8 @@ pub(crate) const X12_SOURCES: [(&str, &str); 8] = [
     ),
 ];
 
-fn render(source: &str, target: &str, source_x12: bool, target_x12: bool) -> String {
-    let mut output = String::from(
-        "namespace Ferrule.Generated;\n\npublic static partial class GeneratedMapping\n{\n    private const string X12SourceDescriptor = ",
-    );
+fn render(source: &str, target: &str, source_x12: bool, target_x12: bool) -> ClassPart {
+    let mut output = String::from("    private const string X12SourceDescriptor = ");
     output.push_str(&literal::string(source));
     output.push_str(";\n    private const string X12TargetDescriptor = ");
     output.push_str(&literal::string(target));
@@ -181,8 +161,7 @@ fn render(source: &str, target: &str, source_x12: bool, target_x12: bool) -> Str
             "        return global::Ferrule.Runtime.{serialize}.SerializeEmbedded{suffix}(X12TargetDescriptor, target{context});\n    }}\n"
         ));
     }
-    output.push_str("}\n");
-    output
+    ClassPart::members(output)
 }
 
 const PARSE: &str = r#"

@@ -239,7 +239,7 @@ fn plain_string_column(field: &SchemaNode) -> bool {
     !field.repeating
         && !field.attribute
         && !field.text
-        && !field.nillable
+        && crate::import::presence::xml_non_nil(field)
         && field.fixed.is_none()
         && field.default.is_none()
         && field.value_generation.is_none()

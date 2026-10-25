@@ -5,7 +5,9 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use ir::{ScalarType, SchemaKind, SchemaNode, Value};
-use mapping::{FormatOptions, Graph, Node, NodeId, Scope, ScopeConstruction, ScopeIteration};
+use mapping::{
+    FormatOptions, Graph, Node, NodeId, NodeInputSlot, Scope, ScopeConstruction, ScopeIteration,
+};
 
 use crate::MfdError;
 
@@ -800,7 +802,8 @@ fn collect_nested_targets(
             }
             ScopeIteration::None
             | ScopeIteration::InnerJoin { .. }
-            | ScopeIteration::Concatenate(_) => {
+            | ScopeIteration::Concatenate(_)
+            | ScopeIteration::OptionalPresence { .. } => {
                 return Err(dynamic_target_error(
                     "nested computed properties require source or generated-sequence iteration",
                 ));
@@ -921,90 +924,10 @@ fn node_consumers(graph: &Graph) -> BTreeMap<NodeId, Vec<NodeId>> {
     consumers
 }
 
+/// Every input but a composed sequence's reserved source item; a sequence's
+/// own item identity is kept.
 fn node_dependencies(node: &Node) -> Vec<NodeId> {
-    match node {
-        Node::Raise { message } => message.iter().copied().collect(),
-        Node::RuntimeParameterDefault { default, .. } => vec![*default],
-        Node::OwnedSourceField(_)
-        | Node::OwnedPosition(_)
-        | Node::OwnedRowDocumentPath(_)
-        | Node::OwnedXmlSerialize(_)
-        | Node::SourceField { .. }
-        | Node::SourceDocumentPath
-        | Node::SourceRootXmlTypeEquals { .. }
-        | Node::SourceRootField { .. }
-        | Node::Position { .. }
-        | Node::JoinField { .. }
-        | Node::JoinPosition { .. }
-        | Node::Unconnected
-        | Node::Const { .. }
-        | Node::FunctionParameter { .. }
-        | Node::RuntimeValue { .. }
-        | Node::RuntimeParameter { .. }
-        | Node::XmlSerialize { .. } => Vec::new(),
-        Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
-        Node::If {
-            condition,
-            then,
-            else_,
-        } => vec![*condition, *then, *else_],
-        Node::ValueMap { input, .. } => vec![*input],
-        Node::Lookup { matches, .. } => vec![*matches],
-        Node::OwnedLookup(_)
-        | Node::OwnedAggregate(_)
-        | Node::OwnedCollectionFind(_)
-        | Node::OwnedJoinField(_)
-        | Node::OwnedJoinSourcePosition(_)
-        | Node::OwnedJoinAggregate(_) => node.dependencies(),
-        Node::DynamicSourceField { key, .. } => vec![*key],
-        Node::OwnedDynamicSourceField(field) => vec![field.key],
-        Node::XmlMixedContent { replacements, .. } => replacements
-            .iter()
-            .map(|replacement| replacement.expression)
-            .collect(),
-        Node::OwnedXmlMixedContent(mixed) => mixed
-            .replacements
-            .iter()
-            .map(|replacement| replacement.expression)
-            .collect(),
-        Node::CollectionFind {
-            predicate, value, ..
-        } => vec![*predicate, *value],
-        Node::SequenceExists {
-            sequence,
-            predicate,
-        } => sequence
-            .inputs()
-            .into_iter()
-            .chain([sequence.item(), *predicate])
-            .collect(),
-        Node::SequenceItemAt { sequence, index } => sequence
-            .inputs()
-            .into_iter()
-            .chain([sequence.item(), *index])
-            .collect(),
-        Node::SequenceAggregate {
-            sequence,
-            predicate,
-            expression,
-            arg,
-            ..
-        } => sequence
-            .inputs()
-            .into_iter()
-            .chain(
-                [Some(sequence.item()), *predicate, *expression, *arg]
-                    .into_iter()
-                    .flatten(),
-            )
-            .collect(),
-        Node::Aggregate {
-            expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
-        } => expression.iter().chain(arg).copied().collect(),
-    }
+    node.inputs_where(|input| input.slot != NodeInputSlot::SequenceReservedItem)
 }
 
 fn connect_field(

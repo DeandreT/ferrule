@@ -7,11 +7,10 @@ use crate::test_ui::ContextExt as _;
 use egui::Ui;
 use ir::Value;
 
-const VALUE_EDIT_WIDTH: f32 = 150.0;
-const VALUE_MAP_CELL_WIDTH: f32 = 104.0;
-const VALUE_MAP_CONTENT_WIDTH: f32 = 640.0;
-const VALUE_MAP_COMPACT_CONTENT_WIDTH: f32 = 320.0;
-const VALUE_MAP_MAX_HEIGHT: f32 = 170.0;
+const VALUE_MAP_CELL_WIDTH: f32 = crate::theme::METRICS.value_map_cell_width;
+const VALUE_MAP_CONTENT_WIDTH: f32 = crate::theme::METRICS.value_map_content_width;
+const VALUE_MAP_COMPACT_CONTENT_WIDTH: f32 = crate::theme::METRICS.value_map_compact_width;
+const VALUE_MAP_MAX_HEIGHT: f32 = crate::theme::METRICS.value_map_height;
 const CONST_TITLE_CHAR_LIMIT: usize = 28;
 
 fn parse_finite_float(text: &str) -> Option<f64> {
@@ -46,6 +45,27 @@ pub fn display_string(value: &Value) -> String {
     }
 }
 
+pub(crate) fn type_label(value: &Value) -> &'static str {
+    match value {
+        Value::String(_) => "Text",
+        Value::Int(_) => "Integer",
+        Value::Float(_) => "Decimal",
+        Value::Bool(_) => "Boolean",
+        Value::Null => "Null",
+        Value::JsonNull(_) => "JSON null",
+        Value::XmlNil(_) => "XML nil",
+    }
+}
+
+pub(crate) fn scalar_type_label(ty: ir::ScalarType) -> &'static str {
+    match ty {
+        ir::ScalarType::String => "Text",
+        ir::ScalarType::Int => "Integer",
+        ir::ScalarType::Float => "Decimal",
+        ir::ScalarType::Bool => "Boolean",
+    }
+}
+
 pub fn title_preview(value: &Value) -> String {
     let display = display_string(value)
         .chars()
@@ -68,11 +88,13 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
         ui.label(format!("decimal {value} (read-only)"));
         return;
     }
+    ui.label("Type");
     egui::ComboBox::from_id_salt(ui.scope_id().with("value_kind"))
-        .selected_text(value.type_name())
+        .selected_text(type_label(value))
+        .width(ui.available_width())
         .show_ui(ui, |ui| {
             if ui
-                .selectable_label(matches!(value, Value::Null), "null")
+                .selectable_label(matches!(value, Value::Null), "Null")
                 .clicked()
             {
                 *value = Value::Null;
@@ -84,37 +106,45 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
                 *value = Value::json_null();
             }
             if ui
-                .selectable_label(matches!(value, Value::Bool(_)), "bool")
+                .selectable_label(matches!(value, Value::Bool(_)), "Boolean")
                 .clicked()
             {
                 *value = Value::Bool(false);
             }
             if ui
-                .selectable_label(matches!(value, Value::Int(_)), "int")
+                .selectable_label(matches!(value, Value::Int(_)), "Integer")
                 .clicked()
             {
                 *value = Value::Int(0);
             }
             if ui
-                .selectable_label(matches!(value, Value::Float(_)), "float")
+                .selectable_label(matches!(value, Value::Float(_)), "Decimal")
                 .clicked()
             {
                 *value = Value::Float(0.0);
             }
             if ui
-                .selectable_label(matches!(value, Value::String(_)), "string")
+                .selectable_label(matches!(value, Value::String(_)), "Text")
                 .clicked()
             {
                 *value = Value::String(String::new());
             }
-            if ui.selectable_label(value.is_xml_nil(), "xsi:nil").clicked() {
+            if ui.selectable_label(value.is_xml_nil(), "XML nil").clicked() {
                 *value = Value::xml_nil();
             }
-        });
+        })
+        .response
+        .accessible_name("Constant type");
+    ui.label("Value");
     match value {
-        Value::Null | Value::JsonNull(_) => {}
+        Value::Null => {
+            crate::ui_kit::help(ui, "No value");
+        }
+        Value::JsonNull(_) => {
+            crate::ui_kit::help(ui, "Explicit JSON null");
+        }
         Value::Bool(b) => {
-            ui.checkbox(b, "");
+            ui.checkbox(b, "True");
         }
         Value::Int(i) => {
             ui.add(egui::DragValue::new(i));
@@ -128,13 +158,17 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
             );
         }
         Value::String(s) => {
-            ui.add_sized(
-                [VALUE_EDIT_WIDTH, ui.spacing().interact_size.y],
-                egui::TextEdit::singleline(s),
-            )
-            .on_hover_text(s.as_str());
+            ui.add(
+                egui::TextEdit::multiline(s)
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(4)
+                    .hint_text("Enter text…"),
+            );
         }
-        Value::XmlNil(_) | Value::Decimal(_) => {}
+        Value::XmlNil(_) => {
+            crate::ui_kit::help(ui, "Explicit XML nil (xsi:nil)");
+        }
+        Value::Decimal(_) => {}
     }
 }
 
@@ -432,7 +466,7 @@ fn edit_map_value(ui: &mut Ui, value: &mut Value, label: &str, stacked: bool) {
     let mut text_changed = false;
     let mut type_and_apply = |ui: &mut Ui, draft: &mut MapCellDraft| {
         let response = egui::ComboBox::from_id_salt("cell_type")
-            .width(52.0)
+            .width(crate::theme::editor_size::TYPE_PICKER)
             .selected_text(draft.kind.label())
             .show_ui(ui, |ui| {
                 for candidate in [

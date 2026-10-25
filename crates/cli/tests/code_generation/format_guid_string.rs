@@ -4,7 +4,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 mod projects;
 const CASES: &str = include_str!("../../../functions/tests/fixtures/format_guid_string.tsv");
 
+/// Evidence under `FERRULE_GUID_EVIDENCE_DIR` is retained; otherwise it is removed on drop,
+/// including after a panic, unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`.
 struct Evidence(PathBuf);
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_GUID_EVIDENCE_DIR").is_none() && !host_policy::keep_artifacts()
+        {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
 impl Evidence {
     fn new(label: &str) -> TestResult<Self> {
         let parent = std::env::var_os("FERRULE_GUID_EVIDENCE_DIR")
@@ -128,6 +138,7 @@ fn format_guid_string_compiled_complete_oracles() -> TestResult<()> {
                 directory.join("src/main.rs"),
                 include_str!("format_guid_string/Host.rs.txt"),
             )?;
+            host_policy::name_generated_host(&directory, "format-guid-string-host")?;
         } else {
             std::fs::create_dir(directory.join("Harness"))?;
             std::fs::write(directory.join("Harness/Host.csproj"), HARNESS)?;

@@ -1,8 +1,11 @@
 use super::*;
+use crate::declaration::declaration;
 
 mod alternatives;
 
 use alternatives::AlternativeExportPlan;
+#[cfg(test)]
+pub(super) use alternatives::optional_element;
 
 mod set;
 mod substitution;
@@ -536,11 +539,12 @@ fn write_element_required(
     out: &mut String,
 ) -> Result<(), XmlFormatError> {
     let pad = "  ".repeat(depth);
+    let declared = declaration(node)?;
     let optional = occurrence == ElementOccurrence::Optional
-        || (occurrence == ElementOccurrence::Schema && node.xml_optional);
+        || (occurrence == ElementOccurrence::Schema && declared.optional);
     if node.name == XML_ELEMENTS_FIELD {
         let namespace = wildcard_namespace_attribute(node, alternatives)?;
-        let occurs = if node.repeating {
+        let occurs = if declared.repeated {
             " minOccurs=\"0\" maxOccurs=\"unbounded\""
         } else if optional {
             " minOccurs=\"0\""
@@ -553,9 +557,9 @@ fn write_element_required(
         ));
         return Ok(());
     }
-    let occurs = if node.repeating && occurrence == ElementOccurrence::RepeatingRequired {
+    let occurs = if declared.repeated && occurrence == ElementOccurrence::RepeatingRequired {
         " maxOccurs=\"unbounded\""
-    } else if node.repeating {
+    } else if declared.repeated {
         " minOccurs=\"0\" maxOccurs=\"unbounded\""
     } else if optional {
         " minOccurs=\"0\""
@@ -577,7 +581,7 @@ fn write_element_required(
         out.push_str(&format!("{pad}<xs:element ref=\"{reference}\"{occurs}/>\n"));
         return Ok(());
     }
-    let nillable = if node.nillable {
+    let nillable = if declared.nil {
         " nillable=\"true\""
     } else {
         ""
@@ -965,9 +969,10 @@ fn write_nested_elements(
         }
         if !child.xml_name_alternatives.is_empty() {
             let pad = "  ".repeat(depth);
-            let occurs = if child.repeating {
+            let declared = declaration(child)?;
+            let occurs = if declared.repeated {
                 " minOccurs=\"0\" maxOccurs=\"unbounded\""
-            } else if child.xml_optional {
+            } else if declared.optional {
                 " minOccurs=\"0\""
             } else {
                 ""
@@ -1035,18 +1040,17 @@ fn write_attribute(
     alternatives: &AlternativeExportPlan<'_>,
     out: &mut String,
 ) -> Result<(), XmlFormatError> {
-    if attribute.xml_attribute_required && attribute.default.is_some() {
+    let declared = declaration(attribute)?;
+    // A repeating attribute is refused before writing; it is never required.
+    let required = !declared.repeated && !declared.optional;
+    if required && attribute.default.is_some() {
         return Err(XmlFormatError::UnsupportedXmlAttributeDefault {
             name: attribute.name.clone(),
         });
     }
-    let use_required = if attribute.xml_attribute_required {
-        " use=\"required\""
-    } else {
-        ""
-    };
+    let use_required = if required { " use=\"required\"" } else { "" };
     if let Some(prefix) = alternatives.external_prefix(attribute) {
-        if attribute.xml_attribute_required && attribute.fixed.is_some() {
+        if required && attribute.fixed.is_some() {
             return Err(XmlFormatError::UnsupportedXmlAttributeFixedReference {
                 name: attribute.name.clone(),
             });

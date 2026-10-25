@@ -27,6 +27,7 @@ codegen = { workspace = true }
 codegen-schema = { workspace = true }
 codegen-rust = { workspace = true }
 codegen-csharp = { workspace = true }
+codegen-runtime = { workspace = true }
 format-csv = { workspace = true }
 format-xlsx = { workspace = true }
 format-xml = { workspace = true }
@@ -52,8 +53,9 @@ ureq = { workspace = true }
 rustix = { workspace = true }
 
 [dev-dependencies]
-codegen-runtime = { workspace = true }
+flate2 = "1.1"
 roxmltree = { workspace = true }
+rusqlite = { workspace = true }
 rust_xlsxwriter = { workspace = true }
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]

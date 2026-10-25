@@ -1,22 +1,10 @@
 //! Dynamic inputs, static admission and complete mixed XML serialization.
 use super::output_arguments;
 use crate::{EmitError, rust_string};
-use codegen::{Program, ProgramValidationError};
+use codegen::{Program, ProgramValidationError, XmlEmissionPlan};
 
-pub(super) fn render(program: &Program) -> Result<String, EmitError> {
-    if program.xml_output_mode()?
-        != Some(codegen::XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments)
-    {
-        return Err(ProgramValidationError::InvalidXmlBoundary {
-            reason: "dynamic input mixed XML outputs require their checked adapter mode".into(),
-        }
-        .into());
-    }
-    let policy = program.xml_boundary.as_ref().ok_or_else(|| {
-        ProgramValidationError::InvalidXmlBoundary {
-            reason: "XML document outputs require a boundary".into(),
-        }
-    })?;
+pub(super) fn render(program: &Program, plan: &XmlEmissionPlan<'_>) -> Result<String, EmitError> {
+    let policy = plan.policy();
     if policy.extra_outputs.len() != program.extra_targets.len()
         || program
             .extra_targets

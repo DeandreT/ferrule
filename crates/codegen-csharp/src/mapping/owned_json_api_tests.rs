@@ -1,3 +1,4 @@
+use crate::dotnet_temp::DotnetTemp;
 use std::{fs, process::Command};
 
 use ::mapping::{OwnedSourceField, OwnedSourceRef, SourceOwner};
@@ -52,7 +53,7 @@ fn program() -> Program {
                 source: SchemaNode::scalar("Dynamic", ScalarType::Bool),
                 dynamic: Some(codegen::DynamicSourceProgram {
                     path: 3,
-                    driver: codegen::SourceIteration::new(vec![]),
+                    driver: codegen::SourceIteration::new(vec![]).into(),
                 }),
             },
             NamedSourceProgram {
@@ -129,13 +130,17 @@ fn basic_owned_json520_companions_are_append_only_and_profile_specific() {
             .count(),
         5
     );
-    for render in [
-        owned_basic::render_public_basic_owned_filter_mapping,
-        owned_basic::render_public_basic_owned_sort_mapping,
-        owned_basic::render_public_basic_owned_window_mapping,
-        owned_basic::render_public_basic_owned_row_failure_mapping,
+    for preset in [
+        codegen::OwnedPreset::Filters,
+        codegen::OwnedPreset::Sort,
+        codegen::OwnedPreset::Windows,
+        codegen::OwnedPreset::RowFailures,
     ] {
-        assert!(!render(&program).unwrap().contains("NamedJsonInput"));
+        let mapping = owned_basic::render_public_basic_owned_capability_mapping(
+            &program,
+            preset.capabilities(),
+        );
+        assert!(!mapping.unwrap().contains("NamedJsonInput"));
     }
     let mut legacy = program;
     legacy.expressions[0].expression = Expression::SourceField {
@@ -327,6 +332,7 @@ fn basic_owned_json520_generated_consumer_checks_capture_compact_bytes_and_polic
         .arg(assembly)
         .current_dir(evidence.path())
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(evidence.path())
         .env("DOTNET_PROCESSOR_COUNT", "2")
         .output();
     evidence.debug("RUN.original.txt", &run);
@@ -440,6 +446,7 @@ fn consumer_build_command(evidence: &Evidence, project: &str) -> Command {
         .current_dir(evidence.path())
         .env("DOTNET_CLI_HOME", evidence.path().join(".dotnet-home"))
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(evidence.path())
         .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")
         .env("DOTNET_CLI_UI_LANGUAGE", "en-US")
         .env("DOTNET_CLI_USE_MSBUILD_SERVER", "0")

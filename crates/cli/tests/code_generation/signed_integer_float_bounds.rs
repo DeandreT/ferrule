@@ -5,7 +5,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const CASES: &str =
     include_str!("../../../format-json/tests/fixtures/signed_integer_float_bounds.json");
 
+/// Evidence under `FERRULE_JSON_BOUNDS_EVIDENCE_DIR` is retained; otherwise it is removed on drop,
+/// including after a panic, unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`.
 struct Evidence(PathBuf);
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_JSON_BOUNDS_EVIDENCE_DIR").is_none()
+            && !host_policy::keep_artifacts()
+        {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
 impl Evidence {
     fn new() -> TestResult<Self> {
         let parent = std::env::var_os("FERRULE_JSON_BOUNDS_EVIDENCE_DIR")
@@ -160,6 +171,7 @@ fn signed_integer_float_bounds_compiled_complete_oracles() -> TestResult<()> {
                     directory.join("src/main.rs"),
                     include_str!("signed_integer_float_bounds/Host.rs.txt"),
                 )?;
+                host_policy::name_generated_host(&directory, "signed-integer-float-bounds-host")?;
             } else {
                 std::fs::create_dir(directory.join("Harness"))?;
                 std::fs::write(directory.join("Harness/Host.csproj"), HARNESS)?;

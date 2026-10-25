@@ -282,16 +282,17 @@ context to X12 output after the ordinary mapping succeeds.
 ## Static named documents and selected output
 
 `--static-document-adapters` selects a separate C# companion for a complete
-static JSON/X12 boundary table. Every primary and named endpoint retains its
-own schema, format options and separators. At least one endpoint is X12. The
+static JSON/X12/EDIFACT boundary table. Every primary and named endpoint retains its
+own schema, format options and separators. At least one endpoint is X12 or EDIFACT. The
 flag conflicts with `--x12-adapters`, `--json5-adapters` and `--csv-output`.
 The public writer is `cli::generate_project_with_static_document_adapters`;
 the emitter is `codegen_csharp::emit_with_static_document_adapters`, using a
 `codegen::StaticDocumentBoundaryPolicy` whose named entries exactly match the
 complete declaration order. This route adds `GeneratedMapping.Documents.cs`
-and the same `Runtime/X12` sources.
+and the same `Runtime/X12` sources. EDIFACT endpoints also use the
+[shared EDI codec with strict envelope validation](static-edifact-documents.md).
 
-The CLI selects an endpoint from its explicit saved X12 family, strict JSON
+The CLI selects an endpoint from its explicit saved X12/EDIFACT family, strict JSON
 flag, or `.edi`, `.x12` or `.json` path identity. Unknown identities and other
 physical formats fail admission. Schema shape and document contents do not
 select a codec. All endpoints are static single documents; dynamic physical

@@ -61,39 +61,43 @@ impl FerruleApp {
             self.selected_failure_rule = None;
             self.pending_failure_rule_scroll = false;
         }
-        let mut selection = None;
         let mut action = None;
         egui::CollapsingHeader::new(format!("Failure rules ({})", self.project.failure_rules.len()))
             .id_salt("project_failure_rules")
-            .default_open(true)
+            .default_open(!self.project.failure_rules.is_empty())
             .open(self.pending_failure_rule_scroll.then_some(true))
             .show(ui, |ui| {
-                ui.weak("Stop before producing any target when an item matches a rule. Rules run from top to bottom.");
-                if ui.add_enabled(editing_enabled, egui::Button::new("Add source rule")).clicked() {
-                    action = Some(RuleAction::Add);
-                }
-                ui.horizontal(|ui| {
-                    if ui.add_enabled(editing_enabled, egui::Button::new("Add integer range rule")).clicked() {
-                        action = Some(RuleAction::AddSequence(GeneratedRuleKind::IntegerRange));
-                    }
-                    if ui.add_enabled(editing_enabled, egui::Button::new("Add split text rule")).clicked() {
-                        action = Some(RuleAction::AddSequence(GeneratedRuleKind::SplitText));
-                    }
-                });
-                ui.horizontal(|ui| {
-                    if ui.add_enabled(editing_enabled, egui::Button::new("Add fixed-length text rule")).clicked() {
-                        action = Some(RuleAction::AddSequence(GeneratedRuleKind::SplitTextByLength));
-                    }
-                    if ui.add_enabled(editing_enabled, egui::Button::new("Add regex text rule")).clicked() {
-                        action = Some(RuleAction::AddSequence(GeneratedRuleKind::SplitTextByRegex));
-                    }
-                });
                 if self.project.failure_rules.is_empty() {
-                    ui.weak("No failure rules.");
+                    crate::ui_kit::help(ui, "No failure rules. Add a rule to stop before producing targets when an item matches.");
                 }
+                ui.horizontal(|ui| {
+                crate::ui_kit::help_icon(ui, "Stop before producing any target when an item matches a rule. Rules run from top to bottom.");
+                ui.add_enabled_ui(editing_enabled, |ui| { ui.menu_button("Add rule", |ui| {
+                if ui.button("Source collection").clicked() {
+                    action = Some(RuleAction::Add);
+                    ui.close();
+                }
+                    if ui.button("Integer range").clicked() {
+                        action = Some(RuleAction::AddSequence(GeneratedRuleKind::IntegerRange));
+                        ui.close();
+                    }
+                    if ui.button("Split text").clicked() {
+                        action = Some(RuleAction::AddSequence(GeneratedRuleKind::SplitText));
+                        ui.close();
+                    }
+                    if ui.button("Fixed-length text").clicked() {
+                        action = Some(RuleAction::AddSequence(GeneratedRuleKind::SplitTextByLength));
+                        ui.close();
+                    }
+                    if ui.button("Regular expression").clicked() {
+                        action = Some(RuleAction::AddSequence(GeneratedRuleKind::SplitTextByRegex));
+                        ui.close();
+                    }
+                }); }); });
                 egui::ScrollArea::vertical()
                     .id_salt("failure_rules_scroll")
-                    .max_height(120.0)
+                    .max_height(crate::theme::ListHeight::Short.px())
+                    .auto_shrink([false, true])
                     .show(ui, |ui| {
                         for (index, rule) in self.project.failure_rules.iter().enumerate() {
                             let source = match &rule.iteration {
@@ -106,10 +110,11 @@ impl FerruleApp {
                             };
                             let response = ui.selectable_label(
                                 self.selected_failure_rule == Some(index),
-                                format!("Rule {}: {source}", index + 1),
+                                 format!("Rule {} · {source}", index + 1),
                             );
                             if response.clicked() {
-                                selection = Some(index);
+                                self.selected_failure_rule = Some(index);
+                                ui.ctx().request_repaint();
                             }
                             if self.pending_failure_rule_scroll && self.selected_failure_rule == Some(index) {
                                 response.scroll_to_me(None);
@@ -118,10 +123,11 @@ impl FerruleApp {
                     });
                 if let Some(index) = self.selected_failure_rule {
                     ui.horizontal(|ui| {
-                        if ui.add_enabled(editing_enabled && index > 0, egui::Button::new("Move up")).clicked() {
+                        ui.strong(format!("Rule {}", index + 1));
+                        if crate::ui_kit::icon_button(ui, lucide_icons::Icon::ArrowUp, "Move rule earlier", (!(editing_enabled && index > 0)).then_some("This rule cannot move earlier")).clicked() {
                             action = Some(RuleAction::Move { from: index, to: index - 1 });
                         }
-                        if ui.add_enabled(editing_enabled && index + 1 < self.project.failure_rules.len(), egui::Button::new("Move down")).clicked() {
+                        if crate::ui_kit::icon_button(ui, lucide_icons::Icon::ArrowDown, "Move rule later", (!(editing_enabled && index + 1 < self.project.failure_rules.len())).then_some("This rule cannot move later")).clicked() {
                             action = Some(RuleAction::Move { from: index, to: index + 1 });
                         }
                         let rule = &self.project.failure_rules[index];
@@ -132,7 +138,7 @@ impl FerruleApp {
                         } else {
                             "This imported generated rule is retained. Its sequence kind or item ownership needs repair before editing."
                         };
-                        if ui.add_enabled(editing_enabled && removable, egui::Button::new("Remove rule")).on_disabled_hover_text(retained).clicked() {
+                        if crate::ui_kit::icon_button(ui, lucide_icons::Icon::Trash2, "Remove rule", (!(editing_enabled && removable)).then_some(retained)).clicked() {
                             action = Some(RuleAction::Remove(index));
                         }
                     });
@@ -141,9 +147,6 @@ impl FerruleApp {
                     }
                 }
             });
-        if let Some(index) = selection {
-            self.selected_failure_rule = Some(index);
-        }
         self.pending_failure_rule_scroll = false;
         if let Some(action) = action {
             self.apply_failure_rule_action(action, editing_enabled);
@@ -288,6 +291,9 @@ impl FerruleApp {
             }
         }
         if *rule != before {
+            let mut previous = self.project.clone();
+            previous.failure_rules[index] = before;
+            self.queue_project_edit(&previous, editor_ui::GraphAction::EditFailureRule { index });
             self.clear_diagnostic_navigation();
             self.selected_failure_rule = Some(index);
         }
@@ -298,6 +304,7 @@ impl FerruleApp {
         if !editing_enabled || !self.ui_project_editing_enabled() {
             return;
         }
+        let before = self.project.clone();
         let selected = match action {
             RuleAction::Add => {
                 self.project.failure_rules.push(FailureRule {
@@ -480,6 +487,19 @@ impl FerruleApp {
                 Some(to)
             }
         };
+        let typed = match action {
+            RuleAction::Add | RuleAction::AddSequence(_) => {
+                editor_ui::GraphAction::AddFailureRule {
+                    index: before.failure_rules.len(),
+                }
+            }
+            RuleAction::EnableRegexFlags(index) => {
+                editor_ui::GraphAction::EditFailureRule { index }
+            }
+            RuleAction::Remove(index) => editor_ui::GraphAction::RemoveFailureRule { index },
+            RuleAction::Move { from, to } => editor_ui::GraphAction::MoveFailureRule { from, to },
+        };
+        self.queue_project_edit(&before, typed);
         self.clear_diagnostic_navigation();
         self.selected_failure_rule = selected;
         self.pending_failure_rule_scroll = selected.is_some();
@@ -586,7 +606,7 @@ mod generated_tests;
 fn owned_rows_label(source: &mapping::OwnedSourceRef) -> String {
     let owner = match &source.owner {
         mapping::SourceOwner::Primary => "primary".to_string(),
-        mapping::SourceOwner::Named { name } => format!("{name:?}"),
+        mapping::SourceOwner::Named { name } => name.clone(),
     };
     format!("owned {owner} rows {}", source.path.join("/"))
 }

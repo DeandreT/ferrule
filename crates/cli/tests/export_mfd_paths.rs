@@ -347,10 +347,7 @@ fn relocated_export_keeps_dynamic_path_expressions_and_preview_hints() -> Result
         ),
     ]);
     project.extra_sources[0].path = r"..\previews\catalog.xml".into();
-    project.extra_sources[0].dynamic_path = Some(DynamicSourcePath {
-        node: 0,
-        iteration: vec!["File".into()],
-    });
+    project.extra_sources[0].dynamic_path = Some(DynamicSourcePath::legacy(0, vec!["File".into()]));
     project.target = SchemaNode::group("Target", vec![document("Row").repeating()]);
     project.root = Scope {
         children: vec![Scope {
@@ -377,7 +374,7 @@ fn relocated_export_keeps_dynamic_path_expressions_and_preview_hints() -> Result
         .dynamic_path
         .as_ref()
         .unwrap();
-    assert_eq!(dynamic.iteration, ["File"]);
+    assert_eq!(dynamic.legacy_driver(), Some(&["File".to_owned()][..]));
     assert!(
         matches!(&imported.project.graph.nodes[&dynamic.node], Node::SourceField { path, frame: Some(frame) } if path.is_empty() && frame == &["File"])
     );

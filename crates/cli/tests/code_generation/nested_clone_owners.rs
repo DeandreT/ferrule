@@ -4,7 +4,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[path = "../../../mfd/tests/fixtures/nested_clone_owners/same_source_expected_project.rs"]
 mod same_source_expected_project;
 
+/// Evidence under `FERRULE_NESTED_CLONES_EVIDENCE_DIR` is retained; otherwise it is removed on drop,
+/// including after a panic, unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`.
 struct Evidence(PathBuf);
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_NESTED_CLONES_EVIDENCE_DIR").is_none()
+            && !host_policy::keep_artifacts()
+        {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
 impl Evidence {
     fn new() -> TestResult<Self> {
         let parent = std::env::var_os("FERRULE_NESTED_CLONES_EVIDENCE_DIR")
@@ -185,6 +196,7 @@ fn declared_nested_clone_owners_compiled_complete_oracles() -> TestResult<()> {
                     directory.join("src/main.rs"),
                     include_str!("nested_clone_owners/Host.rs.txt"),
                 )?;
+                host_policy::name_generated_host(&directory, "nested-clone-owners-host")?;
             } else {
                 let host = directory.join("Harness");
                 std::fs::create_dir(&host)?;

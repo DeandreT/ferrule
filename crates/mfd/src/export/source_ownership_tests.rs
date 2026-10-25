@@ -82,6 +82,33 @@ fn physical_row_path_export_remains_explicitly_refused() {
 }
 
 #[test]
+fn document_set_path_export_remains_explicitly_refused() {
+    let mut project = project();
+    project.graph.nodes.insert(
+        9,
+        Node::OwnedSourceDocumentPath(mapping::OwnedSourceDocumentPath {
+            owner: SourceOwner::Primary,
+        }),
+    );
+    let path = Path::new("nonexistent-owned-export-parent/document-path.mfd");
+    for result in [
+        preflight_export(&project, path).map(|_| ()),
+        export(&project, path).map(|_| ()),
+        export_with_profile(&project, path, ExportProfile::NativeMfd).map(|_| ()),
+    ] {
+        assert!(matches!(
+            result,
+            Err(MfdError::UnsupportedSourceOwnership {
+                node: 9,
+                function: None,
+                kind: "owned_source_document_path",
+            })
+        ));
+    }
+    assert!(!path.exists());
+}
+
+#[test]
 fn unused_function_bodies_and_special_early_routes_are_not_silently_omitted() {
     let mut project = project();
     let id = FunctionId::new(7);
@@ -628,4 +655,50 @@ fn owned_joined_aggregates_refuse_before_writing_anything() {
         }
         assert!(!path.exists());
     }
+}
+
+#[test]
+fn owned_dynamic_drivers_refuse_before_writing_in_every_profile() {
+    let driver = mapping::OwnedSourceRef {
+        owner: SourceOwner::Primary,
+        path: vec!["Files".into()],
+    };
+    let mut declared = project();
+    declared.source = SchemaNode::group(
+        "Batch",
+        vec![
+            SchemaNode::group(
+                "Files",
+                vec![SchemaNode::scalar("Path", ScalarType::String)],
+            )
+            .repeating(),
+        ],
+    );
+    declared.graph.nodes = BTreeMap::from([(
+        9,
+        Node::OwnedSourceField(mapping::OwnedSourceField {
+            source: mapping::OwnedSourceRef {
+                owner: SourceOwner::Primary,
+                path: vec!["Files".into(), "Path".into()],
+            },
+            frame: Some(vec!["Files".into()]),
+        }),
+    )]);
+    declared.extra_sources = vec![mapping::NamedSource {
+        name: "Docs".into(),
+        path: String::new(),
+        schema: SchemaNode::group("Doc", vec![SchemaNode::scalar("Title", ScalarType::String)]),
+        options: Default::default(),
+        dynamic_path: Some(mapping::DynamicSourcePath::owned(9, driver)),
+    }];
+    let path = Path::new("nonexistent-owned-driver-parent/output.mfd");
+    let refused = |error: MfdError| matches!(error, MfdError::UnsupportedDynamicSourceDriver { source_name } if source_name == "Docs");
+    assert!(refused(preflight_export(&declared, path).unwrap_err()));
+    assert!(refused(export(&declared, path).unwrap_err()));
+    for profile in [ExportProfile::default(), ExportProfile::NativeMfd] {
+        assert!(refused(
+            export_with_profile(&declared, path, profile).unwrap_err()
+        ));
+    }
+    assert!(!path.exists());
 }

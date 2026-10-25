@@ -138,7 +138,9 @@ fn text_positions(
     positions: &mut Vec<egui::Pos2>,
 ) {
     match shape {
-        egui::epaint::Shape::Text(text) if text.galley.text() == label => {
+        egui::epaint::Shape::Text(text)
+            if crate::test_ui::inspector_label_matches(text.galley.text(), label) =>
+        {
             let center = text.visual_bounding_rect().center();
             if clip.contains(center) {
                 positions.push(center);
@@ -189,6 +191,30 @@ fn click_nth(app: &mut FerruleApp, context: &egui::Context, label: &str, occurre
 }
 
 fn click(app: &mut FerruleApp, context: &egui::Context, label: &str) {
+    let choice = match label {
+        "Add integer range rule" => Some("Integer range"),
+        "Add split text rule" => Some("Split text"),
+        "Add fixed-length text rule" => Some("Fixed-length text"),
+        "Add regex text rule" => Some("Regular expression"),
+        _ => None,
+    };
+    if let Some(choice) = choice {
+        let output = settle(app, context);
+        if positions(&output, "Add rule").is_empty() {
+            click_nth(
+                app,
+                context,
+                &format!("Failure rules ({})", app.project.failure_rules.len()),
+                0,
+            );
+        }
+        click_nth(app, context, "Add rule", 0);
+        if !app.ui_project_editing_enabled() {
+            return;
+        }
+        click_nth(app, context, choice, 0);
+        return;
+    }
     click_nth(app, context, label, 0);
 }
 
@@ -1020,10 +1046,7 @@ fn generated_rule_remaining_cross_canvas_graph_rule_and_dynamic_references_block
                     path: "reference.json".into(),
                     schema: app.project.source.clone(),
                     options: FormatOptions::default(),
-                    dynamic_path: Some(DynamicSourcePath {
-                        node: item,
-                        iteration: Vec::new(),
-                    }),
+                    dynamic_path: Some(DynamicSourcePath::legacy(item, Vec::new())),
                 });
             }
             5 => {
@@ -2689,10 +2712,7 @@ fn generated_regex_remaining_references_block_retirement_and_disconnection_retai
                 path: "reference.json".into(),
                 schema: app.project.source.clone(),
                 options: FormatOptions::default(),
-                dynamic_path: Some(DynamicSourcePath {
-                    node: 14,
-                    iteration: Vec::new(),
-                }),
+                dynamic_path: Some(DynamicSourcePath::legacy(14, Vec::new())),
             }),
             4 => {
                 app.project.graph.nodes.insert(

@@ -90,6 +90,22 @@ impl LibraryGenerationDraft {
 }
 
 impl LibraryGenerationSettings {
+    fn profile(&self) -> cli::GenerateProfile {
+        generate_profile(self.include_csv_output)
+    }
+
+    /// Admits the design for these settings without resolving any path. An
+    /// unsaved project has no folder for relative settings yet.
+    fn check_design(&self, project: &mapping::Project) -> anyhow::Result<()> {
+        let target = match self.language {
+            LibraryLanguage::Rust => cli::GenerateTarget::Rust {
+                runtime_path: PathBuf::from(self.runtime_path.trim()),
+            },
+            LibraryLanguage::CSharp => cli::GenerateTarget::CSharp,
+        };
+        cli::check_generate_project(project, &target, self.profile())
+    }
+
     fn validate_settings_presence(&self) -> anyhow::Result<()> {
         if self.destination.trim().is_empty() {
             bail!("Enter a new folder for the generated library.");
@@ -137,6 +153,14 @@ impl LibraryGenerationSettings {
     }
 }
 
+fn generate_profile(include_csv_output: bool) -> cli::GenerateProfile {
+    if include_csv_output {
+        cli::GenerateProfile::CsvOutput
+    } else {
+        cli::GenerateProfile::Ordinary
+    }
+}
+
 fn project_folder(project_path: &Path) -> &Path {
     project_path
         .parent()
@@ -162,16 +186,26 @@ struct LibraryGenerationRequest {
 }
 
 impl LibraryGenerationRequest {
+    /// Applies every refusal generation would make for `project` before it
+    /// writes, without saving the project or writing anything.
+    fn preflight(&self, project: &mapping::Project) -> anyhow::Result<()> {
+        cli::plan_generate_project(
+            project,
+            &self.project_path,
+            &self.destination,
+            &self.target,
+            generate_profile(self.include_csv_output),
+        )
+        .map(drop)
+    }
+
     fn generate(self) -> anyhow::Result<cli::GenerateOutcome> {
-        if self.include_csv_output {
-            cli::generate_project_with_csv_output(
-                &self.project_path,
-                &self.destination,
-                self.target,
-            )
-        } else {
-            cli::generate_project(&self.project_path, &self.destination, self.target)
-        }
+        cli::generate_project_with_profile(
+            &self.project_path,
+            &self.destination,
+            self.target,
+            generate_profile(self.include_csv_output),
+        )
     }
 }
 
@@ -182,7 +216,7 @@ pub(super) struct PendingLibraryGeneration {
     language: LibraryLanguage,
 }
 
-fn pick_folder(current: &Path) -> Receiver<Option<String>> {
+pub(super) fn pick_folder(current: &Path) -> Receiver<Option<String>> {
     let (sender, receiver) = mpsc::channel();
     let current = current.to_path_buf();
     std::thread::spawn(move || {
@@ -216,6 +250,14 @@ impl FerruleApp {
     }
 
     fn request_library_generation(&mut self, context: &egui::Context) {
+        if self.primary_document.is_some() {
+            self.library_generation_failed(
+                "Generate a primary document project with `ferrule generate \
+                 --primary-csv-documents`."
+                    .into(),
+            );
+            return;
+        }
         if let Some(reason) = self
             .library_generation_draft
             .as_ref()
@@ -233,16 +275,19 @@ impl FerruleApp {
         let Some(draft) = &self.library_generation_draft else {
             return;
         };
-        let settings = match self.document.saved_path() {
-            Some(saved) => draft.request(saved).map(|_| ()),
+        let request = match self.document.saved_path() {
+            Some(saved) => draft.request(saved).map(Some),
             // Save As chooses the folder used by relative settings. Check only
             // their presence until the project has actually been saved there.
-            None => draft.validate_settings_presence(),
+            None => draft.validate_settings_presence().map(|()| None),
         };
-        if let Err(error) = settings {
-            self.library_generation_failed(format!("{error:#}"));
-            return;
-        }
+        let request = match request {
+            Ok(request) => request,
+            Err(error) => {
+                self.library_generation_failed(format!("{error:#}"));
+                return;
+            }
+        };
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
             if let Some(draft) = &mut self.library_generation_draft {
@@ -251,6 +296,16 @@ impl FerruleApp {
             }
             self.status = "library generation blocked by mapping issues".into();
             self.diagnostics.validation(&self.project, issues);
+            return;
+        }
+        // Refuse what generation would refuse before saving or writing.
+        let preflight = match (&request, &self.library_generation_draft) {
+            (Some(request), _) => request.preflight(&self.project),
+            (None, Some(draft)) => draft.settings().check_design(&self.project),
+            (None, None) => return,
+        };
+        if let Err(error) = preflight {
+            self.library_generation_failed(format!("{error:#}"));
             return;
         }
         if let Some(draft) = &mut self.library_generation_draft {
@@ -412,23 +467,16 @@ impl FerruleApp {
         };
         let running = self.pending_library_generation.is_some();
         let interactive = !running && self.pending_dialog.is_none();
-        let mut open = true;
-        let mut generate = false;
-        let mut cancel = false;
-        let mut window = egui::Window::new("Generate Library")
-            .collapsible(false)
-            .default_width(520.0);
-        if interactive {
-            window = window.open(&mut open);
-        }
-        window.show(context, |ui| {
+        let unsupported = filter_map_generation_reason(&self.project, draft.language);
+        let response = crate::ui_kit::dialog(context, crate::ui_kit::DialogKind::Modal, "Generate library")
+            .width(crate::ui_kit::DialogWidth::Medium)
+            .show(|ui| {
             ui.label("Generate library source for the entire project. Changes are saved before generation.");
             ui.add_enabled_ui(interactive, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Language");
+                crate::ui_kit::form_grid(ui, "library_language", |form| { form.row("Language", |ui| {
                     ui.selectable_value(&mut draft.language, LibraryLanguage::Rust, "Rust");
                     ui.selectable_value(&mut draft.language, LibraryLanguage::CSharp, "C#");
-                });
+                }); });
                 ui.checkbox(&mut draft.include_csv_output, "Include CSV output")
                     .on_hover_text("Add CSV output for a flat row table using the mapping's output settings.");
                 if draft.include_csv_output {
@@ -436,8 +484,8 @@ impl FerruleApp {
                 }
                 ui.label("New library folder");
                 ui.horizontal(|ui| {
-                    ui.add(egui::TextEdit::singleline(&mut draft.destination).desired_width(340.0));
-                    if ui.button("Choose parent...").clicked() {
+                    ui.add(crate::ui_kit::text_field(&mut draft.destination, crate::ui_kit::FieldWidth::Large));
+                    if ui.button("Browse parent…").clicked() {
                         let destination =
                             setting_path(self.document.suggested_path(), &draft.destination);
                         self.pending_dialog = Some((
@@ -451,10 +499,9 @@ impl FerruleApp {
                     ui.label("Rust runtime folder");
                     ui.horizontal(|ui| {
                         ui.add(
-                            egui::TextEdit::singleline(&mut draft.runtime_path)
-                                .desired_width(340.0),
+                            crate::ui_kit::text_field(&mut draft.runtime_path, crate::ui_kit::FieldWidth::Large),
                         );
-                        if ui.button("Choose runtime...").clicked() {
+                        if ui.button("Browse runtime…").clicked() {
                             let current =
                                 setting_path(self.document.suggested_path(), &draft.runtime_path);
                             self.pending_dialog =
@@ -467,35 +514,33 @@ impl FerruleApp {
             });
             if let Some(error) = &draft.error {
                 ui.separator();
-                egui::ScrollArea::vertical()
-                    .max_height(160.0)
+                crate::ui_kit::list_area("library_generation_error", crate::ui_kit::ListHeight::Medium)
                     .show(ui, |ui| {
                         ui.colored_label(self.palette.error, error);
                     });
             }
-            let unsupported = filter_map_generation_reason(&self.project, draft.language);
-            if let Some(reason) = unsupported { ui.weak(reason); }
-            ui.separator();
+            if let Some(reason) = filter_map_generation_reason(&self.project, draft.language) { ui.weak(reason); }
+            }, |ui| {
             if running {
                 ui.horizontal(|ui| {
                     ui.spinner();
                     ui.label("Generating library. This window can close when generation finishes.");
                 });
+                None
             } else {
-                ui.horizontal(|ui| {
-                    generate = ui
-                        .add_enabled(interactive && unsupported.is_none(), egui::Button::new("Save and generate"))
-                        .clicked();
-                    cancel = ui
-                        .add_enabled(interactive, egui::Button::new("Cancel"))
-                        .clicked();
-                });
+                crate::ui_kit::dialog_buttons(ui, crate::ui_kit::DialogButton {
+                    label: "Save and generate", disabled_reason: if interactive { unsupported } else { Some("Finish choosing a folder first") }
+                }, Some(crate::ui_kit::DialogButton::new("Cancel").disabled_if(!interactive, "Finish choosing a folder first")), None)
             }
         });
-        if running || (open && !cancel) {
+        if running
+            || !interactive
+            || (!response.close_requested
+                && response.footer != Some(crate::ui_kit::DialogAction::Secondary))
+        {
             self.library_generation_draft = Some(draft);
         }
-        if generate {
+        if response.footer == Some(crate::ui_kit::DialogAction::Primary) {
             self.request_library_generation(context);
         }
     }

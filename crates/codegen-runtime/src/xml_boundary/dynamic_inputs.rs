@@ -3,11 +3,18 @@
 use std::cell::{Cell, RefCell};
 
 use super::{XmlBoundaryError, XmlExecutionError, XmlInputSetBudget, XmlInputSource};
-use crate::{DynamicSourceLoader, Instance, RuntimeError};
+use crate::{DynamicSourceFault, DynamicSourceLoader, Instance, RuntimeError};
 
 /// The host resolves and confines the logical path; generated code performs no I/O.
 pub trait DynamicXmlSourceLoader {
     fn load(&self, source: &str, logical_path: &str) -> Result<Vec<u8>, String>;
+
+    /// The tagged form the generated adapter calls; the default adapts [`Self::load`]
+    /// exactly as `DynamicSourceLoader::load_tagged` does.
+    fn load_tagged(&self, source: &str, logical_path: &str) -> Result<Vec<u8>, DynamicSourceFault> {
+        self.load(source, logical_path)
+            .map_err(DynamicSourceFault::legacy)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,10 +156,19 @@ impl<'a> XmlDynamicSourceAdapter<'a> {
     }
 }
 
+// A product refusal travels as a legacy fault so its marker String reaches
+// DynamicSourceLoad unchanged. Tagged host faults pass through untouched and
+// therefore stay unowned Mapping failures in `recover`.
 impl DynamicSourceLoader for XmlDynamicSourceAdapter<'_> {
     fn load(&self, source: &str, path: &str) -> Result<Instance, String> {
+        self.load_tagged(source, path)
+            .map_err(DynamicSourceFault::into_message)
+    }
+
+    fn load_tagged(&self, source: &str, path: &str) -> Result<Instance, DynamicSourceFault> {
+        let refuse = |request, boundary| DynamicSourceFault::legacy(self.refuse(request, boundary));
         let Some(policy) = self.policy(source) else {
-            return Err(format!("undeclared dynamic XML source {source:?}"));
+            return Err(DynamicSourceFault::undeclared_source(source));
         };
         let owner = XmlInputSource::Named {
             index: policy.declaration_index,
@@ -167,21 +183,21 @@ impl DynamicSourceLoader for XmlDynamicSourceAdapter<'_> {
         };
         let reservation = self.budget.borrow_mut().reserve(owner);
         if let Err(error) = reservation {
-            return Err(self.refuse(request, error.into_boundary()));
+            return Err(refuse(request, error.into_boundary()));
         }
         self.ordinal.set(request.ordinal);
         request.callback_invoked = true;
         // Deliberately outside every product-parser error handler.
-        let document = self.loader.load(source, path)?;
+        let document = self.loader.load_tagged(source, path)?;
         if let Err(error) = super::check_document_size(document.len()) {
-            return Err(self.refuse(request, error));
+            return Err(refuse(request, error));
         }
         let charge = self.budget.borrow_mut().charge(owner, document.len());
         if let Err(error) = charge {
-            return Err(self.refuse(request, error.into_boundary()));
+            return Err(refuse(request, error.into_boundary()));
         }
         super::parse_structured_xml_bytes(policy.schema, &document)
-            .map_err(|error| self.refuse(request, error))
+            .map_err(|error| refuse(request, error))
     }
 }
 

@@ -417,10 +417,7 @@ fn public_basic_group_starting_with_443_complete_catalogues_preserve_global_depe
     unused.name = "unusedStatic".into();
     p.extra_sources.insert(0, unused.clone());
     unused.name = "unavailableDynamic".into();
-    unused.dynamic_path = Some(::mapping::DynamicSourcePath {
-        node: 40,
-        iteration: vec![],
-    });
+    unused.dynamic_path = Some(::mapping::DynamicSourcePath::legacy(40, vec![]));
     p.extra_sources.push(unused);
     for mode in 0..3 {
         if mode == 1 {

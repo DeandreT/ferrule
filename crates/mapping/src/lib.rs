@@ -8,6 +8,7 @@ mod adjacency_owned;
 mod csv_repair;
 mod document_project;
 pub mod document_project_file;
+mod document_route;
 mod dynamic_field_owned;
 mod edi;
 mod external_source;
@@ -21,6 +22,7 @@ mod idoc_native_config;
 mod idoc_native_text;
 mod iteration;
 mod model;
+mod node_inputs;
 mod owned_join;
 mod path_hierarchy;
 mod path_hierarchy_owned;
@@ -35,9 +37,12 @@ mod reachable;
 mod recursive;
 mod recursive_collect_owned;
 mod runtime_dependency;
+mod scope_roots;
 mod scope_serde;
+mod sequence_levels;
 mod source_owner;
 mod source_scope;
+mod sqlite_read;
 mod swift;
 mod tabular;
 mod wsdl;
@@ -50,7 +55,12 @@ pub use adjacency::AdjacencyTreePlan;
 pub use adjacency_owned::OwnedAdjacencyTreePlan;
 pub use csv_repair::{CsvRuntimeDependency, CsvTextRepairCause, CsvTextRepairDependency};
 pub use document_project::{
-    DocumentProject, DocumentProjectFormat, GlobalFilename, PrimaryFilenameError, PrimarySourcePlan,
+    DocumentProject, DocumentProjectFormat, EmptyFileSelection, GlobalFilename,
+    PrimaryFileSelection, PrimaryFilenameError, PrimarySourcePlan,
+};
+pub use document_route::{
+    PrimaryDocumentFormat, PrimaryDocumentRoute, PrimaryDocumentShape, PrimaryRouteError,
+    PrimaryRouteSide,
 };
 pub use dynamic_field_owned::OwnedDynamicSourceField;
 pub use edi::{
@@ -100,11 +110,12 @@ pub use model::{
     FunctionParameterId, Graph, IterationOutput, MAX_RUNTIME_PARAMETER_NAME_BYTES, NamedSource,
     NamedTarget, Node, NodeId, OwnedAggregate, OwnedAggregateValue, OwnedCollectionFind,
     OwnedJoinAggregate, OwnedJoinField, OwnedJoinSourcePosition, OwnedLookup, OwnedPosition,
-    OwnedRowDocumentPath, OwnedSourceField, Project, RuntimeValue, Scope, ScopeConstruction,
-    SequenceExpr, SequenceWindow, SortFilterOrder, SortKey, UserFunction, XlsxColumn,
-    XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout, XlsxRow, XlsxTableRegion,
-    XlsxWorksheetSetLayout, XmlMixedContentElement, XmlMixedContentReplacement,
+    OwnedRowDocumentPath, OwnedSourceDocumentPath, OwnedSourceField, Project, RuntimeValue, Scope,
+    ScopeConstruction, SequenceExpr, SequenceWindow, SortFilterOrder, SortKey, UserFunction,
+    XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout, XlsxRow,
+    XlsxTableRegion, XlsxWorksheetSetLayout, XmlMixedContentElement, XmlMixedContentReplacement,
 };
+pub use node_inputs::{NodeInput, NodeInputRole, NodeInputSlot};
 pub use owned_join::{
     OwnedJoinConditions, OwnedJoinKey, OwnedJoinPlan, OwnedJoinPlanError, OwnedJoinSource,
     describe_owned_collection,
@@ -124,6 +135,8 @@ pub use protobuf::{ProtobufOptions, ProtobufSchemaFile};
 pub use recursive::RecursiveFilterPlan;
 pub use recursive_collect_owned::OwnedRecursiveCollect;
 pub use runtime_dependency::{RuntimeBoundary, RuntimeDependency};
+pub use scope_roots::{NestedScopeKind, ScopeRoot, ScopeRootRole, ScopeRootSlot};
+pub use sequence_levels::SequenceLevelInput;
 pub use source_owner::{
     OwnedSourceAccess, OwnedSourceRef, SourceOwner, SourceSelector, SourceSelectorMut,
     SourceSelectorRef,
@@ -131,6 +144,16 @@ pub use source_owner::{
 pub use source_scope::{
     SourceScopeLocation, SourceScopeStep, SourceScopeTarget, first_owned_source_scope,
     first_project_owned_source_scope,
+};
+pub use sqlite_read::{
+    MAX_SQLITE_READ_COLUMNS, MAX_SQLITE_READ_IDENTIFIER_BYTES, MAX_SQLITE_READ_ORDER_TERMS,
+    MAX_SQLITE_READ_PARAMETER_NAME_BYTES, MAX_SQLITE_READ_PARAMETERS, MAX_SQLITE_READ_PREDICATES,
+    QueryProfileError, QueryProfileReason, SQLITE_READ_V1_CAPABILITY, SqliteReadComparison,
+    SqliteReadComparisonOp, SqliteReadDirection, SqliteReadInput, SqliteReadNullTest,
+    SqliteReadNulls, SqliteReadOrder, SqliteReadOwner, SqliteReadParameter, SqliteReadPredicate,
+    SqliteReadProfile, SqliteReadProjection, SqliteReadV1, ValidatedOrder, ValidatedParameter,
+    ValidatedPredicate, ValidatedPredicateTest, ValidatedProjection, ValidatedSqliteRead,
+    validate_sqlite_read_profile,
 };
 pub use swift::{
     SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtLayout, SwiftMtLayoutError,
@@ -195,3 +218,11 @@ mod owned_recursive_filter_tests;
 #[cfg(test)]
 #[path = "tests/owned_dynamic_field.rs"]
 mod owned_dynamic_field_tests;
+
+#[cfg(test)]
+#[path = "tests/optional_presence.rs"]
+mod optional_presence_tests;
+
+#[cfg(test)]
+#[path = "tests/owned_dynamic_driver.rs"]
+mod owned_dynamic_driver_tests;

@@ -1,0 +1,65 @@
+{
+ "version": 1,
+ "cases": [
+  {
+   "id": "primary-mixed",
+   "model": "primary",
+   "source": ["Repeated", [["Null"], ["Group", [["Value", ["String", "kept1"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["JsonNull"], ["Group", [["Value", ["String", "kept2"]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "inputs": [],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Repeated", [["Group", [["Value", ["String", "kept1"]], ["Position", ["Int", 2]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "kept2"]], ["Position", ["Int", 4]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}},
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Repeated", [["Group", [["Value", ["String", "kept1"]], ["Position", ["Int", 2]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "kept2"]], ["Position", ["Int", 4]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}}
+   ]
+  },
+  {
+   "id": "primary-empty",
+   "model": "primary",
+   "source": ["Repeated", []],
+   "inputs": [],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Repeated", []]]]}},
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Repeated", []]]]}}
+   ]
+  },
+  {
+   "id": "primary-singleton",
+   "model": "primary",
+   "source": ["Group", [["Value", ["String", "singleton"]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "OwnedSource", "node": 2, "owner": "Primary", "cause": "InactiveSourceFrame", "collection": [], "csharp_messages": ["owned source access failed", "Owned source operation failed."]}}},
+    {"selection": "Primary", "expected": {"Err": {"kind": "OwnedSource", "node": 2, "owner": "Primary", "cause": "InactiveSourceFrame", "collection": [], "csharp_messages": ["owned source access failed", "Owned source operation failed."]}}}
+   ]
+  },
+  {
+   "id": "named-mixed",
+   "model": "named",
+   "source": ["Group", [["Value", ["String", "primary.shadow"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]]], {"kind": "Unknown", "identity": null, "literal": null}]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Ref", ["Repeated", [["Null"], ["Group", [["Value", ["String", "kept1"]]], {"kind": "Unknown", "identity": null, "literal": null}], ["JsonNull"], ["Group", [["Value", ["String", "kept2"]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Repeated", [["Group", [["Value", ["String", "kept1"]], ["Position", ["Int", 2]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "kept2"]], ["Position", ["Int", 4]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}},
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Repeated", [["Group", [["Value", ["String", "kept1"]], ["Position", ["Int", 2]]], {"kind": "Unknown", "identity": null, "literal": null}], ["Group", [["Value", ["String", "kept2"]], ["Position", ["Int", 4]]], {"kind": "Unknown", "identity": null, "literal": null}]]]]]}}
+   ]
+  },
+  {
+   "id": "named-empty",
+   "model": "named",
+   "source": ["Group", [["Value", ["String", "primary.shadow"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]]], {"kind": "Unknown", "identity": null, "literal": null}]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Ref", ["Repeated", []]]],
+   "calls": [
+    {"selection": "All", "expected": {"Ok": [[null, ["Repeated", []]]]}},
+    {"selection": "Primary", "expected": {"Ok": [[null, ["Repeated", []]]]}}
+   ]
+  },
+  {
+   "id": "named-singleton",
+   "model": "named",
+   "source": ["Group", [["Value", ["String", "primary.shadow"]], ["Ref", ["Group", [["Value", ["String", "embedded.shadow"]]], {"kind": "Unknown", "identity": null, "literal": null}]]], {"kind": "Unknown", "identity": null, "literal": null}],
+   "inputs": [["Ref", ["Group", [["Value", ["String", "singleton"]]], {"kind": "Unknown", "identity": null, "literal": null}]]],
+   "calls": [
+    {"selection": "All", "expected": {"Err": {"kind": "OwnedSource", "node": 2, "owner": "Ref", "cause": "InactiveSourceFrame", "collection": [], "csharp_messages": ["owned source access failed", "Owned source operation failed."]}}},
+    {"selection": "Primary", "expected": {"Err": {"kind": "OwnedSource", "node": 2, "owner": "Ref", "cause": "InactiveSourceFrame", "collection": [], "csharp_messages": ["owned source access failed", "Owned source operation failed."]}}}
+   ]
+  }
+ ]
+}

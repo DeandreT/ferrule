@@ -59,6 +59,110 @@ directory. To generate directly onto a Windows filesystem, use a Windows build
 of the CLI. The same publication requirement applies to ordinary generation
 and explicitly selected companions.
 
+## Owned generation capabilities and presets
+
+Explicit owned generation admits exactly one `codegen::OwnedCapabilities` set.
+Each field is an independent permission; a closed permission keeps that
+construct's existing typed refusal:
+
+| Field | Admits |
+| --- | --- |
+| `controls.filter`, `controls.sort`, `controls.windows` | Static Basic filtered, sorted, and windowed (or implicit `First`) scope shapes; a sorted shape may filter and a windowed shape may filter and sort |
+| `grouping` (`by`, `adjacent_by`, `starting_with`, `ending_with`, `into_blocks`) | Static grouped scopes in each listed mode, with filters, sorts, windows and member retention |
+| `failures.primary_rows`, `failures.owned_sources` | Owned reads in authenticated primary-row failure rules; failure rules that walk one exact owned endpoint |
+| `sequences` (`item_at`, `exists`, `aggregate`, `owned_recursive_item_at`) | `SequenceItemAt`, `SequenceExists` and `SequenceAggregate` over the four scalar producers; `SequenceItemAt` over an owned recursive collection walk |
+| `constructions` (`path_hierarchy`, `adjacency_tree`, `recursive_filter`) | Owned path-hierarchy collections, owned adjacency-tree rows, and recursive filtering of a scope's own owned selector |
+| `search.lookup_find`, `search.collection_aggregates` | Owned `Lookup`/`CollectionFind`; owned collection aggregates |
+| `dynamic_fields` | Owned dynamic source-field reads |
+| `dynamic_loading` | Owned dynamic driver loading: a loading scope walks its endpoint's exact driver collection, evaluates the path in each driver item, and exact field and position reads see the loaded document |
+| `xml` (`Closed`, `Serialize`, `MixedContent`, `MixedConstruction`) | Nested owned XML operator levels |
+| `joins` | Owned inner join scopes, their tuple reads, and owned joined aggregates |
+| `document_sets` | Ungrouped owned scopes over a document-set endpoint walk each member as its owner's root, and owned document-path reads return the exact owner's active member location |
+| `dynamic_document_paths` | With `dynamic_loading`, owned document-path reads of an owned dynamic endpoint return the logical path that loaded its active document |
+| `xml_document_sets` | XML document-set entry points: the primary and every static named endpoint arrive as ordered XML member lists read through the structured profile; composes with `document_sets` |
+
+`OwnedCapabilities` is read by one closed-context validator, one Basic emission
+validator, the named-input planner, lowering (owned join scopes pass the
+lowering preflight only with `joins`), and both emitters. The Rust emitter
+chooses the narrowest renderer covering the set (filter, sort, or the general
+renderer for windows and beyond); the general renderer and the C# emitter read
+grouping modes, failure permissions, sequence consumers, constructions and
+joins from the same set.
+
+Every public explicit entry point is a named `codegen::OwnedPreset`. Its
+capabilities come from one declarative table in `crates/codegen/src/capabilities.rs`:
+
+| Preset | Entry suffix | Controls | Grouping | Failures | Sequences | Constructions | Search | Dynamic fields | Dynamic loading | XML | Joins | Document sets | Loaded document paths | XML document sets |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `ControlFree` | `sources` | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `Filters` | `filters` | filter | — | — | — | — | — | — | — | — | — | — | — | — |
+| `Sort` | `sort` | filter, sort | — | — | — | — | — | — | — | — | — | — | — | — |
+| `Windows` | `windows` | all | — | — | — | — | — | — | — | — | — | — | — | — |
+| `RowFailures` | `row_failures` | all | — | rows | — | — | — | — | — | — | — | — | — | — |
+| `GroupBy` | `group_by` | all | By | rows | — | — | — | — | — | — | — | — | — | — |
+| `SequenceItemAt` | `sequence_item_at` | all | By | rows | ItemAt | — | — | — | — | — | — | — | — | — |
+| `GroupAdjacentBy` | `group_adjacent_by` | all | By–AdjacentBy | rows | ItemAt | — | — | — | — | — | — | — | — | — |
+| `GroupStartingWith` | `group_starting_with` | all | By–StartingWith | rows | ItemAt | — | — | — | — | — | — | — | — | — |
+| `GroupEndingWith` | `group_ending_with` | all | By–EndingWith | rows | ItemAt | — | — | — | — | — | — | — | — | — |
+| `GroupIntoBlocks` | `group_into_blocks` | all | all | rows | ItemAt | — | — | — | — | — | — | — | — | — |
+| `FailureSources` | `failure_sources` | all | By–EndingWith | rows, owned | ItemAt | — | — | — | — | — | — | — | — | — |
+| `PathHierarchy` | `path_hierarchy` | all | By–EndingWith | rows, owned | ItemAt | hierarchy | — | — | — | — | — | — | — | — |
+| `AdjacencyTree` | `adjacency_tree` | all | By–EndingWith | rows, owned | ItemAt | hierarchy, tree | — | — | — | — | — | — | — | — |
+| `RecursiveCollect` | `recursive_collect` | all | By–EndingWith | rows, owned | ItemAt, owned recursive | hierarchy, tree | — | — | — | — | — | — | — | — |
+| `RecursiveFilter` | `recursive_filter` | all | By–EndingWith | rows, owned | ItemAt, owned recursive | all | — | — | — | — | — | — | — | — |
+| `LookupFind` | `lookup_find` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | — | — | — | — | — | — | — |
+| `DynamicField` | `dynamic_field` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | — | — | — | — | — |
+| `DynamicLoading` | `dynamic_loading` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | yes | — | — | — | — | — |
+| `CollectionAggregates` | `collection_aggregates` | all | all | rows, owned | ItemAt, owned recursive | all | all | — | — | — | — | — | — | — |
+| `Joins` | `joins` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | — | — | — | yes | — | — | — |
+| `SequenceExists` | `sequence_exists` | all | By–EndingWith | rows | ItemAt, Exists | — | — | — | — | — | — | — | — | — |
+| `SequenceAggregate` | `sequence_aggregate` | all | By–EndingWith | rows | ItemAt, Exists, Aggregate | — | — | — | — | — | — | — | — | — |
+| `XmlSerialize` | `xml_serialize` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | Serialize | — | — | — | — |
+| `XmlMixedContent` | `xml_mixed_content` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | MixedContent | — | — | — | — |
+| `XmlMixedConstruction` | `xml_mixed_construction` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | — | MixedConstruction | — | — | — | — |
+| `DocumentPaths` | `document_paths` | all | — | — | — | — | — | — | — | — | — | yes | — | — |
+| `DynamicDocumentPaths` | `dynamic_document_paths` | all | all | rows, owned | ItemAt, owned recursive | all | Lookup/Find | yes | yes | — | — | yes | yes | — |
+| `XmlDocumentSets` | `xml_document_sets` | all | — | — | — | — | — | — | — | — | — | yes | — | yes |
+
+Each row backs `lower_with_basic_owned_<suffix>`,
+`validate_program_with_basic_owned_<suffix>`, the matching
+`validate_basic_owned_*_emission`, `legacy_named_input_admission_plan_with_basic_owned_<suffix>`
+and `emit_with_basic_owned_<suffix>` in both emitters. `ControlFree` keeps its
+existing `validate_basic_owned_emission` and `emit_with_basic_owned_sources`
+entries, and ordinary `lower`, `validate_program` and
+`legacy_named_input_admission_plan` validate with its capabilities and without
+the Basic gate. `DynamicLoading` libraries also expose loader-taking execution
+entries. Hosts can also call `lower_with_owned_capabilities`,
+`validate_program_with_owned_capabilities`,
+`validate_basic_owned_emission_with_capabilities` and
+`legacy_named_input_admission_plan_with_owned_capabilities` with a preset's
+`capabilities()`.
+
+The `owned_capability_presets` CLI test applies every preset entry point to
+every owned conformance subject and compares accept/refuse results, diagnostic
+digests, plan digests and generated-artifact digests with the record in
+`crates/cli/tests/code_generation/fixtures/owned_capability_presets.txt`. Set
+`FERRULE_UPDATE_OWNED_CAPABILITY_PRESETS=1` to rewrite the record after an
+intended admission change.
+
+To add a capability:
+
+1. Add a field (or a variant of an existing component) to `OwnedCapabilities`
+   in `crates/codegen/src/capabilities.rs`, extend `is_within`, and set it in
+   the preset table rows that grant it. Existing rows keep their value.
+2. Put its validator checks in their own module under
+   `crates/codegen/src/validate/owned_sources/` as `OwnedCapabilities` methods,
+   and consult them at the one closed-context arm (`admission.rs`) and Basic
+   inventory arm (`basic.rs`) for the construct; structural checks belong in
+   `validate_structure`.
+3. Read the field in the Rust general renderer and the C# Basic renderer where
+   the construct is rendered.
+
+To add a preset, add one `OwnedPreset` variant and table row, one
+`owned_presets!` row in `crates/codegen/src/presets.rs`, and one
+`owned_presets!` row in each emitter's `lib.rs`, plus its row in the
+`owned_capability_presets` test and a regenerated record.
+
 ## Explicit Basic owned-source JSON documents
 
 `emit_with_basic_owned_sources` adds compact JSON document adapters to the
@@ -711,6 +815,111 @@ stay closed in Basic owned profiles. The
 [owned dynamic-field contract](design/owned-dynamic-field.md) defines the wire
 form, order and qualification.
 
+## Explicit owned dynamic driver loading
+
+Use `codegen::lower_with_basic_owned_dynamic_loading`, then
+`codegen_rust::emit_with_basic_owned_dynamic_loading(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_dynamic_loading(&program)`. Direct
+Program hosts use `validate_program_with_basic_owned_dynamic_loading` and
+`validate_basic_owned_dynamic_loading_emission`; named-input discovery uses
+`legacy_named_input_admission_plan_with_basic_owned_dynamic_loading`.
+
+The profile composes the owned dynamic source-field profile with loading
+scopes over owned dynamic drivers. A loading scope requests every document of
+its exact driver collection, in driver order, before walking them under their
+own driver rows; exact owned field and position reads see the current
+document. Generated libraries expose
+`execute_with_basic_owned_sources_and_dynamic_source_loader` and
+`execute_selected_with_basic_owned_sources_and_dynamic_source_loader` in Rust
+and `ExecuteWithBasicOwnedSourcesAndDynamicSourceLoader` and
+`ExecuteSelectedWithBasicOwnedSourcesAndDynamicSourceLoader` in C#; the
+ordinary entry points fail at a reached loading scope with the missing-loader
+error. Generated code makes one loader callback per reached path and never
+caches documents. Every other profile and the ordinary emitters keep refusing
+owned drivers. The [owned dynamic-loading contract](design/owned-dynamic-loading.md)
+defines the wire form, order and qualification.
+
+## Explicit owned document-set paths
+
+Use `codegen::lower_with_basic_owned_document_paths`, then
+`codegen_rust::emit_with_basic_owned_document_paths(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_document_paths(&program)`. Direct
+Program hosts use `validate_program_with_basic_owned_document_paths` and
+`validate_basic_owned_document_path_emission`; named-input discovery uses
+`legacy_named_input_admission_plan_with_basic_owned_document_paths`.
+
+Every ungrouped owned scope of the profile walks a document-set endpoint with
+no active document member by member, with that member's document as its
+owner's root, and filter, sort and window controls run over the complete
+cohort. `owned_source_document_path` returns the location of its exact owner's
+active member, or fails with a typed missing-document-path error; another
+owner's document, an uniterated set and an ancestor never answer it. The
+generated runtimes expose the walk as
+`BasicScopeContext::walk_owned_document_source_cohort` and
+`FerruleBasicScopeContext.WalkOwnedDocumentSourceCohort`, and the read as
+`owned_document_path` and `OwnedDocumentPath`. Hosts supply document sets
+through the typed instance entry points, or as XML member lists through the
+`XmlDocumentSets` preset below. Every other profile and the ordinary
+emitters refuse the read, and their owned walks keep refusing a document-set
+endpoint; legacy dynamic owners stay closed. The [owned document-path contract](design/owned-document-path.md)
+defines the wire form, order and qualification.
+
+`DynamicDocumentPaths` (`*_with_basic_owned_dynamic_document_paths`) composes
+the dynamic-loading profile with document sets and admits the read of an owned
+dynamic endpoint inside its loading scope, where it returns the logical path
+that loaded the current document. Its libraries expose the loader-taking entry
+points of the dynamic-loading profile.
+
+## Explicit owned XML document-set inputs
+
+The `XmlDocumentSets` preset adds XML entry points to the document-path
+profile. Use `codegen::lower_with_basic_owned_xml_document_sets`, then
+`codegen_rust::emit_with_basic_owned_xml_document_sets(&program, &options)` or
+`codegen_csharp::emit_with_basic_owned_xml_document_sets(&program)`; direct
+Program hosts use `validate_program_with_basic_owned_xml_document_sets` and
+`validate_basic_owned_xml_document_set_emission`, and named-input discovery uses
+`legacy_named_input_admission_plan_with_basic_owned_xml_document_sets`.
+
+Each endpoint arrives as an ordered list of members, each with its portable
+path, an optional resolved location and its XML text or UTF-8 bytes. The
+library parses every member through the closed structured XML profile into
+one document-set member, exactly as `format_xml::read_local_file_set` reads a
+matched file: the path and resolved location are kept as supplied, so owned
+document-path reads return the same locations, and each member is its owner's
+root when an owned scope walks the set. Rust exposes
+`execute_xml_document_sets_with_basic_owned_sources`,
+`execute_selected_xml_document_sets_with_basic_owned_sources` and their
+`execute_xml_bytes_*` and `execute_selected_xml_bytes_*` counterparts over
+`codegen_runtime::XmlDocumentSetMember` and `NamedXmlDocumentSet`. C# exposes
+`ExecuteXmlDocumentSetsWithBasicOwnedSources`,
+`ExecuteSelectedXmlDocumentSetsWithBasicOwnedSources` and the `XmlBytes`
+counterparts over `FerruleXmlDocumentSetMember` and
+`FerruleNamedXmlDocumentSet` (or their `Bytes` records). Arguments and outputs
+follow the typed entry points: an explicit owned-source policy, an optional
+execution context and typed output instances.
+
+A call resolves a selected target first, then admits the supplied names
+exactly as the typed entry points do: unexpected and duplicate names in
+supplied order, then missing legacy-required names, before any member is read.
+It then admits the whole input set without parsing: at most 4096 members in
+total, a non-empty path and a non-empty resolved location when one is given,
+and the 64 MiB document and 256 MiB set limits of the XML input boundaries.
+Members are parsed afterwards, the primary first and then each named set in
+supplied order. A per-member refusal or parse failure names its source, its
+zero-based index and its path (`XmlDocumentSetInputError::member`,
+`FerruleXmlDocumentSetInputException.Member`); name admission, the member count
+and mapping failures name no member, and a mapping failure keeps its typed
+runtime error as the boundary's cause. An empty list is an empty set, and an
+omitted owned-only named source keeps its `SourceUnavailable` failure.
+
+The preset refuses, before any artifact exists, a Program without the ordinary
+structured XML format identity (`MissingXmlBoundary`), an observed root-view
+primary (`ObservedPrimaryInput`) and a per-driver named source
+(`DynamicSource`), as `ProgramValidationError::XmlDocumentSetInput`. Every
+other preset renders no XML document-set entry. The
+[portable corpus](../conformance/basic-owned-xml-document-set/README.md)
+compares the interpreter, generated Rust and generated C#.
+
 ## Explicit owned XML serialization
 
 `Node::OwnedXmlSerialize` serializes one schema-known structured element read
@@ -928,6 +1137,51 @@ ordinary user global-tools directory.
 `DOTNET_SKIP_FIRST_TIME_EXPERIENCE` is unsupported in .NET Core 3.0 and later;
 `DOTNET_NOLOGO` controls messages. Neither substitutes for the PATH opt-out.
 
+### Library composition
+
+The C# emitter composes a generated library from typed parts in
+`crates/codegen-csharp/src/composition.rs`; it never searches or rewrites
+emitted text. The ordinary mapping renderer returns the `GeneratedMapping`
+class as a `ClassPart`: the top-level types its compilation unit declares and
+the class members. A `Library` holds that class together with:
+
+- further partial declarations appended to `GeneratedMapping.cs` (the primary
+  filename evaluator);
+- companion sources, each its own compilation unit holding one partial
+  declaration (`GeneratedMapping.Csv.cs`, `.CsvDocument.cs`, `.PrimaryCsv.cs`,
+  `.PrimaryCsvDocument.cs`, `.PrimaryXmlDocument.cs`, `.PrimaryJsonDocument.cs`,
+  `.PrimaryFixedWidthDocument.cs`, `.PrimaryEdiDocument.cs`, `.CsvJson.cs`,
+  `.CsvX12.cs`, `.Json5.cs`, `.X12.cs` and `.Documents.cs`);
+- optional runtime sources beyond the fixed runtime set.
+
+Only `Library::into_artifacts` renders text. The class declaration is
+`partial` exactly when another declaration extends it. The project file is
+rendered from its compile items: the mapping source, then each companion with
+the most recently layered first, then `GeneratedTargetBuilder.cs` and the
+runtime glob. Layered emitters extend the library of the emitter they build
+on: CSV documents extend CSV output, primary CSV acquisition extends the
+primary filename library, primary CSV documents extend CSV documents with
+the primary filename evaluator, and primary XML documents extend the ordinary
+library and its XML adapter with that evaluator. Primary JSON documents extend
+the ordinary library and its strict JSON adapter with the evaluator and bounded
+document-set acquisition. Primary EDI documents use the same acquisition model
+with embedded family-specific schemas and options; their package-free codecs
+handle X12, EDIFACT, HL7 v2, TRADACOMS, and IDoc. Each layer keeps its own admission ahead of the
+layer below it.
+
+The Basic owned mappings render their own complete compilation unit, which
+may append the separate partial declaration of the owned JSON documents; they
+are assembled with the ordinary project file and take no companions. When a
+mapping contains a filter-map sequence, expression and user-function node
+bodies are declared under their `NodeCore_` and `UserFunctionCore_` names and
+the scoped `Node_` and `UserFunction_*_Node_` wrappers are appended after them.
+
+`crates/cli/tests/code_generation/csharp_composition.rs` records every C#
+emission route over the owned conformance corpora and the authored generation
+fixtures, including fixtures whose literals and parameter names resemble the
+composed parts. Set `FERRULE_UPDATE_CSHARP_COMPOSITION=1` to rewrite
+`fixtures/csharp_composition.txt` after an intended emission change.
+
 ### Generate the library
 
 ```sh
@@ -987,6 +1241,154 @@ Per-driver sources use `execute_with_dynamic_source_loader`,
 variants. The host implements `DynamicSourceLoader` and returns one
 schema-shaped `Instance` for each source-name/logical-path request.
 
+## Library Identities and Compatibility Manifests
+
+Each generation request can name the generated library and ask for a
+compatibility manifest. Omitted settings keep the names generation has always
+used, so existing calls produce byte-identical artifacts.
+
+```sh
+cargo run -p cli -- generate --project orders.json --language csharp \
+  --out generated-orders \
+  --csharp-assembly-name Acme.Orders \
+  --csharp-namespace Acme.Orders \
+  --csharp-class OrderMapping \
+  --compatibility-manifest
+
+cargo run -p cli -- generate --project invoices.json --language rust \
+  --out generated-invoices \
+  --rust-runtime-path crates/codegen-runtime \
+  --rust-package-name invoices-mapping \
+  --compatibility-manifest
+```
+
+The library API takes the same settings: `codegen_csharp::Options` holds an
+`Identity` and a `ManifestSelection` for `codegen_csharp::Generator`, and
+`codegen_rust::Generator` adds a `ManifestSelection` to the existing
+`codegen_rust::Options`, whose `package_name` names the crate. Each generator
+method runs the free emitter function of the same name; under default settings
+it returns exactly that function's artifacts. The CLI passes its settings
+through `cli::generate_project_with_settings` and `cli::GenerateSettings`. The
+Basic owned emitters keep the default identity.
+
+### Identities
+
+| Setting | Default | Rules |
+| --- | --- | --- |
+| C# assembly name | `Ferrule.Generated` | Dotted segments of ASCII letters, digits, `_` and `-`, each starting with a letter or `_`; at most 128 bytes; not a Windows device name or `Ferrule.Runtime`. Also names the project file, `<assembly>.csproj`. |
+| C# root namespace | `Ferrule.Generated` | Dotted ASCII C# identifiers, none a C# keyword; at most 128 bytes. The first segment may not be `Ferrule`, `System`, `Microsoft` or `global`, or any name spelled in the vendored runtime sources, which would hide that name from the runtime's own lookups. |
+| C# mapping class | `GeneratedMapping` | An ASCII C# identifier that is not a keyword, ends with `Mapping` (and is longer than it) and differs from every namespace segment. No other generated member or top-level type ends with `Mapping`. |
+| Rust package name | `ferrule-generated-mapping` | ASCII letters, digits, `-` and `_`, starting with a letter; at most 64 bytes; the derived crate name is not a Rust keyword, `std`, `core`, `alloc`, `test`, `proc_macro`, a Cargo artifact directory name, a Windows device name or `codegen_runtime`. |
+
+Each refusal is a typed `codegen::IdentityError` naming the setting, the value
+and the violated rule, raised before anything is rendered or written. Language
+mismatches, such as a C# identity for a Rust target, are refused as well.
+
+### Hosting several mappings
+
+One process can host any number of generated mappings with distinct
+identities:
+
+- C#: each library is its own assembly with its own root namespace and mapping
+  class. Every library vendors its runtime under the `Ferrule.Runtime`
+  namespace, so runtime types are distinct per assembly. A host that only uses
+  the string or byte document methods references the libraries directly. A
+  host that names runtime types, such as `FerruleInstance`, of more than one
+  library gives each further reference an `extern alias`
+  (`<ProjectReference ... Aliases="Invoices" />`, then
+  `Invoices::Ferrule.Runtime.FerruleInstance`). Instances are not exchanged
+  between libraries; exchange documents instead.
+- Rust: each library is its own crate, and every generated item is scoped by
+  the crate. Crates with distinct package names build together in one Cargo
+  build and share one bound `codegen-runtime`.
+
+### Compatibility manifests
+
+`--compatibility-manifest` (`ManifestSelection::Included`) is opt-in because
+its files would otherwise change every existing artifact inventory. It adds
+`ferrule-manifest.json`, a typed record (`codegen::CompatibilityManifest`)
+with:
+
+- `format` and `format_version` (`ferrule-generated-library`, version 1);
+- `generator`: name and version;
+- `runtime`: package, version, source `identity` (`sha256:` and 64 hex digits)
+  and `binding`: `vendored`, `path`, `version` or `git`;
+- `profile`: the selected companion profile, such as `complete`, `typed_only`,
+  `csv_output`, `json5` or `x12`;
+- `library`: the C# assembly, namespace and class, or the Rust package and
+  crate names.
+
+`CompatibilityManifest::from_json` refuses another format or format version
+before reading the rest of the record, and `require_runtime` refuses a library
+generated for another runtime identity.
+
+The generated library carries the same record and checks it:
+
+- C#: `Runtime/FerruleRuntimeIdentity.cs` records the identity of the vendored
+  runtime sources, `ferrule-manifest.json` is an embedded resource, and
+  `GeneratedMapping.Compatibility.cs` declares the `CompatibilityManifest` and
+  `RuntimeIdentity` constants and a static constructor of the mapping class.
+  Before the class is first used, `FerruleCompatibility.Verify` refuses a
+  vendored runtime with another identity, an embedded manifest that differs
+  from the compiled record, or a manifest of another format, version or
+  runtime. The refusal is a `TypeInitializationException` whose inner
+  exception is a `FerruleCompatibilityException` naming the failed `Field`.
+- Rust: `src/ferrule_compatibility.rs` exports `COMPATIBILITY_MANIFEST` and
+  `RUNTIME_IDENTITY` and is declared at the end of `src/lib.rs`. Constant
+  assertions make compilation fail when the bound `codegen-runtime` reports
+  another `codegen_runtime::RUNTIME_IDENTITY`, or when
+  `ferrule-manifest.json` differs from the embedded record.
+
+The C# runtime identity hashes every vendored `Runtime/` source except the
+identity file, each as its path, a NUL, its little-endian 64-bit length and its
+bytes, in path order. The Rust runtime identity hashes the `codegen-runtime`
+package sources the same way: `Cargo.toml`, `build.rs`, `identity.rs` and every
+file under `src/`. The runtime's build script exports it, and the generator
+records the identity of the runtime it was built with.
+
+### Rust runtime binding
+
+C# output stays vendored and package-free. Generated Rust crates bind
+`codegen-runtime` through a Cargo dependency: a local path by default, or a
+version or Git revision through the library API. Without a manifest the path is
+used as given. With a manifest the binding is explicit: the recorded runtime
+identity is checked when the crate compiles, whichever source Cargo resolves,
+and the CLI also refuses a declared runtime path whose sources have another
+identity (`codegen_rust::RuntimeBindingError::Mismatch`) before anything is
+written. A versioned shared runtime package remains optional; the same recorded
+identity applies to it.
+
+## Prepared Boundary Emission and Typed-Only Libraries
+
+Both emitters validate a Program once through
+`codegen::prepare_boundary_emission(program, companions)`. Its refusals are
+exactly those of `codegen::validate_program`, in the same order. The returned
+`BoundaryEmissionPlan` borrows the Program and keeps what validation proved
+about its XML document adapter: the `XmlOutputMode`, how the adapter accepts
+inputs (`XmlDocumentInputs`), each output's single-document or document-list
+cardinality, and the validated policies. Both renderers dispatch on that plan;
+neither re-derives the classification from the Program.
+`Program::xml_output_mode` remains a public query that validates the complete
+Program on every call.
+
+`CompanionSelection` chooses the API families rendered beside the typed
+instance entry points:
+
+| Selection | Rust | C# | Renders |
+| --- | --- | --- | --- |
+| `Complete` | `emit`, `emit_with_companions` | `emit`, `emit_with_companions` | Typed entry points, JSON and selected-target JSON companions, and the Program's XML adapter |
+| `TypedOnly` | `emit_with_companions` | `emit_with_companions` | Typed `execute...` / `Execute...` entry points only |
+
+A typed-only library admits no JSON or XML companion descriptor, so a schema
+beyond the embedded JSON descriptor limit does not block it. The Program,
+including any XML boundary policy it carries, is still validated. C# typed-only
+libraries also omit the JSON document records and the dynamic-input XML runtime
+source. `emit` and the CLI keep the complete inventory.
+
+A new boundary format adds its own proved facts to the plan and its own
+selection, rather than combining independent flags or sharing one codec
+abstraction across formats.
+
 ## Explicit C# X12 Companions
 
 Add `--x12-adapters` to the C# CLI generation command for explicit raw X12
@@ -1024,18 +1426,20 @@ checks compare complete values, scalar types, bytes and typed failures.
 See [the schema, syntax, API and limit contract](design/generated-x12-csharp.md)
 for direction selection, rejected metadata and typed boundary failures.
 
-For complete static named JSON/X12 inputs and explicitly selected primary or
+For complete static named JSON/X12/EDIFACT inputs and explicitly selected primary or
 named output, use C# `--static-document-adapters` and
 `generate_project_with_static_document_adapters`. Every endpoint retains its
 own admitted schema and format identity, including unused sources and
 unselected targets. The generated text and UTF-8 byte carriers retain the
 selected target name and format. Name/list preflight precedes primary parsing;
 all supplied documents parse before typed selected execution. The same context
-reaches selected X12 completion. This flag is separate from, and conflicts with,
+reaches selected EDI completion. This flag is separate from, and conflicts with,
 the primary `--x12-adapters` flag. The normal `code_generation` integration
 target contains the authored native and compiled static-document contracts;
 it requires `--features codegen-tests` and the .NET 10 SDK. See the
 [static document API and error order](design/generated-x12-csharp.md#static-named-documents-and-selected-output).
+EDIFACT uses the shared codec with strict envelope checks; see
+[static EDIFACT boundaries](design/static-edifact-documents.md).
 
 ## Explicit JSON5 Companions
 
@@ -1137,8 +1541,10 @@ not process-memory bounds. Rust preserves input causes in
 `CsvDocumentError::Output`; C# preserves the existing typed CSV-input,
 mapping-runtime and CSV-writer exceptions.
 
-These APIs take document contents. Filename enumeration, acquisition,
-multi-document partitioning and publication require separate host contracts.
+These APIs take document contents. A saved primary filename document project
+instead generates with `--primary-documents`: its library selects, loads
+and maps every document its filename names through a host, as described in
+[primary document filenames](design/primary-document-filenames.md).
 
 ### Explicit CSV byte decoding
 
@@ -1293,6 +1699,91 @@ or request counts, and host load failures retain distinct runtime error
 categories with the source name, expression node where applicable, and logical
 path for load failures.
 
+### Tagged load failures
+
+A load failure has one of three phases. Acquisition failures belong to the
+host. Codec failures (`Encoding`, `Document`, `UndeclaredSource`) and resource
+failures (`DocumentBytes`, `TotalBytes`, `RequestCount`, with observed amount
+and limit) belong to the generated boundary that admitted the returned
+document. Each failure keeps the endpoint name, logical path and original cause.
+
+In Rust, `DynamicSourceFault` is the tagged failure. Generated mappings call
+`load_tagged` on `DynamicSourceLoader`, `DynamicJsonSourceLoader` and
+`DynamicXmlSourceLoader`. Its provided default adapts the existing string-returning
+`load` method, so existing hosts compile and behave as before: their original
+`String` reaches `RuntimeError::DynamicSourceLoad` unchanged. A host that reports
+typed failures implements `TaggedDynamicSourceLoader` or
+`TaggedDynamicBytesLoader` and passes `TaggedLoaderAdapter(&host)` to the
+generated method. Its faults reach `RuntimeError::DynamicSourceFailure`, whose
+`DynamicSourceLoadFailure` holds the source, path and fault, with the original
+cause available through `cause()` and the standard error chain. The adapter's
+string `load` methods render the same fault's message.
+
+In C#, a loader throws `FerruleDynamicSourceFault`, an
+`InvalidOperationException` built with `ForAcquisition`, `ForCodec`,
+`ForUndeclaredSource` or `ForResource`. Its inner exception is the original
+cause. Any other exception remains a host acquisition failure and stays the
+inner exception unchanged. Both forms are wrapped, as before, in
+`FerruleRuntimeException` with category `DynamicSourceLoad`, `SourceField` and
+`Detail` (the logical path).
+
+The generated JSON adapters (`JsonDynamicSourceAdapter` and
+`FerruleJsonDynamicSourceAdapter`) call the host first. They then check the
+64 MiB document limit, the 256 MiB execution total, strict UTF-8 and the
+endpoint schema, in that order. Host failures pass through unchanged. The
+adapters report their own refusals as tagged codec or resource faults and keep
+the original cause, such as the UTF-8 decoding error or the retained
+`format_json` failure in `JsonBoundaryError::InvalidDocument`. Rust message
+text matches the previous string messages. The generated XML adapter keeps its
+product-refusal recovery protocol. Tagged host faults pass through it as
+unowned `Mapping` failures with their original cause.
+
+`DynamicSourceDiagnostic` / `FerruleDynamicSourceDiagnostic` project any of
+these failures to a small stable record: phase, endpoint, category, optional
+path and optional resource limit. `find` / `Find` walk an error's cause chain,
+including generated JSON, CSV and XML boundary errors and recovered XML
+dynamic-input requests. The phase tokens are `request`, `acquisition`, `codec`
+and `resource`. The category tokens are `missing_loader`, `path_type`,
+`path_too_long`, `too_many_requests`, `host`, `encoding`, `document`,
+`undeclared_source`, `document_bytes`, `total_bytes` and `request_count`. Both
+runtimes use the same tokens. Tokens may be added but are never renamed. The
+projection never parses message text.
+
+### Interpreter host loaders
+
+The interpreter uses the same split for its own host loaders.
+`engine::DynamicSourceLoader` has provided `load_tagged` and
+`load_restricted_tagged` methods, which the engine calls. Their defaults adapt
+`load` and `load_restricted`, so a string loader behaves as before and its
+message reaches `EngineError::DynamicSourceLoad` unchanged. A loader with typed
+failures returns `engine::DynamicSourceFault`, which reaches
+`EngineError::DynamicSourceFailure`. Its `DynamicSourceLoadFailure` holds the
+source name, logical path and fault, and `DynamicSourceFault::find_cause` walks
+the original cause chain. The failure renders the legacy
+`DynamicSourceLoad` text, and `EngineError` does not report the fault as its
+`source()`, so CLI and GUI error text is unchanged. Request order and error
+precedence are unchanged.
+
+A restricted-policy refusal stays `EngineError::DynamicSourceRefused`. Its
+`DynamicSourceRefusal` holds the source name, logical path and typed
+`PolicyRefusal`, which remains the error's `source()`. `engine::DynamicSourceDiagnostic`
+uses the generated runtimes' tokens and projects a refusal as `acquisition` /
+`host`: generated libraries have no policy of their own, so the same refusal
+made by a confining host reaches them as an acquisition fault. The interpreter
+checks no path length, request count or byte totals for dynamic sources, so it
+reports only the `missing_loader` and `path_type` request categories itself.
+
+The CLI and GUI filesystem loader classifies each failed read from the typed
+errors in its cause chain and keeps the whole chain in
+`cli::DynamicSourceReadError`. A policy refusal or I/O error is acquisition.
+Invalid UTF-8 is an encoding fault, including the payload-free `InvalidData`
+error that `read_to_string` reports. Any other `InvalidData` error or format
+reader error is a document fault. A failure without typed evidence, such as a
+transport or configuration message, remains a host acquisition failure. A
+source the project does not declare is an `UndeclaredSource` codec fault. The
+payload loader decodes documents before execution. A logical path the host did
+not supply is an acquisition fault (`cli::UnsuppliedPayloadSource`).
+
 ## JSON Host Boundary
 
 Both generated libraries also expose schema-shaped JSON entry points. These
@@ -1305,7 +1796,9 @@ both generated readers and writers. Schemas with explicit
 `json_object_item_nullable` metadata use embedded descriptor version 4, which
 older runtimes reject. Schemas without this metadata keep their existing
 descriptor bytes and item behavior. The selected JSON5 companion profile
-rejects explicit object-item metadata.
+rejects explicit object-item metadata. Scalar arrays likewise admit a null
+item only when the item's own value domain is nullable, independent of
+array-container nullability.
 
 Rust:
 
@@ -1608,6 +2101,28 @@ errors.
 Ordinary collections within that byte limit have no general instance-node
 count cap. Keyword-specific validation budgets, such as `uniqueItems` and
 pattern matching, retain their own limits.
+
+Both runtimes prepare each embedded JSON schema descriptor once per process and
+share the immutable result across repeated and concurrent calls. Each call keeps
+its own document byte, depth, pattern work and output accounting. Rust's
+descriptor-taking functions use a bounded registry keyed by descriptor text, and
+`PreparedJsonSchema` lets a caller own one preparation. C# keys prepared schemas
+by descriptor string identity. Failed preparations are not retained, so errors
+and their order are unchanged. Prepared schemas stay in memory for the process
+lifetime and are not counted by the document limits; see
+[JSON endpoint preparation](performance/json-endpoint-preparation.md).
+
+JSON5, XML and X12 endpoints prepare their descriptors the same way. Rust's
+descriptor-taking JSON5, XML and X12 functions use bounded registries keyed by
+descriptor text. C# keys each role's prepared schema or profile by descriptor
+string identity. Each route still applies its own document limits, schema checks
+and per-call budgets in their original order. Rust JSON and JSON5 output text is
+measured before it is written, so an output above its byte limit is refused
+without being materialized. C# JSON, JSON5 and X12 byte routes encode the
+completed output directly to UTF-8, without first building the UTF-16 string,
+and C# JSON and JSON5 apply their output limit before either route materializes
+the document; see
+[endpoint codec preparation](performance/endpoint-codec-preparation.md).
 
 JSON text and property names must contain valid Unicode scalar values. Both
 backends reject malformed UTF-8, unpaired escaped surrogates, and numbers
@@ -2679,6 +3194,9 @@ The current portable model includes:
 - source-backed empty, nested, and multi-hop iteration
 - ordered nonempty scope concatenation, with independently controlled branch
   contexts and repeated or mapped-sequence output flattened in declaration order
+- optional presence, which evaluates one Boolean condition in the parent context
+  and constructs zero or one repeated group without adding an item frame; it
+  admits no item controls and stays closed on owned-source routes
 - exact first-seen key grouping, contiguous starting-marker grouping, and
   positive fixed-size block grouping over source or generated iteration;
   grouped bindings read the first member while aggregates and empty-path child

@@ -53,7 +53,22 @@ pub fn show(
     ui: &mut egui::Ui,
 ) -> CanvasInteraction {
     let canvas_id = egui::Id::unique((CANVAS_ID, options.id_salt, options.view_generation));
+    let generation_id = options.tools_id.with("camera_generation");
+    let previous_generation = ui.ctx().data(|data| data.get_temp::<u64>(generation_id));
+    let owner_id = canvas_id.with("camera_owner");
+    let previous_owner = ui.ctx().data(|data| data.get_temp::<egui::Id>(owner_id));
+    if previous_owner != Some(options.tools_id) {
+        fit::reset(ui.ctx(), canvas_id);
+    }
+    if previous_generation.is_some_and(|generation| generation != options.view_generation) {
+        fit::request_all(ui.ctx(), canvas_id);
+    }
+    ui.ctx().data_mut(|data| {
+        data.insert_temp(generation_id, options.view_generation);
+        data.insert_temp(owner_id, options.tools_id);
+    });
     let mut style = options.style;
+    style.min_scale = Some(0.05);
     let viewport = ui.available_rect_before_wrap().intersect(ui.clip_rect());
     let focused = ui.ctx().input(|input| {
         input.pointer.any_pressed()
@@ -130,6 +145,24 @@ pub fn show(
     let previous_transform = ui
         .ctx()
         .data(|data| data.get_temp::<CanvasTransform>(transform_marker));
+    // egui's Ctrl+wheel factor is intentionally strong for generic scenes.
+    // Override only this canvas camera, retaining the point under the pointer.
+    let zoom_delta = ui.ctx().input(|input| input.zoom_delta());
+    if zoom_delta != 1.0
+        && let (Some(pointer), Some(transform)) = (pointer, previous_transform)
+        && viewport.contains(pointer)
+        && !egui::Popup::is_any_open(ui.ctx())
+        && ui
+            .ctx()
+            .layer_id_at(pointer)
+            .is_none_or(|layer| layer.order <= ui.layer_id().order)
+    {
+        viewer.camera_focus = Some((
+            transform.0.inverse() * pointer,
+            pointer,
+            Some(zoom_step(transform.0.scaling, zoom_delta.powf(0.25))),
+        ));
+    }
     let node_wheel = (!wire_dragging)
         .then(|| {
             let delta_y = ui.ctx().input(|input| input.smooth_scroll_delta().y);
@@ -171,6 +204,9 @@ pub fn show(
         1.0
     };
     let maximum_zoom = style.max_scale.unwrap_or(2.0) / magnification;
+    if crate::canvas_tools::take_fit_request(ui.ctx()) {
+        fit::request_all(ui.ctx(), canvas_id);
+    }
     let pointer_navigation = pointer.is_some_and(|pointer| viewport.contains(pointer))
         && (primary_down
             || ui
@@ -182,10 +218,7 @@ pub fn show(
         fit_viewport,
         snarl,
         maximum_zoom,
-        viewer.camera_focus.is_some()
-            || wire_dragging
-            || pointer_navigation
-            || crate::canvas_tools::consume_fit_change(ui.ctx()),
+        viewer.camera_focus.is_some() || wire_dragging || pointer_navigation,
     );
     if let Some(fitted) = fitted {
         viewer.camera_focus = Some((fitted.graph_center, fitted.screen_center, Some(fitted.zoom)));
@@ -211,6 +244,23 @@ pub fn show(
     if let Some(transform) = viewer.canvas_transform {
         ui.ctx()
             .data_mut(|data| data.insert_temp(transform_marker, CanvasTransform(transform)));
+        if let Some(focus) = show_navigation(ui, canvas_id, viewport, transform) {
+            match focus {
+                Navigation::Zoom(zoom) => {
+                    ui.ctx().data_mut(|data| {
+                        data.insert_temp(
+                            focus_marker,
+                            CanvasFocus {
+                                graph_position: transform.inverse() * viewport.center(),
+                                zoom: Some(zoom),
+                            },
+                        )
+                    });
+                }
+                Navigation::Fit => fit::request_all(ui.ctx(), canvas_id),
+            }
+            ui.ctx().request_repaint();
+        }
     }
     crate::canvas_search::show(
         ui.ctx(),
@@ -252,6 +302,7 @@ pub fn show(
         ui.ctx().request_repaint();
     }
     let pin_interaction_ids = std::mem::take(&mut viewer.pin_interaction_ids);
+    crate::canvas_tools::preview_actions(ui, viewport, snarl);
     ui.ctx().data_mut(|data| {
         data.insert_temp(
             canvas_id.with("pin_interaction_ids"),
@@ -271,6 +322,68 @@ pub fn show(
         viewport_width: viewport.width(),
         focused,
     }
+}
+
+enum Navigation {
+    Zoom(f32),
+    Fit,
+}
+
+fn zoom_step(current: f32, factor: f32) -> f32 {
+    // An explicit fit of an exceptionally large graph may be below 5%.
+    // A subsequent zoom-out must never jump in to the ordinary zoom floor.
+    (current * factor).clamp(current.min(0.05), 2.0)
+}
+
+fn show_navigation(
+    ui: &mut egui::Ui,
+    id: egui::Id,
+    viewport: egui::Rect,
+    transform: egui::emath::TSTransform,
+) -> Option<Navigation> {
+    let rect = egui::Rect::from_min_size(
+        viewport.left_bottom()
+            + egui::vec2(
+                crate::ui_kit::space::MD,
+                -crate::ui_kit::METRICS.control_height - crate::ui_kit::space::MD * 2.0,
+            ),
+        egui::vec2(240.0, crate::ui_kit::METRICS.control_height),
+    );
+    let layer = egui::LayerId::new(ui.layer_id().order, id.with("navigation_layer"));
+    ui.ctx().set_sublayer(ui.layer_id(), layer);
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt(id.with("navigation"))
+            .layer_id(layer)
+            .max_rect(rect),
+    );
+    child.set_clip_rect(viewport);
+    let mut result = None;
+    egui::Frame::popup(ui.style()).show(&mut child, |ui| {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = crate::ui_kit::space::XS;
+            if crate::ui_kit::icon_button(ui, lucide_icons::Icon::Minus, "Zoom out", None).clicked()
+            {
+                result = Some(Navigation::Zoom(zoom_step(transform.scaling, 1.0 / 1.1)));
+            }
+            if ui
+                .button(format!("{:.0}%", transform.scaling * 100.0))
+                .on_hover_text("Reset zoom to 100%")
+                .clicked()
+            {
+                result = Some(Navigation::Zoom(1.0));
+            }
+            if crate::ui_kit::icon_button(ui, lucide_icons::Icon::Plus, "Zoom in", None).clicked() {
+                result = Some(Navigation::Zoom(zoom_step(transform.scaling, 1.1)));
+            }
+            if crate::ui_kit::icon_button(ui, lucide_icons::Icon::Maximize, "Fit all nodes", None)
+                .clicked()
+            {
+                result = Some(Navigation::Fit);
+            }
+        });
+    });
+    result
 }
 
 #[cfg(test)]
@@ -342,6 +455,14 @@ fn edge_pan_delta(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn precise_zoom_steps_do_not_jump_after_a_very_large_explicit_fit() {
+        assert!((zoom_step(1.0, 1.1) - 1.1).abs() < f32::EPSILON);
+        assert_eq!(zoom_step(0.01, 1.0 / 1.1), 0.01);
+        assert!((zoom_step(0.01, 1.1) - 0.011).abs() < 0.000_001);
+        assert_eq!(zoom_step(2.0, 1.1), 2.0);
+    }
 
     #[test]
     fn edge_pan_uses_distance_pressure_only_during_active_drags() {

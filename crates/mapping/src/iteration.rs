@@ -265,7 +265,7 @@ fn validate_left_collections<'a>(
 
 /// The mutually-exclusive way a target scope obtains iteration items.
 /// A non-empty ordered composition of independently evaluated target scopes.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct ScopeSequence {
     segments: Vec<Scope>,
@@ -312,7 +312,7 @@ impl<'de> Deserialize<'de> for ScopeSequence {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum ScopeIteration {
     #[default]
     None,
@@ -338,6 +338,12 @@ pub enum ScopeIteration {
         plan: OwnedJoinPlan,
     },
     Concatenate(ScopeSequence),
+    /// Evaluates one Boolean presence expression once in the unchanged parent
+    /// context and constructs zero or one group. It adds no iteration frame,
+    /// so expressions keep resolving the parent item and its positions.
+    OptionalPresence {
+        condition: NodeId,
+    },
 }
 
 impl ScopeIteration {
@@ -351,7 +357,8 @@ impl ScopeIteration {
             | Self::Sequence(_)
             | Self::InnerJoin { .. }
             | Self::OwnedInnerJoin { .. }
-            | Self::Concatenate(_) => None,
+            | Self::Concatenate(_)
+            | Self::OptionalPresence { .. } => None,
         }
     }
 
@@ -373,7 +380,8 @@ impl ScopeIteration {
             | Self::DynamicDocuments { .. }
             | Self::InnerJoin { .. }
             | Self::OwnedInnerJoin { .. }
-            | Self::Concatenate(_) => None,
+            | Self::Concatenate(_)
+            | Self::OptionalPresence { .. } => None,
         }
     }
 
@@ -386,7 +394,8 @@ impl ScopeIteration {
             | Self::DynamicDocuments { .. }
             | Self::Sequence(_)
             | Self::OwnedInnerJoin { .. }
-            | Self::Concatenate(_) => None,
+            | Self::Concatenate(_)
+            | Self::OptionalPresence { .. } => None,
         }
     }
 
@@ -399,7 +408,8 @@ impl ScopeIteration {
             | Self::DynamicDocuments { .. }
             | Self::Sequence(_)
             | Self::InnerJoin { .. }
-            | Self::Concatenate(_) => None,
+            | Self::Concatenate(_)
+            | Self::OptionalPresence { .. } => None,
         }
     }
 
@@ -412,7 +422,8 @@ impl ScopeIteration {
             | Self::DynamicDocuments { .. }
             | Self::Sequence(_)
             | Self::InnerJoin { .. }
-            | Self::OwnedInnerJoin { .. } => None,
+            | Self::OwnedInnerJoin { .. }
+            | Self::OptionalPresence { .. } => None,
         }
     }
 
@@ -425,7 +436,23 @@ impl ScopeIteration {
             | Self::DynamicDocuments { .. }
             | Self::Sequence(_)
             | Self::InnerJoin { .. }
-            | Self::OwnedInnerJoin { .. } => None,
+            | Self::OwnedInnerJoin { .. }
+            | Self::OptionalPresence { .. } => None,
+        }
+    }
+
+    /// The Boolean presence expression of an optional-presence scope.
+    pub fn presence(&self) -> Option<NodeId> {
+        match self {
+            Self::OptionalPresence { condition } => Some(*condition),
+            Self::None
+            | Self::Source(_)
+            | Self::OwnedSource { .. }
+            | Self::DynamicDocuments { .. }
+            | Self::Sequence(_)
+            | Self::InnerJoin { .. }
+            | Self::OwnedInnerJoin { .. }
+            | Self::Concatenate(_) => None,
         }
     }
 

@@ -1,46 +1,9 @@
 //! Explicitly owned Lookup and CollectionFind. Each walks exactly one declared
 //! static endpoint collection like owned iteration; lookup keys and values are
-//! nonrepeating scalars inside the selected item. Only the explicit search
-//! companion admits them; every older profile keeps its AggregateLookup refusal.
+//! nonrepeating scalars inside the selected item. Only the `search.lookup_find`
+//! capability admits them; without it they keep their AggregateLookup refusal.
 
 use super::*;
-
-/// Search permission is orthogonal to target controls, consumers and failures.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::validate) enum SearchPolicy {
-    Closed,
-    Basic,
-    /// Owned search plus owned collection aggregates.
-    BasicWithAggregates,
-}
-
-impl SearchPolicy {
-    pub(in crate::validate) fn permits_search(self) -> bool {
-        self != Self::Closed
-    }
-
-    pub(in crate::validate) fn permits_aggregates(self) -> bool {
-        self == Self::BasicWithAggregates
-    }
-}
-
-/// Validate the owned recursive-filter chain (owned recursive filters, ItemAt
-/// over owned recursive walks, adjacency trees, path hierarchies, failure
-/// sources and EndingWith) and owned IntoBlocks grouping, together with owned
-/// Lookup and CollectionFind. Earlier companions keep refusing both.
-pub fn validate_basic_owned_lookup_find_emission(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    validate_basic_owned_with_search(
-        program,
-        BasicOwnedProfile::ByAndAdjacentByAndStartingWithAndEndingWithAndIntoBlocksAndWindowsAndSortAndFilter,
-        FailurePolicy::OwnedSources,
-        SequenceItemAtPolicy::BasicScalarAndOwnedRecursiveProducers,
-        PathHierarchyPolicy::Owned,
-        AdjacencyTreePolicy::OwnedWithRecursiveFilter,
-        SearchPolicy::Basic,
-    )
-}
 
 /// Key and value read the selected item through its own frame, so each must
 /// name a scalar reached without crossing another repetition.

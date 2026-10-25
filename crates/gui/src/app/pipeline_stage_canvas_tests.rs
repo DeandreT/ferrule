@@ -268,10 +268,10 @@ fn edit_constant(app: &mut FerruleApp, context: &egui::Context, old: &str) {
     }
     let mut labels = Vec::new();
     for shape in &output.shapes {
-        text_positions(&shape.shape, &format!("string {old:?}"), &mut labels);
+        text_positions(&shape.shape, &format!("Text · {old:?}"), &mut labels);
         text_positions(
             &shape.shape,
-            &format!("string {old:?} · output"),
+            &format!("Text · {old:?} · output"),
             &mut labels,
         );
     }
@@ -303,7 +303,10 @@ fn edit_constant(app: &mut FerruleApp, context: &egui::Context, old: &str) {
         .nodes
         .iter()
         .filter(|(_, node)| {
-            node.role() == egui::accesskit::Role::TextInput && node.value() == Some(old)
+            matches!(
+                node.role(),
+                egui::accesskit::Role::TextInput | egui::accesskit::Role::MultilineTextInput
+            ) && node.value() == Some(old)
         })
         .collect::<Vec<_>>();
     eprintln!("stage constant popup inputs for {old:?}: {inputs:?}");
@@ -384,6 +387,12 @@ fn stage_canvas_real_property_wire_history_and_apply_leave_parent_and_other_stag
     );
     assert_eq!(const_text(&child(&app).project, 1), "before-edited");
     assert!(child(&app).can_undo());
+    // The stage editor records its canvas edits as typed commands.
+    assert_eq!(child(&app).history.undo_label(), Some("Edit constant"));
+    assert!(matches!(
+        child(&app).history.next_undo(),
+        Some(editor_ui::HistoryRecord::Command(_))
+    ));
     let command = egui::Modifiers {
         ctrl: true,
         command: true,
@@ -391,6 +400,7 @@ fn stage_canvas_real_property_wire_history_and_apply_leave_parent_and_other_stag
     };
     frame(&mut app, &context, vec![key(egui::Key::Z, command)]);
     assert_eq!(const_text(&child(&app).project, 1), "before");
+    assert_eq!(child(&app).status, "undid Edit constant");
     frame(
         &mut app,
         &context,
@@ -588,7 +598,7 @@ fn stage_named_and_function_canvases_edit_same_owned_snapshot_and_cancel_discard
     );
     edit_constant(&mut app, &context, "before");
     assert_eq!(const_text(&child(&app).project, 1), "before-edited");
-    click(&mut app, &context, "Existing functions");
+    click(&mut app, &context, "Stage functions");
     click(&mut app, &context, "local:helper");
     assert_eq!(
         child(&app).mapping_workspace.active,

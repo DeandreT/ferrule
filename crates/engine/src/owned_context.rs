@@ -4,6 +4,9 @@ use std::cell::Cell;
 use ir::{Instance, Value};
 use mapping::{NamedSource, OwnedSourceField, OwnedSourceRef, Project, SourceOwner};
 
+use crate::frame_view::latest_owned;
+use crate::source_iteration::PositionFrame;
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum OwnedSourceError {
     #[error("named source owner cannot be empty")]
@@ -24,6 +27,8 @@ pub enum OwnedSourceError {
         owner: SourceOwner,
         collection: Option<Vec<String>>,
     },
+    #[error("source owner {owner:?} has no active document path")]
+    MissingDocumentPath { owner: SourceOwner },
     #[error("owned field path {path:?} is outside pinned frame {frame:?}")]
     UnsupportedFramePathCombination {
         path: Vec<String>,
@@ -430,6 +435,13 @@ impl<'a> SourceRoots<'a> {
         let (_, root) = matches.next()?;
         matches.next().is_none().then_some(root)
     }
+    /// Whether the owner's documents load through an owned dynamic driver.
+    pub(crate) fn loaded(&self, key: OwnerKey) -> bool {
+        matches!(key, OwnerKey::Named(index) if self.declared[index]
+            .dynamic_path
+            .as_ref()
+            .is_some_and(|dynamic| dynamic.owned_driver().is_some()))
+    }
     pub fn named_key(&self, name: &str) -> Option<OwnerKey> {
         let mut matches = self
             .declared
@@ -468,10 +480,17 @@ impl SourceFrame<'_> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SourceOriginKind {
+pub(crate) enum SourceOriginKind<'a> {
     Ordinary,
     GroupWrapper,
     GroupMembers,
+    /// The root of one document of its owner, with its location: a loaded
+    /// document of an owned dynamic endpoint and the logical path that loaded
+    /// it, or one member of a document-set endpoint. It is that endpoint's root
+    /// inside the scope walking it; it is never a position.
+    Document {
+        location: &'a str,
+    },
 }
 
 #[derive(Clone)]
@@ -479,7 +498,7 @@ pub(crate) struct SourceOrigin<'a> {
     pub owner: OwnerKey,
     pub path: Vec<String>,
     pub item: &'a Instance,
-    pub kind: SourceOriginKind,
+    pub kind: SourceOriginKind<'a>,
 }
 
 #[path = "owned_xml_element.rs"]
@@ -499,6 +518,52 @@ impl<'a> OwnedContext<'a> {
             frames: Vec::new(),
             origins: Vec::new(),
             owned_ancestry: false,
+        }
+    }
+    /// The owner's root: its latest active document, or else a static
+    /// endpoint's supplied root. A dynamic owner outside its loading scope is
+    /// unavailable; no other root repairs it.
+    pub fn endpoint_root(&self, key: OwnerKey) -> Result<&'a Instance, OwnedSourceError> {
+        match (self.document(key), key) {
+            (Some(origin), _) => Ok(origin.item),
+            (None, OwnerKey::Named(index)) if self.roots.loaded(key) => {
+                Err(OwnedSourceError::SourceUnavailable {
+                    owner: SourceOwner::Named {
+                        name: self.roots.declared[index].name.clone(),
+                    },
+                })
+            }
+            (None, _) => self.roots.root(key),
+        }
+    }
+    /// The latest active document of `key`, if any.
+    fn document(&self, key: OwnerKey) -> Option<&SourceOrigin<'a>> {
+        self.origins.iter().rev().find(|origin| {
+            origin.owner == key && matches!(origin.kind, SourceOriginKind::Document { .. })
+        })
+    }
+    /// The latest active loaded document of `key`, if any.
+    pub fn loaded_document(&self, key: OwnerKey) -> Option<&'a Instance> {
+        self.document(key).map(|origin| origin.item)
+    }
+    /// The location of `owner`'s latest active document: a document-set
+    /// member's location or a loaded document's logical path. Another owner's
+    /// document and an uniterated set never supply it.
+    pub fn document_path(&self, owner: &SourceOwner) -> Result<Value, OwnedSourceError> {
+        let name = match owner {
+            SourceOwner::Primary => None,
+            SourceOwner::Named { name } => Some(name.as_str()),
+        };
+        self.roots
+            .budget
+            .work(name, &[], None, &self.frames, &self.origins)?;
+        let key = self.roots.key(owner)?;
+        self.endpoint_root(key)?;
+        match self.document(key).map(|origin| origin.kind) {
+            Some(SourceOriginKind::Document { location }) => Ok(Value::String(location.to_owned())),
+            _ => Err(OwnedSourceError::MissingDocumentPath {
+                owner: owner.clone(),
+            }),
         }
     }
     pub fn field(&self, field: &OwnedSourceField) -> Result<Value, OwnedSourceError> {
@@ -523,7 +588,7 @@ impl<'a> OwnedContext<'a> {
                         frame: pin.to_vec(),
                     });
                 };
-                let root = self.roots.root(key)?;
+                let root = self.endpoint_root(key)?;
                 let declared_repeating = match key {
                     OwnerKey::Primary => self.roots.primary_repeating,
                     OwnerKey::Named(index) => self.roots.declared[index].schema.repeating,
@@ -562,17 +627,21 @@ impl<'a> OwnedContext<'a> {
                         };
                         (item, &field.source.path[frame.collection.len()..])
                     }
-                    None => (self.roots.root(key)?, field.source.path.as_slice()),
+                    None => (self.endpoint_root(key)?, field.source.path.as_slice()),
                 }
             }
         };
         super::resolve::owned_scalar(item, suffix)
     }
-    pub fn position_slot(
+    /// The position of the latest active frame of `owner`, of exactly
+    /// `collection` when one is named, or `None` when that frame's slot names
+    /// no position.
+    pub fn position<'p>(
         &self,
         owner: &SourceOwner,
         collection: Option<&[String]>,
-    ) -> Result<usize, OwnedSourceError> {
+        positions: &'p [PositionFrame],
+    ) -> Result<Option<&'p PositionFrame>, OwnedSourceError> {
         let owner_name = match owner {
             SourceOwner::Primary => None,
             SourceOwner::Named { name } => Some(name.as_str()),
@@ -585,18 +654,15 @@ impl<'a> OwnedContext<'a> {
             &self.origins,
         )?;
         let key = self.roots.key(owner)?;
-        self.roots.root(key)?;
-        self.frames
-            .iter()
-            .rev()
-            .find(|frame| {
-                frame.owner == key && collection.is_none_or(|path| frame.collection == path)
-            })
-            .map(|frame| frame.position_slot)
-            .ok_or_else(|| OwnedSourceError::InactiveSourceFrame {
-                owner: owner.clone(),
-                collection: collection.map(<[String]>::to_vec),
-            })
+        self.endpoint_root(key)?;
+        latest_owned(&self.frames, positions, |frame| {
+            frame.owner == key && collection.is_none_or(|path| frame.collection == path)
+        })
+        .map(|(_, position)| position)
+        .ok_or_else(|| OwnedSourceError::InactiveSourceFrame {
+            owner: owner.clone(),
+            collection: collection.map(<[String]>::to_vec),
+        })
     }
 
     pub fn row_document_path(
@@ -612,7 +678,7 @@ impl<'a> OwnedContext<'a> {
             .budget
             .work(name, &[], collection, &self.frames, &self.origins)?;
         let key = self.roots.key(owner)?;
-        let root = self.roots.root(key)?;
+        let root = self.endpoint_root(key)?;
         let frame = self.frames.iter().rev().find(|frame| {
             frame.owner == key && collection.is_none_or(|path| frame.collection == path)
         });
@@ -664,7 +730,7 @@ impl<'a> OwnedContext<'a> {
                 &source.path[frame.collection.len()..],
                 work,
             )),
-            None => Ok((key, self.roots.root(key)?, &[], &source.path, work)),
+            None => Ok((key, self.endpoint_root(key)?, &[], &source.path, work)),
         }
     }
     pub fn active_identity(&self, owner: OwnerKey, path: &[String], item: &Instance) -> bool {

@@ -661,8 +661,8 @@ fn basic_xml_mixed468_profile_composes_earlier_owned_companions() -> TestResult<
     Ok(())
 }
 
-#[test]
-fn basic_xml_mixed468_direct_programs_refuse_unsupported_ownership() -> TestResult<()> {
+/// Directly constructed Programs with unsupported ownership and their refusals.
+fn direct_programs() -> TestResult<Vec<(&'static str, codegen::Program, ProgramValidationError)>> {
     let base =
         codegen::lower_with_basic_owned_xml_mixed_content(&projects::project("M01-endpoints"))?;
     let with = |change: &dyn Fn(&mut mapping::OwnedXmlMixedContent)| {
@@ -763,6 +763,12 @@ fn basic_xml_mixed468_direct_programs_refuse_unsupported_ownership() -> TestResu
             },
         ),
     ];
+    Ok(cases.into())
+}
+
+#[test]
+fn basic_xml_mixed468_direct_programs_refuse_unsupported_ownership() -> TestResult<()> {
+    let cases = direct_programs()?;
     for (label, program, expected) in &cases {
         assert_new_profile_refuses(program, expected, label)?;
         // The default validator applies the same structural checks first.
@@ -775,24 +781,8 @@ fn basic_xml_mixed468_direct_programs_refuse_unsupported_ownership() -> TestResu
     Ok(())
 }
 
-/// A dynamic owner, failure-rule predicate, generated item and isolated
-/// function body never admit the owned atomizer, in the interpreter or in
-/// generation.
-#[test]
-fn basic_xml_mixed468_closed_contexts_refuse_before_emission() -> TestResult<()> {
-    let lowered_error = |project: &Project, expected: &ProgramValidationError| {
-        let lowered = codegen::lower_with_basic_owned_xml_mixed_content(project);
-        assert!(
-            matches!(&lowered, Err(error)
-                if error.diagnostics() == std::slice::from_ref(&diagnostic(expected))),
-            "{lowered:?}"
-        );
-    };
-    let source = decode(&expand(
-        &json!({"Title": "P", "Para": {"b": ["x"], "~": [{"b": "x"}]}}),
-    ));
-
-    // A dynamic named owner never supplies an exact owned group.
+/// Projects whose owned mixed-content read sits in a closed context.
+fn closed_context_projects() -> [(&'static str, Project); 4] {
     let mut dynamic = projects::project("M01-endpoints");
     dynamic.graph.nodes.insert(
         90,
@@ -800,25 +790,10 @@ fn basic_xml_mixed468_closed_contexts_refuse_before_emission() -> TestResult<()>
             value: Value::String("notes.json".into()),
         },
     );
-    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 90,
-        iteration: vec!["Docs".into(), "Doc".into()],
-    });
-    lowered_error(
-        &dynamic,
-        &refused(
-            2,
-            Some(root(Some((0, "noted")), &[])),
-            group_read(Some("notes"), &["Para"], None),
-            Capability::DynamicOwner,
-            Origin::DynamicSource {
-                index: 0,
-                name: "notes".into(),
-            },
-        ),
-    );
-
-    // A generated item context closes the owned read inside it.
+    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(
+        90,
+        vec!["Docs".into(), "Doc".into()],
+    ));
     let mut generated = projects::project("M04-lazy");
     generated.target = SchemaNode::group(
         "Output",
@@ -864,28 +839,6 @@ fn basic_xml_mixed468_closed_contexts_refuse_before_emission() -> TestResult<()>
             },
         ),
     ]);
-    assert!(engine::validate(&generated).is_empty());
-    lowered_error(
-        &generated,
-        &refused(
-            60,
-            Some(root(None, &[0])),
-            group_read(None, &["Para"], None),
-            Capability::GeneratedItem,
-            Origin::Scope {
-                scope: root(None, &[0]),
-            },
-        ),
-    );
-    assert!(matches!(
-        engine::run_with_sources(&generated, &source, vec![]),
-        Err(engine::EngineError::UnsupportedOwnedContext {
-            context: engine::OwnedCapabilityContext::GeneratedItem,
-            ..
-        })
-    ));
-
-    // A failure-rule predicate is never a target context.
     let mut failure = projects::project("M04-lazy");
     failure.graph.nodes.insert(
         94,
@@ -899,27 +852,6 @@ fn basic_xml_mixed468_closed_contexts_refuse_before_emission() -> TestResult<()>
         selection: mapping::FailureSelection::WhenFalse { predicate: 94 },
         message: None,
     }];
-    assert!(engine::validate(&failure).is_empty());
-    lowered_error(
-        &failure,
-        &refused(
-            60,
-            None,
-            group_read(None, &["Para"], None),
-            Capability::FailureRule,
-            Origin::Failure { index: 0 },
-        ),
-    );
-    assert!(matches!(
-        engine::run_with_sources(&failure, &source, vec![]),
-        Err(engine::EngineError::UnsupportedOwnedContext {
-            node: Some(60),
-            context: engine::OwnedCapabilityContext::FailureRule,
-            ..
-        })
-    ));
-
-    // An isolated function body never reads an endpoint.
     let mut function = projects::project("M04-lazy");
     let id = FunctionId::new(1);
     function.user_functions.insert(
@@ -944,6 +876,91 @@ fn basic_xml_mixed468_closed_contexts_refuse_before_emission() -> TestResult<()>
             args: vec![],
         },
     );
+    [
+        ("closed-context/dynamic", dynamic),
+        ("closed-context/generated", generated),
+        ("closed-context/failure", failure),
+        ("closed-context/function", function),
+    ]
+}
+
+/// A dynamic owner, failure-rule predicate, generated item and isolated
+/// function body never admit the owned atomizer, in the interpreter or in
+/// generation.
+#[test]
+fn basic_xml_mixed468_closed_contexts_refuse_before_emission() -> TestResult<()> {
+    let [(_, dynamic), (_, generated), (_, failure), (_, function)] = closed_context_projects();
+    let lowered_error = |project: &Project, expected: &ProgramValidationError| {
+        let lowered = codegen::lower_with_basic_owned_xml_mixed_content(project);
+        assert!(
+            matches!(&lowered, Err(error)
+                if error.diagnostics() == std::slice::from_ref(&diagnostic(expected))),
+            "{lowered:?}"
+        );
+    };
+    let source = decode(&expand(
+        &json!({"Title": "P", "Para": {"b": ["x"], "~": [{"b": "x"}]}}),
+    ));
+
+    // A dynamic named owner never supplies an exact owned group.
+    lowered_error(
+        &dynamic,
+        &refused(
+            2,
+            Some(root(Some((0, "noted")), &[])),
+            group_read(Some("notes"), &["Para"], None),
+            Capability::DynamicOwner,
+            Origin::DynamicSource {
+                index: 0,
+                name: "notes".into(),
+            },
+        ),
+    );
+
+    // A generated item context closes the owned read inside it.
+    assert!(engine::validate(&generated).is_empty());
+    lowered_error(
+        &generated,
+        &refused(
+            60,
+            Some(root(None, &[0])),
+            group_read(None, &["Para"], None),
+            Capability::GeneratedItem,
+            Origin::Scope {
+                scope: root(None, &[0]),
+            },
+        ),
+    );
+    assert!(matches!(
+        engine::run_with_sources(&generated, &source, vec![]),
+        Err(engine::EngineError::UnsupportedOwnedContext {
+            context: engine::OwnedCapabilityContext::GeneratedItem,
+            ..
+        })
+    ));
+
+    // A failure-rule predicate is never a target context.
+    assert!(engine::validate(&failure).is_empty());
+    lowered_error(
+        &failure,
+        &refused(
+            60,
+            None,
+            group_read(None, &["Para"], None),
+            Capability::FailureRule,
+            Origin::Failure { index: 0 },
+        ),
+    );
+    assert!(matches!(
+        engine::run_with_sources(&failure, &source, vec![]),
+        Err(engine::EngineError::UnsupportedOwnedContext {
+            node: Some(60),
+            context: engine::OwnedCapabilityContext::FailureRule,
+            ..
+        })
+    ));
+
+    // An isolated function body never reads an endpoint.
     assert!(matches!(
         engine::run_with_sources(&function, &source, vec![]),
         Err(engine::EngineError::UnsupportedSourceOwnership {
@@ -1173,4 +1190,23 @@ fn basic_xml_mixed468_generated_rust_and_csharp_match_expected() -> TestResult<(
         return Err(failures.join("\n\n").into());
     }
     Ok(())
+}
+
+/// The models, the legacy project, the closed-context Projects and the
+/// directly constructed Programs, for the owned capability preset record.
+pub(super) fn capability_corpus() -> TestResult<super::owned_capability_presets::Corpus> {
+    use super::owned_capability_presets as presets;
+    let mut corpus = presets::projects(
+        projects::MODELS
+            .iter()
+            .map(|model| (*model, projects::project(model))),
+    );
+    corpus.extend(presets::projects([("legacy", projects::legacy())]));
+    corpus.extend(presets::projects(closed_context_projects()));
+    corpus.extend(presets::programs(
+        direct_programs()?
+            .into_iter()
+            .map(|(id, program, _)| (format!("direct/{id}"), program)),
+    ));
+    Ok(corpus)
 }

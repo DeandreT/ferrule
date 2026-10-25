@@ -166,7 +166,7 @@ fn constrained_completion() -> X12BoundaryOptions {
     ];
     selected
 }
-fn evidence(label: &str) -> std::path::PathBuf {
+fn evidence(label: &str) -> TempDir {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
         "ferrule_x12_profile_{label}_{}_{}_{}",
@@ -179,7 +179,7 @@ fn evidence(label: &str) -> std::path::PathBuf {
     ));
     fs::create_dir(&root).unwrap();
     eprintln!("complete authored X12 profile evidence: {}", root.display());
-    root
+    TempDir(root)
 }
 fn all_values(instance: &ir::Instance) -> serde_json::Value {
     use ir::{Instance, Value};
@@ -691,6 +691,7 @@ fn compiled_profile_public_apis_match_complete_authored_oracles() {
             &format!("{name}-build"),
             Command::new("dotnet")
                 .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+                .dotnet_temp(&root)
                 .args([
                     "build",
                     &format!("{name}/Ferrule.Generated.csproj"),
@@ -728,6 +729,7 @@ fn compiled_profile_public_apis_match_complete_authored_oracles() {
         "host-build",
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "build",
                 "Harness/Harness.csproj",
@@ -753,6 +755,7 @@ fn compiled_profile_public_apis_match_complete_authored_oracles() {
         "host-run",
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "run",
                 "--project",

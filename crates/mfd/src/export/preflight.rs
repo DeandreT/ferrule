@@ -122,6 +122,16 @@ pub(super) fn validate_source_ownership(project: &Project) -> Result<(), MfdErro
     }) {
         return Err(MfdError::UnsupportedFailureSourceIteration { rule: index + 1 });
     }
+    if let Some(source) = project.extra_sources.iter().find(|source| {
+        source
+            .dynamic_path
+            .as_ref()
+            .is_some_and(|dynamic| dynamic.owned_driver().is_some())
+    }) {
+        return Err(MfdError::UnsupportedDynamicSourceDriver {
+            source_name: source.name.clone(),
+        });
+    }
     for (&node, expression) in &project.graph.nodes {
         if let Some(kind) = expression.owned_source_kind() {
             return Err(MfdError::UnsupportedSourceOwnership {
@@ -171,6 +181,33 @@ pub(super) fn validate_decimal_values(project: &Project) -> Result<(), MfdError>
                 )));
             }
         }
+    }
+    Ok(())
+}
+
+/// Optional presence has no qualified .mfd representation yet, so export
+/// refuses it before writing any artifact.
+pub(super) fn validate_optional_presence(project: &Project) -> Result<(), MfdError> {
+    fn contains(scope: &Scope) -> bool {
+        scope.presence().is_some()
+            || scope
+                .concatenated()
+                .is_some_and(|segments| segments.iter().any(contains))
+            || scope.children.iter().any(contains)
+            || scope
+                .dynamic_children
+                .iter()
+                .any(|child| contains(&child.scope))
+    }
+    if contains(&project.root)
+        || project
+            .extra_targets
+            .iter()
+            .any(|target| contains(&target.root))
+    {
+        return Err(MfdError::Unsupported(
+            "optional-presence target scopes have no qualified .mfd export".into(),
+        ));
     }
     Ok(())
 }

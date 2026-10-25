@@ -133,6 +133,7 @@ impl<'a> PreparedStreamRun<'a> {
         if request.observers.debugging {
             return Err(RouteRefusal::StandardStreamsDebugging.into());
         }
+        crate::sqlite_query::reject_query_inputs(project, HostRoute::StandardStreams)?;
         reject_dynamic_sources(project, request.target)?;
         let policy = request
             .execution_policy

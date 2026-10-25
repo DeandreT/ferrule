@@ -560,3 +560,50 @@ fn unknown_wire_fields_refuse_before_legacy_ignored_metadata_is_erased() {
         Err(Json5ProfileError::DescriptorSyntax(_))
     ));
 }
+
+/// The JSON5 profile's group null check, migrated from the `nullable` flag
+/// onto the effective JSON view, compared over every JSON role-flag
+/// combination of a group: the previous flag read is the oracle wherever the
+/// profile's field checks admit the group.
+#[test]
+fn group_null_check_matches_the_previous_flag_read() {
+    let (mut admitted, mut refused) = (0, 0);
+    for bits in 0u32..(1 << 5) {
+        for item in [None, Some(false), Some(true)] {
+            let mut group = object();
+            group.nullable = bits & 1 != 0;
+            group.container_nullable = bits & 2 != 0;
+            group.repeating = bits & 4 != 0;
+            group.json_array_wrapper = bits & 8 != 0;
+            group.json_any = bits & 16 != 0;
+            group.json_object_item_nullable = item;
+            let migrated = schema::group_json_null(&group);
+            let fields_admit = !group.container_nullable
+                && !group.repeating
+                && !group.json_array_wrapper
+                && !group.json_any
+                && item.is_none();
+            if fields_admit {
+                admitted += 1;
+                assert_eq!(migrated.is_err(), group.nullable, "{group:?}");
+                if group.nullable {
+                    unsupported(&group, "nullable_group");
+                } else {
+                    assert!(validate_schema(&group).is_ok(), "{group:?}");
+                }
+            } else {
+                refused += 1;
+                // Field checks refuse first, exactly as before.
+                assert!(validate_schema(&group).is_err(), "{group:?}");
+            }
+        }
+    }
+    assert_eq!((admitted, refused), (2, 94));
+    // Scalar null stays admitted; XML nil is not JSON null.
+    let mut nullable_child = object();
+    let SchemaKind::Group { children, .. } = &mut nullable_child.kind else {
+        panic!("fixture is a group")
+    };
+    children[0].nullable = true;
+    assert!(validate_schema(&nullable_child).is_ok());
+}

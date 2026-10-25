@@ -306,10 +306,7 @@ pub fn aggregate_projects() -> Vec<(&'static str, Project, Refusal)> {
             value: Value::String("lookup.json".into()),
         },
     );
-    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 140,
-        iteration: Vec::new(),
-    });
+    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(140, Vec::new()));
     result.push((
         "A06-dynamic-aggregate-owner",
         p,

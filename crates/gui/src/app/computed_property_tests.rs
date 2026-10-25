@@ -292,7 +292,7 @@ fn computed_properties_real_preview_lock_and_imported_unsupported_states_stay_ex
             let buttons = texts(&output)
                 .into_iter()
                 .filter_map(|(label, p)| {
-                    ((p.y - point.y).abs() < 4.0 && p.x > point.x && label.contains(": "))
+                    ((p.y - point.y).abs() < 4.0 && p.x > point.x && label.contains(" · #"))
                         .then_some(p)
                 })
                 .collect::<Vec<_>>();
@@ -461,8 +461,14 @@ fn computed_property_profiles_reject_other_domains_owners_and_same_frame_control
         );
         assert!(!candidate.is_dirty() && !candidate.can_undo());
         let before = raw_project(&candidate, &retained, "unavailable-document-original");
-        click_label(&mut candidate, &context, &retained, "+ property");
-        click_label(&mut candidate, &context, &retained, "Remove property 1");
+        if matches!(document, MappingDocument::Function(_)) {
+            let output = settle(&mut candidate, &context, &retained);
+            assert!(visible(&output, "+ property").is_empty());
+            assert!(visible(&output, "Remove property 1").is_empty());
+        } else {
+            click_label(&mut candidate, &context, &retained, "+ property");
+            click_label(&mut candidate, &context, &retained, "Remove property 1");
+        }
         assert_eq!(
             raw_project(&candidate, &retained, "unavailable-document-after"),
             before
@@ -726,5 +732,55 @@ fn computed_property_singular_scalar_descendants_and_maximum_ids_use_existing_ex
     click_label(&mut empty, &context, &retained, "+ property");
     assert_eq!(raw_project(&empty, &retained, "empty-graph-after"), before);
     assert!(!empty.is_dirty() && !empty.can_undo());
+    retained.complete = true;
+}
+
+#[test]
+fn computed_property_rows_are_typed_commands_matching_snapshots() {
+    use super::typed_edit_oracle::{assert_typed_edit_matches_snapshots, newest_command};
+    use editor_ui::{GraphAction, ScopeLocation};
+    let mut retained = Retained::new();
+    let context = || {
+        let context = egui::Context::default();
+        crate::icons::install(&context);
+        context
+    };
+    let property = |key, value| DynamicBinding { key, value };
+    for document in [MappingDocument::Main, MappingDocument::Target(0)] {
+        let added = assert_typed_edit_matches_snapshots(
+            || setup(&retained, false, document).0,
+            |app| click_label(app, &context(), &retained, "+ property"),
+            "Add computed property",
+        );
+        assert!(matches!(
+            newest_command(&added).action(),
+            GraphAction::AddComputedProperty { scope, .. } if *scope == ScopeLocation::root()
+        ));
+        let edited = assert_typed_edit_matches_snapshots(
+            || setup(&retained, true, document).0,
+            |app| choose(app, &context(), &retained, 1, false, 2, "2: field ValueA"),
+            "Edit computed property",
+        );
+        assert_eq!(
+            newest_command(&edited).action(),
+            &GraphAction::EditComputedProperty {
+                scope: ScopeLocation::root(),
+                from: property(3, 4),
+                to: property(3, 2),
+            }
+        );
+        let removed = assert_typed_edit_matches_snapshots(
+            || setup(&retained, true, document).0,
+            |app| click_label(app, &context(), &retained, "Remove property 1"),
+            "Remove computed property",
+        );
+        assert_eq!(
+            newest_command(&removed).action(),
+            &GraphAction::RemoveComputedProperty {
+                scope: ScopeLocation::root(),
+                property: property(1, 2),
+            }
+        );
+    }
     retained.complete = true;
 }

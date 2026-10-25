@@ -352,3 +352,12 @@ fn content_checked_exchanges_refuse_stale_nodes_without_partial_effects() {
     );
     assert_eq!(key(&applied), unchanged);
 }
+
+#[path = "graph_property_command_tests.rs"]
+mod properties;
+
+#[path = "graph_scope_command_tests.rs"]
+mod scopes;
+
+#[path = "graph_project_command_tests.rs"]
+mod projects;

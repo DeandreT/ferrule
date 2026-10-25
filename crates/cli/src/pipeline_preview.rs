@@ -15,15 +15,17 @@ use super::payload::{
     visit_target_documents,
 };
 use super::pipeline::{
-    HostBoundary, PipelineRunOptions, PipelineSourceFieldProbeCallback, PipelineStageDebugCallback,
-    PipelineStageFunctionFailureDebugCallback, PipelineStageFunctionInputDebugCallback,
-    PipelineStageFunctionNodeDebugCallback, PipelineStageInputDebugCallback,
-    PipelineStageNodeDebugCallback, PipelineStageNodeFailureDebugCallback,
-    PipelineStageTraceCallback, StageDebugHook, StageTraceSink, infer_host_boundaries,
+    HostBoundary, PipelineHostFile, PipelineRunOptions, PipelineSourceFieldProbeCallback,
+    PipelineStageDebugCallback, PipelineStageFunctionFailureDebugCallback,
+    PipelineStageFunctionInputDebugCallback, PipelineStageFunctionNodeDebugCallback,
+    PipelineStageInputDebugCallback, PipelineStageNodeDebugCallback,
+    PipelineStageNodeFailureDebugCallback, PipelineStageTraceCallback, StageDebugHook,
+    StageTraceSink, infer_host_boundaries,
 };
 use super::{
-    MAX_PAYLOAD_ARTIFACTS, MAX_PAYLOAD_DOCUMENT_BYTES, MAX_PAYLOAD_NAME_BYTES,
-    MAX_PAYLOAD_RUN_BYTES, PayloadDocument, extension_for_dispatch, resolve_run_path,
+    FilesystemPdfReader, MAX_PAYLOAD_ARTIFACTS, MAX_PAYLOAD_DOCUMENT_BYTES, MAX_PAYLOAD_NAME_BYTES,
+    MAX_PAYLOAD_RUN_BYTES, PayloadDocument, extension_for_dispatch, http_url,
+    read_instance_with_pdf_reader, resolve_run_path,
 };
 
 /// One host input supplied entirely as bounded bytes and a logical identity.
@@ -56,16 +58,72 @@ pub struct PipelinePreviewOutputIdentity {
     pub path: PathBuf,
 }
 
-/// Input payloads and observers for preview. Stored previews are always enabled.
+/// Where preview host inputs come from. The choice is explicit: payloads are
+/// never reopened from their logical paths, and only file inputs can reach a
+/// caller-owned PDF reader.
+#[derive(Clone, Copy)]
+enum PreviewHosts<'a> {
+    Payloads(&'a [PipelineHostPayload<'a>]),
+    Files {
+        inputs: &'a [PipelineHostFile],
+        pdf_reader: Option<&'a dyn FilesystemPdfReader>,
+    },
+}
+
+impl<'a> PreviewHosts<'a> {
+    fn len(self) -> usize {
+        match self {
+            Self::Payloads(hosts) => hosts.len(),
+            Self::Files { inputs, .. } => inputs.len(),
+        }
+    }
+
+    fn pdf_reader(self) -> Option<&'a dyn FilesystemPdfReader> {
+        match self {
+            Self::Payloads(_) => None,
+            Self::Files { pdf_reader, .. } => pdf_reader,
+        }
+    }
+}
+
+/// Input payloads or files and observers for preview. Stored previews are
+/// always enabled.
 pub struct PipelinePreviewOptions<'a> {
-    hosts: &'a [PipelineHostPayload<'a>],
+    hosts: PreviewHosts<'a>,
     identities: &'a [PipelinePreviewOutputIdentity],
     callbacks: PipelineRunOptions<'a>,
     cancellation: Option<&'a AtomicBool>,
 }
 
 impl<'a> PipelinePreviewOptions<'a> {
+    /// Host inputs supplied entirely as bounded caller-owned bytes. No file
+    /// is opened and no PDF worker is involved.
     pub fn new(hosts: &'a [PipelineHostPayload<'a>]) -> Self {
+        Self::with_hosts(PreviewHosts::Payloads(hosts))
+    }
+
+    /// Host inputs read once each from local files, with the same format
+    /// dispatch as a pipeline file run. PDF hosts are parsed in-process.
+    pub fn from_files(inputs: &'a [PipelineHostFile]) -> Self {
+        Self::with_hosts(PreviewHosts::Files {
+            inputs,
+            pdf_reader: None,
+        })
+    }
+
+    /// Like [`Self::from_files`], acquiring configured PDF hosts through a
+    /// caller-owned reader instead of the in-process parser.
+    pub fn from_files_with_pdf_reader(
+        inputs: &'a [PipelineHostFile],
+        reader: &'a dyn FilesystemPdfReader,
+    ) -> Self {
+        Self::with_hosts(PreviewHosts::Files {
+            inputs,
+            pdf_reader: Some(reader),
+        })
+    }
+
+    fn with_hosts(hosts: PreviewHosts<'a>) -> Self {
         Self {
             hosts,
             identities: &[],
@@ -183,35 +241,20 @@ pub struct PipelinePreviewOutcome {
 
 /// Execute once with typed stage edges, then render payloads without publishing.
 /// SQLite, update-existing XLSX, XML file sets and dynamic named sources are
-/// excluded. Input documents are never reopened from their logical paths.
+/// excluded. Payload input documents are never reopened from their logical
+/// paths; file inputs are read once each after every preflight check passes.
 pub fn preview_pipeline_value_payloads(
     pipeline: &Pipeline,
     pipeline_path: &Path,
     options: &PipelinePreviewOptions<'_>,
 ) -> anyhow::Result<PipelinePreviewOutcome> {
-    let PreparedPreview {
-        boundaries,
-        payloads,
-        destinations,
-        mapping_paths,
-        main_path,
-    } = prepare_preview(pipeline, pipeline_path, options)?;
-    execute_preview(
-        pipeline,
-        options,
-        PreparedPreview {
-            boundaries,
-            payloads,
-            destinations,
-            mapping_paths,
-            main_path,
-        },
-    )
+    let prepared = prepare_preview(pipeline, pipeline_path, options)?;
+    execute_preview(pipeline, options, prepared)
 }
 
 /// Check identities, format support, byte sizes and mapping capabilities
 /// without parsing documents or evaluating a mapping. Empty bytes can stand
-/// in for pending host input.
+/// in for pending host input; file inputs are checked by metadata only.
 pub fn validate_pipeline_preview(
     pipeline: &Pipeline,
     pipeline_path: &Path,
@@ -220,9 +263,25 @@ pub fn validate_pipeline_preview(
     prepare_preview(pipeline, pipeline_path, options).map(|_| ())
 }
 
+/// One admitted host input, keyed by its host name.
+#[derive(Clone, Copy)]
+enum PreparedHost<'b> {
+    Payload(PayloadDocument<'b>),
+    File(&'b Path),
+}
+
+impl PreparedHost<'_> {
+    fn path(&self) -> &Path {
+        match self {
+            Self::Payload(document) => document.path(),
+            Self::File(path) => path,
+        }
+    }
+}
+
 struct PreparedPreview<'a, 'b> {
     boundaries: BTreeMap<&'a str, HostBoundary<'a>>,
-    payloads: BTreeMap<&'b str, PayloadDocument<'b>>,
+    hosts: BTreeMap<&'b str, PreparedHost<'b>>,
     destinations: BTreeMap<(&'a str, Option<&'a str>), PayloadDestination>,
     mapping_paths: BTreeMap<&'a str, PathBuf>,
     main_path: PathBuf,
@@ -272,32 +331,72 @@ fn prepare_preview<'a, 'b>(
         }
     }
     let boundaries = infer_host_boundaries(pipeline)?;
-    let mut payloads = BTreeMap::new();
+    let supplied = match options.hosts {
+        PreviewHosts::Payloads(hosts) => hosts
+            .iter()
+            .map(|host| (host.name, PreparedHost::Payload(host.document)))
+            .collect::<Vec<_>>(),
+        PreviewHosts::Files { inputs, .. } => inputs
+            .iter()
+            .map(|input| {
+                (
+                    input.name.as_str(),
+                    PreparedHost::File(input.path.as_path()),
+                )
+            })
+            .collect(),
+    };
+    let mut hosts = BTreeMap::new();
+    for (name, host) in supplied {
+        validate_name(name, "host input")?;
+        validate_logical_path(host.path(), "input payload")?;
+        if !boundaries.contains_key(name) {
+            bail!("host input `{name}` is not used by the pipeline");
+        }
+        if hosts.insert(name, host).is_some() {
+            bail!("host input `{name}` was supplied more than once");
+        }
+    }
+    for (name, boundary) in &boundaries {
+        let host = hosts
+            .get(name)
+            .with_context(|| format!("host input `{name}` is missing"))?;
+        preflight_format(host.path(), boundary.options, false)?;
+        if let PreparedHost::File(path) = host {
+            if http_url(path).is_some() {
+                bail!("pipeline preview reads host input `{name}` only from a local file");
+            }
+            options
+                .callbacks
+                .policy()
+                .authorize_read(super::execution_policy::read_location(
+                    path,
+                    boundary.options,
+                ))?;
+        }
+    }
+    // Byte budgets apply to every host before any document is opened. File
+    // sizes come from metadata; each format reader keeps its own read cap.
     let mut total_input = 0usize;
-    for host in options.hosts {
-        validate_name(host.name, "host input")?;
-        validate_logical_path(host.document.path(), "input payload")?;
-        if !boundaries.contains_key(host.name) {
-            bail!("host input `{}` is not used by the pipeline", host.name);
-        }
-        if payloads.insert(host.name, host.document).is_some() {
-            bail!("host input `{}` was supplied more than once", host.name);
-        }
-        if host.document.bytes().len() > MAX_PAYLOAD_DOCUMENT_BYTES {
+    for (name, host) in &hosts {
+        let len = match host {
+            PreparedHost::Payload(document) => document.bytes().len(),
+            PreparedHost::File(path) => {
+                let len = std::fs::metadata(path)
+                    .with_context(|| format!("inspecting pipeline host input `{name}`"))?
+                    .len();
+                usize::try_from(len).unwrap_or(usize::MAX)
+            }
+        };
+        if len > MAX_PAYLOAD_DOCUMENT_BYTES {
             bail!("pipeline preview input exceeds the per-document payload limit");
         }
         total_input = total_input
-            .checked_add(host.document.bytes().len())
+            .checked_add(len)
             .context("pipeline preview input byte count overflowed")?;
     }
     if total_input > MAX_PAYLOAD_RUN_BYTES {
         bail!("pipeline preview inputs exceed the 256 MiB total limit");
-    }
-    for (name, boundary) in &boundaries {
-        let document = payloads
-            .get(name)
-            .with_context(|| format!("host input `{name}` is missing"))?;
-        preflight_format(document.path(), boundary.options, false)?;
     }
     let directory = pipeline_path.parent().unwrap_or_else(|| Path::new("."));
     let mut identities = BTreeMap::new();
@@ -416,7 +515,7 @@ fn prepare_preview<'a, 'b>(
     )?;
     Ok(PreparedPreview {
         boundaries,
-        payloads,
+        hosts,
         destinations,
         mapping_paths,
         main_path,
@@ -430,7 +529,7 @@ fn execute_preview(
 ) -> anyhow::Result<PipelinePreviewOutcome> {
     let PreparedPreview {
         boundaries,
-        payloads,
+        hosts: inputs,
         destinations,
         mapping_paths,
         main_path,
@@ -438,11 +537,20 @@ fn execute_preview(
     let mut hosts = BTreeMap::new();
     for (name, boundary) in &boundaries {
         check_cancelled(options.cancellation)?;
-        hosts.insert(
-            (*name).to_owned(),
-            read_payload(payloads[name], boundary.schema, boundary.options)
-                .with_context(|| format!("reading pipeline host input `{name}`"))?,
-        );
+        let instance = match inputs[name] {
+            PreparedHost::Payload(document) => {
+                read_payload(document, boundary.schema, boundary.options)
+            }
+            PreparedHost::File(path) => read_instance_with_pdf_reader(
+                path,
+                boundary.schema,
+                boundary.options,
+                options.hosts.pdf_reader(),
+                options.callbacks.policy(),
+            ),
+        }
+        .with_context(|| format!("reading pipeline host input `{name}`"))?;
+        hosts.insert((*name).to_owned(), instance);
     }
     check_cancelled(options.cancellation)?;
     let callbacks = &options.callbacks;
@@ -604,6 +712,9 @@ fn validate_name(name: &str, label: &str) -> anyhow::Result<()> {
 }
 
 fn reject_stateful_options(options: &FormatOptions) -> anyhow::Result<()> {
+    if options.sqlite_read.is_some() {
+        bail!("pipeline preview does not support declared SQLite query inputs");
+    }
     if options.local_xml_file_set {
         bail!("pipeline preview does not support local XML file sets");
     }

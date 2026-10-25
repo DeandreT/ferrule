@@ -78,6 +78,7 @@ fn held_result(
                 started: Instant::now(),
                 debug: false,
                 phase,
+                extraction: None,
                 shutdown: ShutdownIntent::default(),
             })),
             ..FerruleApp::default()
@@ -155,6 +156,7 @@ fn disconnected_live_worker_remains_owned_until_joined() {
             started: Instant::now(),
             debug: false,
             phase: FileRunPhase::Running,
+            extraction: None,
             shutdown: ShutdownIntent::default(),
         })),
         ..FerruleApp::default()
@@ -229,6 +231,7 @@ fn finished_thread_without_event_has_typed_unreported_result() {
             started: Instant::now(),
             debug: false,
             phase: FileRunPhase::Running,
+            extraction: None,
             shutdown: ShutdownIntent::default(),
         })),
         ..FerruleApp::default()
@@ -410,6 +413,7 @@ fn queued_publication_event_does_not_discard_the_following_result() {
             started: Instant::now(),
             debug: false,
             phase: FileRunPhase::Running,
+            extraction: None,
             shutdown: ShutdownIntent::default(),
         })),
         ..FerruleApp::default()

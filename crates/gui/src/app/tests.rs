@@ -11,6 +11,8 @@ mod auto_connect_item_reuse;
 
 #[path = "pipeline_preview_tests.rs"]
 mod pipeline_preview;
+#[path = "pipeline_run_window_tests.rs"]
+mod pipeline_run_window;
 #[path = "preview_inputs_tests.rs"]
 mod preview_inputs;
 #[path = "preview_layout_tests.rs"]
@@ -1277,7 +1279,10 @@ fn project_without_layout_sidecar_uses_default_layout() {
         canvas_position(&app.main_canvas.snarl, CanvasNode::SourceBlock(0)),
         egui::pos2(0.0, 0.0)
     );
-    assert_eq!(app.status, format!("loaded {}", project_path.display()));
+    assert_eq!(
+        app.status,
+        format!("loaded {}", crate::ui_kit::file_label(&project_path))
+    );
     assert!(!app.is_dirty());
 
     std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
@@ -2730,7 +2735,7 @@ fn debug_preview_steps_before_target_writes_and_continues() {
     app.preview_command(preview_ui::PreviewCommand::Continue);
     wait_for_preview_completion(&mut app);
     assert!(app.show_run_report);
-    assert_eq!(app.status, "previewed 1 record(s) for Primary");
+    assert_eq!(app.status, "previewed 1 record for Primary");
     let report = app.run_report.as_mut().expect("completed preview report");
     assert!(matches!(
         report.report.outputs[0].preview(),
@@ -4805,3 +4810,8 @@ fn new_mapping_stages_both_schemas_before_replacing_the_project() {
 
     std::fs::remove_dir_all(directory).expect("temporary test directory is removed");
 }
+
+#[path = "owned_run_worker_tests.rs"]
+mod owned_run_worker_tests;
+#[path = "run_views_visual_tests.rs"]
+mod run_views_visual_tests;

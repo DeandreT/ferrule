@@ -3,12 +3,28 @@ use ir::{Instance, SchemaKind, SchemaNode, Value, XmlTypeOrigin};
 use serde_json::{Value as Json, json};
 use std::{
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-fn evidence() -> PathBuf {
-    // Windows clock readings can repeat across concurrently running tests.
+/// Removes the per-test directory on drop, including after a panic.
+struct TempDir(PathBuf);
+
+impl std::ops::Deref for TempDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn evidence() -> TempDir {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
         "ferrule-nested-array-native-{}-{}-{}",
@@ -20,6 +36,7 @@ fn evidence() -> PathBuf {
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&root).unwrap();
+    let root = TempDir(root);
     fs::write(
         root.join("cases.json"),
         include_bytes!("fixtures/nested_array_wrappers/cases.json"),

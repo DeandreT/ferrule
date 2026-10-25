@@ -9,6 +9,7 @@
 
 mod autocomplete;
 pub mod config;
+pub mod document;
 pub mod edifact;
 pub mod hl7;
 pub mod idoc;
@@ -35,6 +36,11 @@ pub(crate) const MAX_RUNTIME_INPUT_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum EdiFormatError {
+    #[error("EDIFACT envelope segment {segment}: {reason}")]
+    EdifactEnvelope {
+        segment: usize,
+        reason: &'static str,
+    },
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("not an X12 interchange: {0}")]
@@ -853,6 +859,15 @@ mod tests {
         );
     }
 
+    /// Removes a per-test directory on drop, including after a panic.
+    struct TempDir(std::path::PathBuf);
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
     fn output_lexical_formats_bound_converted_compact_time_width() {
         let cases = [
@@ -882,6 +897,7 @@ mod tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&retained).unwrap();
+        let _cleanup = TempDir(retained.clone());
         eprintln!(
             "compact-time width outcomes retained at {}",
             retained.display()

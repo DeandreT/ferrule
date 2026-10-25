@@ -792,6 +792,7 @@ fn run_csharp_host(
         )
     };
     let build = Command::new(dotnet)
+        .dotnet_temp(root)
         .args([
             "build",
             "--configuration",
@@ -838,6 +839,7 @@ fn run_csharp_host(
     )
     .map_err(|error| format!("C# {label} contract: {error}"))?;
     let run = Command::new(dotnet)
+        .dotnet_temp(root)
         .arg(&assembly)
         .args(&arguments)
         .arg(&output)
@@ -846,4 +848,29 @@ fn run_csharp_host(
         .output()
         .map_err(|error| format!("C# {label} run: {error}"))?;
     host_result(&output, calls, &run).map_err(|error| format!("C# {label}: {error}"))
+}
+
+/// The models, the closed Projects and the directly constructed Programs, for
+/// the owned capability preset record.
+pub(super) fn capability_corpus() -> TestResult<super::owned_capability_presets::Corpus> {
+    use super::owned_capability_presets as presets;
+    let mut corpus = presets::projects(
+        projects::PROFILES
+            .iter()
+            .map(|profile| (*profile, projects::project(profile))),
+    );
+    corpus.extend(presets::projects(
+        closed_projects()
+            .into_iter()
+            .map(|(id, project, _)| (format!("closed/{id}"), project)),
+    ));
+    let base = codegen::lower_with_basic_owned_group_starting_with(&projects::base())?;
+    let specialized =
+        codegen::lower_with_basic_owned_group_starting_with(&projects::refusal_base())?;
+    corpus.extend(presets::programs(
+        closed_programs(&base, &specialized)
+            .into_iter()
+            .map(|(id, program, _)| (format!("direct/{id}"), program)),
+    ));
+    Ok(corpus)
 }

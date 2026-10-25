@@ -105,6 +105,8 @@ fn is_assertion_failure(error: &JsonFormatError) -> bool {
             | JsonFormatError::InvalidPropertyNameMetadata { .. }
             | JsonFormatError::InvalidContainsMetadata { .. }
             | JsonFormatError::InvalidArrayWrapperMetadata { .. }
+            | JsonFormatError::InvalidObjectItemNullabilityMetadata { .. }
+            | JsonFormatError::InvalidNullabilityMetadata { .. }
             | JsonFormatError::PatternWorkLimit { .. }
             | JsonFormatError::InvalidRecursiveReference { .. }
             | JsonFormatError::MissingRecursiveAnchor { .. }

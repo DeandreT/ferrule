@@ -6,13 +6,42 @@ use mapping::{AggregateOp, JoinConditions, JoinId, JoinPlan, JoinSource, NodeId}
 use super::EngineError;
 use super::aggregate::aggregate;
 use super::eval_expr::{EvalProgram, eval_node_input};
+use super::frame_view::{FrameKind, FrameOrigin, FrameView};
 use super::policy::BudgetMeter;
-use super::resolve::{context_for_position, field_scalar};
+use super::resolve::field_scalar;
 use super::source_iteration::{PositionFrame, WalkExtension, walk};
 
 pub(super) struct JoinedRow<'a> {
     instances: Vec<&'a Instance>,
-    positions: Vec<PositionFrame>,
+    frames: Vec<RowFrame>,
+    /// Whether every source contributed exactly one instance per position.
+    /// A walk can end at an unpositioned value or synthesize a position with
+    /// no instance; such rows keep the legacy index pairing.
+    exact: bool,
+}
+
+struct RowFrame {
+    position: PositionFrame,
+    origin: FrameOrigin,
+}
+
+impl<'a> JoinedRow<'a> {
+    pub(super) fn view(&self) -> FrameView<'_, 'a> {
+        FrameView::row(
+            &self.instances,
+            self.frames
+                .iter()
+                .map(|frame| (&frame.position, frame.origin)),
+            self.exact,
+        )
+    }
+
+    fn positions(&self) -> Vec<PositionFrame> {
+        self.frames
+            .iter()
+            .map(|frame| frame.position.clone())
+            .collect()
+    }
 }
 
 pub(super) struct AggregateInput<'a> {
@@ -35,24 +64,34 @@ pub(super) fn execute<'a>(
     let Some(first) = sources.next() else {
         return Ok(Vec::new());
     };
-    let mut rows = source_rows(context, positions, join, first);
+    let receiving = FrameView::receiving(context, positions);
+    let mut rows = source_rows(context, &receiving, join, first);
     for (right_source, conditions) in plan.stages() {
-        let right_rows = source_rows(context, positions, join, right_source);
+        let right_rows = source_rows(context, &receiving, join, right_source);
         let mut joined = Vec::new();
         for left in rows {
+            let left_frames = left.view();
             for right in &right_rows {
                 // Every examined pairing is one restricted join-row unit.
                 if let Some(budget) = budget {
                     budget.charge_join_row()?;
                 }
-                if conditions_match(&left, right, conditions)? {
+                if conditions_match(&left_frames, right, conditions)? {
                     let mut instances = left.instances.clone();
                     instances.extend(right.instances.iter().copied());
-                    let mut positions = left.positions.clone();
-                    positions.extend(right.positions.iter().cloned());
+                    let frames = left
+                        .frames
+                        .iter()
+                        .chain(&right.frames)
+                        .map(|frame| RowFrame {
+                            position: frame.position.clone(),
+                            origin: frame.origin,
+                        })
+                        .collect();
                     joined.push(JoinedRow {
                         instances,
-                        positions,
+                        frames,
+                        exact: left.exact && right.exact,
                     });
                 }
             }
@@ -60,8 +99,8 @@ pub(super) fn execute<'a>(
         rows = joined;
     }
     for (index, row) in rows.iter_mut().enumerate() {
-        if let Some(position) = row.positions.last_mut() {
-            position.join_position = Some((join, index + 1));
+        if let Some(frame) = row.frames.last_mut() {
+            frame.position.join_position = Some((join, index + 1));
         }
     }
     Ok(rows)
@@ -71,7 +110,7 @@ pub(super) fn extensions<'a>(rows: &[JoinedRow<'a>]) -> Vec<WalkExtension<'a>> {
     rows.iter()
         .map(|row| WalkExtension {
             instances: row.instances.clone(),
-            positions: row.positions.clone(),
+            positions: row.positions(),
         })
         .collect()
 }
@@ -124,25 +163,34 @@ pub(super) fn eval_aggregate(
     aggregate(input.function, extensions.len(), &values, arg)
 }
 
+/// Rows of one join source. The latest ungrouped receiving frame of the
+/// source's exact collection that this join did not contribute correlates
+/// the source to that one row. When that frame has no instance, or no frame
+/// matches, the source is walked from the innermost context frame holding
+/// its first segment, falling back to the innermost frame.
 fn source_rows<'a>(
     context: &[&'a Instance],
-    positions: &[PositionFrame],
+    receiving: &FrameView<'_, 'a>,
     join: JoinId,
     source: &JoinSource,
 ) -> Vec<JoinedRow<'a>> {
     let collection = source.collection();
-    if let Some((position_index, position)) =
-        positions.iter().enumerate().rev().find(|(_, position)| {
-            !position.grouped && position.join != Some(join) && position.collection == collection
-        })
-        && let Some(instance) = context_for_position(context, positions, position_index)
+    if let Some(frame) = receiving.latest(|frame| {
+        frame.kind != FrameKind::GroupMembers
+            && frame.origin != FrameOrigin::Joined(join)
+            && frame.collection == collection
+    }) && let Some(instance) = receiving.instance(frame)
     {
-        let mut correlated = position.clone();
+        let mut correlated = frame.position.clone();
         correlated.join = Some(join);
         correlated.join_position = None;
         return vec![JoinedRow {
             instances: vec![instance],
-            positions: vec![correlated],
+            frames: vec![RowFrame {
+                position: correlated,
+                origin: FrameOrigin::Correlated,
+            }],
+            exact: true,
         }];
     }
     context
@@ -160,7 +208,7 @@ fn source_rows<'a>(
                 .enumerate()
                 .map(|(index, extension)| {
                     let mut positions = extension.positions;
-                    if positions.is_empty() {
+                    let origin = if positions.is_empty() {
                         positions.push(PositionFrame {
                             collection: collection.to_vec(),
                             index: index + 1,
@@ -169,14 +217,20 @@ fn source_rows<'a>(
                             join_position: None,
                             document_path: None,
                         });
+                        FrameOrigin::Synthetic
                     } else {
                         for position in &mut positions {
                             position.join = Some(join);
                         }
-                    }
+                        FrameOrigin::Walked
+                    };
                     JoinedRow {
+                        exact: extension.instances.len() == positions.len(),
                         instances: extension.instances,
-                        positions,
+                        frames: positions
+                            .into_iter()
+                            .map(|position| RowFrame { position, origin })
+                            .collect(),
                     }
                 })
                 .collect()
@@ -184,7 +238,7 @@ fn source_rows<'a>(
 }
 
 fn conditions_match(
-    left: &JoinedRow<'_>,
+    left: &FrameView<'_, '_>,
     right: &JoinedRow<'_>,
     conditions: &JoinConditions,
 ) -> Result<bool, EngineError> {
@@ -212,17 +266,14 @@ fn conditions_match(
     Ok(true)
 }
 
+/// A left key read from the latest row frame of its exact collection.
 fn row_value<'a>(
-    row: &'a JoinedRow<'_>,
+    row: &FrameView<'_, 'a>,
     collection: &[String],
     path: &[String],
 ) -> Option<&'a Value> {
-    let index = row
-        .positions
-        .iter()
-        .rposition(|position| position.collection == collection)?;
-    row.instances
-        .get(index)
+    let frame = row.latest(|frame| frame.collection == collection)?;
+    row.instance(frame)
         .and_then(|item| field_scalar(item, path))
 }
 

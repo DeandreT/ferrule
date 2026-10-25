@@ -13,11 +13,11 @@ use crate::aggregate::sort_value_ordering;
 use crate::debug::before_target_write;
 use crate::dynamic_target::{self, eval_dynamic_key, insert_target_field};
 use crate::eval_expr::{EvalProgram, eval_expr};
+use crate::frame_view::FrameView;
 use crate::grouping::GroupingMode;
 use crate::iteration_output::finalize_scope_output;
 use crate::join::{execute as execute_join, extensions as join_extensions};
 use crate::recursive_filter;
-use crate::resolve::context_for_position;
 use crate::sequence::eval_sequence;
 use crate::source_iteration::{PositionFrame, WalkExtension, walk};
 use crate::trace::{
@@ -27,6 +27,10 @@ use crate::trace::{
 };
 use crate::{DynamicSourceLoader, EngineError};
 
+#[path = "eval_scope/owned_document_set.rs"]
+mod owned_document_set;
+#[path = "eval_scope/owned_dynamic_loading.rs"]
+mod owned_dynamic_loading;
 #[path = "eval_scope/owned_join_scope.rs"]
 mod owned_join_scope;
 
@@ -183,21 +187,28 @@ pub(crate) fn eval_scope(
                     .filter(|source| source.dynamic_path.is_some())
             })
         });
-    let dynamic_drivers = dynamic_source
-        .and_then(|source| source.dynamic_path.as_ref())
-        .map(|dynamic| {
+    // An owned driver is reachable only through an owned selector; a legacy
+    // alias never repairs its missing ownership.
+    let legacy_driver = match dynamic_source.and_then(|source| source.dynamic_path.as_ref()) {
+        Some(dynamic) => Some(dynamic.legacy_driver().ok_or_else(|| {
+            EngineError::UnsupportedSourceIteration {
+                scope: trace_scope.source_scope.clone(),
+            }
+        })?),
+        None => None,
+    };
+    let dynamic_drivers = legacy_driver
+        .map(|iteration| {
             context
                 .iter()
                 .rev()
-                .find(|frame| match dynamic.iteration.first() {
+                .find(|frame| match iteration.first() {
                     Some(first) => frame.field(first).is_some(),
                     None => true,
                 })
                 .copied()
                 .or_else(|| context.last().copied())
-                .map_or_else(Vec::new, |base| {
-                    walk(base, &dynamic.iteration, &[], &[], &[])
-                })
+                .map_or_else(Vec::new, |base| walk(base, iteration, &[], &[], &[]))
         })
         .unwrap_or_default();
     let mut loaded_dynamic = Vec::new();
@@ -229,25 +240,12 @@ pub(crate) fn eval_scope(
                     found: path.type_name(),
                 });
             };
-            let loaded = match program.restricted {
-                None => loader
-                    .load(&source.name, &path)
-                    .map_err(crate::DynamicSourceLoadError::Failed),
-                Some(policy) => loader.load_restricted(&source.name, &path, policy),
-            };
-            let instance = loaded.map_err(|error| match error {
-                crate::DynamicSourceLoadError::Refused(refusal) => {
-                    EngineError::DynamicSourceRefused {
-                        source_name: source.name.clone(),
-                        refusal,
-                    }
-                }
-                crate::DynamicSourceLoadError::Failed(message) => EngineError::DynamicSourceLoad {
-                    source_name: source.name.clone(),
-                    path,
-                    message,
-                },
-            })?;
+            let instance = crate::dynamic_source::load_document(
+                loader,
+                program.restricted,
+                &source.name,
+                path,
+            )?;
             loaded_dynamic.push((driver_index, instance));
         }
     }
@@ -281,6 +279,16 @@ pub(crate) fn eval_scope(
                     .collect::<Vec<_>>()
             })
             .collect()
+    } else if let Some(condition) = scope.presence() {
+        // The parent item is the only candidate; no frame or position is added.
+        if passes_filter(program, Some(condition), context, positions)? {
+            vec![WalkExtension {
+                instances: Vec::new(),
+                positions: Vec::new(),
+            }]
+        } else {
+            Vec::new()
+        }
     } else {
         match scope
             .source()
@@ -305,22 +313,11 @@ pub(crate) fn eval_scope(
                     // A grouped scope stores its member collection in the
                     // context under the original collection frame. Preserve
                     // that identity when an empty-path child iterates members.
-                    let prefix = if path.is_empty()
-                        && positions.last().is_some_and(|position| {
-                            position.grouped
-                                && context_for_position(
-                                    context,
-                                    positions,
-                                    positions.len().saturating_sub(1),
-                                ) == Some(base)
-                        }) {
-                        positions
-                            .last()
-                            .map(|position| position.collection.as_slice())
-                            .unwrap_or_default()
-                    } else {
-                        &[]
-                    };
+                    let prefix = path
+                        .is_empty()
+                        .then(|| FrameView::grouped_members_collection(context, positions, base))
+                        .flatten()
+                        .unwrap_or_default();
                     walk(base, path, prefix, &[], &[])
                 }),
         }
@@ -649,13 +646,11 @@ pub(crate) fn eval_scope(
                 Instance::Group(fields) => (Some(&group.frame), &fields[0].1),
                 members => (None, members),
             };
-            let parent_wrappers = positions.iter().filter(|position| position.grouped).count();
-            let parent_frame_start = context
-                .len()
-                .checked_sub(positions.len() + parent_wrappers)
-                .expect("iteration positions have matching context frames");
-            let mut next_context = context[..parent_frame_start].to_vec();
-            next_context.extend_from_slice(&context[parent_frame_start..]);
+            assert!(
+                FrameView::receiving_start(context, positions).is_some(),
+                "iteration positions have matching context frames"
+            );
+            let mut next_context = context.to_vec();
             next_context.extend_from_slice(group.intermediate_frames);
             if let Some(wrapper) = wrapper {
                 next_context.push(wrapper);
@@ -785,26 +780,7 @@ fn scope_needs_owned(program: EvalProgram<'_>, scope: &Scope) -> bool {
     {
         return true;
     }
-    let mut pending: Vec<_> = scope
-        .bindings
-        .iter()
-        .map(|binding| binding.node)
-        .chain(match &scope.construction {
-            ScopeConstruction::Scalar { value } => Some(*value),
-            _ => None,
-        })
-        .chain(scope.filter)
-        .chain(scope.grouping_nodes())
-        .chain(scope.post_group_filter)
-        .chain(scope.sort_keys().map(|key| key.node))
-        .chain(
-            scope
-                .windows
-                .iter()
-                .copied()
-                .flat_map(|window| window.nodes()),
-        )
-        .collect();
+    let mut pending = crate::scope_slots::roots(scope, crate::scope_slots::owned_probe);
     let mut visited = HashSet::new();
     while let Some(id) = pending.pop() {
         if !visited.insert(id) {
@@ -929,6 +905,32 @@ fn record_basic_sort_position<'tree>(
     extension.origins = original.origins;
 }
 
+/// Maps an owned scope's metadata failure to its scope-located engine error.
+pub(super) fn owned_access_error(
+    trace_scope: &TraceScope,
+    source: crate::OwnedSourceError,
+) -> EngineError {
+    match source {
+        crate::OwnedSourceError::UnsupportedSourceDomain { found } => {
+            EngineError::UnsupportedOwnedContext {
+                node: None,
+                function: None,
+                scope: Some(trace_scope.source_scope.clone()),
+                context: if found == "a document set" {
+                    crate::OwnedCapabilityContext::Document
+                } else {
+                    crate::OwnedCapabilityContext::GeneratedItem
+                },
+            }
+        }
+        source => EngineError::OwnedSourceAccess {
+            node: None,
+            scope: Some(Box::new(trace_scope.source_scope.clone())),
+            source,
+        },
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn eval_basic_owned_scope<'a>(
     program: EvalProgram<'a>,
@@ -940,7 +942,6 @@ fn eval_basic_owned_scope<'a>(
     source_loader: Option<&dyn DynamicSourceLoader>,
     trace_scope: &TraceScope,
 ) -> Result<Instance, EngineError> {
-    use crate::owned_context::OwnedContext;
     use crate::source_iteration::{
         ObservedExtension, ObservedWalkRequest, reserve_observed_copy, select_observed,
         select_observed_with_candidate_observer,
@@ -966,25 +967,7 @@ fn eval_basic_owned_scope<'a>(
     let state = program
         .owned_context
         .expect("basic owned route has a context");
-    let access = |source| match source {
-        crate::OwnedSourceError::UnsupportedSourceDomain { found } => {
-            EngineError::UnsupportedOwnedContext {
-                node: None,
-                function: None,
-                scope: Some(trace_scope.source_scope.clone()),
-                context: if found == "a document set" {
-                    crate::OwnedCapabilityContext::Document
-                } else {
-                    crate::OwnedCapabilityContext::GeneratedItem
-                },
-            }
-        }
-        source => EngineError::OwnedSourceAccess {
-            node: None,
-            scope: Some(Box::new(trace_scope.source_scope.clone())),
-            source,
-        },
-    };
+    let access = |source| owned_access_error(trace_scope, source);
     let domain = crate::source_ownership::scope_context(scope);
     if domain != crate::OwnedCapabilityContext::Basic {
         return Err(EngineError::UnsupportedOwnedContext {
@@ -1018,9 +1001,51 @@ fn eval_basic_owned_scope<'a>(
             has_source,
         );
     };
-    let (mut extensions, budget, own, candidates, replay) = match scope.source_selector() {
+    // An owned dynamic endpoint without an active document loads one per driver.
+    if let Some(mapping::SourceSelectorRef::Owned(source)) = scope.source_selector()
+        && let Some(driver) = owned_dynamic_loading::driver(state, source).map_err(access)?
+    {
+        return owned_dynamic_loading::eval_loading_scope(
+            receiving_program,
+            scope,
+            target,
+            context,
+            positions,
+            extra_sources,
+            source_loader,
+            trace_scope,
+            source,
+            driver,
+        );
+    }
+    let (extensions, budget, own, candidates, replay) = match scope.source_selector() {
         Some(mapping::SourceSelectorRef::Owned(source)) => {
             let (owner, base, prefix, tail, budget) = state.select(source).map_err(access)?;
+            // Only the endpoint root of an owner with no active document can
+            // be a set; grouped scopes keep refusing it in the walk below.
+            if let Instance::DocumentSet(members) = base
+                && prefix.is_empty()
+                && !state.roots.loaded(owner)
+                && !scope.has_grouping()
+                && scope.post_group_filter.is_none()
+            {
+                return owned_document_set::eval_document_set_scope(
+                    receiving_program,
+                    scope,
+                    target,
+                    context,
+                    positions,
+                    extra_sources,
+                    source_loader,
+                    trace_scope,
+                    source,
+                    owned_document_set::Members {
+                        key: owner,
+                        members,
+                        budget,
+                    },
+                );
+            }
             let request = ObservedWalkRequest {
                 base,
                 path: tail,
@@ -1074,22 +1099,13 @@ fn eval_basic_owned_scope<'a>(
                     ObservedWalkRequest {
                         base: actual,
                         path: tail,
-                        raw_prefix: if path.is_empty()
-                            && positions.last().is_some_and(|position| {
-                                position.grouped
-                                    && context_for_position(
-                                        context,
-                                        positions,
-                                        positions.len().saturating_sub(1),
-                                    ) == Some(base)
-                            }) {
-                            &positions
-                                .last()
-                                .expect("checked grouped position")
-                                .collection
-                        } else {
-                            &path[..consumed]
-                        },
+                        raw_prefix: path
+                            .is_empty()
+                            .then(|| {
+                                FrameView::grouped_members_collection(context, positions, base)
+                            })
+                            .flatten()
+                            .unwrap_or(&path[..consumed]),
                         canonical_prefix: canonical,
                         owner: Some(owner),
                         context: state,
@@ -1157,6 +1173,67 @@ fn eval_basic_owned_scope<'a>(
             (vec![extension], budget, false, 1, None)
         }
     };
+    eval_basic_owned_selected(
+        receiving_program,
+        scope,
+        target,
+        context,
+        positions,
+        extra_sources,
+        source_loader,
+        trace_scope,
+        BasicSelection {
+            extensions,
+            budget,
+            own,
+            candidates,
+            replay,
+            retain_first,
+        },
+    )
+}
+
+/// One owned scope's complete selected candidates before controls run.
+pub(super) struct BasicSelection<'a, 'query> {
+    pub extensions: Vec<crate::source_iteration::ObservedExtension<'a>>,
+    pub budget: crate::owned_context::WorkBudget,
+    /// The scope's own selector names an owner.
+    pub own: bool,
+    pub candidates: usize,
+    pub replay: Option<crate::source_iteration::ObservedReplay<'a, 'query>>,
+    /// Only the original walk's implicit First retains one candidate.
+    pub retain_first: bool,
+}
+
+/// Runs the controls, windows, grouping and output of selected candidates in
+/// their receiving context.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn eval_basic_owned_selected<'a>(
+    receiving_program: EvalProgram<'a>,
+    scope: &Scope,
+    target: Option<&ir::SchemaNode>,
+    context: &[&'a Instance],
+    positions: &[PositionFrame],
+    extra_sources: &[NamedSource],
+    source_loader: Option<&dyn DynamicSourceLoader>,
+    trace_scope: &TraceScope,
+    selected: BasicSelection<'a, '_>,
+) -> Result<Instance, EngineError> {
+    use crate::owned_context::OwnedContext;
+    use crate::source_iteration::reserve_observed_copy;
+    let BasicSelection {
+        mut extensions,
+        budget,
+        own,
+        candidates,
+        replay,
+        retain_first,
+    } = selected;
+    let program = receiving_program.with_owned_trace_phase(crate::TraceOwnedPhase::Structural);
+    let state = program
+        .owned_context
+        .expect("basic owned route has a context");
+    let access = |source| owned_access_error(trace_scope, source);
     let ancestry = state.owned_ancestry
         || own
         || scope.group_by.is_some()

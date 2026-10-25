@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -328,6 +331,7 @@ fn bom_on_a_non_csv_boundary_rejects_before_export_publication() -> Result<(), B
 #[test]
 #[ignore = "reads the optional local reference corpus"]
 fn local_bom_enabled_csv_targets_retain_their_native_setting() -> Result<(), Box<dyn Error>> {
+    private_corpus::require(&[&private_corpus::root()]);
     let samples =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     for name in ["DB_ApplicationList.mfd", "ExportPersonAddressListToCSV.mfd"] {

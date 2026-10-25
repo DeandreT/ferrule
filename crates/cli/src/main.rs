@@ -8,6 +8,8 @@ use clap::error::ErrorKind;
 use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use serde_json::json;
 
+mod generate_args;
+
 #[derive(Parser)]
 #[command(name = "ferrule", version, about = "Run ferrule data mapping projects")]
 struct Cli {
@@ -163,6 +165,29 @@ enum Command {
         #[arg(long, value_name = "FILE")]
         restricted_policy: Option<PathBuf>,
     },
+    /// Run a saved primary filename document project once over every document
+    /// its filename selects beneath an explicit local input root.
+    /// URIs, rooted and parent paths and symbolic links are refused; no network
+    /// source is reachable. The project's saved source path is never read.
+    RunDocument {
+        #[arg(long, value_name = "DOCUMENT_PROJECT")]
+        project: PathBuf,
+        /// Directory every selected filename resolves beneath.
+        #[arg(long, value_name = "DIR")]
+        input_root: PathBuf,
+        /// Output document in the plan's format; defaults to the project's target_path.
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// Largest accepted input document.
+        #[arg(long, value_name = "BYTES", default_value_t = format_csv::DEFAULT_LOCAL_DOCUMENT_BYTES)]
+        max_document_bytes: u64,
+        /// Most documents one run may select.
+        #[arg(long, value_name = "COUNT", default_value_t = cli::DEFAULT_MAX_PRIMARY_DOCUMENTS)]
+        max_documents: usize,
+        /// Named host scalar in NAME=VALUE form, including a filename parameter.
+        #[arg(long = "param", value_name = "NAME=VALUE")]
+        parameters: Vec<String>,
+    },
     /// Run a typed graph of complete mapping stages and publish selected outputs.
     RunPipeline {
         #[arg(long, value_name = "PIPELINE")]
@@ -193,6 +218,10 @@ enum Command {
         clap::ArgGroup::new("x12_envelope_host")
             .args(["x12_adapters", "static_document_adapters"])
             .multiple(true)
+    ))]
+    #[command(group(
+        clap::ArgGroup::new("csv_document_host")
+            .args(["csv_document_adapters", "primary_documents"])
     ))]
     Generate {
         #[arg(long)]
@@ -237,9 +266,16 @@ enum Command {
         /// Include complete single-document CSV input/output methods in Rust or C#.
         #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters"])]
         csv_document_adapters: bool,
+        /// Generate a saved primary filename document project: one complete
+        /// document, in the plan's format, over every document its filename
+        /// selects through a host.
+        #[arg(long, alias = "primary-csv-documents", conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters", "csv_document_adapters"])]
+        primary_documents: bool,
         /// Write unescaped target fields and CRLF records; target quoting must be disabled.
-        #[arg(long, requires = "csv_document_adapters")]
+        #[arg(long, requires = "csv_document_host")]
         raw_delimited_crlf: bool,
+        #[command(flatten)]
+        identity: generate_args::GenerateIdentityArgs,
     },
     /// Import an XSD file's root element as a SchemaNode, printed as JSON --
     /// a starting point for hand-authoring a project file's schema.
@@ -319,6 +355,7 @@ impl Command {
             Self::BundleProject { .. } => "bundle-project",
             Self::RunRestJson { .. } => "run-rest-json",
             Self::Run { .. } => "run",
+            Self::RunDocument { .. } => "run-document",
             Self::RunPipeline { .. } => "run-pipeline",
             Self::Validate { .. } => "validate",
             Self::Generate { .. } => "generate",
@@ -444,9 +481,10 @@ fn json_diagnostics_requested(args: &[OsString]) -> bool {
 }
 
 fn command_name_from_args(args: &[OsString]) -> Option<&'static str> {
-    const COMMANDS: [&str; 11] = [
+    const COMMANDS: [&str; 12] = [
         "bundle-project",
         "run",
+        "run-document",
         "run-rest-json",
         "run-pipeline",
         "validate",
@@ -701,6 +739,33 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             }
             Ok(ExitCode::SUCCESS)
         }
+        Command::RunDocument {
+            project,
+            input_root,
+            output,
+            max_document_bytes,
+            max_documents,
+            parameters,
+        } => {
+            let parameters = parse_runtime_parameters(&parameters)?;
+            let policy = cli::PrimaryDocumentPolicy {
+                input_root,
+                max_document_bytes,
+                max_documents,
+            };
+            let outcome = cli::run_primary_document_file(
+                &project,
+                output.as_deref(),
+                &policy,
+                Some(&parameters),
+            )?;
+            println!(
+                "wrote {} record(s) to {}",
+                outcome.records_written,
+                outcome.output_path.display()
+            );
+            Ok(ExitCode::SUCCESS)
+        }
         Command::RunPipeline {
             pipeline,
             inputs,
@@ -795,7 +860,9 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             csv_x12_target_envelope_profile,
             csv_json_adapters,
             csv_document_adapters,
+            primary_documents,
             raw_delimited_crlf,
+            identity,
         } => {
             if csv_json_adapters && matches!(language, CodegenLanguage::Rust) {
                 bail!("--csv-json-adapters requires --language csharp");
@@ -819,46 +886,44 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                     cli::GenerateTarget::CSharp
                 }
             };
-            let outcome = if csv_document_adapters {
+            let settings = identity.settings(matches!(language, CodegenLanguage::Rust))?;
+            let profile = if primary_documents {
                 if raw_delimited_crlf {
-                    cli::generate_project_with_raw_delimited_document_adapters(
-                        &project, &out, target,
-                    )?
+                    cli::GenerateProfile::PrimaryRawDelimitedDocument
                 } else {
-                    cli::generate_project_with_csv_document_adapters(&project, &out, target)?
+                    cli::GenerateProfile::PrimaryDocument
+                }
+            } else if csv_document_adapters {
+                if raw_delimited_crlf {
+                    cli::GenerateProfile::RawDelimitedDocument
+                } else {
+                    cli::GenerateProfile::CsvDocument
                 }
             } else if csv_json_adapters {
-                cli::generate_project_with_csv_json_adapters(&project, &out, target)?
+                cli::GenerateProfile::CsvJson
             } else if csv_x12_adapters {
-                cli::generate_project_with_csv_x12_envelope_profile(
-                    &project,
-                    &out,
-                    target,
-                    csv_x12_target_envelope_profile.map(Into::into),
-                )?
+                cli::GenerateProfile::CsvX12 {
+                    target_envelope: csv_x12_target_envelope_profile.map(Into::into),
+                }
             } else if static_document_adapters {
-                cli::generate_project_with_static_document_envelope_profiles(
-                    &project,
-                    &out,
-                    target,
-                    x12_source_envelope_profile.map(Into::into),
-                    x12_target_envelope_profile.map(Into::into),
-                )?
+                cli::GenerateProfile::StaticDocuments {
+                    source_envelope: x12_source_envelope_profile.map(Into::into),
+                    target_envelope: x12_target_envelope_profile.map(Into::into),
+                }
             } else if x12_adapters {
-                cli::generate_project_with_x12_envelope_profiles(
-                    &project,
-                    &out,
-                    target,
-                    x12_source_envelope_profile.map(Into::into),
-                    x12_target_envelope_profile.map(Into::into),
-                )?
+                cli::GenerateProfile::X12 {
+                    source_envelope: x12_source_envelope_profile.map(Into::into),
+                    target_envelope: x12_target_envelope_profile.map(Into::into),
+                }
             } else if json5_adapters {
-                cli::generate_project_with_json5_adapters(&project, &out, target)?
+                cli::GenerateProfile::Json5
             } else if csv_output {
-                cli::generate_project_with_csv_output(&project, &out, target)?
+                cli::GenerateProfile::CsvOutput
             } else {
-                cli::generate_project(&project, &out, target)?
+                cli::GenerateProfile::Ordinary
             };
+            let outcome =
+                cli::generate_project_with_settings(&project, &out, target, profile, &settings)?;
             println!(
                 "generated {} file(s) in {}",
                 outcome.files_written,
@@ -1031,6 +1096,17 @@ fn parse_runtime_parameters(values: &[String]) -> anyhow::Result<engine::Runtime
     Ok(parameters)
 }
 
+/// Removes a per-test directory on drop, including after a panic.
+#[cfg(test)]
+struct TempDir(std::path::PathBuf);
+
+#[cfg(test)]
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[cfg(test)]
 mod x12_envelope_flag_tests {
     use super::*;
@@ -1150,6 +1226,7 @@ mod x12_envelope_flag_tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         let output = root.join("absent-parent/output");
         let args = vec![
             OsString::from("ferrule"),
@@ -1253,6 +1330,7 @@ mod static_document_flag_tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         let input = root.join("absent-project.json");
         let output = root.join("absent-parent/output");
         let args = vec![
@@ -1371,6 +1449,7 @@ mod csv_x12_flag_tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         let output = root.join("absent-parent/output");
         let args = vec![
             OsString::from("ferrule"),
@@ -1435,6 +1514,7 @@ mod csv_x12_flag_tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         let output = root.join("absent-parent/output");
         let args = vec![
             OsString::from("ferrule"),
@@ -1506,6 +1586,7 @@ mod csv_json_flag_tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         let output = root.join("absent-parent/output");
         let args = vec![
             OsString::from("ferrule"),
@@ -1615,6 +1696,7 @@ mod pdf_evidence_flag_tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
         for (key, input_stream) in [("stdin", true), ("stdout", false)] {
             let output = root.join(format!("{key}.xml"));
             std::fs::write(&output, b"sentinel").unwrap();

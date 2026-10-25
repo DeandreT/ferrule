@@ -225,10 +225,7 @@ fn owned_scope_admission_precedes_demanded_loader_and_trace_callbacks() {
         },
         &[],
     );
-    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 77,
-        iteration: vec![],
-    });
+    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(77, vec![]));
     p.graph.nodes.insert(
         77,
         Node::Const {

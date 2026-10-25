@@ -1,6 +1,3 @@
-#[cfg(test)]
-use crate::test_ui::ContextExt as _;
-
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, bail};
 
+use super::owned_worker::{OwnedWorker, WorkerExit};
 use super::*;
 use crate::preview::{
     BreakpointExpressionConditionDraft, BreakpointInputConditionDraft,
@@ -17,6 +15,37 @@ use crate::preview::{
     DebugNodeCondition, DebugPositionCondition, DebugScalarCondition, DebugSourceCondition,
     LoadedPreviewSource, PreviewBreakpoint, PreviewDraft, PreviewTarget, ScalarValueType,
 };
+
+fn show_preview_input(ui: &mut egui::Ui, draft: &mut PreviewDraft, input_size: usize) {
+    let label = ui
+        .horizontal(|ui| {
+            let label = ui.strong("Primary input");
+            ui.weak(format!(
+                "{} / {}",
+                format_preview_bytes(input_size),
+                format_preview_bytes(cli::MAX_PAYLOAD_DOCUMENT_BYTES)
+            ));
+            label
+        })
+        .inner;
+    let height = (ui.ctx().content_rect().height() * 0.3).clamp(
+        crate::theme::ListHeight::Short.px(),
+        crate::theme::ListHeight::Tall.px(),
+    );
+    egui::ScrollArea::both()
+        .id_salt("preview_primary_input_scroll")
+        .auto_shrink([false, false])
+        .max_height(height)
+        .show(ui, |ui| {
+            ui.add_sized(
+                egui::vec2(ui.available_width(), height),
+                egui::TextEdit::multiline(&mut draft.input_text)
+                    .code_editor()
+                    .desired_width(f32::INFINITY),
+            )
+            .labelled_by(label.id);
+        });
+}
 
 pub(super) fn show_breakpoint_input_condition(
     ui: &mut egui::Ui,
@@ -33,13 +62,13 @@ pub(super) fn show_breakpoint_input_condition(
             ui.add(
                 egui::TextEdit::singleline(&mut condition.consumer_text)
                     .char_limit(10)
-                    .desired_width(80.0),
+                    .desired_width(crate::theme::FieldWidth::Small.min()),
             );
             ui.label("Input #");
             ui.add(
                 egui::TextEdit::singleline(&mut condition.input_number_text)
                     .char_limit(4)
-                    .desired_width(48.0),
+                    .desired_width(crate::theme::METRICS.min_grid_col),
             );
         }
     });
@@ -49,7 +78,7 @@ pub(super) fn show_breakpoint_input_condition(
             ui.add(
                 egui::TextEdit::singleline(&mut condition.function_text)
                     .char_limit(20)
-                    .desired_width(110.0)
+                    .desired_width(crate::theme::FieldWidth::Medium.min())
                     .hint_text("Optional function ID"),
             );
         });
@@ -104,7 +133,7 @@ pub(super) fn show_breakpoint_expression_condition(
             ui.add(
                 egui::TextEdit::singleline(&mut condition.node_text)
                     .char_limit(10)
-                    .desired_width(100.0)
+                    .desired_width(crate::theme::FieldWidth::Small.min())
                     .hint_text("Graph node ID"),
             );
         }
@@ -115,7 +144,7 @@ pub(super) fn show_breakpoint_expression_condition(
             ui.add(
                 egui::TextEdit::singleline(&mut condition.function_text)
                     .char_limit(20)
-                    .desired_width(110.0)
+                    .desired_width(crate::theme::FieldWidth::Medium.min())
                     .hint_text("Optional function ID"),
             );
         });
@@ -165,7 +194,7 @@ pub(super) fn show_breakpoint_node_condition(
         if condition.enabled {
             ui.add(
                 egui::TextEdit::singleline(&mut condition.text)
-                    .desired_width(100.0)
+                    .desired_width(crate::theme::FieldWidth::Small.min())
                     .hint_text("Graph node ID"),
             );
         }
@@ -196,13 +225,13 @@ pub(super) fn show_breakpoint_source_condition(
             ui.label("Frame from innermost");
             ui.add(
                 egui::TextEdit::singleline(&mut condition.frame_from_inner)
-                    .desired_width(32.0)
+                    .desired_width(crate::theme::METRICS.min_grid_col)
                     .hint_text("0–3"),
             );
             ui.label("Field");
             ui.add(
                 egui::TextEdit::singleline(&mut condition.field)
-                    .desired_width(150.0)
+                    .desired_width(crate::theme::FieldWidth::Medium.min())
                     .hint_text("Immediate field name"),
             );
             egui::ComboBox::from_id_salt(id)
@@ -242,7 +271,7 @@ pub(super) fn show_breakpoint_position_condition(
         if condition.enabled {
             ui.add(
                 egui::TextEdit::singleline(&mut condition.text)
-                    .desired_width(96.0)
+                    .desired_width(crate::theme::FieldWidth::Small.min())
                     .hint_text("1-based active item number"),
             );
         }
@@ -322,11 +351,13 @@ enum PreviewWorkerEvent {
     PausedFunctionInput(Box<engine::PendingFunctionNodeInput>),
     PausedFailure(Box<engine::PendingNodeFailure>),
     PausedFunctionFailure(Box<engine::PendingFunctionNodeFailure>),
-    Finished(
-        Result<cli::PayloadRunOutcome, PreviewRunError>,
-        crate::run_report::TraceReport,
-    ),
 }
+
+/// What the preview worker returns when its thread finishes.
+type PreviewCompletion = (
+    Result<cli::PayloadRunOutcome, PreviewRunError>,
+    crate::run_report::TraceReport,
+);
 
 enum PreviewRunError {
     Cancelled,
@@ -346,7 +377,10 @@ pub(super) enum PreviewPhase {
     Stopping,
 }
 
+/// A preview owned by its exact worker thread. Pause events arrive on
+/// `receiver`; the outcome is reported only after that thread was joined.
 pub(super) struct PendingPreview {
+    worker: OwnedWorker<PreviewCompletion>,
     receiver: Receiver<PreviewWorkerEvent>,
     commands: Sender<PreviewCommand>,
     cancelled: Arc<AtomicBool>,
@@ -355,9 +389,18 @@ pub(super) struct PendingPreview {
     target_label: String,
     debug: bool,
     pub(super) phase: PreviewPhase,
+    /// The opted-in owned PDF extraction of a file preview, if any.
+    pub(super) extraction: Option<Arc<super::pdf_extraction::ExtractionStatus>>,
+    /// Set for previews that may own a PDF worker: dropping this owner hands
+    /// the exact thread to the service instead of blocking on it.
+    service: Option<super::PreviewServicePort>,
 }
 
 impl PendingPreview {
+    pub(super) fn is_service_owned(&self) -> bool {
+        self.service.is_some()
+    }
+
     fn command(&mut self, command: PreviewCommand) {
         match command {
             PreviewCommand::Step | PreviewCommand::Continue => {
@@ -374,439 +417,26 @@ impl PendingPreview {
 }
 
 impl Drop for PendingPreview {
+    /// Cancels, then drains the exact worker: the `worker` field is dropped
+    /// after this runs, while the command channel is still connected. A
+    /// service-owned preview hands its thread to the service instead.
     fn drop(&mut self) {
         self.cancelled.store(true, Ordering::Release);
         let _ = self.commands.send(PreviewCommand::Cancel);
-    }
-}
-
-struct PreviewDebugHook {
-    events: Sender<PreviewWorkerEvent>,
-    commands: Receiver<PreviewCommand>,
-    cancelled: Arc<AtomicBool>,
-    pause_each_write: std::cell::Cell<bool>,
-    pause_next_node: std::cell::Cell<bool>,
-    pause_next_input: std::cell::Cell<bool>,
-    breakpoint: Option<PreviewBreakpoint>,
-    value_condition: Option<DebugScalarCondition>,
-    position_condition: Option<DebugPositionCondition>,
-    source_condition: Option<DebugSourceCondition>,
-    node_condition: Option<DebugNodeCondition>,
-    expression_condition: Option<DebugExpressionCondition>,
-    input_condition: Option<DebugInputCondition>,
-    pause_on_failure: bool,
-}
-
-impl PreviewDebugHook {
-    fn after_failure(&self, event: PreviewWorkerEvent) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(PreviewCommand::Step | PreviewCommand::Continue | PreviewCommand::Pause) => {}
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-        if self.events.send(event).is_err() {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PreviewCommand::Continue) => return engine::DebugDecision::Resume,
-                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Ok(PreviewCommand::Pause | PreviewCommand::Step)
-                | Err(mpsc::RecvTimeoutError::Timeout) => {}
-            }
+        // A finished thread is joined at once by the field's own drop.
+        if let Some(service) = &self.service
+            && !self.worker.is_finished()
+        {
+            service.retain(Box::new(self.worker.take_ownership()));
         }
     }
 }
 
-impl engine::DebugHook for PreviewDebugHook {
-    fn wants_node_values(&self) -> bool {
-        self.expression_condition.is_some()
-            || self.pause_next_node.get()
-            || self.cancelled.load(Ordering::Acquire)
-    }
-
-    fn wants_function_node_values(&self) -> bool {
-        self.expression_condition
-            .as_ref()
-            .is_some_and(DebugExpressionCondition::targets_function)
-            || self.pause_next_node.get()
-            || self.cancelled.load(Ordering::Acquire)
-    }
-
-    fn wants_node_inputs(&self) -> bool {
-        self.input_condition.is_some()
-            || self.pause_next_input.get()
-            || self.cancelled.load(Ordering::Acquire)
-    }
-
-    fn wants_function_node_inputs(&self) -> bool {
-        self.input_condition
-            .as_ref()
-            .is_some_and(DebugInputCondition::targets_function)
-            || self.pause_next_input.get()
-            || self.cancelled.load(Ordering::Acquire)
-    }
-
-    fn wants_node_failures(&self) -> bool {
-        self.pause_on_failure
-    }
-
-    fn wants_function_node_failures(&self) -> bool {
-        self.pause_on_failure
-    }
-
-    fn after_node_failure(&self, failure: &engine::PendingNodeFailure) -> engine::DebugDecision {
-        self.after_failure(PreviewWorkerEvent::PausedFailure(Box::new(failure.clone())))
-    }
-
-    fn after_function_node_failure(
-        &self,
-        failure: &engine::PendingFunctionNodeFailure,
-    ) -> engine::DebugDecision {
-        self.after_failure(PreviewWorkerEvent::PausedFunctionFailure(Box::new(
-            failure.clone(),
-        )))
-    }
-
-    fn source_field_probe(&self) -> Option<(usize, String)> {
-        self.source_condition
-            .as_ref()
-            .map(DebugSourceCondition::probe)
-    }
-
-    fn before_target_write(&self, write: &engine::PendingTargetWrite) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PreviewCommand::Pause | PreviewCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_selection = self
-            .breakpoint
-            .as_ref()
-            .is_none_or(|breakpoint| breakpoint.matches(write));
-        let matches_value = self
-            .value_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let matches_position = self
-            .position_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let matches_source = self
-            .source_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let matches_node = self
-            .node_condition
-            .as_ref()
-            .is_none_or(|condition| condition.matches(write));
-        let has_breakpoint = self.breakpoint.is_some()
-            || self.value_condition.is_some()
-            || self.position_condition.is_some()
-            || self.source_condition.is_some()
-            || self.node_condition.is_some();
-        if !self.pause_each_write.get()
-            && !(has_breakpoint
-                && matches_selection
-                && matches_value
-                && matches_position
-                && matches_source
-                && matches_node)
-        {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(PreviewWorkerEvent::Paused(Box::new(write.clone())))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PreviewCommand::Step) => {
-                    self.pause_each_write.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Pause) | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_node_value(&self, value: &engine::PendingNodeValue) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PreviewCommand::Pause | PreviewCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_expression = self
-            .expression_condition
-            .as_ref()
-            .is_some_and(|condition| condition.matches(value));
-        if !self.pause_next_node.replace(false) && !matches_expression {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(PreviewWorkerEvent::PausedNode(Box::new(value.clone())))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PreviewCommand::Step) => {
-                    self.pause_next_node.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Pause) | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_function_node_value(
-        &self,
-        value: &engine::PendingFunctionNodeValue,
-    ) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PreviewCommand::Pause | PreviewCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_expression = self
-            .expression_condition
-            .as_ref()
-            .is_some_and(|condition| condition.matches_function(value));
-        if !self.pause_next_node.replace(false) && !matches_expression {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(PreviewWorkerEvent::PausedFunctionNode(Box::new(
-                value.clone(),
-            )))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PreviewCommand::Step) => {
-                    self.pause_next_node.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Pause) | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_node_input(&self, input: &engine::PendingNodeInput) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PreviewCommand::Pause | PreviewCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_pin = self
-            .input_condition
-            .as_ref()
-            .is_some_and(|condition| condition.matches(input));
-        if !self.pause_next_input.replace(false) && !matches_pin {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(PreviewWorkerEvent::PausedInput(Box::new(input.clone())))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PreviewCommand::Step) => {
-                    self.pause_next_input.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_next_input.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Pause) | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
-    }
-
-    fn after_function_node_input(
-        &self,
-        input: &engine::PendingFunctionNodeInput,
-    ) -> engine::DebugDecision {
-        if self.cancelled.load(Ordering::Acquire) {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            match self.commands.try_recv() {
-                Ok(PreviewCommand::Pause | PreviewCommand::Step) => {
-                    self.pause_each_write.set(true);
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_each_write.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_next_input.set(false);
-                }
-                Ok(PreviewCommand::Cancel) | Err(TryRecvError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-        let matches_pin = self
-            .input_condition
-            .as_ref()
-            .is_some_and(|condition| condition.matches_function(input));
-        if !self.pause_next_input.replace(false) && !matches_pin {
-            return engine::DebugDecision::Resume;
-        }
-        if self
-            .events
-            .send(PreviewWorkerEvent::PausedFunctionInput(Box::new(
-                input.clone(),
-            )))
-            .is_err()
-        {
-            return engine::DebugDecision::Cancel;
-        }
-        loop {
-            if self.cancelled.load(Ordering::Acquire) {
-                return engine::DebugDecision::Cancel;
-            }
-            match self.commands.recv_timeout(Duration::from_millis(100)) {
-                Ok(PreviewCommand::Step) => {
-                    self.pause_next_input.set(true);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Continue) => {
-                    self.pause_next_input.set(false);
-                    self.pause_next_node.set(false);
-                    self.pause_each_write.set(false);
-                    return engine::DebugDecision::Resume;
-                }
-                Ok(PreviewCommand::Pause) | Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Ok(PreviewCommand::Cancel) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return engine::DebugDecision::Cancel;
-                }
-            }
-        }
+#[cfg(test)]
+impl PendingPreview {
+    /// Every owner of the cancellation flag, including the worker's own.
+    pub(super) fn cancellation_for_test(&self) -> std::sync::Weak<AtomicBool> {
+        Arc::downgrade(&self.cancelled)
     }
 }
 
@@ -852,10 +482,14 @@ impl FerruleApp {
                 return;
             }
         };
-        let input_identity = nonempty_text(&self.input_path)
-            .map(str::to_owned)
-            .or_else(|| self.project.source_path.clone())
-            .unwrap_or_default();
+        let input_identity = match &self.primary_document {
+            // A document project never previews its saved source path.
+            Some(session) => session.input_root.clone(),
+            None => nonempty_text(&self.input_path)
+                .map(str::to_owned)
+                .or_else(|| self.project.source_path.clone())
+                .unwrap_or_default(),
+        };
         self.preview_draft = Some(PreviewDraft::new(target, input_identity, output_identity));
     }
 
@@ -875,21 +509,74 @@ impl FerruleApp {
             .as_ref()
             .is_some_and(|pending| pending.debug);
         let running = phase.is_some();
+        let extraction = self
+            .pending_preview
+            .as_ref()
+            .and_then(|pending| pending.extraction.as_ref())
+            .and_then(|status| status.progress_label());
+        let closing = self.close_after_preview;
         let Some(draft) = &mut self.preview_draft else {
             return;
         };
+        let documents = self.primary_document.is_some();
+        let documents_ready = self
+            .primary_document
+            .as_ref()
+            .is_none_or(|session| session.policy().is_ok());
+        let files = !documents
+            && self.preview_input_source
+                == super::preview_service::PreviewInputSource::ConfiguredFiles;
         let input_size = draft.input_text.len();
         let input_too_large = input_size > cli::MAX_PAYLOAD_DOCUMENT_BYTES;
-        let mut condition_valid = true;
-        let mut host_parameters_valid = true;
-        egui::Window::new("Preview mapping")
-            .collapsible(false)
-            .resizable(true)
-            .vscroll(true)
-            .default_size(egui::vec2(760.0, 620.0))
-            .min_size(egui::vec2(520.0, 360.0))
-            .show(ctx, |ui| {
+        let conditions_valid = self.preview_value_condition.compile().is_ok()
+            && self.preview_position_condition.compile().is_ok()
+            && self.preview_source_condition.compile().is_ok()
+            && self.preview_node_condition.compile().is_ok()
+            && self.preview_expression_condition.compile().is_ok()
+            && self.preview_input_condition.compile().is_ok();
+        let footer_ready = std::cell::Cell::new((false, false, false));
+        let dialog_idle = self.pending_dialog.is_none();
+        let mut browse_primary_root = false;
+        let response = crate::ui_kit::dialog(
+            ctx,
+            crate::ui_kit::DialogKind::Docked,
+            "Preview mapping",
+        )
+            .id_salt("preview_mapping")
+            .width(crate::ui_kit::DialogWidth::Wide)
+            .show(|ui| {
+                let mut condition_valid = conditions_valid;
+                let mut host_parameters_valid = self.host_parameters.compile().is_ok();
+                if let Some(session) = &mut self.primary_document {
+                    ui.add_enabled_ui(!running && dialog_idle, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Target");
+                            ui.strong(draft.target.label());
+                        });
+                        ui.strong("Primary documents");
+                        browse_primary_root = session.show(ui);
+                    });
+                }
                 ui.add_enabled_ui(!running, |ui| {
+                    if documents {
+                        return;
+                    }
+                    ui.horizontal(|ui| {
+                        ui.label("Primary input");
+                        ui.radio_value(
+                            &mut self.preview_input_source,
+                            super::preview_service::PreviewInputSource::EditorText,
+                            "Editor text",
+                        );
+                        ui.radio_value(
+                            &mut self.preview_input_source,
+                            super::preview_service::PreviewInputSource::ConfiguredFiles,
+                            "Project files",
+                        )
+                        .on_hover_text(
+                            "Reads the configured input files like Run, without writing outputs",
+                        );
+                    });
                     egui::Grid::new("preview_identity_grid")
                         .num_columns(2)
                         .spacing(egui::vec2(12.0, 8.0))
@@ -897,89 +584,122 @@ impl FerruleApp {
                             ui.label("Target");
                             ui.strong(draft.target.label());
                             ui.end_row();
-                            ui.label("Logical input identity");
+                            ui.label(if files {
+                                "Input file"
+                            } else {
+                                "Logical input identity"
+                            });
                             ui.add(
-                                egui::TextEdit::singleline(&mut draft.input_identity)
-                                    .hint_text("input.json")
-                                    .desired_width(f32::INFINITY),
+                                crate::ui_kit::text_field(
+                                    &mut draft.input_identity,
+                                    crate::ui_kit::FieldWidth::Fill,
+                                )
+                                .hint_text("input.json"),
                             )
-                            .on_hover_text("Selects the input format; no file is opened");
+                            .on_hover_text(if files {
+                                "Read when the preview starts; the project's source path is \
+                                 resolved from the project folder"
+                            } else {
+                                "Selects the input format; no file is opened"
+                            });
                             ui.end_row();
                             ui.label("Logical output identity");
                             ui.add(
-                                egui::TextEdit::singleline(&mut draft.output_identity)
-                                    .hint_text("output.json")
-                                    .desired_width(f32::INFINITY),
+                                crate::ui_kit::text_field(
+                                    &mut draft.output_identity,
+                                    crate::ui_kit::FieldWidth::Fill,
+                                )
+                                .hint_text("output.json"),
                             )
                             .on_hover_text("Selects the output format; no file is written");
                             ui.end_row();
                         });
                 });
-                ui.add_enabled_ui(!running, |ui| {
-                    host_parameters_valid = self.host_parameters.show(ui);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Debug breakpoint");
-                    ui.add_enabled_ui(!running, |ui| {
-                        egui::ComboBox::from_id_salt("preview_debug_breakpoint")
-                            .selected_text(
-                                draft
-                                    .debug_breakpoint
-                                    .as_ref()
-                                    .map_or_else(|| "Every target-field write".to_owned(), PreviewBreakpoint::label),
-                            )
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut draft.debug_breakpoint,
-                                    None,
-                                    "Every target-field write",
-                                );
-                                for breakpoint in &breakpoint_candidates {
+                if !documents && !files && phase.is_none() {
+                    show_preview_input(ui, draft, input_size);
+                }
+                crate::ui_kit::collapsible_section(
+                    ui, "preview_run_values", "Run values", false, |ui| {
+                        ui.add_enabled_ui(!running, |ui| {
+                            host_parameters_valid = self.host_parameters.show(ui);
+                        });
+                    },
+                );
+                // Document previews have no debug route.
+                if !documents {
+                    crate::ui_kit::collapsible_section(
+                        ui, "preview_debugging", "Debugging", false, |ui| {
+                    ui.horizontal(|ui| {
+                        let breakpoint_label = ui.label("Debug breakpoint");
+                        ui.add_enabled_ui(!running, |ui| {
+                            egui::ComboBox::from_id_salt("preview_debug_breakpoint")
+                                .selected_text(
+                                    draft
+                                        .debug_breakpoint
+                                        .as_ref()
+                                        .map_or_else(|| "Every target-field write".to_owned(), PreviewBreakpoint::label),
+                                )
+                                .show_ui(ui, |ui| {
                                     ui.selectable_value(
                                         &mut draft.debug_breakpoint,
-                                        Some(breakpoint.clone()),
-                                        breakpoint.label(),
+                                        None,
+                                        "Every target-field write",
                                     );
-                                }
-                            });
+                                    for breakpoint in &breakpoint_candidates {
+                                        ui.selectable_value(
+                                            &mut draft.debug_breakpoint,
+                                            Some(breakpoint.clone()),
+                                            breakpoint.label(),
+                                        );
+                                    }
+                                }).response.labelled_by(breakpoint_label.id);
+                        });
                     });
-                });
-                ui.weak("The selector covers declared static scope writes; runtime-named fields are not listed.");
-                ui.add_enabled_ui(!running, |ui| {
-                    condition_valid = show_breakpoint_value_condition(
-                        ui,
-                        &mut self.preview_value_condition,
-                        "preview_debug_value_type",
-                    );
-                    condition_valid &= show_breakpoint_position_condition(
-                        ui,
-                        &mut self.preview_position_condition,
-                    );
-                    condition_valid &= show_breakpoint_source_condition(
-                        ui,
-                        &mut self.preview_source_condition,
-                        "preview_debug_source_type",
-                    );
-                    condition_valid &= show_breakpoint_node_condition(
-                        ui,
-                        &mut self.preview_node_condition,
-                    );
-                    condition_valid &= show_breakpoint_expression_condition(
-                        ui,
-                        &mut self.preview_expression_condition,
-                        "preview_debug_expression_value_type",
-                    );
-                    condition_valid &= show_breakpoint_input_condition(
-                        ui,
-                        &mut self.preview_input_condition,
-                        "preview_debug_input_value_type",
-                    );
-                    ui.checkbox(
-                        &mut self.preview_pause_on_failure,
-                        "Pause at the first graph or function evaluation error",
-                    );
-                });
-                if draft.input_identity.trim().is_empty() {
+                    ui.weak("The selector covers declared static scope writes; runtime-named fields are not listed.");
+                    ui.add_enabled_ui(!running, |ui| {
+                        condition_valid &= show_breakpoint_value_condition(
+                            ui,
+                            &mut self.preview_value_condition,
+                            "preview_debug_value_type",
+                        );
+                        condition_valid &= show_breakpoint_position_condition(
+                            ui,
+                            &mut self.preview_position_condition,
+                        );
+                        condition_valid &= show_breakpoint_source_condition(
+                            ui,
+                            &mut self.preview_source_condition,
+                            "preview_debug_source_type",
+                        );
+                        condition_valid &= show_breakpoint_node_condition(
+                            ui,
+                            &mut self.preview_node_condition,
+                        );
+                        condition_valid &= show_breakpoint_expression_condition(
+                            ui,
+                            &mut self.preview_expression_condition,
+                            "preview_debug_expression_value_type",
+                        );
+                        condition_valid &= show_breakpoint_input_condition(
+                            ui,
+                            &mut self.preview_input_condition,
+                            "preview_debug_input_value_type",
+                        );
+                        ui.checkbox(
+                            &mut self.preview_pause_on_failure,
+                            "Pause at the first graph or function evaluation error",
+                        );
+                    });
+                    });
+                }
+                if documents {
+                    if !documents_ready {
+                        ui.colored_label(
+                            ui.visuals().error_fg_color,
+                            "An input root is required to read primary documents.",
+                        );
+                    }
+                } else if draft.input_identity.trim().is_empty() {
                     ui.colored_label(
                         ui.visuals().error_fg_color,
                         "A logical input identity is required to select the input format.",
@@ -993,7 +713,8 @@ impl FerruleApp {
                         ),
                     );
                 }
-                if draft.output_identity.trim().is_empty() {
+                if documents {
+                } else if draft.output_identity.trim().is_empty() {
                     ui.colored_label(
                         ui.visuals().error_fg_color,
                         "A logical output identity is required to select the output format.",
@@ -1008,15 +729,21 @@ impl FerruleApp {
                     );
                 }
                 ui.separator();
-                ui.horizontal(|ui| {
-                    ui.strong("Primary input");
-                    ui.weak(format!(
-                        "{} / {}",
-                        format_preview_bytes(input_size),
-                        format_preview_bytes(cli::MAX_PAYLOAD_DOCUMENT_BYTES)
-                    ));
-                });
-                if input_too_large {
+                if documents {
+                    ui.weak(
+                        "Documents are read beneath the input root when the preview \
+                         starts. The output stays in memory; no file is written.",
+                    );
+                } else if files {
+                    ui.add_enabled(
+                        !running,
+                        egui::Checkbox::new(
+                            &mut self.owned_pdf_worker,
+                            "Extract file PDFs in an owned worker process",
+                        ),
+                    );
+                }
+                if input_too_large && !files && !documents {
                     ui.colored_label(
                         ui.visuals().error_fg_color,
                         "Primary input exceeds the 64 MiB per-document limit.",
@@ -1024,28 +751,27 @@ impl FerruleApp {
                 }
                 if let Some(phase) = &phase {
                     show_live_debug_state(ui, phase, debug);
+                    if let Some(extraction) = &extraction {
+                        ui.weak(extraction);
+                    }
+                    if closing {
+                        ui.weak("The application closes after this preview has stopped.");
+                    }
+                    ui.weak(if files {
+                        "The mapping is held as an in-memory snapshot; inputs are read from files."
+                    } else {
+                        "The mapping and input are held as an in-memory snapshot for this preview."
+                    });
+                } else if files {
                     ui.weak(
-                        "The mapping and input are held as an in-memory snapshot for this preview.",
+                        "Inputs are read from the configured files when the preview starts. \
+                         Outputs stay in memory; no file is written.",
                     );
-                } else {
-                    let button_height = ui.spacing().interact_size.y;
-                    // The scrolling window can offer unbounded content height.
-                    let editor_height =
-                        (ui.available_height() - button_height - 18.0).clamp(140.0, 360.0);
-                    egui::ScrollArea::both()
-                        .id_salt("preview_primary_input_scroll")
-                        .auto_shrink([false, false])
-                        .max_height(editor_height)
-                        .show(ui, |ui| {
-                            ui.add_sized(
-                                egui::vec2(ui.available_width(), editor_height),
-                                egui::TextEdit::multiline(&mut draft.input_text)
-                                    .code_editor()
-                                    .desired_width(f32::INFINITY),
-                            );
-                        });
                 }
-                ui.separator();
+                let ready = if documents { documents_ready } else { draft.can_execute() };
+                footer_ready.set((ready, host_parameters_valid, condition_valid));
+            }, |ui| {
+                let (ready, host_parameters_valid, condition_valid) = footer_ready.get();
                 ui.horizontal(|ui| match &phase {
                     Some(
                         PreviewPhase::Paused(_)
@@ -1088,25 +814,32 @@ impl FerruleApp {
                         ui.weak("Stopping preview");
                     }
                     None => {
-                        if ui.button("Cancel").clicked() {
-                            action = Some(PreviewAction::Cancel);
-                        }
-                        if ui
-                            .add_enabled(draft.can_execute() && host_parameters_valid, egui::Button::new("Preview"))
-                            .clicked()
-                        {
-                            action = Some(PreviewAction::Execute);
-                        }
-                        if ui
-                            .add_enabled(draft.can_execute() && host_parameters_valid && condition_valid, egui::Button::new("Debug preview"))
-                            .clicked()
-                        {
-                            action = Some(PreviewAction::Debug);
-                        }
+                        let palette = crate::theme::active_palette(ui.ctx());
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.add_enabled(ready && host_parameters_valid,
+                                egui::Button::new(egui::RichText::new("Preview").color(palette.on_action)).fill(palette.action)).clicked()
+                            {
+                                action = Some(PreviewAction::Execute);
+                            }
+                            if !documents && ui.add_enabled(ready && host_parameters_valid && condition_valid,
+                                egui::Button::new("Debug preview")).clicked()
+                            {
+                                action = Some(PreviewAction::Debug);
+                            }
+                            if ui.button("Cancel").clicked() {
+                                action = Some(PreviewAction::Cancel);
+                            }
+                        });
                     }
                 });
             });
 
+        if response.close_requested {
+            action = Some(PreviewAction::Cancel);
+        }
+        if browse_primary_root {
+            self.browse_primary_input_root();
+        }
         if action.is_some() {
             ctx.request_repaint();
         }
@@ -1222,8 +955,15 @@ impl FerruleApp {
         };
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
-            self.status = format!("preview blocked by {} validation issue(s)", issues.len());
+            self.status = format!(
+                "preview blocked by {}",
+                crate::ui_kit::plural(issues.len(), "validation issue")
+            );
             self.diagnostics.validation(&self.project, issues);
+            return;
+        }
+        if self.primary_document.is_some() {
+            self.start_primary_document_preview(debug, runtime_parameters);
             return;
         }
         let Some(draft) = self.preview_draft.as_ref() else {
@@ -1256,7 +996,20 @@ impl FerruleApp {
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
         let pause_on_failure = debug && self.preview_pause_on_failure;
-        std::thread::spawn(move || {
+        let source = self.preview_input_source;
+        let extraction = (source == super::preview_service::PreviewInputSource::ConfiguredFiles
+            && self.owned_pdf_worker)
+            .then(|| Arc::new(super::pdf_extraction::ExtractionStatus::default()));
+        let acquisition = super::preview_service::PreviewAcquisition {
+            source,
+            pdf_worker: extraction
+                .as_ref()
+                .map(|status| (self.pdf_worker_package.clone(), Arc::clone(status))),
+            #[cfg(test)]
+            controls: self.pdf_reader_controls,
+        };
+        let service = extraction.is_some().then(|| self.preview_service.clone());
+        let worker = OwnedWorker::spawn("ferrule-preview", move || {
             run_preview_worker(
                 project,
                 draft,
@@ -1274,9 +1027,22 @@ impl FerruleApp {
                 event_tx,
                 command_rx,
                 worker_cancelled,
-            );
+                acquisition,
+            )
         });
+        let worker = match worker {
+            Ok(worker) => worker,
+            Err(error) => {
+                self.status = "preview failed".to_string();
+                self.diagnostics.error(
+                    "Preview failed",
+                    format!("Could not start the preview worker: {error}"),
+                );
+                return;
+            }
+        };
         self.pending_preview = Some(PendingPreview {
+            worker,
             receiver,
             commands,
             cancelled,
@@ -1285,6 +1051,8 @@ impl FerruleApp {
             target_label,
             debug,
             phase: PreviewPhase::Running,
+            extraction,
+            service,
         });
         self.show_run_report = false;
         self.diagnostics.clear();
@@ -1311,29 +1079,32 @@ impl FerruleApp {
         let Some(pending) = &mut self.pending_preview else {
             return;
         };
-        let event = match pending.receiver.try_recv() {
-            Ok(event) => event,
-            Err(TryRecvError::Empty) => {
-                if !matches!(
-                    pending.phase,
-                    PreviewPhase::Paused(_)
-                        | PreviewPhase::PausedNode(_)
-                        | PreviewPhase::PausedFunctionNode(_)
-                        | PreviewPhase::PausedInput(_)
-                        | PreviewPhase::PausedFunctionInput(_)
-                        | PreviewPhase::PausedFailure(_)
-                        | PreviewPhase::PausedFunctionFailure(_)
-                ) {
-                    ctx.request_repaint_after(Duration::from_millis(100));
+        // Pause events are relayed only while the exact worker runs; its
+        // outcome is the joined thread, never a message or a closed channel.
+        let event = if pending.worker.is_finished() {
+            None
+        } else {
+            pending.receiver.try_recv().ok()
+        };
+        let Some(event) = event else {
+            match pending.worker.poll() {
+                Some(exit) => self.finish_preview(exit),
+                None => {
+                    if !matches!(
+                        pending.phase,
+                        PreviewPhase::Paused(_)
+                            | PreviewPhase::PausedNode(_)
+                            | PreviewPhase::PausedFunctionNode(_)
+                            | PreviewPhase::PausedInput(_)
+                            | PreviewPhase::PausedFunctionInput(_)
+                            | PreviewPhase::PausedFailure(_)
+                            | PreviewPhase::PausedFunctionFailure(_)
+                    ) {
+                        ctx.request_repaint_after(Duration::from_millis(100));
+                    }
                 }
-                return;
             }
-            Err(TryRecvError::Disconnected) => PreviewWorkerEvent::Finished(
-                Err(PreviewRunError::Failed(
-                    "preview worker stopped unexpectedly".into(),
-                )),
-                crate::run_report::TraceReport::default(),
-            ),
+            return;
         };
         match event {
             PreviewWorkerEvent::Paused(write) => {
@@ -1416,40 +1187,57 @@ impl FerruleApp {
                 }
                 ctx.request_repaint();
             }
-            PreviewWorkerEvent::Finished(result, trace) => {
-                let pending = self.pending_preview.take().expect("preview worker exists");
-                if matches!(pending.phase, PreviewPhase::Stopping)
-                    || matches!(result, Err(PreviewRunError::Cancelled))
-                {
-                    self.status = "preview cancelled".into();
-                    self.preview_draft = None;
-                    self.diagnostics.clear();
-                    return;
-                }
-                match result {
-                    Ok(outcome) => {
-                        let report = crate::run_report::RunReport::from_payload_with_trace(
-                            outcome,
-                            pending.input_path.clone(),
-                            pending.started.elapsed(),
-                            trace,
-                        );
-                        self.status = format!(
-                            "previewed {} record(s) for {}",
-                            report.records_written, pending.target_label
-                        );
-                        self.run_report = Some(crate::run_report::RunReportView::new(report));
-                        self.show_run_report = true;
-                        self.preview_draft = None;
-                        self.diagnostics.clear();
-                    }
-                    Err(PreviewRunError::Failed(error)) => {
-                        self.status = "preview failed".to_string();
-                        self.diagnostics.error("Preview failed", error);
-                    }
-                    Err(PreviewRunError::Cancelled) => unreachable!("handled above"),
-                }
+        }
+    }
+
+    /// Applies the outcome of a joined preview worker.
+    fn finish_preview(&mut self, exit: WorkerExit<PreviewCompletion>) {
+        let Some(pending) = self.pending_preview.take() else {
+            return;
+        };
+        let (result, trace) = match exit {
+            WorkerExit::Reported(completion) => completion,
+            WorkerExit::Unreported | WorkerExit::Panicked => (
+                Err(PreviewRunError::Failed(
+                    "preview worker stopped unexpectedly".into(),
+                )),
+                crate::run_report::TraceReport::default(),
+            ),
+        };
+        if matches!(pending.phase, PreviewPhase::Stopping)
+            || matches!(result, Err(PreviewRunError::Cancelled))
+        {
+            self.status = "preview cancelled".into();
+            self.preview_draft = None;
+            self.diagnostics.clear();
+            return;
+        }
+        match result {
+            Ok(outcome) => {
+                let report = crate::run_report::RunReport::from_payload_with_trace(
+                    outcome,
+                    pending.input_path.clone(),
+                    pending.started.elapsed(),
+                    trace,
+                );
+                self.status = format!(
+                    "previewed {} for {}",
+                    crate::ui_kit::plural(report.records_written, "record"),
+                    pending.target_label
+                );
+                self.run_report = Some(
+                    crate::run_report::RunReportView::new(report)
+                        .with_project_labels(&self.project),
+                );
+                self.show_run_report = true;
+                self.preview_draft = None;
+                self.diagnostics.clear();
             }
+            Err(PreviewRunError::Failed(error)) => {
+                self.status = "preview failed".to_string();
+                self.diagnostics.error("Preview failed", error);
+            }
+            Err(PreviewRunError::Cancelled) => {}
         }
     }
 
@@ -1467,451 +1255,6 @@ impl FerruleApp {
             .context("resolving the current directory for Preview")?
             .join(name))
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn run_preview_worker(
-    project: Project,
-    draft: PreviewDraft,
-    project_path: PathBuf,
-    saved_path: Option<PathBuf>,
-    runtime_parameters: engine::RuntimeParameters,
-    debug: bool,
-    value_condition: Option<DebugScalarCondition>,
-    position_condition: Option<DebugPositionCondition>,
-    source_condition: Option<DebugSourceCondition>,
-    node_condition: Option<DebugNodeCondition>,
-    expression_condition: Option<DebugExpressionCondition>,
-    input_condition: Option<DebugInputCondition>,
-    pause_on_failure: bool,
-    events: Sender<PreviewWorkerEvent>,
-    commands: Receiver<PreviewCommand>,
-    cancelled: Arc<AtomicBool>,
-) {
-    let trace = crate::run_report::TraceCollector::new();
-    let breakpoint = if debug {
-        draft.debug_breakpoint.clone()
-    } else {
-        None
-    };
-    let hook = PreviewDebugHook {
-        events: events.clone(),
-        commands,
-        cancelled: Arc::clone(&cancelled),
-        pause_each_write: std::cell::Cell::new(
-            debug
-                && breakpoint.is_none()
-                && value_condition.is_none()
-                && position_condition.is_none()
-                && source_condition.is_none()
-                && node_condition.is_none()
-                && expression_condition.is_none()
-                && input_condition.is_none()
-                && !pause_on_failure,
-        ),
-        pause_next_node: std::cell::Cell::new(false),
-        pause_next_input: std::cell::Cell::new(false),
-        breakpoint,
-        value_condition,
-        position_condition,
-        source_condition,
-        node_condition,
-        expression_condition,
-        input_condition,
-        pause_on_failure,
-    };
-    let result = run_preview_payload(
-        &project,
-        &draft,
-        &project_path,
-        saved_path.as_deref(),
-        &runtime_parameters,
-        &trace,
-        &hook,
-        &cancelled,
-    )
-    .map_err(|error| {
-        if error.chain().any(|cause| {
-            matches!(
-                cause.downcast_ref::<engine::EngineError>(),
-                Some(engine::EngineError::DebugCancelled)
-            )
-        }) {
-            PreviewRunError::Cancelled
-        } else {
-            PreviewRunError::Failed(format!("{error:#}"))
-        }
-    });
-    let _ = events.send(PreviewWorkerEvent::Finished(result, trace.finish()));
-}
-
-#[allow(clippy::too_many_arguments)]
-fn run_preview_payload(
-    project: &Project,
-    draft: &PreviewDraft,
-    project_path: &std::path::Path,
-    saved_path: Option<&std::path::Path>,
-    runtime_parameters: &engine::RuntimeParameters,
-    trace: &crate::run_report::TraceCollector,
-    debug_hook: &dyn engine::DebugHook,
-    cancelled: &AtomicBool,
-) -> anyhow::Result<cli::PayloadRunOutcome> {
-    if !draft.can_execute() {
-        bail!("preview input or logical format identity is invalid");
-    }
-    if cancelled.load(Ordering::Acquire) {
-        return Err(engine::EngineError::DebugCancelled.into());
-    }
-    let loaded_sources = crate::preview::load_required_sources(project, saved_path, &draft.target)?;
-    if cancelled.load(Ordering::Acquire) {
-        return Err(engine::EngineError::DebugCancelled.into());
-    }
-    let named_inputs = named_payload_inputs(&loaded_sources)?;
-    let input_path = PathBuf::from(draft.input_identity.trim());
-    let output_path = PathBuf::from(draft.output_identity.trim());
-    let primary = cli::PayloadDocument::new(&input_path, draft.input_text.as_bytes())?;
-    let options = cli::PayloadRunOptions::new(primary)
-        .with_execution_purpose(engine::ExecutionPurpose::Preview)
-        .with_extra_sources(&named_inputs)
-        .with_output_path(&output_path)
-        .with_target(draft.target.selection())
-        .with_runtime_parameters(runtime_parameters)
-        .with_trace_sink(trace)
-        .with_debug_hook(debug_hook);
-    cli::run_project_value_payloads(project, project_path, &options)
-}
-
-pub(super) fn show_live_debug_state(ui: &mut egui::Ui, phase: &PreviewPhase, debug: bool) {
-    match phase {
-        PreviewPhase::Running => {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                ui.strong(if debug {
-                    "Debug preview is running"
-                } else {
-                    "Preview is running"
-                });
-            });
-            if debug {
-                ui.weak("Execution pauses at matching target writes or graph evaluations.");
-            }
-        }
-        PreviewPhase::Stopping => {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                ui.strong("Stopping preview");
-            });
-        }
-        PreviewPhase::Paused(write) => {
-            ui.strong("Paused before target-field insertion");
-            egui::ScrollArea::vertical()
-                .id_salt("preview_live_debug_details")
-                .max_height(280.0)
-                .show(ui, |ui| {
-                    let target = match &write.scope.target {
-                        engine::TraceTarget::Primary => "Primary",
-                        engine::TraceTarget::Named(name) => name,
-                    };
-                    ui.label(format!("Target: {target}"));
-                    let scope = if write.scope.target_path.is_empty() {
-                        "<root>".to_string()
-                    } else {
-                        write.scope.target_path.join(" / ")
-                    };
-                    ui.label(format!("Scope: {scope}"));
-                    ui.label(format!("Pending field: {}", write.field));
-                    if write.field_truncated {
-                        ui.weak("Field name preview was truncated.");
-                    }
-                    ui.label(format!("Binding: {:?}", write.binding));
-                    ui.label(format!("Pending value: {}", debug_value(&write.pending)));
-                    if write.positions.is_empty() {
-                        ui.weak("Source position: <root>");
-                    } else {
-                        for position in &write.positions {
-                            let collection = if position.collection.is_empty() {
-                                "<current>".to_string()
-                            } else {
-                                position.collection.join(" / ")
-                            };
-                            let mut label =
-                                format!("Source position: {collection} #{}", position.index);
-                            if position.grouped {
-                                label.push_str(" (grouped)");
-                            }
-                            if let Some(path) = &position.document_path {
-                                label.push_str(&format!(" — {path}"));
-                            }
-                            ui.label(label);
-                        }
-                    }
-                    ui.separator();
-                    show_primary_root_origin(ui, write.source.primary_root_origin.as_ref());
-                    ui.strong("Active source frames (outer to inner)");
-                    if write.source.omitted_outer_frames > 0 {
-                        ui.weak(format!(
-                            "{} outer frame(s) omitted from this bounded view",
-                            write.source.omitted_outer_frames
-                        ));
-                    }
-                    if write.source.frames.is_empty() {
-                        ui.weak("No active source frame.");
-                    }
-                    for (index, frame) in write.source.frames.iter().enumerate() {
-                        ui.label(format!(
-                            "Frame {}: {}",
-                            write.source.omitted_outer_frames + index + 1,
-                            debug_value(&frame.preview)
-                        ));
-                        ui.indent(("debug_source_frame", index), |ui| {
-                            for field in &frame.fields {
-                                let suffix = if field.name_truncated { "…" } else { "" };
-                                ui.monospace(format!(
-                                    "{}{suffix}: {}",
-                                    field.name,
-                                    debug_value(&field.preview)
-                                ));
-                            }
-                            if frame.omitted_fields > 0 {
-                                ui.weak(format!("{} more field(s) omitted", frame.omitted_fields));
-                            }
-                        });
-                    }
-                    if let Some(probe) = &write.source_field_probe {
-                        let value = probe
-                            .preview
-                            .as_ref()
-                            .map_or_else(|| "<absent>".to_owned(), debug_value);
-                        ui.monospace(format!(
-                            "Source probe: frame {} / {} = {value}",
-                            probe.frame_from_inner, probe.field
-                        ));
-                    }
-                    ui.separator();
-                    ui.strong("Already inserted in this scope");
-                    if write.draft.fields.is_empty() {
-                        ui.weak("No fields yet.");
-                    }
-                    for field in &write.draft.fields {
-                        ui.monospace(format!("{}: {}", field.name, debug_value(&field.preview)));
-                    }
-                    if write.draft.omitted_fields > 0 {
-                        ui.weak(format!(
-                            "{} more field(s) omitted from this bounded view",
-                            write.draft.omitted_fields
-                        ));
-                    }
-                });
-            ui.weak("The pending value has been computed but is not yet in the target. Step inserts it and pauses before the next write.");
-        }
-        PreviewPhase::PausedNode(value) => show_live_node_debug_state(ui, value),
-        PreviewPhase::PausedFunctionNode(value) => show_live_function_node_debug_state(ui, value),
-        PreviewPhase::PausedInput(input) => show_live_input_debug_state(ui, input),
-        PreviewPhase::PausedFunctionInput(input) => show_live_function_input_debug_state(ui, input),
-        PreviewPhase::PausedFailure(failure) => show_live_failure_debug_state(ui, failure),
-        PreviewPhase::PausedFunctionFailure(failure) => {
-            show_live_function_failure_debug_state(ui, failure)
-        }
-    }
-}
-
-pub(super) fn show_live_node_debug_state(ui: &mut egui::Ui, value: &engine::PendingNodeValue) {
-    ui.strong(format!("Paused after graph node #{} evaluated", value.node));
-    let suffix = if value.value.truncated { "…" } else { "" };
-    ui.monospace(format!(
-        "Result: {}: {}{suffix}",
-        value.value.value_type, value.value.preview
-    ));
-    show_live_expression_context(
-        ui,
-        &value.positions,
-        value.omitted_outer_positions,
-        value.position_paths_truncated,
-        &value.source,
-    );
-    ui.weak("Step continues to the next graph evaluation. Cancel stops before output publication.");
-}
-
-pub(super) fn show_live_function_node_debug_state(
-    ui: &mut egui::Ui,
-    value: &engine::PendingFunctionNodeValue,
-) {
-    ui.strong(format!(
-        "Paused after function #{} node #{} evaluated",
-        value.function.get(),
-        value.node
-    ));
-    let suffix = if value.value.truncated { "…" } else { "" };
-    ui.monospace(format!(
-        "Result: {}: {}{suffix}",
-        value.value.value_type, value.value.preview
-    ));
-    show_live_expression_context(
-        ui,
-        &value.positions,
-        value.omitted_outer_positions,
-        value.position_paths_truncated,
-        &value.source,
-    );
-    ui.weak("Positions identify the caller. Reusable function bodies have no source frames. Step continues to the next graph or function evaluation; Cancel stops before output publication.");
-}
-
-pub(super) fn show_live_input_debug_state(ui: &mut egui::Ui, input: &engine::PendingNodeInput) {
-    ui.strong(format!(
-        "Paused after node #{} reached node #{} input #{}",
-        input.input,
-        input.consumer,
-        input.input_index + 1
-    ));
-    let suffix = if input.value.truncated { "…" } else { "" };
-    ui.monospace(format!(
-        "Delivered: {}: {}{suffix}",
-        input.value.value_type, input.value.preview
-    ));
-    show_live_expression_context(
-        ui,
-        &input.positions,
-        input.omitted_outer_positions,
-        input.position_paths_truncated,
-        &input.source,
-    );
-    ui.weak("Step continues to the next recorded input delivery. Cancel stops before output publication.");
-}
-
-pub(super) fn show_live_function_input_debug_state(
-    ui: &mut egui::Ui,
-    input: &engine::PendingFunctionNodeInput,
-) {
-    ui.strong(format!(
-        "Paused after function #{} node #{} reached node #{} input #{}",
-        input.function.get(),
-        input.input,
-        input.consumer,
-        input.input_index + 1
-    ));
-    let suffix = if input.value.truncated { "…" } else { "" };
-    ui.monospace(format!(
-        "Delivered: {}: {}{suffix}",
-        input.value.value_type, input.value.preview
-    ));
-    show_live_expression_context(
-        ui,
-        &input.positions,
-        input.omitted_outer_positions,
-        input.position_paths_truncated,
-        &input.source,
-    );
-    ui.weak("Positions identify the caller. Reusable function bodies have no source frames. Step continues to the next recorded input delivery; Cancel stops before output publication.");
-}
-
-pub(super) fn show_live_failure_debug_state(
-    ui: &mut egui::Ui,
-    failure: &engine::PendingNodeFailure,
-) {
-    ui.strong(format!("Paused as graph node #{} failed", failure.node));
-    let suffix = if failure.error.truncated { "…" } else { "" };
-    ui.monospace(format!("Error: {}{suffix}", failure.error.preview));
-    show_live_expression_context(
-        ui,
-        &failure.positions,
-        failure.omitted_outer_positions,
-        failure.position_paths_truncated,
-        &failure.source,
-    );
-    ui.weak("Continue reports the original error. Cancel stops the run before output publication.");
-}
-
-pub(super) fn show_live_function_failure_debug_state(
-    ui: &mut egui::Ui,
-    failure: &engine::PendingFunctionNodeFailure,
-) {
-    ui.strong(format!(
-        "Paused as function #{} node #{} failed",
-        failure.function.get(),
-        failure.node
-    ));
-    let suffix = if failure.error.truncated { "…" } else { "" };
-    ui.monospace(format!("Error: {}{suffix}", failure.error.preview));
-    show_live_expression_context(
-        ui,
-        &failure.positions,
-        failure.omitted_outer_positions,
-        failure.position_paths_truncated,
-        &failure.source,
-    );
-    ui.weak("Positions identify the caller. Reusable function bodies have no source frames. Continue reports the original error; Cancel stops before output publication.");
-}
-
-fn show_live_expression_context(
-    ui: &mut egui::Ui,
-    positions: &[engine::TracePosition],
-    omitted_outer_positions: usize,
-    position_paths_truncated: bool,
-    source: &engine::DebugSourceContext,
-) {
-    show_primary_root_origin(ui, source.primary_root_origin.as_ref());
-    if omitted_outer_positions > 0 {
-        ui.weak(format!(
-            "{} outer position(s) omitted",
-            omitted_outer_positions
-        ));
-    }
-    if position_paths_truncated {
-        ui.weak("Some position paths were shortened in this bounded view.");
-    }
-    for position in positions {
-        let collection = if position.collection.is_empty() {
-            "<current>".to_owned()
-        } else {
-            position.collection.join(" / ")
-        };
-        ui.label(format!("Source position: {collection} #{}", position.index));
-    }
-    ui.strong("Active source frames (outer to inner)");
-    if source.omitted_outer_frames > 0 {
-        ui.weak(format!(
-            "{} outer frame(s) omitted",
-            source.omitted_outer_frames
-        ));
-    }
-    for (index, frame) in source.frames.iter().enumerate() {
-        ui.label(format!(
-            "Frame {}: {}",
-            source.omitted_outer_frames + index + 1,
-            debug_value(&frame.preview)
-        ));
-        ui.indent(("debug_node_source_frame", index), |ui| {
-            for field in &frame.fields {
-                ui.monospace(format!("{}: {}", field.name, debug_value(&field.preview)));
-            }
-            if frame.omitted_fields > 0 {
-                ui.weak(format!("{} more field(s) omitted", frame.omitted_fields));
-            }
-        });
-    }
-}
-
-fn debug_value(value: &engine::DebugInstancePreview) -> String {
-    if let Some(scalar) = &value.value {
-        let suffix = if scalar.truncated { "…" } else { "" };
-        format!("{}: {}{suffix}", scalar.value_type, scalar.preview)
-    } else if let Some(length) = value.length {
-        format!("{:?} ({length} immediate item(s))", value.kind)
-    } else {
-        format!("{:?}", value.kind)
-    }
-}
-
-fn named_payload_inputs<'a>(
-    sources: &'a [LoadedPreviewSource],
-) -> anyhow::Result<Vec<cli::NamedPayloadInput<'a>>> {
-    sources
-        .iter()
-        .map(|source| {
-            let document = cli::PayloadDocument::new(&source.path, &source.bytes)?;
-            cli::NamedPayloadInput::new(&source.name, document)
-        })
-        .collect()
 }
 
 fn nonempty_text(value: &str) -> Option<&str> {
@@ -1932,116 +1275,21 @@ fn format_preview_bytes(bytes: usize) -> String {
     }
 }
 
-fn annotation_text(value: &engine::DebugAnnotationText) -> String {
-    format!(
-        "{}{}",
-        value.preview,
-        if value.truncated { "…" } else { "" }
-    )
-}
+#[path = "preview_debug_view.rs"]
+mod debug_view;
+pub(super) use debug_view::{
+    show_live_debug_state, show_live_failure_debug_state, show_live_function_failure_debug_state,
+    show_live_function_input_debug_state, show_live_function_node_debug_state,
+    show_live_input_debug_state, show_live_node_debug_state,
+};
 
-fn show_primary_root_origin(ui: &mut egui::Ui, origin: Option<&engine::DebugPrimaryRootOrigin>) {
-    use engine::DebugPrimaryRootOrigin;
-    let Some(origin) = origin else {
-        return;
-    };
-    ui.strong("Primary source XML annotation");
-    match origin {
-        DebugPrimaryRootOrigin::NotGroup { kind } => {
-            ui.weak(format!(
-                "The primary source is {kind:?}, not a document group."
-            ));
-        }
-        DebugPrimaryRootOrigin::Unknown => {
-            ui.weak("No actual XML annotation was retained for this source.");
-        }
-        DebugPrimaryRootOrigin::Absent => {
-            ui.weak("The XML root had no type annotation.");
-        }
-        DebugPrimaryRootOrigin::Explicit { identity } => {
-            ui.monospace(format!("Type: {}", annotation_text(identity)));
-        }
-        DebugPrimaryRootOrigin::ExplicitPadded {
-            literal,
-            resolved_identity,
-        } => {
-            ui.monospace(format!("Annotation text: {:?}", annotation_text(literal)));
-            ui.monospace(format!(
-                "Resolved type: {}",
-                annotation_text(resolved_identity)
-            ));
-            ui.weak("The padded annotation does not select a type view.");
-        }
-    }
-}
+#[path = "preview_documents.rs"]
+mod documents;
+
+#[path = "preview_worker.rs"]
+mod preview_worker;
+use preview_worker::run_preview_worker;
 
 #[cfg(test)]
-mod root_annotation_render_tests {
-    use super::*;
-    use engine::{DebugAnnotationText, DebugPrimaryRootOrigin};
-
-    fn render(origin: Option<&DebugPrimaryRootOrigin>) -> String {
-        fn collect(shape: &egui::epaint::Shape, texts: &mut Vec<String>) {
-            match shape {
-                egui::epaint::Shape::Text(text) => texts.push(text.galley.text().to_owned()),
-                egui::epaint::Shape::Vec(shapes) => {
-                    for shape in shapes {
-                        collect(shape, texts);
-                    }
-                }
-                _ => {}
-            }
-        }
-        let context = egui::Context::default();
-        let output = context.run_test_ui(Default::default(), |ui| {
-            show_primary_root_origin(ui, origin)
-        });
-        let mut texts = Vec::new();
-        for shape in output.shapes {
-            collect(&shape.shape, &mut texts);
-        }
-        texts.join("\n")
-    }
-
-    #[test]
-    fn annotation_panel_distinguishes_absence_unknown_explicit_and_padded_facts() {
-        let unknown = render(Some(&DebugPrimaryRootOrigin::Unknown));
-        let absent = render(Some(&DebugPrimaryRootOrigin::Absent));
-        let explicit = render(Some(&DebugPrimaryRootOrigin::Explicit {
-            identity: DebugAnnotationText {
-                preview: "{urn:root}Derived".into(),
-                truncated: false,
-            },
-        }));
-        let padded = render(Some(&DebugPrimaryRootOrigin::ExplicitPadded {
-            literal: DebugAnnotationText {
-                preview: "  t:Derived\t".into(),
-                truncated: false,
-            },
-            resolved_identity: DebugAnnotationText {
-                preview: "{urn:root}Derived".into(),
-                truncated: false,
-            },
-        }));
-        assert!(unknown.contains("No actual XML annotation was retained"));
-        assert!(absent.contains("had no type annotation"));
-        assert!(explicit.contains("Type: {urn:root}Derived"));
-        assert!(padded.contains("Annotation text: \"  t:Derived\\t\""));
-        assert!(padded.contains("Resolved type: {urn:root}Derived"));
-        assert!(padded.contains("does not select a type view"));
-        assert!(render(None).is_empty());
-    }
-
-    #[test]
-    fn bounded_annotation_panel_marks_truncation_without_changing_the_snapshot() {
-        let fact = DebugPrimaryRootOrigin::Explicit {
-            identity: DebugAnnotationText {
-                preview: "é".repeat(160),
-                truncated: true,
-            },
-        };
-        let before = fact.clone();
-        assert!(render(Some(&fact)).contains(&format!("{}…", "é".repeat(160))));
-        assert_eq!(fact, before);
-    }
-}
+#[path = "preview_worker_tests.rs"]
+mod preview_worker_tests;

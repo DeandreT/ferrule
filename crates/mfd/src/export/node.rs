@@ -300,6 +300,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
             Node::OwnedSourceField(_)
             | Node::OwnedPosition(_)
             | Node::OwnedRowDocumentPath(_)
+            | Node::OwnedSourceDocumentPath(_)
             | Node::OwnedDynamicSourceField(_)
             | Node::OwnedLookup(_)
             | Node::OwnedCollectionFind(_)
@@ -1363,35 +1364,7 @@ fn connect_inputs(
         let Some(ins) = fn_inputs.get(&id) else {
             continue;
         };
-        let args: Vec<NodeId> = match node {
-            Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
-            Node::RuntimeParameterDefault { default, .. } => vec![*default],
-            Node::If {
-                condition,
-                then,
-                else_,
-            } => vec![*condition, *then, *else_],
-            Node::ValueMap { input, .. } => vec![*input],
-            Node::Lookup { matches, .. } => vec![*matches],
-            Node::DynamicSourceField { key, .. } => vec![*key],
-            Node::XmlMixedContent { replacements, .. } => replacements
-                .iter()
-                .map(|replacement| replacement.expression)
-                .collect(),
-            Node::CollectionFind {
-                predicate, value, ..
-            } => vec![*value, *predicate],
-            Node::Aggregate {
-                expression, arg, ..
-            } => expression.iter().chain(arg).copied().collect(),
-            Node::JoinAggregate {
-                expression, arg, ..
-            } => expression.iter().chain(arg).copied().collect(),
-            Node::SequenceExists { .. } => continue,
-            Node::SequenceItemAt { index, .. } => vec![*index],
-            Node::SequenceAggregate { arg, .. } => arg.iter().copied().collect(),
-            _ => continue,
-        };
+        let args = crate::node_inputs::port_inputs(node);
         for (index, arg) in args.iter().enumerate() {
             if let (Some(&from), Some(&to)) = (node_out_key.get(arg), ins.get(index)) {
                 edges.push((from, to));

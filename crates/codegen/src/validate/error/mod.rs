@@ -41,6 +41,11 @@ pub enum OwnedSourceDiagnosticLocation {
     FailureIteration {
         index: usize,
     },
+    /// The owned driver walk of the zero-based dynamic source declaration.
+    DynamicDriver {
+        index: usize,
+        name: String,
+    },
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OwnedSourceDiagnosticRequest {
@@ -57,6 +62,8 @@ pub enum OwnedSourceDiagnosticRequest {
         owner: OwnedSourceDiagnosticOwner,
         collection: Option<Vec<String>>,
     },
+    /// An owned document-set member location read.
+    DocumentPath { owner: OwnedSourceDiagnosticOwner },
     Iteration {
         owner: OwnedSourceDiagnosticOwner,
         path: Vec<String>,
@@ -103,6 +110,9 @@ pub enum OwnedSourceStructureReason {
     InvalidOwnedDynamicObject {
         found: OwnedSourceSchemaShape,
     },
+    /// An owned dynamic driver selects its own endpoint, which has no
+    /// document until that driver has loaded one.
+    SelfDrivenDynamicSource,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnedSourceCapabilityReason {
@@ -112,6 +122,7 @@ pub enum OwnedSourceCapabilityReason {
     Grouping,
     Join,
     Concatenate,
+    OptionalPresence,
     DynamicOwner,
     DynamicLoader,
     Document,
@@ -167,6 +178,18 @@ pub enum OwnedSourceDiagnostic {
     },
 }
 
+/// Why a Program cannot expose the owned XML document-set entry points.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum XmlDocumentSetInputRefusal {
+    /// The Program has no ordinary XML source boundary.
+    MissingXmlBoundary,
+    /// The primary is read with the observed root-view policy rather than
+    /// the structured profile every member is parsed with.
+    ObservedPrimaryInput,
+    /// A named source loaded per driver item is never a static document set.
+    DynamicSource { index: usize, name: String },
+}
+
 /// A malformed backend-neutral program that an emitter must not publish.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProgramValidationError {
@@ -179,6 +202,9 @@ pub enum ProgramValidationError {
     },
     InvalidXmlBoundary {
         reason: String,
+    },
+    XmlDocumentSetInput {
+        refusal: XmlDocumentSetInputRefusal,
     },
     InvalidPrimaryRootSchema {
         node: NodeId,
@@ -437,6 +463,13 @@ pub enum ProgramValidationError {
     },
     InvalidScopeSequenceWrapper {
         target_path: Vec<String>,
+    },
+    InvalidOptionalPresence {
+        target_path: Vec<String>,
+    },
+    MissingOptionalPresenceExpression {
+        target_path: Vec<String>,
+        expression: NodeId,
     },
     InvalidScopeSequenceSegment {
         target_path: Vec<String>,

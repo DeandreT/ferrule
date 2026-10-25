@@ -68,26 +68,38 @@ impl FerruleApp {
 
 pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut XlsxBoundaryDraft, target: bool) -> bool {
     ui.strong("Workbook table");
-    ui.weak(format!("Schema: {}", draft.schema_path.display()));
-    ui.horizontal(|ui| {
+    ui.vertical(|ui| {
         ui.label(if target {
             "Output file (optional)"
         } else {
             "Input file (optional)"
         });
-        ui.add(
-            egui::TextEdit::singleline(&mut draft.data_path)
+        let response = ui.add(
+            crate::ui_kit::text_field(&mut draft.data_path, crate::ui_kit::FieldWidth::Fill)
                 .char_limit(4096)
-                .desired_width(380.0)
-                .hint_text(if target { "output.xlsx" } else { "input.xlsx" }),
+                .hint_text(if target {
+                    "Optional: output.xlsx"
+                } else {
+                    "Optional: input.xlsx"
+                }),
         );
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::Role::TextInput,
+                ui.is_enabled(),
+                if target {
+                    "Target workbook path"
+                } else {
+                    "Source workbook path"
+                },
+            )
+        });
     });
-    ui.horizontal(|ui| {
+    ui.vertical(|ui| {
         ui.label("Sheet name (optional)");
         ui.add(
-            egui::TextEdit::singleline(&mut draft.sheet)
-                .char_limit(31)
-                .desired_width(220.0),
+            crate::ui_kit::text_field(&mut draft.sheet, crate::ui_kit::FieldWidth::Fill)
+                .char_limit(31),
         );
     });
     ui.weak(if target {
@@ -97,7 +109,7 @@ pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut XlsxBoundaryDraft, tar
     });
     if !target {
         let eligible = draft.supports_transposed();
-        ui.horizontal(|ui| {
+        ui.vertical(|ui| {
             let label = ui.label("Read layout");
             egui::ComboBox::from_id_salt("new_mapping_workbook_source_layout")
                 .selected_text(if draft.transposed {
@@ -126,45 +138,48 @@ pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut XlsxBoundaryDraft, tar
         ui.weak(
             "Selected rows become fields in schema order. The first selected row drives records.",
         );
-        egui::ScrollArea::vertical()
-            .id_salt("new_mapping_transposed_fields")
-            .max_height(160.0)
-            .show(ui, |ui| {
-                if let Ok(fields) = crate::extra_targets::flat_scalar_fields(&draft.schema) {
-                    egui::Grid::new("new_mapping_transposed_rows")
-                        .spacing([12.0, 4.0])
-                        .show(ui, |ui| {
-                            ui.strong("Field");
-                            ui.strong("Worksheet row");
-                            ui.end_row();
-                            let mut rows = draft.rows.iter_mut();
-                            for (index, field) in fields.iter().enumerate() {
-                                let label = ui.label(&field.name);
-                                if field.name == "n" {
-                                    ui.weak("Physical column number (gaps kept)");
-                                } else if let Some(row) = rows.next() {
-                                    let response = ui
-                                        .add(
-                                            egui::TextEdit::singleline(&mut *row)
-                                                .id_salt(("new_mapping_transposed_row", index))
-                                                .char_limit(7)
-                                                .desired_width(80.0),
+        crate::ui_kit::list_area(
+            "new_mapping_transposed_fields",
+            crate::ui_kit::ListHeight::Medium,
+        )
+        .show(ui, |ui| {
+            if let Ok(fields) = crate::extra_targets::flat_scalar_fields(&draft.schema) {
+                egui::Grid::new("new_mapping_transposed_rows")
+                    .spacing([12.0, 4.0])
+                    .show(ui, |ui| {
+                        ui.strong("Field");
+                        ui.strong("Worksheet row");
+                        ui.end_row();
+                        let mut rows = draft.rows.iter_mut();
+                        for (index, field) in fields.iter().enumerate() {
+                            let label = ui.label(&field.name);
+                            if field.name == "n" {
+                                ui.weak("Physical column number (gaps kept)");
+                            } else if let Some(row) = rows.next() {
+                                let response = ui
+                                    .add(
+                                        crate::ui_kit::text_field(
+                                            &mut *row,
+                                            crate::ui_kit::FieldWidth::Small,
                                         )
-                                        .labelled_by(label.id);
-                                    response.widget_info(|| egui::WidgetInfo {
-                                        current_text_value: Some(row.clone()),
-                                        ..egui::WidgetInfo::labeled(
-                                            egui::Role::TextInput,
-                                            ui.is_enabled(),
-                                            format!("Worksheet row for {}", field.name),
-                                        )
-                                    });
-                                }
-                                ui.end_row();
+                                        .id_salt(("new_mapping_transposed_row", index))
+                                        .char_limit(7),
+                                    )
+                                    .labelled_by(label.id);
+                                response.widget_info(|| egui::WidgetInfo {
+                                    current_text_value: Some(row.clone()),
+                                    ..egui::WidgetInfo::labeled(
+                                        egui::Role::TextInput,
+                                        ui.is_enabled(),
+                                        format!("Worksheet row for {}", field.name),
+                                    )
+                                });
                             }
-                        });
-                }
-            });
+                            ui.end_row();
+                        }
+                    });
+            }
+        });
         ui.weak("Rows are numbered from 1. No header row is skipped in this layout.");
     } else {
         ui.checkbox(
@@ -182,48 +197,50 @@ pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut XlsxBoundaryDraft, tar
                 "First data row"
             });
             ui.add(
-                egui::TextEdit::singleline(&mut draft.start_row)
-                    .char_limit(10)
-                    .desired_width(80.0),
+                crate::ui_kit::text_field(&mut draft.start_row, crate::ui_kit::FieldWidth::Small)
+                    .char_limit(10),
             );
         });
         ui.weak(
             "Worksheet columns are numbered from 1 (A). Fields keep their schema names and types.",
         );
-        egui::ScrollArea::vertical()
-            .id_salt(("new_mapping_workbook_fields", target))
-            .max_height(160.0)
-            .show(ui, |ui| {
-                if let Ok(fields) = crate::extra_targets::flat_scalar_fields(&draft.schema) {
-                    egui::Grid::new(("new_mapping_workbook_columns", target))
-                        .spacing([12.0, 4.0])
-                        .show(ui, |ui| {
-                            ui.strong("Field");
-                            ui.strong("Worksheet column");
-                            if target && draft.has_header_row {
-                                ui.strong("Header text");
+        crate::ui_kit::list_area(
+            ("new_mapping_workbook_fields", target),
+            crate::ui_kit::ListHeight::Medium,
+        )
+        .show(ui, |ui| {
+            if let Ok(fields) = crate::extra_targets::flat_scalar_fields(&draft.schema) {
+                egui::Grid::new(("new_mapping_workbook_columns", target))
+                    .spacing([12.0, 4.0])
+                    .show(ui, |ui| {
+                        ui.strong("Field");
+                        ui.strong("Worksheet column");
+                        if target && draft.has_header_row {
+                            ui.strong("Header text");
+                        }
+                        ui.end_row();
+                        for (index, (field, column)) in
+                            fields.iter().zip(&mut draft.columns).enumerate()
+                        {
+                            ui.label(&field.name);
+                            ui.add(
+                                crate::ui_kit::text_field(column, crate::ui_kit::FieldWidth::Small)
+                                    .char_limit(5),
+                            );
+                            if target
+                                && draft.has_header_row
+                                && let Some(header) = draft.headers.get_mut(index)
+                            {
+                                ui.add(crate::ui_kit::text_field(
+                                    header,
+                                    crate::ui_kit::FieldWidth::Small,
+                                ));
                             }
                             ui.end_row();
-                            for (index, (field, column)) in
-                                fields.iter().zip(&mut draft.columns).enumerate()
-                            {
-                                ui.label(&field.name);
-                                ui.add(
-                                    egui::TextEdit::singleline(column)
-                                        .char_limit(5)
-                                        .desired_width(80.0),
-                                );
-                                if target
-                                    && draft.has_header_row
-                                    && let Some(header) = draft.headers.get_mut(index)
-                                {
-                                    ui.add(egui::TextEdit::singleline(header).desired_width(180.0));
-                                }
-                                ui.end_row();
-                            }
-                        });
-                }
-            });
+                        }
+                    });
+            }
+        });
     }
     if let Err(error) = draft.validate_for(target) {
         ui.colored_label(ui.visuals().error_fg_color, error.to_string());

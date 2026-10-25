@@ -110,7 +110,9 @@ fn rows(instance: &Instance) -> usize {
 
 fn rendered_label(shape: &egui::epaint::Shape, label: &str) -> Option<egui::Pos2> {
     match shape {
-        egui::epaint::Shape::Text(text) if text.galley.text() == label => {
+        egui::epaint::Shape::Text(text)
+            if crate::test_ui::inspector_label_matches(text.galley.text(), label) =>
+        {
             Some(text.visual_bounding_rect().center())
         }
         egui::epaint::Shape::Vec(shapes) => {

@@ -21,14 +21,14 @@ impl FerruleApp {
         let qualifier = if native { "native MFD " } else { "" };
         match self.export_mfd_snapshot(path, profile) {
             Ok(report) if report.warnings.is_empty() => {
-                self.status = format!("exported {qualifier}{}", path.display());
+                self.status = format!("exported {qualifier}{}", crate::ui_kit::file_label(path));
                 self.diagnostics.clear();
             }
             Ok(report) => {
                 self.status = format!(
-                    "exported {qualifier}{} with {} warning(s)",
-                    path.display(),
-                    report.warnings.len()
+                    "exported {qualifier}{} with {}",
+                    crate::ui_kit::file_label(path),
+                    crate::ui_kit::plural(report.warnings.len(), "warning")
                 );
                 self.diagnostics.warnings("MFD export", report.warnings);
             }
@@ -168,7 +168,7 @@ mod tests {
         complete_export_dialog(&mut app, DialogKind::ExportNativeMfd, &path);
         assert_eq!(
             app.status,
-            format!("exported native MFD {}", path.display())
+            format!("exported native MFD {}", crate::ui_kit::file_label(&path))
         );
         assert!(app.diagnostics.is_empty());
         let outcome = mfd::import_with_profile(
@@ -231,7 +231,10 @@ mod tests {
 
         // The ordinary action still chooses the Ferrule-extension profile.
         complete_export_dialog(&mut app, DialogKind::ExportMfd, &path);
-        assert_eq!(app.status, format!("exported {}", path.display()));
+        assert_eq!(
+            app.status,
+            format!("exported {}", crate::ui_kit::file_label(&path))
+        );
         assert!(std::fs::read_to_string(&path)?.contains("library=\"ferrule\""));
         Ok(())
     }

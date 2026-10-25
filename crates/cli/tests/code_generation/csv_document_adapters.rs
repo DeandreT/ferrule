@@ -1,7 +1,7 @@
 use super::*;
 use mapping::{AggregateOp, FormatOptions, TabularBoundaryKind};
 
-fn document_project(grouped: bool, unquoted: bool) -> Project {
+pub(super) fn document_project(grouped: bool, unquoted: bool) -> Project {
     let field = |name: &str| Node::SourceField {
         path: vec![name.into()],
         frame: None,
@@ -192,6 +192,7 @@ fn complete_csv_documents_compile_and_execute_in_both_backends() -> TestResult<(
                     output.join("src/main.rs"),
                     include_str!("fixtures/csv_document_rust.rs.txt"),
                 )?;
+                host_policy::name_generated_host(&output, "csv-document-adapters-host")?;
                 let mut command = Command::new("cargo");
                 command.args(["run", "--offline", "--quiet", "--", mode]);
                 command

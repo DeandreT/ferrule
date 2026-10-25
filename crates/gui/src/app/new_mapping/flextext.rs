@@ -42,17 +42,31 @@ pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut FlexTextBoundaryDraft,
             "Off"
         }
     ));
-    ui.horizontal(|ui| {
+    ui.vertical(|ui| {
         ui.label(if target {
             "Output file (optional)"
         } else {
             "Input file (optional)"
         });
-        ui.add(
-            egui::TextEdit::singleline(&mut draft.instance_path)
-                .desired_width(380.0)
-                .hint_text(if target { "output.txt" } else { "input.txt" }),
+        let response = ui.add(
+            crate::ui_kit::text_field(&mut draft.instance_path, crate::ui_kit::FieldWidth::Fill)
+                .hint_text(if target {
+                    "Optional: output.txt"
+                } else {
+                    "Optional: input.txt"
+                }),
         );
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::Role::TextInput,
+                ui.is_enabled(),
+                if target {
+                    "Target FlexText path"
+                } else {
+                    "Source FlexText path"
+                },
+            )
+        });
     });
     ui.weak("The project keeps this layout. You can choose a data file when running.");
     if let Err(error) = draft.validate() {

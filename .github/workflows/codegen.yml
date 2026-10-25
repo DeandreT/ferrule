@@ -79,6 +79,24 @@ jobs:
           -p codegen-rust
           -p codegen-csharp
           -- --test-threads=${{ runner.environment == 'self-hosted' && '1' || '2' }}
+      - name: C# runtime smoke tests
+        if: matrix.suite == 'crates'
+        run: |
+          set -euo pipefail
+          artifacts="$RUNNER_TEMP/csharp-runtime-smoke"
+          mkdir -p "$artifacts"
+          dotnet build runtime/csharp/Ferrule.Runtime.SmokeTests --configuration Release \
+            --artifacts-path "$artifacts" -nodeReuse:false -p:UseSharedCompilation=false --verbosity quiet
+          status=0
+          dotnet "$artifacts/bin/Ferrule.Runtime.SmokeTests/release/Ferrule.Runtime.SmokeTests.dll" \
+            > "$artifacts/smoke.log" 2>&1 || status=$?
+          # The suite prints every raw observation; keep the job log bounded.
+          if (( status == 0 )); then
+            tail -n 1 "$artifacts/smoke.log"
+          else
+            tail -c 65536 "$artifacts/smoke.log"
+          fi
+          exit "$status"
       - name: generated Rust and C# parity tests
         if: matrix.suite == 'mappings'
         env:
@@ -156,6 +174,41 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 7
+      - name: compiled portable cohort consumers
+        if: matrix.suite == 'mappings'
+        env:
+          RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
+          CARGO_BUILD_JOBS: "1"
+          CARGO_INCREMENTAL: "0"
+          RUST_TEST_THREADS: "1"
+        run: |
+          set -euo pipefail
+          # The harnesses refuse a host target that overlaps the workspace target.
+          export FERRULE_CODEGEN_HOST_TARGET_DIR="$RUNNER_TEMP/ferrule-cohort-host-target"
+          mkdir -p "$FERRULE_CODEGEN_HOST_TARGET_DIR"
+          logs=$(mktemp -d "$RUNNER_TEMP/ferrule-cohort-consumers.XXXXXX")
+          result=0
+          for test_name in \
+            basic_owned_occurrence::basic_occurrence640_generated_rust_and_csharp_match_expected \
+            basic_owned_filter::basic_filter662_generated_rust_and_csharp_match_expected \
+            basic_owned_nested_alias::basic_nestedalias688_generated_rust_and_csharp_match_expected \
+            basic_owned_sort::basic_sort670_generated_rust_and_csharp_match_expected \
+            basic_owned_windows::basic_windows704_generated_rust_and_csharp_match_expected \
+            basic_owned_sequence_exists::basic_exists472_generated_rust_and_csharp_match_expected \
+            basic_owned_sequence_aggregate::basic_aggregate474_generated_rust_and_csharp_match_expected; do
+            log="$logs/${test_name##*::}.log"
+            set +e
+            cargo test -p cli --test code_generation --features codegen-tests --locked "$test_name" \
+              -- --ignored --exact --test-threads=1 > "$log" 2>&1
+            status=$?
+            set -e
+            # Host failures already quote bounded excerpts; keep the job log bounded too.
+            tail -c 65536 "$log"
+            if (( status != 0 )) || ! grep -Fxq 'running 1 test' "$log"; then
+              result=1
+            fi
+          done
+          exit "$result"
       - name: Trim successful workspace build
         if: success() && runner.environment == 'self-hosted'
         run: cargo clean --workspace

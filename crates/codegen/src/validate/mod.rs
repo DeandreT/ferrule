@@ -4,8 +4,8 @@ use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::NodeId;
 
 use crate::{
-    Expression, IterationOutput, IterationSource, Program, ScalarTargetDomain, TargetConstruction,
-    TargetScope,
+    DynamicSourceDriver, Expression, IterationOutput, IterationSource, Program, ScalarTargetDomain,
+    TargetConstruction, TargetScope,
 };
 
 mod adjacency_tree;
@@ -36,14 +36,16 @@ pub use error::{
     OwnedSourceCapabilityOrigin, OwnedSourceCapabilityReason, OwnedSourceDiagnostic,
     OwnedSourceDiagnosticLocation, OwnedSourceDiagnosticOwner, OwnedSourceDiagnosticRequest,
     OwnedSourceNamespace, OwnedSourceSchemaShape, OwnedSourceStructureReason,
-    ProgramValidationError,
+    ProgramValidationError, XmlDocumentSetInputRefusal,
 };
 pub use owned_sources::{
+    OwnedDynamicLoading, is_basic_owned_primary_row_failure, owned_dynamic_loading,
     owned_expression_emission_error, owned_sequence_emission_error,
-    validate_basic_owned_collection_aggregates_emission, validate_owned_emission,
+    validate_basic_owned_emission_with_capabilities, validate_owned_emission,
 };
 use sources::{SchemaCursor, SourceCatalog};
 use targets::TargetOwner;
+pub(crate) use xml::ProvedXmlBoundary;
 
 /// Validates invariants relied on by every source-code emitter.
 ///
@@ -51,353 +53,38 @@ use targets::TargetOwner;
 /// This check protects the public programmatic API from emitting recursive or
 /// backend-dependent source when callers construct a [`Program`] directly.
 pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError> {
-    validate_program_with_owned_profile(program, owned_sources::BasicOwnedProfile::ControlFree)
+    validate_program_with_owned_capabilities(
+        program,
+        crate::OwnedPreset::ControlFree.capabilities(),
+    )
 }
 
-/// Validates the complete Basic filter-only capability, explicitly.
+/// Validates complete Program structure, then admits every stored owned read
+/// in its context under `capabilities`.
 ///
-/// Unlike the default validator, this admits an ordinary static repeated filter.
-/// Every structural check and all other Basic capability refusals still apply.
-pub fn validate_program_with_basic_owned_filters(
+/// Structural diagnostics keep their precedence over capability refusals.
+/// Basic emission additionally applies
+/// [`validate_basic_owned_emission_with_capabilities`].
+pub fn validate_program_with_owned_capabilities(
     program: &Program,
+    capabilities: crate::OwnedCapabilities,
 ) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_filter_emission(program)
+    validate_program_proving_xml(program, capabilities).map(|_| ())
 }
 
-/// Validates the complete static Basic sort profile, explicitly.
-///
-/// This preserves the full structural pipeline and all other Basic refusals.
-pub fn validate_program_with_basic_owned_sort(
+/// [`validate_program`] that also returns the XML adapter classification its
+/// boundary proof established, so no caller re-derives it.
+pub(crate) fn validate_program_proving_xml_boundary(
     program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_sort_emission(program)
+) -> Result<Option<ProvedXmlBoundary>, ProgramValidationError> {
+    validate_program_proving_xml(program, crate::OwnedPreset::ControlFree.capabilities())
 }
 
-/// Validates explicit static Basic windows and implicit First, with optional
-/// filtering and sorting, through the same complete structural pipeline.
-pub fn validate_program_with_basic_owned_windows(
+fn validate_program_proving_xml(
     program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_window_emission(program)
-}
-
-/// Validate complete Program structure, window-profile targets and the explicit
-/// owned primary-row failure permission. Older validators retain their gates.
-pub fn validate_program_with_basic_owned_row_failures(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_row_failure_emission(program)
-}
-
-/// Validates static Basic By grouping and member retention with the previously
-/// qualified filter, sort, window and primary-row failure permissions.
-pub fn validate_program_with_basic_owned_group_by(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_group_by_emission(program)
-}
-
-/// Validates static Basic By and AdjacentBy controls, composing the qualified
-/// scalar-producer SequenceItemAt and independent primary-row failure subset.
-/// Every structural check and every older companion's permissions are unchanged.
-pub fn validate_program_with_basic_owned_group_adjacent_by(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_group_adjacent_by_emission(program)
-}
-
-/// Validates static Basic By, AdjacentBy and StartingWith, with qualified source
-/// controls, independent scalar-producer ItemAt and primary-row failure policies.
-/// All existing structural precedence and older companion gates are preserved.
-pub fn validate_program_with_basic_owned_group_starting_with(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_group_starting_with_emission(program)
-}
-
-/// Validates static Basic By, AdjacentBy, StartingWith and EndingWith, with
-/// qualified source controls, independent scalar-producer ItemAt and primary-row
-/// failure policies. All existing structural precedence and older companion
-/// gates are preserved.
-pub fn validate_program_with_basic_owned_group_ending_with(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_group_ending_with_emission(program)
-}
-
-/// Validates explicit owned failure-rule iteration over one exact Primary or
-/// named endpoint, composed with the EndingWith target controls, scalar ItemAt
-/// and primary-row failure policies. Older validators keep refusing it.
-pub fn validate_program_with_basic_owned_failure_sources(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_failure_source_emission(program)
-}
-
-/// Validates an owned adjacency-tree row collection, explicitly composing the
-/// owned failure-source, EndingWith, scalar-producer ItemAt and primary-row
-/// failure policies. Legacy trees and every older companion keep their gates.
-pub fn validate_program_with_basic_owned_adjacency_tree(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_adjacency_tree_emission(program)
-}
-
-/// Validates static Basic By, AdjacentBy, StartingWith, EndingWith and
-/// IntoBlocks, with qualified source controls, independent scalar-producer
-/// ItemAt and primary-row failure policies. All existing structural precedence
-/// and older companion gates are preserved.
-pub fn validate_program_with_basic_owned_group_into_blocks(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_group_into_blocks_emission(program)
-}
-
-/// Validates SequenceItemAt over an explicitly owned recursive collection walk,
-/// composed with the owned adjacency-tree profile. Only the root collection is
-/// owned; older validators and other consumers keep refusing the producer.
-pub fn validate_program_with_basic_owned_recursive_collect(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_recursive_collect_emission(program)
-}
-
-/// Validates recursive filtering of an explicitly owned scope selector,
-/// composed with the owned recursive-collect profile. The selector is the
-/// filter's only owner; legacy filters and older validators keep their gates.
-pub fn validate_program_with_basic_owned_recursive_filter(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_recursive_filter_emission(program)
-}
-
-/// Validates explicitly owned Lookup and CollectionFind over one exact Primary
-/// or named endpoint collection, composed with the owned recursive-filter
-/// chain and owned IntoBlocks grouping. Every older validator keeps refusing
-/// owned search.
-pub fn validate_program_with_basic_owned_lookup_find(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_lookup_find_emission(program)
-}
-
-/// Validates explicitly owned dynamic source-field reads, composed with the
-/// owned recursive-filter profile. The object is an exact owned read and the
-/// key a parent-context scalar; older validators keep refusing the read.
-pub fn validate_program_with_basic_owned_dynamic_field(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_dynamic_field_emission(program)
-}
-
-/// Validates explicitly owned collection aggregates over one exact Primary or
-/// named endpoint collection, composed with the owned search profile. Every
-/// older validator keeps refusing owned aggregates.
-pub fn validate_program_with_basic_owned_collection_aggregates(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_collection_aggregates_emission(program)
-}
-
-/// Validates owned inner joins, their tuple reads and owned joined aggregates,
-/// composed with the owned Lookup and CollectionFind profile. Every older
-/// validator keeps refusing them.
-pub fn validate_program_with_basic_owned_joins(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_joins_emission(program)
-}
-
-/// Validates static Basic scalar-producer SequenceItemAt, explicitly composing
-/// the qualified By, filter/sort/window and primary-row failure permissions.
-pub fn validate_program_with_basic_owned_sequence_item_at(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_sequence_item_at_emission(program)
-}
-
-/// Validates static Basic scalar-producer SequenceExists beside ItemAt and the
-/// qualified By/AdjacentBy/StartingWith/EndingWith, source-control and row-failure policies.
-pub fn validate_program_with_basic_owned_sequence_exists(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_sequence_exists_emission(program)
-}
-
-/// Validates static Basic scalar-producer SequenceAggregate beside the
-/// SequenceExists composition (ItemAt, By/AdjacentBy/StartingWith/EndingWith,
-/// source controls and primary-row failures).
-pub fn validate_program_with_basic_owned_sequence_aggregate(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_sequence_aggregate_emission(program)
-}
-
-fn validate_program_with_owned_profile(
-    program: &Program,
-    profile: owned_sources::BasicOwnedProfile,
-) -> Result<(), ProgramValidationError> {
-    validate_program_with_owned_profiles(program, profile, false)
-}
-
-fn validate_program_with_owned_profiles(
-    program: &Program,
-    profile: owned_sources::BasicOwnedProfile,
-    primary_row_failures: bool,
-) -> Result<(), ProgramValidationError> {
-    validate_program_with_owned_policies(
-        program,
-        profile,
-        primary_row_failures,
-        owned_sources::SequenceItemAtPolicy::Closed,
-    )
-}
-
-/// Validates an owned path-hierarchy input collection, explicitly composing the
-/// EndingWith controls, scalar-producer ItemAt, primary-row failures and owned
-/// failure-source walks.
-/// Legacy hierarchies and every older companion keep their existing gates.
-pub fn validate_program_with_basic_owned_path_hierarchy(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_path_hierarchy_emission(program)
-}
-
-/// Validates owned XML serialization in Basic target contexts, explicitly
-/// composing the owned dynamic source-field companion. Legacy serializers and
-/// every older companion keep their existing gates.
-pub fn validate_program_with_basic_owned_xml_serialize(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_xml_serialize_emission(program)
-}
-
-/// Validates mixed-content construction by an owned selector in Basic target
-/// contexts, explicitly composing the owned XML mixed-content atomization
-/// companion. Legacy, inherited and grouped constructions keep refusing.
-pub fn validate_program_with_basic_owned_xml_mixed_construction(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_xml_mixed_construction_emission(program)
-}
-
-/// Validates owned XML mixed-content atomization in Basic target contexts,
-/// explicitly composing the owned XML serialization companion. Legacy
-/// mixed-content nodes and every older companion keep their existing gates.
-pub fn validate_program_with_basic_owned_xml_mixed_content(
-    program: &Program,
-) -> Result<(), ProgramValidationError> {
-    owned_sources::validate_basic_owned_xml_mixed_content_emission(program)
-}
-
-fn validate_program_with_owned_policies(
-    program: &Program,
-    profile: owned_sources::BasicOwnedProfile,
-    primary_row_failures: bool,
-    sequence_item_at: owned_sources::SequenceItemAtPolicy,
-) -> Result<(), ProgramValidationError> {
-    validate_program_with_owned_failures(
-        program,
-        profile,
-        owned_sources::FailurePolicy::from_primary_rows(primary_row_failures),
-        sequence_item_at,
-    )
-}
-
-fn validate_program_with_owned_failures(
-    program: &Program,
-    profile: owned_sources::BasicOwnedProfile,
-    failures: owned_sources::FailurePolicy,
-    sequence_item_at: owned_sources::SequenceItemAtPolicy,
-) -> Result<(), ProgramValidationError> {
-    validate_program_with_owned_constructions(
-        program,
-        profile,
-        failures,
-        sequence_item_at,
-        owned_sources::PathHierarchyPolicy::Closed,
-        owned_sources::AdjacencyTreePolicy::Closed,
-    )
-}
-
-fn validate_program_with_owned_constructions(
-    program: &Program,
-    profile: owned_sources::BasicOwnedProfile,
-    failures: owned_sources::FailurePolicy,
-    sequence_item_at: owned_sources::SequenceItemAtPolicy,
-    path_hierarchy: owned_sources::PathHierarchyPolicy,
-    adjacency_tree: owned_sources::AdjacencyTreePolicy,
-) -> Result<(), ProgramValidationError> {
-    validate_program_with_owned_dynamic_fields(
-        program,
-        profile,
-        failures,
-        sequence_item_at,
-        path_hierarchy,
-        adjacency_tree,
-        owned_sources::DynamicFieldPolicy::Closed,
-    )
-}
-
-fn validate_program_with_owned_dynamic_fields(
-    program: &Program,
-    profile: owned_sources::BasicOwnedProfile,
-    failures: owned_sources::FailurePolicy,
-    sequence_item_at: owned_sources::SequenceItemAtPolicy,
-    path_hierarchy: owned_sources::PathHierarchyPolicy,
-    adjacency_tree: owned_sources::AdjacencyTreePolicy,
-    dynamic_field: owned_sources::DynamicFieldPolicy,
-) -> Result<(), ProgramValidationError> {
-    validate_program_with_owned_xml(
-        program,
-        profile,
-        failures,
-        sequence_item_at,
-        path_hierarchy,
-        adjacency_tree,
-        dynamic_field,
-        owned_sources::OwnedXmlPolicy::Closed,
-    )
-}
-
-// Each argument is one independent, explicitly selected companion permission.
-#[allow(clippy::too_many_arguments)]
-fn validate_program_with_owned_xml(
-    program: &Program,
-    profile: owned_sources::BasicOwnedProfile,
-    failures: owned_sources::FailurePolicy,
-    sequence_item_at: owned_sources::SequenceItemAtPolicy,
-    path_hierarchy: owned_sources::PathHierarchyPolicy,
-    adjacency_tree: owned_sources::AdjacencyTreePolicy,
-    dynamic_field: owned_sources::DynamicFieldPolicy,
-    owned_xml: owned_sources::OwnedXmlPolicy,
-) -> Result<(), ProgramValidationError> {
-    validate_program_with_owned_joins(
-        program,
-        profile,
-        failures,
-        sequence_item_at,
-        path_hierarchy,
-        adjacency_tree,
-        dynamic_field,
-        owned_xml,
-        owned_sources::JoinPolicy::Closed,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn validate_program_with_owned_joins(
-    program: &Program,
-    profile: owned_sources::BasicOwnedProfile,
-    failures: owned_sources::FailurePolicy,
-    sequence_item_at: owned_sources::SequenceItemAtPolicy,
-    path_hierarchy: owned_sources::PathHierarchyPolicy,
-    adjacency_tree: owned_sources::AdjacencyTreePolicy,
-    dynamic_field: owned_sources::DynamicFieldPolicy,
-    owned_xml: owned_sources::OwnedXmlPolicy,
-    join: owned_sources::JoinPolicy,
-) -> Result<(), ProgramValidationError> {
-    xml::validate_boundary(program)?;
+    capabilities: crate::OwnedCapabilities,
+) -> Result<Option<ProvedXmlBoundary>, ProgramValidationError> {
+    let xml = xml::validate_boundary(program)?;
     validate_schema_metadata("source", &program.source)?;
     for source in &program.extra_sources {
         validate_schema_metadata(&format!("extra source {:?}", source.name), &source.source)?;
@@ -447,17 +134,8 @@ fn validate_program_with_owned_joins(
     // that no target/failure root reaches in a directly constructed Program.
     sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)?;
     owned_sources::validate_structure(program)?;
-    owned_sources::validate_closed_contexts_with_joins(
-        program,
-        profile,
-        failures,
-        sequence_item_at,
-        path_hierarchy,
-        adjacency_tree,
-        dynamic_field,
-        owned_xml,
-        join,
-    )
+    owned_sources::validate_closed_contexts(program, capabilities)?;
+    Ok(xml)
 }
 
 fn validate_schema_metadata(
@@ -515,22 +193,33 @@ fn validate_dynamic_sources(
                 expression: dynamic.path,
             });
         }
-        if dynamic.driver.path().first().is_some_and(|first| {
-            program
-                .extra_sources
-                .iter()
-                .any(|candidate| candidate.name == *first && candidate.dynamic.is_some())
-        }) {
-            return Err(ProgramValidationError::InvalidDynamicSourceDriver {
-                source: source.name.clone(),
-                driver: dynamic.driver.path().to_vec(),
-            });
-        }
-        let Some(driver) = sources.schema_at(None, dynamic.driver.path()) else {
-            return Err(ProgramValidationError::InvalidDynamicSourceDriver {
-                source: source.name.clone(),
-                driver: dynamic.driver.path().to_vec(),
-            });
+        // An owned driver's endpoint and collection are typed owned requests,
+        // checked by the structural pass; only its path expression is checked here.
+        let driver = match &dynamic.driver {
+            DynamicSourceDriver::Owned(driver) => match sources.owned_schema_at(driver.source()) {
+                Some(driver) => driver,
+                None => continue,
+            },
+            DynamicSourceDriver::Legacy(driver) => {
+                if driver.path().first().is_some_and(|first| {
+                    program
+                        .extra_sources
+                        .iter()
+                        .any(|candidate| candidate.name == *first && candidate.dynamic.is_some())
+                }) {
+                    return Err(ProgramValidationError::InvalidDynamicSourceDriver {
+                        source: source.name.clone(),
+                        driver: driver.path().to_vec(),
+                    });
+                }
+                let Some(driver) = sources.schema_at(None, driver.path()) else {
+                    return Err(ProgramValidationError::InvalidDynamicSourceDriver {
+                        source: source.name.clone(),
+                        driver: driver.path().to_vec(),
+                    });
+                };
+                driver
+            }
         };
         joins::validate_expression(dynamic.path, expressions, sources, Some(driver), &[], false)?;
     }
@@ -750,7 +439,12 @@ fn validate_scope(
     let sequence_owner = schemas.target_owner.sequence_owner(target_path);
     let mut item_context = active_sequence_items.to_vec();
     let mut scope_joins = active_joins.to_vec();
-    let item_root_context = root_context && scope.iteration.is_none();
+    // Optional presence adds no candidate frame, so its item context is the parent.
+    let item_root_context = root_context
+        && scope
+            .iteration
+            .as_ref()
+            .is_none_or(|iteration| iteration.presence().is_some());
     let mut scope_source = schemas.current_source;
     let mut active_source = schemas.active_source;
     let Some(target_node) =
@@ -909,6 +603,38 @@ fn validate_scope(
             }
             IterationSource::Concatenate(_) => {
                 unreachable!("concatenated scope validation returns before candidate validation")
+            }
+            IterationSource::OptionalPresence(presence) => {
+                if !matches!(scope.construction, TargetConstruction::Group)
+                    || !scope.repeating
+                    || !matches!(target_node.kind, SchemaKind::Group { .. })
+                    || iteration.filter().is_some()
+                    || iteration.sort().is_some()
+                    || iteration.grouping().is_some()
+                    || !iteration.windows().is_empty()
+                    || iteration.output() != IterationOutput::Repeated
+                {
+                    return Err(ProgramValidationError::InvalidOptionalPresence {
+                        target_path: target_path.clone(),
+                    });
+                }
+                let expression = presence.condition();
+                if !expressions.contains_key(&expression) {
+                    return Err(ProgramValidationError::MissingOptionalPresenceExpression {
+                        target_path: target_path.clone(),
+                        expression,
+                    });
+                }
+                validate_expression_context(
+                    expression,
+                    expressions,
+                    schemas,
+                    sequence_items,
+                    active_sequence_items,
+                    active_joins,
+                    root_context,
+                    &sequence_owner,
+                )?;
             }
         }
         let candidate_schemas = ScopeSchemas {
@@ -1723,29 +1449,6 @@ fn validate_scope(
     }
     Ok(())
 }
-
-pub use owned_sources::validate_basic_owned_adjacency_tree_emission;
-pub use owned_sources::validate_basic_owned_path_hierarchy_emission;
-pub use owned_sources::validate_basic_owned_recursive_filter_emission;
-pub use owned_sources::{
-    is_basic_owned_primary_row_failure, validate_basic_owned_dynamic_field_emission,
-    validate_basic_owned_emission, validate_basic_owned_failure_source_emission,
-    validate_basic_owned_filter_emission, validate_basic_owned_group_adjacent_by_emission,
-    validate_basic_owned_group_by_emission, validate_basic_owned_group_ending_with_emission,
-    validate_basic_owned_group_into_blocks_emission,
-    validate_basic_owned_group_starting_with_emission, validate_basic_owned_joins_emission,
-    validate_basic_owned_lookup_find_emission, validate_basic_owned_recursive_collect_emission,
-    validate_basic_owned_row_failure_emission, validate_basic_owned_sequence_item_at_emission,
-    validate_basic_owned_sort_emission, validate_basic_owned_window_emission,
-};
-pub use owned_sources::{
-    validate_basic_owned_xml_mixed_construction_emission,
-    validate_basic_owned_xml_mixed_content_emission, validate_basic_owned_xml_serialize_emission,
-};
-
-pub use owned_sources::{
-    validate_basic_owned_sequence_aggregate_emission, validate_basic_owned_sequence_exists_emission,
-};
 
 #[cfg(test)]
 mod tests;

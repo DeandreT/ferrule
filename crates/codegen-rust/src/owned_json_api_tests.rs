@@ -120,7 +120,7 @@ fn named_program() -> Program {
             source: SchemaNode::scalar("Reserved", ScalarType::Bool),
             dynamic: Some(DynamicSourceProgram {
                 path: 99,
-                driver: SourceIteration::new(Vec::new()),
+                driver: SourceIteration::new(Vec::new()).into(),
             }),
         },
         NamedSourceProgram {
@@ -228,19 +228,31 @@ fn owned_json_companion_is_appended_only_to_control_free_emission() {
     for (artifacts, expected) in [
         (
             emit_with_basic_owned_filters(&program, &options),
-            emitter::render_public_basic_owned_filter_source(&program),
+            emitter::render_public_basic_owned_capability_source(
+                &program,
+                codegen::OwnedPreset::Filters.capabilities(),
+            ),
         ),
         (
             emit_with_basic_owned_sort(&program, &options),
-            emitter::render_public_basic_owned_sort_source(&program),
+            emitter::render_public_basic_owned_capability_source(
+                &program,
+                codegen::OwnedPreset::Sort.capabilities(),
+            ),
         ),
         (
             emit_with_basic_owned_windows(&program, &options),
-            emitter::render_public_basic_owned_window_source(&program),
+            emitter::render_public_basic_owned_capability_source(
+                &program,
+                codegen::OwnedPreset::Windows.capabilities(),
+            ),
         ),
         (
             emit_with_basic_owned_row_failures(&program, &options),
-            emitter::render_public_basic_owned_row_failure_source(&program),
+            emitter::render_public_basic_owned_capability_source(
+                &program,
+                codegen::OwnedPreset::RowFailures.capabilities(),
+            ),
         ),
     ] {
         let artifacts = artifacts.unwrap();

@@ -3,10 +3,9 @@
 //! Existing public emission capability checks remain separate and unchanged.
 use crate::{
     Expression, FailureIteration, GeneratedSequence, InnerJoin, IterationPlan, IterationSource,
-    Program, ProgramValidationError, TargetConstruction, TargetScope, UserFunctionProgram,
-    validate_program, validate_program_with_basic_owned_filters,
+    OwnedCapabilities, Program, ProgramValidationError, TargetConstruction, TargetScope,
+    UserFunctionProgram, validate_basic_owned_emission_with_capabilities, validate_program,
 };
-use crate::{validate_program_with_basic_owned_sort, validate_program_with_basic_owned_windows};
 use mapping::{FunctionId, NodeId, OwnedSourceRef};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -52,262 +51,30 @@ pub fn legacy_named_input_admission_plan(
     Ok(admission_plan(program))
 }
 
-/// Validate the complete explicit Basic filter-only capability, then describe
+/// Validate complete Basic owned emission under `capabilities`, then describe
 /// potential legacy eager requirements through the same declaration analyzer.
-/// This does not select a target, acquire inputs, or activate an emitter. Names
-/// and original ordinals borrow the unmodified Program exactly as in the default API.
-pub fn legacy_named_input_admission_plan_with_basic_owned_filters(
+/// This does not select a target, acquire inputs, evaluate expressions or
+/// activate an emitter; names and original ordinals borrow the unmodified Program.
+///
+/// Owned reads stay demand-driven. Authenticated primary-row failure
+/// collections (with a failure-rule capability) never demand a same-name
+/// secondary input, and admitted group retention evaluates per surviving
+/// candidate rather than on the grouped wrapper. Ordinary iteration and
+/// expression aliases keep their existing eager requirements.
+pub fn legacy_named_input_admission_plan_with_owned_capabilities(
     program: &Program,
+    capabilities: OwnedCapabilities,
 ) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    validate_program_with_basic_owned_filters(program)?;
-    Ok(admission_plan(program))
-}
-
-/// Validate the explicit Basic sort capability, then describe potential legacy
-/// eager requirements through the unchanged complete declaration analyzer.
-/// Names and original ordinals borrow the unmodified Program; this API does not
-/// select targets, acquire inputs, evaluate keys, or activate an emitter.
-pub fn legacy_named_input_admission_plan_with_basic_owned_sort(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    validate_program_with_basic_owned_sort(program)?;
-    Ok(admission_plan(program))
-}
-
-/// Validate explicit Basic windows, then use the unchanged declaration analyzer.
-/// Window endpoints retain their parent environment and potential dependencies;
-/// this companion does not evaluate bounds, select targets or acquire inputs.
-pub fn legacy_named_input_admission_plan_with_basic_owned_windows(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    validate_program_with_basic_owned_windows(program)?;
-    Ok(admission_plan(program))
-}
-
-/// Plan named-input admission for the explicit primary-row failure companion.
-/// Authenticated primary-row collections do not demand a same-name secondary
-/// input. Owned reads stay lazy; ordinary iteration and expression aliases keep
-/// their existing eager requirements.
-pub fn legacy_named_input_admission_plan_with_basic_owned_row_failures(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_basic_owned_row_failure_emission(program)?;
-    Ok(admission_plan_with_primary_row_failures(program, true))
-}
-
-/// Plan static Basic By admission with candidate key/retention expressions,
-/// parent bounds, grouped targets and qualified primary-row global failures.
-/// Exact owned reads stay lazy; legacy aliases keep their eager dependencies.
-pub fn legacy_named_input_admission_plan_with_basic_owned_group_by(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_group_by(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plan static Basic By/AdjacentBy admission with candidate key/retention,
-/// receiving-parent bounds, grouped/member targets and qualified ItemAt inputs.
-/// All catalogues keep original declaration ordinals and global failure demands;
-/// exact owned reads remain lazy and legacy aliases remain eager.
-pub fn legacy_named_input_admission_plan_with_basic_owned_group_adjacent_by(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_group_adjacent_by(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plan explicit Basic By/AdjacentBy/StartingWith admission. Bounds retain their
-/// receiving parent; boundary and retention use the candidate; target/member
-/// dependencies keep distinct environments. Owned reads remain demand-driven,
-/// legacy aliases eager, and original declaration ordinals unchanged.
-pub fn legacy_named_input_admission_plan_with_basic_owned_group_starting_with(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_group_starting_with(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plan explicit Basic By/AdjacentBy/StartingWith/EndingWith admission. Bounds
-/// retain their receiving parent; boundaries and retention use the candidate;
-/// target/member dependencies keep distinct environments. Owned reads remain
-/// demand-driven, legacy aliases eager, and original declaration ordinals unchanged.
-pub fn legacy_named_input_admission_plan_with_basic_owned_group_ending_with(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_group_ending_with(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plan explicit Basic By/AdjacentBy/StartingWith/EndingWith/IntoBlocks
-/// admission. Bounds and a block size retain their receiving parent; keys,
-/// boundaries and retention use the candidate; target/member dependencies keep
-/// distinct environments. Owned reads remain demand-driven, legacy aliases
-/// eager, and original declaration ordinals unchanged.
-pub fn legacy_named_input_admission_plan_with_basic_owned_group_into_blocks(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_group_into_blocks(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plans the explicit Basic SequenceItemAt profile. Producer scalar inputs and
-/// index keep the receiving source environment; owned reads remain lazy and
-/// potential legacy aliases remain eager in every complete target catalogue.
-pub fn legacy_named_input_admission_plan_with_basic_owned_sequence_item_at(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_sequence_item_at(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plans the explicit owned failure-source profile. An owned failure walk does
-/// not make its endpoint eager; legacy rule paths and expression aliases keep
-/// their existing requirements, and declaration ordinals stay unchanged.
-pub fn legacy_named_input_admission_plan_with_basic_owned_failure_sources(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_failure_sources(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plans the explicit owned path-hierarchy companion. Owned hierarchy
-/// collections, like other exact owned reads, never make an endpoint eagerly
-/// required; the composed EndingWith, ItemAt and owned failure-source
-/// environments are unchanged.
-pub fn legacy_named_input_admission_plan_with_basic_owned_path_hierarchy(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_path_hierarchy(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plans the explicit owned adjacency-tree companion. Owned row collections,
-/// like other exact owned reads, never make an endpoint eagerly required; the
-/// composed path-hierarchy, failure-source, EndingWith and ItemAt environments
-/// are unchanged.
-pub fn legacy_named_input_admission_plan_with_basic_owned_adjacency_tree(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_adjacency_tree(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plans the explicit owned recursive-collect profile. An owned root collection
-/// is demand-driven like every owned read; legacy recursive collections and
-/// expression aliases keep their eager requirements and declaration ordinals.
-pub fn legacy_named_input_admission_plan_with_basic_owned_recursive_collect(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_recursive_collect(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plans the explicit Basic SequenceExists profile. Producer inputs keep the
-/// receiving environment and each predicate gains only its generated item.
-/// Owned reads remain lazy; potential legacy aliases remain eager.
-pub fn legacy_named_input_admission_plan_with_basic_owned_sequence_exists(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_sequence_exists(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plans the explicit owned recursive-filter profile. The owned selector, like
-/// every exact owned read, is demand-driven; the composed recursive-collect
-/// environment is unchanged.
-pub fn legacy_named_input_admission_plan_with_basic_owned_recursive_filter(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_recursive_filter(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plans the explicit owned search profile. Owned walks stay demand-driven;
-/// legacy paths and aliases keep their requirements and ordinals.
-pub fn legacy_named_input_admission_plan_with_basic_owned_lookup_find(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_lookup_find(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plans the explicit owned dynamic-field profile. The selected owner is
-/// demand-driven like every owned read and its key keeps the receiving
-/// context; legacy dynamic reads keep their eager alias requirements.
-pub fn legacy_named_input_admission_plan_with_basic_owned_dynamic_field(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_dynamic_field(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plans the explicit Basic SequenceAggregate profile. Producer inputs and the
-/// reducer argument keep the receiving environment; the predicate and
-/// expression gain only the generated item. Owned reads remain lazy;
-/// potential legacy aliases remain eager.
-pub fn legacy_named_input_admission_plan_with_basic_owned_sequence_aggregate(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_sequence_aggregate(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plans the explicit owned XML serialization companion. An owned element read
-/// is demand-driven like every exact owned read; the composed dynamic
-/// source-field environments are unchanged.
-pub fn legacy_named_input_admission_plan_with_basic_owned_xml_serialize(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_xml_serialize(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plans the explicit owned collection-aggregate profile. Owned walks stay
-/// demand-driven; legacy paths and aliases keep their requirements and ordinals.
-pub fn legacy_named_input_admission_plan_with_basic_owned_collection_aggregates(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_collection_aggregates(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plans the explicit owned join profile. Owned join sources stay
-/// demand-driven owned walks; legacy paths and aliases keep their requirements.
-pub fn legacy_named_input_admission_plan_with_basic_owned_joins(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_joins(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plans the explicit owned XML mixed-content companion. The group read and
-/// each occurrence are demand-driven exact owned reads; parent replacements
-/// keep the receiving context's environments.
-pub fn legacy_named_input_admission_plan_with_basic_owned_xml_mixed_content(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_xml_mixed_content(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
-}
-
-/// Plans the explicit owned mixed-content construction companion. The owned
-/// selector is demand-driven like every owned iteration.
-pub fn legacy_named_input_admission_plan_with_basic_owned_xml_mixed_construction(
-    program: &Program,
-) -> Result<NamedInputAdmissionPlan<'_>, ProgramValidationError> {
-    crate::validate_program_with_basic_owned_xml_mixed_construction(program)?;
-    Ok(admission_plan_with_profiles(program, true, true))
+    validate_basic_owned_emission_with_capabilities(program, capabilities)?;
+    Ok(admission_plan_with_profiles(
+        program,
+        capabilities.failures.primary_rows,
+        capabilities.grouping.any(),
+    ))
 }
 
 fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
-    admission_plan_with_primary_row_failures(program, false)
-}
-
-fn admission_plan_with_primary_row_failures(
-    program: &Program,
-    primary_row_failures: bool,
-) -> NamedInputAdmissionPlan<'_> {
-    admission_plan_with_profiles(program, primary_row_failures, false)
+    admission_plan_with_profiles(program, false, false)
 }
 
 fn admission_plan_with_profiles(
@@ -526,10 +293,14 @@ impl<'a> Analysis<'a> {
         // schema field with this spelling does not remove the eager alias.
         for index in indices {
             if let Some(dynamic) = program.extra_sources[index].dynamic.as_ref() {
+                // An owned driver is never reached through a legacy alias.
+                let Some(driver) = dynamic.driver.legacy() else {
+                    continue;
+                };
                 if !self.inspected_dynamic.insert(index) {
                     continue;
                 }
-                let driver = dynamic.driver.path();
+                let driver = driver.path();
                 self.path(driver);
                 // One fixed per-declaration environment. D->E->D therefore
                 // revisits a finite context rather than extending caller ancestry.
@@ -568,6 +339,19 @@ impl<'a> Analysis<'a> {
     fn iteration(&mut self, parent: usize, iteration: &IterationPlan) -> usize {
         let item = match iteration.input() {
             IterationSource::OwnedSource(source) => {
+                // An owned dynamic endpoint's path runs once per driver item.
+                if let mapping::SourceOwner::Named { name } = &source.source().owner
+                    && let Some(dynamic) = self
+                        .program
+                        .extra_sources
+                        .iter()
+                        .find(|declaration| declaration.name == *name)
+                        .and_then(|declaration| declaration.dynamic.as_ref())
+                    && let Some(driver) = dynamic.driver.owned()
+                {
+                    let item = self.child(parent, Step::OwnedSource(driver.clone()));
+                    self.queue(Namespace::Main, item, dynamic.path);
+                }
                 self.child(parent, Step::OwnedSource(source.source().clone()))
             }
             IterationSource::Source(source) => {
@@ -593,6 +377,11 @@ impl<'a> Analysis<'a> {
                     let context = self.child(parent, Step::Segment(index));
                     self.scope(segment, context);
                 }
+                parent
+            }
+            // The presence condition and the constructed group share the parent item.
+            IterationSource::OptionalPresence(presence) => {
+                self.queue(Namespace::Main, parent, presence.condition());
                 parent
             }
         };
@@ -725,6 +514,7 @@ impl<'a> Analysis<'a> {
                 Expression::OwnedSourceField(_)
                 | Expression::OwnedPosition(_)
                 | Expression::OwnedRowDocumentPath(_)
+                | Expression::OwnedSourceDocumentPath(_)
                 | Expression::OwnedJoinField(_)
                 | Expression::OwnedJoinSourcePosition(_) => {}
                 Expression::OwnedXmlSerialize(_) => {}
@@ -941,7 +731,7 @@ pub(crate) fn primary_visits_for_test(
 pub(crate) fn primary_visits_for_test_with_basic_owned_windows(
     program: &Program,
 ) -> Result<Vec<(Option<FunctionId>, usize, NodeId)>, ProgramValidationError> {
-    validate_program_with_basic_owned_windows(program)?;
+    crate::validate_program_with_basic_owned_windows(program)?;
     let analysis = analyze(program, &program.root, Root::Primary, false, false);
     eprintln!(
         "Complete admission trace input={program:#?} environments={:#?} visits={:#?} required={:#?} inspected_dynamic={:#?}",

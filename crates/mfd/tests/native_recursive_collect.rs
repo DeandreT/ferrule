@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -315,6 +318,7 @@ fn shared_graph_and_sequence_controls_keep_native_guard_closed()
 #[ignore = "needs the local ignored ReferenceSamples corpus"]
 fn local_flatten_hierarchy_native_roundtrip_keeps_exact_90_paths()
 -> Result<(), Box<dyn std::error::Error>> {
+    private_corpus::require(&[&private_corpus::root()]);
     let samples = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples")
         .canonicalize()?;

@@ -1,0 +1,144 @@
+use codegen_runtime::{BasicNamedSourceInput, DynamicSourceLoader, ExecutionContext, Instance,
+    OwnedSourceError, OwnedSourceIdentity, OwnedSourceLimits, RuntimeError, TargetSelection};
+use serde_json::{Value as Json, json};
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::path::Path;
+#[allow(dead_code)]
+mod codec;
+
+/// Records every attempted callback; repeated successful documents are read
+/// once and failures are never cached.
+struct RecordingLoader<'a> {
+    documents: &'a BTreeMap<(String, String), Instance>,
+    calls: RefCell<Vec<String>>,
+    reads: RefCell<Vec<String>>,
+    cache: RefCell<BTreeMap<(String, String), Instance>>,
+}
+impl DynamicSourceLoader for RecordingLoader<'_> {
+    fn load(&self, source: &str, path: &str) -> Result<Instance, String> {
+        let key = (source.to_owned(), path.to_owned());
+        self.calls.borrow_mut().push(format!("{source}:{path}"));
+        if let Some(document) = self.cache.borrow().get(&key) {
+            return Ok(document.clone());
+        }
+        self.reads.borrow_mut().push(format!("{source}:{path}"));
+        let document = self.documents.get(&key).cloned()
+            .ok_or_else(|| format!("no document {source}:{path}"))?;
+        self.cache.borrow_mut().insert(key, document.clone());
+        Ok(document)
+    }
+}
+
+fn source_name(recipe: &Json) -> &'static str {
+    match recipe["source"].as_str().unwrap() {
+        "Docs" => "Docs",
+        _ => panic!("authored source"),
+    }
+}
+fn error_matches(error: &RuntimeError, recipe: &Json) -> bool {
+    match recipe["kind"].as_str().unwrap() {
+        "MissingLoader" => *error == RuntimeError::MissingDynamicSourceLoader { source: source_name(recipe) },
+        "DynamicPath" => *error == RuntimeError::DynamicSourcePath {
+            source: source_name(recipe),
+            node: recipe["node"].as_u64().unwrap() as u32,
+            found: match recipe["found"].as_str().unwrap() { "int" => "int", _ => panic!("authored type") },
+        },
+        "Load" => *error == RuntimeError::DynamicSourceLoad {
+            source: source_name(recipe),
+            path: recipe["path"].as_str().unwrap().to_owned(),
+            message: recipe["message"].as_str().unwrap().to_owned(),
+        },
+        "OwnedSource" => {
+            let cause = match recipe["cause"].as_str().unwrap() {
+                "SourceUnavailable" => OwnedSourceError::SourceUnavailable { name: recipe["owner"].as_str().unwrap().to_owned() },
+                "MissingDocumentPath" => OwnedSourceError::MissingDocumentPath { owner: match recipe["owner"].as_str().unwrap() {
+                    "Primary" => OwnedSourceIdentity::Primary,
+                    name => OwnedSourceIdentity::Named(name.to_owned()),
+                } },
+                _ => panic!("authored owned cause"),
+            };
+            // A loading scope's driver walk has no node; an owned read has its own.
+            match recipe["node"].as_u64() {
+                Some(node) => *error == RuntimeError::OwnedSourceAtNode { node: node as u32, source: cause },
+                None => *error == RuntimeError::OwnedSource(cause),
+            }
+        }
+        _ => panic!("authored error recipe"),
+    }
+}
+
+macro_rules! invoke {
+    ($module:ident, $selection:expr, $source:expr, $inputs:expr, $execution:expr, $limits:expr, $loader:expr) => {{
+        let all = match $loader {
+            Some(loader) => if $selection == "All" {
+                $module::execute_with_basic_owned_sources_and_dynamic_source_loader($source, $inputs, Some($execution), $limits, loader).map(Ok)
+            } else {
+                let target = if $selection == "Primary" { TargetSelection::Primary } else { TargetSelection::Named($selection) };
+                $module::execute_selected_with_basic_owned_sources_and_dynamic_source_loader($source, $inputs, Some($execution), $limits, target, loader).map(Err)
+            },
+            None => if $selection == "All" {
+                $module::execute_with_basic_owned_sources($source, $inputs, Some($execution), $limits).map(Ok)
+            } else {
+                let target = if $selection == "Primary" { TargetSelection::Primary } else { TargetSelection::Named($selection) };
+                $module::execute_selected_with_basic_owned_sources($source, $inputs, Some($execution), $limits, target).map(Err)
+            },
+        };
+        all.map(|output| match output {
+            Ok(output) => {
+                let mut trees = vec![json!([null, codec::encode(&output.primary)])];
+                trees.extend(output.extras.iter().map(|named| json!([named.name, codec::encode(&named.instance)])));
+                trees
+            }
+            Err($module::SelectedTargetOutput::Primary(instance)) => vec![json!([null, codec::encode(&instance)])],
+            Err($module::SelectedTargetOutput::Named(named)) => vec![json!([named.name, codec::encode(&named.instance)])],
+        })
+    }};
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = std::env::args_os().skip(1).collect::<Vec<_>>();
+    assert_eq!(args.len(), 2, "controls and results paths");
+    let controls: Json = serde_json::from_slice(&std::fs::read(&args[0])?)?;
+    let documents = controls["documents"].as_array().unwrap().iter()
+        .map(|entry| ((entry[0].as_str().unwrap().to_owned(), entry[1].as_str().unwrap().to_owned()), codec::decode(&entry[2])))
+        .collect::<BTreeMap<_, _>>();
+    let limits = OwnedSourceLimits { max_roots: 16, max_active_frames: 32, max_path_segments: 64,
+        max_metadata_bytes: 16_777_216, max_walk_contexts: 512 };
+    let execution = ExecutionContext::new(Path::new("dynload475.mapping"));
+    let mut rows = Vec::new();
+    for case in controls["cases"].as_array().unwrap() {
+        let source = codec::decode(&case["source"]);
+        let named = case["inputs"].as_array().unwrap().iter()
+            .map(|input| (input[0].as_str().unwrap().to_owned(), codec::decode(&input[1])))
+            .collect::<Vec<(String, Instance)>>();
+        let inputs = named.iter().map(|(name, instance)| BasicNamedSourceInput { name, instance }).collect::<Vec<_>>();
+        let before = (codec::encode(&source), named.iter().map(|(_, tree)| codec::encode(tree)).collect::<Vec<_>>());
+        for call in case["calls"].as_array().unwrap() {
+            let selection = call["selection"].as_str().unwrap();
+            let recording = RecordingLoader { documents: &documents, calls: RefCell::default(),
+                reads: RefCell::default(), cache: RefCell::default() };
+            let loader: Option<&dyn DynamicSourceLoader> = if case["loader"] == true { Some(&recording) } else { None };
+            let actual: Result<Vec<Json>, RuntimeError> = match case["model"].as_u64().unwrap() {
+@DISPATCH@
+                _ => panic!("authored model"),
+            };
+            let after = (codec::encode(&source), named.iter().map(|(_, tree)| codec::encode(tree)).collect::<Vec<_>>());
+            let matched = match (&actual, call["expected"].get("Ok")) {
+                (Ok(trees), Some(expected)) => json!(trees) == *expected,
+                (Err(error), None) => error_matches(error, &call["expected"]["Err"]),
+                _ => false,
+            } && json!(*recording.calls.borrow()) == call["calls"]
+                && json!(*recording.reads.borrow()) == call["reads"]
+                && before == after;
+            rows.push(json!({"case": case["id"], "selection": selection, "matched": matched,
+                "actual": format!("{actual:?}"), "calls": *recording.calls.borrow(), "reads": *recording.reads.borrow()}));
+        }
+    }
+    std::fs::write(&args[1], serde_json::to_vec_pretty(&rows)?)?;
+    assert_eq!(rows.len(), @CALLS@);
+    if rows.iter().any(|row| row["matched"] != true) {
+        std::process::exit(1);
+    }
+    Ok(())
+}

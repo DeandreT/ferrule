@@ -14,235 +14,46 @@ use crate::{
     UserFunctionProgram, XmlMixedContentElement, XmlMixedContentReplacement, validate_program,
 };
 
+mod xml_request;
+
+use xml_request::XmlRequest;
+
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
     lower_with_validator(project, validate_program)
 }
 
-/// Lowers the explicit static Basic filter-only profile without changing controls.
-///
-/// Default lowering and existing emitter entry points retain their closed policy.
-pub fn lower_with_basic_owned_filters(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(project, crate::validate_program_with_basic_owned_filters)
-}
-
-/// Lowers the explicit static Basic sort profile through unchanged graph lowering.
-///
-/// Default and filter-only lowering retain their original capability policies.
-pub fn lower_with_basic_owned_sort(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(project, crate::validate_program_with_basic_owned_sort)
-}
-
-/// Lowers explicit static Basic windows through the unchanged graph lowering.
-///
-/// Stored windows and implicit First retain their original order. Default,
-/// filter-only and sort-only lowering preserve their capability policies.
-pub fn lower_with_basic_owned_windows(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(project, crate::validate_program_with_basic_owned_windows)
-}
-
-/// Lower window-profile targets with explicitly admitted owned primary-row
-/// global failures, preserving the original failure iteration representation.
-pub fn lower_with_basic_owned_row_failures(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(project, crate::validate_basic_owned_row_failure_emission)
-}
-
-/// Lowers static Basic By grouping and member retention, composing the qualified
-/// filter, sort, window and primary-row failure permissions without changing IR.
-pub fn lower_with_basic_owned_group_by(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(project, crate::validate_program_with_basic_owned_group_by)
-}
-
-/// Lowers static Basic By and AdjacentBy with qualified source controls,
-/// primary-row failures and scalar-producer SequenceItemAt. Existing companions
-/// retain their separate control and consumer policies; the IR is unchanged.
-pub fn lower_with_basic_owned_group_adjacent_by(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
+/// Validate the original document-set contract while selecting an XML adapter
+/// for its individual members. Saved paths supply identity only on this route.
+pub(crate) fn lower_primary_xml_documents(project: &Project) -> Result<Program, LowerError> {
+    let mut members = project.clone();
+    members.source_options.local_xml_file_set = false;
+    members.source_options.xml_document = true;
+    members.target_options.xml_document = true;
+    let request = XmlRequest::classify(&members)?;
+    lower_with_xml_request(
         project,
-        crate::validate_program_with_basic_owned_group_adjacent_by,
+        validate_program,
+        OwnedJoinLowering::Closed,
+        Some(request),
+        None,
     )
 }
 
-/// Lowers static Basic By, AdjacentBy and StartingWith with the existing source
-/// controls, independent scalar-producer ItemAt and primary-row failure policies.
-/// No older companion opts into StartingWith; graph and wire lowering are unchanged.
-pub fn lower_with_basic_owned_group_starting_with(
+/// Lowers a Project and validates it for Basic owned emission under
+/// `capabilities`. Graph lowering and the IR are unchanged; owned join scopes
+/// pass the lowering preflight only when the capability set admits joins.
+pub fn lower_with_owned_capabilities(
     project: &Project,
+    capabilities: crate::OwnedCapabilities,
 ) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_group_starting_with,
-    )
-}
-
-/// Lowers static Basic By, AdjacentBy, StartingWith and EndingWith with the
-/// existing source controls, independent scalar-producer ItemAt and primary-row
-/// failure policies. No older companion opts into EndingWith; graph and wire
-/// lowering are unchanged.
-pub fn lower_with_basic_owned_group_ending_with(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_group_ending_with,
-    )
-}
-
-/// Lowers explicit owned failure-rule iteration with the EndingWith target
-/// controls, scalar-producer ItemAt and primary-row failures. Every older
-/// companion keeps refusing owned failure walks; lowering itself is unchanged.
-pub fn lower_with_basic_owned_failure_sources(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_failure_sources,
-    )
-}
-
-/// Lowers an owned adjacency-tree row collection with the composed owned
-/// failure-source, EndingWith, scalar-producer ItemAt and primary-row failure
-/// policies. Legacy trees keep their ordinary route; lowering is unchanged.
-pub fn lower_with_basic_owned_adjacency_tree(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_adjacency_tree,
-    )
-}
-
-/// Lowers static Basic By, AdjacentBy, StartingWith, EndingWith and IntoBlocks
-/// with the existing source controls, independent scalar-producer ItemAt and
-/// primary-row failure policies. No older companion opts into IntoBlocks; graph
-/// and wire lowering are unchanged.
-pub fn lower_with_basic_owned_group_into_blocks(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_group_into_blocks,
-    )
-}
-
-/// Lowers SequenceItemAt over explicitly owned recursive collection walks with
-/// the owned adjacency-tree profile. Older companions keep refusing the owned
-/// producer; lowering itself is unchanged.
-pub fn lower_with_basic_owned_recursive_collect(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_recursive_collect,
-    )
-}
-
-/// Lowers recursive filtering of an explicitly owned scope selector with the
-/// owned recursive-collect profile. Older companions keep refusing the owned
-/// filter; lowering itself is unchanged.
-pub fn lower_with_basic_owned_recursive_filter(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_recursive_filter,
-    )
-}
-
-/// Lowers explicitly owned Lookup and CollectionFind with the owned
-/// recursive-filter chain and owned IntoBlocks grouping. Every older companion
-/// keeps refusing owned search.
-pub fn lower_with_basic_owned_lookup_find(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_lookup_find,
-    )
-}
-
-/// Lowers explicitly owned dynamic source-field reads with the owned
-/// recursive-filter profile. Older companions keep refusing the owned read;
-/// lowering itself is unchanged.
-pub fn lower_with_basic_owned_dynamic_field(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_dynamic_field,
-    )
-}
-
-/// Lowers explicitly owned collection aggregates with the owned search
-/// profile. Every older companion keeps refusing owned aggregates.
-pub fn lower_with_basic_owned_collection_aggregates(
-    project: &Project,
-) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_collection_aggregates,
-    )
-}
-
-/// Lowers owned inner joins, their tuple reads and owned joined aggregates with
-/// the owned Lookup and CollectionFind profile. Every older route keeps
-/// refusing owned joins at its preflight and joined aggregates at validation.
-pub fn lower_with_basic_owned_joins(project: &Project) -> Result<Program, LowerError> {
     lower_with_policy(
         project,
-        crate::validate_program_with_basic_owned_joins,
-        OwnedJoinLowering::Open,
-    )
-}
-
-/// Lowers the explicit Basic scalar-producer SequenceItemAt profile, composing
-/// qualified By controls and primary-row failures without changing their gates.
-pub fn lower_with_basic_owned_sequence_item_at(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_sequence_item_at,
-    )
-}
-
-/// Lowers an owned path-hierarchy input collection with the composed EndingWith
-/// controls, scalar-producer ItemAt, primary-row failures and owned failure-source
-/// walks. Legacy hierarchies keep their ordinary route; graph and wire lowering
-/// are unchanged.
-pub fn lower_with_basic_owned_path_hierarchy(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_path_hierarchy,
-    )
-}
-
-/// Lowers the explicit Basic scalar-producer SequenceExists profile. It composes
-/// ItemAt, By/AdjacentBy/StartingWith/EndingWith controls and primary-row failures.
-pub fn lower_with_basic_owned_sequence_exists(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_sequence_exists,
-    )
-}
-
-/// Lowers the explicit Basic scalar-producer SequenceAggregate profile. It
-/// composes the SequenceExists profile.
-pub fn lower_with_basic_owned_sequence_aggregate(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_sequence_aggregate,
-    )
-}
-
-/// Lowers owned XML serialization in Basic target contexts, composing the owned
-/// dynamic source-field companion. Legacy serializers keep their ordinary route.
-pub fn lower_with_basic_owned_xml_serialize(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_xml_serialize,
-    )
-}
-
-/// Lowers mixed-content construction by an owned selector in Basic target
-/// contexts, composing the owned XML mixed-content atomization companion.
-pub fn lower_with_basic_owned_xml_mixed_construction(
-    project: &Project,
-) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_xml_mixed_construction,
-    )
-}
-
-/// Lowers owned XML mixed-content atomization in Basic target contexts,
-/// composing the owned XML serialization companion. Legacy mixed-content nodes
-/// keep their ordinary route.
-pub fn lower_with_basic_owned_xml_mixed_content(project: &Project) -> Result<Program, LowerError> {
-    lower_with_validator(
-        project,
-        crate::validate_program_with_basic_owned_xml_mixed_content,
+        |program| crate::validate_basic_owned_emission_with_capabilities(program, capabilities),
+        if capabilities.joins {
+            OwnedJoinLowering::Open
+        } else {
+            OwnedJoinLowering::Closed
+        },
     )
 }
 
@@ -253,7 +64,7 @@ enum OwnedJoinLowering {
     Open,
 }
 
-fn lower_with_validator(
+pub(crate) fn lower_with_validator(
     project: &Project,
     validator: fn(&Program) -> Result<(), ProgramValidationError>,
 ) -> Result<Program, LowerError> {
@@ -262,10 +73,35 @@ fn lower_with_validator(
 
 fn lower_with_policy(
     project: &Project,
-    validator: fn(&Program) -> Result<(), ProgramValidationError>,
+    validator: impl Fn(&Program) -> Result<(), ProgramValidationError>,
     owned_joins: OwnedJoinLowering,
 ) -> Result<Program, LowerError> {
-    let validation = engine::validate(project);
+    lower_with_xml_request(project, validator, owned_joins, None, None)
+}
+
+pub(crate) fn lower_primary_json_documents(
+    document: &mapping::DocumentProject,
+) -> Result<Program, LowerError> {
+    lower_with_xml_request(
+        document.project(),
+        validate_program,
+        OwnedJoinLowering::Closed,
+        None,
+        Some(document),
+    )
+}
+
+fn lower_with_xml_request(
+    project: &Project,
+    validator: impl Fn(&Program) -> Result<(), ProgramValidationError>,
+    owned_joins: OwnedJoinLowering,
+    xml_request: Option<XmlRequest>,
+    document: Option<&mapping::DocumentProject>,
+) -> Result<Program, LowerError> {
+    let validation = document.map_or_else(
+        || engine::validate(project),
+        engine::validate_primary_document,
+    );
     if !validation.is_empty() {
         return Err(LowerError::new(
             validation
@@ -278,225 +114,28 @@ fn lower_with_policy(
         ));
     }
 
+    // Declared SQLite query acquisition stays with filesystem hosts; generated
+    // code never drops it in favor of an ordinary table read.
+    if let Some(input) = project.sqlite_read_inputs().first() {
+        return Err(LowerError::new(vec![Diagnostic::UnsupportedInputProfile {
+            source: match input.owner {
+                mapping::SqliteReadOwner::Primary => None,
+                mapping::SqliteReadOwner::Named(name) => Some(name.to_owned()),
+            },
+            profile: mapping::SQLITE_READ_V1_CAPABILITY,
+        }]));
+    }
+
     // Owned document outputs remain closed at their complete original route,
     // and owned joins outside their explicit companion. All static Basic
     // selectors continue through unchanged lowering reachability.
     if let Some(diagnostic) = owned_document_diagnostic(project, owned_joins) {
         return Err(LowerError::new(vec![diagnostic]));
     }
-    let primary_xml = project.source_options.xml_root_view_read_policy;
-    // Ordinary XML format identity does not make adapter support mandatory.
-    // Existing core-only generation survives an unproved ordinary schema.
-    let ordinary_xml_input = !project.source_options.xml_allow_inactive_root_type_members
-        && !primary_xml
-        && project.source_options
-            == (mapping::FormatOptions {
-                xml_document: true,
-                ..Default::default()
-            })
-        && ir::xml_structured_document_input_is_supported(&project.source);
-    // Literal hints belong to the optional XML adapter. An unsuitable named
-    // output removes that whole adapter without obstructing typed/JSON core.
-    let ordinary_xml = ordinary_xml_input
-        && project.extra_sources.len() < 4096
-        && project.extra_sources.iter().all(|source| {
-            source.options
-                == (mapping::FormatOptions {
-                    xml_document: true,
-                    ..Default::default()
-                })
-                && ir::xml_structured_document_input_is_supported(&source.schema)
-        })
-        && xml_document_output_options(&project.target_options)
-        && project
-            .extra_targets
-            .iter()
-            .all(|target| xml_document_output_options(&target.options));
-    let mut reader_diagnostics: Vec<_> = project
-        .extra_sources
-        .iter()
-        .filter(|source| source.options.xml_root_view_read_policy)
-        .map(|source| Diagnostic::Validation {
-            location: format!("extra source `{}` format options", source.name),
-            message: "code generation does not support named observed XML root-view input adapters"
-                .into(),
-        })
-        .collect();
-    for (location, options) in
-        std::iter::once(("source format options".to_owned(), &project.source_options)).chain(
-            project.extra_sources.iter().map(|source| {
-                (
-                    format!("extra source `{}` format options", source.name),
-                    &source.options,
-                )
-            }),
-        )
-    {
-        if options.xml_allow_inactive_root_type_members != options.xml_root_view_read_policy {
-            reader_diagnostics.push(Diagnostic::Validation {
-                location,
-                message: "generated XML input policy has incompatible observed profile flags"
-                    .into(),
-            });
-        }
-    }
-    // Preserve the historical static-input and static-output routes.
-    // The combined route below has its own complete admission proof.
-    let root_view_static_inputs = primary_xml
-        && !project.extra_sources.is_empty()
-        && project.extra_targets.is_empty()
-        && matches!(project.root.iteration, ScopeIteration::None)
-        && matches!(project.root.construction, ScopeConstruction::Constructed)
-        && !project.target.repeating
-        && project.extra_sources.iter().all(|source| {
-            source.dynamic_path.is_none()
-                && source.options
-                    == (mapping::FormatOptions {
-                        xml_document: true,
-                        ..Default::default()
-                    })
-                && ir::xml_structured_document_input_is_supported(&source.schema)
-        });
-    // The newly admitted plural route remains flat even when its expressions
-    // contain no primary-root reader. Preserve the existing one-output route.
-    let root_view_plural_roots_flat = project.extra_targets.len() == 1
-        || std::iter::once((&project.target, &project.root))
-            .chain(
-                project
-                    .extra_targets
-                    .iter()
-                    .map(|target| (&target.schema, &target.root)),
-            )
-            .all(|(schema, scope)| {
-                (scope.target_field.is_empty() || scope.target_field == schema.name)
-                    && scope.dynamic_bindings.is_empty()
-                    && scope.filter.is_none()
-                    && scope.post_group_filter.is_none()
-                    && !scope.has_grouping()
-                    && !scope.has_sort()
-                    && scope.windows.is_empty()
-                    && !scope.merge_dynamic_fields
-                    && scope.children.is_empty()
-                    && scope.dynamic_children.is_empty()
-                    && scope.concatenated().is_none()
-            });
-    let root_view_static_output = primary_xml
-        && project.extra_sources.is_empty()
-        && !project.extra_targets.is_empty()
-        && root_view_plural_roots_flat
-        && matches!(project.root.iteration, ScopeIteration::None)
-        && matches!(project.root.construction, ScopeConstruction::Constructed)
-        && !project.target.repeating
-        && matches!(project.target.kind, SchemaKind::Group { .. })
-        && xml_document_output_options(&project.target_options)
-        && project.extra_targets.iter().all(|target| {
-            matches!(target.root.iteration, ScopeIteration::None)
-                && matches!(target.root.construction, ScopeConstruction::Constructed)
-                && !target.schema.repeating
-                && matches!(target.schema.kind, SchemaKind::Group { .. })
-                && xml_document_output_options(&target.options)
-        });
-    // Unlike the historical input-only/one-output routes, every combined root
-    // must be flat even with one named output and no primary-root expressions.
-    let root_view_static_combined = primary_xml
-        && project.source_options
-            == (mapping::FormatOptions {
-                xml_document: true,
-                xml_allow_inactive_root_type_members: true,
-                xml_root_view_read_policy: true,
-                ..Default::default()
-            })
-        && !project.extra_sources.is_empty()
-        && !project.extra_targets.is_empty()
-        && project.extra_sources.iter().all(|source| {
-            source.dynamic_path.is_none()
-                && source.options
-                    == (mapping::FormatOptions {
-                        xml_document: true,
-                        ..Default::default()
-                    })
-                && ir::xml_structured_document_input_is_supported(&source.schema)
-        })
-        && std::iter::once((&project.target, &project.root, &project.target_options))
-            .chain(
-                project
-                    .extra_targets
-                    .iter()
-                    .map(|target| (&target.schema, &target.root, &target.options)),
-            )
-            .all(|(schema, scope, options)| {
-                !schema.repeating
-                    && matches!(schema.kind, SchemaKind::Group { .. })
-                    && (scope.target_field.is_empty() || scope.target_field == schema.name)
-                    && matches!(scope.iteration, ScopeIteration::None)
-                    && matches!(scope.construction, ScopeConstruction::Constructed)
-                    && scope.dynamic_bindings.is_empty()
-                    && scope.filter.is_none()
-                    && scope.post_group_filter.is_none()
-                    && !scope.has_grouping()
-                    && !scope.has_sort()
-                    && scope.windows.is_empty()
-                    && !scope.merge_dynamic_fields
-                    && scope.children.is_empty()
-                    && scope.dynamic_children.is_empty()
-                    && scope.concatenated().is_none()
-                    && xml_document_output_options(options)
-            });
-    if primary_xml
-        && (!project.extra_sources.is_empty() || !project.extra_targets.is_empty())
-        && !root_view_static_inputs
-        && !root_view_static_output
-        && !root_view_static_combined
-    {
-        reader_diagnostics.push(Diagnostic::Validation {
-            location: "source format options".into(),
-            message: "generated XML document adapters require one primary input and output; named and dynamic boundaries are unsupported".into(),
-        });
-    }
-    if primary_xml {
-        let supported = mapping::FormatOptions {
-            xml_document: project.target_options.xml_document,
-            xml_schema_hints: project.target_options.xml_schema_hints.clone(),
-            ..Default::default()
-        };
-        if project.target_options != supported {
-            reader_diagnostics.push(Diagnostic::Validation {
-                location: "target format options".into(),
-                message: "generated XML document output supports only primary XML format options"
-                    .into(),
-            });
-        }
-    }
-    if !reader_diagnostics.is_empty() {
-        return Err(LowerError::new(reader_diagnostics));
-    }
-
-    let mut hint_diagnostics = Vec::new();
-    for (location, options) in
-        std::iter::once(("target format options".to_string(), &project.target_options)).chain(
-            project.extra_targets.iter().map(|target| {
-                (
-                    format!("extra target `{}` format options", target.name),
-                    &target.options,
-                )
-            }),
-        )
-    {
-        if options.xml_schema_hints.is_some()
-            && !(ordinary_xml_input
-                || (primary_xml && location == "target format options")
-                || root_view_static_output
-                || root_view_static_combined)
-        {
-            hint_diagnostics.push(Diagnostic::Validation {
-                location,
-                message: "code generation does not support XML schema hints".into(),
-            });
-        }
-    }
-    if !hint_diagnostics.is_empty() {
-        return Err(LowerError::new(hint_diagnostics));
-    }
+    let xml_request = match xml_request {
+        Some(request) => request,
+        None => XmlRequest::classify(project)?,
+    };
     let mut diagnostics = Vec::new();
     let mut roots = Vec::new();
     let extra_sources = project
@@ -509,7 +148,14 @@ fn lower_with_policy(
                 roots.push(dynamic.node);
                 DynamicSourceProgram {
                     path: dynamic.node,
-                    driver: SourceIteration::new(dynamic.iteration.clone()),
+                    driver: match &dynamic.iteration {
+                        mapping::SourceSelector::Legacy(path) => {
+                            SourceIteration::new(path.clone()).into()
+                        }
+                        mapping::SourceSelector::Owned(driver) => {
+                            crate::OwnedSourceIteration::new(driver.clone()).into()
+                        }
+                    },
                 }
             }),
         })
@@ -581,42 +227,7 @@ fn lower_with_policy(
         return Err(LowerError::new(diagnostics));
     }
     let mut program = Program {
-        xml_boundary: (primary_xml || ordinary_xml).then(|| crate::XmlBoundaryProgram {
-            input: crate::XmlInputPolicy {
-                allow_inactive_root_type_members: project
-                    .source_options
-                    .xml_allow_inactive_root_type_members,
-                root_view_policy: primary_xml,
-            },
-            extra_inputs: project
-                .extra_sources
-                .iter()
-                .map(|source| crate::NamedXmlInputPolicy {
-                    name: source.name.clone(),
-                    input: crate::XmlInputPolicy {
-                        allow_inactive_root_type_members: source
-                            .options
-                            .xml_allow_inactive_root_type_members,
-                        root_view_policy: source.options.xml_root_view_read_policy,
-                    },
-                })
-                .collect(),
-            output: crate::XmlOutputPolicy {
-                schema_hints: project.target_options.xml_schema_hints.clone(),
-                ..Default::default()
-            },
-            extra_outputs: project
-                .extra_targets
-                .iter()
-                .map(|target| crate::NamedXmlOutputPolicy {
-                    name: target.name.clone(),
-                    output: crate::XmlOutputPolicy {
-                        schema_hints: target.options.xml_schema_hints.clone(),
-                        ..Default::default()
-                    },
-                })
-                .collect(),
-        }),
+        xml_boundary: xml_request.boundary(project),
         source: project.source.clone(),
         extra_sources,
         target: project.target.clone(),
@@ -626,17 +237,19 @@ fn lower_with_policy(
         root,
         extra_targets,
     };
-    if ordinary_xml
+    let mut validation = validator(&program);
+    if xml_request.optional()
         && matches!(
-            validator(&program),
+            validation,
             Err(ProgramValidationError::InvalidXmlBoundary { .. })
         )
     {
         // This optional adapter is removed only for ordinary format identity.
         // Observed input policies above retain their strict typed refusal.
         program.xml_boundary = None;
+        validation = validator(&program);
     }
-    if let Err(error) = validator(&program) {
+    if let Err(error) = validation {
         let diagnostic = portable_context_error(&error).unwrap_or_else(|| Diagnostic::Validation {
             location: "code generation".into(),
             message: error.to_string(),
@@ -767,6 +380,7 @@ fn lower_scope(
         roots.extend(sequence.owned_items());
     }
     roots.extend(scope.output_path());
+    roots.extend(scope.presence());
     let base_construction = match &scope.construction {
         ScopeConstruction::Scalar { value } => {
             roots.push(*value);
@@ -884,7 +498,12 @@ fn lower_scope(
             })
         })
         .collect();
-    let child_root_context = root_context && matches!(scope.iteration, ScopeIteration::None);
+    // Optional presence adds no source frame, so join root context carries through.
+    let child_root_context = root_context
+        && matches!(
+            scope.iteration,
+            ScopeIteration::None | ScopeIteration::OptionalPresence { .. }
+        );
     let children = scope
         .children
         .iter()
@@ -1032,6 +651,9 @@ fn lower_iteration(scope: &Scope) -> Result<Option<IterationPlan>, Diagnostic> {
         }
         ScopeIteration::OwnedInnerJoin { id, plan } => {
             OwnedInnerJoin::new(JoinId::from(*id), plan.clone()).into()
+        }
+        ScopeIteration::OptionalPresence { condition } => {
+            return Ok(Some(IterationPlan::optional_presence(*condition)));
         }
         ScopeIteration::None | ScopeIteration::Concatenate(_) => return Ok(None),
     };
@@ -1341,6 +963,7 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
         Node::OwnedSourceField(field) => Expression::OwnedSourceField(field.clone()),
         Node::OwnedPosition(position) => Expression::OwnedPosition(position.clone()),
         Node::OwnedRowDocumentPath(path) => Expression::OwnedRowDocumentPath(path.clone()),
+        Node::OwnedSourceDocumentPath(path) => Expression::OwnedSourceDocumentPath(path.clone()),
         Node::OwnedLookup(lookup) => Expression::OwnedLookup(lookup.clone()),
         Node::OwnedCollectionFind(find) => Expression::OwnedCollectionFind(find.clone()),
         Node::OwnedXmlSerialize(serializer) => Expression::OwnedXmlSerialize(serializer.clone()),
@@ -1580,15 +1203,6 @@ fn unsupported_function(node: NodeId, function: &str) -> Diagnostic {
         node,
         function: function.to_string(),
     }
-}
-
-fn xml_document_output_options(options: &mapping::FormatOptions) -> bool {
-    *options
-        == mapping::FormatOptions {
-            xml_document: true,
-            xml_schema_hints: options.xml_schema_hints.clone(),
-            ..Default::default()
-        }
 }
 
 fn owned_document_diagnostic(

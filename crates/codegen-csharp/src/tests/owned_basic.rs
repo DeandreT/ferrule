@@ -1,8 +1,10 @@
 //! Prospective private generator controls. No public capability is enabled.
-//! Set FERRULE_PRIVATE_OWNED_CSHARP_HOST_DIR only in the protected root test
-//! actor to retain the generated Mapping, TargetBuilder, and complete typed host.
-//! Hosts must be compiled against the separately qualified #489 C#204 runtime;
-//! ordinary embedded runtime/artifacts and all public emitter routes stay exact.
+//! FERRULE_PRIVATE_OWNED_CSHARP_HOST_DIR and FERRULE_PRIVATE_CHECKED_CSHARP_HOST_DIR
+//! retain the generated Mapping, TargetBuilder and complete typed host;
+//! FERRULE_PUBLIC_BASIC_CSHARP_HOST_DIR retains the public consumers.
+//! `owned_basic_consumers` builds and runs all of them without an external
+//! campaign.
+//! Ordinary embedded runtime/artifacts and all public emitter routes stay exact.
 use super::*;
 use crate::owned_basic::render_basic_owned_mapping;
 use ::mapping::{OwnedPosition, OwnedSourceField, OwnedSourceRef, SourceOwner};
@@ -273,10 +275,13 @@ fn private_named_walk_and_legacy_nested_frame_hosts() {
             ],
         ),
     );
+    // The legacy `Ref/Rows` alias position does not follow the owned cursor;
+    // the interpreter returns 1 for both rows (see the Rust backend's
+    // `p04_legacy_alias_position_matches_the_interpreter`).
     let s = retain_host(
         "G439-P04",
         &p,
-        r#"var a=Reach("P04",()=>ExecuteOwnedBasic(Input,Declared,Limits)); ExpectTree(a,"[{\"Value\":\"N1\",\"OwnedPosition\":1,\"LegacyPosition\":1},{\"Value\":\"N2\",\"OwnedPosition\":2,\"LegacyPosition\":2}]");"#,
+        r#"var a=Reach("P04",()=>ExecuteOwnedBasic(Input,Declared,Limits)); ExpectTree(a,"[{\"Value\":\"N1\",\"OwnedPosition\":1,\"LegacyPosition\":1},{\"Value\":\"N2\",\"OwnedPosition\":2,\"LegacyPosition\":1}]");"#,
     );
     assert!(s.contains("WalkOwnedSourceCohort(global::Ferrule.Runtime.FerruleOwnedSourceOwner.Named(\"Ref\"), new string[] { \"Rows\" })"));
     assert_eq!(s.matches("WalkOwnedSourceCohort(").count(), 1);
@@ -1250,7 +1255,7 @@ fn private_legacy_dynamic_inventory_closes_only_potential_demands() {
         source: source_schema("Dynamic"),
         dynamic: Some(codegen::DynamicSourceProgram {
             path: 10,
-            driver: codegen::SourceIteration::new(path(&["Rows"])),
+            driver: codegen::SourceIteration::new(path(&["Rows"])).into(),
         }),
     });
     let mut cases: Vec<(&str, Program, Option<ProgramValidationError>)> = Vec::new();
@@ -1393,7 +1398,7 @@ fn checked_program() -> Program {
     );
     p.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 99,
-        driver: codegen::SourceIteration::new(Vec::new()),
+        driver: codegen::SourceIteration::new(Vec::new()).into(),
     });
     add_target(
         &mut p,
@@ -2357,7 +2362,7 @@ fn private_source_failure_dynamic_owned_generated_and_specialized_admission() {
         source: source_schema("Dynamic"),
         dynamic: Some(codegen::DynamicSourceProgram {
             path: 102,
-            driver: codegen::SourceIteration::new(path(&["Rows"])),
+            driver: codegen::SourceIteration::new(path(&["Rows"])).into(),
         }),
     });
     base.failure_rules
@@ -2618,7 +2623,7 @@ fn private_source_failure_preserves_ordinary_bytes_and_public_owned_gates() {
     };
     let ordinary = emit(&program);
     let typed = emit_typed(&program);
-    let untyped_source = crate::mapping::render(&program);
+    let untyped_source = crate::mapping::render_complete(&program);
     let typed_source = crate::mapping::render_typed(&program);
     eprintln!(
         "INPUT ordinary legacy failure complete Program={program:#?} RAW ordinary={ordinary:#?} typed={typed:#?} ordinary_source={untyped_source:#?} typed_source={typed_source:#?}"
@@ -2627,11 +2632,13 @@ fn private_source_failure_preserves_ordinary_bytes_and_public_owned_gates() {
     assert!(
         untyped_source
             .expect("complete ordinary source recorded")
+            .members
             .contains("FailureRule_0(context);")
     );
     assert!(
         typed_source
             .expect("complete typed source recorded")
+            .members
             .contains("FailureRule_0(context);")
     );
 }
@@ -3963,7 +3970,7 @@ fn private_target_value_map_retains_legacy_input_catalogues_and_dynamic_guard() 
     );
     p.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 99,
-        driver: codegen::SourceIteration::new(vec![]),
+        driver: codegen::SourceIteration::new(vec![]).into(),
     });
     let refused = checked_result("S566-01 retained ValueMap input", &p);
     let expected = ProgramValidationError::OwnedSource {
@@ -4197,7 +4204,7 @@ fn private_retained_inventory_omits_dead_ordinary_nodes_and_unreferenced_functio
         source: source_schema("Dynamic"),
         dynamic: Some(codegen::DynamicSourceProgram {
             path: 98,
-            driver: codegen::SourceIteration::new(path(&["Rows"])),
+            driver: codegen::SourceIteration::new(path(&["Rows"])).into(),
         }),
     });
     baseline.expressions.push(expression(
@@ -5475,7 +5482,7 @@ fn private_failure_value_maps_keep_potential_inputs_and_retained_dynamic_envelop
     let mut base = failure594_program();
     base.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 99,
-        driver: codegen::SourceIteration::new(vec![]),
+        driver: codegen::SourceIteration::new(vec![]).into(),
     });
     for (label, input) in [
         (
@@ -5686,7 +5693,7 @@ fn private_failure_value_maps_keep_owned_structure_and_actual_called_body_priori
     ));
     call.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 99,
-        driver: codegen::SourceIteration::new(vec![]),
+        driver: codegen::SourceIteration::new(vec![]).into(),
     });
     failure594_refuse(
         "S594-20 stored call before dynamic argument",
@@ -5728,7 +5735,7 @@ fn private_failure_value_maps_keep_per_rule_priority_and_shared_public_refusals(
     let mut base = failure594_program();
     base.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 99,
-        driver: codegen::SourceIteration::new(vec![]),
+        driver: codegen::SourceIteration::new(vec![]).into(),
     });
     let mut later = base.clone();
     failure594_expression(
@@ -7237,8 +7244,14 @@ fn public_basic_sort_companion_preserves_existing_bytes_and_closed_routes() {
     let sorted = crate::emit_with_basic_owned_sort(&plain);
     let private_plain = render_basic_owned_mapping(&plain);
     let public_plain = crate::owned_basic::render_public_basic_owned_mapping(&plain);
-    let public_filter_plain = crate::owned_basic::render_public_basic_owned_filter_mapping(&plain);
-    let public_sort_plain = crate::owned_basic::render_public_basic_owned_sort_mapping(&plain);
+    let public_filter_plain = crate::owned_basic::render_public_basic_owned_capability_mapping(
+        &plain,
+        codegen::OwnedPreset::Filters.capabilities(),
+    );
+    let public_sort_plain = crate::owned_basic::render_public_basic_owned_capability_mapping(
+        &plain,
+        codegen::OwnedPreset::Sort.capabilities(),
+    );
     eprintln!(
         "N669 compatibility complete input={plain:#?} old={old:#?} filter={filtered:#?} sort={sorted:#?} private={private_plain:#?} public={public_plain:#?} public_filter={public_filter_plain:#?} public_sort={public_sort_plain:#?}"
     );

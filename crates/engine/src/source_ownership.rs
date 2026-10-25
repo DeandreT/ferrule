@@ -1,4 +1,5 @@
 //! Context-keyed admission for the new basic source domain; acquires no input.
+use crate::scope_slots::{self, AdmittedRoot};
 use crate::{EngineError, OwnedCapabilityContext, OwnedSourceError, TargetSelection};
 use mapping::{
     FailureIteration, FunctionId, Node, NodeId, Project, Scope, ScopeConstruction, SequenceExpr,
@@ -270,7 +271,8 @@ impl<'a> Admission<'a> {
             match scope.source_selector() {
                 Some(SourceSelectorRef::Legacy(path)) => self.path(path),
                 Some(SourceSelectorRef::Owned(source)) => {
-                    self.static_owner(&source.owner, &source.path, None, None, Some(&location))?;
+                    self.loaded_owner(&source.owner, &source.path, None, None, Some(&location))?;
+                    self.loading(&source.owner, &location, context)?;
                     self.summary.used_owned = true;
                 }
                 None => {}
@@ -302,81 +304,7 @@ impl<'a> Admission<'a> {
                     )
                 }));
             }
-            self.push(None, context, ancestry, scope.filter);
-            self.push(None, context, ancestry, scope.post_group_filter);
-            self.push(None, context, ancestry, scope.grouping_nodes());
-            self.push(None, context, ancestry, scope.sort_by);
-            self.push(None, context, ancestry, scope.output_path());
-            self.push(
-                None,
-                context,
-                ancestry,
-                scope
-                    .windows
-                    .iter()
-                    .copied()
-                    .flat_map(|window| window.nodes()),
-            );
-            self.push(
-                None,
-                context,
-                ancestry,
-                scope.sort_then_by.iter().map(|key| key.node),
-            );
-            self.push(
-                None,
-                context,
-                ancestry,
-                scope.bindings.iter().map(|binding| binding.node),
-            );
-            self.push(
-                None,
-                OwnedCapabilityContext::DynamicTarget,
-                ancestry,
-                scope
-                    .dynamic_bindings
-                    .iter()
-                    .flat_map(|binding| [binding.key, binding.value]),
-            );
-            match &scope.construction {
-                ScopeConstruction::Scalar { value } => self.push(None, context, ancestry, [*value]),
-                // An owned selector's filter evaluates its predicate in Basic
-                // item frames of that same owner; a legacy filter stays closed.
-                ScopeConstruction::RecursiveFilter { plan } => self.push(
-                    None,
-                    if scope.owned_recursive_filter().is_some() {
-                        context
-                    } else {
-                        OwnedCapabilityContext::TreeOperator
-                    },
-                    ancestry,
-                    [plan.predicate()],
-                ),
-                ScopeConstruction::PathHierarchy { plan } => self.path(plan.collection()),
-                ScopeConstruction::OwnedPathHierarchy { plan } => {
-                    let source = plan.collection();
-                    self.static_owner(&source.owner, &source.path, None, None, Some(&location))?;
-                    self.summary.used_owned = true;
-                }
-                ScopeConstruction::AdjacencyTree { plan } => {
-                    self.path(plan.collection());
-                    self.push(
-                        None,
-                        OwnedCapabilityContext::TreeOperator,
-                        ancestry,
-                        plan.root(),
-                    );
-                }
-                // Rows are an exact owned read in the receiving context; the
-                // root expression keeps that Basic parent context.
-                ScopeConstruction::OwnedAdjacencyTree { plan } => {
-                    let source = plan.collection();
-                    self.static_owner(&source.owner, &source.path, None, None, Some(&location))?;
-                    self.summary.used_owned = true;
-                    self.push(None, context, ancestry, plan.root());
-                }
-                _ => {}
-            }
+            self.scope_roots(scope, &location, context, ancestry)?;
             pending.extend(scope.children.iter().enumerate().map(|(index, child)| {
                 (
                     child,
@@ -386,12 +314,6 @@ impl<'a> Admission<'a> {
                 )
             }));
             for (index, child) in scope.dynamic_children.iter().enumerate() {
-                self.push(
-                    None,
-                    OwnedCapabilityContext::DynamicTarget,
-                    ancestry,
-                    [child.key],
-                );
                 pending.push((
                     &child.scope,
                     location.descendant(SourceScopeStep::DynamicChild(index)),
@@ -400,6 +322,73 @@ impl<'a> Admission<'a> {
                 ));
             }
         }
+        Ok(())
+    }
+    /// Admits a scope's own roots other than its sequence's, in visit order
+    /// with its dynamic child keys last, and its construction's collection.
+    fn scope_roots(
+        &mut self,
+        scope: &'a Scope,
+        location: &SourceScopeLocation,
+        context: OwnedCapabilityContext,
+        ancestry: bool,
+    ) -> Result<(), EngineError> {
+        let mut child_keys = Vec::new();
+        scope.visit_roots(&mut |root| {
+            let context = match scope_slots::admitted(root.slot) {
+                Some(AdmittedRoot::Scope) => context,
+                Some(AdmittedRoot::DynamicBinding) => OwnedCapabilityContext::DynamicTarget,
+                Some(AdmittedRoot::Construction) => match &scope.construction {
+                    // A legacy tree's rows are walked before its root is read.
+                    ScopeConstruction::AdjacencyTree { plan } => {
+                        self.path(plan.collection());
+                        OwnedCapabilityContext::TreeOperator
+                    }
+                    // An owned selector's filter evaluates its predicate in
+                    // Basic item frames of that same owner; a legacy filter
+                    // stays closed.
+                    ScopeConstruction::RecursiveFilter { .. }
+                        if scope.owned_recursive_filter().is_none() =>
+                    {
+                        OwnedCapabilityContext::TreeOperator
+                    }
+                    // A scalar value and an owned tree's root, whose rows are
+                    // an exact owned read in the receiving context, keep that
+                    // context.
+                    _ => context,
+                },
+                Some(AdmittedRoot::DynamicChildKey) => {
+                    child_keys.push(root.node);
+                    return;
+                }
+                None => return,
+            };
+            self.push(None, context, ancestry, [root.node]);
+        });
+        let owned_rows = match &scope.construction {
+            ScopeConstruction::PathHierarchy { plan } => {
+                self.path(plan.collection());
+                None
+            }
+            // A tree with a root walked its rows before admitting the root.
+            ScopeConstruction::AdjacencyTree { plan } if plan.root().is_none() => {
+                self.path(plan.collection());
+                None
+            }
+            ScopeConstruction::OwnedPathHierarchy { plan } => Some(plan.collection()),
+            ScopeConstruction::OwnedAdjacencyTree { plan } => Some(plan.collection()),
+            _ => None,
+        };
+        if let Some(source) = owned_rows {
+            self.static_owner(&source.owner, &source.path, None, None, Some(location))?;
+            self.summary.used_owned = true;
+        }
+        self.push(
+            None,
+            OwnedCapabilityContext::DynamicTarget,
+            ancestry,
+            child_keys,
+        );
         Ok(())
     }
     /// Admit one owned join scope. Its sources name static endpoints and its
@@ -447,11 +436,7 @@ impl<'a> Admission<'a> {
             None,
             OwnedCapabilityContext::Basic,
             inherited_owned,
-            scope
-                .windows
-                .iter()
-                .copied()
-                .flat_map(|window| window.nodes()),
+            scope_slots::roots(scope, scope_slots::owned_join_receiving),
         );
         self.join_tuple_scope(scope, location)
     }
@@ -460,18 +445,7 @@ impl<'a> Admission<'a> {
         scope: &'a Scope,
         location: &SourceScopeLocation,
     ) -> Result<(), EngineError> {
-        let mut nodes: Vec<_> = scope
-            .filter
-            .into_iter()
-            .chain(scope.post_group_filter)
-            .chain(scope.grouping_nodes())
-            .chain(scope.sort_keys().map(|key| key.node))
-            .chain(scope.bindings.iter().map(|binding| binding.node))
-            .collect();
-        if let ScopeConstruction::Scalar { value } = scope.construction {
-            nodes.push(value);
-        }
-        self.join_tuple_nodes(nodes)?;
+        self.join_tuple_nodes(scope_slots::roots(scope, scope_slots::join_tuple))?;
         for (index, child) in scope.children.iter().enumerate() {
             let location = location.descendant(SourceScopeStep::Child(index));
             // Only static descendant projections share a tuple; a nested
@@ -544,6 +518,30 @@ impl<'a> Admission<'a> {
         node: Option<NodeId>,
         scope: Option<&SourceScopeLocation>,
     ) -> Result<(), EngineError> {
+        self.endpoint_owner(owner, path, pin, node, scope, false)
+    }
+    /// Like [`Self::static_owner`], also admitting an owned dynamic endpoint:
+    /// only exact field and position reads and source iterations read loaded
+    /// documents, which exist only inside their loading scope.
+    fn loaded_owner(
+        &mut self,
+        owner: &SourceOwner,
+        path: &[String],
+        pin: Option<&[String]>,
+        node: Option<NodeId>,
+        scope: Option<&SourceScopeLocation>,
+    ) -> Result<(), EngineError> {
+        self.endpoint_owner(owner, path, pin, node, scope, true)
+    }
+    fn endpoint_owner(
+        &mut self,
+        owner: &SourceOwner,
+        path: &[String],
+        pin: Option<&[String]>,
+        node: Option<NodeId>,
+        scope: Option<&SourceScopeLocation>,
+        loaded: bool,
+    ) -> Result<(), EngineError> {
         if self.owned_budget.is_none() {
             self.owned_budget = Some(
                 crate::owned_context::OwnedBudget::new(
@@ -589,13 +587,45 @@ impl<'a> Admission<'a> {
                     OwnedSourceError::AmbiguousOwner { name: name.clone() },
                 ));
             }
-            if source.dynamic_path.is_some() {
+            let owned_driver = source
+                .dynamic_path
+                .as_ref()
+                .is_some_and(|dynamic| dynamic.owned_driver().is_some());
+            if source.dynamic_path.is_some() && !(loaded && owned_driver) {
                 return Err(EngineError::UnsupportedOwnedContext {
                     node,
                     function: None,
                     scope: scope.cloned(),
                     context: OwnedCapabilityContext::DynamicOwner,
                 });
+            }
+        }
+        Ok(())
+    }
+    /// Admit the exact driver and path expression of an owned dynamic owner
+    /// iterated by `location`. The path is a Basic expression of each driver
+    /// item; its driver may itself be an owned dynamic endpoint.
+    fn loading(
+        &mut self,
+        owner: &SourceOwner,
+        location: &SourceScopeLocation,
+        context: OwnedCapabilityContext,
+    ) -> Result<(), EngineError> {
+        let SourceOwner::Named { name } = owner else {
+            return Ok(());
+        };
+        let project = self.project;
+        for (index, source) in project.extra_sources.iter().enumerate() {
+            let Some(dynamic) = source.dynamic_path.as_ref() else {
+                continue;
+            };
+            let Some(driver) = dynamic.owned_driver() else {
+                continue;
+            };
+            if source.name == *name && self.dynamic.insert(index) {
+                self.loaded_owner(&driver.owner, &driver.path, None, None, Some(location))?;
+                self.push(None, context, true, [dynamic.node]);
+                self.loading(&driver.owner, location, context)?;
             }
         }
         Ok(())
@@ -687,7 +717,12 @@ impl<'a> Admission<'a> {
             .enumerate()
             .filter(|(_, source)| source.name == *name)
         {
-            let Some(dynamic) = &source.dynamic_path else {
+            // An owned driver is admitted only through its owned loading scope.
+            let Some((dynamic, driver)) = source
+                .dynamic_path
+                .as_ref()
+                .and_then(|dynamic| Some((dynamic, dynamic.legacy_driver()?)))
+            else {
                 continue;
             };
             if self.dynamic.insert(index) {
@@ -697,7 +732,7 @@ impl<'a> Admission<'a> {
                     false,
                     [dynamic.node],
                 );
-                if let Some(driver) = dynamic.iteration.first() {
+                if let Some(driver) = driver.first() {
                     self.path(std::slice::from_ref(driver));
                 }
             }
@@ -713,49 +748,6 @@ impl<'a> Admission<'a> {
                 false,
                 [body.output],
             );
-        }
-    }
-    fn sequence(
-        &mut self,
-        sequence: &SequenceExpr,
-        function: Option<FunctionId>,
-        inherited: OwnedCapabilityContext,
-        basic_consumer: bool,
-    ) {
-        let context = if basic_consumer
-            && inherited == OwnedCapabilityContext::Basic
-            && basic_item_at_producer(sequence)
-        {
-            OwnedCapabilityContext::Basic
-        } else if matches!(sequence, SequenceExpr::RecursiveCollect { .. })
-            && matches!(
-                inherited,
-                OwnedCapabilityContext::Basic | OwnedCapabilityContext::GeneratedItem
-            )
-        {
-            OwnedCapabilityContext::TreeOperator
-        } else if inherited == OwnedCapabilityContext::Basic {
-            OwnedCapabilityContext::GeneratedItem
-        } else {
-            inherited
-        };
-        self.push(function, context, false, sequence.inputs());
-        // Producer arguments are parent scalars; the lexical declaration is
-        // still an ordinary generated item, never an endpoint-bearing input.
-        let item_context = if context == OwnedCapabilityContext::Basic {
-            OwnedCapabilityContext::GeneratedItem
-        } else {
-            context
-        };
-        self.push(function, item_context, false, sequence.owned_items());
-        match sequence {
-            SequenceExpr::RecursiveCollect { collection, .. } => self.path(collection),
-            SequenceExpr::FilterMapV1(composition) => {
-                self.function(composition.predicate);
-                self.function(composition.mapper);
-                self.sequence(&composition.source, function, context, false);
-            }
-            _ => {}
         }
     }
     fn graph(&mut self) -> Result<(), EngineError> {
@@ -839,13 +831,15 @@ impl<'a> Admission<'a> {
                     });
                 }
                 match node {
+                    // Failure scalars never see a loaded document.
                     Node::OwnedSourceField(field) => {
-                        self.static_owner(
+                        self.endpoint_owner(
                             &field.source.owner,
                             &field.source.path,
                             field.frame.as_deref(),
                             Some(id),
                             None,
+                            context == OwnedCapabilityContext::Basic,
                         )?;
                         if let Some(frame) = &field.frame
                             && !field.source.path.starts_with(frame)
@@ -860,12 +854,13 @@ impl<'a> Admission<'a> {
                             ));
                         }
                     }
-                    Node::OwnedPosition(position) => self.static_owner(
+                    Node::OwnedPosition(position) => self.endpoint_owner(
                         &position.owner,
                         position.collection.as_deref().unwrap_or_default(),
                         None,
                         Some(id),
                         None,
+                        context == OwnedCapabilityContext::Basic,
                     )?,
                     Node::OwnedRowDocumentPath(path) => self.static_owner(
                         &path.owner,
@@ -874,6 +869,11 @@ impl<'a> Admission<'a> {
                         Some(id),
                         None,
                     )?,
+                    // A static document-set member or an owned dynamic
+                    // endpoint's loaded document carries the location.
+                    Node::OwnedSourceDocumentPath(path) => {
+                        self.loaded_owner(&path.owner, &[], None, Some(id), None)?
+                    }
                     // The object is an exact owned read; its key stays a
                     // Basic parent-context scalar.
                     Node::OwnedDynamicSourceField(field) => {
@@ -1121,6 +1121,7 @@ fn root_failure_node_is_static(project: &Project, node: &Node) -> bool {
     match node {
         Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_)
         | Node::Position { .. }
         | Node::OwnedDynamicSourceField(_)
         | Node::OwnedLookup(_)
@@ -1164,7 +1165,8 @@ fn primary_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
         | Node::OwnedLookup(_)
         | Node::OwnedCollectionFind(_)
         | Node::OwnedAggregate(_)
-        | Node::OwnedRowDocumentPath(_) => false,
+        | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_) => false,
         Node::OwnedPosition(position) => matches!(position.owner, SourceOwner::Primary),
         Node::OwnedSourceField(field) => match &field.source.owner {
             SourceOwner::Primary => true,
@@ -1197,7 +1199,8 @@ fn owned_row_failure_node_is_static(project: &Project, node: &Node) -> bool {
         Node::OwnedLookup(_)
         | Node::OwnedCollectionFind(_)
         | Node::OwnedAggregate(_)
-        | Node::OwnedRowDocumentPath(_) => false,
+        | Node::OwnedRowDocumentPath(_)
+        | Node::OwnedSourceDocumentPath(_) => false,
         Node::UserFunctionCall { .. } | Node::OwnedDynamicSourceField(_) => false,
         // Owned XML operators are target-context operators only.
         Node::OwnedXmlSerialize(_) | Node::OwnedXmlMixedContent(_) => false,
@@ -1235,26 +1238,7 @@ fn access_error(
 }
 
 fn scope_demands_owned(project: &Project, scope: &Scope) -> bool {
-    let mut pending: Vec<_> = scope
-        .bindings
-        .iter()
-        .map(|binding| binding.node)
-        .chain(scope.filter)
-        .chain(scope.grouping_nodes())
-        .chain(scope.post_group_filter)
-        .chain(scope.sort_keys().map(|key| key.node))
-        .chain(
-            scope
-                .windows
-                .iter()
-                .copied()
-                .flat_map(|window| window.nodes()),
-        )
-        .chain(match scope.construction {
-            ScopeConstruction::Scalar { value } => Some(value),
-            _ => None,
-        })
-        .collect();
+    let mut pending = scope_slots::roots(scope, scope_slots::owned_probe);
     let mut visited = BTreeSet::new();
     while let Some(id) = pending.pop() {
         if visited.insert(id)
@@ -1312,6 +1296,9 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
     }
     if scope.concatenated().is_some() {
         return OwnedCapabilityContext::Concatenate;
+    }
+    if scope.presence().is_some() {
+        return OwnedCapabilityContext::OptionalPresence;
     }
     match scope.construction {
         // Owned hierarchies and trees read their collection through the
@@ -1463,6 +1450,12 @@ fn node_context(node: &Node) -> OwnedCapabilityContext {
         _ => OwnedCapabilityContext::Basic,
     }
 }
+
+mod sequence;
+
+#[cfg(test)]
+#[path = "tests/root_admission.rs"]
+mod root_admission_tests;
 
 #[cfg(test)]
 pub(crate) fn check_context_reuse_for_test(

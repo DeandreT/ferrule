@@ -2,7 +2,8 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Command, Output};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -87,6 +88,7 @@ impl Drop for Files {
 
 struct Endpoint {
     url: String,
+    done: Arc<AtomicBool>,
     thread: JoinHandle<Vec<Vec<u8>>>,
 }
 
@@ -98,10 +100,14 @@ impl Endpoint {
             "http://{}/request?token=private-query",
             listener.local_addr().unwrap()
         );
+        let done = Arc::new(AtomicBool::new(false));
+        let stop = Arc::clone(&done);
         let thread = thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(3);
+            // The CLI has received every response before `finish` sets `stop`;
+            // the deadline only bounds a test that never finishes.
+            let deadline = Instant::now() + Duration::from_secs(60);
             let mut requests = Vec::new();
-            while Instant::now() < deadline {
+            while !stop.load(Ordering::Acquire) && Instant::now() < deadline {
                 let mut stream = match listener.accept() {
                     Ok((stream, _)) => stream,
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
@@ -151,10 +157,11 @@ impl Endpoint {
             }
             requests
         });
-        Self { url, thread }
+        Self { url, done, thread }
     }
 
     fn finish(self) -> Vec<Vec<u8>> {
+        self.done.store(true, Ordering::Release);
         self.thread.join().unwrap()
     }
 }

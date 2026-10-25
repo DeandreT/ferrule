@@ -51,7 +51,7 @@ pub(super) fn literal_preview(value: &ir::Value) -> String {
 
 fn builtin_icon(category: BuiltinCategory) -> Icon {
     match category {
-        BuiltinCategory::Boolean => Icon::GitBranch,
+        BuiltinCategory::Boolean => Icon::Check,
         BuiltinCategory::String => Icon::Type,
         BuiltinCategory::Numeric => Icon::Calculator,
         BuiltinCategory::DateTime => Icon::Calendar,
@@ -65,15 +65,61 @@ fn builtin_icon(category: BuiltinCategory) -> Icon {
     }
 }
 
+/// The same short, human-readable summary used on the canvas, without IDs.
+pub(crate) fn node_label(node: &Node) -> String {
+    let fallback = match node {
+        Node::Unconnected => "Unconnected input".into(),
+        Node::UserFunctionCall { .. } => "Function call".into(),
+        Node::FunctionParameter { .. } => "Function input".into(),
+        Node::Position { .. } => "Position".into(),
+        Node::JoinPosition { .. } => "Join position".into(),
+        Node::OwnedLookup(lookup) => format!(
+            "{}: Lookup",
+            crate::source_ownership::owner_label(&lookup.collection.owner)
+        ),
+        Node::OwnedCollectionFind(find) => format!(
+            "{}: Find in collection",
+            crate::source_ownership::owner_label(&find.collection.owner)
+        ),
+        Node::OwnedDynamicSourceField(field) => format!(
+            "{}: Property by name",
+            crate::source_ownership::owner_label(&field.object.owner)
+        ),
+        Node::OwnedAggregate(aggregate) => format!(
+            "{}: {}",
+            crate::source_ownership::owner_label(&aggregate.collection.owner),
+            aggregate_label(aggregate.function)
+        ),
+        Node::OwnedJoinField(field) => format!(
+            "{}: Joined field {}",
+            crate::source_ownership::owner_label(&field.collection.owner),
+            field.path.join("/")
+        ),
+        Node::OwnedJoinSourcePosition(position) => format!(
+            "{}: Join source position",
+            crate::source_ownership::owner_label(&position.collection.owner)
+        ),
+        Node::OwnedJoinAggregate(aggregate) => format!(
+            "Join {}: {}",
+            aggregate.join.get(),
+            aggregate_label(aggregate.function)
+        ),
+        _ => "Mapping value".into(),
+    };
+    header(node, &fallback, false)
+        .filter(|header| !header.summary.is_empty())
+        .map_or(fallback, |header| header.summary)
+}
+
 fn aggregate_label(function: AggregateOp) -> &'static str {
     match function {
-        AggregateOp::Count => "count",
-        AggregateOp::Sum => "sum",
-        AggregateOp::Avg => "average",
-        AggregateOp::Min => "min",
-        AggregateOp::Max => "max",
-        AggregateOp::Join => "join",
-        AggregateOp::ItemAt => "item at",
+        AggregateOp::Count => "Count",
+        AggregateOp::Sum => "Sum",
+        AggregateOp::Avg => "Average",
+        AggregateOp::Min => "Minimum",
+        AggregateOp::Max => "Maximum",
+        AggregateOp::Join => "String join",
+        AggregateOp::ItemAt => "Item at",
     }
 }
 
@@ -86,19 +132,19 @@ pub(super) fn owned_source_title(node: &Node) -> Option<String> {
     }
     fn frame(frame: Option<&[String]>) -> String {
         match frame {
-            None => "automatic (unresolved)".into(),
+            None => "automatic (this input's innermost active item)".into(),
             Some(path) => format!("explicit {path:?}"),
         }
     }
     match node {
         Node::OwnedSourceField(field) => Some(format!(
-            "Owned source: {}\nPath: {:?}\nFrame: {}\nRead-only; source ownership execution is unavailable",
+            "Owned source: {}\nPath: {:?}\nFrame: {}\nReads exactly this input; never another input with the same path",
             owner(&field.source.owner),
             field.source.path,
             frame(field.frame.as_deref()),
         )),
         Node::OwnedPosition(position) => Some(format!(
-            "Owned position: {}\nCollection: {}\nRead-only; source ownership execution is unavailable",
+            "Owned position: {}\nCollection: {}\nCounts exactly this input's active items",
             owner(&position.owner),
             frame(position.collection.as_deref()),
         )),
@@ -106,6 +152,10 @@ pub(super) fn owned_source_title(node: &Node) -> Option<String> {
             "Physical row document path: {}\nCollection: {}\nRead-only; no owner or ancestor fallback",
             owner(&path.owner),
             frame(path.collection.as_deref()),
+        )),
+        Node::OwnedSourceDocumentPath(path) => Some(format!(
+            "Owned document path: {}\nRead-only; no other input's document",
+            owner(&path.owner),
         )),
         Node::OwnedLookup(lookup) => Some(format!(
             "Owned lookup: {}\nCollection: {:?}\nKey: {:?}\nValue: {:?}\nRead-only; owned lookup authoring is unavailable",
@@ -377,18 +427,29 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
         full_title
     };
     let (icon, summary) = match node {
+        // Compact owned reads keep their owner visible beside the read itself.
         Node::OwnedSourceField(field) => (
             Icon::ArrowRightFromLine,
-            field
-                .source
-                .path
-                .last()
-                .map_or("owned root", String::as_str)
-                .to_owned(),
+            format!(
+                "{}: {}",
+                crate::source_ownership::owner_label(&field.source.owner),
+                field.source.path.last().map_or("<root>", String::as_str)
+            ),
         ),
-        Node::OwnedPosition(_) => (Icon::ListOrdered, "owned".into()),
-        Node::OwnedRowDocumentPath(_) => (Icon::ListOrdered, "row path".into()),
-        Node::OwnedXmlSerialize(_) => (Icon::FileCode, "owned serialize".into()),
+        Node::OwnedPosition(position) => (
+            Icon::ListOrdered,
+            format!(
+                "Position · {}: {}",
+                crate::source_ownership::owner_label(&position.owner),
+                position
+                    .collection
+                    .as_ref()
+                    .map_or_else(|| "<latest>".to_owned(), |path| path.join("/"))
+            ),
+        ),
+        Node::OwnedRowDocumentPath(_) => (Icon::ListOrdered, "Row document path".into()),
+        Node::OwnedSourceDocumentPath(_) => (Icon::FileText, "Owned document path".into()),
+        Node::OwnedXmlSerialize(_) => (Icon::FileCode, "Serialize owned XML".into()),
         Node::OwnedXmlMixedContent(mixed) => (
             Icon::FileCode,
             format!(
@@ -406,17 +467,28 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
             };
             let summary = match value {
                 ir::Value::Null | ir::Value::JsonNull(_) | ir::Value::XmlNil(_) => {
-                    value.type_name().to_owned()
+                    crate::value_editor::type_label(value).to_owned()
                 }
-                _ => format!("{} {}", value.type_name(), literal_preview(value)),
+                _ => format!(
+                    "{} · {}",
+                    crate::value_editor::type_label(value),
+                    literal_preview(value)
+                ),
             };
             (icon, summary)
         }
         Node::Call { function, .. } => {
             let builtin = functions::builtin(function);
             (
-                builtin.map_or(Icon::FunctionSquare, |builtin| {
-                    builtin_icon(builtin.category)
+                builtin.map_or(Icon::FunctionSquare, |builtin| match function.as_str() {
+                    "not" => Icon::CircleSlash,
+                    "equal" => Icon::Equal,
+                    "not_equal" => Icon::EqualNot,
+                    "greater" | "greater_than" => Icon::ChevronRight,
+                    "greater_or_equal" => Icon::ChevronRightCircle,
+                    "less" | "less_than" => Icon::ChevronLeft,
+                    "less_or_equal" => Icon::ChevronLeftCircle,
+                    _ => builtin_icon(builtin.category),
                 }),
                 builtin
                     .map_or(function.as_str(), |builtin| builtin.display_name)
@@ -428,8 +500,9 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
             title.strip_prefix("Call: ").unwrap_or(title).to_owned(),
         ),
         Node::If { .. } => (Icon::GitBranch, "If / else".into()),
-        Node::Raise { .. } => (Icon::CircleX, "error".into()),
-        Node::Position { .. } | Node::JoinPosition { .. } => (Icon::ListOrdered, String::new()),
+        Node::Raise { .. } => (Icon::CircleX, "Raise error".into()),
+        Node::Position { .. } => (Icon::ListOrdered, "Position".into()),
+        Node::JoinPosition { .. } => (Icon::ListOrdered, "Join position".into()),
         Node::SourceField { path, .. } => {
             if matches!(title, "Stage input" | "Mapped output") {
                 (Icon::ListOrdered, title.into())
@@ -486,11 +559,11 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
                 object.last().map_or("current", String::as_str),
             ),
         ),
-        Node::SourceDocumentPath => (Icon::FileText, "path".into()),
+        Node::SourceDocumentPath => (Icon::FileText, "Source document path".into()),
         Node::RuntimeValue { value } => match value {
-            RuntimeValue::MappingFilePath => (Icon::Folder, "mapping path".into()),
-            RuntimeValue::MainMappingFilePath => (Icon::Folder, "main path".into()),
-            RuntimeValue::CurrentDateTime => (Icon::Clock, "now".into()),
+            RuntimeValue::MappingFilePath => (Icon::Folder, "Mapping path".into()),
+            RuntimeValue::MainMappingFilePath => (Icon::Folder, "Main mapping path".into()),
+            RuntimeValue::CurrentDateTime => (Icon::Clock, "Run date and time".into()),
         },
         Node::RuntimeParameter { name, .. } | Node::RuntimeParameterDefault { name, .. } => (
             Icon::Variable,
@@ -525,7 +598,14 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
         Node::SequenceItemAt { .. } => (Icon::ListOrdered, "item at".into()),
         Node::Aggregate { function, .. }
         | Node::SequenceAggregate { function, .. }
-        | Node::JoinAggregate { function, .. } => (Icon::Sigma, aggregate_label(*function).into()),
+        | Node::JoinAggregate { function, .. } => (
+            if *function == AggregateOp::Join {
+                Icon::Type
+            } else {
+                Icon::Sigma
+            },
+            aggregate_label(*function).into(),
+        ),
         Node::XmlMixedContent { path, .. } => (
             Icon::FileCode,
             format!("mixed {}", path.last().map_or("current", String::as_str),),
@@ -751,10 +831,11 @@ pub(super) fn show_header_with_edit(
     })
 }
 
-/// Header-aligned native pins are suitable for these individual cards only.
-/// This neither merges operations nor changes their input/output identities.
+/// Leaf values can use a header-aligned output instead of an empty body row.
+/// Raise retains its optional message input even before it is connected.
+/// This never merges operations or changes input/output identities.
 pub(super) fn is_inline(node: &Node) -> bool {
-    matches!(node, Node::Const { .. })
+    (node.evaluated_inputs().is_empty() && !matches!(node, Node::Raise { .. }))
         || matches!(node, Node::Call { function, args } if args.len() == 1 && matches!(function.as_str(), "exists" | "not"))
 }
 
@@ -764,6 +845,7 @@ pub(super) fn has_properties(node: &Node) -> bool {
         Node::OwnedSourceField(_)
             | Node::OwnedPosition(_)
             | Node::OwnedRowDocumentPath(_)
+            | Node::OwnedSourceDocumentPath(_)
             | Node::OwnedXmlSerialize(_)
             | Node::OwnedXmlMixedContent(_)
             | Node::Const { .. }
@@ -899,6 +981,14 @@ pub(super) fn conditional_input_label(node: &Node, index: usize) -> Option<&'sta
 pub(super) fn show_input(ui: &mut Ui, label: &str, node: Option<&Node>, index: usize) {
     let conditional = node.and_then(|node| conditional_input_label(node, index));
     let label = conditional.unwrap_or(label);
+    let numbered = if let Some(Node::Call { function, args }) = node {
+        functions::builtin(function)
+            .filter(|builtin| builtin.arity.maximum().is_none() && args.len() > 1)
+            .map(|_| format!("{label} {}", index + 1))
+    } else {
+        None
+    };
+    let label = numbered.as_deref().unwrap_or(label);
     let hint = if let Some(Node::Call { function, .. }) = node {
         super::builtin_parameter(function, index).map_or_else(
             || label.to_owned(),

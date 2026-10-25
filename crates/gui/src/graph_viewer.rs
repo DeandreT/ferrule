@@ -16,7 +16,8 @@ use egui_snarl::ui::{NodeLayout, PinInfo, SnarlViewer};
 use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, OutPinId, Snarl};
 use ir::{ScalarType, Value};
 use mapping::{
-    AggregateOp, Binding, FunctionId, FunctionParameterId, Graph, NamedTarget, Node, NodeId, Scope,
+    AggregateOp, Binding, FunctionId, FunctionParameterId, Graph, NamedTarget, Node, NodeId,
+    OwnedSourceRef, Scope,
 };
 
 use crate::appearance::{SemanticThemeColors, WireColorMode};
@@ -34,6 +35,11 @@ mod graph_node_ids;
 mod graph_node_presentation;
 #[path = "graph_node_properties.rs"]
 mod graph_node_properties;
+
+/// Shared canvas-header wording for inspector and rule node pickers.
+pub(crate) fn readable_node_label(node: &mapping::Node) -> String {
+    graph_node_presentation::node_label(node)
+}
 #[path = "graph_planned_edits.rs"]
 mod graph_planned_edits;
 #[path = "graph_references.rs"]
@@ -48,7 +54,7 @@ mod graph_wire_edits;
 mod node_palette;
 
 use graph_node_ids::NodeIdReservation;
-pub(crate) use graph_planned_edits::PlannedGraphEdit;
+pub(crate) use graph_planned_edits::{PlannedGraphEdit, frame_has_edit_input};
 use graph_references::node_inputs;
 pub(crate) use graph_references::{
     InactiveTargetScope, ProjectGraphReferences, inactive_target_scopes, project_sequence_item_ids,
@@ -152,8 +158,8 @@ pub(crate) fn sequence_arguments_have_no_private_items(
 
 #[cfg(test)]
 const ENDPOINT_LABEL_CHAR_LIMIT: usize = 30;
-const SOURCE_FIELD_EDIT_WIDTH: f32 = 170.0;
-const PATH_EDITOR_WIDTH: f32 = 250.0;
+const SOURCE_FIELD_EDIT_WIDTH: f32 = crate::theme::editor_size::PATH_PICKER;
+const PATH_EDITOR_WIDTH: f32 = crate::theme::editor_size::TYPE_PATH_PICKER;
 
 #[cfg(test)]
 fn compact_endpoint_label(path: &str) -> String {
@@ -312,23 +318,45 @@ fn show_endpoint_proxy_label(
     connected: bool,
 ) {
     let direction = if above { "above" } else { "below" };
-    let label = if above {
-        format!("^ {hidden} hidden")
-    } else {
-        format!("v {hidden} hidden")
-    };
+    let label = format!("{hidden} hidden");
     let side = if source { "source" } else { "target" };
     let connection = if connected {
         "Connected offscreen fields are routed through this edge pin. "
     } else {
         ""
     };
-    show_endpoint_label(
+    let row = show_endpoint_label(
         ui,
         &label,
         align,
-        format!("{connection}Scroll to show {hidden} hidden {side} field(s) {direction}"),
+        format!("{connection}Scroll to show {hidden} hidden {side} fields {direction}"),
         false,
+    );
+    let icon = egui::WidgetText::from(crate::icons::text(
+        if above {
+            lucide_icons::Icon::ChevronUp
+        } else {
+            lucide_icons::Icon::ChevronDown
+        },
+        crate::ui_kit::METRICS.icon_small,
+    ))
+    .into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Body,
+    );
+    // Endpoint output rows run right-to-left. Paint in the reserved inner
+    // margin instead of allocating an icon beside (and under) the edge pin.
+    let x = if align == egui::Align::Max {
+        row.left() + 2.0
+    } else {
+        row.right() - icon.size().x - 2.0
+    };
+    ui.painter().galley(
+        egui::pos2(x, row.center().y - icon.size().y * 0.5),
+        icon,
+        ui.visuals().text_color(),
     );
 }
 
@@ -508,10 +536,35 @@ impl GraphViewer<'_> {
         }
     }
 
+    /// Inserts a palette position node through the recorded canvas path.
+    #[cfg(test)]
+    pub(crate) fn insert_position_for_test(
+        &mut self,
+        snarl: &mut Snarl<CanvasNode>,
+        pos: egui::Pos2,
+    ) -> Result<(NodeId, SnarlNodeId), String> {
+        self.insert_palette_node_recorded(snarl, pos, NodeTemplate::Position)
+    }
+
+    /// Shows a node's property editor exactly as its canvas popover does.
+    #[cfg(test)]
+    pub(crate) fn show_properties_for_test(
+        &mut self,
+        pin: &OutPin,
+        ui: &mut Ui,
+        snarl: &mut Snarl<CanvasNode>,
+    ) {
+        self.show_node_properties(pin, ui, snarl);
+    }
+
     pub(crate) fn source_block_connection_error(&self, block: usize) -> Option<String> {
         let index = block.checked_sub(1)?;
         let source = self.project_references.named_source(index)?;
         let owner = self.project_references.source_alias_conflict(index)?;
+        // An exact owner addresses a shadowed alias; only unresolvable names stay closed.
+        if self.source_paths.ownership().block_reads_owned(block) {
+            return None;
+        }
         Some(format!(
             "Named input `{}` is unavailable: its name/path conflicts with {owner}. Rename the input to use an unambiguous name. Existing bindings are unchanged.",
             source.name
@@ -562,10 +615,16 @@ impl GraphViewer<'_> {
             &section.title,
             context,
         );
-        match self.source_block_connection_error(block) {
-            Some(error) => {
-                Some(hint.map_or_else(|| error.clone(), |hint| format!("{hint}\n{error}")))
-            }
+        let note = self.source_block_connection_error(block).or_else(|| {
+            self.source_paths
+                .ownership()
+                .block_reads_owned(block)
+                .then(|| {
+                    "Wires from this input create owned reads of exactly this input.".to_owned()
+                })
+        });
+        match note {
+            Some(note) => Some(hint.map_or_else(|| note.clone(), |hint| format!("{hint}\n{note}"))),
             None => hint,
         }
     }
@@ -793,13 +852,17 @@ impl GraphViewer<'_> {
                     },
                 )
             }
-            NodeTemplate::Position => self.insert(
-                snarl,
-                pos,
-                Node::Position {
-                    collection: Vec::new(),
-                },
-            ),
+            NodeTemplate::Position => {
+                let node = match self.source_paths.ownership().palette_position() {
+                    Some(position) if self.function_output.is_none() => {
+                        Node::OwnedPosition(position)
+                    }
+                    _ => Node::Position {
+                        collection: Vec::new(),
+                    },
+                };
+                self.insert(snarl, pos, node)
+            }
             NodeTemplate::HostInput => self.insert(
                 snarl,
                 pos,
@@ -999,24 +1062,10 @@ impl GraphViewer<'_> {
         let Some(node) = self.graph.nodes.get_mut(&node_id) else {
             return false;
         };
+        if editor_ui::set_scalar_input(node, idx, from_id) {
+            return true;
+        }
         match node {
-            Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => {
-                args[idx] = from_id;
-            }
-            Node::Raise { message } => *message = Some(from_id),
-            Node::RuntimeParameterDefault { default, .. } => *default = from_id,
-            Node::If {
-                condition,
-                then,
-                else_,
-            } => match idx {
-                0 => *condition = from_id,
-                1 => *then = from_id,
-                2 => *else_ = from_id,
-                _ => return false,
-            },
-            Node::ValueMap { input, .. } => *input = from_id,
-            Node::Lookup { matches, .. } => *matches = from_id,
             Node::DynamicSourceField { key, .. } => *key = from_id,
             Node::XmlMixedContent { replacements, .. } => {
                 let Some(replacement) = replacements.get_mut(idx) else {
@@ -1024,13 +1073,6 @@ impl GraphViewer<'_> {
                 };
                 replacement.expression = from_id;
             }
-            Node::CollectionFind {
-                predicate, value, ..
-            } => match idx {
-                0 => *predicate = from_id,
-                1 => *value = from_id,
-                _ => return false,
-            },
             Node::SequenceExists {
                 sequence,
                 predicate,
@@ -1074,10 +1116,7 @@ impl GraphViewer<'_> {
                     return false;
                 }
             }
-            Node::Aggregate {
-                expression, arg, ..
-            }
-            | Node::JoinAggregate {
+            Node::JoinAggregate {
                 expression, arg, ..
             } => {
                 if expression.is_some() && idx == 0 {
@@ -1149,80 +1188,15 @@ impl GraphViewer<'_> {
         Ok(())
     }
 
+    /// The node wired to input pin `idx`. Pins follow the node's evaluated
+    /// inputs, in the order the canvas draws them.
     fn input_at(&self, node_id: NodeId, idx: usize) -> Option<NodeId> {
-        match self.graph.nodes.get(&node_id)? {
-            Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.get(idx).copied(),
-            Node::Raise { message } => (idx == 0).then_some(*message).flatten(),
-            Node::RuntimeParameterDefault { default, .. } => (idx == 0).then_some(*default),
-            Node::If {
-                condition,
-                then,
-                else_,
-            } => [*condition, *then, *else_].get(idx).copied(),
-            Node::ValueMap { input, .. } => (idx == 0).then_some(*input),
-            Node::Lookup { matches, .. } => (idx == 0).then_some(*matches),
-            Node::OwnedLookup(lookup) => (idx == 0).then_some(lookup.matches),
-            Node::OwnedJoinField(_) | Node::OwnedJoinSourcePosition(_) => None,
-            Node::OwnedCollectionFind(find) => [find.predicate, find.value].get(idx).copied(),
-            Node::OwnedAggregate(aggregate) => aggregate.inputs().get(idx).copied(),
-            Node::OwnedJoinAggregate(aggregate) => aggregate.inputs().get(idx).copied(),
-            Node::DynamicSourceField { key, .. } => (idx == 0).then_some(*key),
-            Node::OwnedDynamicSourceField(field) => (idx == 0).then_some(field.key),
-            Node::XmlMixedContent { replacements, .. } => replacements
-                .get(idx)
-                .map(|replacement| replacement.expression),
-            Node::OwnedXmlMixedContent(mixed) => mixed
-                .replacements
-                .get(idx)
-                .map(|replacement| replacement.expression),
-            Node::CollectionFind {
-                predicate, value, ..
-            } => [*predicate, *value].get(idx).copied(),
-            Node::SequenceExists {
-                sequence,
-                predicate,
-            } => graph_sequence::input_at(sequence, idx)
-                .or_else(|| (idx == sequence.inputs().len()).then_some(*predicate)),
-            Node::SequenceItemAt { sequence, index } => graph_sequence::input_at(sequence, idx)
-                .or_else(|| (idx == sequence.inputs().len()).then_some(*index)),
-            Node::SequenceAggregate {
-                sequence,
-                predicate,
-                expression,
-                arg,
-                ..
-            } => graph_sequence::input_at(sequence, idx).or_else(|| {
-                predicate
-                    .iter()
-                    .chain(expression)
-                    .chain(arg)
-                    .nth(idx.saturating_sub(sequence.inputs().len()))
-                    .copied()
-            }),
-            Node::Aggregate {
-                expression, arg, ..
-            }
-            | Node::JoinAggregate {
-                expression, arg, ..
-            } => expression.iter().chain(arg).nth(idx).copied(),
-            Node::OwnedSourceField(_)
-            | Node::OwnedPosition(_)
-            | Node::OwnedRowDocumentPath(_)
-            | Node::OwnedXmlSerialize(_)
-            | Node::SourceField { .. }
-            | Node::SourceDocumentPath
-            | Node::SourceRootXmlTypeEquals { .. }
-            | Node::SourceRootField { .. }
-            | Node::Position { .. }
-            | Node::JoinField { .. }
-            | Node::JoinPosition { .. }
-            | Node::Unconnected
-            | Node::Const { .. }
-            | Node::FunctionParameter { .. }
-            | Node::RuntimeValue { .. }
-            | Node::RuntimeParameter { .. }
-            | Node::XmlSerialize { .. } => None,
-        }
+        self.graph
+            .nodes
+            .get(&node_id)?
+            .evaluated_inputs()
+            .get(idx)
+            .copied()
     }
 
     fn scope_for_chain<'s>(scope: &'s mut Scope, chain: &[String]) -> Option<&'s mut Scope> {
@@ -1400,10 +1374,11 @@ impl GraphViewer<'_> {
                 .filter_map(Self::mapping_id)
                 .any(|id| id == needle);
             if !shown
-                && matches!(
-                    self.graph.nodes.get(&needle),
-                    Some(Node::SourceField { .. })
-                )
+                && self
+                    .graph
+                    .nodes
+                    .get(&needle)
+                    .is_some_and(editor_ui::is_hidden_input)
             {
                 self.graph.nodes.remove(&needle);
             }
@@ -1415,6 +1390,7 @@ impl GraphViewer<'_> {
             Node::OwnedSourceField(_)
             | Node::OwnedPosition(_)
             | Node::OwnedRowDocumentPath(_)
+            | Node::OwnedSourceDocumentPath(_)
             | Node::OwnedXmlSerialize(_)
             | Node::OwnedJoinField(_)
             | Node::OwnedJoinSourcePosition(_)
@@ -1580,9 +1556,22 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 .map_or_else(|| "Target".to_string(), |section| section.title.clone()),
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
                 let title = match self.graph.nodes.get(id) {
-                    Some(Node::OwnedSourceField(_)) => "Owned source field".into(),
-                    Some(Node::OwnedPosition(_)) => "Owned position".into(),
+                    Some(Node::OwnedSourceField(field)) => compact_graph_title(&format!(
+                        "Owned {}: {}",
+                        crate::source_ownership::owner_label(&field.source.owner),
+                        field.source.path.join("/")
+                    )),
+                    Some(Node::OwnedPosition(position)) => format!(
+                        "Owned position: {}{}",
+                        crate::source_ownership::owner_label(&position.owner),
+                        position
+                            .collection
+                            .as_ref()
+                            .map(|collection| format!(" {}", collection.join("/")))
+                            .unwrap_or_default()
+                    ),
                     Some(Node::OwnedRowDocumentPath(_)) => "Owned row document path".into(),
+                    Some(Node::OwnedSourceDocumentPath(_)) => "Owned document path".into(),
                     Some(Node::OwnedLookup(lookup)) => {
                         format!("Owned lookup: {}", lookup.collection.path.join("/"))
                     }
@@ -1695,14 +1684,17 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             |name| format!("Input: {name}"),
                         )
                     }
-                    Some(Node::RuntimeValue { value }) => format!("Runtime: {value:?}"),
+                    Some(node @ Node::RuntimeValue { .. }) => readable_node_label(node),
                     Some(Node::RuntimeParameter { name, ty, .. }) => {
                         let name = if name.is_empty() {
                             "<name required>"
                         } else {
                             name
                         };
-                        format!("Runtime input: {name} ({ty:?})")
+                        format!(
+                            "Run value: {name} ({})",
+                            crate::value_editor::scalar_type_label(*ty)
+                        )
                     }
                     Some(Node::RuntimeParameterDefault { name, ty, .. }) => {
                         let name = if name.is_empty() {
@@ -1710,7 +1702,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         } else {
                             name
                         };
-                        format!("Runtime input: {name} ({ty:?}, optional)")
+                        format!(
+                            "Run value: {name} ({}, optional)",
+                            crate::value_editor::scalar_type_label(*ty)
+                        )
                     }
                     Some(Node::Call { function, .. }) => functions::builtin(function).map_or_else(
                         || format!("Call: {function}"),
@@ -2546,6 +2541,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 egui::PopupCloseBehavior::CloseOnClickOutside
             };
             let properties_width = match self.graph.nodes.get(&node_id) {
+                Some(Node::Const { .. }) => crate::ui_kit::DialogWidth::Narrow.px(),
                 Some(Node::ValueMap { table, .. }) => {
                     crate::value_editor::value_map_editor_width(table.len()) + 22.0
                 }
@@ -2554,6 +2550,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             // Snarl draws pins before headers, so this anchor can come from the
             // previous pass. A newly locked canvas must disable its editor now.
             let properties_enabled = ui.is_enabled() && edit.enabled();
+            let mut done = false;
             egui::Popup::from_response(&edit)
                 .id(popup_id)
                 .open_bool(&mut open)
@@ -2563,12 +2560,35 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 .show(|ui| {
                     ui.set_style(ui.ctx().global_style());
                     ui.set_max_width(properties_width);
-                    ui.add(egui::Label::new(&full_title).wrap());
+                    ui.horizontal(|ui| {
+                        ui.strong(
+                            if matches!(self.graph.nodes.get(&node_id), Some(Node::Const { .. })) {
+                                "Edit constant"
+                            } else {
+                                "Node settings"
+                            },
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            done |= crate::ui_kit::icon_button(
+                                ui,
+                                lucide_icons::Icon::X,
+                                "Close node settings",
+                                None,
+                            )
+                            .clicked();
+                        });
+                    });
                     ui.separator();
+                    if !matches!(self.graph.nodes.get(&node_id), Some(Node::Const { .. })) {
+                        ui.add(egui::Label::new(&full_title).wrap());
+                    }
                     ui.add_enabled_ui(properties_enabled, |ui| {
                         self.show_node_properties(pin, ui, snarl);
                     });
+                    ui.separator();
+                    done |= crate::ui_kit::dialog_buttons(ui, "Done".into(), None, None).is_some();
                 });
+            open &= !done;
             ui.ctx().data_mut(|data| {
                 if open {
                     data.insert_temp(popup_id, true);
@@ -2692,8 +2712,15 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             ui.close();
         }
         let references = self.blocking_references_to(mapping_id);
+        ui.separator();
         let remove = ui
-            .add_enabled(references.is_empty(), egui::Button::new("Remove"))
+            .add_enabled(
+                references.is_empty(),
+                egui::Button::new(
+                    egui::RichText::new("Remove node")
+                        .color(crate::theme::active_palette(ui.ctx()).error),
+                ),
+            )
             .on_disabled_hover_text(format!("Used by: {}", references.join(", ")));
         if remove.clicked() {
             self.remove_snarl_nodes_recorded(&[node], snarl);

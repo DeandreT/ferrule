@@ -702,10 +702,8 @@ fn nested_four_input_dynamic_last_source_is_a_hard_prepublication_refusal()
             value: Value::String("flags.xml".into()),
         },
     );
-    project.extra_sources[2].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 99,
-        iteration: vec!["Order".into()],
-    });
+    project.extra_sources[2].dynamic_path =
+        Some(mapping::DynamicSourcePath::legacy(99, vec!["Order".into()]));
     write(
         &directory.0.join("dynamic-project.json"),
         &serde_json::to_string_pretty(&project)?,

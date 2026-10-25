@@ -118,14 +118,45 @@ A ferrule project is plain JSON built from four main concepts:
    item bounds and value or nested-array items) and the null-like values each
    layer admits: XML nil, and JSON null for a single occurrence or separately
    for an array and its items. Absence is never one of those values.
-   Contradictory role metadata has no view. Consumers that combine these facts
-   should use the view rather than re-reading the individual flags.
+   Contradictory role metadata has no view. `effective_xml_view` and
+   `effective_json_nullability` derive one layer alone, so a boundary that
+   consults only XML or only JSON is unaffected by the other format's metadata;
+   the XSD and JSON Schema exporters write occurrences, attribute use, nil and
+   null from these layers, and the JSON range validator admits null from the
+   scalar value layer. The JSON instance reader and writers accept and emit
+   object, array-container, object-item and scalar null from the same JSON
+   layers and refuse a schema whose JSON null metadata has no view before any
+   value is read or written; generated Rust boundaries use the same reader and
+   writers, and the generated C# runtime derives identical layers from its
+   embedded descriptors and refuses the same contradictions when it parses
+   them. JSON Schema import reads these layers when it intersects `allOf`
+   branches, composes nullable arrays and alternatives and compares imported
+   shapes, and the JSON5 generation profile refuses a group whose JSON null
+   has no view. The XML instance readers and writer admit
+   `xsi:nil` from the XML layer, and the structured XML input profile and the
+   primary-root gate read root presence and nil from it. XSD import compares
+   complex-content restrictions, xsi:type member profiles and
+   substitution-group heads through the same XML layer.
+   `json_property_presence` reports a JSON object property's declared presence
+   from its parent's required list, independent of its null admission. `.mfd`
+   import proofs that need present or non-null source paths derive those
+   facts from the views, keeping object-item null separate from occurrence
+   and array-container null; `.mfd` export proofs read XML nil, scalar and
+   container JSON null and attribute use from the same facts. Consumers that
+   combine these facts should use the views rather than re-reading the
+   individual flags. `check_json_array_wrapper_frame` is the single exact-shape
+   check for a nested-array wrapper frame and names its first departure from that
+   shape; saved-project deserialization, the JSON readers and writers and
+   JSON Schema export refuse a malformed frame, and engine validation reports
+   it at the frame's schema location.
 2. **Graph nodes** compute scalar values. Nodes read source fields and positions,
    hold constants, call built-in functions, branch lazily, translate value maps,
    perform lookups and joins, reduce collections, and access selected runtime
    values, or raise a typed error when their expression is reached.
 3. **Scopes** construct target groups. A scope can iterate source collections,
-   generated scalar sequences, document sets, or validated joins, then filter,
+   generated scalar sequences, document sets, or validated joins, or construct
+   zero or one group in its parent context from a Boolean presence expression,
+   then filter,
    group, sort, window, bind fields, and construct child scopes. The default
    `Constructed` constructor requires a group target schema; scalar targets use
    explicit `Scalar` construction. Project validation checks this shape for
@@ -141,18 +172,46 @@ one primary or named target; unselected target scopes are not evaluated or
 published, while the default all-target mode keeps its collision checks.
 
 Every host route (`run`, standard streams, `run-pipeline`, payload execution,
-and generation) prepares an immutable request before it acquires anything.
-Preparation resolves the known input and output identities into a
-`cli::RoutePlan`, admits the requested trace and debug observers, applies the
-execution policy to every known location, and refuses an unsupported route
+`run-rest-json`, and generation) prepares an immutable request before it
+acquires anything. Preparation resolves the known input and output identities
+into a `cli::RoutePlan`, admits the requested trace and debug observers, applies
+the execution policy to every known location, and refuses an unsupported route
 combination with a typed error such as `cli::RouteRefusal`. No input, standard
-stream, output, trace stage, or directory is touched by a refused request.
-`PreparedFileRun` and `PreparedStreamRun` execute such a request, refusing any
-observer it did not admit; `plan_run`, `plan_pipeline_run`, `plan_payload_run`,
-and `plan_generate` report the plan without executing it.
-`RunOptions::with_cancellation` stops a run at acquisition, interpreter control,
-and publication boundaries without a trace sink or host debug hook. It cannot
-interrupt one synchronous parser or request.
+stream, request file, output, trace stage, or directory is touched by a refused
+request. `PreparedFileRun` and `PreparedStreamRun` execute such a request,
+refusing any observer it did not admit; `plan_run`, `plan_file_run`,
+`plan_pipeline_run`, `plan_payload_run`, `plan_rest_json_run`, and
+`plan_generate` report the plan without executing it. The generation plan
+applies the selected `GenerateProfile`'s backend requirement and boundary
+policies, lowering, runtime resolution, and in-memory emission in the
+generating call's order, so it refuses whatever generation would refuse before
+writing.
+`RunOptions::with_cancellation` and `PipelineRunOptions::with_cancellation`
+stop a run at acquisition, interpreter control, and publication boundaries
+without a trace sink or host debug hook. They cannot interrupt one synchronous
+parser or request.
+
+The GUI queries these plans before Run, Debug Run, a pipeline run or preview,
+or Generate saves the project or starts a worker, and shows the refusal
+instead. Run JSON request queries `plan_rest_json_run` before its form asks for
+request files or a grant, and again for the exact project snapshot a started
+request owns, before any request file is read or connection opened. Preview,
+pipeline, live-request, and library-generation workers are owned by their
+exact thread handles: an outcome is reported only after the thread has been
+joined, and dropping an unfinished owner cancels it where cancellation exists
+and then waits for the thread to exit.
+
+These host services stay in the `cli` crate, re-exported from its root. Route
+capability is a query over the runners themselves: its plans come from
+`PreparedFileRun`, `PreparedStreamRun`, the pipeline runner, generation
+preparation, and the REST JSON preflight, so a separate crate would either
+carry those runners and their format, code-generation, and HTTP dependencies
+with it or hide them behind traits that only `cli` implements. Neither removes
+a dependency from any consumer: the GUI also executes, previews, traces,
+imports, and generates through `cli`, so it would still depend on the whole
+crate. `OwnedWorker` is a standard-library-only type private to the GUI and
+tested in place. Extract a crate only when a consumer can drop `cli` or a
+heavy dependency as a result.
 
 Hosts that own transport and persistence can instead use
 `cli::PayloadRunOptions`. Each input carries bounded bytes plus a logical path
@@ -218,12 +277,20 @@ The native editor uses the same project model for primary, named-target, and
 function canvases. Compact glyphs keep closed nodes small; full hover identities,
 pin semantics, and property/details popovers retain the information needed to
 edit them. Layout is adjacent metadata rather than mapping behavior.
-Editor history is one linear sequence of typed commands, which name the node
-and scope identities they change and apply or invert atomically, and
-snapshots of edits that canvases still apply in place. Node removal, wire
-connection and disconnection, and palette insertion are commands; a frame's
-command is recorded only when it alone explains the frame's change, and the
-frame becomes a snapshot otherwise. Separate semantic and
+Editor history is one linear sequence of typed commands, which name the node,
+scope, binding, scope-setting, child-scope, and project-part identities they
+change and apply or invert atomically. Canvas edits (node removal, wires,
+palette insertion, node properties, and sequence consumer duplication), the
+Inspector's binding, scope-setting, computed-property, child-scope, join,
+filter/map, and XML type edits, auto-connect, failure rules, named source and
+target management, primary source format options, and user-function creation
+are commands, including those made in a pipeline stage's embedded editor.
+Project-part commands edit a project document whose parts (failure rules,
+named sources and targets, source options, and function definitions) are
+validated against their exact recorded content. A frame's commands form one
+history step only when together they explain the frame's change; any frame
+they do not explain is retained as a snapshot. Continued typing or dragging in
+one property, setting, or rule extends its step. Separate semantic and
 layout revisions track the save point, so a layout-only change never marks
 mapping content as changed.
 
@@ -243,6 +310,7 @@ what evidence closes each gate.
   model
 - `crates/functions`: Scalar built-in function library
 - `crates/engine`: Project validation and mapping interpreter
+- `crates/edit-ops`: Typed, replayable headless mapping edits
 
 ### Code generation
 

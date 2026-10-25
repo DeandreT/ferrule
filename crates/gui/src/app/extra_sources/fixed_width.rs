@@ -9,16 +9,19 @@ pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut ExtraSourceDraft) {
         if let Some(schema) = draft.schema.as_ref() {
             match crate::extra_targets::flat_scalar_fields(schema) {
                 Ok(fields) => {
-                    for (field, width) in fields.into_iter().zip(&mut pending.widths) {
-                        ui.horizontal(|ui| {
-                            ui.label(format!("{} width", field.name));
-                            ui.add(
-                                egui::TextEdit::singleline(width)
-                                    .char_limit(10)
-                                    .desired_width(72.0),
-                            );
-                        });
-                    }
+                    crate::ui_kit::form_grid(ui, "source_fixed_widths", |form| {
+                        for (field, width) in fields.into_iter().zip(&mut pending.widths) {
+                            form.row(format!("{} width", field.name), |ui| {
+                                ui.add(
+                                    crate::ui_kit::text_field(
+                                        width,
+                                        crate::ui_kit::FieldWidth::Small,
+                                    )
+                                    .char_limit(10),
+                                );
+                            });
+                        }
+                    });
                 }
                 Err(error) => {
                     ui.colored_label(ui.visuals().error_fg_color, error);
@@ -27,9 +30,8 @@ pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut ExtraSourceDraft) {
             ui.horizontal(|ui| {
                 ui.label("Fill character");
                 ui.add(
-                    egui::TextEdit::singleline(&mut pending.fill)
-                        .char_limit(1)
-                        .desired_width(36.0),
+                    crate::ui_kit::text_field(&mut pending.fill, crate::ui_kit::FieldWidth::Small)
+                        .char_limit(1),
                 );
             });
             ui.radio_value(

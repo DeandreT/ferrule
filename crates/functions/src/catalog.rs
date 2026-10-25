@@ -139,6 +139,7 @@ pub struct BuiltinDefinition {
     pub deterministic: bool,
     pub documentation: &'static str,
     pub exposure: BuiltinExposure,
+    #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
     pub(crate) id: BuiltinId,
 }
 
@@ -1433,5 +1434,5 @@ impl IntoIterator for BuiltinNames {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "runtime"))]
 mod tests;

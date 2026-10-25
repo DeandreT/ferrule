@@ -1,5 +1,9 @@
 //! Focused complete physical-output contract. SDK execution is an explicit,
 //! ignored test; the ordinary tests inspect actual emitted artifacts only.
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+use dotnet_temp::DotnetTemp;
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -181,7 +185,7 @@ fn complete_document_emission_keeps_shared_policy_refusals_and_named_ownership()
     let (mut program, policy) = fixture::mixed();
     program.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 1,
-        driver: codegen::SourceIteration::new(vec![]),
+        driver: codegen::SourceIteration::new(vec![]).into(),
     });
     assert!(matches!(
         codegen_csharp::emit_with_static_document_adapters(&program, &policy),
@@ -301,7 +305,9 @@ fn generated_static_document_outputs_match_literals_and_refuse_whole_bundles() {
         for label in ["MIXED", "PRIMARY", "GROUPED", "SINGLE"] {
             let directory = root.join(label);
             let mut build = Command::new("dotnet");
-            build.env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false");
+            build
+                .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+                .dotnet_temp(&root);
             build
                 .current_dir(&directory)
                 .args([
@@ -325,7 +331,8 @@ fn generated_static_document_outputs_match_literals_and_refuse_whole_bundles() {
                 .env("MSBUILDDISABLENODEREUSE", "1");
             run(&directory, "BUILD", &mut build);
             let mut host = Command::new("dotnet");
-            host.env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false");
+            host.env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+                .dotnet_temp(&root);
             host.current_dir(&directory)
                 .arg(directory.join("Host/bin/Debug/net10.0/Host.dll"))
                 .arg(&fixtures)

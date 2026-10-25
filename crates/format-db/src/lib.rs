@@ -18,6 +18,7 @@ use rusqlite::types::ValueRef;
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use thiserror::Error;
 
+pub mod query;
 mod relational;
 
 #[cfg(test)]
@@ -485,9 +486,19 @@ pub fn write(db_path: &Path, schema: &SchemaNode, rows: &[Instance]) -> Result<(
         .collect::<Result<Vec<_>, _>>()?;
     let mut conn = Connection::open(db_path)?;
 
+    // A sole generated column becomes the rowid alias of a created table, so
+    // introspection and declared queries can prove it as the row key.
+    let rowid_key = generated.first().filter(|_| generated.len() == 1).copied();
     let column_defs = columns
         .iter()
-        .map(|(name, ty)| format!("{} {}", quote(name), column_sql_type(*ty)))
+        .map(|(name, ty)| {
+            let key = if rowid_key == Some(*name) {
+                " PRIMARY KEY"
+            } else {
+                ""
+            };
+            format!("{} {}{key}", quote(name), column_sql_type(*ty))
+        })
         .collect::<Vec<_>>()
         .join(", ");
     let tx = conn.transaction()?;

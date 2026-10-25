@@ -3,12 +3,16 @@ use std::fmt;
 use codegen::{ArtifactSet, CsvDocumentBoundaryError, CsvDocumentBoundaryPolicy, Program};
 use ir::{ScalarType, SchemaKind};
 
-use crate::{EmitError, file, literal};
+use crate::Options;
+use crate::composition::{ClassPart, Library};
+use crate::{EmitError, literal};
+use codegen::GenerationProfile;
 
 #[derive(Debug)]
 pub enum CsvDocumentEmitError {
     Boundary(Box<CsvDocumentBoundaryError>),
     Emit(EmitError),
+    /// Retained for API compatibility; structural composition never produces it.
     ArtifactInvariant,
 }
 
@@ -39,57 +43,54 @@ pub fn emit_with_csv_document_adapters(
     program: &Program,
     policy: &CsvDocumentBoundaryPolicy,
 ) -> Result<ArtifactSet, CsvDocumentEmitError> {
-    codegen::validate_csv_document_boundary(program, policy)
-        .map_err(|e| CsvDocumentEmitError::Boundary(Box::new(e)))?;
-    let mut files = crate::emit_with_csv_output(program, &policy.target)
-        .map_err(CsvDocumentEmitError::Emit)?
-        .into_files();
-    let project = files
-        .iter_mut()
-        .find(|f| f.path.as_str() == "Ferrule.Generated.csproj")
-        .ok_or(CsvDocumentEmitError::ArtifactInvariant)?;
-    let content = std::str::from_utf8(&project.contents)
-        .map_err(|_| CsvDocumentEmitError::ArtifactInvariant)?;
-    let entry = "    <Compile Include=\"GeneratedMapping.cs\" />\n";
-    if content.matches(entry).count() != 1 {
-        return Err(CsvDocumentEmitError::ArtifactInvariant);
-    }
-    project.contents = content
-        .replacen(
-            entry,
-            &format!("{entry}    <Compile Include=\"GeneratedMapping.CsvDocument.cs\" />\n"),
-            1,
-        )
-        .into_bytes();
-    files.push(
-        file("GeneratedMapping.CsvDocument.cs", render(program, policy))
-            .map_err(CsvDocumentEmitError::Emit)?,
-    );
-    files.push(
-        file(
-            "Runtime/FerruleCsvInput.cs",
-            include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvInput.cs"),
-        )
-        .map_err(CsvDocumentEmitError::Emit)?,
-    );
-    files.push(
-        file(
-            "Runtime/FerruleCsvSource.cs",
-            include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs"),
-        )
-        .map_err(CsvDocumentEmitError::Emit)?,
-    );
-    ArtifactSet::new(files)
-        .map_err(EmitError::from)
+    emit(program, policy, &Options::default())
+}
+
+pub(crate) fn emit(
+    program: &Program,
+    policy: &CsvDocumentBoundaryPolicy,
+    options: &Options,
+) -> Result<ArtifactSet, CsvDocumentEmitError> {
+    let library = library(program, policy)?;
+    let profile = if policy.target.raw_delimited_crlf {
+        GenerationProfile::RawDelimitedDocument
+    } else {
+        GenerationProfile::CsvDocument
+    };
+    library
+        .into_artifacts_with(options, profile)
         .map_err(CsvDocumentEmitError::Emit)
 }
 
-fn render(program: &Program, policy: &CsvDocumentBoundaryPolicy) -> String {
+/// The CSV output library with the complete-document companion and its input runtime.
+pub(crate) fn library(
+    program: &Program,
+    policy: &CsvDocumentBoundaryPolicy,
+) -> Result<Library, CsvDocumentEmitError> {
+    codegen::validate_csv_document_boundary(program, policy)
+        .map_err(|e| CsvDocumentEmitError::Boundary(Box::new(e)))?;
+    let mut library =
+        crate::csv_output::library(program, &policy.target).map_err(CsvDocumentEmitError::Emit)?;
+    library.add_companion("GeneratedMapping.CsvDocument.cs", render(program, policy));
+    library.add_runtime(&[
+        (
+            "Runtime/FerruleCsvInput.cs",
+            include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvInput.cs"),
+        ),
+        (
+            "Runtime/FerruleCsvSource.cs",
+            include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs"),
+        ),
+    ]);
+    Ok(library)
+}
+
+fn render(program: &Program, policy: &CsvDocumentBoundaryPolicy) -> ClassPart {
     let SchemaKind::Group { children, .. } = &program.source.kind else {
         unreachable!("admitted CSV source")
     };
     let mut s = String::from(
-        "namespace Ferrule.Generated;\n\npublic static partial class GeneratedMapping\n{\n    private static readonly global::Ferrule.Runtime.FerruleCsvReadField[] CsvInputFields =\n    [\n",
+        "    private static readonly global::Ferrule.Runtime.FerruleCsvReadField[] CsvInputFields =\n    [\n",
     );
     for field in children {
         let SchemaKind::Scalar { ty } = field.kind else {
@@ -146,6 +147,5 @@ fn render(program: &Program, policy: &CsvDocumentBoundaryPolicy) -> String {
         }
         s.push_str(&format!("        var input = ParseCsvBytesWithDecodingPolicy(source, policy);\n        return ExecuteCsvBytes(input{pass});\n    }}\n"));
     }
-    s.push_str("}\n");
-    s
+    ClassPart::members(s)
 }

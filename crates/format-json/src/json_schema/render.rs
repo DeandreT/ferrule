@@ -3,6 +3,7 @@ use ir::{
 };
 
 use crate::JsonFormatError;
+use crate::null_layers::{JsonLayers, layers};
 
 /// Writes `node`'s shape (sans repetition) into `out`; repetition wraps it
 /// in an array schema.
@@ -10,9 +11,10 @@ pub(super) fn render(
     node: &SchemaNode,
     out: &mut serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), JsonFormatError> {
-    if node.container_nullable {
+    let layers = layers(node)?;
+    if layers.container_null {
         let mut content = serde_json::Map::new();
-        render_non_nullable(node, &mut content)?;
+        render_non_nullable(node, layers, &mut content)?;
         out.insert(
             "anyOf".into(),
             serde_json::Value::Array(vec![
@@ -22,50 +24,48 @@ pub(super) fn render(
         );
         return Ok(());
     }
-    render_non_nullable(node, out)
+    render_non_nullable(node, layers, out)
 }
 
 fn render_non_nullable(
     node: &SchemaNode,
+    layers: JsonLayers,
     out: &mut serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), JsonFormatError> {
-    if node.repeating {
+    if layers.array {
         out.insert("type".into(), "array".into());
         let mut items = serde_json::Map::new();
-        render_shape(node, &mut items)?;
+        render_shape(node, layers, &mut items)?;
         out.insert("items".into(), serde_json::Value::Object(items));
         super::item_counts::render(node, out);
         super::contains::render(node, out)?;
         super::unique_items::render(node, out);
     } else {
-        render_shape(node, out)?;
+        render_shape(node, layers, out)?;
     }
     Ok(())
 }
 
 fn render_shape(
     node: &SchemaNode,
+    layers: JsonLayers,
     out: &mut serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), JsonFormatError> {
-    if node.repeating
-        && matches!(node.kind, SchemaKind::Group { .. })
-        && !node.json_array_wrapper
-        && !node.json_any
-        && node.json_single_container_nullable()
-    {
+    if layers.object_item_null {
         let mut content = serde_json::Map::new();
-        render_non_nullable_shape(node, &mut content)?;
+        render_non_nullable_shape(node, layers, &mut content)?;
         out.insert(
             "anyOf".into(),
             serde_json::json!([serde_json::Value::Object(content), {"type": "null"}]),
         );
         return Ok(());
     }
-    render_non_nullable_shape(node, out)
+    render_non_nullable_shape(node, layers, out)
 }
 
 fn render_non_nullable_shape(
     node: &SchemaNode,
+    layers: JsonLayers,
     out: &mut serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), JsonFormatError> {
     if node.json_array_wrapper {
@@ -87,7 +87,7 @@ fn render_non_nullable_shape(
                 ScalarType::Float => "number",
                 ScalarType::Bool => "boolean",
             };
-            let ty = if node.nullable {
+            let ty = if layers.value_null {
                 serde_json::Value::Array(vec![name.into(), "null".into()])
             } else {
                 name.into()
@@ -100,8 +100,8 @@ fn render_non_nullable_shape(
             super::ranges::render(node, out)?;
             super::string_lengths::render(node, out);
             super::formats::render(node, out);
-            super::patterns::render(node, out);
-            super::multiples::render(node, out)?;
+            super::patterns::render(node, layers.value_null, out);
+            super::multiples::render(node, layers.value_null, out)?;
         }
         SchemaKind::ScalarUnion { types } => {
             let mut types = types
@@ -109,7 +109,7 @@ fn render_non_nullable_shape(
                 .map(scalar_type_name)
                 .map(serde_json::Value::from)
                 .collect::<Vec<_>>();
-            if node.nullable {
+            if layers.value_null {
                 types.push("null".into());
             }
             out.insert("type".into(), types.into());
@@ -117,8 +117,8 @@ fn render_non_nullable_shape(
             super::ranges::render(node, out)?;
             super::string_lengths::render(node, out);
             super::formats::render(node, out);
-            super::patterns::render(node, out);
-            super::multiples::render(node, out)?;
+            super::patterns::render(node, layers.value_null, out);
+            super::multiples::render(node, layers.value_null, out)?;
         }
         SchemaKind::Group {
             children,
@@ -187,7 +187,12 @@ fn render_non_nullable_shape(
                 return Ok(());
             }
             let mut props = serde_json::Map::new();
-            for child in children {
+            // Authored undeclared members are admitted by the dynamic schema
+            // rendered below; listing them would change the authored schema.
+            for child in children
+                .iter()
+                .filter(|child| !child.json_undeclared_property)
+            {
                 let mut prop = serde_json::Map::new();
                 render(child, &mut prop)?;
                 props.insert(child.name.clone(), serde_json::Value::Object(prop));

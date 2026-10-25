@@ -406,7 +406,9 @@ pub(super) fn texts(output: &egui::FullOutput) -> Vec<(String, egui::Pos2)> {
 pub(super) fn visible(output: &egui::FullOutput, label: &str) -> Vec<egui::Pos2> {
     let mut out = texts(output)
         .into_iter()
-        .filter_map(|(text, point)| (text == label).then_some(point))
+        .filter_map(|(text, point)| {
+            crate::test_ui::inspector_label_matches(&text, label).then_some(point)
+        })
         .collect::<Vec<_>>();
     out.sort_by(|a, b| a.y.total_cmp(&b.y));
     out
@@ -446,7 +448,11 @@ pub(super) fn click_label(
     label: &str,
 ) {
     let output = settle(app, context, retained);
-    let points = visible(&output, label);
+    let mut points = visible(&output, label);
+    if let Some(number) = label.strip_prefix("Remove property ") {
+        let header = visible(&output, &format!("Property {number}"))[0];
+        points.retain(|point| (point.y - header.y).abs() < 5.0);
+    }
     retained.record("actual-control-label-points", (&label, &points));
     assert_eq!(points.len(), 1, "unique rendered control {label}");
     click(app, context, retained, points[0]);
@@ -471,11 +477,11 @@ pub(super) fn choose(
     let point = captions[row];
     let binding = &active_scope(app).dynamic_bindings[row];
     let current = if name { binding.key } else { binding.value };
-    let prefix = format!("{current}: ");
+    let suffix = format!(" · #{current}");
     let selected = texts(&output)
         .into_iter()
         .filter_map(|(label, center)| {
-            (label.starts_with(&prefix) && (center.y - point.y).abs() < 4.0 && center.x > point.x)
+            (label.ends_with(&suffix) && (center.y - point.y).abs() < 4.0 && center.x > point.x)
                 .then_some(center)
         })
         .collect::<Vec<_>>();

@@ -344,10 +344,44 @@ fn basic_xml_mixed470_profile_composes_earlier_owned_companions() -> TestResult<
     Ok(())
 }
 
+/// Projects with an unsupported owned mixed-content construction.
+fn closed_context_projects() -> [(&'static str, Project); 3] {
+    let mut grouped = projects::project("C01-endpoints");
+    grouped.graph.nodes.insert(
+        95,
+        Node::Const {
+            value: Value::String("k".into()),
+        },
+    );
+    grouped.root.children[0].group_by = Some(95);
+    let mut inherited = projects::project("C02-nested");
+    let paragraph = &mut inherited.root.children[0].children[0];
+    paragraph.iteration = ScopeIteration::Source(path(&["Docs", "Doc", "Para"]));
+    paragraph.children.clear();
+    paragraph.bindings.truncate(1);
+    let mut dynamic = projects::project("C01-endpoints");
+    dynamic.graph.nodes.insert(
+        96,
+        Node::Const {
+            value: Value::String("notes.json".into()),
+        },
+    );
+    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(
+        96,
+        vec!["Docs".into(), "Doc".into()],
+    ));
+    [
+        ("closed-context/grouped", grouped),
+        ("closed-context/inherited", inherited),
+        ("closed-context/dynamic", dynamic),
+    ]
+}
+
 /// Grouped, inherited and dynamic-owner constructions stay refused by the new
 /// companion and the interpreter, before emission.
 #[test]
 fn basic_xml_mixed470_unsupported_constructions_refuse() -> TestResult<()> {
+    let [(_, grouped), (_, inherited), (_, dynamic)] = closed_context_projects();
     let lowered_error = |project: &Project, expected: &ProgramValidationError| {
         let lowered = codegen::lower_with_basic_owned_xml_mixed_construction(project);
         assert!(
@@ -367,14 +401,6 @@ fn basic_xml_mixed470_unsupported_constructions_refuse() -> TestResult<()> {
     };
 
     // Grouping the owned selector does not qualify the construction.
-    let mut grouped = projects::project("C01-endpoints");
-    grouped.graph.nodes.insert(
-        95,
-        Node::Const {
-            value: Value::String("k".into()),
-        },
-    );
-    grouped.root.children[0].group_by = Some(95);
     assert!(engine::validate(&grouped).is_empty());
     lowered_error(
         &grouped,
@@ -398,11 +424,6 @@ fn basic_xml_mixed470_unsupported_constructions_refuse() -> TestResult<()> {
 
     // A legacy-selected construction inside an owned iteration would attach a
     // legacy current item; it stays an XML operator there.
-    let mut inherited = projects::project("C02-nested");
-    let paragraph = &mut inherited.root.children[0].children[0];
-    paragraph.iteration = ScopeIteration::Source(path(&["Docs", "Doc", "Para"]));
-    paragraph.children.clear();
-    paragraph.bindings.truncate(1);
     assert!(engine::validate(&inherited).is_empty());
     lowered_error(
         &inherited,
@@ -425,17 +446,6 @@ fn basic_xml_mixed470_unsupported_constructions_refuse() -> TestResult<()> {
     ));
 
     // A dynamic named owner never supplies an exact owned selection.
-    let mut dynamic = projects::project("C01-endpoints");
-    dynamic.graph.nodes.insert(
-        96,
-        Node::Const {
-            value: Value::String("notes.json".into()),
-        },
-    );
-    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 96,
-        iteration: vec!["Docs".into(), "Doc".into()],
-    });
     lowered_error(
         &dynamic,
         &scope_refusal(
@@ -633,4 +643,18 @@ fn basic_xml_mixed470_generated_rust_and_csharp_match_expected() -> TestResult<(
         return Err(failures.join("\n\n").into());
     }
     Ok(())
+}
+
+/// The models, the legacy project and the closed-context Projects, for the
+/// owned capability preset record.
+pub(super) fn capability_corpus() -> TestResult<super::owned_capability_presets::Corpus> {
+    use super::owned_capability_presets as presets;
+    let mut corpus = presets::projects(
+        projects::MODELS
+            .iter()
+            .map(|model| (*model, projects::project(model))),
+    );
+    corpus.extend(presets::projects([("legacy", projects::legacy())]));
+    corpus.extend(presets::projects(closed_context_projects()));
+    Ok(corpus)
 }

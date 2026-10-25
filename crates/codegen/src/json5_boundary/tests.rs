@@ -208,7 +208,7 @@ fn extra_static_dynamic_inputs_and_targets_refuse_before_graph_validation() {
         None,
         Some(DynamicSourceProgram {
             path: 999,
-            driver: SourceIteration::new(Vec::new()),
+            driver: SourceIteration::new(Vec::new()).into(),
         }),
     ] {
         let mut candidate = program();

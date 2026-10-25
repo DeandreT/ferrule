@@ -209,6 +209,7 @@ fn validate_stage(
             Expression::OwnedSourceField(_)
             | Expression::OwnedPosition(_)
             | Expression::OwnedRowDocumentPath(_)
+            | Expression::OwnedSourceDocumentPath(_)
             | Expression::OwnedDynamicSourceField(_)
             | Expression::OwnedXmlSerialize(_)
             | Expression::OwnedXmlMixedContent(_)

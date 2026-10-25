@@ -257,10 +257,7 @@ fn catalogue_project() -> mapping::Project {
             path: "unused.json".into(),
             schema: source_schema(ScalarType::Int),
             options: Default::default(),
-            dynamic_path: Some(mapping::DynamicSourcePath {
-                node: 99,
-                iteration: Vec::new(),
-            }),
+            dynamic_path: Some(mapping::DynamicSourcePath::legacy(99, Vec::new())),
         },
     );
     p.graph.nodes.extend([

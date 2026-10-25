@@ -22,6 +22,8 @@ pub(super) struct ScopeSchemas<'a> {
     pub(super) target: Option<&'a SchemaNode>,
     pub(super) parent_source: Option<&'a SchemaNode>,
     pub(super) owner: &'a ValidationScopeLocation,
+    /// Owned dynamic sources an enclosing iteration already roots.
+    pub(super) rooted: &'a [&'a str],
 }
 
 pub(super) fn validate_scope(
@@ -139,6 +141,7 @@ pub(super) fn validate_scope(
                     owner: &schemas
                         .owner
                         .descendant(ValidationScopeStep::Segment(index)),
+                    rooted: schemas.rooted,
                 },
                 path,
                 active_joins,
@@ -154,6 +157,7 @@ pub(super) fn validate_scope(
         return;
     }
     let current_source = current_source_schema(project, schemas.parent_source, &scope.iteration);
+    super::presence::validate(project, scope, target, &location, issues);
 
     if matches!(&scope.construction, ScopeConstruction::Constructed)
         && target.is_some_and(|node| !matches!(node.kind, SchemaKind::Group { .. }))
@@ -290,7 +294,9 @@ pub(super) fn validate_scope(
                 ));
             }
             ScopeIteration::Concatenate(_) => unreachable!("handled above"),
-            ScopeIteration::None
+            // Reported once by the optional-presence construction check.
+            ScopeIteration::OptionalPresence { .. }
+            | ScopeIteration::None
             | ScopeIteration::Source(_)
             | ScopeIteration::OwnedSource { .. }
             | ScopeIteration::DynamicDocuments { .. } => {}
@@ -389,7 +395,9 @@ pub(super) fn validate_scope(
                 ));
             }
             ScopeIteration::Concatenate(_) => unreachable!("handled above"),
-            ScopeIteration::None
+            // Reported once by the optional-presence construction check.
+            ScopeIteration::OptionalPresence { .. }
+            | ScopeIteration::None
             | ScopeIteration::Source(_)
             | ScopeIteration::OwnedSource { .. }
             | ScopeIteration::DynamicDocuments { .. } => {}
@@ -458,6 +466,16 @@ pub(super) fn validate_scope(
         issues,
     );
 
+    super::dynamic_loading::validate_scope(project, scope, schemas.rooted, &location, issues);
+    // Descendants of an owned iteration of an owned dynamic source see its
+    // current document rather than loading again.
+    let mut rooted = schemas.rooted.to_vec();
+    if let Some(mapping::SourceSelectorRef::Owned(source)) = scope.source_selector()
+        && let mapping::SourceOwner::Named { name } = &source.owner
+        && super::dynamic_loading::owned_dynamic(project, name).is_some()
+    {
+        rooted.push(name);
+    }
     match scope.source_selector() {
         Some(mapping::SourceSelectorRef::Owned(source)) => {
             super::schema::validate_owned_collection(project, source, &location, issues);
@@ -548,15 +566,8 @@ pub(super) fn validate_scope(
             ));
         }
     }
-    let mut parent_roots = scope
-        .windows
-        .iter()
-        .copied()
-        .flat_map(|window| window.nodes())
-        .collect::<Vec<_>>();
-    if let Some(sequence) = scope.sequence() {
-        parent_roots.extend(sequence.inputs());
-    }
+    let parent_roots =
+        crate::scope_slots::ranked_roots(scope, crate::scope_slots::parent_join_validation);
     let parent_root_context = is_root_context(project, schemas.parent_source);
     validate_join_roots(
         &project.graph,
@@ -890,6 +901,7 @@ pub(super) fn validate_scope(
                 target: child_target,
                 parent_source: current_source,
                 owner: &child_owner,
+                rooted: &rooted,
             },
             path,
             &active_joins,
@@ -963,6 +975,7 @@ pub(super) fn validate_scope(
                 owner: &schemas
                     .owner
                     .descendant(ValidationScopeStep::DynamicChild(index)),
+                rooted: &rooted,
             },
             path,
             &active_joins,

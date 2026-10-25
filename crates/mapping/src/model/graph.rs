@@ -186,6 +186,15 @@ pub struct OwnedRowDocumentPath {
     pub collection: Option<Vec<String>>,
 }
 
+/// Document-set membership metadata from one exact endpoint: the location of
+/// that owner's latest active document occurrence. It never reads another
+/// owner's document or the first member of an uniterated set.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OwnedSourceDocumentPath {
+    pub owner: SourceOwner,
+}
+
 /// Searches one explicitly owned collection for the first item whose
 /// item-relative `key` equals `matches`. The needle is evaluated once in the
 /// parent context; key and value read only the selected owner's item.
@@ -346,6 +355,8 @@ pub enum Node {
     OwnedPosition(OwnedPosition),
     /// Reads only the selected owner's physical row origin, with no fallback.
     OwnedRowDocumentPath(OwnedRowDocumentPath),
+    /// Reads only the selected owner's active document-set member location.
+    OwnedSourceDocumentPath(OwnedSourceDocumentPath),
     /// First-match lookup over exactly one owned endpoint collection.
     OwnedLookup(OwnedLookup),
     /// First-match predicate search over exactly one owned endpoint collection.
@@ -630,6 +641,7 @@ impl Node {
             Self::OwnedSourceField(_) => Some("owned_source_field"),
             Self::OwnedPosition(_) => Some("owned_position"),
             Self::OwnedRowDocumentPath(_) => Some("owned_row_document_path"),
+            Self::OwnedSourceDocumentPath(_) => Some("owned_source_document_path"),
             Self::OwnedDynamicSourceField(_) => Some("owned_dynamic_source_field"),
             Self::OwnedXmlSerialize(_) => Some("owned_xml_serialize"),
             Self::OwnedXmlMixedContent(_) => Some("owned_xml_mixed_content"),
@@ -647,93 +659,6 @@ impl Node {
             Self::OwnedJoinSourcePosition(_) => Some("owned_join_source_position"),
             Self::OwnedJoinAggregate(_) => Some("owned_join_aggregate"),
             _ => None,
-        }
-    }
-
-    /// Graph nodes whose outputs must be available to evaluate this node.
-    /// The order follows expression evaluation where that order is meaningful.
-    pub fn dependencies(&self) -> Vec<NodeId> {
-        match self {
-            Self::OwnedSourceField(_)
-            | Self::OwnedPosition(_)
-            | Self::OwnedRowDocumentPath(_)
-            | Self::OwnedXmlSerialize(_)
-            | Self::OwnedJoinField(_)
-            | Self::OwnedJoinSourcePosition(_)
-            | Self::SourceField { .. }
-            | Self::SourceRootXmlTypeEquals { .. }
-            | Self::SourceRootField { .. }
-            | Self::SourceDocumentPath
-            | Self::Position { .. }
-            | Self::JoinField { .. }
-            | Self::JoinPosition { .. }
-            | Self::Unconnected
-            | Self::Const { .. }
-            | Self::FunctionParameter { .. }
-            | Self::RuntimeValue { .. }
-            | Self::RuntimeParameter { .. }
-            | Self::XmlSerialize { .. } => Vec::new(),
-            Self::RuntimeParameterDefault { default, .. } => vec![*default],
-            Self::Raise { message } => message.iter().copied().collect(),
-            Self::Call { args, .. } | Self::UserFunctionCall { args, .. } => args.clone(),
-            Self::If {
-                condition,
-                then,
-                else_,
-            } => vec![*condition, *then, *else_],
-            Self::ValueMap { input, .. } => vec![*input],
-            Self::Lookup { matches, .. } => vec![*matches],
-            Self::OwnedLookup(lookup) => vec![lookup.matches],
-            Self::OwnedCollectionFind(find) => vec![find.predicate, find.value],
-            Self::OwnedAggregate(aggregate) => aggregate.inputs(),
-            Self::OwnedJoinAggregate(aggregate) => aggregate.inputs(),
-            Self::DynamicSourceField { key, .. } => vec![*key],
-            Self::OwnedDynamicSourceField(field) => vec![field.key],
-            Self::XmlMixedContent { replacements, .. } => replacements
-                .iter()
-                .map(|replacement| replacement.expression)
-                .collect(),
-            Self::OwnedXmlMixedContent(mixed) => mixed
-                .replacements
-                .iter()
-                .map(|replacement| replacement.expression)
-                .collect(),
-            Self::CollectionFind {
-                predicate, value, ..
-            } => vec![*predicate, *value],
-            Self::SequenceExists {
-                sequence,
-                predicate,
-            } => sequence
-                .inputs()
-                .into_iter()
-                .chain(sequence.owned_items())
-                .chain([*predicate])
-                .collect(),
-            Self::SequenceItemAt { sequence, index } => sequence
-                .inputs()
-                .into_iter()
-                .chain(sequence.owned_items())
-                .chain([*index])
-                .collect(),
-            Self::SequenceAggregate {
-                sequence,
-                predicate,
-                expression,
-                arg,
-                ..
-            } => sequence
-                .inputs()
-                .into_iter()
-                .chain(sequence.owned_items())
-                .chain([*predicate, *expression, *arg].into_iter().flatten())
-                .collect(),
-            Self::Aggregate {
-                expression, arg, ..
-            }
-            | Self::JoinAggregate {
-                expression, arg, ..
-            } => expression.iter().chain(arg).copied().collect(),
         }
     }
 }
@@ -772,14 +697,14 @@ pub struct Graph {
 
 /// Connects a graph node's output to a named scalar field on the current
 /// scope's target group.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Binding {
     pub target_field: String,
     pub node: NodeId,
 }
 
 /// Inserts one scalar under a property name evaluated at run time.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DynamicBinding {
     pub key: NodeId,
     pub value: NodeId,
@@ -787,7 +712,7 @@ pub struct DynamicBinding {
 
 /// Inserts a child scope's complete value under a property name evaluated
 /// in the enclosing scope context.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DynamicChild {
     pub key: NodeId,
     pub scope: Scope,

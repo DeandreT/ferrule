@@ -4,6 +4,47 @@ ferrule provides clean-room, best-effort import and export for
 `.mfd` mapping designs. Vendor samples may be used as black-box behavioral
 references, but ferrule's implementation and committed fixtures are original.
 
+## Isolated byte packages
+
+Hosts that cannot grant filesystem access use `MfdPackage::new`,
+`import_package` and `export_package`. A package contains one named design and
+its immutable schema/configuration entries. Export returns both the complete
+package (including every generated schema sibling) and the ordinary compatibility
+report; `ExportProfile::NativeMfd` rejects known extensions or omissions before
+returning any artifacts. The existing filesystem and CLI APIs remain available.
+Package export also admits the exact emitted bundle through the package importer
+before returning it. Retained schema/presentation references must obey the same
+strict policy as package imports; unsafe aliases refuse instead of merely
+normalizing the output filenames. Re-import warnings join the export report.
+
+Packages admit at most 128 entries, 4 MiB per entry, 16 MiB in total, and 256
+UTF-8 bytes per path. Every entry is a regular byte buffer; no archive extraction,
+symlink, file handle or host directory is accepted. Names are slash-separated
+relative paths without empty, dot or parent segments, drive prefixes, URLs,
+backslashes, control characters or trailing spaces/dots. ASCII case aliases are
+refused. References resolve relative to the design's directory; transitive
+schema/configuration references obey the same strict path policy. There is no
+filesystem, catalog, manifest-discovery or network fallback. Missing supplied
+assets refuse with `MfdError::Package` rather than silently substituting an
+entry-tree schema.
+This includes unresolved JSON Pointer targets within supplied JSON Schemas;
+ordinary filesystem imports retain their existing best-effort behavior.
+
+XML/XSD, JSON Schema, ordinary X12/EDIFACT/HL7/TRADACOMS configurations,
+FlexText, PDF templates, XBRL presentation metadata, protobuf bundles and supported
+adjacent source modules consume supplied bytes. Runtime instance paths remain
+metadata, not instructions to open files. Database introspection, IDoc and SWIFT
+configuration import require filesystem-only backends and explicitly refuse in
+package mode. Package export also refuses database boundaries, whose lowering or
+re-import can require a live database. Unsupported mapping constructs retain the importer's
+ordinary actionable warnings; callers must show those warnings before accepting
+a best-effort project. A warning-free import is not proof of reference-application
+execution equivalence.
+Protobuf dependencies are read lazily from the supplied package. Only reachable
+files consume protobuf graph budgets or undergo source decoding; unrelated
+package entries remain subject to the package's aggregate bounds but cannot
+invalidate an otherwise complete protobuf graph.
+
 ## Import
 
 ```sh
@@ -224,6 +265,13 @@ Set `FERRULE_MFD_SURVEY_PACKAGE_MANIFEST` to the manifest file. Set
 `FERRULE_MFD_SURVEY_JSON_SCHEMA_CATALOG_ROOTS` to platform path lists; roots
 retain their declared order after canonical deduplication. When no manifest is
 selected, the `ReferenceSamples` directory remains the package root.
+
+The surveys, and every other test that reads the gitignored
+`samples/ReferenceSamples` corpus, are ignored by ordinary test runs. An
+explicit run fails with a "private compatibility corpus not present at <path>"
+error when the corpus is missing; it never reports a pass without it. The
+reference-output survey likewise fails when the local reference application is
+missing.
 
 For example, on Unix:
 
@@ -874,6 +922,32 @@ the same constant output, and retain the enclosing source-row context. Competing
 connectors within one occurrence and inputs shared ambiguously across cloned
 declarations remain refused.
 
+A declared clone of a repeating XML target group can instead be driven by a core
+kind-4 `if-else` over a plain JSON source. The clone is present when the lazily
+selected scalar exists: false, zero and the empty string are present, while Null
+is absent. A keyless `if-else` branch, saved as a `<datapoint/>` without a key at
+raw position 1 or 2, selects Null. Each conditional controls exactly one clone,
+which lowers to an optional-presence scope over `exists(selected)` in the
+unchanged enclosing frame; unconnected declarations add no occurrence, and
+clones keep saved declaration order. The conditional and every scalar binding of
+its clone are proved separately from the strict scalar-assignment proof: each
+operand is a valid scalar literal, a physical scalar field in the plain enclosing
+document or collection frame, a nested conditional, a core kind-5 `equal` of two
+compatible scalars, or a lang kind-5 `empty` of a String. Conditions are Boolean,
+branch and binding types match, and a walk permits at most 16 nested operators
+and 256 visited operands. Operators must have exact raw pins, optional empty
+`properties` and `view` metadata, and one raw declared producer for their output
+and for each connected input. A missing Boolean condition keeps the typed
+runtime error, and an unselected branch is never evaluated. Group-valued
+branches, cycles, malformed pins, priority contexts, competing producers,
+uniterated or foreign frames, controlled parents, clones without a conditional
+driver, user functions, aggregates, clocks and other computed operands refuse
+with one diagnostic before any import state changes; the ordinary repair draft
+is retained and the executable profile rejects the design. Physical EDI scalar
+inputs, JSON targets and uncloned target groups keep their existing behavior.
+Optional-presence scopes have no qualified `.mfd` export and the GUI shows them
+read-only.
+
 A closed, non-repeating JSON or compiled EDI variable record can also drive one
 repeating target group through its structural output. Require one connected
 target connector, a valid direct literal that establishes presence, and
@@ -1049,6 +1123,20 @@ property domain, schema-valued declarations remain typed, and explicit `false`
 rejects undeclared input properties instead of discarding them. MFD export
 writes a canonical JSON Schema sibling and re-import retains the same open,
 typed-open, or closed behavior.
+A JSON target entry may name a property that its open object admits without
+declaring it, such as `code` beside a declared `Code`. Import keeps the exact
+entry name and records an explicit undeclared member
+(`json_undeclared_property`) whose schema copies the object's dynamic value
+schema, so it is typed only when `additionalProperties` (or a matching
+`patternProperties` selector) constrains the value. Presence stays owned by
+the object's `required` list. Names are never case-folded and the referenced
+schema is not rewritten: JSON Schema export omits the member from
+`properties`, and MFD export/re-import restores it from the target entry. A
+closed object still reports the missing target path, and a name rejected by
+the object's selectors or `propertyNames` is reported and skipped. When a
+required member's mapped value is absent, native and generated Rust/C# output
+refuse the object for the missing required property, exactly as for a declared
+property of the same name, rather than emitting the object without it.
 Referenced schemas also retain exact closed homogeneous `patternProperties`.
 The containing schema must explicitly type `object` or `object | null`, use
 `additionalProperties: false`, and assign every portable selector in a

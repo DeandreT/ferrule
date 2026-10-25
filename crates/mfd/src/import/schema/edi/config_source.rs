@@ -16,9 +16,13 @@ pub(super) struct ResolvedConfig {
     authorization_root: PathBuf,
     _archive: Option<ExtractedArchive>,
     bound: Option<std::rc::Rc<crate::resource::BoundResource>>,
+    package: Option<std::rc::Rc<crate::package::PackageReader>>,
 }
 
 impl ResolvedConfig {
+    pub(super) fn package(&self) -> Option<&std::rc::Rc<crate::package::PackageReader>> {
+        self.package.as_ref()
+    }
     pub(super) fn bound(&self) -> Option<&std::rc::Rc<crate::resource::BoundResource>> {
         self.bound.as_ref()
     }
@@ -46,6 +50,17 @@ pub(super) fn resolve(
     resources: Option<&ResourceResolver>,
     declared: &str,
 ) -> Result<ResolvedConfig, String> {
+    if let Some(resources) = resources
+        && let Some(package) = resources.package()
+    {
+        return Ok(ResolvedConfig {
+            path: resources.resolve_package_file(declared)?,
+            authorization_root: resources.package_root().to_path_buf(),
+            _archive: None,
+            bound: None,
+            package: Some(package.clone()),
+        });
+    }
     // Select the exact typed original request before package lookup can touch
     // an obsolete installation path. Bound mode never extracts or discovers.
     if let Some(resources) = resources
@@ -57,6 +72,7 @@ pub(super) fn resolve(
             authorization_root: bound.root().to_path_buf(),
             _archive: None,
             bound: Some(bound),
+            package: None,
         });
     }
     let portable = declared
@@ -89,6 +105,7 @@ pub(super) fn resolve(
                 authorization_root,
                 _archive: None,
                 bound: None,
+                package: None,
             });
         }
         [] => {}
@@ -120,6 +137,7 @@ pub(super) fn resolve(
                 authorization_root,
                 _archive: Some(archive),
                 bound: None,
+                package: None,
             })
         }
         0 if errors.is_empty() => Err(format!("configuration `{declared}` was not found")),
@@ -149,6 +167,7 @@ fn resolve_in_catalogs(
                 authorization_root: root.clone(),
                 _archive: None,
                 bound: None,
+                package: None,
             });
         }
         if let Some(config) = resolve_catalog_archive(root, &relative, declared)? {
@@ -221,6 +240,7 @@ fn resolve_catalog_archive(
                 authorization_root,
                 _archive: Some(archive),
                 bound: None,
+                package: None,
             }))
         }
         0 if errors.is_empty() => Ok(None),
@@ -247,6 +267,7 @@ fn resolve_in_package(
                 authorization_root: resources.package_root().to_path_buf(),
                 _archive: None,
                 bound: None,
+                package: None,
             });
         }
         Err(error) => error,
@@ -282,6 +303,7 @@ fn resolve_in_package(
                 authorization_root,
                 _archive: Some(archive),
                 bound: None,
+                package: None,
             })
         }
         0 if errors.is_empty() => Err(direct_error),

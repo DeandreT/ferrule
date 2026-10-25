@@ -71,8 +71,9 @@ pub(super) fn read(
         .attribute("schemafile")
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "PDF document metadata has no schemafile".to_string())?;
-    let schema_path = resources.resolve_file(schema_file, "PDF template")?;
-    let (layout, layout_warnings) = parse_layout(&schema_path, declared_root)?;
+    let schema_path = resources.resolve_byte_file(schema_file, "PDF template")?;
+    let source = resources.read_text(&schema_path, MAX_PXT_BYTES as u64)?;
+    let (layout, layout_warnings) = parse_layout_text(&source, declared_root, true)?;
     let schema = layout.schema();
     let ports = collect_ports(&root, document_entry, &payload, &declared_outputs, &schema)?;
     if ports.is_empty() {
@@ -90,9 +91,13 @@ pub(super) fn read(
         .attribute("name")
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "PDF input instance has no file name".to_string())?;
-    let input_instance = resolve_reference(mfd_path, input_name, "PDF input instance")
-        .map(|path| portable_instance_path(mfd_path, &path))
-        .unwrap_or_else(|_| input_name.replace('\\', "/"));
+    let input_instance = if resources.package().is_some() {
+        input_name.to_owned()
+    } else {
+        resolve_reference(mfd_path, input_name, "PDF input instance")
+            .map(|path| portable_instance_path(mfd_path, &path))
+            .unwrap_or_else(|_| input_name.replace('\\', "/"))
+    };
     let output_keys = ports.keys().copied().collect();
     warnings.extend(
         layout_warnings
@@ -128,20 +133,6 @@ pub(super) fn read(
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
     })
-}
-
-fn parse_layout(path: &Path, expected_root: &str) -> Result<(PdfLayout, Vec<String>), String> {
-    let bytes = std::fs::read(path)
-        .map_err(|error| format!("could not read PDF template `{}` ({error})", path.display()))?;
-    if bytes.len() > MAX_PXT_BYTES {
-        return Err(format!(
-            "PDF template `{}` exceeds the {MAX_PXT_BYTES}-byte limit",
-            path.display()
-        ));
-    }
-    let source = String::from_utf8(bytes)
-        .map_err(|_| format!("PDF template `{}` is not valid UTF-8", path.display()))?;
-    parse_layout_text(&source, expected_root, true)
 }
 
 /// Parse a generated native-shaped template without permitting Ferrule's

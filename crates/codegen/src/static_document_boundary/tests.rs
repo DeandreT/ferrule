@@ -24,7 +24,16 @@ const NO_SOURCES: &str = include_str!(concat!(
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 
-fn record(label: &str, original: &impl std::fmt::Debug) -> TestResult<PathBuf> {
+/// Removes the per-test directory on drop, including after a panic.
+struct TempDir(PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn record(label: &str, original: &impl std::fmt::Debug) -> TestResult<()> {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
         "ferrule-static-documents274-{label}-{}-{}-{}",
@@ -33,12 +42,13 @@ fn record(label: &str, original: &impl std::fmt::Debug) -> TestResult<PathBuf> {
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&root)?;
+    let _cleanup = TempDir(root.clone());
     std::fs::write(
         root.join("COMPLETE-ORIGINAL.txt"),
         format!("{original:#?}\n"),
     )?;
     eprintln!("STATIC_DOCUMENTS274_ORIGINAL={}", root.display());
-    Ok(root)
+    Ok(())
 }
 
 fn options(options: &mapping::FormatOptions) -> DocumentBoundaryOptions {
@@ -285,7 +295,7 @@ fn dynamic_physical_sources_and_output_documents_remain_refused() -> TestResult<
     let mut dynamic = program.clone();
     dynamic.extra_sources[0].dynamic = Some(DynamicSourceProgram {
         path: 41,
-        driver: SourceIteration::new(vec!["Items".into()]),
+        driver: SourceIteration::new(vec!["Items".into()]).into(),
     });
     originals.push((
         "dynamic_source",

@@ -289,15 +289,13 @@ fn eval_expr_inner(
         },
         Node::OwnedPosition(position) => match program.owned_context {
             Some(context) => {
-                let slot = context
-                    .position_slot(&position.owner, position.collection.as_deref())
+                let index = context
+                    .position(&position.owner, position.collection.as_deref(), positions)
                     .map_err(|source| EngineError::OwnedSourceAccess {
                         node: Some(node_id),
                         scope: None,
                         source,
-                    })?;
-                let index = positions
-                    .get(slot)
+                    })?
                     .ok_or_else(|| EngineError::OwnedSourceAccess {
                         node: Some(node_id),
                         scope: None,
@@ -336,6 +334,20 @@ fn eval_expr_inner(
                 node: node_id,
                 function: None,
                 kind: "owned_row_document_path",
+            }),
+        },
+        Node::OwnedSourceDocumentPath(path) => match program.owned_context {
+            Some(context) => context.document_path(&path.owner).map_err(|source| {
+                EngineError::OwnedSourceAccess {
+                    node: Some(node_id),
+                    scope: None,
+                    source,
+                }
+            }),
+            None => Err(EngineError::UnsupportedSourceOwnership {
+                node: node_id,
+                function: None,
+                kind: "owned_source_document_path",
             }),
         },
         Node::OwnedLookup(lookup) => crate::owned_search::eval_owned_lookup(
@@ -455,11 +467,13 @@ fn eval_expr_inner(
                 node: node_id,
                 name: name.clone(),
             })?;
-            coerce_value_map_input(&value, *ty).ok_or_else(|| EngineError::RuntimeParameterType {
-                node: node_id,
-                name: name.clone(),
-                expected: *ty,
-                found: value.type_name(),
+            crate::resolve_runtime_parameter(&value, *ty).ok_or_else(|| {
+                EngineError::RuntimeParameterType {
+                    node: node_id,
+                    name: name.clone(),
+                    expected: *ty,
+                    found: value.type_name(),
+                }
             })
         }
         Node::RuntimeParameterDefault {
@@ -486,11 +500,13 @@ fn eval_expr_inner(
                     in_progress,
                 )?,
             };
-            coerce_value_map_input(&value, *ty).ok_or_else(|| EngineError::RuntimeParameterType {
-                node: node_id,
-                name: name.clone(),
-                expected: *ty,
-                found: value.type_name(),
+            crate::resolve_runtime_parameter(&value, *ty).ok_or_else(|| {
+                EngineError::RuntimeParameterType {
+                    node: node_id,
+                    name: name.clone(),
+                    expected: *ty,
+                    found: value.type_name(),
+                }
             })
         }
         Node::Call { function, args } => {

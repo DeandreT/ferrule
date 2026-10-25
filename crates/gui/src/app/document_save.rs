@@ -27,12 +27,21 @@ impl FerruleApp {
         let relocated = cli::project_paths_relocate(&previous_path, path)?;
         let mut project = self.project.clone();
         cli::rebase_project_paths(&mut project, &previous_path, path)?;
-        let json = mapping::project_file::encode_pretty(&project)?;
+        let json = match &self.primary_document {
+            Some(session) => {
+                mapping::document_project_file::encode_pretty(&session.document(&project))?
+            }
+            None => mapping::project_file::encode_pretty(&project)?,
+        };
         let layout =
             CanvasLayout::capture(&project, &self.main_canvas.snarl, &self.mapping_workspace);
         crate::document_file::replace(path, json.as_bytes())?;
         self.project = project;
         self.document = DocumentLocation::saved(path);
+        crate::preferences::remember_recent_project(
+            &mut self.recent_projects,
+            path.display().to_string(),
+        );
         self.mark_clean();
         let rebased = if relocated {
             self.rebase_retained_history(&previous_path, path)
@@ -80,14 +89,17 @@ impl FerruleApp {
     pub(super) fn saved_status(path: &Path, outcome: &DocumentSaveOutcome) -> String {
         if !outcome.validation_issues.is_empty() {
             format!(
-                "saved {} with {} validation issue(s)",
-                path.display(),
-                outcome.validation_issues.len()
+                "saved {} with {}",
+                crate::ui_kit::file_label(path),
+                crate::ui_kit::plural(outcome.validation_issues.len(), "validation issue")
             )
         } else if outcome.layout_warning.is_some() {
-            format!("saved {} without canvas layout", path.display())
+            format!(
+                "saved {} without canvas layout",
+                crate::ui_kit::file_label(path)
+            )
         } else {
-            format!("saved {}", path.display())
+            format!("saved {}", crate::ui_kit::file_label(path))
         }
     }
 

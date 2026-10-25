@@ -10,6 +10,7 @@ mod adjacency_tree;
 mod aggregate;
 mod context;
 mod csv;
+mod descriptor_registry;
 mod dynamic_document;
 mod dynamic_source;
 mod dynamic_target;
@@ -23,6 +24,7 @@ mod json;
 mod json5;
 mod json_source;
 mod path_hierarchy;
+mod primary_document;
 mod recursive_filter;
 mod runtime_value;
 mod user_function;
@@ -34,6 +36,28 @@ mod xml_mixed_content;
 
 use std::fmt;
 
+/// Source identity of this runtime package, as computed by `identity.rs`.
+/// Generated mappings with a compatibility manifest record the identity they
+/// require and check it through [`runtime_identity_matches`].
+pub const RUNTIME_IDENTITY: &str = env!("FERRULE_RUNTIME_IDENTITY");
+
+/// Whether this runtime has the `required` identity. It is usable in constant
+/// evaluation, so a mapping bound to another runtime fails to compile.
+pub const fn runtime_identity_matches(required: &str) -> bool {
+    let (available, required) = (RUNTIME_IDENTITY.as_bytes(), required.as_bytes());
+    if available.len() != required.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < available.len() {
+        if available[index] != required[index] {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
 pub use adjacency_tree::{
     AdjacencyTreeFields, AdjacencyTreeRoot, OwnedAdjacencyTreeRoot, adjacency_tree,
     owned_adjacency_tree,
@@ -43,8 +67,8 @@ pub use context::{
     BasicGroupByControls, BasicGroupByMetadata, BasicGroupEndingWithControls,
     BasicGroupIntoBlocksControls, BasicGroupStartingWithControls, BasicNamedSourceDeclaration,
     BasicNamedSourceInput, BasicNamedSourceMode, BasicScopeContext, BasicSourceBridgeError,
-    BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort, OwnedJoinKey, OwnedJoinSource,
-    OwnedJoinStage, PhaseSelection, RetainedSourceCohort,
+    BasicSourceCandidate, BasicSourceRoots, CompletePhaseCohort, OwnedDynamicDocuments,
+    OwnedJoinKey, OwnedJoinSource, OwnedJoinStage, PhaseSelection, RetainedSourceCohort,
 };
 pub use context::{
     BasicJsonDocumentRef, BasicJsonInputAdmission, BasicJsonParsedInputs,
@@ -59,12 +83,18 @@ pub use context::{
     ScopeContext, SourcePathError, clone_scalar, resolve_scalar,
 };
 pub use csv::{
-    CsvBoundaryError, CsvDocumentError, MAX_CSV_DOCUMENT_BYTES, serialize_csv, serialize_csv_bytes,
+    CsvBoundaryError, CsvDocumentError, MAX_CSV_DOCUMENT_BYTES, PrimaryCsvDocumentError,
+    serialize_csv, serialize_csv_bytes,
 };
 pub use dynamic_document::dynamic_document;
 pub use dynamic_source::{
-    DynamicJsonSourceLoader, DynamicSourceItems, DynamicSourceLoader, MAX_DYNAMIC_SOURCE_BYTES,
+    DynamicJsonSourceLoader, DynamicSourceCategory, DynamicSourceCause, DynamicSourceCodecKind,
+    DynamicSourceDiagnostic, DynamicSourceFault, DynamicSourceItems, DynamicSourceLoadFailure,
+    DynamicSourceLoader, DynamicSourcePhase, DynamicSourceResource, DynamicSourceResourceLimit,
+    JsonDynamicSourceAdapter, LegacyDynamicSourceMessage, MAX_DYNAMIC_SOURCE_BYTES,
     MAX_DYNAMIC_SOURCE_LOADS, MAX_DYNAMIC_SOURCE_PATH_BYTES, MAX_DYNAMIC_SOURCE_TOTAL_BYTES,
+    TaggedDynamicBytesLoader, TaggedDynamicSourceLoader, TaggedLoaderAdapter,
+    UndeclaredDynamicSource,
 };
 pub use dynamic_target::{dynamic_property_name, insert_dynamic_field, merge_dynamic_fragments};
 pub use failure::{mapping_exception, mapping_failure};
@@ -79,7 +109,9 @@ pub use format_csv::{
     CsvAcquisitionError, CsvByteDecodingPolicy, CsvDocumentRows, CsvFormatError, CsvReadError,
     CsvReadLimit, CsvReadOptions, CsvRowOccurrence, CsvSourceAcquisition, CsvSourceData,
     CsvSourceDocument, CsvSourceError, CsvSourceLoadError, CsvSourceRows, CsvWriteOptions,
-    MAX_CSV_SOURCE_DOCUMENTS, MAX_CSV_SOURCE_PATH_BYTES,
+    LocalFileError, LocalPrimaryFiles, MAX_CSV_SOURCE_DOCUMENTS, MAX_CSV_SOURCE_PATH_BYTES,
+    PrimaryAcquisitionError, PrimaryAssemblyError, PrimaryDocument, PrimarySourceHost,
+    acquire_primary_csv_rows, acquire_primary_documents, assemble_primary_documents,
     from_bytes_with_decoding_policy_bounded as parse_csv_rows_bytes_with_decoding_policy,
     from_bytes_with_options_bounded as parse_csv_rows_bytes,
     from_str_with_options_bounded as parse_csv_rows,
@@ -109,9 +141,10 @@ pub use iteration::{
     sort_candidates,
 };
 pub use json::{
-    JsonBoundaryError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_JSON_DOCUMENT_BYTES, parse_json,
-    parse_json_bytes, parse_json_bytes_with_utf8_cause, serialize_json, serialize_json_bytes,
-    serialize_json_compact, serialize_json_compact_bytes,
+    JsonBoundaryError, JsonDocumentError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_JSON_DOCUMENT_BYTES,
+    PreparedJsonSchema, parse_json, parse_json_bytes, parse_json_bytes_with_utf8_cause,
+    parse_json_with_format_cause, serialize_json, serialize_json_bytes, serialize_json_compact,
+    serialize_json_compact_bytes,
 };
 pub use json_source::{
     JsonSourceDocuments, JsonSourceLoadError, JsonSourceOccurrence, MAX_JSON_SOURCE_DOCUMENTS,
@@ -120,8 +153,26 @@ pub use json5::{
     Json5BoundaryError, Json5BoundaryResource, Json5SyntaxError, Json5SyntaxKind,
     Json5SyntaxResource, JsonFormatError, map_json5_bytes_with, map_json5_with,
 };
+pub use mapping::{EmptyFileSelection, PrimaryDocumentShape, PrimaryFileSelection};
+pub use mapping::{FixedFieldWidth, FixedWidthLayout};
 pub use path_hierarchy::{
     MAX_PATH_HIERARCHY_DEPTH, MAX_PATH_HIERARCHY_ITEMS, owned_path_hierarchy, path_hierarchy,
+};
+pub use primary_document::PrimaryXmlDocumentError;
+mod edi_document;
+mod fixed_width;
+pub use edi_document::{
+    EdiBoundaryError, EdiDocumentBoundary, EdiInputBudget, PrimaryEdiDocumentError, PrimaryEdiKind,
+    validate_edifact_envelope,
+};
+pub use fixed_width::{
+    FixedWidthBoundaryError, FixedWidthInputBudget, MAX_FIXED_WIDTH_DOCUMENT_BYTES,
+    MAX_FIXED_WIDTH_TOTAL_BYTES, PrimaryFixedWidthDocumentError, parse_fixed_width_bytes,
+    parse_fixed_width_document, serialize_fixed_width_bytes, serialize_fixed_width_document,
+};
+mod primary_json_document;
+pub use primary_json_document::{
+    MAX_PRIMARY_JSON_INPUT_BYTES, PrimaryJsonDocumentError, PrimaryJsonInputBudget,
 };
 pub use recursive_filter::{
     OwnedRecursiveFilterPredicate, RecursiveFilterPredicate, owned_recursive_filter,
@@ -143,17 +194,20 @@ pub use xml::{MAX_EMBEDDED_XML_SCHEMA_BYTES, MAX_SERIALIZED_XML_BYTES, serialize
 pub use xml_boundary::{
     DynamicXmlSourceLoader, MAX_XML_DOCUMENT_BYTES, MAX_XML_HINT_DESCRIPTOR_BYTES,
     MAX_XML_INPUT_ARTIFACTS, MAX_XML_INPUT_SET_BYTES, MAX_XML_OUTPUT_ARTIFACTS,
-    MAX_XML_OUTPUT_SET_BYTES, XmlBoundaryError, XmlBoundaryErrorKind, XmlDocumentExecutionError,
-    XmlDocumentOutputOwner, XmlDocumentOutputsBudget, XmlDocumentOutputsExecutionError,
-    XmlDocumentOutputsOwner, XmlDocumentSetBudget, XmlDynamicInputDocumentExecutionError,
-    XmlDynamicInputDocumentOutputsExecutionError, XmlDynamicInputDocumentOutputsOwner,
-    XmlDynamicInputDocumentOwner, XmlDynamicInputRequest, XmlDynamicSourceAdapter,
-    XmlDynamicSourcePolicy, XmlExecutionError, XmlInputDocumentExecutionError,
-    XmlInputDocumentOutputsExecutionError, XmlInputDocumentOutputsOwner, XmlInputDocumentOwner,
-    XmlInputSetBudget, XmlInputSetResourceError, XmlInputSource, XmlOutputSetBudget,
-    XmlOutputSetError, XmlOutputSetResourceError, XmlOutputTarget, parse_structured_xml,
-    parse_structured_xml_bytes, parse_xml, parse_xml_bytes, preflight_xml_input_sizes,
-    preflight_xml_input_sizes_with_budget, serialize_xml_document, xml_input_indices,
+    MAX_XML_OUTPUT_SET_BYTES, NamedXmlDocumentSet, XmlBoundaryError, XmlBoundaryErrorKind,
+    XmlDocumentExecutionError, XmlDocumentOutputOwner, XmlDocumentOutputsBudget,
+    XmlDocumentOutputsExecutionError, XmlDocumentOutputsOwner, XmlDocumentSetBudget,
+    XmlDocumentSetInputError, XmlDocumentSetMember, XmlDocumentSetMemberOwner, XmlDocumentSetText,
+    XmlDynamicInputDocumentExecutionError, XmlDynamicInputDocumentOutputsExecutionError,
+    XmlDynamicInputDocumentOutputsOwner, XmlDynamicInputDocumentOwner, XmlDynamicInputRequest,
+    XmlDynamicSourceAdapter, XmlDynamicSourcePolicy, XmlExecutionError,
+    XmlInputDocumentExecutionError, XmlInputDocumentOutputsExecutionError,
+    XmlInputDocumentOutputsOwner, XmlInputDocumentOwner, XmlInputSetBudget,
+    XmlInputSetResourceError, XmlInputSource, XmlOutputSetBudget, XmlOutputSetError,
+    XmlOutputSetResourceError, XmlOutputTarget, admit_xml_document_set_names, parse_structured_xml,
+    parse_structured_xml_bytes, parse_xml, parse_xml_bytes, parse_xml_document_set,
+    preflight_xml_document_sets, preflight_xml_input_sizes, preflight_xml_input_sizes_with_budget,
+    serialize_xml_document, xml_input_indices,
 };
 pub use xml_mixed_content::{
     OwnedXmlMixedContentExpression, OwnedXmlMixedContentReplacement, XmlMixedContentElement,
@@ -352,6 +406,9 @@ pub enum RuntimeError {
         path: String,
         message: String,
     },
+    /// A tagged load failure retaining its original fault and cause.
+    /// Legacy string failures keep [`Self::DynamicSourceLoad`].
+    DynamicSourceFailure(DynamicSourceLoadFailure),
     /// A generated mapping failure selected at least one item. Rule numbers
     /// are one-based and follow declaration order.
     MappingFailure {
@@ -637,6 +694,7 @@ impl fmt::Display for RuntimeError {
                 formatter,
                 "dynamic source {source:?} could not load {path:?}: {message}"
             ),
+            Self::DynamicSourceFailure(failure) => failure.fmt(formatter),
             Self::MappingFailure { rule, message } => write!(
                 formatter,
                 "mapping failure rule {rule}: {}",
@@ -715,6 +773,7 @@ impl std::error::Error for RuntimeError {
             Self::BasicSourceBridgeAtNode { source, .. } => Some(source),
             Self::PrimaryRoot { source, .. } => Some(source),
             Self::Function(error) => Some(error),
+            Self::DynamicSourceFailure(failure) => Some(&failure.fault),
             Self::FilterMapBudget { .. }
             | Self::FilterMapValueType { .. }
             | Self::FilterMapNonFinite { .. }

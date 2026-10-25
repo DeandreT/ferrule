@@ -44,7 +44,7 @@ mod generated_occurrence;
 mod graph;
 mod group_by_key;
 mod group_projection;
-mod instance_path;
+pub(crate) mod instance_path;
 mod iteration;
 mod join;
 mod json_parser;
@@ -57,6 +57,7 @@ mod mixed_content;
 mod optional_parser_input;
 mod output_parameter;
 mod pipeline_exception;
+pub(crate) mod presence;
 mod protobuf_target;
 mod recursive;
 mod scalar_anchor;
@@ -364,6 +365,13 @@ fn hinted_primary_index(sources: &[&SchemaComponent], hint: &PrimarySourceHint) 
 
 pub fn import(path: &Path) -> Result<Imported, MfdError> {
     import_with_options(path, &ImportOptions::default())
+}
+
+pub(crate) fn import_package(package: &crate::MfdPackage) -> Result<Imported, MfdError> {
+    let resources = ResourceResolver::from_package(package)?;
+    let result = import_resolved(&resources, StageSelection::Ordinary, false, false);
+    resources.finish_bindings()?;
+    Ok(result?.imported)
 }
 
 pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Imported, MfdError> {
@@ -2528,12 +2536,9 @@ fn import_resolved(
         let dynamic_path = dynamic_source_inputs[index]
             .as_ref()
             .and_then(|(feed, driver)| {
-                builder
-                    .binding_node(*feed, &[])
-                    .map(|node| mapping::DynamicSourcePath {
-                        node,
-                        iteration: builder.context_path(driver),
-                    })
+                builder.binding_node(*feed, &[]).map(|node| {
+                    mapping::DynamicSourcePath::legacy(node, builder.context_path(driver))
+                })
             });
         if dynamic_path.is_none() && extra.input_instance.is_none() {
             builder.warnings.push(format!(
@@ -2549,7 +2554,7 @@ fn import_resolved(
                 .as_deref()
                 .map(|stored| {
                     if dynamic_path.is_none() {
-                        instance_path::resolve_static_input(path, stored)
+                        resources.static_input(stored)
                     } else {
                         stored.to_string()
                     }
@@ -2588,7 +2593,7 @@ fn import_resolved(
                 builder.static_component_input_path(primary)
             }
         })
-        .map(|stored| instance_path::resolve_static_input(path, &stored));
+        .map(|stored| resources.static_input(&stored));
     let target_path = if root.output_path().is_some() {
         None
     } else if matches!(
@@ -2668,7 +2673,7 @@ fn import_resolved(
     exception::item_ordered::finish(&mut project, item_exception, &mut warnings);
     if let Some(filename) = primary_filename {
         let mut document =
-            mapping::DocumentProject::new(project, mapping::PrimarySourcePlan { filename });
+            mapping::DocumentProject::new(project, mapping::PrimarySourcePlan::new(filename));
         document.prune_unreachable_nodes();
         project = document.project().clone();
     } else {

@@ -1,5 +1,5 @@
 {
-  "status": "independent contract literals; all prospective92 C# calls UNRUN",
+  "status": "independent contract literals; all prospective96 C# calls UNRUN",
   "fixtures": [
     "I",
     "F",
@@ -105,6 +105,14 @@
       "id": "unquoted-unicode-boundary",
       "fixture": "U",
       "input": "{雪:7}",
+      "output": "{\n  \"雪\": 7\n}\n",
+      "stage": null,
+      "syntax_kind": null
+    },
+    {
+      "id": "unquoted-identifier-start-mark",
+      "fixture": "U",
+      "input": "{\u0301a:7}",
       "output": null,
       "stage": "Syntax",
       "syntax_kind": "UnsupportedIdentifier",

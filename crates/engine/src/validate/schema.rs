@@ -5,6 +5,9 @@ use super::{
     ValidationIssue, ValidationOwner, ValidationSchemaLocation, ValidationSchemaStep, own_issues,
 };
 
+/// Leading text of the issue reported for a malformed nested-array wrapper frame.
+pub(super) const WRAPPER_FRAME_ISSUE: &str = "JSON nested-array wrapper metadata";
+
 pub(super) fn validate_schema(
     root: &str,
     schema: &SchemaNode,
@@ -234,6 +237,15 @@ pub(super) fn validate_schema(
             format!("arbitrary-JSON metadata{suffix} requires one non-repeating string scalar"),
         ));
     }
+    if let Err(error) = schema.check_json_array_wrapper_frame() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "{WRAPPER_FRAME_ISSUE}{suffix} requires a repeating group frame whose only child is a repeating `{}` array: {error}",
+                ir::JSON_ARRAY_ITEM_FIELD
+            ),
+        ));
+    }
     own_issues(
         &mut issues[start..],
         ValidationOwner::SchemaNode(owner.clone()),
@@ -313,6 +325,7 @@ pub(super) fn validate_owned_source_node(
         ),
         Node::OwnedPosition(position) => (&position.owner, None, position.collection.as_deref()),
         Node::OwnedRowDocumentPath(path) => (&path.owner, None, path.collection.as_deref()),
+        Node::OwnedSourceDocumentPath(path) => (&path.owner, None, None),
         Node::OwnedXmlSerialize(serializer) => {
             // Document-level checks are independent of the owner's schema.
             if serializer.schema.repeating {
@@ -441,7 +454,8 @@ pub(super) fn current_source_schema<'a>(
     iteration: &ScopeIteration,
 ) -> Option<&'a SchemaNode> {
     match iteration {
-        ScopeIteration::None => parent,
+        // Optional presence adds no frame; its group stays in the parent item.
+        ScopeIteration::None | ScopeIteration::OptionalPresence { .. } => parent,
         ScopeIteration::OwnedSource { source, .. } => {
             let root =
                 owned_source_root(project, &source.owner, "owned collection", &mut Vec::new())?;

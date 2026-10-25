@@ -136,6 +136,8 @@ pub(super) struct FileRunCore {
     pub(super) started: Instant,
     pub(super) debug: bool,
     pub(super) phase: FileRunPhase,
+    /// The opted-in owned PDF extraction's latest state, if any.
+    pub(super) extraction: Option<Arc<super::pdf_extraction::ExtractionStatus>>,
     pub(super) shutdown: ShutdownIntent,
 }
 
@@ -173,7 +175,7 @@ impl PendingFileRun {
     }
 
     #[cfg(test)]
-    fn from_test_core(core: FileRunCore) -> Self {
+    pub(super) fn from_test_core(core: FileRunCore) -> Self {
         let port = super::file_run_teardown::SavedFileRunTeardownPort::default();
         let reservation = port.reserve().expect("fresh test saved-file owner slot");
         Self::new(core, reservation)
@@ -352,11 +354,14 @@ impl FerruleApp {
         if self.pending_file_run.is_some() || self.pending_pipeline_run.is_some() {
             return;
         }
-        if let Err(error) = self.host_parameters.compile() {
-            self.status = "run blocked".into();
-            self.diagnostics.error("Run blocked", error);
-            return;
-        }
+        let runtime_parameters = match self.host_parameters.compile() {
+            Ok(parameters) => parameters,
+            Err(error) => {
+                self.status = "run blocked".into();
+                self.diagnostics.error("Run blocked", error);
+                return;
+            }
+        };
         if debug && let Err(error) = self.file_run_value_condition.compile() {
             self.status = "debug run blocked".into();
             self.diagnostics.error("Debug Run blocked", error);
@@ -389,8 +394,29 @@ impl FerruleApp {
         }
         let issues = cli::validate(&self.project);
         if !issues.is_empty() {
-            self.status = format!("run blocked by {} validation issue(s)", issues.len());
+            self.status = format!(
+                "run blocked by {}",
+                crate::ui_kit::plural(issues.len(), "validation issue")
+            );
             self.diagnostics.validation(&self.project, issues);
+            return;
+        }
+        // Refuse an unsupported route before saving or touching any input.
+        let preflight = match &self.primary_document {
+            Some(_) if debug => Err(anyhow::anyhow!(
+                "Debug Run is not available for primary document projects"
+            )),
+            Some(_) => self.primary_document_preflight(),
+            None => self.saved_run_preflight(&runtime_parameters),
+        };
+        if let Err(error) = preflight {
+            let title = if debug {
+                "Debug Run blocked"
+            } else {
+                "Run blocked"
+            };
+            self.status = title.to_lowercase();
+            self.diagnostics.error(title, format!("{error:#}"));
             return;
         }
         self.show_run_report = false;
@@ -496,6 +522,19 @@ impl FerruleApp {
         };
         let input_path = nonempty_path(&self.input_path);
         let output_path = nonempty_path(&self.output_path);
+        let document_policy = match self
+            .primary_document
+            .as_ref()
+            .map(super::primary_document::PrimaryDocumentSession::policy)
+            .transpose()
+        {
+            Ok(policy) => policy,
+            Err(error) => {
+                self.status = "run blocked".into();
+                self.diagnostics.error("Run blocked", format!("{error:#}"));
+                return;
+            }
+        };
         let breakpoint = if debug {
             self.file_run_breakpoint
                 .clone()
@@ -514,6 +553,14 @@ impl FerruleApp {
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
         let pause_on_failure = debug && self.file_run_pause_on_failure;
+        let extraction = self
+            .owned_pdf_worker
+            .then(|| Arc::new(super::pdf_extraction::ExtractionStatus::default()));
+        let pdf_worker = extraction
+            .as_ref()
+            .map(|status| (self.pdf_worker_package.clone(), Arc::clone(status)));
+        #[cfg(test)]
+        let reader_controls = self.pdf_reader_controls;
         let mut core = FileRunCore {
             receiver,
             worker: None,
@@ -523,6 +570,7 @@ impl FerruleApp {
             started: Instant::now(),
             debug,
             phase: FileRunPhase::Running,
+            extraction,
             shutdown: ShutdownIntent::default(),
         };
         core.worker = Some(std::thread::spawn(move || {
@@ -566,7 +614,29 @@ impl FerruleApp {
             if let Some(path) = output_path.as_deref() {
                 options = options.with_output_path(path);
             }
-            let result = cli::run_project_with_options(&project_path, &options).map_err(|error| {
+            // The owned reader lives on this thread and returns only after its
+            // extraction is closed, so the thread outlives any worker child.
+            let reader = pdf_worker.as_ref().map(|(package, status)| {
+                let reader =
+                    super::pdf_extraction::OwnedPdfReader::new(package, &control.cancelled, status);
+                #[cfg(test)]
+                let reader = reader.with_controls(reader_controls);
+                reader
+            });
+            let result = match (&document_policy, &reader) {
+                // A document project reads only beneath its input root.
+                (Some(policy), _) => cli::run_primary_document_file(
+                    &project_path,
+                    output_path.as_deref(),
+                    policy,
+                    Some(&runtime_parameters),
+                ),
+                (None, Some(reader)) => {
+                    cli::run_project_with_options_and_pdf_reader(&project_path, &options, reader)
+                }
+                (None, None) => cli::run_project_with_options(&project_path, &options),
+            };
+            let result = result.map_err(|error| {
                 if error.chain().any(|cause| {
                     matches!(
                         cause.downcast_ref::<engine::EngineError>(),
@@ -768,16 +838,19 @@ impl FerruleApp {
         match result {
             Ok(outcome) => {
                 self.status = format!(
-                    "wrote {} record(s) to {}",
-                    outcome.records_written,
-                    outcome.output_path.display()
+                    "wrote {} to {}",
+                    crate::ui_kit::plural(outcome.records_written, "record"),
+                    crate::ui_kit::file_label(&outcome.output_path)
                 );
                 let report = crate::run_report::RunReport::from_outcome_with_trace(
                     outcome,
                     pending.started.elapsed(),
                     trace,
                 );
-                self.run_report = Some(crate::run_report::RunReportView::new(report));
+                self.run_report = Some(
+                    crate::run_report::RunReportView::new(report)
+                        .with_project_labels(&self.project),
+                );
                 self.show_run_report = true;
                 self.diagnostics.clear();
             }
@@ -804,18 +877,27 @@ impl FerruleApp {
         };
         let phase = pending.phase.clone();
         let debug = pending.debug;
+        let extraction = pending
+            .extraction
+            .as_ref()
+            .and_then(|status| status.progress_label());
+        let closing = self.close_after_file_run;
         let mut action = None;
-        egui::Window::new(if debug { "Debug Run" } else { "Run" })
-            .collapsible(false)
-            .resizable(true)
-            .default_width(600.0)
-            .show(ctx, |ui| {
+        let response = crate::ui_kit::dialog(
+            ctx,
+            crate::ui_kit::DialogKind::Docked,
+            if debug { "Debug run" } else { "Run" },
+        )
+        .id_salt("file_run_progress")
+        .width(crate::ui_kit::DialogWidth::Wide)
+        .show(
+            |ui| {
                 match &phase {
                     FileRunPhase::Running => {
                         ui.horizontal(|ui| {
                             ui.spinner();
                             ui.strong(if debug {
-                                "Debug Run is running"
+                                "Debug run is running"
                             } else {
                                 "Run is running"
                             });
@@ -859,7 +941,14 @@ impl FerruleApp {
                         });
                     }
                 }
-                ui.separator();
+                if let Some(extraction) = &extraction {
+                    ui.weak(extraction);
+                }
+                if closing {
+                    ui.weak("The application closes after this run has stopped.");
+                }
+            },
+            |ui| {
                 ui.horizontal(|ui| match &phase {
                     FileRunPhase::Paused(_)
                     | FileRunPhase::PausedNode(_)
@@ -894,7 +983,13 @@ impl FerruleApp {
                     }
                     FileRunPhase::Publishing | FileRunPhase::Stopping => {}
                 });
-            });
+            },
+        );
+        if response.close_requested
+            && !matches!(phase, FileRunPhase::Publishing | FileRunPhase::Stopping)
+        {
+            action = Some(FileRunCommand::Cancel);
+        }
         if let Some(command) = action {
             self.file_run_command(command);
             ctx.request_repaint();
@@ -911,7 +1006,7 @@ impl FerruleApp {
             self.file_run_breakpoint = None;
         }
         ui.horizontal_wrapped(|ui| {
-            ui.label("Debug breakpoint");
+            let breakpoint_label = ui.label("Debug breakpoint");
             egui::ComboBox::from_id_salt("file_run_debug_breakpoint")
                 .selected_text(self.file_run_breakpoint.as_ref().map_or_else(
                     || "Every target-field write".to_owned(),
@@ -930,7 +1025,9 @@ impl FerruleApp {
                             candidate.label(),
                         );
                     }
-                });
+                })
+                .response
+                .labelled_by(breakpoint_label.id);
         });
         let mut condition_valid = preview_ui::show_breakpoint_value_condition(
             ui,
@@ -963,7 +1060,7 @@ impl FerruleApp {
             "Pause at the first graph or function evaluation error",
         );
         if ui
-            .add_enabled(condition_valid, egui::Button::new("Debug Run"))
+            .add_enabled(condition_valid, egui::Button::new("Debug run"))
             .clicked()
         {
             self.debug_run(ui.ctx());
@@ -972,7 +1069,7 @@ impl FerruleApp {
     }
 }
 
-fn nonempty_path(value: &str) -> Option<PathBuf> {
+pub(super) fn nonempty_path(value: &str) -> Option<PathBuf> {
     (!value.trim().is_empty()).then(|| PathBuf::from(value.trim()))
 }
 
@@ -988,8 +1085,30 @@ mod file_run_ownership_tests;
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn close_during_publication_waits_for_worker_to_finish() {
         super::file_run_ownership_tests::close_during_publication();
+    }
+
+    #[test]
+    fn saved_run_preflight_declares_the_observers_the_worker_attaches() {
+        let (events, _events) = mpsc::channel();
+        let (_commands, commands) = mpsc::channel();
+        let control = FileRunControl {
+            events,
+            commands,
+            cancelled: Arc::new(AtomicBool::new(false)),
+        };
+        let parameters = engine::RuntimeParameters::new();
+        let trace = crate::run_report::TraceCollector::new();
+        let gate = || true;
+        // Debug Run adds only its hook, which cancellation already declares.
+        let options = control.run_options(&parameters, &trace, &gate, None);
+        assert_eq!(
+            options.request().observers,
+            super::super::route_preflight::SAVED_RUN_OBSERVERS
+        );
     }
 }

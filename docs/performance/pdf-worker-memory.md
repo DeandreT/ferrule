@@ -55,12 +55,11 @@ is claimed here.
 
 ## Follow-up
 
-- [ ] Repeat the same inputs and output checks with the corrected verification
-  path; record the build profile, measurement bracket and complete outcomes.
-- [ ] Retain each trial's host lifetime observations and exact child reap usage,
-  including allocation failures; keep sampled values distinct from peaks.
-- [ ] Compare repeated trials before making an improvement or parser-memory
-  claim; preserve the original five observations.
+The [resource profile](pdf-worker-resource-profile.md) repeats worker and
+in-process extraction with the corrected verification path on a separate
+self-authored corpus, recording the build profile, brackets, complete outcomes,
+own-reap usage and allocation failures. It does not reuse the inputs above, so it
+makes no improvement or parser-memory claim against these five observations.
 
 Track resource qualification in [#328](https://github.com/DeandreT/ferrule/issues/328)
 and bounded executable verification/reporting in

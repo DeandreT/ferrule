@@ -12,57 +12,65 @@ pub(super) fn show_fields(
     let mut changed = false;
     ui.strong(if source { "CSV input" } else { "CSV output" });
     changed |= ui.checkbox(&mut draft.headers, "Header row").changed();
-    ui.horizontal(|ui| {
-        ui.label("Delimiter");
-        changed |= ui
-            .add(
-                egui::TextEdit::singleline(&mut draft.delimiter)
-                    .char_limit(8)
-                    .desired_width(44.0),
-            )
-            .changed();
-        if ui.small_button("Tab").clicked() {
-            draft.delimiter = "\t".to_owned();
-            changed = true;
-        }
-    });
-    ui.horizontal(|ui| {
-        ui.label("Quoting");
-        egui::ComboBox::from_id_salt(("named_csv_quote", salt))
-            .selected_text(match draft.quote_mode {
-                CsvQuoteMode::Standard => "Double quote",
-                CsvQuoteMode::Custom => "Custom character",
-                CsvQuoteMode::Disabled => "Disabled",
-            })
-            .show_ui(ui, |ui| {
-                changed |= ui
-                    .selectable_value(
-                        &mut draft.quote_mode,
-                        CsvQuoteMode::Standard,
-                        "Double quote",
-                    )
-                    .changed();
-                changed |= ui
-                    .selectable_value(
-                        &mut draft.quote_mode,
-                        CsvQuoteMode::Custom,
-                        "Custom character",
-                    )
-                    .changed();
-                changed |= ui
-                    .selectable_value(&mut draft.quote_mode, CsvQuoteMode::Disabled, "Disabled")
-                    .changed();
-            });
-        if draft.quote_mode == CsvQuoteMode::Custom {
-            ui.label("Quote");
+    crate::ui_kit::form_grid(ui, ("csv_dialect", salt), |form| {
+        form.row("Delimiter", |ui| {
             changed |= ui
                 .add(
-                    egui::TextEdit::singleline(&mut draft.custom_quote)
-                        .char_limit(8)
-                        .desired_width(44.0),
+                    crate::ui_kit::text_field(
+                        &mut draft.delimiter,
+                        crate::ui_kit::FieldWidth::Small,
+                    )
+                    .char_limit(8),
                 )
                 .changed();
-        }
+            if ui
+                .button("Use tab")
+                .on_hover_text("Use a tab character as the field delimiter")
+                .clicked()
+            {
+                draft.delimiter = "\t".to_owned();
+                changed = true;
+            }
+        });
+        form.row("Quoting", |ui| {
+            egui::ComboBox::from_id_salt(("named_csv_quote", salt))
+                .selected_text(match draft.quote_mode {
+                    CsvQuoteMode::Standard => "Double quote",
+                    CsvQuoteMode::Custom => "Custom character",
+                    CsvQuoteMode::Disabled => "Disabled",
+                })
+                .show_ui(ui, |ui| {
+                    changed |= ui
+                        .selectable_value(
+                            &mut draft.quote_mode,
+                            CsvQuoteMode::Standard,
+                            "Double quote",
+                        )
+                        .changed();
+                    changed |= ui
+                        .selectable_value(
+                            &mut draft.quote_mode,
+                            CsvQuoteMode::Custom,
+                            "Custom character",
+                        )
+                        .changed();
+                    changed |= ui
+                        .selectable_value(&mut draft.quote_mode, CsvQuoteMode::Disabled, "Disabled")
+                        .changed();
+                });
+            if draft.quote_mode == CsvQuoteMode::Custom {
+                ui.label("Quote");
+                changed |= ui
+                    .add(
+                        crate::ui_kit::text_field(
+                            &mut draft.custom_quote,
+                            crate::ui_kit::FieldWidth::Small,
+                        )
+                        .char_limit(8),
+                    )
+                    .changed();
+            }
+        });
     });
     if source {
         changed |= ui

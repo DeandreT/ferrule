@@ -1,3 +1,7 @@
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+use dotnet_temp::DotnetTemp;
+
 use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -5,6 +9,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, Graph, Node, Project, Scope};
+
+/// Removes a per-test directory on drop, including after a panic.
+struct TempDir(std::path::PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 
 #[test]
 fn generated_random_preserves_float_range_binding_shape_and_arity_errors()
@@ -59,6 +72,7 @@ fn generated_random_preserves_float_range_binding_shape_and_arity_errors()
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&root)?;
+    let _cleanup = TempDir(root.clone());
     eprintln!("complete random host evidence: {}", root.display());
     std::fs::write(root.join("project.txt"), format!("{project:#?}\n"))?;
     std::fs::write(root.join("lowered-program.txt"), format!("{program:#?}\n"))?;
@@ -138,7 +152,9 @@ fn generated_random_preserves_float_range_binding_shape_and_arity_errors()
 
 fn command(root: &Path, label: &str, args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
     let mut command = Command::new("dotnet");
-    command.env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false");
+    command
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(root);
     command.args(args).current_dir(root);
     execute(root, label, &mut command)?;
     Ok(())

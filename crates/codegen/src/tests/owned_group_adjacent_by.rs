@@ -90,12 +90,8 @@ fn project(owner: SourceOwner) -> mapping::Project {
                 path: "unused.json".into(),
                 schema: schema(),
                 options: Default::default(),
-                dynamic_path: (name == "unavailableDynamic").then_some(
-                    mapping::DynamicSourcePath {
-                        node: 30,
-                        iteration: vec![],
-                    },
-                ),
+                dynamic_path: (name == "unavailableDynamic")
+                    .then_some(mapping::DynamicSourcePath::legacy(30, vec![])),
             })
             .collect(),
         extra_targets: [(" exact audit💠 ", 20), (" U ", 21)]

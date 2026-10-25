@@ -19,10 +19,61 @@ pub enum DocumentProjectFormat {
 }
 
 /// The primary filename expression uses the embedded project's graph identities.
+///
+/// `selection` is omitted from the saved form when it is `Direct`, so plans
+/// without it keep their original bytes. A saved wildcard selection is refused
+/// by readers that predate it rather than being read as a direct filename.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PrimarySourcePlan {
     pub filename: NodeId,
+    #[serde(default, skip_serializing_if = "PrimaryFileSelection::is_direct")]
+    pub selection: PrimaryFileSelection,
+}
+
+impl PrimarySourcePlan {
+    /// A filename that names exactly one document.
+    pub fn new(filename: NodeId) -> Self {
+        Self {
+            filename,
+            selection: PrimaryFileSelection::Direct,
+        }
+    }
+
+    pub fn with_selection(mut self, selection: PrimaryFileSelection) -> Self {
+        self.selection = selection;
+        self
+    }
+}
+
+/// How the evaluated filename text selects documents. This is part of the plan,
+/// not a host preference; hosts decide only where and how selected files load.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum PrimaryFileSelection {
+    /// The filename names one document. `*` and `?` are ordinary characters.
+    #[default]
+    Direct,
+    /// `*` and `?` in the final path component select every matching file in
+    /// one directory, in Unicode scalar order of their names. Directory
+    /// components never contain wildcards.
+    FileNameWildcard { empty: EmptyFileSelection },
+}
+
+impl PrimaryFileSelection {
+    pub fn is_direct(&self) -> bool {
+        matches!(self, Self::Direct)
+    }
+}
+
+/// What a wildcard that matches no file means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EmptyFileSelection {
+    /// A typed selection failure; the mapping does not run.
+    Refuse,
+    /// The mapping runs once over zero documents.
+    MapNoDocuments,
 }
 
 /// A document plan cannot be deserialized as an ordinary Project. Its embedded

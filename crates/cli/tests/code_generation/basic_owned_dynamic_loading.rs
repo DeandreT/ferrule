@@ -1,0 +1,713 @@
+//! #475 owned dynamic driver loading parity: the interpreter, generated Rust
+//! and generated C# run the same conformance corpus against its expectations,
+//! each with a fresh recording loader that separates attempted callbacks from
+//! physical reads behind a success-only cache.
+use super::*;
+use serde_json::{Value as Json, json};
+use std::cell::RefCell;
+use std::fs;
+use std::sync::Arc;
+// These modules are the conformance corpus. Keep their bodies byte-identical to
+// the authored files when formatting this harness.
+#[rustfmt::skip]
+#[path = "../../../../conformance/basic-owned-dynamic-loading/projects.rs"]
+mod projects;
+#[rustfmt::skip]
+#[path = "../../../../conformance/basic-owned-dynamic-loading/cases.rs"]
+mod cases;
+#[rustfmt::skip]
+#[path = "../../../../conformance/basic-owned-dynamic-loading/closed.rs"]
+mod closed;
+use super::basic_owned_sequence_item_at::codec;
+
+const MODELS: usize = 6;
+const CASES: usize = 14;
+const CALLS: usize = 3 * CASES;
+
+pub(super) struct Case {
+    id: &'static str,
+    profile: &'static str,
+    source: Instance,
+    inputs: Vec<(String, Instance)>,
+    /// Whether the host supplies a dynamic source loader.
+    loader: bool,
+    calls: Vec<Json>,
+}
+
+/// Controls JSON shared by every engine, plus the Project for each model.
+fn corpus() -> TestResult<(Json, Vec<Project>)> {
+    let models: Vec<Project> = projects::PROFILES
+        .iter()
+        .map(|profile| projects::project(profile))
+        .collect();
+    let cases = cases::cases();
+    let mut ids = std::collections::BTreeSet::new();
+    let mut used = std::collections::BTreeSet::new();
+    let mut records = Vec::new();
+    for case in &cases {
+        let model = projects::PROFILES
+            .iter()
+            .position(|profile| *profile == case.profile)
+            .ok_or_else(|| format!("unknown profile {}", case.profile))?;
+        if !ids.insert(case.id) || case.calls.len() != 3 {
+            return Err(format!("duplicate case or call set: {}", case.id).into());
+        }
+        used.insert(model);
+        records.push(json!({"id":case.id,"model":model,"loader":case.loader,
+            "source":codec::encode(&case.source),
+            "inputs":case.inputs.iter().map(|(name,value)|json!([name,codec::encode(value)])).collect::<Vec<_>>(),
+            "calls":case.calls}));
+    }
+    if models.len() != MODELS || used.len() != MODELS || cases.len() != CASES {
+        return Err("6 profiles with 14 cases changed".into());
+    }
+    let documents = cases::documents()
+        .into_iter()
+        .map(|(source, path, document)| json!([source, path, codec::encode(&document)]))
+        .collect::<Vec<_>>();
+    Ok((
+        json!({"version":1,"documents":documents,"cases":records}),
+        models,
+    ))
+}
+
+fn runtime_path() -> TestResult<PathBuf> {
+    Ok(Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../codegen-runtime")
+        .canonicalize()?)
+}
+fn rust_options(package: &str, runtime: &Path) -> codegen_rust::Options {
+    codegen_rust::Options {
+        package_name: package.into(),
+        runtime_dependency: codegen_rust::RuntimeDependency::Path(runtime.display().to_string()),
+    }
+}
+
+fn availability(plan: &codegen::NamedInputCatalogue<'_>) -> Vec<(String, String)> {
+    plan.entries
+        .iter()
+        .map(|entry| (entry.name.to_owned(), format!("{:?}", entry.availability)))
+        .collect()
+}
+
+#[test]
+fn owned_dynamic_loading475_profiles_lower_validate_and_emit() -> TestResult<()> {
+    let (_, models) = corpus()?;
+    let runtime = runtime_path()?;
+    for (index, project) in models.iter().enumerate() {
+        let profile = projects::PROFILES[index];
+        let context = |error: &dyn std::fmt::Debug| format!("{profile}: {error:?}");
+        assert!(
+            engine::validate(project).is_empty(),
+            "{profile}: {:?}",
+            engine::validate(project)
+        );
+        // The owned driver uses the strict object form old readers refuse.
+        let wire = mapping::project_file::encode_pretty(project)?;
+        assert!(wire.contains("\"owner\""), "{profile}");
+        let decoded = mapping::project_file::decode_str(&wire)?;
+        assert_eq!(
+            mapping::project_file::encode_pretty(&decoded)?,
+            wire,
+            "{profile}"
+        );
+        let program =
+            codegen::lower_with_basic_owned_dynamic_loading(project).map_err(|e| context(&e))?;
+        let original = program.clone();
+        codegen::validate_program_with_basic_owned_dynamic_loading(&program)
+            .map_err(|e| context(&e))?;
+        codegen::validate_basic_owned_dynamic_loading_emission(&program)
+            .map_err(|e| context(&e))?;
+        let plan =
+            codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_loading(&program)
+                .map_err(|e| context(&e))?;
+        // Owned drivers are demand-driven; loaded endpoints stay reserved.
+        let expected = vec![
+            ("Catalog".to_owned(), "Optional".to_owned()),
+            ("Docs".to_owned(), "ReservedUnavailable".to_owned()),
+            ("Parts".to_owned(), "ReservedUnavailable".to_owned()),
+        ];
+        assert_eq!(availability(&plan.all_outputs), expected, "{profile}");
+        let rust = codegen_rust::emit_with_basic_owned_dynamic_loading(
+            &program,
+            &rust_options(&format!("dynload475-model{index}"), &runtime),
+        )
+        .map_err(|e| context(&e))?;
+        let csharp = codegen_csharp::emit_with_basic_owned_dynamic_loading(&program)
+            .map_err(|e| context(&e))?;
+        let text = |set: &codegen::ArtifactSet, suffix: &str| {
+            set.files()
+                .iter()
+                .filter(|file| file.path.as_str().ends_with(suffix))
+                .map(|file| String::from_utf8_lossy(&file.contents).into_owned())
+                .collect::<String>()
+        };
+        // Exactly the Docs and the nested Parts loading scopes load.
+        assert_eq!(
+            text(&rust, "lib.rs")
+                .matches("context.load_owned_dynamic_documents(")
+                .count(),
+            2,
+            "{profile}"
+        );
+        assert_eq!(
+            text(&csharp, "GeneratedMapping.cs")
+                .matches("context.LoadOwnedDynamicDocuments(")
+                .count(),
+            2,
+            "{profile}"
+        );
+        assert_eq!(program, original, "{profile}");
+    }
+    Ok(())
+}
+
+/// Records every attempted callback; repeated successful documents are read
+/// once and failures are never cached.
+#[derive(Default)]
+pub(super) struct RecordingLoader {
+    documents: BTreeMap<(String, String), Instance>,
+    calls: RefCell<Vec<String>>,
+    reads: RefCell<Vec<String>>,
+    cache: RefCell<BTreeMap<(String, String), Arc<Instance>>>,
+}
+impl engine::DynamicSourceLoader for RecordingLoader {
+    fn load(&self, source: &str, path: &str) -> Result<Arc<Instance>, String> {
+        let key = (source.to_owned(), path.to_owned());
+        self.calls.borrow_mut().push(format!("{source}:{path}"));
+        if let Some(document) = self.cache.borrow().get(&key) {
+            return Ok(Arc::clone(document));
+        }
+        self.reads.borrow_mut().push(format!("{source}:{path}"));
+        let document = Arc::new(
+            self.documents
+                .get(&key)
+                .cloned()
+                .ok_or_else(|| format!("no document {source}:{path}"))?,
+        );
+        self.cache.borrow_mut().insert(key, Arc::clone(&document));
+        Ok(document)
+    }
+}
+
+fn expected_engine_error(recipe: &Json) -> engine::EngineError {
+    let text = |key: &str| recipe[key].as_str().unwrap_or_default().to_owned();
+    match recipe["kind"].as_str() {
+        Some("MissingLoader") => engine::EngineError::MissingDynamicSourceLoader {
+            source_name: text("source"),
+        },
+        Some("DynamicPath") => engine::EngineError::DynamicSourcePath {
+            source_name: text("source"),
+            found: match recipe["found"].as_str() {
+                Some("int") => "int",
+                _ => panic!("authored type"),
+            },
+        },
+        Some("Load") => engine::EngineError::DynamicSourceLoad {
+            source_name: text("source"),
+            path: text("path"),
+            message: text("message"),
+        },
+        _ => panic!("authored error recipe"),
+    }
+}
+/// The interpreter reports owned failures with their scope; the recipe
+/// fixes the owner, cause and reading node.
+fn engine_error_matches(error: &engine::EngineError, recipe: &Json) -> bool {
+    match recipe["kind"].as_str() {
+        Some("OwnedSource") => {
+            let owner = projects::owner(recipe["owner"].as_str().unwrap_or_default());
+            let cause = match recipe["cause"].as_str() {
+                Some("SourceUnavailable") => engine::OwnedSourceError::SourceUnavailable { owner },
+                Some("MissingDocumentPath") => {
+                    engine::OwnedSourceError::MissingDocumentPath { owner }
+                }
+                _ => panic!("authored owned cause"),
+            };
+            matches!(error, engine::EngineError::OwnedSourceAccess { node, source, .. }
+            if node.map(u64::from) == recipe["node"].as_u64() && *source == cause)
+        }
+        // A legacy host string may surface as the tagged variant; both render
+        // the same failure.
+        Some("Load") => error.to_string() == expected_engine_error(recipe).to_string(),
+        _ => *error == expected_engine_error(recipe),
+    }
+}
+
+#[test]
+fn owned_dynamic_loading475_interpreter_matches_expected() -> TestResult<()> {
+    let (controls, models) = corpus()?;
+    check_interpreter(&controls, &models, CALLS)
+}
+
+/// Run every call of `controls` through the interpreter with a fresh
+/// recording loader, comparing outcomes, attempted callbacks and reads.
+pub(super) fn check_interpreter(
+    controls: &Json,
+    models: &[Project],
+    total: usize,
+) -> TestResult<()> {
+    let documents: BTreeMap<(String, String), Instance> = controls["documents"]
+        .as_array()
+        .ok_or("documents")?
+        .iter()
+        .map(|entry| {
+            (
+                (
+                    entry[0].as_str().unwrap_or_default().to_owned(),
+                    entry[1].as_str().unwrap_or_default().to_owned(),
+                ),
+                codec::decode(&entry[2]),
+            )
+        })
+        .collect();
+    let mut differing = Vec::new();
+    let mut calls = 0;
+    for case in controls["cases"].as_array().ok_or("cases")? {
+        let project = &models[case["model"].as_u64().ok_or("model")? as usize];
+        let source = codec::decode(&case["source"]);
+        let inputs: Vec<(String, Instance)> = case["inputs"]
+            .as_array()
+            .ok_or("inputs")?
+            .iter()
+            .map(|input| {
+                (
+                    input[0].as_str().unwrap_or_default().to_owned(),
+                    codec::decode(&input[1]),
+                )
+            })
+            .collect();
+        for call in case["calls"].as_array().ok_or("calls")? {
+            calls += 1;
+            let loader = RecordingLoader {
+                documents: documents.clone(),
+                ..RecordingLoader::default()
+            };
+            let execution = engine::ExecutionContext::new(Path::new("dynload475.mapping"));
+            let execution = if case["loader"] == true {
+                execution.with_dynamic_source_loader(&loader)
+            } else {
+                execution
+            };
+            let selection = call["selection"].as_str().ok_or("selection")?;
+            let actual = if selection == "All" {
+                engine::run_outputs_with_sources_and_context(
+                    project,
+                    &source,
+                    inputs.clone(),
+                    &execution,
+                )
+                .map(|outputs| {
+                    std::iter::once(json!([null, codec::encode(&outputs.primary)]))
+                        .chain(
+                            outputs
+                                .extras
+                                .iter()
+                                .map(|named| json!([named.name, codec::encode(&named.instance)])),
+                        )
+                        .collect::<Vec<_>>()
+                })
+            } else {
+                let target = if selection == "Primary" {
+                    engine::TargetSelection::Primary
+                } else {
+                    engine::TargetSelection::Named(selection)
+                };
+                engine::run_selected_target_with_sources_and_context(
+                    project,
+                    &source,
+                    inputs.clone(),
+                    &execution,
+                    target,
+                )
+                .map(|output| match output {
+                    engine::SelectedTargetOutput::Primary(instance) => {
+                        vec![json!([null, codec::encode(&instance)])]
+                    }
+                    engine::SelectedTargetOutput::Named(named) => {
+                        vec![json!([named.name, codec::encode(&named.instance)])]
+                    }
+                })
+            };
+            let matched = match (&actual, call["expected"].get("Ok")) {
+                (Ok(trees), Some(expected)) => json!(trees) == *expected,
+                (Err(error), None) => engine_error_matches(error, &call["expected"]["Err"]),
+                _ => false,
+            } && json!(*loader.calls.borrow()) == call["calls"]
+                && json!(*loader.reads.borrow()) == call["reads"];
+            if !matched {
+                differing.push(format!(
+                    "{} {selection}: {actual:?} calls={:?} reads={:?}",
+                    case["id"],
+                    loader.calls.borrow(),
+                    loader.reads.borrow()
+                ));
+            }
+        }
+    }
+    assert_eq!(calls, total);
+    assert!(differing.is_empty(), "{differing:#?}");
+    Ok(())
+}
+
+#[test]
+fn owned_dynamic_loading475_older_profiles_and_closed_controls_refuse() -> TestResult<()> {
+    // Older generation profiles keep refusing the loading scope.
+    let project = projects::project("L01-primary-driver");
+    let program = codegen::lower_with_basic_owned_dynamic_loading(&project)?;
+    let expected = closed::loading_scope_closed();
+    let codegen::ProgramValidationError::OwnedSource { diagnostic } = &expected else {
+        unreachable!("authored owned refusal");
+    };
+    let diagnostic = codegen::Diagnostic::OwnedSource {
+        diagnostic: diagnostic.clone(),
+    };
+    for result in closed::old_lower(&project) {
+        assert!(
+            matches!(&result, Err(error) if error.diagnostics() == std::slice::from_ref(&diagnostic)),
+            "{result:?}"
+        );
+    }
+    for result in closed::old_validators(&program)
+        .into_iter()
+        .chain(closed::old_catalogues(&program))
+    {
+        assert_eq!(result, Err(expected.clone()));
+    }
+    let options = rust_options("dynload475-old", &runtime_path()?);
+    for result in closed::old_rust(&program, &options) {
+        assert!(
+            matches!(&result, Err(codegen_rust::EmitError::InvalidProgram(error)) if *error == expected),
+            "{result:?}"
+        );
+    }
+    for result in closed::old_csharp(&program) {
+        assert!(
+            matches!(&result, Err(codegen_csharp::EmitError::ProgramValidation(error)) if *error == expected),
+            "{result:?}"
+        );
+    }
+
+    // Unsupported loading Projects refuse before artifacts exist.
+    for (id, project, expected) in closed::projects() {
+        let actual = codegen::lower_with_basic_owned_dynamic_loading(&project);
+        assert!(
+            matches!(&actual, Err(error) if error.diagnostics() == expected.as_slice()),
+            "{id}: {actual:?}"
+        );
+    }
+
+    // Directly constructed Programs are refused by every new-profile entry.
+    for (id, program, expected) in closed::programs(&program) {
+        assert_eq!(
+            codegen::validate_program_with_basic_owned_dynamic_loading(&program),
+            Err(expected.clone()),
+            "{id}"
+        );
+        assert_eq!(
+            codegen::validate_basic_owned_dynamic_loading_emission(&program),
+            Err(expected.clone()),
+            "{id}"
+        );
+        assert_eq!(
+            codegen::legacy_named_input_admission_plan_with_basic_owned_dynamic_loading(&program)
+                .map(drop),
+            Err(expected.clone()),
+            "{id}"
+        );
+        assert!(
+            matches!(codegen_rust::emit_with_basic_owned_dynamic_loading(&program, &options),
+                Err(codegen_rust::EmitError::InvalidProgram(error)) if error == expected),
+            "{id} Rust"
+        );
+        assert!(
+            matches!(codegen_csharp::emit_with_basic_owned_dynamic_loading(&program),
+                Err(codegen_csharp::EmitError::ProgramValidation(error)) if error == expected),
+            "{id} C#"
+        );
+    }
+    Ok(())
+}
+
+fn write_file(path: &Path, bytes: &[u8]) -> TestResult<()> {
+    fs::create_dir_all(path.parent().ok_or("file parent")?)?;
+    fs::write(path, bytes)?;
+    Ok(())
+}
+fn write_artifacts(directory: &Path, artifacts: &codegen::ArtifactSet) -> TestResult<()> {
+    for file in artifacts.files() {
+        write_file(&directory.join(file.path.as_str()), &file.contents)?;
+    }
+    Ok(())
+}
+fn host_project(model: usize) -> String {
+    format!(
+        "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><NuGetAudit>false</NuGetAudit></PropertyGroup><ItemGroup><ProjectReference Include=\"../csharp-model{model}/Ferrule.Generated.csproj\" /></ItemGroup></Project>\n"
+    )
+}
+fn model_calls(controls: &Json, model: usize) -> usize {
+    controls["cases"]
+        .as_array()
+        .map(|cases| {
+            cases
+                .iter()
+                .filter(|case| case["model"] == model)
+                .map(|case| case["calls"].as_array().map_or(0, Vec::len))
+                .sum()
+        })
+        .unwrap_or_default()
+}
+/// Each host compares its calls itself; also require its complete row count.
+fn host_result(results: &Path, calls: usize, run: &Output) -> Result<(), String> {
+    let rows: Vec<Json> = fs::read(results)
+        .map_err(|error| error.to_string())
+        .and_then(|bytes| serde_json::from_slice(&bytes).map_err(|error| error.to_string()))
+        .unwrap_or_default();
+    let matched = rows.iter().filter(|row| row["matched"] == true).count();
+    if run.status.success() && rows.len() == calls && matched == calls {
+        return Ok(());
+    }
+    let differing: Vec<_> = rows.iter().filter(|row| row["matched"] != true).collect();
+    Err(format!(
+        "{}: status {:?}, {matched}/{} matched of {calls}\n{differing:#?}\n{}{}",
+        results.display(),
+        run.status,
+        rows.len(),
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    ))
+}
+
+#[test]
+#[ignore = "builds and runs one generated Rust host and 6 generated C# hosts; requires cargo and the .NET 10 SDK"]
+fn owned_dynamic_loading475_generated_rust_and_csharp_match_expected() -> TestResult<()> {
+    let (controls, models) = corpus()?;
+    let programs = models
+        .iter()
+        .map(codegen::lower_with_basic_owned_dynamic_loading)
+        .collect::<Result<Vec<_>, _>>()?;
+    check_generated_hosts(
+        "dynload475",
+        &controls,
+        &programs,
+        LoaderEmitters {
+            rust: codegen_rust::emit_with_basic_owned_dynamic_loading,
+            csharp: codegen_csharp::emit_with_basic_owned_dynamic_loading,
+        },
+        CALLS,
+    )
+}
+
+/// The loader-taking emitters of one generation profile.
+pub(super) struct LoaderEmitters {
+    pub rust: fn(
+        &codegen::Program,
+        &codegen_rust::Options,
+    ) -> Result<codegen::ArtifactSet, codegen_rust::EmitError>,
+    pub csharp: fn(&codegen::Program) -> Result<codegen::ArtifactSet, codegen_csharp::EmitError>,
+}
+
+/// Emit every Program, then build and run one generated Rust host covering
+/// every model and one generated C# host per model, each with a fresh
+/// recording loader per call. Every call must match in both languages.
+pub(super) fn check_generated_hosts(
+    tag: &str,
+    controls: &Json,
+    programs: &[codegen::Program],
+    emitters: LoaderEmitters,
+    calls: usize,
+) -> TestResult<()> {
+    let runtime = runtime_path()?;
+    let temp = TempDir::new(&format!("{tag}_hosts"))?;
+    let root = temp.0.canonicalize()?;
+    write_file(
+        &root.join("controls.json"),
+        &serde_json::to_vec_pretty(controls)?,
+    )?;
+    let mut dependencies = String::new();
+    let mut dispatch = String::new();
+    for (index, program) in programs.iter().enumerate() {
+        let options = rust_options(&format!("{tag}-model{index}"), &runtime);
+        write_artifacts(
+            &root.join(format!("rust-model{index}")),
+            &(emitters.rust)(program, &options)?,
+        )?;
+        write_artifacts(
+            &root.join(format!("csharp-model{index}")),
+            &(emitters.csharp)(program)?,
+        )?;
+        let host = root.join(format!("csharp-host{index}"));
+        write_file(&host.join("Host.csproj"), host_project(index).as_bytes())?;
+        write_file(
+            &host.join("Program.cs"),
+            include_str!("basic_owned_dynamic_loading/Host.cs.txt")
+                .replace("@MODEL_CALLS@", &model_calls(controls, index).to_string())
+                .as_bytes(),
+        )?;
+        dependencies.push_str(&format!(
+            "model{index}={{package=\"{tag}-model{index}\",path=\"../rust-model{index}\"}}\n"
+        ));
+        dispatch.push_str(&format!(
+            "            {index} => invoke!(model{index}, selection, &source, &inputs, &execution, limits, loader),\n"
+        ));
+    }
+    write_file(
+        &root.join("rust-host/src/main.rs"),
+        include_str!("basic_owned_dynamic_loading/Host.rs.txt")
+            .replace("@DISPATCH@", &dispatch)
+            .replace("@CALLS@", &calls.to_string())
+            .as_bytes(),
+    )?;
+    write_file(
+        &root.join("rust-host/src/codec.rs"),
+        include_bytes!("basic_owned_sequence_item_at/codec.rs"),
+    )?;
+    write_file(
+        &root.join("rust-host/Cargo.toml"),
+        format!(
+            "[package]\nname=\"{tag}-host\"\nversion=\"0.1.0\"\nedition=\"2024\"\npublish=false\n[workspace]\n[dependencies]\ncodegen-runtime={{path={}}}\nserde_json=\"=1.0.150\"\n{dependencies}",
+            serde_json::to_string(&runtime.display().to_string())?
+        )
+        .as_bytes(),
+    )?;
+
+    let mut failures = Vec::new();
+    let target = std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .unwrap_or_else(|| root.join("target"));
+    let build = Command::new(env!("CARGO"))
+        .args(["build", "--quiet", "--manifest-path"])
+        .arg(root.join("rust-host/Cargo.toml"))
+        .env("CARGO_TARGET_DIR", &target)
+        .env("CARGO_BUILD_BUILD_DIR", &target)
+        .env("RUSTFLAGS", "-D warnings")
+        .env_remove("CARGO_ENCODED_RUSTFLAGS")
+        .output()?;
+    if build.status.success() {
+        let results = root.join("rust-results.json");
+        let run = Command::new(target.join(format!("debug/{tag}-host")))
+            .arg(root.join("controls.json"))
+            .arg(&results)
+            .output()?;
+        if let Err(error) = host_result(&results, calls, &run) {
+            failures.push(format!("Rust host: {error}"));
+        }
+    } else {
+        failures.push(format!(
+            "Rust host build failed:\n{}",
+            String::from_utf8_lossy(&build.stderr)
+        ));
+    }
+
+    // Each C# model has its own Ferrule.Generated assembly, so each needs a host.
+    let dotnet = std::env::split_paths(&std::env::var_os("PATH").ok_or("PATH")?)
+        .map(|directory| directory.join("dotnet"))
+        .find(|candidate| candidate.is_file())
+        .ok_or("dotnet not found on PATH")?
+        .canonicalize()?;
+    let next = AtomicUsize::new(0);
+    let csharp_failures = Mutex::new(Vec::new());
+    let workers = std::thread::available_parallelism().map_or(2, |n| (n.get() / 2).clamp(1, 6));
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| {
+                loop {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    if index >= programs.len() {
+                        break;
+                    }
+                    if let Err(error) = run_csharp_host(&root, &dotnet, controls, index)
+                        && let Ok(mut failures) = csharp_failures.lock()
+                    {
+                        failures.push(error);
+                    }
+                }
+            });
+        }
+    });
+    let mut csharp_failures = csharp_failures
+        .into_inner()
+        .map_err(|_| "C# worker panicked")?;
+    csharp_failures.sort();
+    failures.extend(csharp_failures);
+    if !failures.is_empty() {
+        return Err(failures.join("\n\n").into());
+    }
+    Ok(())
+}
+
+fn run_csharp_host(
+    root: &Path,
+    dotnet: &Path,
+    controls: &Json,
+    index: usize,
+) -> Result<(), String> {
+    let artifacts = root.join(format!("dotnet-artifacts-model{index}"));
+    let failed = |stage: &str, output: &Output| {
+        format!(
+            "C# model{index} {stage}: {:?}\n{}{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+    };
+    let build = Command::new(dotnet)
+        .dotnet_temp(root)
+        .args([
+            "build",
+            "--configuration",
+            "Release",
+            "--nologo",
+            "--verbosity",
+            "quiet",
+            "-nodeReuse:false",
+            "-p:UseSharedCompilation=false",
+            "--artifacts-path",
+        ])
+        .arg(&artifacts)
+        .arg(root.join(format!("csharp-host{index}/Host.csproj")))
+        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
+        .env("DOTNET_NOLOGO", "1")
+        .output()
+        .map_err(|error| format!("C# model{index} build: {error}"))?;
+    if !build.status.success() {
+        return Err(failed("build", &build));
+    }
+    let results = root.join(format!("csharp-model{index}-results.json"));
+    let run = Command::new(dotnet)
+        .dotnet_temp(root)
+        .arg(artifacts.join("bin/Host/release/Host.dll"))
+        .arg(root.join("controls.json"))
+        .arg(index.to_string())
+        .arg(&results)
+        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
+        .output()
+        .map_err(|error| format!("C# model{index} run: {error}"))?;
+    host_result(&results, model_calls(controls, index), &run)
+        .map_err(|error| format!("C# model{index}: {error}"))
+}
+
+/// The models, the closed Projects and the directly constructed Programs, for
+/// the owned capability preset record.
+pub(super) fn capability_corpus() -> TestResult<super::owned_capability_presets::Corpus> {
+    use super::owned_capability_presets as presets;
+    let mut corpus = presets::projects(
+        projects::PROFILES
+            .iter()
+            .map(|profile| (*profile, projects::project(profile))),
+    );
+    corpus.extend(presets::projects(
+        closed::projects()
+            .into_iter()
+            .map(|(id, project, _)| (format!("closed/{id}"), project)),
+    ));
+    let base =
+        codegen::lower_with_basic_owned_dynamic_loading(&projects::project("L01-primary-driver"))?;
+    corpus.extend(presets::programs(
+        closed::programs(&base)
+            .into_iter()
+            .map(|(id, program, _)| (format!("direct/{id}"), program)),
+    ));
+    Ok(corpus)
+}

@@ -1,6 +1,7 @@
 mod effective;
 mod item_count_range;
 mod json_allowed_values;
+mod json_array_wrapper;
 mod json_contains_constraints;
 mod json_dependent_schema_constraints;
 mod json_format_annotations;
@@ -10,13 +11,14 @@ mod json_pattern_property_names;
 mod json_property_dependencies;
 mod json_property_name_constraints;
 mod json_schema_predicate;
+mod json_undeclared_property;
 mod numeric_range;
 mod property_count_range;
 mod string_length_range;
 
 pub use effective::{
     EffectiveCardinality, EffectiveNullability, EffectivePresence, EffectiveSchemaView,
-    EffectiveViewError, JsonNullability, RepeatedItems,
+    EffectiveViewError, EffectiveXmlView, JsonNullability, RepeatedItems, XmlOccurrence,
 };
 pub use item_count_range::ItemCountRange;
 pub use json_allowed_values::{
@@ -24,10 +26,12 @@ pub use json_allowed_values::{
     MAX_JSON_ALLOWED_VALUE_STRING_BYTES, MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES,
     MAX_JSON_ALLOWED_VALUES,
 };
+pub use json_array_wrapper::JsonArrayWrapperFrameError;
 pub use json_contains_constraints::{
     JsonContainsConstraint, JsonContainsConstraints, MAX_JSON_CONTAINS_CONSTRAINTS,
 };
 pub use json_schema_predicate::JsonSchemaPredicate;
+pub use json_undeclared_property::JsonUndeclaredPropertyError;
 /// Compatibility alias for the original `contains`-specific public name.
 pub type JsonContainsPredicate = JsonSchemaPredicate;
 pub use json_dependent_schema_constraints::{

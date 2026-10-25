@@ -94,7 +94,7 @@ fn record_native_bytes(
     Ok(())
 }
 
-fn csv_project(options: FormatOptions) -> Project {
+pub(super) fn csv_project(options: FormatOptions) -> Project {
     let columns = [
         (TEXT_COLUMN, ScalarType::String, 1),
         ("Integer", ScalarType::Int, 2),
@@ -677,6 +677,7 @@ fn run_rust_fixture(output: &Path, mode: &str) -> TestResult<()> {
             .expect("generated directory has a parent")
             .join("cargo-target"),
     };
+    host_policy::name_generated_host(output, &format!("csv-output-{mode}-host"))?;
     let mut command = Command::new("cargo");
     command
         .args(["run", "--quiet", "--jobs", "1", "--", mode])
@@ -716,7 +717,7 @@ fn generated_rust_csv_real_maximum_plus_one_and_failure_precedence() -> TestResu
 }
 
 // Static named CSV uses the ordinary typed mapping API, with no file loading.
-fn named_csv_project(options: FormatOptions) -> Project {
+pub(super) fn named_csv_project(options: FormatOptions) -> Project {
     let mut project = csv_project(options);
     project.extra_sources = vec![
         mapping::NamedSource {
@@ -1226,6 +1227,7 @@ fn run_named_rust_fixture(output: &Path, mode: &str) -> TestResult<()> {
             .expect("generated directory has a parent")
             .join("cargo-target"),
     };
+    host_policy::name_generated_host(output, &format!("csv-output-named-{mode}-host"))?;
     let mut command = Command::new("cargo");
     command
         .args(["run", "--quiet", "--jobs", "1", "--", mode])
@@ -1279,10 +1281,7 @@ fn generated_csv_dynamic_named_admission_keeps_document_refusal_before_publicati
             path: "unused.json".into(),
             schema: SchemaNode::group(name, Vec::new()),
             options: FormatOptions::default(),
-            dynamic_path: Some(mapping::DynamicSourcePath {
-                node: 19,
-                iteration: Vec::new(),
-            }),
+            dynamic_path: Some(mapping::DynamicSourcePath::legacy(19, Vec::new())),
         });
     }
     let path = write_mapping(&directory.path, &project)?;
@@ -1353,4 +1352,4 @@ fn generated_csv_dynamic_named_admission_keeps_document_refusal_before_publicati
 }
 
 #[path = "csv_output/dynamic.rs"]
-mod dynamic;
+pub(super) mod dynamic;

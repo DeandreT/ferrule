@@ -19,16 +19,18 @@ use crate::segments::{
 };
 use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
 
-// No repetition separator: EDIFACT syntax v4 defines `*`, but most traffic
-// is v3 where a bare `*` is ordinary data -- splitting it by default would
-// corrupt those files.
+mod envelope_validation;
+pub use envelope_validation::validate_envelope;
+
+// Repetition is enabled only by a version-4 UNB declaration or an explicit
+// version-4 completion policy. A bare `*` remains ordinary v3 data.
 const WRITE_OPTIONS: WriteOptions = WriteOptions {
     element: '+',
     component: ':',
     terminator: '\'',
     release: Some('?'),
     repetition: None,
-    style: WriteStyle::Delimited,
+    style: WriteStyle::Edifact { default_v4: false },
     interchange_version: None,
 };
 
@@ -64,15 +66,18 @@ const DEFAULT_SEPARATORS: Separators = Separators {
 /// release character is interpreted exactly once -- a two-pass split would
 /// unescape `?+` into a literal `+` and then wrongly re-split on it.
 pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
-    tokenize_with_separators(text).map(|(segments, _)| segments)
+    tokenize_with_separators(text, false).map(|(segments, _)| segments)
 }
 
-fn tokenize_with_separators(text: &str) -> Result<(Vec<Segment>, Separators), EdiFormatError> {
+fn tokenize_with_separators(
+    text: &str,
+    default_v4: bool,
+) -> Result<(Vec<Segment>, Separators), EdiFormatError> {
     if text.len() > MAX_RUNTIME_INPUT_BYTES {
         return Err(EdiFormatError::NotEdifact("input exceeds the 64 MiB limit"));
     }
     let text = text.trim_start();
-    let (separators, body) = if let Some(rest) = text.strip_prefix("UNA") {
+    let (separators, body, repeat_advice) = if let Some(rest) = text.strip_prefix("UNA") {
         let advice: Vec<char> = rest.chars().take(6).collect();
         if advice.len() < 6 {
             return Err(EdiFormatError::NotEdifact("truncated UNA service string"));
@@ -85,9 +90,9 @@ fn tokenize_with_separators(text: &str) -> Result<(Vec<Segment>, Separators), Ed
             terminator: advice[5],
         };
         let consumed = 3 + advice.iter().map(|c| c.len_utf8()).sum::<usize>();
-        (separators, text[consumed..].trim_start())
+        (separators, text[consumed..].trim_start(), advice[4])
     } else {
-        (DEFAULT_SEPARATORS, text)
+        (DEFAULT_SEPARATORS, text, '*')
     };
     let starts_with = |id: &str| {
         body.strip_prefix(id).is_some_and(|rest| {
@@ -100,10 +105,26 @@ fn tokenize_with_separators(text: &str) -> Result<(Vec<Segment>, Separators), Ed
         ));
     }
 
-    // Elements always hold exactly one repeat in EDIFACT (see the
-    // WRITE_OPTIONS note about repetition).
     let mut segments = Vec::new();
     let mut current: Vec<Vec<Vec<String>>> = vec![vec![vec![String::new()]]];
+    let repeat = |enabled: bool| -> Result<Option<char>, EdiFormatError> {
+        if enabled
+            && (repeat_advice.is_whitespace()
+                || [
+                    separators.component,
+                    separators.element,
+                    separators.release,
+                    separators.terminator,
+                ]
+                .contains(&repeat_advice))
+        {
+            return Err(EdiFormatError::NotEdifact(
+                "syntax v4 requires a distinct visible repetition separator",
+            ));
+        }
+        Ok(enabled.then_some(repeat_advice))
+    };
+    let mut repetition = repeat(default_v4)?;
     let mut chars = body.chars();
     while let Some(c) = chars.next() {
         if c == separators.release {
@@ -114,12 +135,26 @@ fn tokenize_with_separators(text: &str) -> Result<(Vec<Segment>, Separators), Ed
             };
             push_char(&mut current, escaped)?;
         } else if c == separators.terminator {
+            if current[0][0][0] == "UNB" {
+                let version = current
+                    .get(1)
+                    .and_then(|repeats| repeats.first())
+                    .and_then(|parts| parts.get(1));
+                repetition = repeat(
+                    crate::segments::edifact_v4(version.map(String::as_str)).unwrap_or(default_v4),
+                )?;
+            }
             finish_segment(
                 &mut segments,
                 std::mem::replace(&mut current, vec![vec![vec![String::new()]]]),
             );
         } else if c == separators.element {
             current.push(vec![vec![String::new()]]);
+        } else if Some(c) == repetition && current.len() > 1 && current[0][0][0] != "UNB" {
+            current
+                .last_mut()
+                .ok_or(EdiFormatError::NotEdifact("invalid tokenizer state"))?
+                .push(vec![String::new()]);
         } else if c == separators.component {
             let components = current
                 .last_mut()
@@ -187,7 +222,7 @@ pub fn from_str(
     schema: &SchemaNode,
     lenient: bool,
 ) -> Result<Instance, EdiFormatError> {
-    let (segments, separators) = tokenize_with_separators(text)?;
+    let (segments, separators) = tokenize_with_separators(text, false)?;
     read_segments(schema, &segments, separators.component, None, lenient)
 }
 
@@ -224,8 +259,14 @@ pub fn to_string_with_autocomplete(
     instance: &Instance,
     autocomplete: Autocomplete<'_>,
 ) -> Result<String, EdiFormatError> {
-    let out = write_segments(schema, instance, &WRITE_OPTIONS)?;
-    let (segments, _) = tokenize_with_separators(&out)?;
+    let default_v4 = crate::segments::edifact_v4(autocomplete.syntax_version).unwrap_or(false);
+    let options = WriteOptions {
+        style: WriteStyle::Edifact { default_v4 },
+        repetition: default_v4.then_some('*'),
+        ..WRITE_OPTIONS
+    };
+    let out = write_segments(schema, instance, &options)?;
+    let (segments, _) = tokenize_with_separators(&out, default_v4)?;
     let completed = envelope::edifact(
         segments,
         autocomplete.current_datetime,
@@ -234,13 +275,96 @@ pub fn to_string_with_autocomplete(
         autocomplete.controlling_agency,
         autocomplete.message_type,
     )?;
-    serialize_segments(&completed, &WRITE_OPTIONS)
+    serialize_segments(&completed, &options)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use ir::{ScalarType, Value};
+
+    #[test]
+    fn v4_repetitions_are_versioned_and_completion_retains_their_shape() {
+        let v3 = tokenize("UNA:+.?*'UNB+UNOC:3'BGM+A*B'").unwrap();
+        assert_eq!(v3[1].elements[0], vec![vec!["A*B".to_string()]]);
+        let v4 = tokenize("UNA;|.!^$UNB|UNOC;4$BGM|A!^B^C$").unwrap();
+        assert_eq!(
+            v4[1].elements[0],
+            vec![vec!["A^B".to_string()], vec!["C".to_string()]]
+        );
+        let scalar = |name| SchemaNode::scalar(name, ScalarType::String);
+        let schema = SchemaNode::group(
+            "Root",
+            vec![
+                SchemaNode::group(
+                    "UNB",
+                    vec![
+                        SchemaNode::group("Syntax", vec![scalar("Identifier"), scalar("Version")]),
+                        scalar("Sender"),
+                        scalar("Receiver"),
+                        SchemaNode::group("Date", vec![scalar("Day"), scalar("Time")]),
+                        scalar("Reference"),
+                    ],
+                ),
+                SchemaNode::group("UNH", vec![scalar("Reference")]),
+                SchemaNode::group("BGM", vec![scalar("Data").repeating()]),
+            ],
+        );
+        let text = |value: &str| Instance::Scalar(Value::String(value.into()));
+        let group = |fields: Vec<(String, Instance)>| Instance::Group(fields.into());
+        let input = group(vec![
+            (
+                "UNB".into(),
+                group(vec![
+                    (
+                        "Syntax".into(),
+                        group(vec![
+                            ("Identifier".into(), text("UNOC")),
+                            ("Version".into(), Instance::Scalar(Value::Null)),
+                        ]),
+                    ),
+                    ("Sender".into(), text("S")),
+                    ("Receiver".into(), text("R")),
+                    ("Reference".into(), text("I")),
+                ]),
+            ),
+            ("UNH".into(), group(vec![("Reference".into(), text("M"))])),
+            (
+                "BGM".into(),
+                group(vec![(
+                    "Data".into(),
+                    Instance::Repeated(vec![text("A"), text("B")]),
+                )]),
+            ),
+        ]);
+        let wire = to_string_with_autocomplete(
+            &schema,
+            &input,
+            Autocomplete {
+                current_datetime: "2026-10-25T12:00:00Z",
+                syntax_level: None,
+                syntax_version: Some("4"),
+                controlling_agency: None,
+                message_type: None,
+            },
+        )
+        .unwrap();
+        assert!(wire.contains("UNB+UNOC:4+"), "{wire}");
+        assert!(wire.contains("BGM+A*B'"), "{wire}");
+        validate_envelope(&wire).unwrap();
+        let parsed = from_str(&wire, &schema, true).unwrap();
+        assert_eq!(
+            parsed
+                .field("BGM")
+                .unwrap()
+                .field("Data")
+                .unwrap()
+                .as_repeated()
+                .unwrap()
+                .len(),
+            2
+        );
+    }
 
     fn segment(name: &str, elements: Vec<SchemaNode>) -> SchemaNode {
         SchemaNode::group(name, elements)

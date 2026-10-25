@@ -217,10 +217,7 @@ mod tests {
                 pdf: Some(layout),
                 ..FormatOptions::default()
             },
-            dynamic_path: Some(DynamicSourcePath {
-                node: 0,
-                iteration: Vec::new(),
-            }),
+            dynamic_path: Some(DynamicSourcePath::legacy(0, Vec::new())),
         };
         for name in ["one.pdf", "two.pdf"] {
             std::fs::write(
@@ -345,10 +342,7 @@ mod tests {
                 pdf: Some(layout),
                 ..FormatOptions::default()
             },
-            dynamic_path: Some(DynamicSourcePath {
-                node: 0,
-                iteration: Vec::new(),
-            }),
+            dynamic_path: Some(DynamicSourcePath::legacy(0, Vec::new())),
         };
         retain(
             &root.join("hello.pdf"),

@@ -8,7 +8,35 @@ The owner/path foundation ([#433](https://github.com/DeandreT/ferrule/issues/433
 
 An owner selects immutable primary or one exact named endpoint. Preserve name bytes; reject empty named owners without trimming, alias/prefix fallback or new path restrictions. Paths are endpoint-local. Owned `[]` differs from inherited/null selection; absent-frame differs from root-frame. Preserve legacy fallback, while owned reads never borrow another endpoint. Generated item IDs, function inputs and JoinId remain separate identities.
 
-Keep structural validity separate from executable capability. Preserve strict new forms and reject unsupported execution/emission, including directly constructed Program validation. P2 checks new-kind potential branches, called functions and demanded paths without changing legacy laziness. Codegen keeps its reachable lowering/metadata rules; native export needs whole-design checks before writing. Preserve saved GUI owner data/IDs/wires read-only; authoring/conversion stays closed.
+Keep structural validity separate from executable capability. Preserve strict new forms and reject unsupported execution/emission, including directly constructed Program validation. P2 checks new-kind potential branches, called functions and demanded paths without changing legacy laziness. Codegen keeps its reachable lowering/metadata rules; native export needs whole-design checks before writing. Preserve saved GUI owner data/IDs/wires; the native editor authors only the forms described under [native editor authoring](#native-editor-authoring) and never converts saved legacy forms automatically.
+
+## Native editor authoring
+
+The native editor authors owned fields, positions and source iterations; every
+other owned operator stays read-only. A legacy path names its endpoint only by
+leading text, so two cases are ambiguous: a named alias that the primary input
+or any input can define (the conservative alias-shadowing check), and a primary
+path whose first segment equals a named alias. Wiring a pin in either case
+creates an `OwnedSourceField` with the pin's exact owner, its absolute
+endpoint-local path and its innermost repetition as `frame` (`None` outside
+repetition). Once a project holds any owned form, every addressable pin authors
+owned reads. Duplicate or blank aliases and per-item dynamic inputs remain
+unaddressable and keep the refusal message. Projects without either condition
+author legacy `SourceField` paths exactly as before.
+
+Owned reads are visible canvas nodes titled with their owner; legacy fields
+stay hidden behind source pins. In an ambiguous or owned project the scope
+editor offers owner-qualified collections, producing `ScopeIteration::OwnedSource`
+for ordinary constructed scopes; owned scopes with per-item document outputs or
+specialized constructions stay read-only. A position's properties likewise
+choose an owner and collection, and the palette inserts an owned position once
+the project uses ownership. A legacy scope or position converts only on that
+explicit choice. Wires record as typed connect commands; scope and property
+choices record as snapshots.
+
+Generated admission is one explicit capability set per entry point; each
+generation companion below is a named preset of independent capabilities. See
+[owned generation capabilities and presets](../code-generation.md#owned-generation-capabilities-and-presets).
 
 ## Scalar target construction
 
@@ -227,6 +255,28 @@ a missing chosen property is Null and never borrowed from another owner or
 frame. Root paths, absent frames and explicit root pins keep their distinct
 owned-field meanings. See the [dynamic source-field contract](owned-dynamic-field.md).
 
+## Dynamic driver loading
+
+An owned dynamic driver names its collection by exact endpoint, beside the
+unchanged legacy driver path. A loading scope walks exactly that collection in
+its receiving context and roots each loaded document under its own driver row;
+nested loading, driver reads and positions never borrow another driver,
+document or endpoint, and legacy aliases never reach an owned dynamic source.
+See the [dynamic loading contract](owned-dynamic-loading.md).
+
+## Document-set paths
+
+An ungrouped owned scope selecting a document-set endpoint with no active
+document walks each member in set order; the member's document roots its
+owner, so nested scopes and reads of that owner see it and never re-enter the
+set, while other owners keep their own roots and documents. A strict
+`owned_source_document_path` returns the location of exactly its owner's
+active member and fails with a typed `MissingDocumentPath` otherwise: another
+owner's document, an uniterated set and an ancestor never answer it. Grouped
+scopes and every other owned walker keep refusing document sets, and dynamic
+owners and the XML document-set boundary adapters stay closed. See the
+[document-path contract](owned-document-path.md).
+
 ## Generated-item reductions
 
 `SequenceAggregate` over the same four producers evaluates producer arguments in
@@ -319,7 +369,7 @@ Reuse these existing scopes; the capability column concerns **explicit ownership
 | [#448](https://github.com/DeandreT/ferrule/issues/448) join wire/identity | [#447](https://github.com/DeandreT/ferrule/issues/447) | owner+collection and separate JoinId; execution closed |
 | [#449](https://github.com/DeandreT/ferrule/issues/449) join tuples | [#448](https://github.com/DeandreT/ferrule/issues/448) | source-row versus flattened tuple positions |
 | [#450](https://github.com/DeandreT/ferrule/issues/450) joined aggregates/correlation | [#449](https://github.com/DeandreT/ferrule/issues/449) | active-source and argument phases |
-| [#451](https://github.com/DeandreT/ferrule/issues/451) document-path metadata | [#450](https://github.com/DeandreT/ferrule/issues/450) | exact owned-frame metadata; excludes dynamic loading/XML routes |
+| [#451](https://github.com/DeandreT/ferrule/issues/451) document-path metadata | [#450](https://github.com/DeandreT/ferrule/issues/450) | exact owned document-set member and physical row metadata; excludes dynamic loading/XML routes |
 | [#452](https://github.com/DeandreT/ferrule/issues/452) specialized matrix | Coordination | Defines focused operator contracts and semantic prerequisites |
 
 ## Specialized follow-on issues

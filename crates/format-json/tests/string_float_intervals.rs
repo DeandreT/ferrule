@@ -13,9 +13,18 @@ use serde_json::Value as Json;
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 const CASES: &str = include_str!("fixtures/string_float_intervals.json");
 
+/// Evidence under `FERRULE_STRING_FLOAT_EVIDENCE_DIR` is retained; otherwise it is removed on drop,
+/// including after a panic.
 struct Evidence {
     directory: PathBuf,
     originals: std::fs::File,
+}
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_STRING_FLOAT_EVIDENCE_DIR").is_none() {
+            let _ = std::fs::remove_dir_all(&self.directory);
+        }
+    }
 }
 impl Evidence {
     fn new() -> TestResult<Self> {

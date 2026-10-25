@@ -254,6 +254,7 @@ fn preflight_payload_run<'p>(
     options: &PayloadRunOptions<'_>,
 ) -> anyhow::Result<Option<engine::RequiredTargetSources<'p>>> {
     require_valid(project)?;
+    crate::sqlite_query::reject_query_inputs(project, HostRoute::Payload)?;
     validate_input_budget(options)?;
     engine::check_source_ownership_capability_with_observers(
         project,
@@ -366,6 +367,50 @@ pub fn run_project_value_payloads(
     Ok(PayloadRunOutcome {
         records_written,
         artifacts,
+    })
+}
+
+/// Renders every target value in memory with the payload route's limits.
+pub(crate) fn render_all_outcome(
+    project: &mapping::Project,
+    project_path: &Path,
+    output_path: Option<&Path>,
+    output: &engine::ExecutionOutputs,
+    current_datetime: &str,
+) -> anyhow::Result<PayloadRunOutcome> {
+    let (records_written, artifacts) = render_all_targets(
+        project,
+        project_path,
+        output_path,
+        output,
+        current_datetime,
+        Limits::PRODUCTION,
+    )?;
+    Ok(PayloadRunOutcome {
+        records_written,
+        artifacts: serialization::finalize(artifacts, Limits::PRODUCTION)?,
+    })
+}
+
+/// Renders one selected target value in memory with the payload route's limits.
+pub(crate) fn render_selected_outcome(
+    project: &mapping::Project,
+    project_path: &Path,
+    output_path: Option<&Path>,
+    output: &engine::SelectedTargetOutput,
+    current_datetime: &str,
+) -> anyhow::Result<PayloadRunOutcome> {
+    let (records_written, artifacts) = render_selected_target(
+        project,
+        project_path,
+        output_path,
+        output,
+        current_datetime,
+        Limits::PRODUCTION,
+    )?;
+    Ok(PayloadRunOutcome {
+        records_written,
+        artifacts: serialization::finalize(artifacts, Limits::PRODUCTION)?,
     })
 }
 
@@ -590,14 +635,8 @@ struct PayloadDynamicSourceLoader {
 
 impl engine::DynamicSourceLoader for PayloadDynamicSourceLoader {
     fn load(&self, source_name: &str, path: &str) -> Result<Arc<Instance>, String> {
-        self.sources
-            .get(&(source_name.to_string(), normalize_payload_identity(path)))
-            .cloned()
-            .ok_or_else(|| {
-                format!(
-                    "host did not supply payload source `{source_name}` at logical path `{path}`"
-                )
-            })
+        self.load_tagged(source_name, path)
+            .map_err(engine::DynamicSourceFault::into_message)
     }
 
     /// Logical identities select among host-supplied bytes; nothing is acquired.
@@ -609,6 +648,33 @@ impl engine::DynamicSourceLoader for PayloadDynamicSourceLoader {
     ) -> Result<Arc<Instance>, engine::DynamicSourceLoadError> {
         self.load(source_name, path)
             .map_err(engine::DynamicSourceLoadError::Failed)
+    }
+
+    /// Supplied documents were decoded before execution, so the only fault
+    /// left is an identity the host did not supply.
+    fn load_tagged(
+        &self,
+        source_name: &str,
+        path: &str,
+    ) -> Result<Arc<Instance>, engine::DynamicSourceFault> {
+        self.sources
+            .get(&(source_name.to_string(), normalize_payload_identity(path)))
+            .cloned()
+            .ok_or_else(|| {
+                engine::DynamicSourceFault::acquisition(crate::UnsuppliedPayloadSource {
+                    source_name: source_name.to_owned(),
+                    path: path.to_owned(),
+                })
+            })
+    }
+
+    fn load_restricted_tagged(
+        &self,
+        source_name: &str,
+        path: &str,
+        _policy: &engine::RestrictedPolicy,
+    ) -> Result<Arc<Instance>, engine::RestrictedDynamicSourceError> {
+        Ok(self.load_tagged(source_name, path)?)
     }
 }
 
@@ -781,6 +847,9 @@ pub(crate) fn read_payload(
     schema: &SchemaNode,
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
+    if options.sqlite_read.is_some() {
+        bail!("a declared SQLite query cannot be read from a payload");
+    }
     options
         .validate_xml_schema_hint_options(false)
         .map_err(anyhow::Error::msg)?;

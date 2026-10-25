@@ -126,6 +126,62 @@ pub(super) fn preflight_environment(directory: &Path) -> io::Result<()> {
     checked_target(directory).map(|_| ())
 }
 
+/// Run `build` against the host Cargo target chosen for `directory`, holding
+/// this process's shared-target lock when that target is the dedicated one.
+pub(super) fn with_cargo_target<T>(
+    directory: &Path,
+    build: impl FnOnce(&Path) -> T,
+) -> io::Result<T> {
+    let (target, shared) = checked_target(directory)?;
+    let _shared_run = if shared {
+        Some(
+            SHARED_HOST_RUN
+                .lock()
+                .map_err(|_| io::Error::other("shared host run lock poisoned"))?,
+        )
+    } else {
+        None
+    };
+    Ok(build(&target))
+}
+
+const GENERATED_PACKAGE: &str = "name = \"ferrule-generated-mapping\"\n";
+const GENERATED_LIBRARY: &str = "\n[lib]\nname = \"ferrule_generated_mapping\"\n";
+
+/// Rename a generated crate's package to `name`, which must be unique to the
+/// calling test, while keeping its `ferrule_generated_mapping` library name
+/// for the host's `src/main.rs`. Renaming the same crate again is a no-op.
+///
+/// Every generated crate is its own workspace with the default package name,
+/// so in a shared host target they are one Cargo unit: one uplifted
+/// `debug/ferrule-generated-mapping`, which `cargo run` executes after
+/// releasing the target lock, and one library fingerprint whose relative
+/// dep-info can accept another crate's newer build as fresh.
+pub(super) fn name_generated_host(crate_directory: &Path, name: &str) -> io::Result<()> {
+    if name.is_empty()
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    {
+        return Err(invalid("host package name must be a plain Cargo name"));
+    }
+    let manifest = crate_directory.join("Cargo.toml");
+    let body = fs::read_to_string(&manifest)?;
+    let package = format!("name = \"{name}\"\n");
+    if body.matches(&package).count() == 1 && body.ends_with(GENERATED_LIBRARY) {
+        return Ok(());
+    }
+    if body.matches(GENERATED_PACKAGE).count() != 1 || body.contains("[lib]") {
+        return Err(invalid("generated host must keep its one default package"));
+    }
+    let mut body = body.replacen(GENERATED_PACKAGE, &package, 1);
+    if !body.ends_with('\n') {
+        body.push('\n');
+    }
+    body.push_str(GENERATED_LIBRARY);
+    fs::write(manifest, body)
+}
+
 fn keep(value: Option<&OsStr>) -> bool {
     value == Some(OsStr::new("1"))
 }
@@ -477,6 +533,28 @@ fn cache_policy_preserves_host_arguments_and_warning_flags() {
         env[OsStr::new("CARGO_BUILD_BUILD_DIR")],
         Some(OsStr::new("/dedicated-host"))
     );
+}
+
+#[test]
+fn generated_host_package_is_renamed_once_and_keeps_its_library() -> io::Result<()> {
+    let directory = super::TempDir::new("host_policy_package_name")?;
+    let manifest = directory.0.join("Cargo.toml");
+    fs::write(
+        &manifest,
+        "[package]\nname = \"ferrule-generated-mapping\"\n\n[workspace]",
+    )?;
+    name_generated_host(&directory.0, "case-host")?;
+    name_generated_host(&directory.0, "case-host")?;
+    let named = "[package]\nname = \"case-host\"\n\n[workspace]\n\n[lib]\nname = \"ferrule_generated_mapping\"\n";
+    assert_eq!(fs::read_to_string(&manifest)?, named);
+    for name in ["other-host", "", "../host", "host name"] {
+        assert_eq!(
+            name_generated_host(&directory.0, name).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+    }
+    assert_eq!(fs::read_to_string(&manifest)?, named);
+    Ok(())
 }
 
 #[test]

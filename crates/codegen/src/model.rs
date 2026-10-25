@@ -435,25 +435,6 @@ pub struct Program {
     pub extra_targets: Vec<NamedTargetProgram>,
 }
 
-/// Output cardinality proved by the complete XML boundary and mapping validation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum XmlOutputMode {
-    SingleDocument,
-    DynamicPrimaryDocuments,
-    /// Dynamic named XML inputs and optional statics feed a primary document list.
-    DynamicNamedInputDynamicPrimaryDocuments,
-    /// Static named Structured inputs and one ordered primary document list.
-    StaticNamedInputsDynamicPrimaryDocuments,
-    /// One static primary document followed by each named target's ordered members.
-    StaticPrimaryDynamicNamedDocuments,
-    /// Static named Structured inputs, a static primary and ordered named document lists.
-    StaticNamedInputsStaticPrimaryDynamicNamedDocuments,
-    /// Dynamic named Structured inputs, optional statics and ordered named document lists.
-    DynamicNamedInputStaticPrimaryDynamicNamedDocuments,
-    /// One static named XML document and one or more path-bearing named document lists.
-    StaticPrimaryMixedNamedXmlOutputs,
-}
-
 impl Program {
     /// All retained compositions, including unselected direct-Program expressions.
     /// Common lowering has already pruned unreachable project expressions.
@@ -512,72 +493,6 @@ impl Program {
             }
         }
         sequences
-    }
-
-    /// Returns a proved XML adapter mode, or no adapter, without changing its policy ABI.
-    /// An invalid program returns its original typed validation error.
-    pub fn xml_output_mode(&self) -> Result<Option<XmlOutputMode>, crate::ProgramValidationError> {
-        crate::validate_program(self)?;
-        Ok(self.xml_boundary.as_ref().map(|_| {
-            if self
-                .root
-                .iteration
-                .as_ref()
-                .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
-            {
-                if self
-                    .extra_sources
-                    .iter()
-                    .any(|source| source.dynamic.is_some())
-                {
-                    XmlOutputMode::DynamicNamedInputDynamicPrimaryDocuments
-                } else if self.extra_sources.is_empty() {
-                    XmlOutputMode::DynamicPrimaryDocuments
-                } else {
-                    XmlOutputMode::StaticNamedInputsDynamicPrimaryDocuments
-                }
-            } else if self.extra_sources.is_empty()
-                && self.extra_targets.len() >= 2
-                && self
-                    .extra_targets
-                    .iter()
-                    .filter(|target| target.root.iteration.is_none())
-                    .count()
-                    == 1
-                && self
-                    .extra_targets
-                    .iter()
-                    .filter(|target| {
-                        target.root.iteration.as_ref().is_some_and(|iteration| {
-                            iteration.dynamic_document_iteration().is_some()
-                        })
-                    })
-                    .count()
-                    == self.extra_targets.len() - 1
-            {
-                XmlOutputMode::StaticPrimaryMixedNamedXmlOutputs
-            } else if self.extra_targets.iter().any(|target| {
-                target
-                    .root
-                    .iteration
-                    .as_ref()
-                    .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
-            }) {
-                if self
-                    .extra_sources
-                    .iter()
-                    .any(|source| source.dynamic.is_some())
-                {
-                    XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments
-                } else if self.extra_sources.is_empty() {
-                    XmlOutputMode::StaticPrimaryDynamicNamedDocuments
-                } else {
-                    XmlOutputMode::StaticNamedInputsStaticPrimaryDynamicNamedDocuments
-                }
-            } else {
-                XmlOutputMode::SingleDocument
-            }
-        }))
     }
 }
 
@@ -711,11 +626,50 @@ pub struct NamedSourceProgram {
 }
 
 /// One host-loaded secondary document whose logical path is evaluated in a
-/// primary-source driver context.
+/// driver context.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DynamicSourceProgram {
     pub path: NodeId,
-    pub driver: SourceIteration,
+    pub driver: DynamicSourceDriver,
+}
+
+/// The collection whose items each request one dynamic document.
+///
+/// A legacy driver walks a primary-relative path. An owned driver walks one
+/// collection of exactly one endpoint and is emitted only by the explicit
+/// owned dynamic-loading companion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DynamicSourceDriver {
+    Legacy(SourceIteration),
+    Owned(OwnedSourceIteration),
+}
+
+impl DynamicSourceDriver {
+    pub const fn legacy(&self) -> Option<&SourceIteration> {
+        match self {
+            Self::Legacy(driver) => Some(driver),
+            Self::Owned(_) => None,
+        }
+    }
+
+    pub const fn owned(&self) -> Option<&mapping::OwnedSourceRef> {
+        match self {
+            Self::Legacy(_) => None,
+            Self::Owned(driver) => Some(driver.source()),
+        }
+    }
+}
+
+impl From<SourceIteration> for DynamicSourceDriver {
+    fn from(driver: SourceIteration) -> Self {
+        Self::Legacy(driver)
+    }
+}
+
+impl From<OwnedSourceIteration> for DynamicSourceDriver {
+    fn from(driver: OwnedSourceIteration) -> Self {
+        Self::Owned(driver)
+    }
 }
 
 /// One named output lowered against the program's shared source and graph.
@@ -884,6 +838,9 @@ pub enum Expression {
     OwnedPosition(mapping::OwnedPosition),
     /// Exact-owner physical row metadata, not a schema field or legacy fallback.
     OwnedRowDocumentPath(mapping::OwnedRowDocumentPath),
+    /// Exact-owner document-set member location, never another owner's
+    /// document or the first member of an uniterated set.
+    OwnedSourceDocumentPath(mapping::OwnedSourceDocumentPath),
     /// First-match lookup over exactly one owned endpoint collection. The
     /// needle executes once in the parent; a miss or absent value is Null.
     OwnedLookup(mapping::OwnedLookup),
@@ -1391,6 +1348,24 @@ pub enum IterationSource {
     /// Inner join over explicit owner and collection identities.
     OwnedInnerJoin(OwnedInnerJoin),
     Concatenate(ScopeSequence),
+    OptionalPresence(OptionalPresence),
+}
+
+/// Zero or one group selected by one Boolean expression evaluated in the
+/// unchanged parent context; no candidate frame or position is added.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OptionalPresence {
+    condition: NodeId,
+}
+
+impl OptionalPresence {
+    pub const fn new(condition: NodeId) -> Self {
+        Self { condition }
+    }
+
+    pub const fn condition(self) -> NodeId {
+        self.condition
+    }
 }
 
 /// One source-backed root iteration that pairs every produced item with a
@@ -1500,6 +1475,12 @@ impl From<OwnedInnerJoin> for IterationSource {
 impl From<ScopeSequence> for IterationSource {
     fn from(sequence: ScopeSequence) -> Self {
         Self::Concatenate(sequence)
+    }
+}
+
+impl From<OptionalPresence> for IterationSource {
+    fn from(presence: OptionalPresence) -> Self {
+        Self::OptionalPresence(presence)
     }
 }
 
@@ -1744,6 +1725,16 @@ impl IterationPlan {
         Self::new(join, None, None, Vec::new(), IterationOutput::Repeated)
     }
 
+    pub fn optional_presence(condition: NodeId) -> Self {
+        Self::new(
+            OptionalPresence::new(condition),
+            None,
+            None,
+            Vec::new(),
+            IterationOutput::Repeated,
+        )
+    }
+
     pub fn new(
         input: impl Into<IterationSource>,
         filter: Option<NodeId>,
@@ -1799,7 +1790,8 @@ impl IterationPlan {
             IterationSource::Generated(_)
             | IterationSource::InnerJoin(_)
             | IterationSource::OwnedInnerJoin(_)
-            | IterationSource::Concatenate(_) => None,
+            | IterationSource::Concatenate(_)
+            | IterationSource::OptionalPresence(_) => None,
         }
     }
 
@@ -1811,7 +1803,8 @@ impl IterationPlan {
             | IterationSource::Generated(_)
             | IterationSource::InnerJoin(_)
             | IterationSource::OwnedInnerJoin(_)
-            | IterationSource::Concatenate(_) => None,
+            | IterationSource::Concatenate(_)
+            | IterationSource::OptionalPresence(_) => None,
         }
     }
 
@@ -1822,7 +1815,8 @@ impl IterationPlan {
             IterationSource::Generated(sequence) => Some(sequence),
             IterationSource::InnerJoin(_)
             | IterationSource::OwnedInnerJoin(_)
-            | IterationSource::Concatenate(_) => None,
+            | IterationSource::Concatenate(_)
+            | IterationSource::OptionalPresence(_) => None,
         }
     }
 
@@ -1834,7 +1828,8 @@ impl IterationPlan {
             | IterationSource::DynamicDocuments(_)
             | IterationSource::Generated(_)
             | IterationSource::OwnedInnerJoin(_)
-            | IterationSource::Concatenate(_) => None,
+            | IterationSource::Concatenate(_)
+            | IterationSource::OptionalPresence(_) => None,
         }
     }
 
@@ -1846,7 +1841,8 @@ impl IterationPlan {
             | IterationSource::DynamicDocuments(_)
             | IterationSource::Generated(_)
             | IterationSource::InnerJoin(_)
-            | IterationSource::Concatenate(_) => None,
+            | IterationSource::Concatenate(_)
+            | IterationSource::OptionalPresence(_) => None,
         }
     }
 
@@ -1858,7 +1854,15 @@ impl IterationPlan {
             | IterationSource::DynamicDocuments(_)
             | IterationSource::Generated(_)
             | IterationSource::InnerJoin(_)
-            | IterationSource::OwnedInnerJoin(_) => None,
+            | IterationSource::OwnedInnerJoin(_)
+            | IterationSource::OptionalPresence(_) => None,
+        }
+    }
+
+    pub const fn presence(&self) -> Option<OptionalPresence> {
+        match &self.input {
+            IterationSource::OptionalPresence(presence) => Some(*presence),
+            _ => None,
         }
     }
 
@@ -1904,6 +1908,7 @@ impl IterationPlan {
                 self.dynamic_document_iteration()
                     .map(DynamicDocumentIteration::output_path),
             )
+            .chain(self.presence().map(OptionalPresence::condition))
     }
 }
 

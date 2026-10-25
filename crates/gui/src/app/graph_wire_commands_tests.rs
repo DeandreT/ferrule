@@ -364,7 +364,7 @@ fn wire_commands_interleave_with_removals_and_snapshots() {
         [
             ("command", Some("Disconnect wire".into())),
             ("state", Some(states[3].clone())),
-            ("snapshot", Some("Edit mapping".into())),
+            ("snapshot", Some("Edit layout".into())),
             ("state", Some(states[3].clone())),
             ("command", Some("Remove node".into())),
             ("state", Some(states[2].clone())),
@@ -387,7 +387,7 @@ fn wire_commands_interleave_with_removals_and_snapshots() {
             ("redid Edit mapping".into(), states[1].clone()),
             ("redid Connect wire".into(), states[2].clone()),
             ("redid Remove node".into(), states[3].clone()),
-            ("redid Edit mapping".into(), states[3].clone()),
+            ("redid Edit layout".into(), states[3].clone()),
             ("redid Disconnect wire".into(), states[4].clone()),
         ]
     );
@@ -415,7 +415,7 @@ fn wire_commands_interleave_with_removals_and_snapshots() {
 }
 
 #[test]
-fn wire_commands_sharing_a_frame_with_other_edits_stay_snapshots() {
+fn wire_commands_sharing_a_frame_with_untyped_edits_stay_snapshots() {
     // An in-place edit in the same frame.
     let mut app = app();
     let saved = key(&app);
@@ -433,7 +433,7 @@ fn wire_commands_sharing_a_frame_with_other_edits_stay_snapshots() {
     app.undo_project();
     assert_eq!(key(&app), saved, "the snapshot restores both edits");
 
-    // Two typed edits in the same frame.
+    // Two typed edits and an untyped one in the same frame.
     let mut app = self::app();
     let first = connect(
         &mut app,
@@ -441,6 +441,7 @@ fn wire_commands_sharing_a_frame_with_other_edits_stay_snapshots() {
         (CanvasNode::Graph(SEPARATOR), 0),
         (CanvasNode::Graph(UPPER), 0),
     );
+    app.project.graph.nodes.insert(SEPARATOR, separator("+"));
     let second = disconnect(
         &mut app,
         MappingDocument::Main,
@@ -470,6 +471,65 @@ fn wire_commands_sharing_a_frame_with_other_edits_stay_snapshots() {
     };
     assert!(!observe_planned(&mut app, MappingDocument::Main, planned));
     assert_eq!(app.history.undo_label(), Some("Edit mapping"));
+}
+
+#[test]
+fn typed_edits_sharing_a_frame_form_one_grouped_step() {
+    let mut app = app();
+    let saved = key(&app);
+    let first = connect(
+        &mut app,
+        MappingDocument::Main,
+        (CanvasNode::Graph(SEPARATOR), 0),
+        (CanvasNode::Graph(UPPER), 0),
+    );
+    let second = disconnect(
+        &mut app,
+        MappingDocument::Main,
+        (CanvasNode::Graph(JOINED), 0),
+        (CanvasNode::TargetBlock(0), JOINED_PIN),
+    );
+    app.queue_canvas_edits(MappingDocument::Main, vec![first, second]);
+    app.observe_editor_history(std::time::Instant::now(), false);
+    let edited = key(&app);
+    assert_eq!(app.history.undo_len(), 1);
+    assert_eq!(app.history.undo_label(), Some("2 edits"));
+    let actions = next_undo_commands(&app)
+        .iter()
+        .map(|command| command.action().clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actions,
+        [
+            GraphAction::ConnectWire {
+                source: SEPARATOR,
+                sink: WireSink::NodeInput {
+                    node: UPPER,
+                    input: 0
+                }
+            },
+            GraphAction::DisconnectWire {
+                sink: root_binding("Joined")
+            },
+        ]
+    );
+
+    app.undo_project();
+    assert_eq!(app.status, "undid 2 edits");
+    assert_eq!(key(&app), saved);
+    assert!(!app.observed_dirty() && !app.is_dirty());
+    app.redo_project();
+    assert_eq!(app.status, "redid 2 edits");
+    assert_eq!(key(&app), edited);
+
+    // A stale later command refuses the whole step without partial effects.
+    app.observed_editor.project.root.bindings.clear();
+    let project = key(&app);
+    app.undo_project();
+    assert_eq!(app.status, "Undo failed");
+    assert_eq!(key(&app), project);
+    assert_eq!((app.history.undo_len(), app.history.redo_len()), (1, 0));
+    assert_eq!(args(&app, UPPER), [SEPARATOR]);
 }
 
 #[test]

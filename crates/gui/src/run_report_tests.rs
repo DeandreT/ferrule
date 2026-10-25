@@ -1006,7 +1006,7 @@ fn history_rows_show_nested_join_context_and_bounded_values() {
     assert!(
         history_row(1, 0, &trace_event(8, ir::Value::Null))
             .expect("output history row")
-            .contains("output  <root>  null(null)")
+            .contains("output  Root context  null(null)")
     );
 }
 

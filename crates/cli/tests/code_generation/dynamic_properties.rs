@@ -670,6 +670,7 @@ fn run_frontier(target: GenerateTarget) -> TestResult<()> {
         let body = body.replacen("\n[workspace]\n",
             "\nserde_json = { version = \"1.0\", features = [\"preserve_order\"] }\n\n[workspace]\n", 1);
         std::fs::write(manifest, body)?;
+        host_policy::name_generated_host(&generated, "dynamic-properties-host")?;
         let mut command = Command::new("cargo");
         command
             .args(["run", "--quiet", "--"])

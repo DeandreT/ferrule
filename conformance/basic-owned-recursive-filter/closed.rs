@@ -228,7 +228,7 @@ pub fn programs(
     });
     dynamic.extra_sources[0].dynamic = Some(codegen::DynamicSourceProgram {
         path: 99,
-        driver: codegen::SourceIteration::new(path(&["Dir"])),
+        driver: codegen::SourceIteration::new(path(&["Dir"])).into(),
     });
     vec![
         (

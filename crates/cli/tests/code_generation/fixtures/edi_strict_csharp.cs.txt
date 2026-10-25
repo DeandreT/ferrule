@@ -1,0 +1,36 @@
+static void CheckStrictEnvelopes()
+{
+    const string sourceSchema = "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"UNH\",\"repeating\":true,\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Ref\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}]}}";
+    var strict = new FerruleEdi(sourceSchema, "{\"lenient_segments\":true}", "Edifact", input:true, strictEnvelope:true);
+    var cases = JsonNode.Parse(__STRICT_CASES__)!.AsArray();
+    foreach (var item in cases)
+    {
+        var test = item!.AsObject(); string wire = (string)test["wire"]!;
+        try
+        {
+            strict.Parse(Encoding.UTF8.GetBytes(wire));
+            if (!(bool)test["valid"]!) throw new Exception("strict envelope unexpectedly accepted: " + wire);
+        }
+        catch (FerruleEdiException error) when (error.Code == FerruleEdiError.Envelope)
+        {
+            if ((bool)test["valid"]! || error.SegmentIndex != (int)test["segment"]!) throw new Exception("strict envelope error differs: " + wire);
+        }
+    }
+    var loose = new FerruleEdi(sourceSchema, "{\"lenient_segments\":true}", "Edifact", input:true);
+    loose.Parse(Encoding.UTF8.GetBytes("UNH+M'UNT+3+M'"));
+    const string outputSchema = "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"UNH\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Ref\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}},{\"name\":\"UNT\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Count\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}},{\"name\":\"Ref\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}]}}";
+    FerruleInstance Output(long count, string reference) => new FerruleGroup([
+        new("UNH", new FerruleGroup([new("Ref", new FerruleScalar(FerruleValue.FromString("M")))])),
+        new("UNT", new FerruleGroup([new("Count", new FerruleScalar(FerruleValue.FromInt64(count))), new("Ref", new FerruleScalar(FerruleValue.FromString(reference)))]))]);
+    var strictOutput = new FerruleEdi(outputSchema, "{}", "Edifact", strictEnvelope:true);
+    foreach (var invalid in new[] { Output(3, "M"), Output(2, "N") })
+    {
+        try { strictOutput.Serialize(invalid, null); throw new Exception("strict output accepted invalid control"); }
+        catch (FerruleEdiException error) when (error.Code == FerruleEdiError.Envelope && error.SegmentIndex == 1) { }
+    }
+    string valid = Encoding.UTF8.GetString(strictOutput.Serialize(Output(2, "M"), null));
+    if (valid != "UNH+M'\nUNT+2+M'\n") throw new Exception("strict output bytes");
+    var completed = new FerruleEdi(sourceSchema, "{\"edi_autocomplete\":{\"edifact\":{}}}", "Edifact", strictEnvelope:true);
+    var message = new FerruleGroup([new("UNH", new FerruleRepeated([new FerruleGroup([new("Ref", new FerruleScalar(FerruleValue.FromString("M")))])]))]);
+    completed.ValidateEnvelope(completed.Serialize(message, "2026-10-25T12:00:00Z"));
+}

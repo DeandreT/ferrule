@@ -199,6 +199,50 @@ fn load_schema_bundle(
     resources: &ResourceResolver,
     schema_file: &str,
 ) -> Result<format_protobuf::SchemaBundle, format_protobuf::ProtobufError> {
+    if let Some(package) = resources.package() {
+        let path = resources
+            .resolve_package_file(schema_file)
+            .map_err(format_protobuf::ProtobufError::InvalidSchema)?;
+        let mapping_directory = resources
+            .mapping_path()
+            .parent()
+            .unwrap_or(resources.package_root());
+        let bundle_directory = path
+            .strip_prefix(mapping_directory)
+            .ok()
+            .and_then(|relative| relative.components().next())
+            .and_then(|component| component.as_os_str().to_str())
+            .filter(|name| name.ends_with("-protobuf"));
+        let base = bundle_directory
+            .map(|name| mapping_directory.join(name))
+            .unwrap_or_else(|| resources.package_root().to_path_buf());
+        let relative = path
+            .strip_prefix(&base)
+            .ok()
+            .and_then(|path| crate::package::portable_path(path).ok())
+            .ok_or_else(|| {
+                format_protobuf::ProtobufError::InvalidSchema(
+                    "invalid package protobuf identity".into(),
+                )
+            })?;
+        return format_protobuf::SchemaBundle::from_reader(&relative, |name| {
+            crate::package::validate_path(name).map_err(|error| {
+                format_protobuf::ProtobufError::InvalidSchema(package.refuse(error).to_string())
+            })?;
+            let bytes = package.bytes(&base.join(name)).map_err(|error| {
+                format_protobuf::ProtobufError::InvalidSchema(error.to_string())
+            })?;
+            if std::str::from_utf8(&bytes).is_err() {
+                return Err(format_protobuf::ProtobufError::InvalidSchema(
+                    package.refuse(crate::PackageError::InvalidText).to_string(),
+                ));
+            }
+            Ok(bytes)
+        })
+        .inspect_err(|_| {
+            package.refuse(crate::PackageError::InvalidResource);
+        });
+    }
     let resolved = resources
         .resolve_file(schema_file, "Protocol Buffers schema")
         .map_err(format_protobuf::ProtobufError::InvalidSchema)?;

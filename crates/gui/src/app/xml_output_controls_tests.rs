@@ -246,7 +246,9 @@ fn frame(
 
 fn rendered_labels(shape: &egui::epaint::Shape, label: &str, positions: &mut Vec<egui::Pos2>) {
     match shape {
-        egui::epaint::Shape::Text(text) if text.galley.text() == label => {
+        egui::epaint::Shape::Text(text)
+            if crate::test_ui::inspector_label_matches(text.galley.text(), label) =>
+        {
             positions.push(text.visual_bounding_rect().center());
         }
         egui::epaint::Shape::Vec(shapes) => {

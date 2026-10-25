@@ -1,3 +1,7 @@
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+use dotnet_temp::DotnetTemp;
+
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -287,6 +291,7 @@ fn run_generated(program: &Program, harness: &str) -> Result<(), Box<dyn std::er
     let build = recorded_command(
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(directory.path())
             .args([
                 "build",
                 "-warnaserror",
@@ -303,6 +308,7 @@ fn run_generated(program: &Program, harness: &str) -> Result<(), Box<dyn std::er
     let run = recorded_command(
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(directory.path())
             .args([
                 "run",
                 "--project",

@@ -1,0 +1,10 @@
+{
+  "title": "Source",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "Flag": { "type": "boolean" },
+    "Label": { "type": "string" },
+    "Count": { "type": "integer" }
+  }
+}

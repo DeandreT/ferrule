@@ -16,11 +16,13 @@ pub mod json5_boundary;
 mod json5_finite;
 mod json5_unique;
 pub mod json_schema;
+mod null_layers;
 mod pattern_runtime;
+mod prepared;
+mod reader;
 pub mod source_document;
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::Read;
 use std::path::Path;
 
 use ir::{
@@ -29,7 +31,15 @@ use ir::{
 };
 use thiserror::Error;
 
-use pattern_runtime::PatternRuntime;
+use pattern_runtime::{PatternPrograms, PatternRuntime};
+pub use prepared::PreparedSchema;
+#[cfg(test)]
+use reader::read_node;
+pub use reader::{from_json5_str, from_lines, from_str, read, read_json5, read_lines};
+use reader::{
+    from_value_with, read_node_with_patterns, read_repeated, read_scalar, read_scalar_union,
+    strip_utf8_bom,
+};
 
 pub(crate) const MAX_JSON5_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_JSON_RECURSION_DEPTH: usize = 64;
@@ -188,6 +198,11 @@ pub enum JsonFormatError {
     InvalidArrayWrapperMetadata { name: String },
     #[error("JSON object-item nullability metadata on `{name}` is invalid")]
     InvalidObjectItemNullabilityMetadata { name: String },
+    #[error("JSON nullability metadata on `{name}` is invalid: {reason}")]
+    InvalidNullabilityMetadata {
+        name: String,
+        reason: ir::EffectiveViewError,
+    },
     #[error(
         "recursive JSON schema reference `{node}` has no unique concrete group anchor `{anchor}`"
     )]
@@ -217,6 +232,9 @@ impl<'a> RecursiveSchemas<'a> {
                     name: node.name.clone(),
                 });
             }
+            // Every value read or written below derives its null admission
+            // from the effective JSON view; refuse contradictions up front.
+            null_layers::layers(node)?;
             if !node.xml_attribute_required_is_valid() {
                 return Err(JsonFormatError::InvalidXmlAttributeRequired {
                     node: node.name.clone(),
@@ -352,499 +370,6 @@ fn json_number_matches_f64(number: &serde_json::Number, expected: f64) -> bool {
     number.as_f64() == Some(expected)
 }
 
-/// Reads a JSON file into an [`Instance`] tree shaped by `schema`.
-pub fn read(path: &Path, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
-    let text = std::fs::read_to_string(path)?;
-    from_str(&text, schema)
-}
-
-/// Reads a JSON5 document using the same typed schema boundary as JSON.
-pub fn read_json5(path: &Path, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
-    let mut bytes = Vec::new();
-    std::fs::File::open(path)?
-        .take((MAX_JSON5_DOCUMENT_BYTES + 1) as u64)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() > MAX_JSON5_DOCUMENT_BYTES {
-        return Err(JsonFormatError::Json5DocumentLimit {
-            limit: MAX_JSON5_DOCUMENT_BYTES,
-        });
-    }
-    let text = String::from_utf8(bytes).map_err(|error| {
-        std::io::Error::new(std::io::ErrorKind::InvalidData, error.utf8_error())
-    })?;
-    from_json5_str(&text, schema)
-}
-
-/// Reads a JSON Lines file into a repeated instance, one item per non-empty
-/// line.
-pub fn read_lines(path: &Path, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
-    let text = std::fs::read_to_string(path)?;
-    from_lines(&text, schema)
-}
-
-/// Reads JSON text into an [`Instance`] tree shaped by `schema`.
-///
-/// This is the in-memory equivalent of [`read`], suitable for hosts without
-/// filesystem access such as WebAssembly applications. A root array under a
-/// non-repeating group schema is read as flat rows, matching [`to_string`].
-pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
-    let text = strip_utf8_bom(text);
-    json_schema::unique_items::validate_raw_json_unique_items(schema, text)?;
-    let value: serde_json::Value = serde_json::from_str(text)?;
-    from_value(&value, schema)
-}
-
-/// Reads JSON5 text into an [`Instance`] tree. JSON5 comments are syntax only;
-/// they are not represented in the mapping graph or reproduced on output.
-pub fn from_json5_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
-    if text.len() > MAX_JSON5_DOCUMENT_BYTES {
-        return Err(JsonFormatError::Json5DocumentLimit {
-            limit: MAX_JSON5_DOCUMENT_BYTES,
-        });
-    }
-    let text = strip_utf8_bom(text);
-    check_json5_nesting(text)?;
-    let value = json5_finite::from_str(text)?;
-    json5_unique::validate(schema, text)?;
-    from_value(&value, schema)
-}
-
-fn from_value(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
-    let recursive = RecursiveSchemas::new(schema)?;
-    let mut patterns = PatternRuntime::new(schema)?;
-    if schema.repeating {
-        read_repeated(value, schema, &recursive, 0, &mut patterns)
-    } else if let (SchemaKind::Group { .. }, serde_json::Value::Array(rows)) = (&schema.kind, value)
-    {
-        // Flat-row sources retain a non-repeating row schema while presenting
-        // the root records as one repeated instance, like the JSON writer.
-        let mut parsed = Vec::with_capacity(rows.len());
-        for row in rows {
-            parsed.push(read_node_with_patterns(
-                row,
-                schema,
-                &recursive,
-                0,
-                &mut patterns,
-            )?);
-        }
-        Ok(Instance::Repeated(parsed))
-    } else {
-        read_node_with_patterns(value, schema, &recursive, 0, &mut patterns)
-    }
-}
-
-fn check_json5_nesting(text: &str) -> Result<(), JsonFormatError> {
-    const MAX_DEPTH: usize = 128;
-    let bytes = text.as_bytes();
-    let mut index = 0;
-    let mut depth = 0usize;
-    while index < bytes.len() {
-        match bytes[index] {
-            b'\'' | b'"' => {
-                let quote = bytes[index];
-                index += 1;
-                while index < bytes.len() {
-                    match bytes[index] {
-                        b'\\' => index = (index + 2).min(bytes.len()),
-                        byte if byte == quote => {
-                            index += 1;
-                            break;
-                        }
-                        _ => index += 1,
-                    }
-                }
-            }
-            b'/' if bytes.get(index + 1) == Some(&b'/') => {
-                index += 2;
-                while index < bytes.len()
-                    && !matches!(bytes[index], b'\n' | b'\r')
-                    && !bytes[index..].starts_with("\u{2028}".as_bytes())
-                    && !bytes[index..].starts_with("\u{2029}".as_bytes())
-                {
-                    index += 1;
-                }
-            }
-            b'/' if bytes.get(index + 1) == Some(&b'*') => {
-                index += 2;
-                while index + 1 < bytes.len() && !(bytes[index] == b'*' && bytes[index + 1] == b'/')
-                {
-                    index += 1;
-                }
-                index = (index + 2).min(bytes.len());
-            }
-            b'{' | b'[' => {
-                depth += 1;
-                if depth > MAX_DEPTH {
-                    return Err(JsonFormatError::Json5NestingLimit { limit: MAX_DEPTH });
-                }
-                index += 1;
-            }
-            b'}' | b']' => {
-                depth = depth.saturating_sub(1);
-                index += 1;
-            }
-            _ => index += 1,
-        }
-    }
-    Ok(())
-}
-
-/// Reads JSON Lines text into a repeated instance.
-pub fn from_lines(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
-    reject_nullable_json_lines_container(schema)?;
-    let recursive = RecursiveSchemas::new(schema)?;
-    let mut patterns = PatternRuntime::new(schema)?;
-    let lines = strip_utf8_bom(text)
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .collect::<Vec<_>>();
-    json_schema::unique_items::validate_raw_json_lines_unique_items(schema, &lines)?;
-    let mut values = Vec::new();
-    for line in lines {
-        values.push(serde_json::from_str(line)?);
-    }
-    if schema.repeating {
-        json_schema::item_counts::validate_len(schema, values.len())?;
-    }
-    let mut items = Vec::with_capacity(values.len());
-    for value in &values {
-        items.push(read_node_with_patterns(
-            value,
-            schema,
-            &recursive,
-            0,
-            &mut patterns,
-        )?);
-    }
-    if schema.repeating {
-        json_schema::contains::validate_values(schema, &values, &mut patterns)?;
-    }
-    Ok(Instance::Repeated(items))
-}
-
-fn strip_utf8_bom(text: &str) -> &str {
-    text.strip_prefix('\u{feff}').unwrap_or(text)
-}
-
-fn read_repeated(
-    value: &serde_json::Value,
-    schema: &SchemaNode,
-    recursive: &RecursiveSchemas<'_>,
-    recursion_depth: usize,
-    patterns: &mut PatternRuntime,
-) -> Result<Instance, JsonFormatError> {
-    let resolved;
-    let (schema, recursion_depth) = if schema.recursive_ref.is_some() {
-        let (value, next_depth) = recursive.resolve(schema, recursion_depth)?;
-        resolved = value;
-        (&resolved, next_depth)
-    } else {
-        (schema, recursion_depth)
-    };
-    if value.is_null() && schema.container_nullable {
-        return Ok(Instance::Scalar(Value::json_null()));
-    }
-    let serde_json::Value::Array(items) = value else {
-        return Err(JsonFormatError::Shape {
-            name: schema.name.clone(),
-            expected: "array",
-            got: json_type_name(value),
-        });
-    };
-    json_schema::item_counts::validate_len(schema, items.len())?;
-    let mut parsed = Vec::with_capacity(items.len());
-    for item in items {
-        parsed.push(read_node_with_patterns(
-            item,
-            schema,
-            recursive,
-            recursion_depth,
-            patterns,
-        )?);
-    }
-    json_schema::contains::validate_values(schema, items, patterns)?;
-    let items = parsed;
-    Ok(Instance::Repeated(items))
-}
-
-#[cfg(test)]
-fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
-    let recursive = RecursiveSchemas::new(schema)?;
-    let mut patterns = PatternRuntime::new(schema)?;
-    read_node_with_patterns(value, schema, &recursive, 0, &mut patterns)
-}
-
-fn read_node_with_patterns(
-    value: &serde_json::Value,
-    schema: &SchemaNode,
-    recursive: &RecursiveSchemas<'_>,
-    recursion_depth: usize,
-    patterns: &mut PatternRuntime,
-) -> Result<Instance, JsonFormatError> {
-    let resolved;
-    let (schema, recursion_depth) = if schema.recursive_ref.is_some() {
-        let (value, next_depth) = recursive.resolve(schema, recursion_depth)?;
-        resolved = value;
-        (&resolved, next_depth)
-    } else {
-        (schema, recursion_depth)
-    };
-    if let Some(item) = schema.json_array_wrapper_item() {
-        let value = read_repeated(value, item, recursive, recursion_depth, patterns)?;
-        return Ok(Instance::Group(vec![(item.name.clone(), value)].into()));
-    }
-    if schema.json_any {
-        return Ok(Instance::Scalar(Value::String(serde_json::to_string(
-            value,
-        )?)));
-    }
-    if value.is_null() && schema.json_single_container_nullable() {
-        return Ok(Instance::Scalar(Value::json_null()));
-    }
-    match &schema.kind {
-        SchemaKind::Scalar { ty } => {
-            let parsed = read_scalar(value, *ty, schema.nullable, &schema.name)?;
-            json_schema::constraints::validate_json(schema, value)?;
-            json_schema::allowed_values::validate_value(schema, &parsed)?;
-            json_schema::ranges::validate_json(schema, value)?;
-            json_schema::multiples::validate_json(schema, value)?;
-            json_schema::string_lengths::validate_json(schema, value)?;
-            patterns.validate_json(schema, value)?;
-            Ok(Instance::Scalar(parsed))
-        }
-        SchemaKind::ScalarUnion { types } => {
-            let parsed = read_scalar_union(value, *types, schema.nullable, &schema.name)?;
-            json_schema::allowed_values::validate_value(schema, &parsed)?;
-            json_schema::ranges::validate_json(schema, value)?;
-            json_schema::multiples::validate_json(schema, value)?;
-            json_schema::string_lengths::validate_json(schema, value)?;
-            patterns.validate_json(schema, value)?;
-            Ok(Instance::Scalar(parsed))
-        }
-        SchemaKind::Group {
-            children,
-            alternatives,
-            required,
-            dynamic,
-            ..
-        } => {
-            let serde_json::Value::Object(fields) = value else {
-                return Err(JsonFormatError::Shape {
-                    name: schema.name.clone(),
-                    expected: "object",
-                    got: json_type_name(value),
-                });
-            };
-            json_schema::property_counts::validate_len(schema, fields.len())?;
-            for property in fields.keys() {
-                patterns.validate_property_name(schema, property)?;
-            }
-            validate_required_fields(schema, required, |name| fields.contains_key(name))?;
-            json_schema::property_dependencies::validate_properties(
-                schema,
-                fields.keys().map(String::as_str),
-            )?;
-            json_schema::dependent_schemas::validate_object(
-                schema,
-                value,
-                fields.keys(),
-                patterns,
-            )?;
-            validate_alternative_fields(schema, alternatives, fields)?;
-            if dynamic.is_some() && !alternatives.is_empty() {
-                return Err(JsonFormatError::UnsupportedSchemaUnion {
-                    name: schema.name.clone(),
-                    reason: "open objects cannot use closed object alternatives".to_string(),
-                });
-            }
-            if dynamic.is_none()
-                && let Some(property) = fields.keys().find(|name| {
-                    !children
-                        .iter()
-                        .any(|child| child.name.as_str() == name.as_str())
-                })
-            {
-                return Err(JsonFormatError::UndeclaredProperty {
-                    object: schema.name.clone(),
-                    property: property.clone(),
-                });
-            }
-            if let Some(dynamic) = dynamic {
-                let mut out = Vec::with_capacity(fields.len().max(children.len()));
-                for (name, field_value) in fields {
-                    let field_schema =
-                        if let Some(child) = children.iter().find(|child| child.name == *name) {
-                            child
-                        } else {
-                            patterns.validate_dynamic_property_name(schema, name)?;
-                            dynamic
-                        };
-                    let field = if field_schema.repeating {
-                        read_repeated(
-                            field_value,
-                            field_schema,
-                            recursive,
-                            recursion_depth,
-                            patterns,
-                        )?
-                    } else {
-                        read_node_with_patterns(
-                            field_value,
-                            field_schema,
-                            recursive,
-                            recursion_depth,
-                            patterns,
-                        )?
-                    };
-                    out.push((name.clone(), field));
-                }
-                for child in children {
-                    if !fields.contains_key(&child.name) {
-                        out.push((child.name.clone(), missing_instance(child)));
-                    }
-                }
-                return Ok(Instance::Group((out).into()));
-            }
-            let mut out = Vec::with_capacity(children.len());
-            for child in children {
-                match fields.get(&child.name) {
-                    Some(field_value) if child.repeating => {
-                        out.push((
-                            child.name.clone(),
-                            read_repeated(
-                                field_value,
-                                child,
-                                recursive,
-                                recursion_depth,
-                                patterns,
-                            )?,
-                        ));
-                    }
-                    Some(field_value) => {
-                        out.push((
-                            child.name.clone(),
-                            read_node_with_patterns(
-                                field_value,
-                                child,
-                                recursive,
-                                recursion_depth,
-                                patterns,
-                            )?,
-                        ));
-                    }
-                    None if child.repeating && !child.container_nullable => {
-                        out.push((child.name.clone(), Instance::Repeated(Vec::new())));
-                    }
-                    // Absent properties are normal instance data (JSON
-                    // objects routinely omit optional keys), not errors:
-                    // scalars read as Null, objects as empty.
-                    None => {
-                        out.push((child.name.clone(), missing_instance(child)));
-                    }
-                }
-            }
-            Ok(Instance::Group((out).into()))
-        }
-    }
-}
-
-fn missing_instance(schema: &SchemaNode) -> Instance {
-    if schema.container_nullable {
-        return Instance::Scalar(Value::Null);
-    }
-    if schema.repeating {
-        Instance::Repeated(Vec::new())
-    } else {
-        match schema.kind {
-            SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => {
-                Instance::Scalar(Value::Null)
-            }
-            SchemaKind::Group { .. } => Instance::Group((Vec::new()).into()),
-        }
-    }
-}
-
-fn read_scalar_union(
-    value: &serde_json::Value,
-    types: ScalarTypeSet,
-    nullable: bool,
-    name: &str,
-) -> Result<Value, JsonFormatError> {
-    match value {
-        serde_json::Value::Null if nullable => Ok(Value::json_null()),
-        serde_json::Value::String(value) if types.contains(ScalarType::String) => {
-            Ok(Value::String(value.clone()))
-        }
-        serde_json::Value::Bool(value) if types.contains(ScalarType::Bool) => {
-            Ok(Value::Bool(*value))
-        }
-        serde_json::Value::Number(value) => {
-            if let Some(value) = value.as_i64()
-                && types.contains(ScalarType::Int)
-            {
-                return Ok(Value::Int(value));
-            }
-            if types.contains(ScalarType::Float) {
-                return read_scalar(
-                    &serde_json::Value::Number(value.clone()),
-                    ScalarType::Float,
-                    false,
-                    name,
-                );
-            }
-            Err(JsonFormatError::Shape {
-                name: name.to_string(),
-                expected: "declared scalar union",
-                got: "number",
-            })
-        }
-        _ => Err(JsonFormatError::Shape {
-            name: name.to_string(),
-            expected: "declared scalar union",
-            got: json_type_name(value),
-        }),
-    }
-}
-
-fn read_scalar(
-    value: &serde_json::Value,
-    ty: ScalarType,
-    nullable: bool,
-    name: &str,
-) -> Result<Value, JsonFormatError> {
-    let bad = |expected: &'static str| JsonFormatError::Shape {
-        name: name.to_string(),
-        expected,
-        got: json_type_name(value),
-    };
-    match (ty, value) {
-        (_, serde_json::Value::Null) if nullable => Ok(Value::json_null()),
-        (ScalarType::String, serde_json::Value::String(s)) => Ok(Value::String(s.clone())),
-        (ScalarType::Int, serde_json::Value::Number(n)) => {
-            n.as_i64().map(Value::Int).ok_or_else(|| bad("integer"))
-        }
-        (ScalarType::Float, serde_json::Value::Number(number)) => {
-            match exact_f64_from_json_number(number) {
-                Some(value) => Ok(Value::Float(value)),
-                None if number.as_i64().is_some() || number.as_u64().is_some() => {
-                    Err(JsonFormatError::Shape {
-                        name: name.to_string(),
-                        expected: "number",
-                        got: "integer outside the exact f64 range",
-                    })
-                }
-                None => Err(bad("finite number")),
-            }
-        }
-        (ScalarType::Bool, serde_json::Value::Bool(b)) => Ok(Value::Bool(*b)),
-        (ScalarType::String, _) => Err(bad("string")),
-        (ScalarType::Int, _) => Err(bad("integer")),
-        (ScalarType::Float, _) => Err(bad("number")),
-        (ScalarType::Bool, _) => Err(bad("bool")),
-    }
-}
-
 /// Writes an [`Instance`] tree shaped by `schema` to a pretty-printed JSON
 /// file.
 pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<(), JsonFormatError> {
@@ -897,7 +422,16 @@ pub fn to_value(
     instance: &Instance,
 ) -> Result<serde_json::Value, JsonFormatError> {
     let recursive = RecursiveSchemas::new(schema)?;
-    let mut patterns = PatternRuntime::new(schema)?;
+    let programs = PatternPrograms::new(schema)?;
+    to_value_with(schema, instance, &recursive, &mut programs.runtime())
+}
+
+fn to_value_with(
+    schema: &SchemaNode,
+    instance: &Instance,
+    recursive: &RecursiveSchemas<'_>,
+    patterns: &mut PatternRuntime,
+) -> Result<serde_json::Value, JsonFormatError> {
     // A root scope can produce flat rows even though the row schema itself
     // is not repeating (the same convention used by CSV). Preserve that
     // established JSON-output shape while keeping nested nodes
@@ -907,16 +441,12 @@ pub fn to_value(
             let mut values = Vec::with_capacity(items.len());
             for item in items {
                 values.push(write_single_node_with_patterns(
-                    schema,
-                    item,
-                    &recursive,
-                    0,
-                    &mut patterns,
+                    schema, item, recursive, 0, patterns,
                 )?);
             }
             serde_json::Value::Array(values)
         }
-        _ => write_node_with_patterns(schema, instance, &recursive, 0, &mut patterns)?,
+        _ => write_node_with_patterns(schema, instance, recursive, 0, patterns)?,
     };
     Ok(value)
 }
@@ -939,7 +469,8 @@ pub fn to_json5_string(
 pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, JsonFormatError> {
     reject_nullable_json_lines_container(schema)?;
     let recursive = RecursiveSchemas::new(schema)?;
-    let mut patterns = PatternRuntime::new(schema)?;
+    let programs = PatternPrograms::new(schema)?;
+    let mut patterns = programs.runtime();
     let values = match instance {
         Instance::Repeated(items) => {
             if schema.repeating {
@@ -983,7 +514,7 @@ pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, Json
 }
 
 fn reject_nullable_json_lines_container(schema: &SchemaNode) -> Result<(), JsonFormatError> {
-    if schema.repeating && schema.container_nullable {
+    if schema.repeating && null_layers::instance_null(schema)?.whole {
         return Err(JsonFormatError::NullableJsonLinesContainer {
             name: schema.name.clone(),
         });
@@ -997,7 +528,8 @@ fn write_node(
     instance: &Instance,
 ) -> Result<serde_json::Value, JsonFormatError> {
     let recursive = RecursiveSchemas::new(schema)?;
-    let mut patterns = PatternRuntime::new(schema)?;
+    let programs = PatternPrograms::new(schema)?;
+    let mut patterns = programs.runtime();
     write_node_with_patterns(schema, instance, &recursive, 0, &mut patterns)
 }
 
@@ -1016,7 +548,9 @@ fn write_node_with_patterns(
     } else {
         (schema, recursion_depth)
     };
-    if schema.container_nullable && matches!(instance, Instance::Scalar(Value::JsonNull(_))) {
+    if matches!(instance, Instance::Scalar(Value::JsonNull(_)))
+        && null_layers::instance_null(schema)?.whole
+    {
         return Ok(serde_json::Value::Null);
     }
     if schema.repeating {
@@ -1103,16 +637,15 @@ fn write_single_node_with_patterns(
     if schema.json_any {
         return write_json_any(schema, instance);
     }
-    if schema.json_single_container_nullable()
-        && matches!(instance, Instance::Scalar(Value::JsonNull(_)))
-    {
+    let null = null_layers::instance_null(schema)?;
+    if null.single && matches!(instance, Instance::Scalar(Value::JsonNull(_))) {
         return Ok(serde_json::Value::Null);
     }
     match (&schema.kind, instance) {
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
-            let value = write_scalar(value, *ty, schema.nullable, &schema.name)?;
+            let value = write_scalar(value, *ty, null.value, &schema.name)?;
             json_schema::constraints::validate_json(schema, &value)?;
-            let normalized = read_scalar(&value, *ty, schema.nullable, &schema.name)?;
+            let normalized = read_scalar(&value, *ty, null.value, &schema.name)?;
             json_schema::allowed_values::validate_value(schema, &normalized)?;
             json_schema::ranges::validate_json(schema, &value)?;
             json_schema::multiples::validate_json(schema, &value)?;
@@ -1121,8 +654,8 @@ fn write_single_node_with_patterns(
             Ok(value)
         }
         (SchemaKind::ScalarUnion { types }, Instance::Scalar(value)) => {
-            let value = write_scalar_union(value, *types, schema.nullable, &schema.name)?;
-            let normalized = read_scalar_union(&value, *types, schema.nullable, &schema.name)?;
+            let value = write_scalar_union(value, *types, null.value, &schema.name)?;
+            let normalized = read_scalar_union(&value, *types, null.value, &schema.name)?;
             json_schema::allowed_values::validate_value(schema, &normalized)?;
             json_schema::ranges::validate_json(schema, &value)?;
             json_schema::multiples::validate_json(schema, &value)?;
@@ -1160,7 +693,7 @@ fn write_single_node_with_patterns(
                             Some(child) => (child, false),
                             None => (dynamic.as_ref(), true),
                         };
-                    if is_boundary_absence(child_schema, child_instance) {
+                    if is_boundary_absence(child_schema, child_instance)? {
                         continue;
                     }
                     if is_dynamic {
@@ -1204,7 +737,7 @@ fn write_single_node_with_patterns(
                 {
                     // A non-nullable Null scalar is boundary-level absence.
                     // Nullable scalars retain an explicit JSON null.
-                    if is_boundary_absence(child_schema, child_instance) {
+                    if is_boundary_absence(child_schema, child_instance)? {
                         continue;
                     }
                     out.insert(
@@ -1305,19 +838,21 @@ fn write_json_any(
     }
 }
 
-fn is_boundary_absence(schema: &SchemaNode, instance: &Instance) -> bool {
+fn is_boundary_absence(schema: &SchemaNode, instance: &Instance) -> Result<bool, JsonFormatError> {
     if let Instance::MappedSequence(items) = instance
         && items.is_empty()
         && !schema.repeating
     {
-        return true;
+        return Ok(true);
     }
-    matches!(instance, Instance::Scalar(Value::Null))
-        && (schema.container_nullable || (!schema.repeating && schema.is_scalar()))
+    // A Null scalar, or a Null nullable object or array, is boundary-level
+    // absence; an explicit JSON null is a value.
+    Ok(matches!(instance, Instance::Scalar(Value::Null))
+        && (null_layers::instance_null(schema)?.whole || (!schema.repeating && schema.is_scalar()))
         || matches!(instance, Instance::Repeated(items) | Instance::MappedSequence(items) if items.is_empty())
             && schema
                 .item_count_range
-                .is_some_and(|range| range.minimum() > 0)
+                .is_some_and(|range| range.minimum() > 0))
 }
 
 fn write_scalar_union(
@@ -1404,23 +939,28 @@ fn validate_alternative_fields(
     if alternatives.is_empty() {
         return Ok(());
     }
-    let matches = alternatives
-        .iter()
-        .filter(|alternative| {
-            alternative.required.iter().all(|required| {
-                fields.get(required).is_some_and(|value| {
-                    !value.is_null() || schema.child(required).is_some_and(|child| child.nullable)
-                })
-            }) && fields
+    let mut matches = Vec::new();
+    for alternative in alternatives {
+        let mut required_present = true;
+        for required in &alternative.required {
+            if !required_member_present(schema, fields, required)? {
+                required_present = false;
+                break;
+            }
+        }
+        if required_present
+            && fields
                 .keys()
                 .all(|field| alternative.members.iter().any(|member| member == field))
-                && alternative.constraints.iter().all(|constraint| {
-                    fields
-                        .get(&constraint.member)
-                        .is_none_or(|value| constraint_matches(&constraint.value, value))
-                })
-        })
-        .collect::<Vec<_>>();
+            && alternative.constraints.iter().all(|constraint| {
+                fields
+                    .get(&constraint.member)
+                    .is_none_or(|value| constraint_matches(&constraint.value, value))
+            })
+        {
+            matches.push(alternative);
+        }
+    }
     match matches.len() {
         0 => Err(JsonFormatError::NoMatchingAlternative {
             name: schema.name.clone(),
@@ -1436,6 +976,25 @@ fn validate_alternative_fields(
             }
         }
         _ => Ok(()),
+    }
+}
+
+/// A required alternative member is present: a non-null value, or a null
+/// admitted by the member's scalar value layer.
+fn required_member_present(
+    schema: &SchemaNode,
+    fields: &serde_json::Map<String, serde_json::Value>,
+    required: &str,
+) -> Result<bool, JsonFormatError> {
+    let Some(value) = fields.get(required) else {
+        return Ok(false);
+    };
+    if !value.is_null() {
+        return Ok(true);
+    }
+    match schema.child(required) {
+        Some(child) => Ok(null_layers::instance_null(child)?.value),
+        None => Ok(false),
     }
 }
 
@@ -1575,1189 +1134,4 @@ fn write_shape_error(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn recursive_groups_round_trip_without_losing_descendants() -> Result<(), JsonFormatError> {
-        let schema = SchemaNode::group(
-            "directory",
-            vec![
-                SchemaNode::scalar("name", ScalarType::String),
-                SchemaNode::scalar("file", ScalarType::String).repeating(),
-                SchemaNode::recursive_group("directory", "directory").repeating(),
-            ],
-        );
-        let source = serde_json::json!({
-            "name": "root",
-            "file": ["a"],
-            "directory": [{
-                "name": "child",
-                "file": ["b"],
-                "directory": [{"name": "grandchild", "file": ["c"]}]
-            }]
-        });
-        let parsed = from_str(&source.to_string(), &schema)?;
-        let child = &parsed.field("directory").unwrap().as_repeated().unwrap()[0];
-        let grandchild = &child.field("directory").unwrap().as_repeated().unwrap()[0];
-        assert_eq!(
-            grandchild.field("name").and_then(Instance::as_scalar),
-            Some(&Value::String("grandchild".into()))
-        );
-        assert_eq!(
-            grandchild.field("file").unwrap().as_repeated().unwrap()[0].as_scalar(),
-            Some(&Value::String("c".into()))
-        );
-        let written = to_string(&schema, &parsed)?;
-        assert_eq!(from_str(&written, &schema)?, parsed);
-        let rendered: serde_json::Value = serde_json::from_str(&written)?;
-        assert_eq!(
-            rendered["directory"][0]["directory"][0]["name"],
-            "grandchild"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn recursive_occurrence_keeps_its_local_name_and_repetition() -> Result<(), JsonFormatError> {
-        let branch = SchemaNode::group(
-            "Branch",
-            vec![
-                SchemaNode::scalar("value", ScalarType::Int),
-                SchemaNode::recursive_group("child", "Branch").repeating(),
-            ],
-        );
-        let schema = SchemaNode::group("root", vec![branch]);
-        let source = r#"{"Branch":{"value":1,"child":[{"value":2,"child":[{"value":3}]}]}}"#;
-        let parsed = from_str(source, &schema)?;
-        let written = to_string(&schema, &parsed)?;
-        assert_eq!(from_str(&written, &schema)?, parsed);
-        let rendered: serde_json::Value = serde_json::from_str(&written)?;
-        assert_eq!(rendered["Branch"]["child"][0]["child"][0]["value"], 3);
-        Ok(())
-    }
-
-    #[test]
-    fn recursive_schema_rejects_missing_ambiguous_and_malformed_anchors() {
-        let missing =
-            SchemaNode::group("root", vec![SchemaNode::recursive_group("child", "absent")]);
-        assert!(matches!(
-            from_str("{}", &missing),
-            Err(JsonFormatError::MissingRecursiveAnchor { .. })
-        ));
-        assert!(matches!(
-            to_string(&missing, &Instance::Group((Vec::new()).into())),
-            Err(JsonFormatError::MissingRecursiveAnchor { .. })
-        ));
-
-        let ambiguous = SchemaNode::group(
-            "root",
-            vec![
-                SchemaNode::group("Branch", Vec::new()),
-                SchemaNode::group("Branch", Vec::new()),
-                SchemaNode::recursive_group("child", "Branch"),
-            ],
-        );
-        assert!(matches!(
-            from_str("{}", &ambiguous),
-            Err(JsonFormatError::MissingRecursiveAnchor { .. })
-        ));
-
-        let mut malformed = SchemaNode::recursive_group("child", "root");
-        if let SchemaKind::Group { children, .. } = &mut malformed.kind {
-            children.push(SchemaNode::scalar("unexpected", ScalarType::String));
-        }
-        let malformed = SchemaNode::group("root", vec![malformed]);
-        assert!(matches!(
-            from_str("{}", &malformed),
-            Err(JsonFormatError::InvalidRecursiveReference { .. })
-        ));
-
-        let mut constrained = SchemaNode::recursive_group("child", "root");
-        constrained.property_count_range = ir::PropertyCountRange::new(1, None);
-        let constrained = SchemaNode::group("root", vec![constrained]);
-        assert!(matches!(
-            from_str("{}", &constrained),
-            Err(JsonFormatError::InvalidRecursiveReference { .. })
-        ));
-        assert!(matches!(
-            to_string(&constrained, &Instance::Group((Vec::new()).into())),
-            Err(JsonFormatError::InvalidRecursiveReference { .. })
-        ));
-    }
-
-    #[test]
-    fn recursive_json_reads_and_writes_are_depth_bounded() {
-        let schema = SchemaNode::group("node", vec![SchemaNode::recursive_group("node", "node")]);
-        let mut value = serde_json::json!({});
-        let mut instance = Instance::Group((Vec::new()).into());
-        for _ in 0..=MAX_JSON_RECURSION_DEPTH {
-            value = serde_json::json!({"node": value});
-            instance = Instance::Group((vec![("node".into(), instance)]).into());
-        }
-        assert!(matches!(
-            from_str(&value.to_string(), &schema),
-            Err(JsonFormatError::RecursionLimit {
-                limit: MAX_JSON_RECURSION_DEPTH
-            })
-        ));
-        assert!(matches!(
-            to_string(&schema, &instance),
-            Err(JsonFormatError::RecursionLimit {
-                limit: MAX_JSON_RECURSION_DEPTH
-            })
-        ));
-    }
-
-    #[test]
-    fn recursive_descendants_enforce_exact_unique_items() {
-        let mut values = SchemaNode::scalar("values", ScalarType::Float).repeating();
-        values.json_unique_items = true;
-        let schema = SchemaNode::group(
-            "node",
-            vec![values, SchemaNode::recursive_group("node", "node")],
-        );
-        let duplicate = r#"{"node":{"node":{"values":[1,1.0]}}}"#;
-        assert!(matches!(
-            from_str(duplicate, &schema),
-            Err(JsonFormatError::UniqueItemsMismatch { .. })
-        ));
-        assert!(matches!(
-            from_lines(duplicate, &schema),
-            Err(JsonFormatError::UniqueItemsMismatch { .. })
-        ));
-
-        // Raw decimal comparison must not collapse these distinct values to
-        // the same f64 while checking a recursive descendant's uniqueItems.
-        let distinct = r#"{"node":{"node":{"values":[1,1.0000000000000000000001]}}}"#;
-        assert!(from_str(distinct, &schema).is_ok());
-    }
-
-    #[test]
-    fn json5_reads_and_writes_schema_shaped_documents() {
-        let schema = schema();
-        let source = "// source comment\n{Name:'Ada',Tag:[{Value:'x',Weight:0x10},],}";
-        let instance = from_json5_str(source, &schema).unwrap();
-        let rendered = to_json5_string(&schema, &instance).unwrap();
-        assert!(rendered.contains("Name:"));
-        assert!(rendered.contains("Weight:"));
-        assert!(!rendered.contains("source comment"));
-        assert_eq!(from_json5_str(&rendered, &schema).unwrap(), instance);
-    }
-
-    #[test]
-    fn json5_rejects_nonfinite_values_and_deep_nesting() {
-        let schema = SchemaNode::group("Root", vec![SchemaNode::scalar("n", ScalarType::Float)]);
-        for source in ["{n: Infinity}", "{n: -Infinity}", "{n: NaN}"] {
-            assert!(from_json5_str(source, &schema).is_err(), "{source}");
-        }
-        let deep = format!("{}0{}", "[".repeat(129), "]".repeat(129));
-        assert!(matches!(
-            from_json5_str(&deep, &schema),
-            Err(JsonFormatError::Json5NestingLimit { limit: 128 })
-        ));
-        for separator in ['\u{2028}', '\u{2029}'] {
-            let shallow = format!("// comment{separator}{{n: 1}}");
-            assert!(from_json5_str(&shallow, &schema).is_ok());
-            let deep = format!(
-                "// comment{separator}{}0{}",
-                "[".repeat(129),
-                "]".repeat(129)
-            );
-            assert!(matches!(
-                from_json5_str(&deep, &schema),
-                Err(JsonFormatError::Json5NestingLimit { limit: 128 })
-            ));
-        }
-    }
-
-    #[test]
-    fn json5_checks_unique_items_on_decoded_arrays() {
-        let mut schema = SchemaNode::scalar("items", ScalarType::Int).repeating();
-        schema.json_unique_items = true;
-        assert!(matches!(
-            from_json5_str("[1, /* duplicate */ 1,]", &schema),
-            Err(JsonFormatError::UniqueItemsMismatch { .. })
-        ));
-        let mut float_schema = SchemaNode::scalar("floats", ScalarType::Float).repeating();
-        float_schema.json_unique_items = true;
-        assert!(matches!(
-            from_json5_str("[1.0, 1.00]", &float_schema),
-            Err(JsonFormatError::UniqueItemsMismatch { .. })
-        ));
-        for source in [
-            "[0x10, 16]",
-            "[+1, 1.0]",
-            "[.1e1, 1.]",
-            "[-0x0, 0]",
-            "[1e+2, 100]",
-        ] {
-            assert!(
-                matches!(
-                    from_json5_str(source, &float_schema),
-                    Err(JsonFormatError::UniqueItemsMismatch { .. })
-                ),
-                "{source}"
-            );
-        }
-        // The decoded f64 values are the same, but the source decimals are
-        // mathematically distinct. Exact lexical validation must allow them.
-        assert!(from_json5_str("[1.00000000000000000001, 1.0]", &float_schema).is_ok());
-        assert!(from_json5_str("[9007199254740992.0, 9007199254740993.0]", &float_schema).is_ok());
-    }
-
-    #[test]
-    fn json5_unique_items_compare_objects_without_key_order() {
-        let mut schema = SchemaNode::group(
-            "entry",
-            vec![
-                SchemaNode::scalar("ab", ScalarType::Int),
-                SchemaNode::scalar("other", ScalarType::String),
-            ],
-        )
-        .repeating();
-        schema.json_unique_items = true;
-        let source = "[{'ab':1,other:'x',},{other:'x',a\\u0062:0x1,}]";
-        assert!(matches!(
-            from_json5_str(source, &schema),
-            Err(JsonFormatError::UniqueItemsMismatch { .. })
-        ));
-    }
-
-    fn pattern_property_schema(
-        sources: impl IntoIterator<Item = &'static str>,
-    ) -> Result<SchemaNode, Box<dyn std::error::Error>> {
-        let mut dynamic = SchemaNode::scalar("*", ScalarType::Int);
-        dynamic.nullable = true;
-        let selectors = ir::JsonPatternPropertyNames::new(sources)?;
-        SchemaNode::group(
-            "Object",
-            vec![SchemaNode::scalar("fixed", ScalarType::String)],
-        )
-        .with_dynamic_fields(dynamic)
-        .and_then(|schema| schema.with_json_pattern_property_names(selectors))
-        .ok_or_else(|| "patternProperties test schema is valid".into())
-    }
-
-    fn schema() -> SchemaNode {
-        SchemaNode::group(
-            "Root",
-            vec![
-                SchemaNode::scalar("Name", ScalarType::String),
-                SchemaNode::group(
-                    "Tag",
-                    vec![
-                        SchemaNode::scalar("Value", ScalarType::String),
-                        SchemaNode::scalar("Weight", ScalarType::Float),
-                    ],
-                )
-                .repeating(),
-            ],
-        )
-    }
-
-    fn alternative_schema() -> SchemaNode {
-        SchemaNode::group(
-            "Address",
-            vec![
-                SchemaNode::scalar("name", ScalarType::String),
-                SchemaNode::scalar("state", ScalarType::String),
-                SchemaNode::scalar("postcode", ScalarType::String),
-            ],
-        )
-        .with_alternatives(vec![
-            ir::GroupAlternative {
-                name: "domestic".into(),
-                members: vec!["name".into(), "state".into()],
-                required: vec!["name".into(), "state".into()],
-                constraints: Vec::new(),
-            },
-            ir::GroupAlternative {
-                name: "international".into(),
-                members: vec!["name".into(), "postcode".into()],
-                required: vec!["name".into(), "postcode".into()],
-                constraints: Vec::new(),
-            },
-        ])
-        .unwrap()
-    }
-
-    #[test]
-    fn hybrid_open_objects_preserve_order_and_reject_duplicates() {
-        let schema = SchemaNode::group("Object", vec![SchemaNode::scalar("id", ScalarType::Int)])
-            .with_dynamic_fields(SchemaNode::scalar("value", ScalarType::String))
-            .unwrap();
-        let value = serde_json::json!({"before": "B", "id": 7, "after": "A"});
-        let instance = read_node(&value, &schema).unwrap();
-        let Instance::Group(fields) = &instance else {
-            panic!("open object should read as a group")
-        };
-        assert_eq!(
-            fields
-                .iter()
-                .map(|(name, _)| name.as_str())
-                .collect::<Vec<_>>(),
-            ["before", "id", "after"]
-        );
-        assert_eq!(write_node(&schema, &instance).unwrap(), value);
-
-        let duplicate = Instance::Group(
-            (vec![
-                (
-                    "name".into(),
-                    Instance::Scalar(Value::String("first".into())),
-                ),
-                (
-                    "name".into(),
-                    Instance::Scalar(Value::String("second".into())),
-                ),
-            ])
-            .into(),
-        );
-        assert!(matches!(
-            write_node(&schema, &duplicate),
-            Err(JsonFormatError::DuplicateProperty { ref property, .. }) if property == "name"
-        ));
-    }
-
-    #[test]
-    fn pattern_properties_select_only_dynamic_names_and_preserve_fixed_precedence()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let schema = pattern_property_schema(["^x-", "meta"])?;
-        let value = serde_json::json!({
-            "fixed": "uses its declared string schema",
-            "x-value": 1,
-            "x-meta": 2,
-            "meta-value": null
-        });
-        let instance = read_node(&value, &schema)?;
-        assert_eq!(write_node(&schema, &instance)?, value);
-
-        assert!(matches!(
-            read_node(&serde_json::json!({"other": 1}), &schema),
-            Err(JsonFormatError::UnmatchedPatternProperty { ref property, .. })
-                if property == "other"
-        ));
-        assert!(matches!(
-            write_node(
-                &schema,
-                &Instance::Group((vec![(
-                    "other".into(),
-                    Instance::Scalar(Value::Int(1)),
-                )]).into()),
-            ),
-            Err(JsonFormatError::UnmatchedPatternProperty { ref property, .. })
-                if property == "other"
-        ));
-        assert_eq!(
-            write_node(
-                &schema,
-                &Instance::Group((vec![("other".into(), Instance::Scalar(Value::Null),)]).into()),
-            )?,
-            serde_json::json!({})
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn pattern_properties_apply_to_json_lines_with_one_shared_work_budget()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let schema = pattern_property_schema(["^x-"])?;
-        let rows = from_lines("{\"x-a\":1}\n{\"x-b\":null}\n", &schema)?;
-        assert_eq!(to_lines(&schema, &rows)?, "{\"x-a\":1}\n{\"x-b\":null}\n");
-        assert!(matches!(
-            from_lines("{\"x-a\":1}\n{\"other\":2}\n", &schema),
-            Err(JsonFormatError::UnmatchedPatternProperty { ref property, .. })
-                if property == "other"
-        ));
-
-        let expensive = pattern_property_schema(["^(a?){8000}$"])?;
-        let key = "a".repeat(8_000);
-        assert!(matches!(
-            from_str(&format!("{{{key:?}:1}}"), &expensive),
-            Err(JsonFormatError::PatternWorkLimit { ref name }) if name == "Object"
-        ));
-        Ok(())
-    }
-
-    #[test]
-    fn object_alternatives_validate_and_preserve_each_projection() {
-        let schema = alternative_schema();
-        for value in [
-            serde_json::json!({"name": "A", "state": "WA"}),
-            serde_json::json!({"name": "B", "postcode": "SW1"}),
-        ] {
-            let instance = read_node(&value, &schema).unwrap();
-            assert_eq!(write_node(&schema, &instance).unwrap(), value);
-        }
-        assert!(matches!(
-            read_node(&serde_json::json!({"name": "A"}), &schema),
-            Err(JsonFormatError::NoMatchingAlternative { .. })
-        ));
-        assert!(matches!(
-            read_node(
-                &serde_json::json!({"name": "A", "state": "WA", "postcode": "SW1"}),
-                &schema
-            ),
-            Err(JsonFormatError::NoMatchingAlternative { .. })
-        ));
-        for invalid in [
-            serde_json::json!({"name": "A", "state": null}),
-            serde_json::json!({"name": "A", "state": "WA", "extra": true}),
-        ] {
-            assert!(matches!(
-                read_node(&invalid, &schema),
-                Err(JsonFormatError::NoMatchingAlternative { .. })
-            ));
-        }
-    }
-
-    #[test]
-    fn xsd_type_alternatives_accept_only_unique_member_set_refinement() {
-        let mut derived = SchemaNode::group(
-            "Contact",
-            ["ID", "First", "Last", "Address"]
-                .into_iter()
-                .map(|name| SchemaNode::scalar(name, ScalarType::String))
-                .collect(),
-        )
-        .with_alternatives(vec![
-            ir::GroupAlternative {
-                name: "ContactType".into(),
-                members: ["ID", "First", "Last"].map(str::to_owned).to_vec(),
-                required: Vec::new(),
-                constraints: Vec::new(),
-            },
-            ir::GroupAlternative {
-                name: "ContactTypeWithAddress".into(),
-                members: ["ID", "First", "Last", "Address"]
-                    .map(str::to_owned)
-                    .to_vec(),
-                required: Vec::new(),
-                constraints: Vec::new(),
-            },
-        ])
-        .unwrap();
-        let base_value = serde_json::json!({"ID": "1", "First": "Loby", "Last": "Matise"});
-        assert!(matches!(
-            read_node(&base_value, &derived),
-            Err(JsonFormatError::AmbiguousAlternative { .. })
-        ));
-        derived.xml_type_alternatives = true;
-        let base_instance = read_node(&base_value, &derived).unwrap();
-        assert_eq!(write_node(&derived, &base_instance).unwrap(), base_value);
-        let extended = serde_json::json!({
-            "ID": "2", "First": "Alex", "Last": "Martin", "Address": "Main Street"
-        });
-        let extended_instance = read_node(&extended, &derived).unwrap();
-        assert_eq!(write_node(&derived, &extended_instance).unwrap(), extended);
-
-        let mut incomparable = SchemaNode::group(
-            "Contact",
-            ["ID", "First", "Last"]
-                .into_iter()
-                .map(|name| SchemaNode::scalar(name, ScalarType::String))
-                .collect(),
-        )
-        .with_alternatives(vec![
-            ir::GroupAlternative {
-                name: "FirstContact".into(),
-                members: ["ID", "First"].map(str::to_owned).to_vec(),
-                required: Vec::new(),
-                constraints: Vec::new(),
-            },
-            ir::GroupAlternative {
-                name: "LastContact".into(),
-                members: ["ID", "Last"].map(str::to_owned).to_vec(),
-                required: Vec::new(),
-                constraints: Vec::new(),
-            },
-        ])
-        .unwrap();
-        incomparable.xml_type_alternatives = true;
-        assert!(matches!(
-            read_node(&serde_json::json!({"ID": "3"}), &incomparable),
-            Err(JsonFormatError::AmbiguousAlternative { .. })
-        ));
-        assert!(matches!(
-            write_node(
-                &incomparable,
-                &Instance::Group(
-                    (vec![("ID".into(), Instance::Scalar(Value::String("3".into())))]).into()
-                )
-            ),
-            Err(JsonFormatError::AmbiguousAlternative { .. })
-        ));
-    }
-
-    #[test]
-    fn object_alternatives_match_required_string_constraints() {
-        let schema = SchemaNode::group(
-            "Event",
-            vec![
-                SchemaNode::scalar("kind", ScalarType::String),
-                SchemaNode::scalar("value", ScalarType::String),
-            ],
-        )
-        .with_alternatives(vec![
-            ir::GroupAlternative {
-                name: "created".into(),
-                members: vec!["kind".into(), "value".into()],
-                required: vec!["kind".into(), "value".into()],
-                constraints: vec![ir::GroupAlternativeConstraint {
-                    member: "kind".into(),
-                    value: GroupAlternativeConstraintValue::String("created".into()),
-                }],
-            },
-            ir::GroupAlternative {
-                name: "deleted".into(),
-                members: vec!["kind".into(), "value".into()],
-                required: vec!["kind".into(), "value".into()],
-                constraints: vec![ir::GroupAlternativeConstraint {
-                    member: "kind".into(),
-                    value: GroupAlternativeConstraintValue::String("deleted".into()),
-                }],
-            },
-        ])
-        .unwrap();
-
-        for value in [
-            serde_json::json!({"kind": "created", "value": "one"}),
-            serde_json::json!({"kind": "deleted", "value": "two"}),
-        ] {
-            let instance = read_node(&value, &schema).unwrap();
-            assert_eq!(write_node(&schema, &instance).unwrap(), value);
-        }
-        for value in [
-            serde_json::json!({"kind": "changed", "value": "three"}),
-            serde_json::json!({"kind": null, "value": "four"}),
-            serde_json::json!({"value": "five"}),
-        ] {
-            assert!(matches!(
-                read_node(&value, &schema),
-                Err(JsonFormatError::NoMatchingAlternative { .. })
-            ));
-        }
-    }
-
-    #[test]
-    fn text_io_roundtrips_nested_repeating_groups() {
-        let tag = |v: &str, w: f64| {
-            Instance::Group(
-                (vec![
-                    ("Value".into(), Instance::Scalar(Value::String(v.into()))),
-                    ("Weight".into(), Instance::Scalar(Value::Float(w))),
-                ])
-                .into(),
-            )
-        };
-        let instance = Instance::Group(
-            (vec![
-                (
-                    "Name".into(),
-                    Instance::Scalar(Value::String("Jane".into())),
-                ),
-                (
-                    "Tag".into(),
-                    Instance::Repeated(vec![tag("a", 1.5), tag("b", 2.0)]),
-                ),
-            ])
-            .into(),
-        );
-
-        let text = to_string(&schema(), &instance).unwrap();
-        let read_back = from_str(&text, &schema()).unwrap();
-
-        assert!(text.ends_with('\n'));
-        assert_eq!(read_back, instance);
-    }
-
-    #[test]
-    fn text_io_supports_repeating_roots() {
-        let schema = SchemaNode::scalar("Value", ScalarType::Int).repeating();
-        let instance = Instance::Repeated(vec![
-            Instance::Scalar(Value::Int(1)),
-            Instance::Scalar(Value::Int(2)),
-        ]);
-
-        let text = to_string(&schema, &instance).unwrap();
-
-        assert_eq!(from_str(&text, &schema).unwrap(), instance);
-        assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&text).unwrap(),
-            serde_json::json!([1, 2])
-        );
-    }
-
-    #[test]
-    fn scalar_union_writes_only_unambiguous_existing_scalar_coercions()
-    -> Result<(), JsonFormatError> {
-        let Some(types) = ScalarTypeSet::new([ScalarType::Float, ScalarType::String]) else {
-            panic!("test scalar union must contain distinct types");
-        };
-        let float_or_string = SchemaNode::scalar_union("value", types);
-        assert_eq!(
-            write_node(&float_or_string, &Instance::Scalar(Value::Int(42)))?,
-            serde_json::json!(42)
-        );
-
-        let Some(types) = ScalarTypeSet::new([ScalarType::Int, ScalarType::String]) else {
-            panic!("test scalar union must contain distinct types");
-        };
-        let int_or_string = SchemaNode::scalar_union("value", types);
-        assert_eq!(
-            write_node(
-                &int_or_string,
-                &Instance::Scalar(Value::String("42".into()))
-            )?,
-            serde_json::json!("42")
-        );
-
-        let Some(types) = ScalarTypeSet::new([ScalarType::Float, ScalarType::Bool]) else {
-            panic!("test scalar union must contain distinct types");
-        };
-        let float_or_bool = SchemaNode::scalar_union("value", types);
-        assert!(matches!(
-            write_node(
-                &float_or_bool,
-                &Instance::Scalar(Value::Int((1_i64 << f64::MANTISSA_DIGITS) + 1))
-            ),
-            Err(JsonFormatError::Shape {
-                got: "int outside the exact f64 range",
-                ..
-            })
-        ));
-        let Some(types) = ScalarTypeSet::new([ScalarType::Int, ScalarType::Float]) else {
-            panic!("test scalar union must contain distinct types");
-        };
-        let ambiguous_numeric = SchemaNode::scalar_union("value", types);
-        assert!(matches!(
-            write_node(
-                &ambiguous_numeric,
-                &Instance::Scalar(Value::String("1".into()))
-            ),
-            Err(JsonFormatError::Shape {
-                expected: "unambiguous declared scalar union",
-                got: "string",
-                ..
-            })
-        ));
-        Ok(())
-    }
-
-    #[test]
-    fn json_lines_roundtrips_rows_without_an_enclosing_array() {
-        let schema = SchemaNode::group(
-            "Row",
-            vec![
-                SchemaNode::scalar("name", ScalarType::String),
-                SchemaNode::scalar("count", ScalarType::Int),
-            ],
-        );
-        let text = "{\"name\":\"first\",\"count\":1}\n\n{\"name\":\"second\",\"count\":2}\n";
-
-        let rows = from_lines(text, &schema).unwrap();
-        assert_eq!(
-            to_lines(&schema, &rows).unwrap(),
-            text.replace("\n\n", "\n")
-        );
-        assert_eq!(rows.as_repeated().map(<[Instance]>::len), Some(2));
-    }
-
-    #[test]
-    fn leading_utf8_bom_is_accepted_for_json_documents_and_lines() {
-        let scalar = SchemaNode::scalar("Value", ScalarType::Int);
-        assert_eq!(
-            from_str("\u{feff}42", &scalar).unwrap(),
-            Instance::Scalar(Value::Int(42))
-        );
-        assert_eq!(
-            from_lines("\u{feff}1\n2\n", &scalar).unwrap(),
-            Instance::Repeated(vec![
-                Instance::Scalar(Value::Int(1)),
-                Instance::Scalar(Value::Int(2)),
-            ])
-        );
-    }
-
-    #[test]
-    fn to_string_preserves_flat_rows_for_a_non_repeating_root() {
-        let schema = SchemaNode::group("Row", vec![SchemaNode::scalar("Name", ScalarType::String)]);
-        let rows = Instance::Repeated(vec![
-            Instance::Group(
-                (vec![(
-                    "Name".into(),
-                    Instance::Scalar(Value::String("first".into())),
-                )])
-                .into(),
-            ),
-            Instance::Group(
-                (vec![(
-                    "Name".into(),
-                    Instance::Scalar(Value::String("second".into())),
-                )])
-                .into(),
-            ),
-        ]);
-
-        let text = to_string(&schema, &rows).unwrap();
-
-        assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&text).unwrap(),
-            serde_json::json!([{"Name": "first"}, {"Name": "second"}])
-        );
-    }
-
-    #[test]
-    fn missing_repeating_field_reads_as_empty() {
-        let dir = std::env::temp_dir();
-        let path = dir.join(format!(
-            "ferrule_format_json_test_empty_{}.json",
-            std::process::id()
-        ));
-        std::fs::write(&path, r#"{ "Name": "Jane" }"#).unwrap();
-
-        let instance = read(&path, &schema()).unwrap();
-        std::fs::remove_file(&path).unwrap();
-
-        assert_eq!(instance.field("Tag"), Some(&Instance::Repeated(Vec::new())));
-    }
-
-    #[test]
-    fn absent_properties_read_as_null_and_are_omitted_on_write() {
-        let schema = SchemaNode::group(
-            "Root",
-            vec![
-                SchemaNode::scalar("Name", ScalarType::String),
-                SchemaNode::scalar("Nick", ScalarType::String),
-                SchemaNode::group(
-                    "Extra",
-                    vec![SchemaNode::scalar("Note", ScalarType::String)],
-                ),
-            ],
-        );
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_format_json_test_optional_{}.json",
-            std::process::id()
-        ));
-        std::fs::write(&path, r#"{ "Name": "Jane" }"#).unwrap();
-
-        let instance = read(&path, &schema).unwrap();
-        assert_eq!(instance.field("Nick"), Some(&Instance::Scalar(Value::Null)));
-        assert_eq!(
-            instance.field("Extra"),
-            Some(&Instance::Group((vec![]).into()))
-        );
-
-        // Writing the Null back omits the key instead of emitting `null`.
-        write(&path, &schema, &instance).unwrap();
-        let text = std::fs::read_to_string(&path).unwrap();
-        std::fs::remove_file(&path).unwrap();
-        assert!(!text.contains("Nick"), "{text}");
-    }
-
-    #[test]
-    fn explicit_null_requires_nullable_scalar_metadata() {
-        let scalar = SchemaNode::scalar("Value", ScalarType::String);
-        assert!(matches!(
-            from_str("null", &scalar),
-            Err(JsonFormatError::Shape {
-                expected: "string",
-                got: "null",
-                ..
-            })
-        ));
-        assert!(matches!(
-            to_string(&scalar, &Instance::Scalar(Value::Null)),
-            Err(JsonFormatError::Shape {
-                expected: "string",
-                got: "null",
-                ..
-            })
-        ));
-
-        let nullable = scalar.nullable().unwrap();
-        let instance = from_str("null", &nullable).unwrap();
-        assert_eq!(instance, Instance::Scalar(Value::json_null()));
-        assert_eq!(to_string(&nullable, &instance).unwrap(), "null\n");
-    }
-
-    #[test]
-    fn nullable_object_properties_distinguish_absence_from_explicit_null() {
-        let schema = SchemaNode::group(
-            "Root",
-            vec![
-                SchemaNode::scalar("Optional", ScalarType::String),
-                SchemaNode::scalar("Nullable", ScalarType::String)
-                    .nullable()
-                    .unwrap(),
-            ],
-        );
-        let instance = from_str("{}", &schema).unwrap();
-        let value: serde_json::Value =
-            serde_json::from_str(&to_string(&schema, &instance).unwrap()).unwrap();
-        assert_eq!(value, serde_json::json!({}));
-
-        let instance = from_str(r#"{"Nullable":null}"#, &schema).unwrap();
-        assert_eq!(
-            instance.field("Nullable"),
-            Some(&Instance::Scalar(Value::json_null()))
-        );
-        let value: serde_json::Value =
-            serde_json::from_str(&to_string(&schema, &instance).unwrap()).unwrap();
-        assert_eq!(value, serde_json::json!({"Nullable": null}));
-    }
-
-    #[test]
-    fn null_only_omits_scalar_leaves() {
-        let schema = SchemaNode::group(
-            "Root",
-            vec![
-                SchemaNode::group(
-                    "Object",
-                    vec![SchemaNode::scalar("Value", ScalarType::String)],
-                ),
-                SchemaNode::scalar("Items", ScalarType::String).repeating(),
-            ],
-        );
-
-        for field in ["Object", "Items"] {
-            let instance =
-                Instance::Group((vec![(field.to_string(), Instance::Scalar(Value::Null))]).into());
-            let error = write_node(&schema, &instance).unwrap_err();
-            assert!(matches!(
-                error,
-                JsonFormatError::Shape { ref name, got: "null", .. } if name == field
-            ));
-        }
-    }
-
-    #[test]
-    fn wrong_shape_is_reported_with_field_name() {
-        let dir = std::env::temp_dir();
-        let path = dir.join(format!(
-            "ferrule_format_json_test_bad_{}.json",
-            std::process::id()
-        ));
-        std::fs::write(&path, r#"{ "Name": 42, "Tag": [] }"#).unwrap();
-
-        let err = read(&path, &schema()).unwrap_err();
-        std::fs::remove_file(&path).unwrap();
-
-        assert!(
-            matches!(err, JsonFormatError::Shape { ref name, expected: "string", .. } if name == "Name")
-        );
-    }
-
-    fn write_scalar_value(
-        ty: ScalarType,
-        value: Value,
-    ) -> Result<serde_json::Value, JsonFormatError> {
-        write_node(&SchemaNode::scalar("Field", ty), &Instance::Scalar(value))
-    }
-
-    #[test]
-    fn string_leaves_serialize_every_finite_scalar_as_json_text() {
-        for (value, expected) in [
-            (Value::Bool(true), "true"),
-            (Value::Int(-42), "-42"),
-            (Value::Float(2.5), "2.5"),
-            (Value::String("value".into()), "value"),
-        ] {
-            assert_eq!(
-                write_scalar_value(ScalarType::String, value).unwrap(),
-                serde_json::Value::String(expected.into())
-            );
-        }
-    }
-
-    #[test]
-    fn typed_leaves_coerce_text_and_widen_integers_to_numbers() {
-        assert_eq!(
-            write_scalar_value(ScalarType::Int, Value::String(" 42 ".into())).unwrap(),
-            serde_json::json!(42)
-        );
-        assert_eq!(
-            write_scalar_value(ScalarType::Float, Value::Int(42)).unwrap(),
-            serde_json::json!(42)
-        );
-        assert_eq!(
-            write_scalar_value(ScalarType::Float, Value::String("2.5".into())).unwrap(),
-            serde_json::json!(2.5)
-        );
-        assert_eq!(
-            write_scalar_value(ScalarType::Bool, Value::String("true".into())).unwrap(),
-            serde_json::json!(true)
-        );
-    }
-
-    #[test]
-    fn singleton_integer_output_normalizes_exact_decimal_text_before_constraints() {
-        use ir::{IntegerRange, JsonMultipleOf, JsonMultipleOfConstraints, NumericRange};
-
-        for (text, expected) in [
-            ("1.000", 1),
-            (" 2e2 ", 200),
-            ("9007199254740993.0", 9_007_199_254_740_993),
-            ("-9223372036854775808.000", i64::MIN),
-        ] {
-            assert_eq!(
-                write_scalar_value(ScalarType::Int, Value::String(text.into())).unwrap(),
-                serde_json::json!(expected)
-            );
-        }
-        for text in ["1.001", "1e-1", "9223372036854775808.0"] {
-            assert!(write_scalar_value(ScalarType::Int, Value::String(text.into())).is_err());
-        }
-
-        let divisor = JsonMultipleOf::from_decimal_lexical("3").unwrap();
-        let multiples = JsonMultipleOfConstraints::new([[divisor]]).unwrap();
-        let constrained = SchemaNode::scalar("Field", ScalarType::Int)
-            .with_numeric_range(NumericRange::Integer(
-                IntegerRange::new(Some(6), Some(8)).unwrap(),
-            ))
-            .unwrap()
-            .with_json_multiple_of(multiples)
-            .unwrap();
-        assert_eq!(
-            write_node(
-                &constrained,
-                &Instance::Scalar(Value::String("6.000".into()))
-            )
-            .unwrap(),
-            serde_json::json!(6)
-        );
-        for text in ["7.000", "9.000"] {
-            assert!(
-                write_node(&constrained, &Instance::Scalar(Value::String(text.into()))).is_err()
-            );
-        }
-        assert!(read_node(&serde_json::json!("6.000"), &constrained).is_err());
-
-        let types = ScalarTypeSet::new([ScalarType::Int, ScalarType::Float]).unwrap();
-        let union = SchemaNode::scalar_union("Field", types);
-        assert_eq!(
-            write_node(&union, &Instance::Scalar(Value::String("1.000".into()))).unwrap(),
-            serde_json::json!(1.0)
-        );
-    }
-
-    #[test]
-    fn float_leaves_only_widen_integers_that_roundtrip_exactly() -> Result<(), JsonFormatError> {
-        let schema = SchemaNode::scalar("Field", ScalarType::Float);
-        for value in [
-            1_i64 << f64::MANTISSA_DIGITS,
-            (1_i64 << f64::MANTISSA_DIGITS) + 2,
-            i64::MIN,
-        ] {
-            let encoded = write_node(&schema, &Instance::Scalar(Value::Int(value)))?;
-            assert_eq!(
-                read_node(&encoded, &schema)?,
-                Instance::Scalar(Value::Float(value as f64))
-            );
-        }
-
-        for value in [
-            (1_i64 << f64::MANTISSA_DIGITS) + 1,
-            -((1_i64 << f64::MANTISSA_DIGITS) + 1),
-            i64::MAX,
-        ] {
-            let Err(error) = write_node(&schema, &Instance::Scalar(Value::Int(value))) else {
-                panic!("inexact integer must not widen to float");
-            };
-            assert!(matches!(
-                error,
-                JsonFormatError::Shape {
-                    ref name,
-                    expected: "number",
-                    got: "int outside the exact f64 range"
-                } if name == "Field"
-            ));
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn float_leaves_accept_exact_sparse_external_integers() -> Result<(), Box<dyn std::error::Error>>
-    {
-        let schema = SchemaNode::scalar("Field", ScalarType::Float);
-
-        for text in [
-            ((1_u64 << f64::MANTISSA_DIGITS) + 2).to_string(),
-            i64::MIN.to_string(),
-            (1_u64 << 63).to_string(),
-        ] {
-            let expected = text.parse::<f64>()?;
-            assert_eq!(
-                from_str(&text, &schema)?,
-                Instance::Scalar(Value::Float(expected))
-            );
-        }
-
-        let Err(error) = from_str(&((1_u64 << f64::MANTISSA_DIGITS) + 1).to_string(), &schema)
-        else {
-            panic!("inexact external integer must not narrow to float");
-        };
-        assert!(matches!(
-            error,
-            JsonFormatError::Shape {
-                ref name,
-                expected: "number",
-                got: "integer outside the exact f64 range"
-            } if name == "Field"
-        ));
-
-        assert_eq!(
-            from_str("1.25", &schema)?,
-            Instance::Scalar(Value::Float(1.25))
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn incompatible_and_non_finite_values_return_typed_errors() {
-        let incompatible = write_scalar_value(ScalarType::Int, Value::Float(2.0)).unwrap_err();
-        assert!(matches!(
-            incompatible,
-            JsonFormatError::Shape {
-                ref name,
-                expected: "integer",
-                got: "float"
-            } if name == "Field"
-        ));
-
-        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-            let error = write_scalar_value(ScalarType::Float, Value::Float(value)).unwrap_err();
-            assert!(matches!(
-                error,
-                JsonFormatError::Shape {
-                    ref name,
-                    expected: "finite number",
-                    got: "non-finite float"
-                } if name == "Field"
-            ));
-        }
-
-        let wrong_shape = write_node(
-            &SchemaNode::scalar("Field", ScalarType::Bool),
-            &Instance::Group((Vec::new()).into()),
-        )
-        .unwrap_err();
-        assert!(matches!(
-            wrong_shape,
-            JsonFormatError::Shape {
-                ref name,
-                expected: "bool",
-                got: "object"
-            } if name == "Field"
-        ));
-
-        let error = write_node(
-            &SchemaNode::scalar("Field", ScalarType::Bool),
-            &Instance::MappedSequence(Vec::new()),
-        )
-        .unwrap_err();
-        assert!(matches!(
-            error,
-            JsonFormatError::Shape {
-                got: "mapped sequence",
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn json_output_normalizes_bounded_mapped_sequences() -> Result<(), Box<dyn std::error::Error>> {
-        let scalar = SchemaNode::scalar("Field", ScalarType::String);
-        let root = SchemaNode::group("Root", vec![scalar.clone()]);
-        let item = |value: &str| Instance::Scalar(Value::String(value.into()));
-        let field = |items| {
-            Instance::Group((vec![("Field".into(), Instance::MappedSequence(items))]).into())
-        };
-
-        let omitted: serde_json::Value = serde_json::from_str(&to_string(&root, &field(vec![]))?)?;
-        assert_eq!(omitted, serde_json::json!({}));
-        let one: serde_json::Value =
-            serde_json::from_str(&to_string(&root, &field(vec![item("one")]))?)?;
-        assert_eq!(one, serde_json::json!({"Field": "one"}));
-        let error = to_string(&root, &field(vec![item("one"), item("two")])).unwrap_err();
-        assert!(matches!(
-            error,
-            JsonFormatError::Shape {
-                ref name,
-                expected: "one mapped item",
-                got: "mapped sequence"
-            } if name == "Field"
-        ));
-
-        let required = root
-            .clone()
-            .with_required_fields(vec!["Field".into()])
-            .expect("valid required field");
-        assert!(matches!(
-            to_string(&required, &field(vec![])),
-            Err(JsonFormatError::MissingRequiredProperty { ref property, .. }) if property == "Field"
-        ));
-
-        let repeating = scalar.repeating();
-        for (items, expected) in [
-            (vec![], serde_json::json!([])),
-            (vec![item("one")], serde_json::json!(["one"])),
-            (
-                vec![item("one"), item("two")],
-                serde_json::json!(["one", "two"]),
-            ),
-        ] {
-            let actual: serde_json::Value =
-                serde_json::from_str(&to_string(&repeating, &Instance::MappedSequence(items))?)?;
-            assert_eq!(actual, expected);
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn root_row_arrays_validate_every_object_and_nested_assertion()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let range = ir::StringLengthRange::new(2, Some(5)).expect("valid length range");
-        let name = SchemaNode::scalar("Name", ScalarType::String)
-            .with_string_length_range(range)
-            .expect("string length applies to string");
-        let tags = SchemaNode::scalar("Tags", ScalarType::Int)
-            .repeating()
-            .with_json_unique_items()
-            .expect("uniqueItems applies to arrays");
-        let nested = SchemaNode::group("Nested", vec![]);
-        let schema = SchemaNode::group("Row", vec![name, tags, nested])
-            .with_required_fields(vec!["Name".into()])
-            .expect("required field exists");
-
-        assert_eq!(from_str("[]", &schema)?, Instance::Repeated(vec![]));
-        let rows = from_str(
-            r#"[{"Name":"Ada","Tags":[1,2]},{"Name":"Eve","Tags":[3]}]"#,
-            &schema,
-        )?;
-        assert!(matches!(rows, Instance::Repeated(ref items) if items.len() == 2));
-        assert!(matches!(
-            from_str(r#"[{"Name":"Ada"},{}]"#, &schema),
-            Err(JsonFormatError::MissingRequiredProperty { ref property, .. }) if property == "Name"
-        ));
-        assert!(matches!(
-            from_str(r#"[{"Name":"Ada"},{"Name":"X"}]"#, &schema),
-            Err(JsonFormatError::StringLengthMismatch { .. })
-        ));
-        assert!(matches!(
-            from_str(r#"[{"Name":"Ada"},{"Name":"Eve","Nested":[]}]"#, &schema),
-            Err(JsonFormatError::Shape { ref name, expected: "object", got: "array" })
-                if name == "Nested"
-        ));
-        assert!(matches!(
-            from_str(r#"[{"Name":"Ada"},{"Name":"Eve","Tags":[1,1]}]"#, &schema),
-            Err(JsonFormatError::UniqueItemsMismatch { .. })
-        ));
-        assert!(matches!(
-            from_json5_str("[{Name: 'Ada'}, {Name: 'Eve', Tags: [1, 1]}]", &schema),
-            Err(JsonFormatError::UniqueItemsMismatch { .. })
-        ));
-        Ok(())
-    }
-}
+mod tests;

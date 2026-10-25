@@ -430,8 +430,10 @@ fn csv_selection_rejects_a_stored_non_csv_target_without_publishing_a_tree() -> 
         .unwrap()
         .include_csv_output = true;
     app.request_library_generation(&egui::Context::default());
-    assert!(app.pending_library_generation.is_some());
-    finish_worker(&mut app);
+    assert!(
+        app.pending_library_generation.is_none(),
+        "the preflight refuses before saving or starting a worker"
+    );
     assert!(!temp.0.join("rejected-csv-library").exists());
     let draft = app.library_generation_draft.as_ref().unwrap();
     assert!(draft.include_csv_output);
@@ -838,9 +840,13 @@ fn existing_output_and_unsupported_mapping_keep_sentinels_and_publish_no_partial
     app.project.root.bindings[0].node = 2;
     assert!(cli::validate(&app.project).is_empty());
     let before = crate::project_state::project_snapshot_key(&app.project);
+    app.observe_editor_history(Instant::now(), false);
     app.request_library_generation(&egui::Context::default());
-    assert!(app.pending_library_generation.is_some());
-    finish_worker(&mut app);
+    assert!(
+        app.pending_library_generation.is_none(),
+        "the preflight refuses before saving or starting a worker"
+    );
+    assert!(app.is_dirty(), "the unsupported mapping was not saved");
     assert!(!temp.0.join("unsupported-output").exists());
     assert!(
         app.library_generation_draft
@@ -990,5 +996,51 @@ fn setup_parent_choice_and_cancel_preserve_the_complete_editor_without_output() 
     assert_eq!(app.history.undo_len(), before_history);
     assert!(!new_parent.join("custom-library").exists());
     assert!(!app.is_dirty());
+    Ok(())
+}
+
+#[test]
+fn generation_preflight_refuses_before_saving_or_writing() -> anyhow::Result<()> {
+    let temp = TestDir::new()?;
+    let mut app = mapped_app(&temp.0)?;
+    let project_path = temp.0.join("mapping.json");
+    let saved = std::fs::read(&project_path)?;
+    app.project.graph.nodes.insert(
+        0,
+        Node::Const {
+            value: Value::String("unsaved edit".into()),
+        },
+    );
+    app.observe_editor_history(Instant::now(), false);
+    assert!(app.is_dirty());
+    // The stored JSON target refuses the explicitly selected CSV adapter.
+    choose_csharp(&mut app, "refused-library");
+    app.library_generation_draft
+        .as_mut()
+        .unwrap()
+        .include_csv_output = true;
+    let expected = "generated CSV output requires a CSV target";
+    for document in [
+        DocumentLocation::saved(project_path.clone()),
+        DocumentLocation::untitled(temp.0.join("untitled.json")),
+    ] {
+        app.document = document;
+        app.request_library_generation(&egui::Context::default());
+        assert!(app.pending_library_generation.is_none());
+        assert!(app.pending_dialog.is_none(), "no Save As dialog opens");
+        assert_eq!(app.pending_save_continuation, None);
+        let error = app.library_generation_draft.as_ref().unwrap().error.clone();
+        assert!(
+            error
+                .as_deref()
+                .is_some_and(|error| error.contains(expected)),
+            "{error:?}"
+        );
+        assert_eq!(app.status, "library generation failed");
+        assert_eq!(std::fs::read(&project_path)?, saved);
+        assert!(!temp.0.join("untitled.json").exists());
+        assert!(!temp.0.join("refused-library").exists());
+        assert!(app.is_dirty());
+    }
     Ok(())
 }

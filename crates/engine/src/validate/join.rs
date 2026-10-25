@@ -2,12 +2,13 @@ use std::collections::BTreeSet;
 
 use ir::SchemaNode;
 use mapping::{
-    Graph, JoinId, JoinPlan, JoinSourceCardinality, Node, NodeId, OwnedJoinPlan, OwnedSourceRef,
-    Project, Scope, describe_owned_collection,
+    Graph, JoinId, JoinPlan, JoinSourceCardinality, Node, NodeId, NodeInputRole, OwnedJoinPlan,
+    OwnedSourceRef, Project, Scope, describe_owned_collection,
 };
 
 use super::ValidationIssue;
-use super::graph::{node_inputs, validate_collection_value};
+use super::graph::validate_collection_value;
+use super::node_inputs::node_inputs;
 
 /// Sources of one join scope that dominates the expressions being validated.
 /// Legacy joins name collections by path alone; owned joins by full identity.
@@ -245,25 +246,9 @@ pub(super) fn validate_scope_nodes(
     project: &Project,
     issues: &mut Vec<ValidationIssue>,
 ) {
-    let roots = scope
-        .filter
-        .into_iter()
-        .chain(scope.post_group_filter)
-        .chain(scope.grouping_nodes())
-        .chain(scope.sort_by)
-        .chain(scope.output_path())
-        .chain(scope.sort_then_by.iter().map(|key| key.node))
-        .chain(scope.bindings.iter().map(|binding| binding.node))
-        .chain(
-            scope
-                .dynamic_bindings
-                .iter()
-                .flat_map(|binding| [binding.key, binding.value]),
-        )
-        .chain(scope.dynamic_children.iter().map(|child| child.key));
     validate_roots(
         graph,
-        roots,
+        crate::scope_slots::roots(scope, crate::scope_slots::join_validation),
         active_joins,
         root_context,
         location,
@@ -404,50 +389,30 @@ fn validate_roots_inner(
                     ),
                 ));
             }
-            Node::JoinAggregate {
-                join,
-                plan,
-                expression,
-                arg,
-                ..
-            } => {
+            Node::JoinAggregate { join, plan, .. } => {
                 if root_context {
                     validate_root_singletons(project, *join, plan, location, issues);
                 }
-                pending.extend(arg.map(|arg| (arg, root_context)));
-                if let Some(expression) = expression {
-                    let mut local_joins = active_joins.to_vec();
-                    local_joins.push(active_legacy_join(*join, plan));
-                    ancestors.insert(id);
-                    validate_roots_inner(
-                        graph,
-                        [(*expression, false)],
-                        &local_joins,
-                        location,
-                        project,
-                        issues,
-                        ancestors,
-                    );
-                    ancestors.remove(&id);
-                }
+                let mut tuple_joins = active_joins.to_vec();
+                tuple_joins.push(active_legacy_join(*join, plan));
+                let tuple = TupleInputs {
+                    graph,
+                    consumer: id,
+                    joins: &tuple_joins,
+                    root_context,
+                };
+                tuple.validate(node, &mut pending, location, project, issues, ancestors);
             }
             // Only this join is active in its tuple expression; the argument
             // keeps the receiving context and its dominating joins.
             Node::OwnedJoinAggregate(aggregate) => {
-                pending.extend(aggregate.arg.map(|arg| (arg, root_context)));
-                if let Some(expression) = aggregate.expression {
-                    ancestors.insert(id);
-                    validate_roots_inner(
-                        graph,
-                        [(expression, false)],
-                        &[active_owned_join(aggregate.join, &aggregate.plan)],
-                        location,
-                        project,
-                        issues,
-                        ancestors,
-                    );
-                    ancestors.remove(&id);
-                }
+                let tuple = TupleInputs {
+                    graph,
+                    consumer: id,
+                    joins: &[active_owned_join(aggregate.join, &aggregate.plan)],
+                    root_context,
+                };
+                tuple.validate(node, &mut pending, location, project, issues, ancestors);
             }
             _ => {
                 let item_inputs = item_context_inputs(node);
@@ -458,6 +423,45 @@ fn validate_roots_inner(
                 );
             }
         }
+    }
+}
+
+/// The inputs of a join aggregate. Its per-tuple expression is validated at
+/// once with the tuple's joins active and no root context; every other input
+/// keeps the consumer's context and joins.
+struct TupleInputs<'j> {
+    graph: &'j Graph,
+    consumer: NodeId,
+    joins: &'j [ActiveJoin],
+    root_context: bool,
+}
+
+impl TupleInputs<'_> {
+    fn validate(
+        &self,
+        node: &Node,
+        pending: &mut Vec<(NodeId, bool)>,
+        location: &str,
+        project: &Project,
+        issues: &mut Vec<ValidationIssue>,
+        ancestors: &mut BTreeSet<NodeId>,
+    ) {
+        node.visit_inputs(&mut |input| match input.role {
+            NodeInputRole::JoinTuple => {
+                ancestors.insert(self.consumer);
+                validate_roots_inner(
+                    self.graph,
+                    [(input.node, false)],
+                    self.joins,
+                    location,
+                    project,
+                    issues,
+                    ancestors,
+                );
+                ancestors.remove(&self.consumer);
+            }
+            _ => pending.push((input.node, self.root_context)),
+        });
     }
 }
 
@@ -499,26 +503,19 @@ fn owned_member(
     None
 }
 
-/// Inputs evaluated in a collection item, generated item, or mixed-content
-/// occurrence context rather than in their consumer's context.
-fn item_context_inputs(node: &Node) -> Vec<NodeId> {
-    match node {
-        Node::Aggregate { expression, .. } => expression.iter().copied().collect(),
-        Node::OwnedAggregate(aggregate) => aggregate.expression().into_iter().collect(),
-        Node::CollectionFind {
-            predicate, value, ..
-        } => vec![*predicate, *value],
-        Node::SequenceExists { predicate, .. } => vec![*predicate],
-        Node::SequenceAggregate {
-            predicate,
-            expression,
-            ..
-        } => predicate.iter().chain(expression).copied().collect(),
-        Node::Lookup { matches, .. } => vec![*matches],
-        Node::XmlMixedContent { replacements, .. } => replacements
-            .iter()
-            .map(|replacement| replacement.expression)
-            .collect(),
-        _ => Vec::new(),
-    }
+/// The inputs evaluated with a new item, generated-item or occurrence frame,
+/// which join validation reads without the consumer's root context, in visit
+/// order. Every other input, including a lookup's needle and a replacement
+/// kept in the parent frame, is evaluated in the consumer's own context.
+pub(super) fn item_context_inputs(node: &Node) -> Vec<NodeId> {
+    let mut inputs = Vec::new();
+    node.visit_inputs(&mut |input| {
+        if matches!(
+            input.role,
+            NodeInputRole::Item | NodeInputRole::GeneratedItem | NodeInputRole::Occurrence
+        ) {
+            inputs.push(input.node);
+        }
+    });
+    inputs
 }

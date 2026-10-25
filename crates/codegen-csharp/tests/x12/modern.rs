@@ -73,7 +73,7 @@ const FIXTURES: &[(&str, &str)] = &[
     ),
 ];
 
-fn evidence(label: &str) -> std::path::PathBuf {
+fn evidence(label: &str) -> TempDir {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
         "ferrule_x12_modern_{label}_{}_{}_{}",
@@ -89,7 +89,7 @@ fn evidence(label: &str) -> std::path::PathBuf {
     for (name, contents) in FIXTURES {
         fs::write(root.join(name), contents).unwrap();
     }
-    root
+    TempDir(root)
 }
 fn schema(version: &str) -> SchemaNode {
     serde_json::from_str(fixture(&format!("{version}-schema.json"))).unwrap()
@@ -511,6 +511,7 @@ fn modern_profiles_compiled_public_boundaries_match_complete_oracles() {
                 &format!("{name}-build"),
                 Command::new("dotnet")
                     .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+                    .dotnet_temp(&root)
                     .args([
                         "build",
                         &format!("{name}/Ferrule.Generated.csproj"),
@@ -564,6 +565,7 @@ fn modern_profiles_compiled_public_boundaries_match_complete_oracles() {
         "host-build",
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "build",
                 "Harness/Harness.csproj",
@@ -585,6 +587,7 @@ fn modern_profiles_compiled_public_boundaries_match_complete_oracles() {
         "host-run",
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "run",
                 "--project",

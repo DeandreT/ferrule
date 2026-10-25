@@ -212,3 +212,26 @@ fn unsafe_xbrl_presentation_path_rejects_without_publishing() -> Result<(), Box<
     assert!(!dir.0.join("outside.sps").exists());
     Ok(())
 }
+
+#[test]
+fn filesystem_export_preserves_legacy_presentation_aliases() -> Result<(), Box<dyn Error>> {
+    let dir = TempDir::new()?;
+    let original = mfd::import(&target_fixture(&dir.0)?)?.project;
+    for (index, reference) in ["./layout.sps", "sub\\layout.sps"].into_iter().enumerate() {
+        let mut project = original.clone();
+        let boundary = project
+            .target_options
+            .xbrl
+            .take()
+            .ok_or("missing XBRL metadata")?;
+        project.target_options.xbrl = Some(
+            XbrlBoundaryOptions::external_target(boundary.taxonomy(), Some(reference))?
+                .with_namespace_bindings(boundary.namespace_bindings().to_vec())?
+                .with_fact_bindings(boundary.fact_bindings().to_vec())?,
+        );
+        let path = dir.0.join(format!("alias-{index}/output.mfd"));
+        assert!(mfd::export(&project, &path)?.is_empty());
+        assert!(mfd::import(&path)?.warnings.is_empty());
+    }
+    Ok(())
+}

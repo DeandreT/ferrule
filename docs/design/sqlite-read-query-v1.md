@@ -1,10 +1,10 @@
 # Declared SQLite reads, version 1
 
-Proposal for [#103](https://github.com/DeandreT/ferrule/issues/103), prepared
-2026-10-15. This is a reviewable contract, not an enabled Project option or CLI
-command. Existing table/relational reads, replacement writes and imported MFD
-query lowering keep their current behavior. Implementation must follow review
-of the model, admission and fixture oracles below.
+Design for [#103](https://github.com/DeandreT/ferrule/issues/103). Version 1
+is the `sqlite_read` source option summarized in the
+[formats reference](../formats.md#declared-sqlite-queries). Existing
+table/relational reads, replacement writes and imported MFD query lowering keep
+their behavior.
 
 ## Boundary and ownership
 
@@ -21,7 +21,10 @@ The source SchemaNode owns the resulting group/field names and scalar types.
 An ordered projection maps each schema field to exactly one physical column;
 aliases are schema names, never SQL expressions. The root must repeat; every
 child must be a distinct nonrepeating Scalar of String, Int, Float or Bool.
-Reject scalar unions, nested groups and unrelated format metadata. Every field
+Reject scalar unions, nested groups and unrelated format metadata. The one
+admitted annotation is the generated-key marker `import-db` records on a rowid
+alias: it may appear only on the Int field projected from the key, where a read
+ignores it, and the key proof below still applies. Every field
 is present in every returned row. SQL NULL becomes `Instance::Scalar(Value::Null)`;
 it never means absent, an omitted field or an empty repeated group. Zero rows
 produce `Instance::Repeated([])`. No new nullability flag is inferred from SQL
@@ -31,15 +34,19 @@ The physical table must have a proved rowid-alias `INTEGER PRIMARY KEY` column.
 Reject WITHOUT ROWID, composite keys and the `INTEGER PRIMARY KEY DESC` exception.
 Use the existing rowid-primary-key metadata proof as the starting point. Never
 fall back to physical scan order, `_rowid_`, a guessed key or an unqualified
-unique index. Reject missing or ambiguous case-insensitive table/column matches;
+unique index. When Ferrule's writer creates a table, it declares a sole
+generated column `INTEGER PRIMARY KEY`, so the introspected table carries a
+query without schema edits. A table it creates with no generated column, or with
+several, declares no key and refuses; an existing table keeps its declaration.
+Reject missing or ambiguous case-insensitive table/column matches;
 store canonical metadata spellings in the admitted plan. Identifiers are exact
 nonempty UTF-8 strings of at most 256 bytes, without NUL; quote them by doubling
 double quotes. Punctuation remains literal identifier content.
 
 ## Closed saved descriptor
 
-The [complete example](fixtures/sqlite-read-v1/profile.json) is a prospective
-descriptor, not a supported Project. The proposed additive field is
+The [complete example](fixtures/sqlite-read-v1/profile.json) is the authored
+descriptor exercised by the tests. The additive field is
 `source_options.sqlite_read`, or `extra_sources[i].options.sqlite_read` for a
 static named source. Target options and dynamic sources reject it. A tagged
 body carries `kind`, physical `table`, `key`, `projection`, `parameters`,
@@ -54,7 +61,10 @@ domain; projection field order must exactly match schema child order. Column
 reuse across projection/filter/order is allowed with one agreed scalar type.
 Every referenced physical column has a single compatible declared affinity:
 String/TEXT, Int/INTEGER, Bool/INTEGER and Float/REAL or INTEGER. An empty, NUMERIC
-or BLOB affinity refuses. Type conflicts are static errors. Types for unprojected
+or BLOB affinity refuses, except that Bool also admits the exact declared type
+`BOOLEAN` that Ferrule's writer creates. Its cells still require INTEGER 0/1
+storage; other NUMERIC spellings, including `BOOL`, refuse. Type conflicts are
+static errors. Types for unprojected
 predicate/order columns are explicit in their entries.
 
 Predicate grammar:
@@ -133,9 +143,9 @@ boundary has this ordered failure protocol:
    A close failure refuses success; retain a primary error and attach cleanup
    failures without replacing its cause. Never return a partial input instance.
 
-The [prospective refusal cases](fixtures/sqlite-read-v1/requests.json) freeze
-missing/NULL/wrong-tag/unknown/duplicate priority and host-route expectations.
-These refusals are design oracles, not executions of a new Ferrule API.
+The [authored host cases](fixtures/sqlite-read-v1/requests.json) freeze
+missing/NULL/wrong-tag/unknown/duplicate priority and host-route expectations;
+`crates/cli/tests/sqlite_read_query.rs` executes all fourteen.
 
 ## Conversion and snapshot
 
@@ -213,14 +223,15 @@ streaming promise. No mapping/output publication begins after failed acquisition
 
 ## API, host routing and compatibility
 
-Proposed types live at the mapping/format boundary, outside graph nodes and
+The types live at the mapping/format boundary, outside graph nodes and
 portable generated Program IR:
 
 ```rust,ignore
-// Signatures for review; these types/functions are not implemented.
+// mapping
 pub fn validate_sqlite_read_profile(
-    schema: &SchemaNode, profile: &SqliteReadV1,
+    schema: &SchemaNode, profile: &SqliteReadProfile,
 ) -> Result<ValidatedSqliteRead, QueryProfileError>;
+// format_db::query
 pub fn read_query(
     path: &Path, schema: &SchemaNode, plan: &ValidatedSqliteRead,
     bindings: &[(String, Value)], control: &QueryReadControl,
@@ -233,7 +244,7 @@ row, a typed kind, SQLite codes and the original cause. Runtime errors do not
 invent graph node IDs. Field/value order and the logical failure protocol above
 are the cross-host contract; OS-specific error text is retained separately.
 
-The proposed CLI filesystem loader dispatches only when the explicit profile is
+The CLI filesystem loader dispatches only when the explicit profile is
 present, for primary and static named SQLite inputs. Existing `RunOptions` can
 supply resolved parameters, but acquisition cancellation requires new or extended
 host-control plumbing: the current execution context is created after inputs are
@@ -270,28 +281,27 @@ They demonstrate ties, duplicate projected values, explicit NULL ordering,
 BINARY text comparison despite NOCASE declaration, Boolean/Float/NULL tags,
 quoted parameter text, an empty result, read-only write refusal and a WAL
 snapshot across a concurrent committed insert. The verifier captures complete
-outcomes before assertions. It verifies SQLite premises, not Ferrule model,
-parameter admission, source closure or bounded cancellation. Requests in
-`requests.json` remain future public-host cases. Their
+outcomes before assertions. It verifies SQLite premises; the mapping,
+`format-db` and CLI tests verify the Ferrule model, parameter admission, source
+closure and bounded cancellation against the same fixtures. Their
 [complete profile result](fixtures/sqlite-read-v1/profile-output.json) uses
 explicit `repeated`/`group`/scalar-tag notation for independent logical comparison;
 it is not the current Instance serde wire format.
 
-Review and implement in this order, assigning shared files before each step:
+The implementation is layered in this order:
 
-- [ ] Review this descriptor/error-order/resource contract and literal oracles.
-- [ ] Add the mapping model and tested capability gate. Keep every host and
-  emitter explicitly refusing it until its own implementation is qualified.
-- [ ] Implement format-db plan validation, metadata/key proof, parameter binding,
-  candidate scan, quoted SELECT, snapshot and typed acquisition errors.
-- [ ] Qualify every parameter-priority pair against a nonexistent path; all four
-  scalar types/NULL; malformed storage hidden by filters; missing/duplicate
-  columns; forbidden table types; injection-shaped identifiers and bindings;
-  strict work/payload refusal; lock refusal; live prepare/sort cancellation and
-  closed connection ownership. Compare complete Instances and error envelopes.
-- [ ] Integrate CLI primary/static named filesystem Run and Preview. Qualify
-  old-project compatibility and every unsupported route before side effects.
-- [ ] Run focused mapping/format-db/CLI suites and strict checks, retaining
-  failures. Update the format capability matrix only after runtime evidence.
+- The mapping model, with a capability gate that makes older readers refuse
+  saved profiles, and explicit refusals in every host and emitter that does not
+  own query acquisition.
+- format-db plan binding, metadata/key proof, candidate scan, quoted SELECT,
+  snapshot and typed acquisition errors.
+- Qualification of every parameter-priority pair against a nonexistent path;
+  all four scalar types and NULL; malformed storage hidden by filters;
+  missing columns; forbidden table types; injection-shaped identifiers and
+  bindings; work/payload refusal; lock refusal; live cancellation and closed
+  connection ownership, comparing complete Instances and error envelopes.
+- CLI primary/static named filesystem Run and Preview, old-project
+  compatibility, and refusal of every unsupported route before side effects.
 
-This design closes no implementation, generated, GUI or external-runtime gate.
+Generated-code adapters, GUI editing, pipeline stages and external runtimes
+remain closed to the profile.

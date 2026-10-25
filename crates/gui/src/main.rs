@@ -37,10 +37,12 @@ mod run_report;
 mod schema_scalar;
 mod schema_tree;
 mod scope_editor;
+mod source_ownership;
 mod target_xml_type;
 #[cfg(test)]
 mod test_ui;
 mod theme;
+mod ui_kit;
 mod value_editor;
 #[cfg(test)]
 #[path = "canvas/vendor_hook_tests.rs"]
@@ -56,23 +58,28 @@ fn main() -> eframe::Result<()> {
     };
     let mut saved_file_owner = app::SavedFileRunTeardownService::new();
     let saved_file_port = saved_file_owner.port();
+    let preview_owner = app::PreviewService::new();
+    let preview_port = preview_owner.port();
     let runner_result = eframe::run_native(
         "ferrule",
         native_options,
         Box::new(move |creation| {
             fonts::install(&creation.egui_ctx);
             icons::install(&creation.egui_ctx);
-            Ok(Box::new(
-                app::FerruleApp::from_storage_with_saved_file_owner(
-                    creation.storage,
-                    saved_file_port,
-                ),
-            ))
+            Ok(Box::new(app::FerruleApp::from_storage_with_owners(
+                creation.storage,
+                saved_file_port,
+                preview_port,
+            )))
         }),
     );
     let (runner_result, terminal) = saved_file_owner.finish_after_runner(runner_result);
     if let Some(terminal) = terminal {
         terminal.report();
+    }
+    let joined = preview_owner.finish_after_runner();
+    if joined > 0 {
+        eprintln!("preview shutdown: joined {joined} retained preview worker(s)");
     }
     runner_result
 }

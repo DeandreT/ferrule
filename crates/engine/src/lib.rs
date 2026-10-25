@@ -3,7 +3,6 @@
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::sync::Arc;
 
 use ir::{Instance, ScalarType, Value};
 use mapping::{FunctionId, FunctionParameterId, JoinId, NodeId, Project, RuntimeValue};
@@ -16,11 +15,13 @@ mod aggregate;
 mod context;
 mod debug;
 mod dynamic_field_owned;
+mod dynamic_source;
 mod dynamic_target;
 mod eval_expr;
 mod eval_scope;
 mod failure;
 mod filter_map;
+mod frame_view;
 mod grouping;
 mod iteration_output;
 mod join;
@@ -41,6 +42,7 @@ mod recursive_collect_owned;
 mod recursive_filter;
 mod required_sources;
 mod resolve;
+mod scope_slots;
 mod sequence;
 mod source_iteration;
 mod source_ownership;
@@ -60,6 +62,12 @@ pub use debug::{
     PendingFunctionNodeValue, PendingNodeFailure, PendingNodeInput, PendingNodeValue,
     PendingTargetWrite,
 };
+pub use dynamic_source::{
+    DynamicSourceCategory, DynamicSourceCause, DynamicSourceCodecKind, DynamicSourceDiagnostic,
+    DynamicSourceFault, DynamicSourceLoadFailure, DynamicSourceLoader, DynamicSourcePhase,
+    DynamicSourceRefusal, DynamicSourceResource, DynamicSourceResourceLimit,
+    LegacyDynamicSourceMessage, RestrictedDynamicSourceError,
+};
 pub use filter_map::{
     FilterMapBoundary, FilterMapBoundaryKind, FilterMapBudgetKind, FilterMapCancellation,
     FilterMapLimitError, FilterMapLimits, FilterMapPhase, MAX_FILTER_MAP_SOURCE_ITEMS,
@@ -78,7 +86,10 @@ pub use policy::{
     DynamicSourceLoadError, ExecutionBudgetKind, ExecutionBudgets, ExecutionPolicy, PathAccess,
     PolicyConfigError, PolicyRefusal, RestrictedCapability, RestrictedPolicy, RootAccess,
 };
-pub use primary_csv::acquire_primary_csv;
+pub use primary_csv::{
+    PrimaryDocumentRunError, acquire_primary_csv, primary_csv_parser, run_primary_csv_document,
+    run_primary_document,
+};
 pub use primary_filename::{PrimaryFilenameEvaluationError, evaluate_primary_filename};
 pub use trace::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind,
@@ -92,6 +103,7 @@ pub use trace::{
 pub use validate::{
     ValidationEndpoint, ValidationIssue, ValidationOwner, ValidationSchemaLocation,
     ValidationSchemaStep, ValidationScopeLocation, ValidationScopeStep, validate,
+    validate_primary_document,
 };
 
 /// One additional named target value produced by a project run.
@@ -176,6 +188,12 @@ pub fn check_source_ownership_capability_with_observers(
     source_ownership::admit_project(project, selection).map(|_| ())
 }
 
+/// The typed-resolution step shared by graph evaluation of required runtime
+/// parameters and host acquisition bindings. Null stays Null.
+pub fn resolve_runtime_parameter(value: &Value, ty: ScalarType) -> Option<Value> {
+    eval_expr::coerce_value_map_input(value, ty)
+}
+
 pub const MAX_RUNTIME_PARAMETERS: usize = 1_024;
 pub const MAX_RUNTIME_PARAMETER_STRING_BYTES: usize = 8 * 1024 * 1024;
 
@@ -242,6 +260,14 @@ impl RuntimeParameters {
         Ok(())
     }
 
+    /// Resolves one supplied value to a declared scalar type with the same
+    /// coercion graph evaluation applies to `Node::RuntimeParameter`. `None`
+    /// means the name was not supplied; `Err` returns the uncoercible value.
+    pub fn resolve(&self, name: &str, ty: ScalarType) -> Option<Result<Value, &Value>> {
+        let value = self.values.get(name)?;
+        Some(resolve_runtime_parameter(value, ty).ok_or(value))
+    }
+
     fn iter(&self) -> impl Iterator<Item = (&str, &Value)> {
         self.values
             .iter()
@@ -266,6 +292,7 @@ pub enum OwnedCapabilityContext {
     Document,
     DynamicTarget,
     Concatenate,
+    OptionalPresence,
     SpecialConstruction,
     Tracing,
     Debugging,
@@ -432,12 +459,14 @@ pub enum EngineError {
         path: String,
         message: String,
     },
-    #[error("dynamic source `{source_name}`: {refusal}")]
-    DynamicSourceRefused {
-        source_name: String,
-        #[source]
-        refusal: PolicyRefusal,
-    },
+    /// A tagged host failure. It renders the same text as
+    /// [`Self::DynamicSourceLoad`] and keeps the fault off the `source()` chain;
+    /// see [`DynamicSourceLoadFailure`].
+    #[error("{0}")]
+    DynamicSourceFailure(Box<DynamicSourceLoadFailure>),
+    /// A restricted-policy refusal; its `source()` is the typed [`PolicyRefusal`].
+    #[error(transparent)]
+    DynamicSourceRefused(Box<DynamicSourceRefusal>),
     #[error("restricted execution {kind:?} budget of {limit} is exhausted")]
     ExecutionBudgetExceeded {
         kind: ExecutionBudgetKind,
@@ -625,29 +654,6 @@ pub struct ExecutionContext<'a> {
     filter_map_limits: FilterMapLimits,
     filter_map_cancellation: Option<&'a dyn FilterMapCancellation>,
     policy: &'a ExecutionPolicy,
-}
-
-/// Host boundary for typed secondary sources whose path is computed during
-/// mapping execution. Implementations should cache by source name and path.
-pub trait DynamicSourceLoader {
-    fn load(&self, source: &str, path: &str) -> Result<Arc<Instance>, String>;
-
-    /// Restricted runs call this instead of [`Self::load`]. A loader must check
-    /// the resolved location against `policy` before acquiring it; the default
-    /// refuses because the engine cannot see where an unaware loader reads.
-    fn load_restricted(
-        &self,
-        source: &str,
-        path: &str,
-        policy: &RestrictedPolicy,
-    ) -> Result<Arc<Instance>, DynamicSourceLoadError> {
-        let _ = (source, path, policy);
-        Err(DynamicSourceLoadError::Refused(
-            PolicyRefusal::UnsupportedCapability {
-                capability: RestrictedCapability::UnconfinedDynamicSourceLoader,
-            },
-        ))
-    }
 }
 
 static TRUSTED: ExecutionPolicy = ExecutionPolicy::Trusted;
@@ -1041,6 +1047,9 @@ mod debug_tests;
 #[path = "tests/dynamic_document_output.rs"]
 mod dynamic_document_output_tests;
 #[cfg(test)]
+#[path = "tests/dynamic_source_fault.rs"]
+mod dynamic_source_fault_tests;
+#[cfg(test)]
 #[path = "tests/dynamic_source.rs"]
 mod dynamic_source_tests;
 #[cfg(test)]
@@ -1055,6 +1064,9 @@ mod filter_map_model_tests;
 #[cfg(test)]
 #[path = "tests/filter_map.rs"]
 mod filter_map_tests;
+#[cfg(test)]
+#[path = "tests/frame_view.rs"]
+mod frame_view_tests;
 #[cfg(test)]
 #[path = "tests/group_blocks.rs"]
 mod group_blocks_tests;
@@ -1076,6 +1088,9 @@ mod iteration_output_tests;
 #[cfg(test)]
 #[path = "tests/join.rs"]
 mod join_tests;
+#[cfg(test)]
+#[path = "tests/optional_presence.rs"]
+mod optional_presence_tests;
 #[cfg(test)]
 #[path = "tests/owned_adjacency_tree.rs"]
 mod owned_adjacency_tree_tests;
@@ -1180,8 +1195,14 @@ mod owned_group_starting_with_tests;
 mod owned_sequence_item_at_tests;
 
 #[cfg(test)]
+#[path = "tests/owned_document_path.rs"]
+mod owned_document_path_tests;
+#[cfg(test)]
 #[path = "tests/owned_dynamic_field.rs"]
 mod owned_dynamic_field_tests;
+#[cfg(test)]
+#[path = "tests/owned_dynamic_loading.rs"]
+mod owned_dynamic_loading_tests;
 #[cfg(test)]
 #[path = "tests/owned_failure_iteration.rs"]
 mod owned_failure_iteration_tests;

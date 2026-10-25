@@ -480,10 +480,7 @@ fn admission_refuses_unsupported_owner_contexts() {
             value: Value::String("audit.json".into()),
         },
     );
-    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 0,
-        iteration: vec![],
-    });
+    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(0, vec![]));
     let error = run_owned(&dynamic, self::input(&["r/a"], &[]), vec![]).unwrap_err();
     assert!(
         matches!(

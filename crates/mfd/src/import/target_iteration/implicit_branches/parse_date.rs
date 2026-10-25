@@ -87,11 +87,8 @@ pub(super) fn prove(
             }
         )
         || (0..=absolute.len()).any(|length| {
-            schema_node_at(&primary.schema, &absolute[..length]).is_none_or(|node| {
-                node.nullable
-                    || node.container_nullable
-                    || nullable_object_item_frame(&primary.schema, &absolute[..length])
-            })
+            schema_node_at(&primary.schema, &absolute[..length])
+                .is_none_or(|node| !presence::json_non_null(node))
         })
     {
         return None;

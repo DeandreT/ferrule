@@ -1,5 +1,5 @@
 {
-  "status": "PROSPECTIVE_FERRULE_HOST_ORACLES_NOT_EXECUTED",
+  "status": "FERRULE_HOST_ORACLES",
   "profile": "profile.json",
   "declaration_order": [
     "minimum",

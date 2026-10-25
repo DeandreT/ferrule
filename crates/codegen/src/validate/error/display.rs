@@ -15,6 +15,9 @@ impl fmt::Display for ProgramValidationError {
             Self::InvalidXmlBoundary { reason } => {
                 write!(formatter, "invalid XML document boundary: {reason}")
             }
+            Self::XmlDocumentSetInput { refusal } => {
+                write!(formatter, "unsupported XML document-set input: {refusal:?}")
+            }
             Self::InvalidPrimaryRootSchema { node } => write!(
                 formatter,
                 "compiled mapping expression {node} requires a supported nonrepeating closed primary XML root"
@@ -410,6 +413,19 @@ impl fmt::Display for ProgramValidationError {
             Self::ScopeSequenceRequiresGroupTarget { target_path } => write!(
                 formatter,
                 "target scope {} concatenation requires a group target",
+                display_path(target_path)
+            ),
+            Self::InvalidOptionalPresence { target_path } => write!(
+                formatter,
+                "target scope {} optional presence requires a constructed repeating group without item controls",
+                display_path(target_path)
+            ),
+            Self::MissingOptionalPresenceExpression {
+                target_path,
+                expression,
+            } => write!(
+                formatter,
+                "target scope {} optional presence references missing expression {expression}",
                 display_path(target_path)
             ),
             Self::InvalidScopeSequenceWrapper { target_path } => write!(

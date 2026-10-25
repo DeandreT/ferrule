@@ -202,14 +202,15 @@ impl FerruleApp {
         else {
             return;
         };
-        let mut apply = false;
-        let mut discard = false;
-        let mut keep = false;
-        egui::Window::new("Unapplied stage mapping changes")
-            .id(egui::Id::unique("pipeline_stage_close_guard"))
-            .collapsible(false)
-            .resizable(false)
-            .show(context, |ui| {
+        let response = crate::ui_kit::dialog(
+            context,
+            crate::ui_kit::DialogKind::Modal,
+            "Unapplied stage mapping changes",
+        )
+        .id_salt("pipeline_stage_close_guard")
+        .width(crate::ui_kit::DialogWidth::Medium)
+        .show(
+            |ui| {
                 ui.label(
                     "Apply the stage mapping to the pipeline, discard this draft, or keep editing.",
                 );
@@ -220,12 +221,20 @@ impl FerruleApp {
                 {
                     ui.colored_label(ui.visuals().error_fg_color, error);
                 }
-                ui.horizontal(|ui| {
-                    apply = ui.button("Apply stage changes").clicked();
-                    discard = ui.button("Discard stage changes").clicked();
-                    keep = ui.button("Keep editing stage").clicked();
-                });
-            });
+            },
+            |ui| {
+                crate::ui_kit::dialog_buttons(
+                    ui,
+                    "Apply stage changes".into(),
+                    Some("Keep editing stage".into()),
+                    Some("Discard stage changes".into()),
+                )
+            },
+        );
+        let apply = response.footer == Some(crate::ui_kit::DialogAction::Primary);
+        let discard = response.footer == Some(crate::ui_kit::DialogAction::Destructive);
+        let keep = response.close_requested
+            || response.footer == Some(crate::ui_kit::DialogAction::Secondary);
         if keep && let Some(session) = self.pipeline_stage_canvas.as_mut() {
             session.close = None;
         }
@@ -256,46 +265,95 @@ impl FerruleApp {
         let mut cancel = false;
         session.editor.handle_history_shortcuts(&context, enabled);
         egui::Panel::top(namespace.with("toolbar")).show(ui, |ui| {
-            ui.strong(format!("Pipeline stage: {}", session.stage_id));
-            ui.small(session.path.display().to_string());
-            ui.weak("Edit this embedded mapping. Boundary schemas and paths are fixed; canvas layout is temporary.");
+            egui::Frame::new()
+                .inner_margin(egui::Margin::symmetric(
+                    crate::theme::space::MD as i8,
+                    crate::theme::space::SM as i8,
+                ))
+                .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.strong(format!("Pipeline stage: {}", session.stage_id));
+                ui.weak(crate::ui_kit::file_label(&session.path))
+                    .on_hover_text(session.path.display().to_string());
+                crate::ui_kit::help_icon(ui, "Edit this embedded mapping. Boundary schemas and paths are fixed; canvas layout is temporary.");
+            });
             ui.add_enabled_ui(enabled, |ui| {
                 ui.horizontal(|ui| {
                     apply = ui.button("Apply stage mapping").clicked();
                     cancel = ui.button("Cancel stage editing").clicked();
-                    if ui.add_enabled(session.editor.can_undo(), egui::Button::new("Undo stage edit")).clicked() {
+                    if crate::ui_kit::icon_button(ui, lucide_icons::Icon::Undo2, "Undo stage edit",
+                        (!session.editor.can_undo()).then_some("Nothing to undo")).clicked() {
                         session.editor.undo_project();
                     }
-                    if ui.add_enabled(session.editor.history.can_redo(), egui::Button::new("Redo stage edit")).clicked() {
+                    if crate::ui_kit::icon_button(ui, lucide_icons::Icon::Redo2, "Redo stage edit",
+                        (!session.editor.history.can_redo()).then_some("Nothing to redo")).clicked() {
                         session.editor.redo_project();
                     }
                     if ui.button("Validate stage").clicked() { session.editor.validate_now(); }
-                });
-                let mut function = None;
-                egui::ComboBox::from_id_salt(namespace.with("existing_functions"))
-                    .selected_text("Existing functions").show_ui(ui, |ui| {
-                        for (id, label) in session.editor.function_names() {
-                            if ui.selectable_label(false, label).clicked() { function = Some(id); }
+                    let mut open_function = None;
+                    let functions = session.editor.function_names();
+                    if !functions.is_empty() {
+                        ui.menu_button("Stage functions", |ui| {
+                        for (id, label) in functions {
+                            if ui.button(label).clicked() {
+                                open_function = Some(id);
+                                ui.close();
+                            }
                         }
-                    });
-                if let Some(function) = function { session.editor.open_function_tab(function); }
+                        });
+                    }
+                    if let Some(function) = open_function {
+                        session.editor.open_function_tab(function);
+                    }
+                });
                 session.editor.show_mapping_tabs(ui, enabled);
             });
             if let Some(error) = &session.error { ui.colored_label(ui.visuals().error_fg_color, error); }
+                });
         });
-        egui::Panel::left(namespace.with("sources"))
-            .default_size(220.0)
+        egui::Panel::bottom(namespace.with("status"))
+            .exact_size(crate::theme::METRICS.status_height)
             .show(ui, |ui| {
-                session.editor.show_source_explorer(ui, enabled);
+                ui.horizontal(|ui| {
+                    ui.label(if session.editor.is_dirty() {
+                        "Stage changes not applied"
+                    } else {
+                        "No unapplied stage changes"
+                    });
+                    if !session.editor.status.is_empty() {
+                        ui.separator();
+                        ui.add(egui::Label::new(&session.editor.status).truncate())
+                            .on_hover_text(&session.editor.status);
+                    }
+                });
+            });
+        egui::Panel::left(namespace.with("sources"))
+            .default_size(crate::theme::METRICS.source_panel.default)
+            .min_size(crate::theme::METRICS.source_panel.min)
+            .max_size(crate::theme::METRICS.source_panel.max)
+            .resizable(true)
+            .show(ui, |ui| {
+                crate::ui_kit::pane(ui, &format!("pipeline_stage_sources_{namespace:?}"), |ui| {
+                    session.editor.show_source_explorer(ui, enabled);
+                });
             });
         egui::Panel::right(namespace.with("inspector"))
-            .default_size(300.0)
+            .default_size(crate::theme::METRICS.inspector_panel.default)
+            .min_size(crate::theme::METRICS.inspector_panel.min)
+            .max_size(crate::theme::METRICS.inspector_panel.max)
+            .resizable(true)
             .show(ui, |ui| {
-                session.editor.show_inspector(ui, enabled);
+                crate::ui_kit::pane(
+                    ui,
+                    &format!("pipeline_stage_inspector_{namespace:?}"),
+                    |ui| {
+                        session.editor.show_inspector(ui, enabled);
+                    },
+                );
             });
         if !session.editor.diagnostics.is_empty() {
             egui::Panel::bottom(namespace.with("diagnostics"))
-                .default_size(120.0)
+                .default_size(crate::theme::METRICS.diagnostics_height)
                 .show(ui, |ui| {
                     if let Some(diagnostic) = session.editor.diagnostics.show(ui) {
                         session.editor.navigate_to_diagnostic(&diagnostic);

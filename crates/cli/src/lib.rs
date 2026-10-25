@@ -28,6 +28,7 @@ const MAX_HTTP_REDIRECTS: u32 = 5;
 mod bundle;
 mod cancellation;
 mod code_generation;
+mod dynamic_source_fault;
 mod dynamic_source_loader;
 mod execution_policy;
 mod file_run;
@@ -40,10 +41,16 @@ mod pdf_worker_policy;
 mod pdf_worker_signal;
 mod pipeline;
 mod pipeline_preview;
+mod preview_inputs;
+mod primary_document;
 mod project_paths;
 mod read_set;
 mod route_capability;
+mod sqlite_query;
 pub use bundle::{BundleCatalog, BundleCatalogKind, BundleOptions, BundleOutcome, bundle_project};
+pub use dynamic_source_fault::{
+    DynamicSourceReadError, UndeclaredDynamicSource, UnsuppliedPayloadSource,
+};
 use dynamic_source_loader::ProjectDynamicSourceLoader;
 pub use engine::{
     ExecutionBudgetKind, ExecutionBudgets, ExecutionPolicy, PathAccess, PolicyRefusal,
@@ -53,8 +60,10 @@ pub use execution_policy::{load_execution_policy_file, parse_execution_policy};
 #[cfg(test)]
 use file_run::run_project_value_with_filesystem_policy;
 pub use file_run::{
-    PreparedFileRun, RunObservers, RunOptions, RunOutcome, RunRequest, WrittenOutput, run_project,
-    run_project_value_with_options, run_project_value_with_options_and_filesystem_policy,
+    PreparedFileRun, RunObservers, RunOptions, RunOutcome, RunRequest, WrittenOutput,
+    preview_project_value_from_files, preview_project_value_from_files_with_pdf_reader,
+    run_project, run_project_value_with_options,
+    run_project_value_with_options_and_filesystem_policy,
     run_project_value_with_options_and_pdf_reader, run_project_value_with_paths,
     run_project_value_with_paths_and_trace, run_project_with_options,
     run_project_with_options_and_filesystem_policy, run_project_with_options_and_pdf_reader,
@@ -73,13 +82,15 @@ mod dynamic_source_load_tests;
 mod owned_observer_preflight_tests;
 
 pub use code_generation::{
-    GenerateOutcome, GenerateTarget, generate_project, generate_project_with_csv_document_adapters,
+    GenerateOutcome, GenerateProfile, GenerateSettings, GenerateTarget, check_generate_project,
+    generate_project, generate_project_with_csv_document_adapters,
     generate_project_with_csv_json_adapters, generate_project_with_csv_output,
     generate_project_with_csv_x12_adapters, generate_project_with_csv_x12_envelope_profile,
-    generate_project_with_json5_adapters, generate_project_with_raw_delimited_document_adapters,
+    generate_project_with_json5_adapters, generate_project_with_profile,
+    generate_project_with_raw_delimited_document_adapters, generate_project_with_settings,
     generate_project_with_static_document_adapters,
     generate_project_with_static_document_envelope_profiles, generate_project_with_x12_adapters,
-    generate_project_with_x12_envelope_profiles, plan_generate,
+    generate_project_with_x12_envelope_profiles, plan_generate, plan_generate_project,
 };
 pub use codegen::X12EnvelopeProfile;
 pub use engine::{
@@ -103,6 +114,13 @@ pub use pipeline_preview::{
     PipelineHostPayload, PipelinePreviewArtifact, PipelinePreviewOptions, PipelinePreviewOutcome,
     PipelinePreviewOutputIdentity, preview_pipeline_value_payloads, validate_pipeline_preview,
 };
+pub use preview_inputs::{ProjectPreviewInputs, preview_project_value};
+pub use primary_document::{
+    DEFAULT_MAX_PRIMARY_DOCUMENTS, DocumentFormatError, MAX_PRIMARY_DOCUMENT_OUTPUT_BYTES,
+    PrimaryDocumentError, PrimaryDocumentOutput, PrimaryDocumentPolicy, PrimaryInputError,
+    check_primary_document, execute_primary_document, execute_primary_document_with_host,
+    load_document_project, run_primary_document_file,
+};
 pub use project_paths::{
     mapping_identity_relative_to as pipeline_mapping_identity, rebase as rebase_project_paths,
     relocates as project_paths_relocate,
@@ -111,12 +129,12 @@ pub use rest_json::{
     MAX_REST_JSON_BODY_BYTES, MAX_REST_JSON_HEADER_BYTES, MAX_REST_JSON_HEADERS,
     MAX_REST_JSON_URL_BYTES, RestExecutionPolicy, RestJsonError, RestJsonHeader,
     RestJsonMappingOptions, RestJsonMethod, RestJsonRequest, RestJsonResponse, fetch_rest_json,
-    run_project_rest_json_request_file_payloads, run_project_value_rest_json_payloads,
-    run_project_value_rest_json_request_file_payloads,
+    plan_rest_json_run, run_project_rest_json_request_file_payloads,
+    run_project_value_rest_json_payloads, run_project_value_rest_json_request_file_payloads,
 };
 pub use route_capability::{
     HostRoute, InputRole, PlannedAcquisition, PlannedPublication, RoutePlan, RouteRefusal,
-    RunRouteArgs, plan_run, select_run_route,
+    RunRouteArgs, plan_file_run, plan_run, select_run_route,
 };
 pub use stdio::{PreparedStreamRun, StandardIoRunOptions, run_project_with_standard_streams};
 pub use trace_json::JsonTraceFile;
@@ -527,6 +545,9 @@ fn write_output(
     options: &FormatOptions,
     current_datetime: &str,
 ) -> anyhow::Result<usize> {
+    if options.sqlite_read.is_some() {
+        bail!("`sqlite_read` is valid only for mapping sources");
+    }
     options
         .validate_xml_schema_hint_options(true)
         .map_err(anyhow::Error::msg)?;
@@ -770,6 +791,12 @@ fn read_instance_with_pdf_reader(
     reader: Option<&dyn FilesystemPdfReader>,
     execution_policy: &ExecutionPolicy,
 ) -> anyhow::Result<Instance> {
+    if options.sqlite_read.is_some() {
+        bail!(
+            "declared SQLite query input {} is acquired only by the filesystem run and preview routes",
+            path.display()
+        );
+    }
     execution_policy.authorize_read(execution_policy::read_location(path, options))?;
     options
         .validate_xml_schema_hint_options(false)

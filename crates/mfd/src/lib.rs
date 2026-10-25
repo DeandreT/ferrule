@@ -54,7 +54,14 @@ mod design;
 mod export;
 mod import;
 mod json_parser_recipe;
+mod node_inputs;
+mod package;
 mod resource;
+
+pub use package::{
+    ExportedPackage, MAX_PACKAGE_BYTES, MAX_PACKAGE_ENTRIES, MAX_PACKAGE_FILE_BYTES,
+    MAX_PACKAGE_PATH_BYTES, MfdPackage, PackageError, export_package, import_package,
+};
 
 pub use export::{
     ExportCompatibility, ExportCompatibilityFeature, ExportCompatibilityIssue, ExportProfile,
@@ -82,10 +89,14 @@ pub const MAX_MFD_DESIGN_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum MfdError {
+    #[error("package refused: {0}")]
+    Package(#[from] PackageError),
     #[error("cannot export owned source iteration at {scope:?}")]
     UnsupportedSourceIteration { scope: mapping::SourceScopeLocation },
     #[error("cannot export owned failure iteration in failure rule {rule}")]
     UnsupportedFailureSourceIteration { rule: usize },
+    #[error("cannot export the owned driver of dynamic extra source `{source_name}`")]
+    UnsupportedDynamicSourceDriver { source_name: String },
     #[error(
         "cannot export {kind} node {node} (function {function:?}): source ownership is unsupported"
     )]
@@ -93,6 +104,14 @@ pub enum MfdError {
         node: mapping::NodeId,
         function: Option<mapping::FunctionId>,
         kind: &'static str,
+    },
+    #[error(
+        "cannot export the declared SQLite query of {input}: no qualified interchange representation exists"
+    )]
+    UnsupportedInputProfile {
+        /// `primary source` or the named source.
+        input: String,
+        profile: &'static str,
     },
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),

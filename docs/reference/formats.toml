@@ -46,6 +46,11 @@ route = "Generated Rust and C# XML document APIs"
 scope = "Structured or admitted root-view XML boundaries in the indexed route families"
 record = "docs/generated-xml-qualification-index.md"
 
+[[format.qualified]]
+route = "Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview)"
+scope = "The XML document a literal or runtime-parameter filename names, or the document set a filename wildcard selects, beneath an explicit local input root, mapped once into one XML document"
+record = "conformance/primary-xml-documents/README.md"
+
 [[format]]
 name = "JSON"
 source = "yes"
@@ -137,6 +142,11 @@ route = "Generated Rust and C# complete CSV document adapters (`generate --csv-d
 scope = "One positional CSV document in and out, including header, BOM, and raw-delimited CRLF output modes"
 record = "conformance/csv-documents/README.md"
 
+[[format.qualified]]
+route = "Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview)"
+scope = "Every CSV document a literal or runtime-parameter filename selects beneath an explicit local input root, mapped once into one CSV document"
+record = "conformance/primary-filename-documents/README.md"
+
 [[format]]
 name = "Fixed-width"
 source = "yes"
@@ -153,6 +163,11 @@ evidence = [
 unsupported = [
     "Combining a fixed-width layout with CSV dialect options",
 ]
+
+[[format.qualified]]
+route = "Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview)"
+scope = "Ordered fixed-width documents using saved Unicode-scalar layouts, mapped once with bounded input and output"
+record = "conformance/primary-fixed-width-documents/README.md"
 
 [[format]]
 name = "XLSX"
@@ -186,15 +201,19 @@ target = "yes"
 selection = "`.db`, `.sqlite`, or `.sqlite3`"
 summary = """
 Read-only table introspection, typed reads, imported relational query shapes,
-validated declared relations, structured XML text columns, and idempotent
-full-replace writes
+declared read-only single-table queries with typed named parameters, validated
+declared relations, structured XML text columns, and idempotent full-replace
+writes
 """
 evidence = [
     "crates/format-db/src/relational.rs",
+    "crates/format-db/src/query/mod.rs",
     "crates/format-db/tests/readonly_metadata.rs",
+    "crates/cli/tests/sqlite_read_query.rs",
 ]
 unsupported = [
     "Other database engines, general SQL mutation, and multi-database connections",
+    "SQL text, joins, views and declared queries on payload, stream, REST, pipeline, generated-code and MFD routes",
 ]
 
 [[format]]
@@ -222,6 +241,16 @@ route = "Generated C# X12 companions (`generate --x12-adapters`)"
 scope = "Raw X12 text and bytes with single, grouped, or MapForce-shaped envelope profiles around the ordinary typed mapping"
 record = "docs/design/generated-x12-csharp.md"
 
+[[format.qualified]]
+route = "Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview)"
+scope = "Explicit X12 or EDIFACT direct documents or wildcard document sets, parsed in order and mapped once into one same-family output"
+record = "conformance/primary-edi-documents/README.md"
+
+[[format.qualified]]
+route = "Generated C# static EDIFACT document adapters"
+scope = "Primary and named static inputs and outputs, with strict interchange validation and syntax-v4 repetitions"
+record = "docs/design/static-edifact-documents.md"
+
 [[format]]
 name = "HL7 v2 / TRADACOMS"
 source = "yes"
@@ -235,6 +264,11 @@ evidence = [
     "crates/format-edi/src/hl7.rs",
     "crates/format-edi/src/tradacoms.rs",
 ]
+
+[[format.qualified]]
+route = "Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview)"
+scope = "Explicit HL7 or TRADACOMS direct documents or wildcard document sets, parsed in order and mapped once into one same-family output"
+record = "conformance/primary-edi-documents/README.md"
 
 [[format]]
 name = "SAP IDoc"
@@ -252,6 +286,11 @@ evidence = [
 unsupported = [
     "`.idoc` input without an embedded layout",
 ]
+
+[[format.qualified]]
+route = "Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview)"
+scope = "IDoc documents using embedded layouts, parsed in order and mapped once into one bounded IDoc output"
+record = "conformance/primary-edi-documents/README.md"
 
 [[format]]
 name = "SWIFT MT"

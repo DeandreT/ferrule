@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use ir::{ScalarType, SchemaNode};
 use serde::{Deserialize, Serialize};
 
-use crate::{FormatOptions, Graph, NodeId, OwnedSourceRef, Scope, SequenceExpr};
+use crate::{FormatOptions, Graph, NodeId, OwnedSourceRef, Scope, SequenceExpr, SourceSelector};
 
 /// Stable identity of one user-defined function within a project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -181,28 +181,67 @@ pub struct Project {
 /// A named secondary input. `path` is the instance file or typed HTTP GET URL
 /// to load. Files are resolved relative to the project directory when not
 /// absolute; URLs remain absolute.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NamedSource {
     pub name: String,
     pub path: String,
     pub schema: SchemaNode,
     #[serde(default)]
     pub options: FormatOptions,
-    /// A run-time path expression and the repeated primary-source collection
-    /// that frames it. When present, the host loads one typed source instance
-    /// for each produced path instead of preloading `path` once.
+    /// A run-time path expression and the repeated driver collection that
+    /// frames it. When present, the host loads one typed source instance for
+    /// each produced path instead of preloading `path` once.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dynamic_path: Option<DynamicSourcePath>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// The driver of a per-item dynamic source.
+///
+/// A legacy path array keeps its primary-relative meaning and wire form. An
+/// owned driver object names exactly one endpoint and an endpoint-relative
+/// collection; readers that know only path arrays refuse it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DynamicSourcePath {
     pub node: NodeId,
-    pub iteration: Vec<String>,
+    pub iteration: SourceSelector,
+}
+
+impl DynamicSourcePath {
+    /// A legacy driver iterating `iteration` from the primary-source context.
+    pub fn legacy(node: NodeId, iteration: Vec<String>) -> Self {
+        Self {
+            node,
+            iteration: SourceSelector::Legacy(iteration),
+        }
+    }
+
+    /// An owned driver iterating one collection of exactly one endpoint.
+    pub fn owned(node: NodeId, driver: OwnedSourceRef) -> Self {
+        Self {
+            node,
+            iteration: SourceSelector::Owned(driver),
+        }
+    }
+
+    /// The legacy driver path; `None` for an owned driver.
+    pub fn legacy_driver(&self) -> Option<&[String]> {
+        match &self.iteration {
+            SourceSelector::Legacy(path) => Some(path),
+            SourceSelector::Owned(_) => None,
+        }
+    }
+
+    /// The owned driver collection; `None` for a legacy driver.
+    pub fn owned_driver(&self) -> Option<&OwnedSourceRef> {
+        match &self.iteration {
+            SourceSelector::Legacy(_) => None,
+            SourceSelector::Owned(driver) => Some(driver),
+        }
+    }
 }
 
 /// One additional output document produced by a project.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NamedTarget {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

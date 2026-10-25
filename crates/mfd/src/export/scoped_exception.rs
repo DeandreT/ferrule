@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use ir::{ScalarType, SchemaKind, SchemaNode, Value};
+use ir::{EffectivePresence, ScalarType, SchemaKind, SchemaNode, Value, XmlOccurrence};
 use mapping::{
     FormatOptions, IterationOutput, Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration,
 };
@@ -544,7 +544,7 @@ fn bounded_shape(project: &Project) -> Result<(), MfdError> {
                 || !node.xml_repeating_sequences.is_empty()
                 || node.xml_type_alternatives
                 || node.json_any
-                || node.container_nullable
+                || !crate::import::presence::json_container_non_null(node)
                 || node.json_contains.is_some()
                 || node.json_dependent_schemas.is_some()
             {
@@ -860,6 +860,14 @@ impl<'a> PredicateProof<'a> {
     }
 }
 
-fn required_xml_value(node: &SchemaNode) -> bool {
-    !node.nillable && !node.xml_optional && (!node.attribute || node.xml_attribute_required)
+// Each item of an element collection is present; XML has no repeated
+// attribute occurrence to prove. Contradictory XML roles are refused.
+pub(super) fn required_xml_value(node: &SchemaNode) -> bool {
+    node.effective_xml_view().is_ok_and(|view| {
+        !view.nil()
+            && match view.occurrence() {
+                XmlOccurrence::Single { presence } => presence == EffectivePresence::Required,
+                XmlOccurrence::Repeated => !node.attribute,
+            }
+    })
 }

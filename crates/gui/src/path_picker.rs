@@ -5,7 +5,9 @@ use std::path::Path;
 
 use egui::Ui;
 use ir::{SchemaKind, SchemaNode};
-use mapping::NamedSource;
+use mapping::{NamedSource, OwnedSourceRef};
+
+use crate::source_ownership::SourceOwnership;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PathChoice {
@@ -36,6 +38,7 @@ pub struct SourcePathCatalog {
     open_scalar_objects: Vec<PathChoice>,
     primary_source_document_path: bool,
     xml_source_elements: Vec<XmlSourceElement>,
+    ownership: SourceOwnership,
 }
 
 impl SourcePathCatalog {
@@ -123,7 +126,47 @@ impl SourcePathCatalog {
             open_scalar_objects,
             primary_source_document_path: false,
             xml_source_elements,
+            ownership: SourceOwnership::new(source, extras),
         }
+    }
+
+    /// Records whether the project already holds owned forms, so every new
+    /// read stays owner-qualified once ownership is in use.
+    pub(crate) fn with_project_ownership(mut self, project: &mapping::Project) -> Self {
+        self.ownership = std::mem::take(&mut self.ownership)
+            .with_project_usage(crate::source_ownership::project_uses_ownership(project));
+        self
+    }
+
+    pub(crate) fn ownership(&self) -> &SourceOwnership {
+        &self.ownership
+    }
+
+    /// Offers owner-qualified collections. Returns a selector only after an
+    /// explicit click, so inspecting a legacy or owned scope never converts it.
+    pub(crate) fn show_owned_collection_picker(
+        &self,
+        ui: &mut Ui,
+        id_salt: impl std::hash::Hash + std::fmt::Debug,
+        current: &str,
+        selected: Option<&OwnedSourceRef>,
+    ) -> Option<OwnedSourceRef> {
+        let mut chosen = None;
+        egui::ComboBox::from_id_salt(id_salt)
+            .selected_text(current)
+            .width(ui.available_width().max(80.0))
+            .wrap_mode(egui::TextWrapMode::Truncate)
+            .show_ui(ui, |ui| {
+                for choice in self.ownership.collections() {
+                    if ui
+                        .selectable_label(selected == Some(&choice.source), &choice.label)
+                        .clicked()
+                    {
+                        chosen = Some(choice.source.clone());
+                    }
+                }
+            });
+        chosen
     }
 
     pub(crate) fn with_primary_source_options(mut self, options: &mapping::FormatOptions) -> Self {
@@ -156,7 +199,7 @@ impl SourcePathCatalog {
         ui.add_enabled_ui(self.xml_source_elements_available(), |ui| {
             egui::ComboBox::from_id_salt(ui.scope_id().with("xml_source_element"))
                 .selected_text("Choose source element")
-                .width(170.0)
+                .width(crate::theme::editor_size::PATH_PICKER)
                 .show_ui(ui, |ui| {
                     for choice in &self.xml_source_elements {
                         if ui
@@ -192,7 +235,7 @@ impl SourcePathCatalog {
         let mut chosen = false;
         egui::ComboBox::from_id_salt(ui.scope_id().with("dynamic_source_object"))
             .selected_text(selected)
-            .width(170.0)
+            .width(crate::theme::editor_size::PATH_PICKER)
             .show_ui(ui, |ui| {
                 for choice in &self.open_scalar_objects {
                     if ui
@@ -241,7 +284,7 @@ impl SourcePathCatalog {
     pub(crate) fn show_primary_root_type_picker(&self, ui: &mut Ui, identity: &mut String) {
         egui::ComboBox::from_id_salt(ui.scope_id().with("primary_root_type"))
             .selected_text(identity.as_str())
-            .width(170.0)
+            .width(crate::theme::editor_size::PATH_PICKER)
             .show_ui(ui, |ui| {
                 for choice in &self.primary_root_types {
                     ui.selectable_value(identity, choice.clone(), choice);
@@ -477,7 +520,8 @@ fn show_path_picker(
         .map_or_else(|| fallback_label(path), |choice| choice.label.clone());
     egui::ComboBox::from_id_salt(id_salt)
         .selected_text(selected)
-        .width(170.0)
+        .width(ui.available_width().max(80.0))
+        .wrap_mode(egui::TextWrapMode::Truncate)
         .show_ui(ui, |ui| {
             for choice in choices {
                 ui.selectable_value(path, choice.path.clone(), &choice.label);
@@ -487,7 +531,7 @@ fn show_path_picker(
 
 fn collection_label(path: &[String]) -> String {
     if path.is_empty() {
-        "<current rows>".to_string()
+        "Current rows".to_string()
     } else {
         path.join(" / ")
     }
@@ -495,7 +539,7 @@ fn collection_label(path: &[String]) -> String {
 
 fn value_label(path: &[String]) -> String {
     if path.is_empty() {
-        "<item value>".to_string()
+        "Current item value".to_string()
     } else {
         path.join(" / ")
     }

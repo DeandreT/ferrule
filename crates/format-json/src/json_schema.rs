@@ -94,6 +94,16 @@ pub fn import_with_root(
 /// using this reader never reopen the supplied identities as filesystem paths.
 pub trait JsonSchemaByteReader {
     fn read(&self, resource: &std::path::Path) -> std::io::Result<std::sync::Arc<[u8]>>;
+    /// Optional stricter host policy, applied to decoded local resource paths.
+    fn validate_reference(&self, _reference: &str) -> std::io::Result<()> {
+        Ok(())
+    }
+    /// Optional host policy for a schema reference's final JSON Pointer target.
+    /// Checked after the complete graph loads, including cyclic references.
+    /// The default retains the ordinary importer's legacy missing-ref behavior.
+    fn validate_reference_target(&self, _reference: &str, _exists: bool) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 /// Imports a schema and its relative local-file references from immutable host
@@ -640,10 +650,14 @@ fn parse_array_schema(
     nullable: bool,
 ) -> Result<SchemaNode, JsonFormatError> {
     if let Some(mut node) = positional_items::normalize(name, schema, doc, active_refs)? {
-        let object_item_nullable = (matches!(node.kind, SchemaKind::Group { .. })
+        let object_item_nullable = if matches!(node.kind, SchemaKind::Group { .. })
             && !node.json_array_wrapper
-            && !node.json_any)
-            .then(|| node.json_single_container_nullable());
+            && !node.json_any
+        {
+            Some(crate::null_layers::single_null(&node)?)
+        } else {
+            None
+        };
         node.container_nullable = nullable;
         if let Some(item_nullable) = object_item_nullable {
             node.json_object_item_nullable = (nullable || item_nullable).then_some(item_nullable);
@@ -682,8 +696,11 @@ fn parse_array_schema(
         name
     };
     let item = parse(item_name, items, doc, active_refs)?;
-    let object_item_nullable = (!item.repeating && matches!(item.kind, SchemaKind::Group { .. }))
-        .then_some(item.container_nullable);
+    let object_item_nullable = if !item.repeating && matches!(item.kind, SchemaKind::Group { .. }) {
+        Some(crate::null_layers::container_null(&item)?)
+    } else {
+        None
+    };
     let mut node = if item.repeating {
         if !nested_array {
             return Err(unsupported_union(
@@ -1370,4 +1387,4 @@ pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

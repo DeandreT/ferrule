@@ -21,7 +21,11 @@ pub use input_document_outputs::{
 };
 
 mod input_document_set;
-pub use input_document_set::{XmlInputDocumentExecutionError, XmlInputDocumentOwner};
+pub use input_document_set::{
+    NamedXmlDocumentSet, XmlDocumentSetInputError, XmlDocumentSetMember, XmlDocumentSetMemberOwner,
+    XmlDocumentSetText, XmlInputDocumentExecutionError, XmlInputDocumentOwner,
+    admit_xml_document_set_names, parse_xml_document_set, preflight_xml_document_sets,
+};
 
 mod input_set;
 pub use input_set::{
@@ -134,7 +138,7 @@ fn check_document_size(bytes: usize) -> Result<(), XmlBoundaryError> {
     Ok(())
 }
 
-fn schema(descriptor: &str) -> Result<ir::SchemaNode, XmlBoundaryError> {
+fn schema(descriptor: &str) -> Result<std::sync::Arc<ir::SchemaNode>, XmlBoundaryError> {
     if descriptor.len() > crate::MAX_EMBEDDED_XML_SCHEMA_BYTES {
         return Err(XmlBoundaryError::detail(
             XmlBoundaryErrorKind::Schema,
@@ -145,7 +149,7 @@ fn schema(descriptor: &str) -> Result<ir::SchemaNode, XmlBoundaryError> {
             ),
         ));
     }
-    codegen_schema::decode(descriptor, crate::MAX_EMBEDDED_XML_SCHEMA_BYTES)
+    crate::xml::shared_schema(descriptor)
         .map_err(|source| XmlBoundaryError::with_source(XmlBoundaryErrorKind::Schema, source))
 }
 

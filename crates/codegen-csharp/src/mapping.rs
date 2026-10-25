@@ -9,10 +9,12 @@ use codegen::{
 };
 use ir::ScalarType;
 
+use crate::composition::ClassPart;
 use crate::{EmitError, literal};
 
 mod failures;
 mod filter_map;
+mod owned_dynamic_loading;
 mod owned_group_by;
 mod owned_join;
 mod owned_json_api;
@@ -22,6 +24,10 @@ mod owned_recursive_collect;
 mod owned_recursive_filter;
 mod selected_json_api;
 mod xml_api;
+pub(crate) use xml_api::render_owned_document_sets;
+
+/// Shared JSON document input/output records of the JSON companions.
+const JSON_RECORDS: &str = "public sealed record NamedJsonInput(\n    string Name,\n    string Document);\n\npublic sealed record NamedJsonBytesInput(\n    string Name,\n    byte[] Document);\n\npublic sealed record NamedJsonOutput(\n    string Name,\n    string Document);\n\npublic sealed record NamedJsonBytesOutput(\n    string Name,\n    byte[] Document);\n\npublic sealed record JsonExecutionOutputs(\n    string Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedJsonOutput> Extras);\n\npublic sealed record JsonBytesExecutionOutputs(\n    byte[] Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedJsonBytesOutput> Extras);\n\n";
 
 struct ScopePlan<'a> {
     repeating: bool,
@@ -41,12 +47,22 @@ struct BindingPlan<'a> {
     values: Vec<usize>,
 }
 
-pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
-    render_with_json_boundaries(program, true)
+/// Renders under the complete companion selection, preparing its plan.
+#[cfg(test)]
+pub(crate) fn render_complete(program: &Program) -> Result<ClassPart, EmitError> {
+    render(
+        program,
+        &codegen::prepare_boundary_emission(program, codegen::CompanionSelection::Complete)?,
+    )
 }
 
-pub(crate) fn render_typed(program: &Program) -> Result<String, EmitError> {
-    render_with_json_boundaries(program, false)
+/// Renders the typed entry points alone, preparing their plan.
+#[cfg(test)]
+pub(crate) fn render_typed(program: &Program) -> Result<ClassPart, EmitError> {
+    render(
+        program,
+        &codegen::prepare_boundary_emission(program, codegen::CompanionSelection::TypedOnly)?,
+    )
 }
 
 pub(crate) fn append_basic_owned_json_api(
@@ -56,10 +72,42 @@ pub(crate) fn append_basic_owned_json_api(
     owned_json_api::render(program, output)
 }
 
-fn render_with_json_boundaries(
+/// Whether the shared JSON document input/output records are declared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JsonRecords {
+    Declared,
+    Omitted,
+}
+
+/// Renders the mapping and the companions `plan` selects. The XML adapter
+/// renders from the plan's proved classification; typed-only libraries
+/// declare no JSON type.
+pub(crate) fn render(
     program: &Program,
-    json_boundaries: bool,
-) -> Result<String, EmitError> {
+    plan: &codegen::BoundaryEmissionPlan<'_>,
+) -> Result<ClassPart, EmitError> {
+    let records = if plan.json_companions() {
+        JsonRecords::Declared
+    } else {
+        JsonRecords::Omitted
+    };
+    render_mapping(program, plan, records)
+}
+
+/// [`render`] that keeps the JSON records for the CSV adapters' typed
+/// libraries, whose artifacts predate typed-only selection.
+pub(crate) fn render_with_json_records(
+    program: &Program,
+    plan: &codegen::BoundaryEmissionPlan<'_>,
+) -> Result<ClassPart, EmitError> {
+    render_mapping(program, plan, JsonRecords::Declared)
+}
+
+fn render_mapping(
+    program: &Program,
+    plan: &codegen::BoundaryEmissionPlan<'_>,
+    records: JsonRecords,
+) -> Result<ClassPart, EmitError> {
     codegen::validate_owned_emission(program)?;
     let has_filter_map = !program.filter_map_v1_sequences().is_empty();
     let mut expressions = BTreeMap::new();
@@ -80,23 +128,26 @@ fn render_with_json_boundaries(
         .map(|target| (target.name.as_str(), add_scope(&target.root, &mut scopes)))
         .collect::<Vec<_>>();
 
-    let mut output = String::from(
-        "namespace Ferrule.Generated;\n\npublic sealed record NamedInput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record NamedOutput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record ExecutionOutputs(\n    global::Ferrule.Runtime.FerruleInstance Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedOutput> Extras);\n\npublic sealed record NamedJsonInput(\n    string Name,\n    string Document);\n\npublic sealed record NamedJsonBytesInput(\n    string Name,\n    byte[] Document);\n\npublic sealed record NamedJsonOutput(\n    string Name,\n    string Document);\n\npublic sealed record NamedJsonBytesOutput(\n    string Name,\n    byte[] Document);\n\npublic sealed record JsonExecutionOutputs(\n    string Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedJsonOutput> Extras);\n\npublic sealed record JsonBytesExecutionOutputs(\n    byte[] Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedJsonBytesOutput> Extras);\n\npublic static class GeneratedMapping\n{\n",
+    let mut types = String::from(
+        "public sealed record NamedInput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record NamedOutput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record ExecutionOutputs(\n    global::Ferrule.Runtime.FerruleInstance Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedOutput> Extras);\n\n",
     );
-    let type_position = output
-        .find("public static class GeneratedMapping")
-        .expect("generated mapping header");
-    output.insert_str(type_position, SELECTED_TARGET_OUTPUT_TYPES);
-    if json_boundaries {
-        output.insert_str(type_position, selected_json_api::OUTPUT_TYPES);
+    if records == JsonRecords::Declared {
+        types.push_str(JSON_RECORDS);
     }
-    output.insert_str(type_position, xml_api::render_types(program)?);
+    types.push_str(xml_api::types(plan.xml()));
+    if plan.json_companions() {
+        types.push_str(selected_json_api::OUTPUT_TYPES);
+    }
+    types.push_str(SELECTED_TARGET_OUTPUT_TYPES);
+    let mut output = String::new();
     render_entry_points(program, primary_scope, &extra_scopes, &mut output);
-    if json_boundaries {
+    if plan.json_companions() {
         render_json_entry_points(program, &mut output)?;
         selected_json_api::render(program, &mut output);
     }
-    xml_api::render(program, &mut output)?;
+    if let Some(xml) = plan.xml() {
+        xml_api::render_plan(program, xml, &mut output)?;
+    }
     failures::render(&program.failure_rules, &mut output)?;
     for function in &program.user_functions {
         render_user_function(function, &functions, has_filter_map, &mut output)?;
@@ -121,6 +172,12 @@ fn render_with_json_boundaries(
         if let Some(iteration) = scope.iteration {
             if iteration.concatenated().is_some() {
                 render_concatenated_scope(iteration, &scope.segments, &mut output);
+            } else if let Some(presence) = iteration.presence() {
+                // The condition and the constructed group share the parent context.
+                let condition = presence.condition();
+                output.push_str(&format!(
+                    "        if (!global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{condition}(context), {condition}U))\n        {{\n            return new global::Ferrule.Runtime.FerruleRepeated(global::System.Array.Empty<global::Ferrule.Runtime.FerruleInstance>());\n        }}\n        var item_{scope_index} = ScopeItem_{scope_index}(context);\n        return new global::Ferrule.Runtime.FerruleRepeated(new global::Ferrule.Runtime.FerruleInstance[] {{ item_{scope_index} }});\n"
+                ));
             } else {
                 render_iteration_scope(
                     program,
@@ -236,8 +293,10 @@ fn render_with_json_boundaries(
         render_bound_group(scope_index, scope, &mut output);
     }
     filter_map::add_scoped_node_wrappers(program, &mut output);
-    output.push_str("}\n");
-    Ok(output)
+    Ok(ClassPart {
+        types,
+        members: output,
+    })
 }
 
 fn render_user_function(
@@ -293,13 +352,19 @@ fn render_user_function_expression(
         )
     };
     output.push_str(&format!(
-        "\n    private static global::Ferrule.Runtime.FerruleValue UserFunction_{}_Node_{node}(\n        global::Ferrule.Runtime.ScopeContext context,\n        global::System.Collections.Generic.IReadOnlyList<global::Ferrule.Runtime.FerruleValue> parameters)",
+        "\n    private static global::Ferrule.Runtime.FerruleValue {}_{}_Node_{node}(\n        global::Ferrule.Runtime.ScopeContext context,\n        global::System.Collections.Generic.IReadOnlyList<global::Ferrule.Runtime.FerruleValue> parameters)",
+        if has_filter_map {
+            "UserFunctionCore"
+        } else {
+            "UserFunction"
+        },
         function.get()
     ));
     match expression {
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
+        | Expression::OwnedSourceDocumentPath(_)
         | Expression::OwnedDynamicSourceField(_) => {
             return Err(codegen::owned_expression_emission_error(
                 codegen::OwnedSourceNamespace::Function(function),
@@ -869,7 +934,9 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
                  ValidateNamedJsonInputNames(extraSources);\n\
                  var parsedSource = global::Ferrule.Runtime.FerruleJson.ParseEmbedded(SourceJsonSchema, source);\n\
                  var parsedInputs = ParseNamedJsonInputs(extraSources);\n\
-                 var adapter = new GeneratedDynamicJsonSourceLoader(loader);\n\
+                 var adapter = new global::Ferrule.Runtime.FerruleJsonDynamicSourceAdapter(\n\
+                     loader,\n\
+                     DynamicSourceJsonSchema);\n\
                  var outputs = executionContext is null\n\
                      ? ExecuteOutputsWithSourcesAndDynamicSourceLoader(\n\
                          parsedSource,\n\
@@ -882,51 +949,14 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
                          adapter);\n\
                  return SerializeJsonOutputs(outputs);\n\
              }\n\
-             \n    private sealed class GeneratedDynamicJsonSourceLoader :\n\
-                 global::Ferrule.Runtime.IFerruleDynamicSourceLoader\n\
-             {\n\
-                 private readonly global::Ferrule.Runtime.IFerruleDynamicJsonSourceLoader _loader;\n\
-                 private int _totalBytes;\n\
-             \n        internal GeneratedDynamicJsonSourceLoader(\n\
-                     global::Ferrule.Runtime.IFerruleDynamicJsonSourceLoader loader)\n\
-                 {\n\
-                     _loader = loader;\n\
-                 }\n\
-             \n        public global::Ferrule.Runtime.FerruleInstance Load(\n\
-                     string sourceName,\n\
-                     string logicalPath)\n\
-                 {\n\
-                     var document = _loader.Load(sourceName, logicalPath) ??\n\
-                         throw new global::System.InvalidOperationException(\"loader returned null\");\n\
-                     if (document.Length > global::Ferrule.Runtime.FerruleDynamicSourceLimits.MaximumDocumentBytes)\n\
-                     {\n\
-                         throw new global::System.InvalidOperationException(\n\
-                             \"document exceeds the \" + global::Ferrule.Runtime.FerruleDynamicSourceLimits.MaximumDocumentBytes + \"-byte dynamic-source limit\");\n\
-                     }\n\
-                     var total = (long)_totalBytes + document.Length;\n\
-                     if (total > global::Ferrule.Runtime.FerruleDynamicSourceLimits.MaximumTotalBytes)\n\
-                     {\n\
-                         throw new global::System.InvalidOperationException(\n\
-                             \"documents exceed the \" + global::Ferrule.Runtime.FerruleDynamicSourceLimits.MaximumTotalBytes + \"-byte combined dynamic-source limit\");\n\
-                     }\n\
-                     _totalBytes = (int)total;\n\
-                     var text = new global::System.Text.UTF8Encoding(false, true).GetString(document);\n\
-                     var schema = sourceName switch\n\
-                     {\n",
+             \n    private static string? DynamicSourceJsonSchema(string sourceName) => sourceName switch\n    {\n",
         );
         for (index, source) in dynamic_sources.iter().enumerate() {
-            output.push_str("                ");
+            output.push_str("        ");
             output.push_str(&literal::string(&source.name));
             output.push_str(&format!(" => DynamicSourceJsonSchemas[{index}],\n"));
         }
-        output.push_str(
-            "                _ => throw new global::System.InvalidOperationException(\n\
-                                 $\"undeclared dynamic source '{sourceName}'\"),\n\
-                         };\n\
-                     return global::Ferrule.Runtime.FerruleJson.ParseEmbedded(schema, text);\n\
-                 }\n\
-             }\n",
-        );
+        output.push_str("        _ => null,\n    };\n");
     }
 
     output.push_str(
@@ -1305,7 +1335,8 @@ fn render_grouping_path(input: &IterationSource, output: &mut String) {
         IterationSource::Generated(_) => render_path(&[], output),
         IterationSource::InnerJoin(_)
         | IterationSource::OwnedInnerJoin(_)
-        | IterationSource::Concatenate(_) => {
+        | IterationSource::Concatenate(_)
+        | IterationSource::OptionalPresence(_) => {
             unreachable!("validated portable grouping cannot own an inner join")
         }
     }
@@ -1329,7 +1360,10 @@ fn render_source_iteration_candidates(
             "        var dynamic_source_items_{scope} = global::Ferrule.Runtime.FerruleDynamicSourceItems.Load(\n            context,\n            {},\n            ",
             literal::string(&source_program.name),
         ));
-        render_path(dynamic.driver.path(), output);
+        let Some(driver) = dynamic.driver.legacy() else {
+            unreachable!("owned dynamic drivers are refused before legacy emission")
+        };
+        render_path(driver.path(), output);
         output.push_str(",\n            ");
         render_path(&source_path[1..], output);
         output.push_str(&format!(
@@ -1370,6 +1404,9 @@ fn render_iteration_candidates(
         IterationSource::OwnedInnerJoin(_) => unreachable!("owned join emission gate"),
         IterationSource::Concatenate(_) => {
             unreachable!("concatenated scopes render before candidate iteration")
+        }
+        IterationSource::OptionalPresence(_) => {
+            unreachable!("optional-presence scopes render before candidate iteration")
         }
     }
     Ok(())
@@ -1828,6 +1865,7 @@ fn render_expression(
                 Expression::OwnedSourceField(_)
                     | Expression::OwnedPosition(_)
                     | Expression::OwnedRowDocumentPath(_)
+                    | Expression::OwnedSourceDocumentPath(_)
                     | Expression::OwnedDynamicSourceField(_)
                     | Expression::OwnedXmlSerialize(_)
             )
@@ -1838,6 +1876,7 @@ fn render_expression(
         }
     }
     let method = match mode {
+        ExpressionContext::Legacy if has_filter_map => format!("NodeCore_{node}"),
         ExpressionContext::Legacy => format!("Node_{node}"),
         ExpressionContext::Basic | ExpressionContext::PublicBasicOwnedNodes => {
             format!("NodeBody_{node}")
@@ -1886,6 +1925,7 @@ fn render_expression(
         Expression::OwnedSourceField(_)
         | Expression::OwnedPosition(_)
         | Expression::OwnedRowDocumentPath(_)
+        | Expression::OwnedSourceDocumentPath(_)
         | Expression::OwnedDynamicSourceField(_)
         | Expression::OwnedLookup(_)
         | Expression::OwnedCollectionFind(_)
@@ -2527,87 +2567,54 @@ pub(super) fn render_basic_scopes<'a>(
         program,
         output,
         false,
-        crate::owned_basic::TargetControls::Closed,
+        codegen::OwnedPreset::ControlFree.capabilities().grouping,
+        false,
+        false,
     )
 }
 
-pub(super) fn render_basic_scopes_with_windows<'a>(
-    program: &'a Program,
-    output: &mut String,
-) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(
-        program,
-        output,
-        true,
-        crate::owned_basic::TargetControls::Closed,
-    )
+/// Owned dynamic paths a loading scope calls in each driver item.
+pub(super) fn owned_dynamic_loading_paths(program: &Program) -> Vec<NodeId> {
+    owned_dynamic_loading::loading_scopes(program)
+        .values()
+        .map(|loading| loading.path)
+        .collect()
 }
 
-pub(super) fn render_basic_scopes_with_group_by<'a>(
-    program: &'a Program,
-    output: &mut String,
-) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(
-        program,
-        output,
-        true,
-        crate::owned_basic::TargetControls::By,
-    )
-}
-
-pub(super) fn render_basic_scopes_with_group_adjacent_by<'a>(
-    program: &'a Program,
-    output: &mut String,
-) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(
-        program,
-        output,
-        true,
-        crate::owned_basic::TargetControls::ByAndAdjacent,
-    )
-}
-
-pub(super) fn render_basic_scopes_with_group_starting_with<'a>(
-    program: &'a Program,
-    output: &mut String,
-) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(
-        program,
-        output,
-        true,
-        crate::owned_basic::TargetControls::ByAndAdjacentAndStarting,
-    )
-}
-
-pub(super) fn render_basic_scopes_with_group_ending_with<'a>(
-    program: &'a Program,
-    output: &mut String,
-) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(
-        program,
-        output,
-        true,
-        crate::owned_basic::TargetControls::ByAndAdjacentAndStartingAndEnding,
-    )
-}
-
-pub(super) fn render_basic_scopes_with_group_into_blocks<'a>(
-    program: &'a Program,
-    output: &mut String,
-) -> Result<BasicScopeIndices<'a>, EmitError> {
-    render_basic_scopes_profile(
-        program,
-        output,
-        true,
-        crate::owned_basic::TargetControls::ByAndAdjacentAndStartingAndEndingAndBlocks,
-    )
-}
-
-fn render_basic_scopes_profile<'a>(
+/// Render Basic scopes with the window, grouping, dynamic-loading and
+/// document-set capabilities an owned capability set admits; windows also
+/// select the paired legacy islands, loading wraps each loading scope and
+/// document sets let owned scopes walk document-set members.
+pub(super) fn render_basic_scopes_profile<'a>(
     program: &'a Program,
     output: &mut String,
     allow_windows: bool,
-    grouping: crate::owned_basic::TargetControls,
+    grouping: codegen::GroupingModes,
+    dynamic_loading: bool,
+    document_sets: bool,
+) -> Result<BasicScopeIndices<'a>, EmitError> {
+    let loading = if dynamic_loading {
+        owned_dynamic_loading::loading_scopes(program)
+    } else {
+        BTreeMap::new()
+    };
+    render_basic_scopes_loading(
+        program,
+        output,
+        allow_windows,
+        grouping,
+        &loading,
+        document_sets,
+    )
+}
+
+fn render_basic_scopes_loading<'a>(
+    program: &'a Program,
+    output: &mut String,
+    allow_windows: bool,
+    grouping: codegen::GroupingModes,
+    loading: &BTreeMap<usize, codegen::OwnedDynamicLoading<'_>>,
+    document_sets: bool,
 ) -> Result<BasicScopeIndices<'a>, EmitError> {
     let mut scopes = Vec::new();
     let primary = add_scope(&program.root, &mut scopes);
@@ -2624,7 +2631,16 @@ fn render_basic_scopes_profile<'a>(
         }
     }
     for (index, scope) in scopes.iter().enumerate() {
-        output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleInstance Scope_{index}(\n        global::Ferrule.Runtime.FerruleBasicScopeContext context)\n    {{\n"));
+        // A loading scope's body walks the loaded owner in the receiving view
+        // its wrapper attaches.
+        let body = match loading.get(&index) {
+            Some(loading) => {
+                owned_dynamic_loading::render_wrapper(index, loading, output);
+                "ScopeLoaded"
+            }
+            None => "Scope",
+        };
+        output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleInstance {body}_{index}(\n        global::Ferrule.Runtime.FerruleBasicScopeContext context)\n    {{\n"));
         if allow_windows && !owned_routes[index] {
             output.push_str(&format!(
                 "        return Scope_{index}(context.LegacyView);\n    }}\n"
@@ -2640,7 +2656,11 @@ fn render_basic_scopes_profile<'a>(
             output.push_str(&format!("        var cohort_{index} = context."));
             match iteration.input() {
                 IterationSource::OwnedSource(source) => {
-                    output.push_str("WalkOwnedSourceCohort(");
+                    output.push_str(if document_sets {
+                        "WalkOwnedDocumentSourceCohort("
+                    } else {
+                        "WalkOwnedSourceCohort("
+                    });
                     crate::owned_basic::render_owner(&source.source().owner, output);
                     output.push_str(", ");
                     render_path(&source.source().path, output);
@@ -2651,7 +2671,7 @@ fn render_basic_scopes_profile<'a>(
                 }
                 _ => return Err(crate::owned_basic::scope_refusal(program, index)),
             }
-            if grouping.permits_grouping(iteration.grouping()) {
+            if grouping.permits(iteration.grouping()) {
                 owned_group_by::render_operation(index, iteration, output);
             } else if allow_windows
                 && (!iteration.windows().is_empty() || iteration.output() == IterationOutput::First)
@@ -2757,7 +2777,7 @@ fn render_basic_scopes_profile<'a>(
         if allow_windows
             && owned_routes[index]
             && let Some(iteration) = scope.iteration
-            && grouping.permits_grouping(iteration.grouping())
+            && grouping.permits(iteration.grouping())
         {
             owned_group_by::render_controls(index, iteration, output);
         }
@@ -2786,7 +2806,7 @@ fn collect_basic_window_routes(
     program: &Program,
     scope: &TargetScope,
     inherited: bool,
-    grouping: crate::owned_basic::TargetControls,
+    grouping: codegen::GroupingModes,
     routes: &mut Vec<bool>,
 ) {
     let owned = inherited || crate::owned_basic::scope_needs_owned_sources(program, scope);
@@ -2804,7 +2824,7 @@ fn collect_basic_window_routes(
         && scope
             .iteration
             .as_ref()
-            .is_some_and(|iteration| grouping.permits_grouping(iteration.grouping()));
+            .is_some_and(|iteration| grouping.permits(iteration.grouping()));
     for child in &scope.children {
         collect_basic_window_routes(
             program,

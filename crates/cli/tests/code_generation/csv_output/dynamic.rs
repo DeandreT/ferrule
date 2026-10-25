@@ -5,7 +5,7 @@ use super::super::typed_dynamic_document_sources::typed_snapshot as dynamic_csv_
 
 const DYNAMIC_CSV_MARKER: &str = "dynamic-csv-original-second-loader-failure";
 
-fn dynamic_csv_project(mixed: bool) -> Project {
+pub(in super::super) fn dynamic_csv_project(mixed: bool) -> Project {
     let mut project = Project {
         source: SchemaNode::group(
             "Input",
@@ -48,10 +48,7 @@ fn dynamic_csv_project(mixed: bool) -> Project {
                 ],
             ),
             options: Default::default(),
-            dynamic_path: Some(mapping::DynamicSourcePath {
-                node: 0,
-                iteration: vec!["Driver".into()],
-            }),
+            dynamic_path: Some(mapping::DynamicSourcePath::legacy(0, vec!["Driver".into()])),
         }],
         extra_targets: Vec::new(),
         user_functions: Default::default(),
@@ -836,6 +833,7 @@ fn run_dynamic_rust_fixture(output: &Path, mode: &str) -> TestResult<()> {
         assert_eq!(body.matches("\n[workspace]\n").count(), 1);
         std::fs::write(&manifest, body.replacen("\n[workspace]\n", "\nserde_json = { version = \"1.0\", features = [\"preserve_order\"] }\n\n[workspace]\n",1))?;
     }
+    host_policy::name_generated_host(output, "csv-output-dynamic-host")?;
     let mut command = Command::new("cargo");
     command
         .args(["run", "--quiet", "--", mode])

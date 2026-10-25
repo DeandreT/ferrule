@@ -5,7 +5,10 @@ use codegen::{
 };
 use ir::ScalarType;
 
-use crate::{EmitError, file, literal};
+use crate::Options;
+use crate::composition::ClassPart;
+use crate::{EmitError, literal};
+use codegen::GenerationProfile;
 
 const INPUT_SOURCE: &str =
     include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvInput.cs");
@@ -15,7 +18,10 @@ const INPUT_SOURCE: &str =
 pub enum CsvJsonEmitError {
     Policy(Box<CsvJsonBoundaryError>),
     Ordinary(EmitError),
-    ArtifactInvariant { path: &'static str },
+    /// Retained for API compatibility; structural composition never produces it.
+    ArtifactInvariant {
+        path: &'static str,
+    },
 }
 
 impl fmt::Display for CsvJsonEmitError {
@@ -50,41 +56,21 @@ impl From<EmitError> for CsvJsonEmitError {
 pub(crate) fn emit(
     program: &Program,
     policy: &CsvJsonBoundaryPolicy,
+    options: &Options,
 ) -> Result<ArtifactSet, CsvJsonEmitError> {
     let profile = codegen::prepare_csv_json_boundary(program, policy)
         .map_err(|error| CsvJsonEmitError::Policy(Box::new(error)))?;
-    let mut files = crate::emit_typed(program)?.into_files();
-    for (path, before, after) in [
+    let mut library = crate::typed_library(program)?;
+    library.add_companion("GeneratedMapping.CsvJson.cs", render(&profile));
+    library.add_runtime(&[
+        ("Runtime/FerruleCsvInput.cs", INPUT_SOURCE),
         (
-            "GeneratedMapping.cs",
-            "public static class GeneratedMapping\n{",
-            "public static partial class GeneratedMapping\n{",
+            "Runtime/FerruleCsvSource.cs",
+            include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs"),
         ),
-        (
-            "Ferrule.Generated.csproj",
-            "    <Compile Include=\"GeneratedMapping.cs\" />\n",
-            "    <Compile Include=\"GeneratedMapping.cs\" />\n    <Compile Include=\"GeneratedMapping.CsvJson.cs\" />\n",
-        ),
-    ] {
-        let generated = files
-            .iter_mut()
-            .find(|generated| generated.path.as_str() == path)
-            .ok_or(CsvJsonEmitError::ArtifactInvariant { path })?;
-        let source = std::str::from_utf8(&generated.contents)
-            .map_err(|_| CsvJsonEmitError::ArtifactInvariant { path })?;
-        if source.matches(before).count() != 1 {
-            return Err(CsvJsonEmitError::ArtifactInvariant { path });
-        }
-        generated.contents = source.replacen(before, after, 1).into_bytes();
-    }
-    files.push(file("GeneratedMapping.CsvJson.cs", render(&profile))?);
-    files.push(file("Runtime/FerruleCsvInput.cs", INPUT_SOURCE)?);
-    files.push(file(
-        "Runtime/FerruleCsvSource.cs",
-        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs"),
-    )?);
-    ArtifactSet::new(files)
-        .map_err(EmitError::from)
+    ]);
+    library
+        .into_artifacts_with(options, GenerationProfile::CsvJson)
         .map_err(CsvJsonEmitError::from)
 }
 
@@ -95,10 +81,10 @@ fn character(value: Option<char>) -> String {
     )
 }
 
-fn render(profile: &CsvJsonBoundaryProfile) -> String {
-    let mut output = String::from("namespace Ferrule.Generated;\n\n");
-    output.push_str(crate::document_output_types::OUTPUT_TYPES);
-    output.push_str("public static partial class GeneratedMapping\n{\n    private static readonly global::Ferrule.Runtime.FerruleCsvReadField[] CsvInputFields =\n        new global::Ferrule.Runtime.FerruleCsvReadField[]\n        {\n");
+fn render(profile: &CsvJsonBoundaryProfile) -> ClassPart {
+    let mut output = String::from(
+        "    private static readonly global::Ferrule.Runtime.FerruleCsvReadField[] CsvInputFields =\n        new global::Ferrule.Runtime.FerruleCsvReadField[]\n        {\n",
+    );
     for field in &profile.fields {
         let ty = match field.ty {
             ScalarType::String => "String",
@@ -154,8 +140,10 @@ fn render(profile: &CsvJsonBoundaryProfile) -> String {
         }
         render_serializer(profile, bytes, &mut output);
     }
-    output.push_str("}\n");
-    output
+    ClassPart {
+        types: crate::document_output_types::OUTPUT_TYPES.into(),
+        members: output,
+    }
 }
 
 fn render_serializer(profile: &CsvJsonBoundaryProfile, bytes: bool, output: &mut String) {

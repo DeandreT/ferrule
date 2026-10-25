@@ -111,6 +111,35 @@ fn run_selected(name: &str) -> io::Result<u8> {
         .filter(|b| !b.contains(&b'\n'))
         .ok_or_else(|| io::Error::other("exact352 Start"))?;
     decode_start(body, &id.request_id()).map_err(io::Error::other)?;
+    match mode {
+        "error-exit0" => {
+            // A complete declared error whose exit contradicts its required 2.
+            let result = ResultEnvelope::new(
+                id,
+                Outcome::HostError {
+                    error: HostError::SnapshotMismatch,
+                    diagnostics: Diagnostics::empty(),
+                },
+            )
+            .map_err(io::Error::other)?;
+            let mut raw = Vec::new();
+            encode_result(&result, &mut raw).map_err(io::Error::other)?;
+            frozen("result.json", &raw)?;
+            return Ok(0);
+        }
+        "partial-exit3" => {
+            frozen("instance.part", &NULL[..NULL.len() / 2])?;
+            return Ok(3);
+        }
+        "instance-over" => {
+            // The installed 64 MiB file-size limit stops this write itself.
+            filled("instance.json", NULL, MAX_INSTANCE_BYTES + 1, b' ')?;
+            return Err(io::Error::other(
+                "file-size limit admitted a one-over instance",
+            ));
+        }
+        _ => {}
+    }
     if mode == "instance-encode-over" {
         let overhead = b"{\"kind\":\"group\",\"fields\":[[\"\",{\"kind\":\"null\"}]]}".len();
         let instance = ir::Instance::Group(
@@ -158,6 +187,9 @@ fn run_selected(name: &str) -> io::Result<u8> {
         NULL.len()
     };
     filled("instance.json", NULL, instance_size, b' ')?;
+    if mode == "both-leaves" {
+        filled("instance.part", NULL, NULL.len(), b' ')?;
+    }
     let bytes = std::fs::read("instance.json")?;
     let mut result = envelope(id, &bytes)?;
     drop(bytes);
@@ -165,6 +197,10 @@ fn run_selected(name: &str) -> io::Result<u8> {
         result = mutate(&result, change)?;
     }
     frozen("result.json", &result)?;
+    if mode == "complete-then-kill" {
+        // A complete valid result does not outrank an abnormal termination.
+        unsafe { libc::raise(libc::SIGKILL) };
+    }
     if mode == "receipt-exact" || mode == "receipt-over" {
         filled(
             "receipt.part",

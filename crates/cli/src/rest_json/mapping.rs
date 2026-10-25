@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use super::{RestExecutionPolicy, RestJsonError, RestJsonHeader, RestJsonRequest, fetch_rest_json};
+use crate::route_capability::{HostRoute, PlannedAcquisition, PlannedPublication, RoutePlan};
 use crate::{PayloadDocument, PayloadRunOptions, PayloadRunOutcome, run_project_value_payloads};
 
 /// Logical JSON identities and existing mapping context. The synchronous
@@ -74,6 +75,8 @@ fn preflight(
             ));
         }
     }
+    crate::sqlite_query::reject_query_inputs(project, HostRoute::RestJson)
+        .map_err(|refusal| RestJsonError::Mapping(refusal.into()))?;
     if !project.extra_sources.is_empty()
         || !project.extra_targets.is_empty()
         || has_document_list(&project.root)
@@ -96,6 +99,26 @@ fn preflight(
     .map_err(|error| RestJsonError::Mapping(error.into()))
 }
 
+/// Reports what one REST JSON mapping acquires and returns, applying the
+/// route's JSON boundary, validation and capability checks before any host
+/// request file is read or connection is made. The execution policy is the
+/// caller's separate grant and is checked first by the running calls.
+pub fn plan_rest_json_run(
+    project: &::mapping::Project,
+    project_path: &Path,
+    options: &RestJsonMappingOptions<'_>,
+) -> Result<RoutePlan, RestJsonError> {
+    preflight(project, options)?;
+    let mut plan = RoutePlan::new(HostRoute::RestJson, project_path);
+    plan.acquire(PlannedAcquisition::RestResponse {
+        identity: options.response_path.to_path_buf(),
+    });
+    plan.publish(PlannedPublication::Payload {
+        target: project.target.name.clone(),
+    });
+    Ok(plan)
+}
+
 /// Preflights one immutable project before any connection, fetches once, and
 /// delegates its complete response to the unchanged payload mapping API.
 /// Returns no output value on any failure and never writes configured paths.
@@ -109,7 +132,7 @@ pub fn run_project_value_rest_json_payloads(
     if policy == RestExecutionPolicy::Deny {
         return Err(RestJsonError::Disabled);
     }
-    preflight(project, options)?;
+    plan_rest_json_run(project, project_path, options)?;
     continue_run(options)?;
     let response = fetch_rest_json(request, policy)?;
     continue_run(options)?;
@@ -175,7 +198,7 @@ pub fn run_project_value_rest_json_request_file_payloads(
     if policy == RestExecutionPolicy::Deny {
         return Err(RestJsonError::Disabled);
     }
-    preflight(project, options)?;
+    plan_rest_json_run(project, project_path, options)?;
     let bytes = super::read_host_file(request_path, super::MAX_REST_JSON_HEADER_BYTES)?;
     let value: serde_json::Value = serde_json::from_slice(&bytes)
         .map_err(|_| RestJsonError::RequestPolicy("invalid request description"))?;

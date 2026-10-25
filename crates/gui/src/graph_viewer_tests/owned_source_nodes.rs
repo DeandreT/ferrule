@@ -3,7 +3,7 @@ use mapping::{Graph, Node, OwnedPosition, OwnedSourceField, OwnedSourceRef, Sour
 use super::{GraphViewer, fixture, graph_node_presentation, graph_references};
 
 #[test]
-fn owned_nodes_preserve_identity_zero_inputs_and_full_unavailable_details() {
+fn owned_nodes_preserve_identity_zero_inputs_and_full_owner_details() {
     let nodes = [
         Node::OwnedSourceField(OwnedSourceField {
             source: OwnedSourceRef {
@@ -51,7 +51,7 @@ fn owned_nodes_preserve_identity_zero_inputs_and_full_unavailable_details() {
         assert!(graph_references::node_inputs(node).is_empty());
         assert!(graph_node_presentation::header(node, "owned", false).is_some());
         let full = graph_node_presentation::complete_title(Some(node), "short".into());
-        assert!(full.contains("Read-only; source ownership execution is unavailable"));
+        assert!(full.contains("exactly this input"), "{full}");
     }
     let scalar = graph_node_presentation::owned_source_title(&nodes[0]).unwrap();
     assert!(scalar.contains(" Ref 雪 "));
@@ -60,7 +60,7 @@ fn owned_nodes_preserve_identity_zero_inputs_and_full_unavailable_details() {
     assert!(
         graph_node_presentation::owned_source_title(&nodes[1])
             .unwrap()
-            .contains("automatic (unresolved)")
+            .contains("automatic (this input's innermost active item)")
     );
     assert!(
         graph_node_presentation::owned_source_title(&nodes[2])

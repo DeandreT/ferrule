@@ -4,6 +4,8 @@ namespace Ferrule.Runtime;
 
 public static partial class FerruleX12
 {
+    internal static FerruleValue FormatDocumentLexical(FerruleValue value, string kind, byte minimum, byte maximum, byte characters)
+        => FormatLexical(value, new LexicalFormat(kind, minimum, maximum, characters), []);
     private static bool HasOutputLexical(Node node) => node.Lexical is not null || node.Children.Any(HasOutputLexical);
 
     private static FerruleInstance FormatOutputView(Node node, FerruleInstance instance, string[] path, Budget budget, int depth)

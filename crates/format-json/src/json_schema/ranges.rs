@@ -97,7 +97,8 @@ pub(crate) fn validate_json(
     let Some(range) = schema.numeric_range else {
         return Ok(());
     };
-    if value.is_null() && schema.nullable {
+    // Explicit null is admitted by the scalar value layer, not by the range.
+    if value.is_null() && crate::null_layers::layers(schema)?.value_null {
         return Ok(());
     }
     if value.is_string()

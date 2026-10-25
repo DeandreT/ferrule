@@ -160,39 +160,64 @@ pub fn setup_worker(parent: u32) -> io::Result<()> {
     if unsafe { libc::getppid() } != parent as i32 {
         return Err(io::Error::other("parent changed during policy"));
     }
-    for (resource, soft, hard) in [
-        (libc::RLIMIT_AS, 536870912, 536870912),
-        (libc::RLIMIT_CPU, 30, 31),
-        (libc::RLIMIT_FSIZE, 67108864, 67108864),
-        (libc::RLIMIT_CORE, 0, 0),
-    ] {
-        let mut old = libc::rlimit {
-            rlim_cur: 0,
-            rlim_max: 0,
-        };
-        if unsafe { libc::getrlimit(resource, &mut old) } != 0 {
-            return Err(errno());
-        }
-        if !inherited_admits(old.rlim_cur, old.rlim_max, soft, hard) {
-            return Err(io::Error::other("cannot raise inherited limit"));
-        }
-        let new = libc::rlimit {
-            rlim_cur: soft,
-            rlim_max: hard,
-        };
-        if unsafe { libc::setrlimit(resource, &new) } != 0 {
-            return Err(errno());
-        }
-        if unsafe { libc::getrlimit(resource, &mut old) } != 0 {
-            return Err(errno());
-        }
-        if old.rlim_cur != soft || old.rlim_max != hard {
-            return Err(io::Error::other("effective limit mismatch"));
-        }
-    }
+    install_limits(&mut KernelLimits)?;
     // The new worker needs only stdio and cwd; never inherit caller descriptors.
     if unsafe { libc::syscall(libc::SYS_close_range, 3u32, u32::MAX, 0u32) } < 0 {
         return Err(errno());
+    }
+    Ok(())
+}
+
+const FIXED_LIMITS: [(libc::__rlimit_resource_t, libc::rlim_t, libc::rlim_t); 4] = [
+    (libc::RLIMIT_AS, 536870912, 536870912),
+    (libc::RLIMIT_CPU, 30, 31),
+    (libc::RLIMIT_FSIZE, 67108864, 67108864),
+    (libc::RLIMIT_CORE, 0, 0),
+];
+/// Resource-limit syscalls of worker setup. Unit tests inject failures here;
+/// they do not qualify real kernel behavior.
+trait LimitCalls {
+    fn get(&mut self, resource: libc::__rlimit_resource_t) -> io::Result<libc::rlimit>;
+    fn set(&mut self, resource: libc::__rlimit_resource_t, limit: libc::rlimit) -> io::Result<()>;
+}
+struct KernelLimits;
+impl LimitCalls for KernelLimits {
+    fn get(&mut self, resource: libc::__rlimit_resource_t) -> io::Result<libc::rlimit> {
+        let mut limit = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
+        if unsafe { libc::getrlimit(resource, &mut limit) } != 0 {
+            return Err(errno());
+        }
+        Ok(limit)
+    }
+    fn set(&mut self, resource: libc::__rlimit_resource_t, limit: libc::rlimit) -> io::Result<()> {
+        if unsafe { libc::setrlimit(resource, &limit) } != 0 {
+            return Err(errno());
+        }
+        Ok(())
+    }
+}
+/// Install each fixed limit in order, never raising an inherited one, and
+/// verify it by readback before the next. The first failure stops setup.
+fn install_limits(calls: &mut impl LimitCalls) -> io::Result<()> {
+    for (resource, soft, hard) in FIXED_LIMITS {
+        let old = calls.get(resource)?;
+        if !inherited_admits(old.rlim_cur, old.rlim_max, soft, hard) {
+            return Err(io::Error::other("cannot raise inherited limit"));
+        }
+        calls.set(
+            resource,
+            libc::rlimit {
+                rlim_cur: soft,
+                rlim_max: hard,
+            },
+        )?;
+        let now = calls.get(resource)?;
+        if now.rlim_cur != soft || now.rlim_max != hard {
+            return Err(io::Error::other("effective limit mismatch"));
+        }
     }
     Ok(())
 }
@@ -225,6 +250,142 @@ mod tests {
             }
             if hard > 0 {
                 assert!(!inherited_admits(soft, hard - 1, soft, hard));
+            }
+        }
+    }
+    #[derive(Clone, Copy, PartialEq, Debug)]
+    enum Fault {
+        InitialRead,
+        Install,
+        Readback,
+        ReadbackMismatch,
+        InheritedTooLow,
+    }
+    /// Injected limit syscalls. These rows label syscall failures that cannot
+    /// be produced physically by an unprivileged test; they prove only that
+    /// setup stops at the first failure without touching later limits.
+    struct InjectedLimits {
+        fault: Option<(libc::__rlimit_resource_t, Fault)>,
+        limits: std::collections::BTreeMap<libc::__rlimit_resource_t, (u64, u64)>,
+        calls: Vec<(&'static str, libc::__rlimit_resource_t)>,
+    }
+    impl InjectedLimits {
+        fn new(fault: Option<(libc::__rlimit_resource_t, Fault)>) -> Self {
+            let limits = FIXED_LIMITS
+                .iter()
+                .map(|(resource, _, _)| {
+                    let inherited = if fault == Some((*resource, Fault::InheritedTooLow)) {
+                        (0, 0)
+                    } else {
+                        (libc::RLIM_INFINITY, libc::RLIM_INFINITY)
+                    };
+                    (*resource, inherited)
+                })
+                .collect();
+            Self {
+                fault,
+                limits,
+                calls: Vec::new(),
+            }
+        }
+        fn faulted(&self, resource: libc::__rlimit_resource_t, fault: Fault) -> bool {
+            self.fault == Some((resource, fault))
+        }
+    }
+    impl LimitCalls for InjectedLimits {
+        fn get(&mut self, resource: libc::__rlimit_resource_t) -> io::Result<libc::rlimit> {
+            let installed = self.calls.contains(&("set", resource));
+            self.calls.push(("get", resource));
+            if !installed && self.faulted(resource, Fault::InitialRead)
+                || installed && self.faulted(resource, Fault::Readback)
+            {
+                return Err(io::Error::from_raw_os_error(libc::EFAULT));
+            }
+            let (soft, hard) = self.limits[&resource];
+            let soft = if installed && self.faulted(resource, Fault::ReadbackMismatch) {
+                soft ^ 1
+            } else {
+                soft
+            };
+            Ok(libc::rlimit {
+                rlim_cur: soft,
+                rlim_max: hard,
+            })
+        }
+        fn set(
+            &mut self,
+            resource: libc::__rlimit_resource_t,
+            limit: libc::rlimit,
+        ) -> io::Result<()> {
+            self.calls.push(("set", resource));
+            if self.faulted(resource, Fault::Install) {
+                return Err(io::Error::from_raw_os_error(libc::EPERM));
+            }
+            self.limits
+                .insert(resource, (limit.rlim_cur, limit.rlim_max));
+            Ok(())
+        }
+    }
+    fn expected_calls(
+        through: usize,
+        last: &[&'static str],
+    ) -> Vec<(&'static str, libc::__rlimit_resource_t)> {
+        let mut calls = Vec::new();
+        for (index, (resource, _, _)) in FIXED_LIMITS.iter().enumerate().take(through + 1) {
+            let steps: &[&'static str] = if index == through {
+                last
+            } else {
+                &["get", "set", "get"]
+            };
+            calls.extend(steps.iter().map(|step| (*step, *resource)));
+        }
+        calls
+    }
+    #[test]
+    fn injected_limit_syscall_failures_stop_setup_at_the_first_failure() {
+        let mut supported = InjectedLimits::new(None);
+        install_limits(&mut supported).unwrap();
+        assert_eq!(
+            supported.calls,
+            expected_calls(FIXED_LIMITS.len() - 1, &["get", "set", "get"])
+        );
+        for (resource, soft, hard) in FIXED_LIMITS {
+            assert_eq!(supported.limits[&resource], (soft, hard));
+        }
+        for (index, (resource, _, _)) in FIXED_LIMITS.iter().enumerate() {
+            for (fault, last, errno, display) in [
+                (Fault::InitialRead, &["get"][..], Some(libc::EFAULT), None),
+                (Fault::Install, &["get", "set"][..], Some(libc::EPERM), None),
+                (
+                    Fault::Readback,
+                    &["get", "set", "get"][..],
+                    Some(libc::EFAULT),
+                    None,
+                ),
+                (
+                    Fault::ReadbackMismatch,
+                    &["get", "set", "get"][..],
+                    None,
+                    Some("effective limit mismatch"),
+                ),
+                (
+                    Fault::InheritedTooLow,
+                    &["get"][..],
+                    None,
+                    Some("cannot raise inherited limit"),
+                ),
+            ] {
+                if fault == Fault::InheritedTooLow && *resource == libc::RLIMIT_CORE {
+                    continue; // Zero core admits every inherited core limit.
+                }
+                let mut calls = InjectedLimits::new(Some((*resource, fault)));
+                let error = install_limits(&mut calls).unwrap_err();
+                eprintln!("injected {resource} {fault:?}: {error:?}");
+                assert_eq!(error.raw_os_error(), errno);
+                if let Some(display) = display {
+                    assert_eq!(error.to_string(), display);
+                }
+                assert_eq!(calls.calls, expected_calls(index, last));
             }
         }
     }

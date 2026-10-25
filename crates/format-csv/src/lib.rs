@@ -21,6 +21,8 @@ mod bounded_read;
 mod byte_decoding;
 mod encoding;
 mod fixed_width;
+mod local_files;
+mod primary_documents;
 mod read;
 mod source_document;
 
@@ -33,6 +35,11 @@ pub use bounded_read::{
     from_str_with_options_bounded,
 };
 pub use byte_decoding::CsvByteDecodingPolicy;
+pub use local_files::{DEFAULT_LOCAL_DOCUMENT_BYTES, LocalFileError, LocalPrimaryFiles};
+pub use primary_documents::{
+    PrimaryAcquisitionError, PrimaryAssemblyError, PrimaryDocument, PrimarySourceHost,
+    acquire_primary_csv_rows, acquire_primary_documents, assemble_primary_documents,
+};
 pub use source_document::{
     CsvDocumentRows, CsvRowOccurrence, CsvSourceDocument, CsvSourceError, CsvSourceLoadError,
     CsvSourceRows, MAX_CSV_SOURCE_DOCUMENTS, MAX_CSV_SOURCE_PATH_BYTES,
@@ -44,7 +51,8 @@ pub use read::{
 };
 
 pub use fixed_width::{
-    from_str_fixed_width, read_fixed_width, to_string_fixed_width, write_fixed_width,
+    from_str_fixed_width, read_fixed_width, to_bytes_fixed_width_bounded, to_string_fixed_width,
+    write_fixed_width,
 };
 
 /// CSV output dialect and UTF-8 byte-order-mark policy. Legacy writer entry

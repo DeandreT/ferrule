@@ -6,7 +6,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[path = "filter_map_csharp/projects.rs"]
 mod projects;
 
+/// Evidence under `FERRULE_FILTER_MAP193_EVIDENCE_DIR` is retained; otherwise it is removed on drop,
+/// including after a panic, unless `FERRULE_CODEGEN_KEEP_ARTIFACTS=1`.
 struct Evidence(PathBuf);
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_FILTER_MAP193_EVIDENCE_DIR").is_none()
+            && !host_policy::keep_artifacts()
+        {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
 impl Evidence {
     fn new() -> TestResult<Self> {
         let parent = std::env::var_os("FERRULE_FILTER_MAP193_EVIDENCE_DIR")
@@ -45,7 +56,7 @@ impl Evidence {
     }
 }
 
-fn fixtures() -> Vec<(String, Project, serde_json::Value)> {
+pub(super) fn fixtures() -> Vec<(String, Project, serde_json::Value)> {
     let corpus = projects::corpus();
     let mut fixtures = Vec::new();
     for case in corpus["cases"]

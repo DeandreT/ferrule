@@ -76,15 +76,13 @@ fn action_after_scrolling(
         frame(app, context, viewport, Vec::new());
     }
     let window = context
-        .memory(|memory| memory.area_rect(egui::Id::unique(Some("Preview mapping"))))
+        .memory(|memory| memory.area_rect(egui::Id::unique(("ferrule_dialog", "preview_mapping"))))
         .expect("actual Preview window");
     let view = egui::Rect::from_min_size(egui::Pos2::ZERO, viewport);
-    eprintln!(
-        "Preview layout original: viewport={view:?}, window={window:?}, input={:?}, project={}",
-        app.preview_draft.as_ref().unwrap().input_text,
-        serde_json::to_string(&app.project).unwrap()
-    );
     assert!(window.is_finite() && view.contains_rect(window));
+    let initial = frame(app, context, viewport, Vec::new());
+    assert!(visible_text(&initial, "Preview").is_some());
+    assert!(visible_text(&initial, "Debug preview").is_some());
     // Stay over the outer scrollbar rather than the nested input editor.
     let pointer = egui::pos2(window.right() - 12.0, window.center().y);
     for index in 0..40 {
@@ -130,18 +128,13 @@ fn click(app: &mut FerruleApp, context: &egui::Context, viewport: egui::Vec2, re
 }
 
 #[test]
-fn short_preview_setup_scrolls_to_execute_with_complete_input_and_output() {
+fn short_preview_setup_keeps_execute_visible_with_complete_input_and_output() {
     for viewport in [egui::vec2(1280.0, 699.0), egui::vec2(960.0, 560.0)] {
         let mut app = preview_app();
         let context = egui::Context::default();
         let button = action_after_scrolling(&mut app, &context, viewport, "Preview");
         click(&mut app, &context, viewport, button);
         wait_for_preview_completion(&mut app);
-        eprintln!(
-            "Preview layout original completion: {} {:?}",
-            app.status,
-            app.diagnostics.items()
-        );
         assert!(app.diagnostics.is_empty());
         let actual = app
             .run_report
@@ -150,7 +143,6 @@ fn short_preview_setup_scrolls_to_execute_with_complete_input_and_output() {
             .report
             .outputs[0]
             .preview();
-        eprintln!("Preview layout original returned value: {actual:?}");
         assert_eq!(
             actual,
             &crate::run_report::OutputPreview::Text {
@@ -163,7 +155,7 @@ fn short_preview_setup_scrolls_to_execute_with_complete_input_and_output() {
 }
 
 #[test]
-fn short_preview_setup_scrolls_to_cancel_without_mutating_the_project() {
+fn short_preview_setup_keeps_cancel_visible_without_mutating_the_project() {
     for viewport in [egui::vec2(1280.0, 699.0), egui::vec2(960.0, 560.0)] {
         let mut app = preview_app();
         let before = serde_json::to_value(&app.project).unwrap();
@@ -175,4 +167,39 @@ fn short_preview_setup_scrolls_to_cancel_without_mutating_the_project() {
         assert!(app.run_report.is_none());
         assert_eq!(serde_json::to_value(&app.project).unwrap(), before);
     }
+}
+
+#[test]
+fn collapsed_debugging_keeps_invalid_conditions_disabled() {
+    use egui_kittest::{
+        Harness,
+        kittest::{NodeT as _, Queryable as _},
+    };
+
+    let mut app = preview_app();
+    app.preview_position_condition.enabled = true;
+    app.preview_position_condition.text = "0".into();
+    let mut harness = Harness::builder()
+        .with_size((1280.0, 800.0))
+        .with_accessibility_check(false)
+        .build_ui_state(
+            |ui, app: &mut FerruleApp| {
+                crate::icons::install(ui.ctx());
+                app.show_preview_setup(ui.ctx());
+            },
+            app,
+        );
+    harness.run();
+    assert!(
+        harness
+            .get_by_label("Debug preview")
+            .accesskit_node()
+            .is_disabled()
+    );
+    assert!(
+        !harness
+            .get_by_label("Preview")
+            .accesskit_node()
+            .is_disabled()
+    );
 }

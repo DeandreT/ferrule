@@ -31,7 +31,7 @@ for a complete format standard or another product.
 | CSV | Yes | Yes | `.csv` or `.txt` | Delimited flat rows with a configurable delimiter, printable or disabled quoting, headers, optional present-empty text, and optional UTF-8 BOM output |
 | Fixed-width | Yes | Yes | `fixed_width` layout | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | `.xlsx` | Typed worksheets, flat, transposed, composite, worksheet-set, and grid source shapes, flat and hierarchical targets, and update-existing flat writes |
-| SQLite | Yes | Yes | `.db`, `.sqlite`, or `.sqlite3` | Read-only table introspection, typed reads, imported relational query shapes, validated declared relations, structured XML text columns, and idempotent full-replace writes |
+| SQLite | Yes | Yes | `.db`, `.sqlite`, or `.sqlite3` | Read-only table introspection, typed reads, imported relational query shapes, declared read-only single-table queries with typed named parameters, validated declared relations, structured XML text columns, and idempotent full-replace writes |
 | X12 / EDIFACT | Yes | Yes | `.edi`, `.x12`, or `.edifact` with a schema dialect, or `edi_kind` | Schema-guided interchange I/O, custom syntax separators, repetitions, qualifier loops, retained field lengths and code lists, optional lenient parsing, and bounded output validation that leaves the destination unchanged on failure |
 | HL7 v2 / TRADACOMS | Yes | Yes | `.hl7` or an EDI schema dialect | Bounded schema-guided message I/O, retained field lengths and code lists, HL7 escapes and subcomponents, and TRADACOMS release escaping |
 | SAP IDoc | Yes | Yes | `idoc` layout | Embedded fixed-record layouts with bounded byte-position parsing and deterministic output |
@@ -46,11 +46,18 @@ for a complete format standard or another product.
 | Format | Route | Scope | Record |
 | --- | --- | --- | --- |
 | XML | Generated Rust and C# XML document APIs | Structured or admitted root-view XML boundaries in the indexed route families | [docs/generated-xml-qualification-index.md](generated-xml-qualification-index.md) |
+| XML | Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview) | The XML document a literal or runtime-parameter filename names, or the document set a filename wildcard selects, beneath an explicit local input root, mapped once into one XML document | [conformance/primary-xml-documents/README.md](../conformance/primary-xml-documents/README.md) |
 | JSON | Ordered JSON source documents in the native and generated C# runtimes | One complete UTF-8 JSON value with ordered and duplicate members, checked against a self-authored corpus | [conformance/json-source/README.md](../conformance/json-source/README.md) |
 | JSON5 | Generated Rust and C# JSON5 companions (`generate --json5-adapters`) | One JSON5 object in and strict JSON out, for closed nonrepeating object schemas with scalar leaves and static target construction | [docs/generated-json5-contract.md](generated-json5-contract.md) |
 | CSV | Generated Rust and C# complete CSV document adapters (`generate --csv-document-adapters`) | One positional CSV document in and out, including header, BOM, and raw-delimited CRLF output modes | [conformance/csv-documents/README.md](../conformance/csv-documents/README.md) |
+| CSV | Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview) | Every CSV document a literal or runtime-parameter filename selects beneath an explicit local input root, mapped once into one CSV document | [conformance/primary-filename-documents/README.md](../conformance/primary-filename-documents/README.md) |
+| Fixed-width | Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview) | Ordered fixed-width documents using saved Unicode-scalar layouts, mapped once with bounded input and output | [conformance/primary-fixed-width-documents/README.md](../conformance/primary-fixed-width-documents/README.md) |
 | XLSX | Native editor flat-worksheet setup, save, and reopen | One flat-row XLSX source and target configuration on the Linux desktop | [docs/qualification/flat-workbook-desktop-2026-10-08.md](qualification/flat-workbook-desktop-2026-10-08.md) |
 | X12 / EDIFACT | Generated C# X12 companions (`generate --x12-adapters`) | Raw X12 text and bytes with single, grouped, or MapForce-shaped envelope profiles around the ordinary typed mapping | [docs/design/generated-x12-csharp.md](design/generated-x12-csharp.md) |
+| X12 / EDIFACT | Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview) | Explicit X12 or EDIFACT direct documents or wildcard document sets, parsed in order and mapped once into one same-family output | [conformance/primary-edi-documents/README.md](../conformance/primary-edi-documents/README.md) |
+| X12 / EDIFACT | Generated C# static EDIFACT document adapters | Primary and named static inputs and outputs, with strict interchange validation and syntax-v4 repetitions | [docs/design/static-edifact-documents.md](design/static-edifact-documents.md) |
+| HL7 v2 / TRADACOMS | Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview) | Explicit HL7 or TRADACOMS direct documents or wildcard document sets, parsed in order and mapped once into one same-family output | [conformance/primary-edi-documents/README.md](../conformance/primary-edi-documents/README.md) |
+| SAP IDoc | Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview) | IDoc documents using embedded layouts, parsed in order and mapped once into one bounded IDoc output | [conformance/primary-edi-documents/README.md](../conformance/primary-edi-documents/README.md) |
 
 ## Unsupported Profiles
 
@@ -77,6 +84,7 @@ for a complete format standard or another product.
 | XLSX | Grid, worksheet-set, composite, and transposed output, which are input-only layouts |
 | XLSX | Update-existing writes for hierarchical output |
 | SQLite | Other database engines, general SQL mutation, and multi-database connections |
+| SQLite | SQL text, joins, views and declared queries on payload, stream, REST, pipeline, generated-code and MFD routes |
 | X12 / EDIFACT | Invisible or whitespace explicit X12 output separators, including LF |
 | SAP IDoc | `.idoc` input without an embedded layout |
 | SWIFT MT | SWIFT MT output |
@@ -366,8 +374,11 @@ for a complete format standard or another product.
   of nullable objects accepts `[null]` and rejects `null`. The optional
   `json_object_item_nullable` schema field carries the item setting on genuine
   repeated object groups. When absent, existing schemas retain their legacy
-  item behavior. Positional nested arrays and unsupported structured
-  predicates remain outside this subset. `$ref` siblings follow the dialect declared by their physical schema
+  item behavior. Arrays of scalars keep the array's nullability separate from
+  the items' own `nullable` domain: a nullable array of nonnullable integers
+  accepts `null` and `[1]` but rejects `[null]` and `[1,null]`. Positional
+  nested arrays and unsupported structured predicates remain outside this
+  subset. `$ref` siblings follow the dialect declared by their physical schema
   resource: Draft 4, 6, and 7 ignore them, while Draft 2019-09, 2020-12, and
   schemas without `$schema` apply Ferrule's supported numeric, `multipleOf`,
   item-count, string-length, and annotation metadata. Concrete string-capable scalar
@@ -490,10 +501,47 @@ can require or create shared-memory and WAL sidecars. Hosts that require an
 offline filesystem boundary must also confine readable resources and enforce
 read-only access to their input filesystem.
 
-The [declared read-only query proposal](design/sqlite-read-query-v1.md) specifies
-a separate typed single-table acquisition profile and prospective host fixtures.
-It is a design for review; it does not enable a query option or change existing
-table reads and imported query lowering.
+### Declared SQLite queries
+
+`source_options.sqlite_read`, or a static named source's `options.sqlite_read`,
+selects the closed `sqlite_read_v1` profile described in the
+[declared read design](design/sqlite-read-query-v1.md). It reads one ordinary
+rowid table in `main` into a repeating group of plain String, Int, Float or Bool
+fields through an ordered projection, a conjunction of `eq`, `ne`, `lt`, `le`,
+`gt` and `ge` comparisons with typed named parameters or explicit NULL tests,
+and an order that ends with the proved `INTEGER PRIMARY KEY` ascending. The
+descriptor carries no SQL text. It cannot be combined with other format options
+and never falls back to an ordinary table read. Existing table reads and
+imported query lowering are unchanged. When a full-replace write creates a
+missing table, it declares a sole generated column `INTEGER PRIMARY KEY` and
+Bool columns `BOOLEAN`, so the table's `import-db` schema can carry a query
+without edits.
+
+Each query parameter binds one required runtime parameter of exactly its
+declared type, supplied with `--param NAME=VALUE` or as a typed host value and
+resolved with the same coercion as graph evaluation. Duplicate and unknown
+bindings, then missing, NULL, wrong-type and non-finite values, refuse before
+any input is opened. String comparison and ordering use BINARY collation. SQL
+NULL becomes a present `Null` field, and zero rows produce an empty sequence.
+
+Acquisition opens the existing literal path read-only with a private cache,
+`query_only`, an untrusted schema and an authorizer limited to the admitted
+table columns. It admits table and key metadata and validates every referenced
+cell in key order within one read snapshot before running the SELECT, so a
+filter cannot hide malformed storage. A busy database refuses immediately.
+Cancellation, a 5-second deadline, and limits of 100,000 candidate and output
+rows, 1 MiB per cell, 64 MiB of decoded payload, 64 KiB of generated SQL and
+about 10 million VM instructions are cooperative and refuse rather than
+truncate. The connection closes before mapping evaluation. Failures are typed
+`format_db::query::QueryReadError` values carrying the phase, parameter,
+column, one-based row and SQLite codes, never parameter values.
+
+Filesystem `run` and `cli::preview_project_value_from_files` support primary
+and static named query inputs, and restricted policies confine the database
+path. Payload, standard-stream, REST JSON, pipeline, offline bundle,
+generated-code and MFD export routes refuse the profile before reading. Saved
+designs that carry it require the [`sqlite_read_v1` file
+capability](project-files.md#file-capabilities).
 
 ### Native X12 ISA encoding
 

@@ -461,8 +461,8 @@ fn basic_adjacency_tree466_older_profiles_and_default_validation_refuse() -> Tes
     Ok(())
 }
 
-#[test]
-fn basic_adjacency_tree466_direct_programs_refuse_unsupported_ownership() -> TestResult<()> {
+/// Directly constructed Programs with unsupported ownership and their refusals.
+fn direct_programs() -> TestResult<Vec<(&'static str, codegen::Program, ProgramValidationError)>> {
     let base = codegen::lower_with_basic_owned_adjacency_tree(&projects::project("A01-endpoints"))?;
     let with = |owner: Option<&str>, rows: &[&str], key: &[&str], children: &str| {
         let mut program = base.clone();
@@ -546,6 +546,12 @@ fn basic_adjacency_tree466_direct_programs_refuse_unsupported_ownership() -> Tes
             },
         ),
     ];
+    Ok(cases.into())
+}
+
+#[test]
+fn basic_adjacency_tree466_direct_programs_refuse_unsupported_ownership() -> TestResult<()> {
+    let cases = direct_programs()?;
     for (label, program, expected) in &cases {
         assert_new_profile_refuses(program, expected, label)?;
         // The default validator applies the same structural checks first.
@@ -558,9 +564,8 @@ fn basic_adjacency_tree466_direct_programs_refuse_unsupported_ownership() -> Tes
     Ok(())
 }
 
-#[test]
-fn basic_adjacency_tree466_closed_contexts_refuse_before_emission() -> TestResult<()> {
-    // A dynamic named owner never supplies exact owned rows.
+/// Projects whose owned rows sit in a closed context.
+fn closed_context_projects() -> [(&'static str, Project); 2] {
     let mut dynamic = projects::project("A01-endpoints");
     dynamic.graph.nodes.insert(
         0,
@@ -568,27 +573,8 @@ fn basic_adjacency_tree466_closed_contexts_refuse_before_emission() -> TestResul
             value: Value::String("audit.json".into()),
         },
     );
-    dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        node: 0,
-        iteration: vec!["Batch".into()],
-    });
-    let expected = capability(
-        root(Some((0, "audit")), &[]),
-        request(Some("audit"), &["Rows", "Row"]),
-        Capability::DynamicOwner,
-        Origin::DynamicSource {
-            index: 0,
-            name: "audit".into(),
-        },
-    );
-    let lowered = codegen::lower_with_basic_owned_adjacency_tree(&dynamic);
-    assert!(
-        matches!(&lowered, Err(error)
-            if error.diagnostics() == std::slice::from_ref(&diagnostic(&expected))),
-        "{lowered:?}"
-    );
-
-    // A generated item context closes the owned rows inside it.
+    dynamic.extra_sources[0].dynamic_path =
+        Some(mapping::DynamicSourcePath::legacy(0, vec!["Batch".into()]));
     let mut generated = projects::base(
         SchemaNode::group(
             "Output",
@@ -632,6 +618,33 @@ fn basic_adjacency_tree466_closed_contexts_refuse_before_emission() -> TestResul
             },
         ),
     ]);
+    [
+        ("closed-context/dynamic", dynamic),
+        ("closed-context/generated", generated),
+    ]
+}
+
+#[test]
+fn basic_adjacency_tree466_closed_contexts_refuse_before_emission() -> TestResult<()> {
+    let [(_, dynamic), (_, generated)] = closed_context_projects();
+    // A dynamic named owner never supplies exact owned rows.
+    let expected = capability(
+        root(Some((0, "audit")), &[]),
+        request(Some("audit"), &["Rows", "Row"]),
+        Capability::DynamicOwner,
+        Origin::DynamicSource {
+            index: 0,
+            name: "audit".into(),
+        },
+    );
+    let lowered = codegen::lower_with_basic_owned_adjacency_tree(&dynamic);
+    assert!(
+        matches!(&lowered, Err(error)
+            if error.diagnostics() == std::slice::from_ref(&diagnostic(&expected))),
+        "{lowered:?}"
+    );
+
+    // A generated item context closes the owned rows inside it.
     assert!(engine::validate(&generated).is_empty());
     let expected = capability(
         root(None, &[0, 0]),
@@ -877,4 +890,23 @@ fn basic_adjacency_tree466_generated_rust_and_csharp_match_expected() -> TestRes
         return Err(failures.join("\n\n").into());
     }
     Ok(())
+}
+
+/// The models, the legacy project, the closed-context Projects and the
+/// directly constructed Programs, for the owned capability preset record.
+pub(super) fn capability_corpus() -> TestResult<super::owned_capability_presets::Corpus> {
+    use super::owned_capability_presets as presets;
+    let mut corpus = presets::projects(
+        projects::MODELS
+            .iter()
+            .map(|model| (*model, projects::project(model))),
+    );
+    corpus.extend(presets::projects([("legacy", projects::legacy())]));
+    corpus.extend(presets::projects(closed_context_projects()));
+    corpus.extend(presets::programs(
+        direct_programs()?
+            .into_iter()
+            .map(|(id, program, _)| (format!("direct/{id}"), program)),
+    ));
+    Ok(corpus)
 }

@@ -1,6 +1,7 @@
 use ir::{Instance, Value};
 use mapping::JoinId;
 
+use crate::frame_view::{FrameOrigin, FrameView};
 use crate::source_iteration::PositionFrame;
 
 /// Resolves a repeating collection with the same outward fallback as scalar
@@ -98,23 +99,48 @@ pub(crate) fn instance<'a>(context: &[&'a Instance], path: &[String]) -> Option<
     None
 }
 
+/// The deepest bound receiving frame whose nonempty collection prefixes the
+/// absolute `path`, with the path's suffix below that collection.
+///
+/// Legacy fallback: a context too short for its positions binds none of its
+/// frames, so this finds nothing and the caller reads `path` outward from the
+/// whole context instead.
+fn active_collection_owner<'a, 'p>(
+    context: &[&'a Instance],
+    positions: &[PositionFrame],
+    path: &'p [String],
+) -> Option<(&'a Instance, &'p [String])> {
+    let (frame, owner) = FrameView::latest_receiving(context, positions, |frame| {
+        !frame.collection.is_empty() && path.starts_with(frame.collection)
+    })?;
+    Some((owner?, &path[frame.collection.len()..]))
+}
+
+/// The instance of the latest receiving frame a pin names: the pinned
+/// collection itself, or a nonempty collection the pin ends with. That frame
+/// is authoritative; when it is unbound, nothing is read.
+fn pinned_owner<'a>(
+    context: &[&'a Instance],
+    positions: &[PositionFrame],
+    pin: &[String],
+) -> Option<&'a Instance> {
+    let (_, owner) = FrameView::latest_receiving(context, positions, |frame| {
+        frame.collection == pin || !frame.collection.is_empty() && pin.ends_with(frame.collection)
+    })?;
+    owner
+}
+
 pub(crate) fn instance_in_active_collection<'a>(
     context: &[&'a Instance],
     positions: &[PositionFrame],
     path: &[String],
 ) -> Option<&'a Instance> {
-    for (position_index, position) in positions.iter().enumerate().rev() {
-        if position.collection.is_empty() || !path.starts_with(&position.collection) {
-            continue;
-        }
-        let Some(owner) = context_for_position(context, positions, position_index) else {
-            continue;
-        };
+    match active_collection_owner(context, positions, path) {
         // The active item owns this absolute path. Its absent optional group
         // must not borrow another item's group through the root context.
-        return instance(&[owner], &path[position.collection.len()..]);
+        Some((owner, suffix)) => instance(&[owner], suffix),
+        None => instance(context, path),
     }
-    instance(context, path)
 }
 
 pub(crate) fn instance_in_frame<'a>(
@@ -123,12 +149,7 @@ pub(crate) fn instance_in_frame<'a>(
     frame: &[String],
     path: &[String],
 ) -> Option<&'a Instance> {
-    let position_index = positions.iter().rposition(|position| {
-        position.collection == frame
-            || !position.collection.is_empty() && frame.ends_with(position.collection.as_slice())
-    })?;
-    let owner = context_for_position(context, positions, position_index)?;
-    instance(&[owner], path)
+    instance(&[pinned_owner(context, positions, frame)?], path)
 }
 
 /// Resolves an absolute path against the deepest active collection that owns
@@ -140,19 +161,12 @@ pub(crate) fn scalar_in_active_collection(
     positions: &[PositionFrame],
     path: &[String],
 ) -> Option<Value> {
-    for (position_index, position) in positions.iter().enumerate().rev() {
-        if position.collection.is_empty() || !path.starts_with(&position.collection) {
-            continue;
-        }
-        let Some(instance) = context_for_position(context, positions, position_index) else {
-            continue;
-        };
-        let suffix = &path[position.collection.len()..];
+    match active_collection_owner(context, positions, path) {
         // The active item owns this absolute path. An absent optional group
         // must not read the first item again through the root context.
-        return Some(scalar(&[instance], suffix).unwrap_or(Value::Null));
+        Some((owner, suffix)) => Some(scalar(&[owner], suffix).unwrap_or(Value::Null)),
+        None => scalar(context, path),
     }
-    scalar(context, path)
 }
 
 pub(crate) fn scalar_in_frame(
@@ -161,30 +175,33 @@ pub(crate) fn scalar_in_frame(
     frame: &[String],
     path: &[String],
 ) -> Option<Value> {
-    let position_index = positions.iter().rposition(|position| {
-        position.collection == frame
-            || !position.collection.is_empty() && frame.ends_with(position.collection.as_slice())
-    })?;
-    let instance = context_for_position(context, positions, position_index)?;
-    scalar(&[instance], path)
+    scalar(&[pinned_owner(context, positions, frame)?], path)
 }
 
+/// The path retained by the latest receiving frame that has one, or else
+/// the first member's path of the innermost document set in the context.
+///
+/// Frames are selected by the path they retain rather than by
+/// [`FrameKind::Document`](crate::frame_view::FrameKind::Document): a group
+/// of document members keeps its first member's path, but is a group-members
+/// frame because its instance is the member collection. The path does not
+/// depend on whether the context binds the frame.
 pub(crate) fn source_document_path<'a>(
     context: &'a [&Instance],
     positions: &'a [PositionFrame],
 ) -> Option<&'a str> {
-    positions
-        .iter()
-        .rev()
-        .find_map(|position| position.document_path.as_deref())
-        .or_else(|| {
-            context.iter().rev().find_map(|instance| {
-                instance
-                    .as_document_set()?
-                    .first()
-                    .map(ir::DocumentMember::source_path)
-            })
+    FrameView::latest_receiving(context, positions, |frame| {
+        frame.position.document_path.is_some()
+    })
+    .and_then(|(frame, _)| frame.position.document_path.as_deref())
+    .or_else(|| {
+        context.iter().rev().find_map(|instance| {
+            instance
+                .as_document_set()?
+                .first()
+                .map(ir::DocumentMember::source_path)
         })
+    })
 }
 
 pub(crate) fn dynamic_scalar(
@@ -195,13 +212,8 @@ pub(crate) fn dynamic_scalar(
     key: &str,
 ) -> Option<Value> {
     if let Some(frame) = frame {
-        let position_index = positions.iter().rposition(|position| {
-            position.collection == frame
-                || !position.collection.is_empty()
-                    && frame.ends_with(position.collection.as_slice())
-        })?;
-        let instance = context_for_position(context, positions, position_index)?;
-        return dynamic_scalar_in(instance, object, key).flatten();
+        let owner = pinned_owner(context, positions, frame)?;
+        return dynamic_scalar_in(owner, object, key).flatten();
     }
     for item in context.iter().rev() {
         if let Some(value) = dynamic_scalar_in(item, object, key) {
@@ -227,6 +239,10 @@ fn dynamic_scalar_in(item: &Instance, object: &[String], key: &str) -> Option<Op
     Some(current.field(key).and_then(Instance::as_scalar).cloned())
 }
 
+/// Reads a joined member from the latest receiving frame `join` contributed
+/// for its exact `collection`. That frame is authoritative: when the context
+/// binds no instance to it, the read finds nothing rather than an earlier
+/// frame or an ordinary outward lookup.
 pub(crate) fn join_scalar(
     context: &[&Instance],
     positions: &[PositionFrame],
@@ -234,27 +250,10 @@ pub(crate) fn join_scalar(
     collection: &[String],
     path: &[String],
 ) -> Option<Value> {
-    let position_index = positions
-        .iter()
-        .rposition(|position| position.join == Some(join) && position.collection == collection)?;
-    let instance = context_for_position(context, positions, position_index)?;
-    field_scalar(instance, path).cloned()
-}
-
-pub(crate) fn context_for_position<'a>(
-    context: &[&'a Instance],
-    positions: &[PositionFrame],
-    position_index: usize,
-) -> Option<&'a Instance> {
-    let wrapper_count = positions.iter().filter(|position| position.grouped).count();
-    let context_offset = context.len().checked_sub(positions.len() + wrapper_count)?;
-    let preceding_wrappers = positions[..=position_index]
-        .iter()
-        .filter(|position| position.grouped)
-        .count();
-    context
-        .get(context_offset + position_index + preceding_wrappers)
-        .copied()
+    let (_, instance) = FrameView::latest_receiving(context, positions, |frame| {
+        frame.origin == FrameOrigin::Joined(join) && frame.collection == collection
+    })?;
+    field_scalar(instance?, path).cloned()
 }
 
 /// Exact owned traversal: a selected item is authoritative and never rescues from another frame.

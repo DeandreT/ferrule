@@ -41,7 +41,7 @@ fn source_options() -> X12BoundaryOptions {
         ..Default::default()
     }
 }
-fn evidence(label: &str) -> std::path::PathBuf {
+fn evidence(label: &str) -> TempDir {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
         "ferrule_x12_mapforce_ack_{label}_{}_{}_{}",
@@ -60,7 +60,7 @@ fn evidence(label: &str) -> std::path::PathBuf {
     for (name, contents) in FIXTURES {
         fs::write(root.join(name), contents).unwrap();
     }
-    root
+    TempDir(root)
 }
 
 /// Proves the native oracles and writes the derived cases for the host:
@@ -199,6 +199,7 @@ fn mapforce_acknowledgment_compiled_source_matches_native_reads() {
         &format!("{name}-build"),
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "build",
                 &format!("{name}/Ferrule.Generated.csproj"),
@@ -237,6 +238,7 @@ fn mapforce_acknowledgment_compiled_source_matches_native_reads() {
         "host-build",
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "build",
                 "Harness/Harness.csproj",
@@ -258,6 +260,7 @@ fn mapforce_acknowledgment_compiled_source_matches_native_reads() {
         "host-run",
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "run",
                 "--project",

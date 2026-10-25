@@ -1,7 +1,7 @@
 use super::*;
 use mapping::{DocumentProject, PrimarySourcePlan};
 
-fn document(literal: bool) -> DocumentProject {
+pub(super) fn document(literal: bool) -> DocumentProject {
     DocumentProject::new(
         Project {
             source: SchemaNode::group(
@@ -58,7 +58,7 @@ fn document(literal: bool) -> DocumentProject {
                 ..Default::default()
             },
         },
-        PrimarySourcePlan { filename: 17 },
+        PrimarySourcePlan::new(17),
     )
 }
 
@@ -161,7 +161,7 @@ fn primary_csv_acquisition_compiles_and_preserves_host_order_and_identity() -> T
 fn primary_csv_acquisition_keeps_schema_and_dialect_admission() -> TestResult<()> {
     let mut project = document(true).project().clone();
     project.source = SchemaNode::scalar("Invalid", ScalarType::String);
-    let document = DocumentProject::new(project, PrimarySourcePlan { filename: 17 });
+    let document = DocumentProject::new(project, PrimarySourcePlan::new(17));
     let lowered = codegen::lower_document(&document)?;
     assert!(
         codegen::validate_primary_csv_acquisition(lowered.program(), &Default::default()).is_err()

@@ -12,9 +12,18 @@ const NATIVE: &str = include_str!("fixtures/lexical_numeric_bounds/native-cases.
 const RESOURCES: &str = include_str!("fixtures/lexical_numeric_bounds/resource-cases.json");
 const PARSER: &str = include_str!("fixtures/lexical_numeric_bounds/parser-refusal-cases.json");
 
+/// Evidence under `FERRULE_LEXICAL_BOUNDS_EVIDENCE_DIR` is retained; otherwise it is removed on drop,
+/// including after a panic.
 struct Evidence {
     directory: PathBuf,
     file: std::fs::File,
+}
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_LEXICAL_BOUNDS_EVIDENCE_DIR").is_none() {
+            let _ = std::fs::remove_dir_all(&self.directory);
+        }
+    }
 }
 impl Evidence {
     fn new() -> TestResult<Self> {

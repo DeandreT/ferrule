@@ -1558,12 +1558,17 @@ mod owned_trace_witness {
         assert!(snapshot.origins[0].path.segments.is_empty());
         assert_eq!(context.field(&outer_field).unwrap(), before);
         assert_eq!(before, Value::String("outer".into()));
-        assert_eq!(
+        assert!(std::ptr::eq(
             context
-                .position_slot(&outer_field.source.owner, Some(&["Rows".into()]))
-                .unwrap(),
-            0
-        );
+                .position(
+                    &outer_field.source.owner,
+                    Some(&["Rows".into()]),
+                    &positions
+                )
+                .unwrap()
+                .expect("the outer frame names a position"),
+            &positions[0]
+        ));
         assert_eq!(context.frames.len(), 2);
         assert_eq!(context.origins.len(), 1);
         assert!(context.owned_ancestry);
@@ -1865,10 +1870,8 @@ mod owned_trace_witness {
             );
         }
         let mut dynamic = witness_project(&["A"]);
-        dynamic.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-            node: 0,
-            iteration: Vec::new(),
-        });
+        dynamic.extra_sources[0].dynamic_path =
+            Some(mapping::DynamicSourcePath::legacy(0, Vec::new()));
         let roots = [TraceOwnedRootRef {
             owner: owner(&dynamic, 0),
             input: None,

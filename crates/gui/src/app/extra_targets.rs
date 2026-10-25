@@ -171,44 +171,65 @@ impl FerruleApp {
         );
         let can_save = !draft.name.trim().is_empty() && draft.schema_is_ready();
         let mut action = None;
-        egui::Window::new(if editing { "Edit Target" } else { "Add Target" })
-            .collapsible(false)
-            .resizable(true)
-            .default_width(540.0)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .show(ctx, |ui| {
-                egui::Grid::new("extra_target_fields")
-                    .num_columns(3)
-                    .spacing([12.0, 8.0])
-                    .show(ui, |ui| {
-                        ui.strong("Name");
-                        ui.add(egui::TextEdit::singleline(&mut draft.name).desired_width(280.0));
-                        ui.end_row();
+        let response = crate::ui_kit::dialog(
+            ctx,
+            crate::ui_kit::DialogKind::Modal,
+            if editing { "Edit target" } else { "Add target" },
+        )
+        .width(crate::ui_kit::DialogWidth::Medium)
+        .show(
+            |ui| {
+                crate::ui_kit::form_grid(ui, "extra_target_fields", |form| {
+                    form.row("Name", |ui| {
+                        let response = ui.add(crate::ui_kit::text_field(
+                            &mut draft.name,
+                            crate::ui_kit::FieldWidth::Large,
+                        ));
+                        response.widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::Role::TextInput,
+                                ui.is_enabled(),
+                                "Target name",
+                            )
+                        });
+                    });
 
-                        ui.strong("Output");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut draft.output_path)
-                                .desired_width(280.0)
-                                .hint_text("Optional stored output path"),
+                    form.row("Output file", |ui| {
+                        let response = ui.add(
+                            crate::ui_kit::text_field(
+                                &mut draft.output_path,
+                                crate::ui_kit::FieldWidth::Large,
+                            )
+                            .hint_text("Optional output path"),
                         );
+                        response.widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::Role::TextInput,
+                                ui.is_enabled(),
+                                "Target output file",
+                            )
+                        });
                         if ui
-                            .add_enabled(dialog_idle, egui::Button::new("Choose..."))
+                            .add_enabled(dialog_idle, egui::Button::new("Browse…"))
                             .clicked()
                         {
                             action = Some(ExtraTargetAction::ChooseOutput);
                         }
-                        ui.end_row();
+                    });
 
-                        ui.strong("Schema");
-                        ui.label(schema_label);
+                    form.row("Schema / layout", |ui| {
                         if ui
-                            .add_enabled(dialog_idle, egui::Button::new("Choose..."))
+                            .add_enabled(dialog_idle, egui::Button::new("Choose schema…"))
                             .clicked()
                         {
                             action = Some(ExtraTargetAction::ChooseSchema);
                         }
-                        ui.end_row();
+                        ui.add(
+                            egui::Label::new(egui::RichText::new(&schema_label).weak()).truncate(),
+                        )
+                        .on_hover_text(&schema_label);
                     });
+                });
                 ui.separator();
                 ui.strong("Output format");
                 if draft.protobuf_draft.is_some() {
@@ -282,23 +303,32 @@ impl FerruleApp {
                         ui.colored_label(ui.visuals().error_fg_color, error);
                     }
                 }
-                ui.separator();
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(dialog_idle, egui::Button::new("Cancel"))
-                        .clicked()
-                    {
-                        action = Some(ExtraTargetAction::Cancel);
-                    }
-                    let label = if editing { "Save target" } else { "Add target" };
-                    if ui
-                        .add_enabled(dialog_idle && can_save, egui::Button::new(label))
-                        .clicked()
-                    {
-                        action = Some(ExtraTargetAction::Save);
-                    }
-                });
-            });
+            },
+            |ui| {
+                crate::ui_kit::dialog_buttons(
+                    ui,
+                    crate::ui_kit::DialogButton::new(if editing {
+                        "Save target"
+                    } else {
+                        "Add target"
+                    })
+                    .disabled_if(!can_save, "Enter a name and choose a valid schema / layout")
+                    .disabled_if(!dialog_idle, "Finish choosing a file first"),
+                    Some(
+                        crate::ui_kit::DialogButton::new("Cancel")
+                            .disabled_if(!dialog_idle, "Finish choosing a file first"),
+                    ),
+                    None,
+                )
+            },
+        );
+        if response.close_requested && dialog_idle
+            || response.footer == Some(crate::ui_kit::DialogAction::Secondary)
+        {
+            action = Some(ExtraTargetAction::Cancel);
+        } else if response.footer == Some(crate::ui_kit::DialogAction::Primary) {
+            action = Some(ExtraTargetAction::Save);
+        }
 
         match action {
             Some(ExtraTargetAction::ChooseSchema) => {
@@ -332,14 +362,24 @@ impl FerruleApp {
         let Some(draft) = self.extra_target_draft.as_ref() else {
             return;
         };
+        let before = self.project.clone();
         match draft.clone().build(&self.project.extra_targets) {
             Ok((Some(index), target)) => {
+                let action = before.extra_targets.get(index).map(|previous| {
+                    editor_ui::GraphAction::EditNamedTarget {
+                        name: previous.name.clone(),
+                        renamed: target.name.clone(),
+                    }
+                });
                 let saved_nodes = self
                     .mapping_workspace
                     .target_canvases
                     .get(&index)
                     .map(|canvas| CanvasLayout::capture_nodes(&canvas.snarl));
                 self.project.extra_targets[index] = target;
+                if let Some(action) = action {
+                    self.queue_project_edit(&before, action);
+                }
                 if let Some(saved_nodes) = saved_nodes
                     && let Some(canvas) = self.mapping_workspace.target_canvases.get_mut(&index)
                 {
@@ -353,7 +393,11 @@ impl FerruleApp {
             }
             Ok((None, target)) => {
                 let index = self.project.extra_targets.len();
+                let action = editor_ui::GraphAction::AddNamedTarget {
+                    name: target.name.clone(),
+                };
                 self.project.extra_targets.push(target);
+                self.queue_project_edit(&before, action);
                 self.extra_target_draft = None;
                 self.open_target_tab(index);
                 self.status = "target added".to_string();
@@ -376,38 +420,42 @@ impl FerruleApp {
             return;
         };
         let name = target.name.clone();
-        let mut remove = None;
-        egui::Window::new("Remove Target")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .show(ctx, |ui| {
-                ui.label(format!(
-                    "Remove {name} and its target scope? Shared graph nodes will be kept."
-                ));
-                ui.horizontal(|ui| {
-                    if ui.button("Cancel").clicked() {
-                        remove = Some(false);
-                    }
-                    if ui.button("Remove target").clicked() {
-                        remove = Some(true);
-                    }
-                });
-            });
-        match remove {
-            Some(true) => {
+        let response =
+            crate::ui_kit::dialog(ctx, crate::ui_kit::DialogKind::Modal, "Remove target").show(
+                |ui| {
+                    ui.label(format!(
+                        "Remove {name} and its target scope? Shared graph nodes will be kept."
+                    ));
+                },
+                |ui| {
+                    crate::ui_kit::dialog_buttons(
+                        ui,
+                        "Cancel".into(),
+                        None,
+                        Some("Remove target".into()),
+                    )
+                },
+            );
+        match response.footer {
+            Some(crate::ui_kit::DialogAction::Destructive) => {
                 self.pending_extra_target_removal = None;
                 self.remove_extra_target_now(index);
             }
-            Some(false) => self.pending_extra_target_removal = None,
-            None => {}
+            Some(_) => self.pending_extra_target_removal = None,
+            None if response.close_requested => self.pending_extra_target_removal = None,
+            None => (),
         }
     }
 
     pub(super) fn remove_extra_target_now(&mut self, index: usize) {
+        let before = self.project.clone();
         let Some(target) = remove_extra_target(&mut self.project.extra_targets, index) else {
             return;
         };
+        let action = editor_ui::GraphAction::RemoveNamedTarget {
+            name: target.name.clone(),
+        };
+        self.queue_project_edit(&before, action);
         self.mapping_workspace.remove_target(index);
         self.selected_scope.clear();
         self.status = format!("removed target {}", target.name);

@@ -256,7 +256,33 @@ fn fixture(profile: X12EnvelopeProfile, version: &str) -> (Json, String) {
     )
 }
 
-fn evidence() -> Result<PathBuf, Box<dyn Error>> {
+/// Evidence under `FERRULE_X12_TEST_EVIDENCE_DIR` is retained; otherwise it is removed on drop,
+/// including after a panic.
+struct Evidence(PathBuf);
+
+impl std::ops::Deref for Evidence {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for Evidence {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for Evidence {
+    fn drop(&mut self) {
+        if std::env::var_os("FERRULE_X12_TEST_EVIDENCE_DIR").is_none() {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+}
+
+fn evidence() -> Result<Evidence, Box<dyn Error>> {
     let parent = std::env::var_os("FERRULE_X12_TEST_EVIDENCE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
@@ -271,7 +297,7 @@ fn evidence() -> Result<PathBuf, Box<dyn Error>> {
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&root)?;
-    Ok(root)
+    Ok(Evidence(root))
 }
 
 fn artifacts(

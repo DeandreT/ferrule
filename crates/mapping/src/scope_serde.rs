@@ -57,6 +57,47 @@ impl<'de> Deserialize<'de> for AnyJoinPlan {
     }
 }
 
+/// Optional presence shares the `sequence` scope key. Readers that only know
+/// generated sequences reject its unknown `kind` instead of ignoring an unknown
+/// key and constructing exactly one group.
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum PresenceWire {
+    OptionalPresence { condition: NodeId },
+}
+
+const OPTIONAL_PRESENCE_KIND: &str = "optional_presence";
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum SequenceRef<'a> {
+    Generated(&'a SequenceExpr),
+    Presence(PresenceWire),
+}
+
+enum AnySequence {
+    Generated(SequenceExpr),
+    Presence(NodeId),
+}
+
+impl<'de> Deserialize<'de> for AnySequence {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if value.get("kind").and_then(serde_json::Value::as_str) == Some(OPTIONAL_PRESENCE_KIND) {
+            serde_json::from_value(value)
+                .map(|PresenceWire::OptionalPresence { condition }| Self::Presence(condition))
+                .map_err(serde::de::Error::custom)
+        } else {
+            serde_json::from_value(value)
+                .map(Self::Generated)
+                .map_err(serde::de::Error::custom)
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct ScopeRef<'a> {
     target_field: &'a str,
@@ -64,7 +105,7 @@ struct ScopeRef<'a> {
     construction: ScopeConstruction,
     source: Option<SourceSelectorRef<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    sequence: Option<&'a SequenceExpr>,
+    sequence: Option<SequenceRef<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     join: Option<JoinRef<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -115,7 +156,7 @@ struct ScopeOwned {
     #[serde(default)]
     source: Option<SourceSelector>,
     #[serde(default)]
-    sequence: Option<SequenceExpr>,
+    sequence: Option<AnySequence>,
     #[serde(default)]
     join: Option<JoinOwned>,
     #[serde(default)]
@@ -176,7 +217,17 @@ impl Serialize for Scope {
             ScopeIteration::OwnedSource { source, .. } => {
                 (Some(SourceSelectorRef::Owned(source)), None, None, None)
             }
-            ScopeIteration::Sequence(sequence) => (None, Some(sequence), None, None),
+            ScopeIteration::Sequence(sequence) => {
+                (None, Some(SequenceRef::Generated(sequence)), None, None)
+            }
+            ScopeIteration::OptionalPresence { condition } => (
+                None,
+                Some(SequenceRef::Presence(PresenceWire::OptionalPresence {
+                    condition: *condition,
+                })),
+                None,
+                None,
+            ),
             ScopeIteration::InnerJoin { id, plan } => (
                 None,
                 None,
@@ -265,7 +316,12 @@ impl<'de> Deserialize<'de> for Scope {
                     output_path,
                 }
             }
-            (None, Some(sequence), None, None, None) => ScopeIteration::Sequence(sequence),
+            (None, Some(AnySequence::Generated(sequence)), None, None, None) => {
+                ScopeIteration::Sequence(sequence)
+            }
+            (None, Some(AnySequence::Presence(condition)), None, None, None) => {
+                ScopeIteration::OptionalPresence { condition }
+            }
             (None, None, Some(join), None, None) => match join.plan {
                 AnyJoinPlan::Legacy(plan) => ScopeIteration::InnerJoin { id: join.id, plan },
                 AnyJoinPlan::Owned(plan) => ScopeIteration::OwnedInnerJoin { id: join.id, plan },

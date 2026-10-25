@@ -5,7 +5,10 @@ use codegen::{
 };
 use ir::ScalarType;
 
-use crate::{EmitError, file, literal};
+use crate::Options;
+use crate::composition::ClassPart;
+use crate::{EmitError, literal};
+use codegen::GenerationProfile;
 
 const INPUT_SOURCE: &str =
     include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvInput.cs");
@@ -15,7 +18,10 @@ const INPUT_SOURCE: &str =
 pub enum CsvX12EmitError {
     Policy(Box<CsvX12BoundaryError>),
     Ordinary(EmitError),
-    ArtifactInvariant { path: &'static str },
+    /// Retained for API compatibility; structural composition never produces it.
+    ArtifactInvariant {
+        path: &'static str,
+    },
 }
 
 impl fmt::Display for CsvX12EmitError {
@@ -52,50 +58,28 @@ impl From<EmitError> for CsvX12EmitError {
 pub(crate) fn emit(
     program: &Program,
     policy: &CsvX12BoundaryPolicy,
+    options: &Options,
 ) -> Result<ArtifactSet, CsvX12EmitError> {
     let profile = codegen::prepare_csv_x12_boundary(program, policy)
         .map_err(|error| CsvX12EmitError::Policy(Box::new(error)))?;
-    let mut files = crate::emit_typed(program)?.into_files();
-    for (path, before, after) in [
+    let mut library = crate::typed_library(program)?;
+    library.add_companion("GeneratedMapping.CsvX12.cs", render(&profile));
+    library.add_runtime(&[
+        ("Runtime/FerruleCsvInput.cs", INPUT_SOURCE),
         (
-            "GeneratedMapping.cs",
-            "public static class GeneratedMapping\n{",
-            "public static partial class GeneratedMapping\n{",
+            "Runtime/FerruleCsvSource.cs",
+            include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs"),
         ),
-        (
-            "Ferrule.Generated.csproj",
-            "    <Compile Include=\"GeneratedMapping.cs\" />\n",
-            "    <Compile Include=\"GeneratedMapping.cs\" />\n    <Compile Include=\"GeneratedMapping.CsvX12.cs\" />\n",
-        ),
-    ] {
-        let generated = files
-            .iter_mut()
-            .find(|generated| generated.path.as_str() == path)
-            .ok_or(CsvX12EmitError::ArtifactInvariant { path })?;
-        let source = std::str::from_utf8(&generated.contents)
-            .map_err(|_| CsvX12EmitError::ArtifactInvariant { path })?;
-        if source.matches(before).count() != 1 {
-            return Err(CsvX12EmitError::ArtifactInvariant { path });
-        }
-        generated.contents = source.replacen(before, after, 1).into_bytes();
-    }
-    files.push(file("GeneratedMapping.CsvX12.cs", render(&profile))?);
-    files.push(file("Runtime/FerruleCsvInput.cs", INPUT_SOURCE)?);
-    files.push(file(
-        "Runtime/FerruleCsvSource.cs",
-        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvSource.cs"),
-    )?);
-    for (path, source) in crate::x12_output::X12_SOURCES {
-        files.push(file(path, source)?);
-    }
-    ArtifactSet::new(files)
-        .map_err(EmitError::from)
+    ]);
+    library.add_runtime(&crate::x12_output::X12_SOURCES);
+    library
+        .into_artifacts_with(options, GenerationProfile::CsvX12)
         .map_err(CsvX12EmitError::from)
 }
 
-fn render(profile: &CsvX12BoundaryProfile) -> String {
+fn render(profile: &CsvX12BoundaryProfile) -> ClassPart {
     let mut output = String::from(
-        "namespace Ferrule.Generated;\n\npublic static partial class GeneratedMapping\n{\n    private static readonly global::Ferrule.Runtime.FerruleCsvReadField[] CsvInputFields =\n        new global::Ferrule.Runtime.FerruleCsvReadField[]\n        {\n",
+        "    private static readonly global::Ferrule.Runtime.FerruleCsvReadField[] CsvInputFields =\n        new global::Ferrule.Runtime.FerruleCsvReadField[]\n        {\n",
     );
     for field in &profile.fields {
         output.push_str("            new(");
@@ -158,8 +142,7 @@ fn render(profile: &CsvX12BoundaryProfile) -> String {
             ));
         }
     }
-    output.push_str("}\n");
-    output
+    ClassPart::members(output)
 }
 
 fn character(value: Option<char>) -> String {

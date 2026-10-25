@@ -120,7 +120,8 @@ fn edit_canvas(
 ) -> (Vec<PlannedGraphEdit>, Option<String>) {
     let source_blocks = project_source_blocks(&app.project);
     let source_paths = SourcePathCatalog::new(&app.project.source, &app.project.extra_sources)
-        .with_primary_source_options(&app.project.source_options);
+        .with_primary_source_options(&app.project.source_options)
+        .with_project_ownership(&app.project);
     let (root_scope, extra_targets, schema, snarl): (_, &[NamedTarget], _, _) = match document {
         MappingDocument::Main => (
             &mut app.project.root,
@@ -225,16 +226,26 @@ fn record_removal(app: &mut FerruleApp, document: MappingDocument, nodes: &[Node
     assert!(observe_planned(app, document, planned));
 }
 
-pub(super) fn next_undo_command(app: &FerruleApp) -> &GraphCommand {
+pub(super) fn next_undo_commands(app: &FerruleApp) -> &[GraphCommand] {
     match app.history.next_undo() {
-        Some(HistoryRecord::Command(record)) => record.command(),
+        Some(HistoryRecord::Command(record)) => record.commands(),
         _ => panic!("the next undo step is a command"),
+    }
+}
+
+pub(super) fn next_undo_command(app: &FerruleApp) -> &GraphCommand {
+    match next_undo_commands(app) {
+        [command] => command,
+        commands => panic!("one command, got {}", commands.len()),
     }
 }
 
 pub(super) fn next_redo_command(app: &FerruleApp) -> &GraphCommand {
     match app.history.next_redo() {
-        Some(HistoryRecord::Command(record)) => record.command(),
+        Some(HistoryRecord::Command(record)) => match record.commands() {
+            [command] => command,
+            commands => panic!("one command, got {}", commands.len()),
+        },
         _ => panic!("the next redo step is a command"),
     }
 }
@@ -403,7 +414,7 @@ fn snapshot_and_command_steps_interleave_through_undo_and_redo() {
     assert_eq!(
         undone,
         [
-            ("snapshot", Some("Edit mapping".into())),
+            ("snapshot", Some("Edit layout".into())),
             ("state", Some(states[3].clone())),
             ("snapshot", Some("Edit mapping".into())),
             ("state", Some(states[2].clone())),
@@ -634,5 +645,11 @@ fn idle_observation_keys_the_project_once_and_never_refingerprints() {
 #[path = "graph_wire_commands_tests.rs"]
 mod wires;
 
+#[path = "owned_source_authoring_tests.rs"]
+mod owned_sources;
+
 #[path = "graph_commands_canvas_tests.rs"]
 mod canvas;
+
+#[path = "graph_property_commands_tests.rs"]
+mod properties;

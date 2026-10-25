@@ -4,19 +4,37 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, bail};
 use codegen::ArtifactSet;
 
-use super::{extension_for_dispatch, load_project, validate_tabular_fallback};
-use crate::route_capability::{HostRoute, PlannedPublication, RoutePlan, RouteRefusal};
-
 mod csv_json;
 mod csv_x12;
+mod preparation;
 mod static_documents;
 mod x12;
+
+pub use preparation::{
+    GenerateProfile, check_generate_project, plan_generate, plan_generate_project,
+};
 
 /// Source language and runtime linkage for one generated mapping project.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GenerateTarget {
     Rust { runtime_path: PathBuf },
     CSharp,
+}
+
+/// Identity and compatibility settings of one generation request. The
+/// default keeps every generated name and artifact unchanged.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GenerateSettings {
+    /// Rust only: the generated package name instead of
+    /// `ferrule-generated-mapping`.
+    pub rust_package_name: Option<codegen_rust::PackageName>,
+    /// C# only: the assembly, root namespace and mapping class instead of
+    /// `Ferrule.Generated` and `GeneratedMapping`.
+    pub csharp_identity: Option<codegen_csharp::Identity>,
+    /// Whether the library carries `ferrule-manifest.json` and checks it. A
+    /// Rust runtime path is then also checked against the generator's runtime
+    /// identity before anything is written.
+    pub manifest: codegen::ManifestSelection,
 }
 
 /// Files written by a successful atomic generation.
@@ -35,7 +53,46 @@ pub fn generate_project(
     output_directory: &Path,
     target: GenerateTarget,
 ) -> anyhow::Result<GenerateOutcome> {
-    generate_project_impl(project_path, output_directory, target, Adapter::Ordinary)
+    generate_project_with_profile(
+        project_path,
+        output_directory,
+        target,
+        GenerateProfile::Ordinary,
+    )
+}
+
+/// Generates a project with an explicitly selected companion adapter profile.
+/// [`plan_generate`] reports the same refusals without writing anything.
+pub fn generate_project_with_profile(
+    project_path: &Path,
+    output_directory: &Path,
+    target: GenerateTarget,
+    profile: GenerateProfile,
+) -> anyhow::Result<GenerateOutcome> {
+    generate_project_with_settings(
+        project_path,
+        output_directory,
+        target,
+        profile,
+        &GenerateSettings::default(),
+    )
+}
+
+/// Generates a project with a selected profile under explicit identity and
+/// compatibility settings. Every setting is refused before anything is written.
+pub fn generate_project_with_settings(
+    project_path: &Path,
+    output_directory: &Path,
+    target: GenerateTarget,
+    profile: GenerateProfile,
+    settings: &GenerateSettings,
+) -> anyhow::Result<GenerateOutcome> {
+    let artifacts = preparation::generate_artifacts(project_path, &target, profile, settings)?;
+    write_artifacts(output_directory, &artifacts)?;
+    Ok(GenerateOutcome {
+        output_directory: output_directory.to_path_buf(),
+        files_written: artifacts.len(),
+    })
 }
 
 /// Generate the ordinary mapping APIs plus an explicitly selected bounded flat
@@ -45,7 +102,12 @@ pub fn generate_project_with_csv_output(
     output_directory: &Path,
     target: GenerateTarget,
 ) -> anyhow::Result<GenerateOutcome> {
-    generate_project_impl(project_path, output_directory, target, Adapter::Csv)
+    generate_project_with_profile(
+        project_path,
+        output_directory,
+        target,
+        GenerateProfile::CsvOutput,
+    )
 }
 
 /// Generate complete single-document CSV input/output methods for either backend.
@@ -54,7 +116,12 @@ pub fn generate_project_with_csv_document_adapters(
     output_directory: &Path,
     target: GenerateTarget,
 ) -> anyhow::Result<GenerateOutcome> {
-    generate_project_impl(project_path, output_directory, target, Adapter::CsvDocument)
+    generate_project_with_profile(
+        project_path,
+        output_directory,
+        target,
+        GenerateProfile::CsvDocument,
+    )
 }
 
 /// Generate CSV input with explicitly selected unescaped CRLF text output.
@@ -64,11 +131,11 @@ pub fn generate_project_with_raw_delimited_document_adapters(
     output_directory: &Path,
     target: GenerateTarget,
 ) -> anyhow::Result<GenerateOutcome> {
-    generate_project_impl(
+    generate_project_with_profile(
         project_path,
         output_directory,
         target,
-        Adapter::RawDelimitedDocument,
+        GenerateProfile::RawDelimitedDocument,
     )
 }
 
@@ -79,7 +146,12 @@ pub fn generate_project_with_json5_adapters(
     output_directory: &Path,
     target: GenerateTarget,
 ) -> anyhow::Result<GenerateOutcome> {
-    generate_project_impl(project_path, output_directory, target, Adapter::Json5)
+    generate_project_with_profile(
+        project_path,
+        output_directory,
+        target,
+        GenerateProfile::Json5,
+    )
 }
 
 /// Generate supported explicit primary raw X12 companions for a Rust or C# mapping.
@@ -103,11 +175,14 @@ pub fn generate_project_with_x12_envelope_profiles(
     source_envelope: Option<codegen::X12EnvelopeProfile>,
     target_envelope: Option<codegen::X12EnvelopeProfile>,
 ) -> anyhow::Result<GenerateOutcome> {
-    generate_project_impl(
+    generate_project_with_profile(
         project_path,
         output_directory,
         target,
-        Adapter::X12(source_envelope, target_envelope),
+        GenerateProfile::X12 {
+            source_envelope,
+            target_envelope,
+        },
     )
 }
 
@@ -138,14 +213,14 @@ pub fn generate_project_with_static_document_envelope_profiles(
     source_envelope: Option<codegen::X12EnvelopeProfile>,
     target_envelope: Option<codegen::X12EnvelopeProfile>,
 ) -> anyhow::Result<GenerateOutcome> {
-    if target != GenerateTarget::CSharp {
-        bail!("generated static document adapters currently require the C# backend");
-    }
-    generate_project_impl(
+    generate_project_with_profile(
         project_path,
         output_directory,
         target,
-        Adapter::StaticDocuments(source_envelope, target_envelope),
+        GenerateProfile::StaticDocuments {
+            source_envelope,
+            target_envelope,
+        },
     )
 }
 
@@ -168,14 +243,11 @@ pub fn generate_project_with_csv_x12_envelope_profile(
     target: GenerateTarget,
     target_envelope: Option<codegen::X12EnvelopeProfile>,
 ) -> anyhow::Result<GenerateOutcome> {
-    if target != GenerateTarget::CSharp {
-        bail!("generated CSV-to-X12 adapters require the C# backend");
-    }
-    generate_project_impl(
+    generate_project_with_profile(
         project_path,
         output_directory,
         target,
-        Adapter::CsvX12(target_envelope),
+        GenerateProfile::CsvX12 { target_envelope },
     )
 }
 
@@ -185,221 +257,12 @@ pub fn generate_project_with_csv_json_adapters(
     output_directory: &Path,
     target: GenerateTarget,
 ) -> anyhow::Result<GenerateOutcome> {
-    if target != GenerateTarget::CSharp {
-        bail!("generated CSV-to-JSON adapters require the C# backend");
-    }
-    generate_project_impl(project_path, output_directory, target, Adapter::CsvJson)
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Adapter {
-    Ordinary,
-    Csv,
-    CsvDocument,
-    RawDelimitedDocument,
-    Json5,
-    X12(
-        Option<codegen::X12EnvelopeProfile>,
-        Option<codegen::X12EnvelopeProfile>,
-    ),
-    StaticDocuments(
-        Option<codegen::X12EnvelopeProfile>,
-        Option<codegen::X12EnvelopeProfile>,
-    ),
-    CsvX12(Option<codegen::X12EnvelopeProfile>),
-    CsvJson,
-}
-
-/// Reports what library generation reads and publishes, applying lowering
-/// and then the destination check, in the generating call's order, without
-/// emitting or writing anything. Adapter-specific boundary policies, which
-/// precede lowering, are checked by the generating call.
-pub fn plan_generate(project_path: &Path, output_directory: &Path) -> anyhow::Result<RoutePlan> {
-    let project = load_project(project_path)?;
-    lower(&project)?;
-    reject_existing_output(output_directory)?;
-    let mut plan = RoutePlan::new(HostRoute::Generate, project_path);
-    plan.publish(PlannedPublication::GeneratedTree(
-        output_directory.to_path_buf(),
-    ));
-    Ok(plan)
-}
-
-fn reject_existing_output(output_directory: &Path) -> Result<(), RouteRefusal> {
-    if output_directory.exists() {
-        return Err(RouteRefusal::GeneratedOutputExists {
-            path: output_directory.to_path_buf(),
-        });
-    }
-    Ok(())
-}
-
-fn lower(project: &mapping::Project) -> anyhow::Result<codegen::Program> {
-    codegen::lower(project).map_err(|error| {
-        let details = error
-            .diagnostics()
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n  - ");
-        anyhow::anyhow!("{error}:\n  - {details}")
-    })
-}
-
-fn generate_project_impl(
-    project_path: &Path,
-    output_directory: &Path,
-    target: GenerateTarget,
-    adapter: Adapter,
-) -> anyhow::Result<GenerateOutcome> {
-    let project = load_project(project_path)?;
-    let csv_document_policy = if matches!(
-        adapter,
-        Adapter::CsvDocument | Adapter::RawDelimitedDocument
-    ) {
-        for (label, path, options) in [
-            (
-                "source",
-                project.source_path.as_deref(),
-                &project.source_options,
-            ),
-            (
-                "target",
-                project.target_path.as_deref(),
-                &project.target_options,
-            ),
-        ] {
-            let kind = options.tabular_kind;
-            let extension = path
-                .and_then(|p| Path::new(p).extension())
-                .and_then(|s| s.to_str());
-            if kind != Some(mapping::TabularBoundaryKind::Csv)
-                && (kind.is_some() || !extension.is_some_and(|s| s.eq_ignore_ascii_case("csv")))
-            {
-                bail!("generated CSV document {label} requires an explicit CSV format identity");
-            }
-        }
-        let mut policy = codegen::CsvDocumentBoundaryPolicy::from_project(&project)?;
-        policy.target.raw_delimited_crlf = adapter == Adapter::RawDelimitedDocument;
-        Some(policy)
-    } else {
-        None
-    };
-    let csv_json_policy = if adapter == Adapter::CsvJson {
-        let policy = csv_json::policy(&project)?;
-        codegen::prepare_csv_json_project_boundary(&project, &policy)?;
-        Some(policy)
-    } else {
-        None
-    };
-    let csv_x12_policy = if let Adapter::CsvX12(target_envelope) = adapter {
-        let policy = csv_x12::policy_with_envelope_profile(&project, target_envelope)?;
-        codegen::prepare_csv_x12_project_boundary(&project, &policy)?;
-        Some(policy)
-    } else {
-        None
-    };
-    let static_document_policy = if let Adapter::StaticDocuments(source, target) = adapter {
-        let policy = static_documents::policy_with_envelope_profiles(&project, source, target)?;
-        codegen::prepare_static_document_project_boundaries(&project, &policy)?;
-        Some(policy)
-    } else {
-        None
-    };
-    let x12_policy = match adapter {
-        Adapter::X12(source, target) => Some(x12::policy_with_envelope_profiles(
-            &project, source, target,
-        )?),
-        _ => None,
-    };
-    if adapter == Adapter::Json5 {
-        // Admission borrows the loaded schemas before ordinary lowering clones them.
-        // The shared policy owns every option/schema decision and original cause.
-        for (options, side) in [
-            (&project.source_options, codegen::Json5BoundarySide::Source),
-            (&project.target_options, codegen::Json5BoundarySide::Target),
-        ] {
-            codegen::validate_json5_format_options(options, side)?;
-        }
-        for (schema, side) in [
-            (&project.source, codegen::Json5BoundarySide::Source),
-            (&project.target, codegen::Json5BoundarySide::Target),
-        ] {
-            codegen_schema::json5_profile::validate_schema(schema)
-                .map_err(|error| codegen::Json5BoundaryPolicyError::Schema { side, error })?;
-        }
-    }
-    let csv_policy = if adapter == Adapter::Csv {
-        let policy = codegen::CsvOutputPolicy::from_format_options(&project.target_options)?;
-        if let Some(path) = &project.target_path {
-            let path = Path::new(path);
-            validate_tabular_fallback(path, &project.target_options, "target")?;
-            let extension = extension_for_dispatch(path, &project.target_options)?;
-            if !matches!(extension.as_str(), "csv" | "txt") {
-                bail!(
-                    "generated CSV output requires a CSV target; stored target selects {extension:?}"
-                );
-            }
-        }
-        Some(policy)
-    } else {
-        None
-    };
-    let program = lower(&project)?;
-    let artifacts = match target {
-        GenerateTarget::Rust { runtime_path } => {
-            let runtime_path = fs::canonicalize(&runtime_path).with_context(|| {
-                format!(
-                    "resolving Rust codegen runtime path {}",
-                    runtime_path.display()
-                )
-            })?;
-            let runtime_path = runtime_path
-                .to_str()
-                .context("Rust codegen runtime path must be valid UTF-8")?;
-            let options = codegen_rust::Options {
-                package_name: "ferrule-generated-mapping".to_string(),
-                runtime_dependency: codegen_rust::RuntimeDependency::Path(runtime_path.to_owned()),
-            };
-            if let Some(policy) = &csv_document_policy {
-                codegen_rust::emit_with_csv_document_adapters(&program, &options, policy)?
-            } else if let Some(policy) = &x12_policy {
-                codegen_rust::emit_with_x12(&program, &options, policy)?
-            } else if adapter == Adapter::Json5 {
-                codegen_rust::emit_with_json5(&program, &options)?
-            } else {
-                match &csv_policy {
-                    Some(policy) => codegen_rust::emit_with_csv_output(&program, &options, policy)?,
-                    None => codegen_rust::emit(&program, &options)?,
-                }
-            }
-        }
-        GenerateTarget::CSharp => {
-            if let Some(policy) = &csv_document_policy {
-                codegen_csharp::emit_with_csv_document_adapters(&program, policy)?
-            } else if let Some(policy) = &csv_json_policy {
-                codegen_csharp::emit_with_csv_json_adapters(&program, policy)?
-            } else if let Some(policy) = &csv_x12_policy {
-                codegen_csharp::emit_with_csv_x12_adapters(&program, policy)?
-            } else if let Some(policy) = &static_document_policy {
-                codegen_csharp::emit_with_static_document_adapters(&program, policy)?
-            } else if let Some(policy) = &x12_policy {
-                codegen_csharp::emit_with_x12(&program, policy)?
-            } else if adapter == Adapter::Json5 {
-                codegen_csharp::emit_with_json5(&program)?
-            } else {
-                match &csv_policy {
-                    Some(policy) => codegen_csharp::emit_with_csv_output(&program, policy)?,
-                    None => codegen_csharp::emit(&program)?,
-                }
-            }
-        }
-    };
-    write_artifacts(output_directory, &artifacts)?;
-    Ok(GenerateOutcome {
-        output_directory: output_directory.to_path_buf(),
-        files_written: artifacts.len(),
-    })
+    generate_project_with_profile(
+        project_path,
+        output_directory,
+        target,
+        GenerateProfile::CsvJson,
+    )
 }
 
 fn write_artifacts(output_directory: &Path, artifacts: &ArtifactSet) -> anyhow::Result<()> {

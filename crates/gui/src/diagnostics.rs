@@ -224,28 +224,47 @@ impl Diagnostics {
             .count();
         let warnings = self.items.len() - errors;
         ui.horizontal(|ui| {
-            ui.strong(&self.title);
+            ui.strong(crate::ui_kit::sentence(&self.title).as_ref());
             let summary = match (errors, warnings) {
-                (0, warnings) => format!("{warnings} warning(s)"),
-                (errors, 0) => format!("{errors} error(s)"),
-                (errors, warnings) => format!("{errors} error(s), {warnings} warning(s)"),
+                (0, warnings) => crate::ui_kit::plural(warnings, "warning"),
+                (errors, 0) => crate::ui_kit::plural(errors, "error"),
+                (errors, warnings) => format!(
+                    "{}, {}",
+                    crate::ui_kit::plural(errors, "error"),
+                    crate::ui_kit::plural(warnings, "warning")
+                ),
             };
             ui.label(summary);
             if ui.button("Clear").clicked() {
                 self.clear();
             }
         });
-        egui::ScrollArea::vertical()
-            .max_height(140.0)
-            .show(ui, |ui| {
+        crate::ui_kit::list_area("diagnostic_messages", crate::ui_kit::ListHeight::Medium).show(
+            ui,
+            |ui| {
                 for item in &self.items {
                     let prefix = match item.level {
                         DiagnosticLevel::Warning => "Warning:",
                         DiagnosticLevel::Error => "Error:",
                     };
-                    ui.horizontal_wrapped(|ui| {
+                    ui.horizontal_top(|ui| {
+                        if crate::ui_kit::icon_button(
+                            ui,
+                            lucide_icons::Icon::Copy,
+                            "Copy diagnostic",
+                            None,
+                        )
+                        .clicked()
+                        {
+                            ui.ctx().copy_text(item.message.clone());
+                        }
+                        if matches!(item.location, Some(DiagnosticLocation::Validation(_)))
+                            && ui.button("Go to").clicked()
+                        {
+                            navigate = Some(item.clone());
+                        }
                         ui.strong(prefix);
-                        let label = ui.label(&item.message);
+                        let label = ui.add(egui::Label::new(&item.message).wrap());
                         match &item.location {
                             Some(DiagnosticLocation::ImportFile(path)) => {
                                 label.on_hover_text(format!("Imported from {}", path.display()));
@@ -259,14 +278,10 @@ impl Diagnostics {
                             }
                             _ => {}
                         }
-                        if matches!(item.location, Some(DiagnosticLocation::Validation(_)))
-                            && ui.button("Go to").clicked()
-                        {
-                            navigate = Some(item.clone());
-                        }
                     });
                 }
-            });
+            },
+        );
         navigate
     }
 }

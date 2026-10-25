@@ -12,6 +12,7 @@ pub enum EmitError {
     EmbeddedSchema(codegen::EmbeddedSchemaError),
     ArtifactPath(ArtifactPathError),
     ArtifactSet(ArtifactSetError),
+    Manifest(codegen::ManifestError),
 }
 
 impl fmt::Display for EmitError {
@@ -33,6 +34,7 @@ impl fmt::Display for EmitError {
             Self::EmbeddedSchema(error) => error.fmt(formatter),
             Self::ArtifactPath(error) => error.fmt(formatter),
             Self::ArtifactSet(error) => error.fmt(formatter),
+            Self::Manifest(error) => error.fmt(formatter),
         }
     }
 }
@@ -48,6 +50,7 @@ impl std::error::Error for EmitError {
             Self::EmbeddedSchema(error) => Some(error),
             Self::ArtifactPath(error) => Some(error),
             Self::ArtifactSet(error) => Some(error),
+            Self::Manifest(error) => Some(error),
         }
     }
 }

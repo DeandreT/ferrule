@@ -25,6 +25,7 @@ pub(super) struct RenderArgs<'a> {
     pub(super) component_uid: u32,
     pub(super) default_output: bool,
     pub(super) used_ports: &'a BTreeSet<u32>,
+    pub(super) filesystem: bool,
 }
 
 pub(super) fn validate_side(
@@ -162,6 +163,9 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
     }
     let mut metadata = format!(" schema=\"{}\"", xml_escape(boundary.taxonomy()));
     if let Some(presentation) = boundary.presentation() {
+        if !args.filesystem {
+            crate::package::validate_path(presentation)?;
+        }
         let _ = write!(metadata, " sps=\"{}\"", xml_escape(presentation));
     }
     if let Some(instance) = args.instance_path {
@@ -195,7 +199,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
         args.component_uid,
     );
 
-    let siblings = presentation_sibling(args.mfd_path, boundary)?
+    let siblings = presentation_sibling(args.mfd_path, boundary, args.filesystem)?
         .into_iter()
         .collect();
     Ok(RenderedSchemaComponent { xml: out, siblings })
@@ -411,6 +415,7 @@ fn namespace_slots(boundary: &XbrlBoundaryOptions) -> BTreeMap<String, usize> {
 fn presentation_sibling(
     mfd_path: &Path,
     boundary: &XbrlBoundaryOptions,
+    filesystem: bool,
 ) -> Result<Option<GeneratedSibling>, MfdError> {
     let Some(declared) = boundary.presentation() else {
         return Ok(None);
@@ -422,6 +427,9 @@ fn presentation_sibling(
         ));
     }
     let contents = render_sps(boundary)?;
+    if !filesystem {
+        return Ok(Some(GeneratedSibling { path, contents }));
+    }
     match std::fs::read_to_string(&path) {
         Ok(existing) if existing == contents => Ok(None),
         Ok(_) => Err(unsupported(format!(

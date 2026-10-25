@@ -379,10 +379,7 @@ mod tests {
                     path: "fallback.json".into(),
                     schema: schema.clone(),
                     options: FormatOptions::default(),
-                    dynamic_path: Some(DynamicSourcePath {
-                        node: 0,
-                        iteration: Vec::new(),
-                    }),
+                    dynamic_path: Some(DynamicSourcePath::legacy(0, Vec::new())),
                 },
             ],
             extra_targets: vec![NamedTarget {

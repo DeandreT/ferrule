@@ -208,7 +208,11 @@ fn position(
     positions: &[PositionFrame],
 ) -> usize {
     let pin = pin.map(path);
-    positions[context.position_slot(owner, pin.as_deref()).unwrap()].index
+    context
+        .position(owner, pin.as_deref(), positions)
+        .unwrap()
+        .expect("the selected frame names a position")
+        .index
 }
 fn extras(extras: Instance) -> Vec<(String, Instance)> {
     let Instance::Group(fields) = extras else {
@@ -472,7 +476,7 @@ fn s10_s11_pin_and_namespace_error_order_is_typed() {
     ));
     for pin in [None, Some(path(&["Rows"]))] {
         assert!(matches!(
-            context.position_slot(&SourceOwner::Primary, pin.as_deref()),
+            context.position(&SourceOwner::Primary, pin.as_deref(), &[]),
             Err(Access::InactiveSourceFrame { .. })
         ));
     }
@@ -513,7 +517,7 @@ fn s12_s14_flat_root_and_empty_root_identity_are_distinct() {
         Value::String("P.root".into())
     );
     assert!(matches!(
-        identity.position_slot(&SourceOwner::Primary, Some(&[])),
+        identity.position(&SourceOwner::Primary, Some(&[]), &[]),
         Err(Access::InactiveSourceFrame { .. })
     ));
 }
@@ -803,7 +807,7 @@ fn c02_c18_context_key_reuse_retains_actual_closed_domain_errors() {
 }
 
 #[test]
-fn c04_c11_owned_special_scope_and_runtime_documents_remain_closed() {
+fn c04_c11_owned_special_scopes_and_grouped_runtime_documents_remain_closed() {
     let (input, supplied) = fixture();
     let mut p = value_position_project(SourceOwner::Primary, &["Rows"]);
     p.root.group_adjacent_by = Some(1);
@@ -882,8 +886,22 @@ fn c04_c11_owned_special_scope_and_runtime_documents_remain_closed() {
             ..
         })
     ));
-    let p = value_position_project(SourceOwner::Primary, &[]);
+    // #451 walks each member of an ungrouped owned scope as its owner's root;
+    // a document is never a position, so the root position stays inactive.
+    let mut p = value_position_project(SourceOwner::Primary, &[]);
     let documents = Instance::DocumentSet(vec![ir::DocumentMember::new("x.json", input).unwrap()]);
+    assert_eq!(
+        crate::run_with_sources(&p, &documents, extras(supplied.clone())),
+        Err(EngineError::OwnedSourceAccess {
+            node: Some(2),
+            scope: None,
+            source: crate::OwnedSourceError::InactiveSourceFrame {
+                owner: SourceOwner::Primary,
+                collection: Some(vec![]),
+            },
+        })
+    );
+    p.root.group_by = Some(1);
     assert!(matches!(
         crate::run_with_sources(&p, &documents, extras(supplied)),
         Err(EngineError::UnsupportedOwnedContext {

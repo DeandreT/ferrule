@@ -281,15 +281,53 @@ public static partial class FerruleJson
         text.Append('"');
     }
 
+    /// <summary>Complete canonical output text and its counted UTF-8 length.</summary>
+    private readonly record struct CanonicalOutput(StringBuilder Text, long Bytes);
+
+    /// <summary>
+    /// Counts the canonical builder's UTF-8 bytes without materializing it, or
+    /// returns null for text that is not well-formed. Canonical text is decoded
+    /// from the writer's UTF-8, so callers only fall back to their original
+    /// census, which reports the failure, should that ever change.
+    /// </summary>
+    private static long? CanonicalUtf8Length(StringBuilder text)
+    {
+        var encoder = StrictUtf8.GetEncoder();
+        long bytes = 0;
+        try
+        {
+            foreach (var chunk in text.GetChunks()) bytes += encoder.GetByteCount(chunk.Span, flush: false);
+            return bytes + encoder.GetByteCount(ReadOnlySpan<char>.Empty, flush: true);
+        }
+        catch (EncoderFallbackException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Encodes counted output straight from its builder into one array, so byte
+    /// routes never materialize the UTF-16 document. The encoder carries a
+    /// surrogate pair split across two builder chunks.
+    /// </summary>
+    private static byte[] CanonicalUtf8(CanonicalOutput output)
+    {
+        var bytes = new byte[output.Bytes];
+        var encoder = StrictUtf8.GetEncoder();
+        var written = 0;
+        foreach (var chunk in output.Text.GetChunks())
+            written += encoder.GetBytes(chunk.Span, bytes.AsSpan(written), flush: false);
+        written += encoder.GetBytes(ReadOnlySpan<char>.Empty, bytes.AsSpan(written), flush: true);
+        if (written != bytes.Length)
+            throw new InvalidOperationException("JSON output encoding changed its counted length.");
+        return bytes;
+    }
+
     // Utf8JsonWriter does not indent WriteRawValue consistently inside arrays.
     // Rebuild serde_json's two-space or explicit compact layout from complete
     // tokens. Preserve each numeric token byte for byte; never reparse a float
-    // or remove raw whitespace that might belong to a string.
-    private static string CanonicalizeOutputStrings(ReadOnlySpan<byte> encoded, bool compact = false) =>
-        CanonicalizeOutputText(encoded, compact).ToString();
-
-    // Keep the ordinary string wrapper exact while allowing JSON5 to finish its
-    // newline in the builder before the single final string materialization.
+    // or remove raw whitespace that might belong to a string. Callers finish
+    // the text in the builder and count it before materializing it once.
     private static StringBuilder CanonicalizeOutputText(ReadOnlySpan<byte> encoded, bool compact = false)
     {
         var reader = new Utf8JsonReader(

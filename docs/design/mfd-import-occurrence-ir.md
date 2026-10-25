@@ -25,7 +25,7 @@ binding each (see [Binding canonicalization](#binding-canonicalization)).
 | --- | --- | --- |
 | Authored target occurrence | input key of each target entry, `SchemaComponent::ports` (`import/schema/mod.rs:246`) | Every declared clone has its own input keys. |
 | Lineage | non-input ancestor markers, `SchemaComponent::input_ancestors` (`import/schema/mod.rs:249`) | `branch_owners::lineage` selects one marker chain and returns `None` when chains disagree. |
-| Ambiguous lineage | `SchemaComponent::ambiguous_branch_inputs` (`import/schema/mod.rs:255`) | Recorded at schema extraction; consumed by `unique_constructed_driver` (`import/target_iteration.rs:413-451`). |
+| Ambiguous lineage | `SchemaComponent::ambiguous_branch_inputs` (`import/schema/mod.rs:255`) | Recorded at schema extraction; consumed by `unique_constructed_driver` (`import/target_iteration.rs:431-469`). |
 | Binding witness | `(TargetLeaf, feed, input)` tuples collected by `build_target_scope` (`import.rs:2848-2949`) | A tuple index is the authored binding origin used by every branch recognizer. |
 | Driver | `TargetIteration { feed, target_port, additional_feeds }` | Per-branch drivers stay paired with their branch marker until `build_concatenated`. |
 | Producer | `NodeId`, interned per source path (`import/graph.rs:84-96`) and per function component (`import/scalar_function.rs:13-23`) | One producer may feed many consumers; sharing a node is correct. |
@@ -45,7 +45,7 @@ Identity is lost only when consumer edges are installed into
   records it in the builder, not in the scope; the installed `Binding`
   carries only the field and node. The final binding loop
   (`import.rs:3015-3056`), concatenated branch segments
-  (`import/target_iteration.rs:215`, `:347`), implicit clone lowering
+  (`import/target_iteration.rs:233`, `:365`), implicit clone lowering
   (`import/target_iteration/implicit_branches/lowering.rs:96`), sparse child
   construction and XML text group projection pass their authored input.
 - `TargetLeaf` (`import/scope.rs:10`) carries only a target path; its
@@ -73,7 +73,7 @@ tables keyed by the interned binding:
 | --- | --- |
 | `nested cloned target … cannot prove complete placeholder binding preservation` | `DeclaredBranches::collect_retained_within` (`branch_owners.rs:272`) refuses when the retained bindings for one `(path, NodeId)` in a scope cannot be matched one-to-one with the authored origins they stand for. |
 | Implicit JSON/CSV clone segments | `json_implicit::bindings_preserved` (`implicit_branches/json_implicit.rs:247-280`) requires each `(path, NodeId)` to be retained once per authored origin; the candidate is dropped at `implicit_branches/lowering.rs:103-107`. |
-| `nested cloned target … has ambiguous declared ancestor ownership` | `enclosing_anchors` (`branch_owners.rs:79`) returns `None` when no unique declared owner exists (`import/target_iteration.rs:179-186`, `:309-316`). |
+| `nested cloned target … has ambiguous declared ancestor ownership` | `enclosing_anchors` (`branch_owners.rs:79`) returns `None` when no unique declared owner exists (`import/target_iteration.rs:197-204`, `:327-334`). |
 | Duplicate singular feeds ([#241](https://github.com/DeandreT/ferrule/issues/241)) | The engine validator refuses repeated bindings to a singular field. Duplicate entries fed by one expression reach it as separate bindings, exactly like distinct feeds. |
 
 Each refusal keeps the repair-oriented import draft: ordinary import retains
@@ -137,13 +137,19 @@ executable-profile admission and generated Rust/C# values are checked against
 ## Candidate-before-mutation across recognizers
 
 - `sparse_child::build` is transactional: refused candidates leave builder
-  and ownership state unchanged (`import/target_iteration.rs:45-56`).
+  and ownership state unchanged (`import/target_iteration.rs:62-73`).
 - Implicit clone branches build against a cloned `GraphBuilder`
   (`implicit_branches/lowering.rs:23`) and commit graph, scopes, claimed
   bindings and declared branches together.
 - Nested clone distribution plans each level before applying it.
+- Conditional presence drivers (`import/conditional_group_driver.rs`) prove
+  every declared clone of one target path, lower all segments against a
+  cloned `GraphBuilder` and `ScopeBuilder`, and commit graph, scopes, claimed
+  bindings and declared branches together. A refusal adds one diagnostic,
+  leaves the ordinary lowering of that path unchanged, and keeps the implicit
+  clone recognizer from claiming it.
 - `build_concatenated` and `build_ordered_branches`
-  (`import/target_iteration.rs:90-376`) still call `build_one` for each
+  (`import/target_iteration.rs:108-394`) still call `build_one` for each
   segment against the shared `GraphBuilder` before later segments prove
   ownership, so an ownership refusal keeps earlier segments' nodes and
   diagnostics. Making them transactional changes node numbering and warning

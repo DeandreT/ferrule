@@ -217,6 +217,7 @@ fn extra_targets_match_engine_and_legacy_entry_points_evaluate_them() -> TestRes
         rust_output.join("src/main.rs"),
         include_str!("fixtures/extra_targets_rust_harness.rs.txt"),
     )?;
+    host_policy::name_generated_host(&rust_output, "extra-targets-host")?;
     let mut rust_command = Command::new("cargo");
     rust_command
         .args(["run", "--quiet"])

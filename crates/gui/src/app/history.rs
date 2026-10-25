@@ -40,6 +40,7 @@ impl FerruleApp {
             .unwrap_or_else(|| fingerprint_of_key(&serialized_project));
         EditorState {
             layout: CanvasLayout::capture_with_fingerprint(
+                &self.project,
                 fingerprint,
                 &self.main_canvas.snarl,
                 &self.mapping_workspace,
@@ -138,6 +139,7 @@ impl FerruleApp {
         };
         self.history.clear();
         self.discard_frame_commands();
+        self.command_coalescing = None;
         self.saved_state = (origin == DocumentOrigin::Saved).then(|| snapshot.state.clone());
         self.revisions.rebase(origin);
         self.fingerprints.clear();
@@ -150,8 +152,9 @@ impl FerruleApp {
         if let Some(pending) = self.pending_history.take()
             && pending.before != self.observed_editor
         {
+            let label = snapshot_label(&pending.before.state, &self.observed_editor.state);
             self.history
-                .record(HistoryRecord::Snapshot(pending.before), "Edit mapping");
+                .record(HistoryRecord::Snapshot(pending.before), label);
         }
     }
 
@@ -171,12 +174,13 @@ impl FerruleApp {
                 project: self.project.clone(),
                 state: current_state,
             };
-            // One more project key proves that a queued command alone
-            // explains this frame's change.
-            if let Some(command) = self.take_frame_command(&current.project) {
-                self.record_graph_command(command, current);
+            // One more project key proves that the queued commands alone
+            // explain this frame's change.
+            if let Some(commands) = self.take_frame_commands(&current.project) {
+                self.record_graph_commands(commands, current, now, coalesce_change);
                 return None;
             }
+            self.command_coalescing = None;
             if coalesce_change {
                 if self.pending_history.as_ref().is_some_and(|pending| {
                     now.saturating_duration_since(pending.last_change) >= HISTORY_COALESCE_DELAY
@@ -197,10 +201,15 @@ impl FerruleApp {
             } else {
                 self.commit_pending_history();
                 let previous = self.adopt_observed(current);
+                let label = snapshot_label(&previous.state, &self.observed_editor.state);
                 self.history
-                    .record(HistoryRecord::Snapshot(previous), "Edit mapping");
+                    .record(HistoryRecord::Snapshot(previous), label);
                 return None;
             }
+        } else {
+            // Keep the current navigation for the next edit's undo context,
+            // without treating a tab visit as a document mutation.
+            self.observed_editor.state.layout = current_state.layout;
         }
         self.discard_frame_commands();
 
@@ -233,6 +242,7 @@ impl FerruleApp {
             CanvasDocumentState::with_snarl(build_snarl_with_layout(&self.project, Some(layout)));
         self.selected_scope.clear();
         self.discard_frame_commands();
+        self.command_coalescing = None;
         // Rebuilding can materialize graph nodes in previously unvisited canvases.
         // That layout change belongs to this restore, not a new undo transaction.
         let restored = self.live_snapshot();
@@ -289,5 +299,14 @@ impl FerruleApp {
                     .error(format!("{action} failed"), error.to_string());
             }
         }
+    }
+}
+
+/// Undo label of a snapshot step: canvas-only changes read as layout edits.
+fn snapshot_label(before: &EditorState, after: &EditorState) -> &'static str {
+    if before.serialized_project == after.serialized_project {
+        "Edit layout"
+    } else {
+        "Edit mapping"
     }
 }

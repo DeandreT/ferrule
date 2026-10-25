@@ -1151,10 +1151,7 @@ fn udf_and_dynamic_aliases_inside_item_at_do_not_gain_owned_parent_permission() 
     ));
     let mut p = project(tokenize(90), ScalarType::String);
     p.root.iteration = iteration(SourceOwner::Primary, &[]);
-    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath {
-        iteration: vec![],
-        node: 12,
-    });
+    p.extra_sources[0].dynamic_path = Some(mapping::DynamicSourcePath::legacy(12, vec![]));
     p.graph.nodes.insert(
         10,
         Node::SourceField {

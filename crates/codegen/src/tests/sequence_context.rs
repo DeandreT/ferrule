@@ -253,10 +253,7 @@ fn dynamic_item_project() -> Project {
         path: String::new(),
         schema: SchemaNode::group("Document", Vec::new()),
         options: Default::default(),
-        dynamic_path: Some(mapping::DynamicSourcePath {
-            node: 0,
-            iteration: vec!["File".into()],
-        }),
+        dynamic_path: Some(mapping::DynamicSourcePath::legacy(0, vec!["File".into()])),
     });
     project.graph.nodes.extend([
         (

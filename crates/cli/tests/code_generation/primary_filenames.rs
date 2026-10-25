@@ -1,7 +1,7 @@
 use super::*;
 use mapping::{DocumentProject, PrimarySourcePlan};
 
-fn document(literal: bool) -> DocumentProject {
+pub(super) fn document(literal: bool) -> DocumentProject {
     DocumentProject::new(
         Project {
             source: SchemaNode::group("Input", vec![]),
@@ -49,7 +49,7 @@ fn document(literal: bool) -> DocumentProject {
                 ..Default::default()
             },
         },
-        PrimarySourcePlan { filename: 17 },
+        PrimarySourcePlan::new(17),
     )
 }
 
@@ -82,10 +82,7 @@ fn lowering_keeps_filename_separate_and_refuses_unsupported_plans() -> TestResul
     let mut source = original.project().clone();
     source.graph.nodes.insert(17, Node::SourceDocumentPath);
     assert!(matches!(
-        codegen::lower_document(&DocumentProject::new(
-            source,
-            PrimarySourcePlan { filename: 17 }
-        )),
+        codegen::lower_document(&DocumentProject::new(source, PrimarySourcePlan::new(17))),
         Err(codegen::DocumentLowerError::Filename(
             mapping::PrimaryFilenameError::UnsupportedExpression { node: 17 }
         ))
@@ -93,10 +90,7 @@ fn lowering_keeps_filename_separate_and_refuses_unsupported_plans() -> TestResul
     let mut source = original.project().clone();
     source.root.bindings[0].node = 999;
     assert!(matches!(
-        codegen::lower_document(&DocumentProject::new(
-            source,
-            PrimarySourcePlan { filename: 17 }
-        )),
+        codegen::lower_document(&DocumentProject::new(source, PrimarySourcePlan::new(17))),
         Err(codegen::DocumentLowerError::Mapping(_))
     ));
     Ok(())

@@ -182,7 +182,7 @@ public static partial class FerruleJson
         {
             return;
         }
-        if (value.Kind == FerruleValueKind.JsonNull && schema.Nullable)
+        if (value.Kind == FerruleValueKind.JsonNull && schema.NullLayers.Value)
         {
             ValidateJsonAllowedValues(schema, value);
             return;

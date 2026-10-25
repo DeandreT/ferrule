@@ -10,6 +10,10 @@ use cli::{GenerateOutcome, GenerateTarget, generate_project};
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, FunctionId, Graph, Node, Project, Scope, ScopeIteration, UserFunction};
 
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+use dotnet_temp::DotnetTemp;
+
 #[path = "code_generation/adjacency_tree.rs"]
 mod adjacency_tree;
 #[path = "code_generation/aggregates.rs"]
@@ -18,10 +22,18 @@ mod aggregates;
 mod basic_owned_adjacency_tree;
 #[path = "code_generation/basic_owned_collection_aggregates.rs"]
 mod basic_owned_collection_aggregates;
+#[path = "code_generation/basic_owned_document_path.rs"]
+mod basic_owned_document_path;
+#[path = "code_generation/basic_owned_dynamic_document_path.rs"]
+mod basic_owned_dynamic_document_path;
 #[path = "code_generation/basic_owned_dynamic_field.rs"]
 mod basic_owned_dynamic_field;
+#[path = "code_generation/basic_owned_dynamic_loading.rs"]
+mod basic_owned_dynamic_loading;
 #[path = "code_generation/basic_owned_failure_sources.rs"]
 mod basic_owned_failure_sources;
+#[path = "code_generation/basic_owned_filter.rs"]
+mod basic_owned_filter;
 #[path = "code_generation/basic_owned_group_adjacent_by.rs"]
 mod basic_owned_group_adjacent_by;
 #[path = "code_generation/basic_owned_group_by.rs"]
@@ -38,8 +50,12 @@ mod basic_owned_joins;
 mod basic_owned_json_adapters;
 #[path = "code_generation/basic_owned_lookup_find.rs"]
 mod basic_owned_lookup_find;
+#[path = "code_generation/basic_owned_nested_alias.rs"]
+mod basic_owned_nested_alias;
 #[path = "code_generation/basic_owned_nested_phases.rs"]
 mod basic_owned_nested_phases;
+#[path = "code_generation/basic_owned_occurrence.rs"]
+mod basic_owned_occurrence;
 #[path = "code_generation/basic_owned_path_hierarchy.rs"]
 mod basic_owned_path_hierarchy;
 #[path = "code_generation/basic_owned_recursive_collect.rs"]
@@ -56,16 +72,28 @@ mod basic_owned_sequence_aggregate;
 mod basic_owned_sequence_exists;
 #[path = "code_generation/basic_owned_sequence_item_at.rs"]
 mod basic_owned_sequence_item_at;
+#[path = "code_generation/basic_owned_sort.rs"]
+mod basic_owned_sort;
+#[path = "code_generation/basic_owned_windows.rs"]
+mod basic_owned_windows;
+#[path = "code_generation/basic_owned_xml_document_set.rs"]
+mod basic_owned_xml_document_set;
 #[path = "code_generation/basic_owned_xml_mixed_construction.rs"]
 mod basic_owned_xml_mixed_construction;
 #[path = "code_generation/basic_owned_xml_mixed_content.rs"]
 mod basic_owned_xml_mixed_content;
 #[path = "code_generation/basic_owned_xml_serialize.rs"]
 mod basic_owned_xml_serialize;
+#[path = "code_generation/boundary_emission_plan.rs"]
+mod boundary_emission_plan;
 #[path = "code_generation/collection_find.rs"]
 mod collection_find;
+#[path = "code_generation/conditional_group_presence.rs"]
+mod conditional_group_presence;
 #[path = "code_generation/copy_current_source.rs"]
 mod copy_current_source;
+#[path = "code_generation/csharp_composition.rs"]
+mod csharp_composition;
 #[path = "code_generation/csv_byte_decoding.rs"]
 mod csv_byte_decoding;
 #[path = "code_generation/csv_document_adapters.rs"]
@@ -82,10 +110,14 @@ mod csv_x12_adapters;
 mod disconnected_inputs;
 #[path = "code_generation/dynamic_properties.rs"]
 mod dynamic_properties;
+#[path = "code_generation/dynamic_source_fault_projection.rs"]
+mod dynamic_source_fault_projection;
 #[path = "code_generation/enclosing_frame_date_producers.rs"]
 mod enclosing_frame_date_producers;
 #[path = "code_generation/enclosing_frame_value_maps.rs"]
 mod enclosing_frame_value_maps;
+#[path = "code_generation/execution_bindings.rs"]
+mod execution_bindings;
 #[path = "code_generation/extra_targets.rs"]
 mod extra_targets;
 #[path = "code_generation/failure_rules.rs"]
@@ -94,6 +126,8 @@ mod failure_rules;
 mod filter_map_csharp;
 #[path = "code_generation/format_guid_string.rs"]
 mod format_guid_string;
+#[path = "code_generation/generated_identities.rs"]
+mod generated_identities;
 #[path = "code_generation/generated_sequences.rs"]
 mod generated_sequences;
 #[path = "code_generation/grouping.rs"]
@@ -114,13 +148,19 @@ mod json_parser_ports;
 mod json_structure_variables;
 #[path = "code_generation/legacy_artifact_policy.rs"]
 mod legacy_artifact_policy;
+#[path = "code_generation/owned_capability_presets.rs"]
+mod owned_capability_presets;
 #[path = "code_generation/owned_row_document_path.rs"]
 mod owned_row_document_path;
+#[path = "code_generation/typed_only_companions.rs"]
+mod typed_only_companions;
 
 #[path = "code_generation/edi_structure_variables.rs"]
 mod edi_structure_variables;
 #[path = "code_generation/json_text_boundaries.rs"]
 mod json_text_boundaries;
+#[path = "code_generation/json_undeclared_members.rs"]
+mod json_undeclared_members;
 #[path = "code_generation/json_variable_array_descendants.rs"]
 mod json_variable_array_descendants;
 
@@ -146,8 +186,20 @@ mod optional_runtime_defaults;
 mod path_hierarchy;
 #[path = "code_generation/primary_csv_acquisition.rs"]
 mod primary_csv_acquisition;
+#[path = "code_generation/primary_documents_harness.rs"]
+mod primary_documents_harness;
+#[path = "code_generation/primary_edi_documents.rs"]
+mod primary_edi_documents;
+#[path = "code_generation/primary_filename_documents.rs"]
+mod primary_filename_documents;
 #[path = "code_generation/primary_filenames.rs"]
 mod primary_filenames;
+#[path = "code_generation/primary_fixed_width_documents.rs"]
+mod primary_fixed_width_documents;
+#[path = "code_generation/primary_json_documents.rs"]
+mod primary_json_documents;
+#[path = "code_generation/primary_xml_documents.rs"]
+mod primary_xml_documents;
 #[path = "code_generation/recursive_sequences.rs"]
 mod recursive_sequences;
 #[path = "code_generation/reference_corpus.rs"]
@@ -160,6 +212,8 @@ mod regex_unicode;
 mod required_query_host;
 #[path = "code_generation/required_ref_boundaries.rs"]
 mod required_ref_boundaries;
+#[path = "code_generation/run_manifest.rs"]
+mod run_manifest;
 #[path = "code_generation/runtime_values.rs"]
 mod runtime_values;
 #[path = "code_generation/scalar_algorithms.rs"]
@@ -280,14 +334,18 @@ impl Drop for TempDir {
 }
 
 fn dotnet_command(sandbox: &Path) -> Command {
+    dotnet_command_at(OsStr::new("dotnet"), sandbox)
+}
+
+/// `dotnet_command` for an explicit SDK host, with the same isolated
+/// CLI home, package cache and temporary directory under `sandbox`.
+fn dotnet_command_at(program: &OsStr, sandbox: &Path) -> Command {
     let home = sandbox.join(".dotnet-home");
     let packages = sandbox.join(".nuget-packages");
-    let temp = sandbox.join(".tmp");
     let _ = std::fs::create_dir_all(&home);
     let _ = std::fs::create_dir_all(&packages);
-    let _ = std::fs::create_dir_all(&temp);
 
-    let mut command = Command::new("dotnet");
+    let mut command = Command::new(program);
     command
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
         .env("DOTNET_CLI_HOME", home)
@@ -295,7 +353,7 @@ fn dotnet_command(sandbox: &Path) -> Command {
         .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
         .env("DOTNET_NOLOGO", "1")
         .env("NUGET_PACKAGES", packages)
-        .env("TMPDIR", temp);
+        .dotnet_temp(sandbox);
     command
 }
 
@@ -881,6 +939,7 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "Runtime/FerruleInvocationCounters.cs",
         "Runtime/FerruleJoins.cs",
         "Runtime/FerruleOwnedDynamicField.cs",
+        "Runtime/FerruleOwnedDynamicLoading.cs",
         "Runtime/FerrulePathHierarchy.cs",
         "Runtime/FerrulePrimaryRoot.cs",
         "Runtime/FerruleRecursiveFilter.cs",
@@ -916,6 +975,7 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "Runtime/FerruleXml.Output.cs",
         "Runtime/FerruleXml.OutputSet.cs",
         "Runtime/FerruleXml.Owned.cs",
+        "Runtime/FerruleXml.Prepared.cs",
         "Runtime/FerruleXml.cs",
         "Runtime/FerruleXmlMixedContent.Owned.cs",
         "Runtime/FerruleXmlMixedContent.cs",
@@ -928,9 +988,11 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "Runtime/Json/FerruleJson.ObjectOpenness.cs",
         "Runtime/Json/FerruleJson.PatternProperties.cs",
         "Runtime/Json/FerruleJson.Patterns.cs",
+        "Runtime/Json/FerruleJson.Prepared.cs",
         "Runtime/Json/FerruleJson.PropertyCounts.cs",
         "Runtime/Json/FerruleJson.PropertyDependencies.cs",
         "Runtime/Json/FerruleJson.PropertyNames.cs",
+        "Runtime/Json/FerruleJson.SchemaNode.cs",
         "Runtime/Json/FerruleJson.UniqueItems.cs",
         "Runtime/Json/FerruleJson.cs",
         "Runtime/Json/FerruleJsonSourceDocument.cs",

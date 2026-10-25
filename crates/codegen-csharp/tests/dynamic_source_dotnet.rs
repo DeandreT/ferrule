@@ -1,3 +1,7 @@
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+use dotnet_temp::DotnetTemp;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -152,7 +156,7 @@ fn dynamic_document_fixture() -> Program {
             ),
             dynamic: Some(DynamicSourceProgram {
                 path: 1,
-                driver: SourceIteration::new(vec!["Files".into()]),
+                driver: SourceIteration::new(vec!["Files".into()]).into(),
             }),
         }],
         target: SchemaNode::group(
@@ -239,6 +243,7 @@ fn generated_dynamic_source_fields_execute_exact_null_semantics() {
 
     let build = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "build",
             "-warnaserror",
@@ -253,6 +258,7 @@ fn generated_dynamic_source_fields_execute_exact_null_semantics() {
 
     let run = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "run",
             "--project",
@@ -283,6 +289,7 @@ fn generated_per_driver_dynamic_sources_execute_typed_and_json_host_contracts() 
 
     let build = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "build",
             "-warnaserror",
@@ -297,6 +304,7 @@ fn generated_per_driver_dynamic_sources_execute_typed_and_json_host_contracts() 
 
     let run = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(directory.path())
         .args([
             "run",
             "--project",
@@ -460,6 +468,44 @@ if (!json.Contains("\"loaded:a.json\"", StringComparison.Ordinal) ||
     throw new InvalidOperationException("JSON dynamic output changed");
 }
 
+// Generated JSON adapter refusals are tagged and keep their original cause.
+var invalid = new JsonLoader { InvalidPath = "b.json" };
+try
+{
+    GeneratedMapping.ExecuteJsonWithDynamicSourceLoader(
+        """{"Files":[{"path":"a.json"},{"path":"b.json"},{"path":"c.json"}]}""",
+        invalid);
+    throw new InvalidOperationException("invalid UTF-8 was accepted");
+}
+catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.DynamicSourceLoad)
+{
+    if (error.InnerException is not FerruleDynamicSourceFault { InnerException: DecoderFallbackException } ||
+        FerruleDynamicSourceDiagnostic.Find(error) is not
+            { PhaseToken: "codec", CategoryToken: "encoding", Endpoint: "Catalog", Path: "b.json" } ||
+        !invalid.Calls.SequenceEqual(new[] { "a.json", "b.json" }))
+    {
+        throw new InvalidOperationException("JSON codec refusal lost its tag, cause or order", error);
+    }
+}
+
+// A legacy host exception remains the original inner exception.
+var hostFailure = new UnauthorizedAccessException("host refused");
+try
+{
+    GeneratedMapping.ExecuteJsonWithDynamicSourceLoader(
+        """{"Files":[{"path":"a.json"}]}""",
+        new JsonLoader { Failure = hostFailure });
+    throw new InvalidOperationException("host failure was accepted");
+}
+catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.DynamicSourceLoad)
+{
+    if (!ReferenceEquals(hostFailure, error.InnerException) ||
+        FerruleDynamicSourceDiagnostic.Find(error) is not { PhaseToken: "acquisition", CategoryToken: "host" })
+    {
+        throw new InvalidOperationException("JSON host failure lost its original cause", error);
+    }
+}
+
 static FerruleValue Read(FerruleGroup group, string name)
 {
     if (!group.TryGetField(name, out var field) || field is not FerruleScalar scalar)
@@ -500,11 +546,26 @@ sealed class TypedLoader : IFerruleDynamicSourceLoader
 
 sealed class JsonLoader : IFerruleDynamicJsonSourceLoader
 {
+    internal List<string> Calls { get; } = new();
+
+    internal string? InvalidPath { get; init; }
+
+    internal Exception? Failure { get; init; }
+
     public byte[] Load(string sourceName, string logicalPath)
     {
         if (sourceName != "Catalog")
         {
             throw new InvalidOperationException("unexpected source");
+        }
+        Calls.Add(logicalPath);
+        if (Failure is not null)
+        {
+            throw Failure;
+        }
+        if (logicalPath == InvalidPath)
+        {
+            return new byte[] { 0xff };
         }
         return Encoding.UTF8.GetBytes(
             $$"""{"Rows":[{"value":"loaded:{{logicalPath}}"}]}""");

@@ -26,7 +26,9 @@ fn command(root: &Path, name: &str, command: &mut Command) -> TestResult<Output>
 
 #[test]
 fn nested_array_wrappers_compiled_complete_oracles() -> TestResult<()> {
-    let parent = std::env::var_os("FERRULE_NESTED_ARRAY_EVIDENCE_DIR")
+    let selected = std::env::var_os("FERRULE_NESTED_ARRAY_EVIDENCE_DIR");
+    let owned_root = selected.is_none();
+    let parent = selected
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
     if !parent.is_absolute() {
@@ -40,6 +42,7 @@ fn nested_array_wrappers_compiled_complete_oracles() -> TestResult<()> {
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&root)?;
+    let _root_cleanup = owned_root.then(|| TempDir(root.clone()));
     eprintln!("NESTED_ARRAY_ORIGINALS={}", root.display());
     std::fs::write(root.join("cases.json"), CASES)?;
     std::fs::write(root.join("project.json"), PROJECT)?;
@@ -61,15 +64,16 @@ fn nested_array_wrappers_compiled_complete_oracles() -> TestResult<()> {
     if !target.is_absolute() {
         return Err("generated host target must be absolute".into());
     }
-    let dotnet_temp = std::env::var_os("FERRULE_NESTED_ARRAY_DOTNET_TMPDIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            std::env::temp_dir().join(format!("fnj-{}-{stamp}", std::process::id()))
-        });
+    let selected_dotnet_temp = std::env::var_os("FERRULE_NESTED_ARRAY_DOTNET_TMPDIR");
+    let owned_dotnet_temp = selected_dotnet_temp.is_none();
+    let dotnet_temp = selected_dotnet_temp.map(PathBuf::from).unwrap_or_else(|| {
+        std::env::temp_dir().join(format!("fnj-{}-{stamp}", std::process::id()))
+    });
     if !dotnet_temp.is_absolute() {
         return Err(".NET temporary directory must be absolute".into());
     }
     std::fs::create_dir_all(&dotnet_temp)?;
+    let _dotnet_temp_cleanup = owned_dotnet_temp.then(|| TempDir(dotnet_temp.clone()));
     record(&root, "dotnet-temporary-directory", &dotnet_temp)?;
     let mut all_results = Vec::new();
     for language in ["rust", "csharp"] {
@@ -141,6 +145,7 @@ fn nested_array_wrappers_compiled_complete_oracles() -> TestResult<()> {
                 directory.join("src/main.rs"),
                 include_str!("nested_array_wrappers/Host.rs.txt"),
             )?;
+            host_policy::name_generated_host(&directory, "nested-array-wrappers-host")?;
         } else {
             std::fs::create_dir(directory.join("Harness"))?;
             std::fs::write(directory.join("Harness/Host.csproj"), HARNESS)?;

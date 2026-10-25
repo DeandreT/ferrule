@@ -1,3 +1,6 @@
+#[path = "support/private_corpus.rs"]
+mod private_corpus;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -466,9 +469,7 @@ fn local_complete_po_keeps_root_join_aggregates_and_nested_article_values()
 -> Result<(), Box<dyn std::error::Error>> {
     let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let design = samples.join("CompletePO.mfd");
-    if !design.is_file() {
-        return Ok(());
-    }
+    private_corpus::require(&[&design]);
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let source_path = imported

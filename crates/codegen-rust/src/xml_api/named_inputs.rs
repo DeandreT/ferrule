@@ -2,9 +2,9 @@
 //! Zero-named observed reader entry points remain rendered separately.
 
 use crate::{EmitError, rust_string};
-use codegen::Program;
+use codegen::{Program, XmlDocumentInputs, XmlEmissionPlan};
 
-pub(super) fn render(program: &Program) -> Result<String, EmitError> {
+pub(super) fn render(program: &Program, plan: &XmlEmissionPlan<'_>) -> Result<String, EmitError> {
     let mut output = String::from(
         "#[derive(Debug, Clone, Copy)]\npub struct NamedXmlInput<'a> { pub name: &'a str, pub document: &'a str }\n#[derive(Debug, Clone, Copy)]\npub struct NamedXmlBytesInput<'a> { pub name: &'a str, pub document: &'a [u8] }\n\n",
     );
@@ -47,9 +47,7 @@ pub(super) fn render(program: &Program) -> Result<String, EmitError> {
         } else {
             "parse_structured_xml"
         };
-        let observed_primary = program.xml_boundary.as_ref().is_some_and(|policy| {
-            policy.input.profile() == Some(codegen::XmlInputProfile::RootView)
-        });
+        let observed_primary = plan.inputs() == XmlDocumentInputs::RootViewWithNamedInputs;
         let primary_parser = if observed_primary {
             if bytes {
                 "parse_xml_bytes"

@@ -1,24 +1,16 @@
 //! Closed static input admission plus unchanged primary-first mixed serializer.
 use super::output_arguments;
 use crate::{EmitError, literal};
-use codegen::{Program, ProgramValidationError};
+use codegen::{Program, ProgramValidationError, XmlEmissionPlan};
 
 pub(super) const TYPES: &str = "public sealed record NamedXmlInput(string Name, string Document);\npublic sealed record NamedXmlBytesInput(string Name, byte[] Document);\npublic sealed record XmlDocumentOutput(string Path, string Document);\npublic sealed record XmlBytesDocumentOutput(string Path, byte[] Document);\npublic sealed record NamedXmlDocumentOutputs(string Name, global::System.Collections.Generic.IReadOnlyList<XmlDocumentOutput> Documents);\npublic sealed record NamedXmlBytesDocumentOutputs(string Name, global::System.Collections.Generic.IReadOnlyList<XmlBytesDocumentOutput> Documents);\npublic sealed record XmlDocumentExecutionOutputs(string Primary, global::System.Collections.Generic.IReadOnlyList<NamedXmlDocumentOutputs> Extras);\npublic sealed record XmlBytesDocumentExecutionOutputs(byte[] Primary, global::System.Collections.Generic.IReadOnlyList<NamedXmlBytesDocumentOutputs> Extras);\n\n";
 
-pub(super) fn render(program: &Program, output: &mut String) -> Result<(), EmitError> {
-    if program.xml_output_mode()?
-        != Some(codegen::XmlOutputMode::StaticNamedInputsStaticPrimaryDynamicNamedDocuments)
-    {
-        return Err(ProgramValidationError::InvalidXmlBoundary {
-            reason: "static input mixed XML outputs require their checked adapter mode".into(),
-        }
-        .into());
-    }
-    let policy = program.xml_boundary.as_ref().ok_or_else(|| {
-        ProgramValidationError::InvalidXmlBoundary {
-            reason: "XML document outputs require a boundary".into(),
-        }
-    })?;
+pub(super) fn render(
+    program: &Program,
+    plan: &XmlEmissionPlan<'_>,
+    output: &mut String,
+) -> Result<(), EmitError> {
+    let policy = plan.policy();
     if policy.extra_outputs.len() != program.extra_targets.len()
         || program
             .extra_targets
@@ -343,7 +335,7 @@ mod tests {
             }
             let program = codegen::lower(&project).unwrap();
             let mut output = String::new();
-            render(&program, &mut output).unwrap();
+            super::super::render(&program, &mut output).unwrap();
             for (index, input) in program.extra_sources.iter().enumerate() {
                 let descriptor = codegen::serialize_embedded_schema(
                     &input.source,
@@ -393,7 +385,7 @@ mod tests {
     #[test]
     fn shapes_all_sizes_original_parsing_then_mapping_and_checked_output_count_remain_ordered() {
         let mut output = String::new();
-        render(&program(), &mut output).unwrap();
+        super::super::render(&program(), &mut output).unwrap();
         let count = output
             .find("FerruleXmlInputSetBudget((long)suppliedCount + 1)")
             .unwrap();

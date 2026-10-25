@@ -5,6 +5,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use mfd::{ImportIssue, ImportIssueKind, ImportProfile, ImportReport, MfdError};
 
+/// Removes a per-test directory on drop, including after a panic.
+struct TempDir(PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 fn retain(directory: &Path, name: &str, value: impl std::fmt::Debug) -> std::io::Result<()> {
     std::fs::write(directory.join(name), format!("{value:#?}\n"))
 }
@@ -22,6 +31,7 @@ fn conflicting_physical_inputs_refuse_before_destination_publication() -> Result
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&directory)?;
+        let _cleanup = TempDir(directory.clone());
         eprintln!("CLI_INPUT_GUARD335_ORIGINALS={}", directory.display());
         for name in ["source.xsd", "target.xsd"] {
             std::fs::copy(fixtures.join(name), directory.join(name))?;

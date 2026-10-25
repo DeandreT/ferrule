@@ -50,6 +50,87 @@ pub struct SchemaBundle {
 }
 
 impl SchemaBundle {
+    /// Builds a closed graph from immutable host-owned sources. Only reachable
+    /// imports are retained; no identity is opened or resolved on the host.
+    pub fn from_sources<'a>(
+        root_path: &str,
+        root_source: &str,
+        imports: impl IntoIterator<Item = (&'a str, &'a str)>,
+    ) -> Result<Self, ProtobufError> {
+        let canonical = canonical_schema_path(root_path)?;
+        if canonical != root_path {
+            return Err(ProtobufError::schema("noncanonical supplied schema path"));
+        }
+        let mut sources = BTreeMap::from([(canonical, root_source)]);
+        for (path, source) in imports {
+            let canonical = canonical_schema_path(path)?;
+            if canonical != path {
+                return Err(ProtobufError::schema("noncanonical supplied schema path"));
+            }
+            if sources.insert(canonical, source).is_some() {
+                return Err(ProtobufError::schema("duplicate supplied schema path"));
+            }
+        }
+        Self::from_reader(root_path, |path| {
+            let source = sources.get(path).ok_or_else(|| {
+                ProtobufError::schema(format!("missing imported schema `{path}`"))
+            })?;
+            if source.len() > MAX_SCHEMA_BYTES {
+                return Err(ProtobufError::schema(
+                    "supplied schema file byte limit exceeded",
+                ));
+            }
+            Ok(std::sync::Arc::from(source.as_bytes()))
+        })
+    }
+
+    /// Reads only reachable canonical identities from immutable host buffers.
+    /// The graph file/byte/depth limits apply to consumed resources, not to an
+    /// unrelated host catalogue. No filesystem fallback is performed.
+    pub fn from_reader(
+        root_path: &str,
+        mut reader: impl FnMut(&str) -> Result<std::sync::Arc<[u8]>, ProtobufError>,
+    ) -> Result<Self, ProtobufError> {
+        if canonical_schema_path(root_path)? != root_path {
+            return Err(ProtobufError::schema("noncanonical supplied schema path"));
+        }
+        let root_path = root_path.to_owned();
+        let mut graph = GraphBuilder::new(BTreeMap::new());
+        graph.strict_paths = true;
+        graph.visit_with_reader(&root_path, 0, &mut |path| {
+            let bytes = reader(path)?;
+            if bytes.len() > MAX_SCHEMA_BYTES {
+                return Err(ProtobufError::schema(
+                    "supplied schema file byte limit exceeded",
+                ));
+            }
+            String::from_utf8(bytes.to_vec()).map_err(|_| {
+                ProtobufError::schema(format!("protobuf schema `{path}` is not valid UTF-8"))
+            })
+        })?;
+        let root_source = graph
+            .sources
+            .remove(&root_path)
+            .ok_or_else(|| ProtobufError::schema("missing root schema"))?;
+        let mut imports = Vec::new();
+        for path in graph.paths.iter().filter(|path| **path != root_path) {
+            let source = graph
+                .sources
+                .remove(path)
+                .ok_or_else(|| ProtobufError::schema("missing imported schema"))?;
+            imports.push(SchemaFile {
+                path: path.clone(),
+                source,
+            });
+        }
+        graph.resolve()?;
+        Ok(Self {
+            root_path,
+            root_source,
+            imports,
+        })
+    }
+
     /// Reads one traversal-confined schema graph relative to `base`.
     pub fn read_relative(base: &Path, root_path: &str) -> Result<Self, ProtobufError> {
         let base = std::fs::canonicalize(base).map_err(|error| {
@@ -164,6 +245,8 @@ struct GraphBuilder {
     files: Vec<Option<GraphFile>>,
     paths: Vec<String>,
     stack: Vec<String>,
+    strict_paths: bool,
+    loaded_bytes: usize,
 }
 
 impl GraphBuilder {
@@ -175,10 +258,25 @@ impl GraphBuilder {
             files: Vec::new(),
             paths: Vec::new(),
             stack: Vec::new(),
+            strict_paths: false,
+            loaded_bytes: 0,
         }
     }
 
     fn visit(&mut self, path: &str, depth: usize) -> Result<usize, ProtobufError> {
+        self.visit_with_reader(path, depth, &mut |path| {
+            Err(ProtobufError::schema(format!(
+                "missing imported schema `{path}`"
+            )))
+        })
+    }
+
+    fn visit_with_reader(
+        &mut self,
+        path: &str,
+        depth: usize,
+        reader: &mut impl FnMut(&str) -> Result<String, ProtobufError>,
+    ) -> Result<usize, ProtobufError> {
         if depth > MAX_IMPORT_DEPTH {
             return Err(ProtobufError::schema(format!(
                 "schema import depth exceeds the limit of {MAX_IMPORT_DEPTH} at `{path}`"
@@ -201,17 +299,35 @@ impl GraphBuilder {
             }
             None => {}
         }
-        let raw = self
-            .sources
-            .get(path)
-            .ok_or_else(|| ProtobufError::schema(format!("missing imported schema `{path}`")))
-            .and_then(|source| parse_file(source))?;
         let id = self.files.len();
         if id >= MAX_SCHEMA_FILES {
             return Err(ProtobufError::schema(format!(
                 "reachable schema graph exceeds the {MAX_SCHEMA_FILES}-file limit"
             )));
         }
+        if !self.sources.contains_key(path) {
+            let source = reader(path)?;
+            if source.len() > MAX_SCHEMA_BYTES {
+                return Err(ProtobufError::schema(
+                    "supplied schema file byte limit exceeded",
+                ));
+            }
+            self.sources.insert(path.to_owned(), source);
+        }
+        let source = self
+            .sources
+            .get(path)
+            .ok_or_else(|| ProtobufError::schema(format!("missing imported schema `{path}`")))?;
+        self.loaded_bytes = self
+            .loaded_bytes
+            .checked_add(source.len())
+            .ok_or_else(|| ProtobufError::schema("schema graph byte count overflowed"))?;
+        if self.loaded_bytes > MAX_SCHEMA_GRAPH_BYTES {
+            return Err(ProtobufError::schema(
+                "reachable schema graph byte limit exceeded",
+            ));
+        }
+        let raw = parse_file(source)?;
         self.ids.insert(path.to_string(), id);
         self.states.insert(path.to_string(), VisitState::Visiting);
         self.files.push(None);
@@ -222,12 +338,15 @@ impl GraphBuilder {
         let mut seen = BTreeSet::new();
         for import in &raw.imports {
             let imported_path = resolve_import(path, &import.path)?;
+            if self.strict_paths && imported_path != import.path {
+                return Err(ProtobufError::schema("noncanonical supplied import path"));
+            }
             if !seen.insert(imported_path.clone()) {
                 return Err(ProtobufError::schema(format!(
                     "schema `{path}` imports `{imported_path}` more than once"
                 )));
             }
-            let imported = self.visit(&imported_path, depth + 1)?;
+            let imported = self.visit_with_reader(&imported_path, depth + 1, reader)?;
             imports.push((imported, import.public));
         }
         self.stack.pop();

@@ -13,76 +13,7 @@ use crate::canvas_endpoints::EndpointScrollState;
 use crate::canvas_layout::arrange_snarl;
 
 fn node_inputs(node: &Node) -> Vec<NodeId> {
-    match node {
-        Node::OwnedSourceField(_)
-        | Node::OwnedPosition(_)
-        | Node::OwnedRowDocumentPath(_)
-        | Node::OwnedXmlSerialize(_)
-        | Node::SourceField { .. }
-        | Node::SourceDocumentPath
-        | Node::SourceRootXmlTypeEquals { .. }
-        | Node::SourceRootField { .. }
-        | Node::Position { .. }
-        | Node::JoinField { .. }
-        | Node::JoinPosition { .. }
-        | Node::Unconnected
-        | Node::Const { .. }
-        | Node::FunctionParameter { .. }
-        | Node::RuntimeValue { .. }
-        | Node::RuntimeParameter { .. }
-        | Node::XmlSerialize { .. } => vec![],
-        Node::Raise { message } => message.iter().copied().collect(),
-        Node::RuntimeParameterDefault { default, .. } => vec![*default],
-        Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
-        Node::If {
-            condition,
-            then,
-            else_,
-        } => vec![*condition, *then, *else_],
-        Node::ValueMap { input, .. } | Node::Lookup { matches: input, .. } => vec![*input],
-        Node::OwnedLookup(_)
-        | Node::OwnedAggregate(_)
-        | Node::OwnedCollectionFind(_)
-        | Node::OwnedJoinField(_)
-        | Node::OwnedJoinSourcePosition(_)
-        | Node::OwnedXmlMixedContent(_)
-        | Node::OwnedJoinAggregate(_) => node.dependencies(),
-        Node::DynamicSourceField { key, .. } => vec![*key],
-        Node::OwnedDynamicSourceField(field) => vec![field.key],
-        Node::XmlMixedContent { replacements, .. } => replacements
-            .iter()
-            .map(|replacement| replacement.expression)
-            .collect(),
-        Node::CollectionFind {
-            predicate, value, ..
-        } => vec![*predicate, *value],
-        Node::SequenceExists {
-            sequence,
-            predicate,
-        } => sequence.inputs().into_iter().chain([*predicate]).collect(),
-        Node::SequenceItemAt { sequence, index } => {
-            sequence.inputs().into_iter().chain([*index]).collect()
-        }
-        Node::SequenceAggregate {
-            sequence,
-            predicate,
-            expression,
-            arg,
-            ..
-        } => sequence
-            .inputs()
-            .into_iter()
-            .chain(predicate.iter().copied())
-            .chain(expression.iter().copied())
-            .chain(arg.iter().copied())
-            .collect(),
-        Node::Aggregate {
-            expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
-        } => expression.iter().chain(arg).copied().collect(),
-    }
+    node.evaluated_inputs()
 }
 
 /// Builds the isolated graph canvas for one user-defined function.
@@ -116,9 +47,11 @@ pub(super) fn build_function_snarl(function: &UserFunction) -> Snarl<CanvasNode>
             );
         }
     }
+    let mut initial_sizes = std::collections::BTreeMap::new();
+    reserve_disconnected_literals(&snarl, &function.body, &mut initial_sizes);
     arrange_snarl(
         &mut snarl,
-        &std::collections::BTreeMap::new(),
+        &initial_sizes,
         crate::appearance::WireAppearance::default(),
     );
     snarl
@@ -340,6 +273,7 @@ fn build_boundary_snarl(
             endpoint_block_size(&section.title, &section.pin_labels),
         );
     }
+    reserve_disconnected_literals(&snarl, &project.graph, &mut initial_sizes);
     arrange_snarl(
         &mut snarl,
         &initial_sizes,
@@ -349,6 +283,34 @@ fn build_boundary_snarl(
         CanvasLayout::apply_nodes(nodes, &mut snarl);
     }
     snarl
+}
+
+fn reserve_disconnected_literals(
+    snarl: &Snarl<CanvasNode>,
+    graph: &mapping::Graph,
+    sizes: &mut std::collections::BTreeMap<CanvasNode, egui::Vec2>,
+) {
+    let wired = snarl
+        .wires()
+        .flat_map(|(from, to)| [from.node, to.node])
+        .collect::<std::collections::BTreeSet<_>>();
+    for (id, _, canvas) in snarl.nodes_pos_ids() {
+        if !wired.contains(&id)
+            && let CanvasNode::Graph(node) = canvas
+            && let Some(value @ Node::Const { .. }) = graph.nodes.get(node)
+        {
+            // Before fonts exist, reserve a conservative bounded header width
+            // for the disconnected shelf. Interactive layout uses measured
+            // frames; saved sidecar positions are restored below unchanged.
+            let width = (crate::graph_viewer::readable_node_label(value)
+                .chars()
+                .count() as f32
+                * 14.0
+                + 64.0)
+                .clamp(100.0, 420.0);
+            sizes.insert(*canvas, egui::vec2(width, 88.0));
+        }
+    }
 }
 
 pub(crate) fn endpoint_block_size(title: &str, pin_labels: &[String]) -> egui::Vec2 {
@@ -692,3 +654,59 @@ mod sequence_item_tests;
 #[cfg(test)]
 #[path = "canvas/endpoint_filter_tests.rs"]
 mod endpoint_filter_tests;
+
+#[cfg(test)]
+#[path = "canvas/visual_tests.rs"]
+mod visual_tests;
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+
+    #[test]
+    fn disconnected_function_literals_reserve_readable_header_widths() {
+        let function = UserFunction {
+            library: "local".into(),
+            name: "authored shelf".into(),
+            description: None,
+            parameters: Vec::new(),
+            output_name: "result".into(),
+            output_type: ir::ScalarType::String,
+            output: 0,
+            body: mapping::Graph {
+                nodes: (0..9)
+                    .map(|id| {
+                        (
+                            id,
+                            Node::Const {
+                                value: ir::Value::String(
+                                    "A long authored constant with a complete readable header"
+                                        .into(),
+                                ),
+                            },
+                        )
+                    })
+                    .collect(),
+            },
+        };
+        let before = serde_json::to_string(&function).unwrap();
+        let snarl = build_function_snarl(&function);
+        let positions: Vec<_> = snarl.nodes_pos().map(|(position, _)| position).collect();
+        for (index, position) in positions.iter().enumerate() {
+            for other in &positions[index + 1..] {
+                if position.y == other.y {
+                    assert!((position.x - other.x).abs() >= 420.0);
+                }
+            }
+        }
+        assert_eq!(serde_json::to_string(&function).unwrap(), before);
+    }
+
+    #[test]
+    fn replacing_a_document_never_reuses_layout_history_or_camera_ownership() {
+        let first = super::super::CanvasDocumentState::with_snarl(Snarl::new());
+        let second = super::super::CanvasDocumentState::with_snarl(Snarl::new());
+        assert_ne!(first.tools_id, second.tools_id);
+        assert_eq!(first.view_generation, second.view_generation);
+    }
+}

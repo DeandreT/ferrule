@@ -25,13 +25,10 @@ public static partial class FerruleXml
         XmlSchemaNode parsedSchema;
         try
         {
-            var schema = FerruleEmbeddedSchema.Unwrap(descriptor, MaximumEmbeddedSchemaBytes);
-            payload = schema.Payload;
-            using var document = JsonDocument.Parse(payload,
-                new JsonDocumentOptions { MaxDepth = MaximumSchemaDepth });
-            parsedSchema = XmlSchemaNode.Parse(document.RootElement, 0, documentBoundary: true);
-            RequireDocumentNamespaceMetadata(parsedSchema, root: true);
-            if (schemaHintsJson is not null && HasSupplementaryDocumentName(parsedSchema))
+            var prepared = DocumentSchema(descriptor);
+            payload = prepared.Payload;
+            parsedSchema = prepared.Schema;
+            if (schemaHintsJson is not null && prepared.HasSupplementaryName)
                 throw new FormatException("supplementary XML names are unsupported by the generated input and hinted-output parsers");
         }
         catch (Exception error) when (error is JsonException or FormatException or
@@ -51,7 +48,7 @@ public static partial class FerruleXml
                 "http://www.w3.org/2000/xmlns/")
                 throw new InvalidOperationException("reserved XML namespace cannot be the default namespace");
             var output = SerializeCore(0, payload, instance, declaration, indent, defaultNamespace,
-                schemaHintsJson, documentBoundary: true).StringValue;
+                schemaHintsJson, documentBoundary: true, parsedSchema).StringValue;
             try { _ = XmlConvert.VerifyXmlChars(output); }
             catch (XmlException error)
             {
@@ -80,13 +77,10 @@ public static partial class FerruleXml
         XmlSchemaNode parsedSchema;
         try
         {
-            var schema = FerruleEmbeddedSchema.Unwrap(descriptor, MaximumEmbeddedSchemaBytes);
-            payload = schema.Payload;
-            using var document = JsonDocument.Parse(payload,
-                new JsonDocumentOptions { MaxDepth = MaximumSchemaDepth });
-            parsedSchema = XmlSchemaNode.Parse(document.RootElement, 0, documentBoundary: true);
-            RequireDocumentNamespaceMetadata(parsedSchema, root: true);
-            if (schemaHintsJson is not null && HasSupplementaryDocumentName(parsedSchema))
+            var prepared = DocumentSchema(descriptor);
+            payload = prepared.Payload;
+            parsedSchema = prepared.Schema;
+            if (schemaHintsJson is not null && prepared.HasSupplementaryName)
                 throw new FormatException("supplementary XML names are unsupported by the generated input and hinted-output parsers");
         }
         catch (Exception error) when (error is JsonException or FormatException or
@@ -107,7 +101,7 @@ public static partial class FerruleXml
                 throw new InvalidOperationException("reserved XML namespace cannot be the default namespace");
             var prepared = SerializeCore<FerruleXmlPreparedUtf8Document>(0, payload, instance,
                 declaration, indent, defaultNamespace, schemaHintsJson, documentBoundary: true,
-                PrepareSerializedUtf8);
+                PrepareSerializedUtf8, parsedSchema);
             if (prepared.LegacyText is { } output)
             {
                 try { _ = XmlConvert.VerifyXmlChars(output); }

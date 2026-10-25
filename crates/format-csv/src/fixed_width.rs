@@ -92,6 +92,44 @@ pub fn to_string_fixed_width(
     Ok(output)
 }
 
+/// Measures the complete UTF-8 output before allocating its text buffer.
+pub fn to_bytes_fixed_width_bounded(
+    schema: &SchemaNode,
+    rows: &[Instance],
+    layout: &FixedWidthLayout,
+    maximum: usize,
+) -> Result<Vec<u8>, crate::CsvBoundedError> {
+    let fields = checked_fields(schema, layout)?;
+    let mut bytes = 0usize;
+    for (row, instance) in rows.iter().enumerate() {
+        let values = format_row(row, instance, &fields)?;
+        for (((field, _), value), width) in fields.iter().zip(values).zip(layout.field_widths()) {
+            let width = width.get() as usize;
+            let got = value.chars().count();
+            if got > width {
+                return Err(CsvFormatError::FixedWidthFieldOverflow {
+                    row,
+                    field: (*field).into(),
+                    width,
+                    got,
+                }
+                .into());
+            }
+            bytes = bytes
+                .saturating_add(value.len())
+                .saturating_add((width - got).saturating_mul(layout.fill_char().len_utf8()));
+            if bytes > maximum {
+                return Err(crate::CsvBoundedError::OutputTooLarge { maximum });
+            }
+        }
+        bytes = bytes.saturating_add(usize::from(layout.record_delimiters()));
+        if bytes > maximum {
+            return Err(crate::CsvBoundedError::OutputTooLarge { maximum });
+        }
+    }
+    Ok(to_string_fixed_width(schema, rows, layout)?.into_bytes())
+}
+
 fn checked_fields<'a>(
     schema: &'a SchemaNode,
     layout: &FixedWidthLayout,

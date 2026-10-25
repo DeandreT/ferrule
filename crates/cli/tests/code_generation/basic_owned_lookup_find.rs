@@ -661,6 +661,7 @@ fn run_csharp_host(
         )
     };
     let build = Command::new(dotnet)
+        .dotnet_temp(root)
         .args([
             "build",
             "--configuration",
@@ -683,6 +684,7 @@ fn run_csharp_host(
     }
     let results = root.join(format!("csharp-model{index}-results.json"));
     let run = Command::new(dotnet)
+        .dotnet_temp(root)
         .arg(artifacts.join("bin/Host/release/Host.dll"))
         .arg(root.join("controls.json"))
         .arg(index.to_string())
@@ -692,4 +694,29 @@ fn run_csharp_host(
         .map_err(|error| format!("C# model{index} run: {error}"))?;
     host_result(&results, model_calls(controls, index), &run)
         .map_err(|error| format!("C# model{index}: {error}"))
+}
+
+/// The models, the closed Projects and the directly constructed Programs, for
+/// the owned capability preset record.
+pub(super) fn capability_corpus() -> TestResult<super::owned_capability_presets::Corpus> {
+    use super::owned_capability_presets as presets;
+    let mut corpus = presets::projects(
+        projects::PROFILES
+            .iter()
+            .map(|profile| (*profile, projects::project(profile))),
+    );
+    corpus.extend(presets::projects(
+        closed::projects()
+            .into_iter()
+            .map(|(id, project, _)| (format!("closed/{id}"), project)),
+    ));
+    let base = codegen::lower_with_basic_owned_lookup_find(&projects::project(
+        "L01-lookup-by-parent-needle",
+    ))?;
+    corpus.extend(presets::programs(
+        closed::programs(&base)
+            .into_iter()
+            .map(|(id, program, _)| (format!("direct/{id}"), program)),
+    ));
+    Ok(corpus)
 }

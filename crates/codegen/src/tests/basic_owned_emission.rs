@@ -189,7 +189,7 @@ fn dynamic(p: &mut Program) {
         source: input_schema(),
         dynamic: Some(DynamicSourceProgram {
             path: 80,
-            driver: SourceIteration::new(Vec::new()),
+            driver: SourceIteration::new(Vec::new()).into(),
         }),
     });
 }

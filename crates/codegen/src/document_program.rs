@@ -2,7 +2,10 @@
 
 use std::fmt;
 
-use mapping::{DocumentProject, GlobalFilename, NodeId, PrimaryFilenameError};
+use mapping::{
+    DocumentProject, GlobalFilename, NodeId, PrimaryDocumentFormat, PrimaryDocumentRoute,
+    PrimaryFileSelection, PrimaryFilenameError, PrimaryRouteError,
+};
 
 use crate::{LowerError, Program};
 
@@ -16,11 +19,21 @@ pub enum PrimaryFilenamePlan {
 /// policy or a complete document execution profile.
 #[derive(Debug, Clone)]
 pub struct DocumentProgram {
+    edi: Option<Box<EdiDocumentPolicy>>,
+    fixed_width: Option<FixedWidthDocumentPolicy>,
     program: Program,
     primary_filename: PrimaryFilenamePlan,
+    primary_selection: PrimaryFileSelection,
+    primary_route: Result<PrimaryDocumentRoute, PrimaryRouteError>,
 }
 
 impl DocumentProgram {
+    pub fn edi_policy(&self) -> Option<&EdiDocumentPolicy> {
+        self.edi.as_deref()
+    }
+    pub fn fixed_width_policy(&self) -> Option<&FixedWidthDocumentPolicy> {
+        self.fixed_width.as_ref()
+    }
     pub fn program(&self) -> &Program {
         &self.program
     }
@@ -28,6 +41,31 @@ impl DocumentProgram {
     pub fn primary_filename(&self) -> &PrimaryFilenamePlan {
         &self.primary_filename
     }
+
+    /// How the filename selects documents; generated document entry points
+    /// pass it to the host rather than letting the host choose.
+    pub fn primary_selection(&self) -> PrimaryFileSelection {
+        self.primary_selection
+    }
+
+    /// The complete-document route decided from the saved format identities.
+    /// Filename-only and acquisition companions do not need one.
+    pub fn primary_route(&self) -> Result<PrimaryDocumentRoute, PrimaryRouteError> {
+        self.primary_route.clone()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct EdiDocumentPolicy {
+    pub kind: mapping::EdiBoundaryKind,
+    pub source: mapping::FormatOptions,
+    pub target: mapping::FormatOptions,
+}
+
+#[derive(Debug, Clone)]
+pub struct FixedWidthDocumentPolicy {
+    pub source: mapping::FixedWidthLayout,
+    pub target: mapping::FixedWidthLayout,
 }
 
 #[derive(Debug)]
@@ -71,9 +109,48 @@ pub fn lower_document(document: &DocumentProject) -> Result<DocumentProgram, Doc
             name: name.into(),
         },
     };
-    let program = crate::lower(document.project()).map_err(DocumentLowerError::Mapping)?;
+    let primary_route = document.primary_route();
+    let project = document.project();
+    let program = match primary_route {
+        Ok(PrimaryDocumentRoute {
+            format: PrimaryDocumentFormat::Xml,
+            ..
+        }) => crate::lower::lower_primary_xml_documents(project),
+        Ok(PrimaryDocumentRoute {
+            format: PrimaryDocumentFormat::Json | PrimaryDocumentFormat::Edi(_),
+            ..
+        }) => crate::lower::lower_primary_json_documents(document),
+        _ => crate::lower(project),
+    }
+    .map_err(DocumentLowerError::Mapping)?;
     Ok(DocumentProgram {
+        edi: match &primary_route {
+            Ok(PrimaryDocumentRoute {
+                format: PrimaryDocumentFormat::Edi(kind),
+                ..
+            }) => Some(Box::new(EdiDocumentPolicy {
+                kind: *kind,
+                source: project.source_options.clone(),
+                target: project.target_options.clone(),
+            })),
+            _ => None,
+        },
+        fixed_width: if primary_route
+            .as_ref()
+            .is_ok_and(|route| route.format == PrimaryDocumentFormat::FixedWidth)
+        {
+            project
+                .source_options
+                .fixed_width
+                .clone()
+                .zip(project.target_options.fixed_width.clone())
+                .map(|(source, target)| FixedWidthDocumentPolicy { source, target })
+        } else {
+            None
+        },
         program,
         primary_filename,
+        primary_selection: document.primary_source().selection,
+        primary_route,
     })
 }

@@ -15,6 +15,7 @@ mod fixed_width;
 mod flextext;
 mod generic_xml;
 mod http_get;
+mod json_undeclared;
 mod json_variable;
 pub(super) mod occurrence_provenance;
 mod pdf;
@@ -28,6 +29,8 @@ mod xml_attribute_required;
 mod xml_ports;
 
 pub(super) use xml_attribute_required::validate_xml_attribute_required_metadata;
+#[cfg(test)]
+pub(super) use xml_ports::plain_entry_tree_leaf;
 
 pub use flextext::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
 
@@ -956,6 +959,7 @@ fn read_json_component_resolved(
 
     // Schema: prefer the referenced JSON Schema (types + repeating info).
     let mut json_schema_authoritative = false;
+    let mut json_schema_imported = false;
     let mut schema = json_el
         .and_then(|j| j.attribute("schema"))
         .and_then(|rel| {
@@ -963,6 +967,7 @@ fn read_json_component_resolved(
                 shared::read_json_schema_resource(mfd_path, resources, rel, "JSON Schema");
             match imported {
                 Ok(schema) => {
+                    json_schema_imported = true;
                     json_schema_authoritative = ordinary_json_schema_declaration(component);
                     Some(schema)
                 }
@@ -1021,6 +1026,9 @@ fn read_json_component_resolved(
             "dynamic JSON target `{name}` is unsupported: open fields cannot be combined with JSON alternatives"
         ));
         return None;
+    }
+    if !is_source && !is_variable && json_schema_imported {
+        json_undeclared::attach(&entry, &mut schema, &name, warnings);
     }
 
     let (input_keys, output_keys) = entry_key_sets(&root_el);

@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 
@@ -8,7 +9,18 @@ public static partial class FerruleJson
 {
     internal static string ExecuteJson5Accepted(
         string sourceDescriptor, string targetDescriptor, string source,
-        Func<FerruleInstance, FerruleInstance> mapping)
+        Func<FerruleInstance, FerruleInstance> mapping) =>
+        ExecuteJson5Accepted(sourceDescriptor, targetDescriptor, source, mapping,
+            static output => output.Text.ToString());
+
+    internal static byte[] ExecuteJson5AcceptedUtf8(
+        string sourceDescriptor, string targetDescriptor, string source,
+        Func<FerruleInstance, FerruleInstance> mapping) =>
+        ExecuteJson5Accepted(sourceDescriptor, targetDescriptor, source, mapping, CanonicalUtf8);
+
+    private static T ExecuteJson5Accepted<T>(
+        string sourceDescriptor, string targetDescriptor, string source,
+        Func<FerruleInstance, FerruleInstance> mapping, Func<CanonicalOutput, T> complete)
     {
         var inputSchema = Json5Schema(sourceDescriptor, FerruleJson5SchemaSide.Source);
         var outputSchema = Json5Schema(targetDescriptor, FerruleJson5SchemaSide.Target);
@@ -32,20 +44,34 @@ public static partial class FerruleJson
         try { output = mapping(input); }
         catch (Exception error)
         { throw new FerruleJson5BoundaryException(FerruleJson5Stage.Mapping, error); }
-        try { return Json5Serialize(outputSchema, output); }
+        try { return complete(Json5Serialize(outputSchema, output)); }
         catch (Exception error)
         { throw new FerruleJson5BoundaryException(FerruleJson5Stage.Output, error); }
     }
 
+    // Generated descriptor constants are interned, so each JSON5 descriptor is
+    // admitted and parsed once per process and shared by both sides of
+    // repeated and concurrent calls. The table compares keys by reference and
+    // does not keep them alive. Only successful preparations are retained; a
+    // rejected descriptor is admitted again by every call and throws its
+    // original error for its own side. Every call keeps its own normalization,
+    // NodeBudget and output accounting.
+    private static readonly ConditionalWeakTable<string, JsonSchemaNode> PreparedJson5Schemas = new();
+
     private static JsonSchemaNode Json5Schema(string descriptor, FerruleJson5SchemaSide side)
     {
+        if (PreparedJson5Schemas.TryGetValue(descriptor, out var prepared)) { return prepared; }
+        JsonSchemaNode parsed;
         try
         {
             var admitted = ValidateJson5Descriptor(descriptor);
-            return ParseSchema(admitted, true);
+            parsed = ParseSchema(admitted, true);
         }
         catch (Exception error)
         { throw new FerruleJson5BoundaryException(FerruleJson5Stage.Schema, error, side); }
+        // A concurrent first call may have prepared the same descriptor; keep
+        // the first published graph.
+        return PreparedJson5Schemas.GetValue(descriptor, _ => parsed);
     }
 
     private static string Json5ReaderDescriptor(JsonElement root, bool versioned)
@@ -93,7 +119,7 @@ public static partial class FerruleJson
         else { AppendCanonicalAnyJson(text, value, preserveNumbers: true); }
     }
 
-    private static string Json5Serialize(JsonSchemaNode schema, FerruleInstance instance)
+    private static CanonicalOutput Json5Serialize(JsonSchemaNode schema, FerruleInstance instance)
     {
         ArgumentNullException.ThrowIfNull(instance);
         try
@@ -108,14 +134,14 @@ public static partial class FerruleJson
             })) { WriteNode(writer, schema, instance, new NodeBudget(), 0); }
             var text = CanonicalizeOutputText(buffer.WrittenSpan);
             text.Append('\n');
-            var canonical = text.ToString();
-            var bytes = FerruleJson5Syntax.CountBoundaryBytes(canonical);
+            // The limit applies before either route materializes the document.
+            var bytes = CanonicalUtf8Length(text) ?? FerruleJson5Syntax.CountBoundaryBytes(text.ToString());
             if (bytes > MaximumDocumentBytes)
             {
                 throw new FerruleJson5ResourceException(FerruleJson5Resource.OutputDocumentBytes,
                     bytes, MaximumDocumentBytes);
             }
-            return canonical;
+            return new CanonicalOutput(text, bytes);
         }
         catch (FerruleRuntimeException) { throw; }
         catch (Exception error) when (error is JsonException or FormatException or InvalidOperationException or OverflowException or System.Text.EncoderFallbackException)

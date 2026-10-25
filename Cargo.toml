@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/edit-ops",
     "crates/editor-ui",
     "crates/json-pattern",
     "crates/mfd-conformance",
@@ -38,6 +39,7 @@ license = "GPL-3.0-only"
 repository = "https://github.com/DeandreT/ferrule"
 
 [workspace.dependencies]
+edit-ops = { path = "crates/edit-ops" }
 editor-ui = { path = "crates/editor-ui" }
 json-pattern = { path = "crates/json-pattern" }
 ir = { path = "crates/ir" }
@@ -95,3 +97,8 @@ zip = { version = "7.2", default-features = false, features = ["deflate-flate2-z
 [patch.crates-io]
 egui-snarl = { path = "vendor/egui-snarl" }
 egui-scale = { path = "vendor/egui-scale" }
+
+# Owned PDF worker jobs hash whole packaged executables and job artifacts;
+# unoptimized SHA-256 would dominate debug builds and tests.
+[profile.dev.package.sha2]
+opt-level = 3

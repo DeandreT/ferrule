@@ -593,10 +593,7 @@ fn dynamic_named_source_join_rejects_before_replacing_artifacts() {
             value: Value::String("reference.xml".into()),
         },
     );
-    project.extra_sources[0].dynamic_path = Some(DynamicSourcePath {
-        node: 4,
-        iteration: vec!["Left".into()],
-    });
+    project.extra_sources[0].dynamic_path = Some(DynamicSourcePath::legacy(4, vec!["Left".into()]));
 
     let error = mfd::export(&project, &output).unwrap_err();
     assert!(

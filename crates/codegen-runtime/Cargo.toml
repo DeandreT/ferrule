@@ -19,3 +19,6 @@ mapping = { workspace = true }
 quick-xml = { workspace = true }
 regex = { workspace = true }
 serde_json = { workspace = true }
+
+[build-dependencies]
+sha2 = { workspace = true }

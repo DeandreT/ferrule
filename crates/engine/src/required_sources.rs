@@ -4,7 +4,7 @@ use mapping::{
     FailureIteration, NamedTarget, Node, NodeId, Project, Scope, ScopeConstruction, SequenceExpr,
 };
 
-use crate::{EngineError, TargetSelection};
+use crate::{EngineError, TargetSelection, scope_slots};
 
 pub(crate) fn selected_target<'a>(
     project: &'a Project,
@@ -88,7 +88,7 @@ impl<'a> Analysis<'a> {
             None => {}
         }
         if let Some(sequence) = scope.sequence() {
-            self.inspect_sequence(sequence);
+            self.inspect_sequence_sources(sequence);
         }
         if let Some((_, join)) = scope.join() {
             for source in join.sources() {
@@ -100,61 +100,25 @@ impl<'a> Analysis<'a> {
                 self.inspect_owner(&source.collection().owner);
             }
         }
-        if let Some(segments) = scope.concatenated() {
-            for segment in segments.iter() {
-                self.inspect_scope(segment);
-            }
-        }
-
-        self.pending.extend(scope.filter);
-        self.pending.extend(scope.post_group_filter);
-        self.pending.extend(scope.grouping_nodes());
-        self.pending.extend(scope.sort_by);
-        self.pending.extend(scope.output_path());
-        self.pending.extend(
-            scope
-                .windows
-                .iter()
-                .copied()
-                .flat_map(|window| window.nodes()),
-        );
-        self.pending
-            .extend(scope.sort_then_by.iter().map(|key| key.node));
-        self.pending
-            .extend(scope.bindings.iter().map(|binding| binding.node));
-        self.pending.extend(
-            scope
-                .dynamic_bindings
-                .iter()
-                .flat_map(|binding| [binding.key, binding.value]),
-        );
-
         match &scope.construction {
-            ScopeConstruction::Scalar { value } => self.pending.push(*value),
-            ScopeConstruction::RecursiveFilter { plan } => self.pending.push(plan.predicate()),
             ScopeConstruction::PathHierarchy { plan } => self.inspect_path(plan.collection()),
             ScopeConstruction::OwnedPathHierarchy { plan } => {
                 self.inspect_owner(&plan.collection().owner)
             }
-            ScopeConstruction::AdjacencyTree { plan } => {
-                self.inspect_path(plan.collection());
-                self.pending.extend(plan.root());
-            }
+            ScopeConstruction::AdjacencyTree { plan } => self.inspect_path(plan.collection()),
             ScopeConstruction::OwnedAdjacencyTree { plan } => {
-                self.inspect_owner(&plan.collection().owner);
-                self.pending.extend(plan.root());
+                self.inspect_owner(&plan.collection().owner)
             }
             ScopeConstruction::Constructed
             | ScopeConstruction::CopyCurrentSource
-            | ScopeConstruction::XmlMixedContent { .. } => {}
+            | ScopeConstruction::XmlMixedContent { .. }
+            | ScopeConstruction::Scalar { .. }
+            | ScopeConstruction::RecursiveFilter { .. } => {}
         }
-
-        for child in &scope.children {
-            self.inspect_scope(child);
-        }
-        for child in &scope.dynamic_children {
-            self.pending.push(child.key);
-            self.inspect_scope(&child.scope);
+        self.pending
+            .extend(scope_slots::roots(scope, scope_slots::required_source));
+        for (_, nested) in scope.nested_scopes() {
+            self.inspect_scope(nested);
         }
     }
 
@@ -162,17 +126,19 @@ impl<'a> Analysis<'a> {
         for rule in &self.project.failure_rules {
             match &rule.iteration {
                 FailureIteration::Source { collection } => self.inspect_path(collection),
-                FailureIteration::Sequence { sequence } => self.inspect_sequence(sequence),
+                FailureIteration::Sequence { sequence } => self.inspect_sequence_sources(sequence),
                 FailureIteration::OwnedSource { source } => self.inspect_owner(&source.owner),
             }
-            self.pending.extend(rule.selection.predicate());
-            self.pending.extend(rule.message);
+            let pending = &mut self.pending;
+            rule.visit_roots(&mut |root| {
+                if scope_slots::required_source(root.slot) {
+                    pending.push(root.node);
+                }
+            });
         }
     }
 
-    fn inspect_sequence(&mut self, sequence: &SequenceExpr) {
-        self.pending.extend(sequence.inputs());
-        self.pending.push(sequence.item());
+    fn inspect_sequence_sources(&mut self, sequence: &SequenceExpr) {
         if let SequenceExpr::RecursiveCollect { collection, .. } = sequence {
             self.inspect_path(collection);
         }
@@ -189,6 +155,8 @@ impl<'a> Analysis<'a> {
             let Some(node) = self.project.graph.nodes.get(&id) else {
                 continue;
             };
+            // Every input, whatever its role, including a sequence's
+            // inputs and item identities.
             self.pending.extend(node.dependencies());
             self.inspect_node(node);
         }
@@ -222,7 +190,7 @@ impl<'a> Analysis<'a> {
             }
             Node::SequenceExists { sequence, .. }
             | Node::SequenceItemAt { sequence, .. }
-            | Node::SequenceAggregate { sequence, .. } => self.inspect_sequence(sequence),
+            | Node::SequenceAggregate { sequence, .. } => self.inspect_sequence_sources(sequence),
             Node::JoinAggregate { plan, .. } => {
                 for source in plan.sources() {
                     self.inspect_path(source.collection());
@@ -231,6 +199,7 @@ impl<'a> Analysis<'a> {
             Node::OwnedSourceField(field) => self.inspect_owner(&field.source.owner),
             Node::OwnedPosition(position) => self.inspect_owner(&position.owner),
             Node::OwnedRowDocumentPath(path) => self.inspect_owner(&path.owner),
+            Node::OwnedSourceDocumentPath(path) => self.inspect_owner(&path.owner),
             Node::OwnedDynamicSourceField(field) => self.inspect_owner(&field.object.owner),
             Node::OwnedLookup(lookup) => self.inspect_owner(&lookup.collection.owner),
             Node::OwnedCollectionFind(find) => self.inspect_owner(&find.collection.owner),
@@ -274,6 +243,20 @@ impl<'a> Analysis<'a> {
                     .filter(|(_, source)| source.name == *name && source.dynamic_path.is_none())
                     .map(|(index, _)| index),
             );
+            // An owned dynamic owner loads through its own exact driver.
+            let project = self.project;
+            for (index, source) in project.extra_sources.iter().enumerate() {
+                let Some(dynamic) = source.dynamic_path.as_ref() else {
+                    continue;
+                };
+                if source.name == *name
+                    && let Some(driver) = dynamic.owned_driver()
+                    && self.inspected_dynamic.insert(index)
+                {
+                    self.pending.push(dynamic.node);
+                    self.inspect_owner(&driver.owner);
+                }
+            }
         }
     }
 
@@ -299,12 +282,21 @@ impl<'a> Analysis<'a> {
                 continue;
             }
             self.pending.push(dynamic.node);
-            if let Some(driver) = dynamic.iteration.first().cloned() {
-                self.inspect_path(&[driver]);
+            match &dynamic.iteration {
+                mapping::SourceSelector::Legacy(path) => {
+                    if let Some(driver) = path.first().cloned() {
+                        self.inspect_path(&[driver]);
+                    }
+                }
+                mapping::SourceSelector::Owned(driver) => self.inspect_owner(&driver.owner),
             }
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/required_sources_roles.rs"]
+mod role_tests;
 
 #[cfg(test)]
 mod tests {
@@ -422,10 +414,7 @@ mod tests {
     #[test]
     fn selected_dynamic_source_keeps_static_path_and_driver_dependencies() {
         let mut dynamic = source("dynamic");
-        dynamic.dynamic_path = Some(DynamicSourcePath {
-            node: 0,
-            iteration: vec!["driver_data".into()],
-        });
+        dynamic.dynamic_path = Some(DynamicSourcePath::legacy(0, vec!["driver_data".into()]));
         let project = Project {
             source: SchemaNode::group("Input", Vec::new()),
             target: SchemaNode::group("Primary", Vec::new()),

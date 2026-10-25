@@ -180,7 +180,7 @@ fn layout_positions(
     });
     let source_extent = endpoint_extent(&source_positions, &semantics, measured_sizes);
     let target_extent = endpoint_extent(&target_positions, &semantics, measured_sizes);
-    let graph_nodes: BTreeSet<_> = semantics
+    let mut graph_nodes: BTreeSet<_> = semantics
         .iter()
         .filter_map(|(&id, node)| {
             matches!(node, CanvasNode::Graph(_) | CanvasNode::Placeholder(_)).then_some(id)
@@ -196,6 +196,18 @@ fn layout_positions(
         })
         .collect();
     edges.sort_by_key(|edge| (edge.from, edge.to, edge.output, edge.input));
+    let isolated: Vec<_> = graph_nodes
+        .iter()
+        .copied()
+        .filter(|node| {
+            !edges
+                .iter()
+                .any(|edge| edge.from == *node || edge.to == *node)
+        })
+        .collect();
+    for node in &isolated {
+        graph_nodes.remove(node);
+    }
 
     let mut depths = BTreeMap::new();
     for &node in &graph_nodes {
@@ -285,12 +297,35 @@ fn layout_positions(
         &target_positions,
         &packed_y,
     );
-    place_layout_columns(
+    let mut positions = place_layout_columns(
         &layout_columns,
         &channels,
         mode,
         compact_width(viewport_width),
-    )
+    );
+    // Disconnected cards form a short shelf, not an arbitrarily tall first
+    // column that makes the useful connected graph unreadable on opening.
+    if !isolated.is_empty() {
+        let top = positions
+            .iter()
+            .map(|(node, position)| position.y + node_size(semantics[node], measured_sizes).y)
+            .fold(0.0, f32::max)
+            + NODE_GAP * 2.0;
+        let columns = (isolated.len() as f32).sqrt().ceil().clamp(1.0, 6.0) as usize;
+        let cell = isolated.iter().fold(Vec2::ZERO, |size, node| {
+            size.max(node_size(semantics[node], measured_sizes))
+        }) + Vec2::splat(NODE_GAP);
+        for (index, node) in isolated.into_iter().enumerate() {
+            positions.insert(
+                node,
+                pos2(
+                    (index % columns) as f32 * cell.x,
+                    top + (index / columns) as f32 * cell.y,
+                ),
+            );
+        }
+    }
+    positions
 }
 
 struct LayoutColumn {
@@ -877,6 +912,39 @@ fn average(values: impl Iterator<Item = f32>) -> Option<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disconnected_cards_use_a_nonoverlapping_shelf_without_changing_wires() {
+        let mut snarl = Snarl::new();
+        let nodes: Vec<_> = (0..16)
+            .map(|id| snarl.insert_node(Pos2::ZERO, CanvasNode::Graph(id)))
+            .collect();
+        arrange_snarl(&mut snarl, &BTreeMap::new(), WireAppearance::default());
+        let xs: BTreeSet<_> = nodes
+            .iter()
+            .map(|id| snarl.get_node_info(*id).unwrap().pos.x as i32)
+            .collect();
+        let ys: BTreeSet<_> = nodes
+            .iter()
+            .map(|id| snarl.get_node_info(*id).unwrap().pos.y as i32)
+            .collect();
+        assert_eq!(xs.len(), 4);
+        assert_eq!(ys.len(), 4);
+        for (index, node) in nodes.iter().enumerate() {
+            let left = egui::Rect::from_min_size(
+                snarl.get_node_info(*node).unwrap().pos,
+                node_size(snarl[*node], &BTreeMap::new()),
+            );
+            for other in &nodes[index + 1..] {
+                let right = egui::Rect::from_min_size(
+                    snarl.get_node_info(*other).unwrap().pos,
+                    node_size(snarl[*other], &BTreeMap::new()),
+                );
+                assert!(!left.intersects(right));
+            }
+        }
+        assert_eq!(snarl.wires().count(), 0);
+    }
     use egui_snarl::{InPinId, OutPinId};
 
     fn connect(

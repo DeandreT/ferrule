@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 #[cfg(test)]
 use editor_ui::HistoryRecord;
 use editor_ui::{DocumentOrigin, EditHistory, RevisionKeyed, RevisionTracker, SemanticRevision};
+use editor_ui::{GraphDocument, ScopeFields, TargetId};
 use egui_snarl::Snarl;
 #[cfg(test)]
 use egui_snarl::{InPinId, OutPinId};
@@ -73,10 +74,20 @@ mod library_generation;
 #[path = "mfd_export.rs"]
 mod mfd_export_ui;
 mod mfd_import;
+use mfd_import::MfdImportTarget;
 mod mfd_pipeline;
 #[path = "new_mapping.rs"]
 mod new_mapping_ui;
 mod owned_worker;
+mod pdf_extraction;
+mod preview_service;
+pub(crate) use preview_service::{PreviewService, PreviewServicePort};
+#[cfg(all(test, target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[path = "pdf_preview_tests.rs"]
+mod pdf_preview_tests;
+#[cfg(all(test, target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[path = "pdf_run_tests.rs"]
+mod pdf_run_tests;
 #[path = "pipeline_editor.rs"]
 mod pipeline_editor_ui;
 mod pipeline_stage_canvas;
@@ -84,8 +95,10 @@ mod pipeline_stage_canvas;
 mod pipeline_ui;
 #[path = "preview.rs"]
 mod preview_ui;
+mod primary_document;
 mod primary_xml_input;
 mod rest_run;
+mod route_preflight;
 #[path = "run.rs"]
 mod run_ui;
 mod scope_retirement;
@@ -117,6 +130,9 @@ fn history_shortcuts() -> [egui::KeyboardShortcut; 3] {
 struct CanvasDocumentState {
     tools_id: egui::Id,
     snarl: Snarl<CanvasNode>,
+    /// Deterministic geometry for the current semantic revision. Rewiring can
+    /// change arrangement even when every node keeps its identity and position.
+    default_layout_cache: std::cell::RefCell<Option<(String, Vec<CanvasNodeLayout>)>>,
     node_sizes: std::collections::BTreeMap<CanvasNode, egui::Vec2>,
     endpoint_scroll: crate::canvas_endpoints::EndpointScrollState,
     search: crate::canvas_search::CanvasSearchState,
@@ -303,6 +319,7 @@ impl CanvasDocumentState {
                 NEXT_TOOLS_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             )),
             snarl,
+            default_layout_cache: Default::default(),
             node_sizes: std::collections::BTreeMap::new(),
             endpoint_scroll: crate::canvas_endpoints::EndpointScrollState::default(),
             search: crate::canvas_search::CanvasSearchState::default(),
@@ -428,10 +445,16 @@ struct EditorSnapshot {
     state: EditorState,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 struct EditorState {
     serialized_project: String,
     layout: CanvasLayout,
+}
+
+impl PartialEq for EditorState {
+    fn eq(&self, other: &Self) -> bool {
+        self.serialized_project == other.serialized_project && self.layout.same_view(&other.layout)
+    }
 }
 
 type EditorHistory = EditHistory<EditorSnapshot, graph_commands::GraphCommandRecord>;
@@ -467,6 +490,16 @@ pub struct FerruleApp {
     file_run_pause_on_failure: bool,
     pending_file_run: Option<run_ui::PendingFileRun>,
     file_run_teardown: SavedFileRunTeardownPort,
+    /// Session opt-in: filesystem PDF inputs of file runs and file-backed
+    /// previews are extracted by an owned packaged worker. Off by default.
+    owned_pdf_worker: bool,
+    pdf_worker_package: pdf_extraction::PdfWorkerPackage,
+    #[cfg(test)]
+    pdf_reader_controls: pdf_extraction::ReaderControls,
+    preview_input_source: preview_service::PreviewInputSource,
+    preview_service: PreviewServicePort,
+    /// Close the window once owned previews and the service have finished.
+    close_after_preview: bool,
     rest_run_draft: Option<rest_run::RestRunDraft>,
     pending_rest_run: Option<rest_run::PendingRestRun>,
     rest_run_result: Option<rest_run::RestRunResult>,
@@ -514,8 +547,13 @@ pub struct FerruleApp {
     appearance: EditorAppearance,
     mfd_package_manifest: Option<String>,
     mfd_item_ordered_exceptions: bool,
+    mfd_import_dialog: Option<MfdImportTarget>,
+    /// Recently opened or saved project paths, most recent first.
+    recent_projects: Vec<String>,
     palette: Palette,
     document: DocumentLocation,
+    /// The filename plan and input policy of an opened document project.
+    primary_document: Option<primary_document::PrimaryDocumentSession>,
     input_path: String,
     output_path: String,
     host_parameters: host_parameters::HostParameterEditor,
@@ -554,6 +592,13 @@ pub struct FerruleApp {
     pending_history: Option<PendingHistory>,
     /// Typed edits canvases applied this frame, awaiting the observer.
     frame_commands: Vec<editor_ui::GraphCommand>,
+    /// When the newest step was recorded or extended as one coalescing
+    /// command during continuing input.
+    command_coalescing: Option<std::time::Instant>,
+    /// Records every edit as a snapshot, as before typed commands, so tests
+    /// can compare typed history against that path.
+    #[cfg(test)]
+    snapshot_oracle: bool,
 }
 
 struct PendingHistory {
@@ -573,6 +618,7 @@ enum DialogKind {
     ExportPipelineMfd,
     SaveProjectAs,
     BrowseInput,
+    BrowsePrimaryInputRoot,
     BrowseOutput,
     ImportMfd,
     BrowseMfdPackageManifest,
@@ -646,6 +692,13 @@ impl Default for FerruleApp {
             file_run_pause_on_failure: false,
             pending_file_run: None,
             file_run_teardown: SavedFileRunTeardownPort::default(),
+            owned_pdf_worker: false,
+            pdf_worker_package: pdf_extraction::PdfWorkerPackage::beside_current_executable(),
+            #[cfg(test)]
+            pdf_reader_controls: Default::default(),
+            preview_input_source: Default::default(),
+            preview_service: PreviewServicePort::default(),
+            close_after_preview: false,
             rest_run_draft: None,
             pending_rest_run: None,
             rest_run_result: None,
@@ -693,8 +746,11 @@ impl Default for FerruleApp {
             appearance: EditorAppearance::default(),
             mfd_package_manifest: None,
             mfd_item_ordered_exceptions: false,
+            mfd_import_dialog: None,
+            recent_projects: Vec::new(),
             palette: crate::theme::palette(crate::theme::ResolvedTheme::Dark),
             document: DocumentLocation::untitled("project.json"),
+            primary_document: None,
             input_path: String::new(),
             output_path: String::new(),
             host_parameters: Default::default(),
@@ -730,6 +786,9 @@ impl Default for FerruleApp {
             fingerprints,
             pending_history: None,
             frame_commands: Vec::new(),
+            command_coalescing: None,
+            #[cfg(test)]
+            snapshot_oracle: false,
         }
     }
 }
@@ -754,16 +813,17 @@ fn editor_state(
     let fingerprint = fingerprint_of_key(&serialized_project);
     EditorState {
         serialized_project,
-        layout: CanvasLayout::capture_with_fingerprint(fingerprint, snarl, workspace),
+        layout: CanvasLayout::capture_with_fingerprint(project, fingerprint, snarl, workspace),
     }
 }
 
 impl CanvasLayout {
     fn capture(project: &Project, snarl: &Snarl<CanvasNode>, workspace: &MappingWorkspace) -> Self {
-        Self::capture_with_fingerprint(project_fingerprint(project), snarl, workspace)
+        Self::capture_with_fingerprint(project, project_fingerprint(project), snarl, workspace)
     }
 
     fn capture_with_fingerprint(
+        project: &Project,
         fingerprint: String,
         snarl: &Snarl<CanvasNode>,
         workspace: &MappingWorkspace,
@@ -771,12 +831,30 @@ impl CanvasLayout {
         let function_nodes = workspace
             .function_canvases
             .iter()
-            .map(|(&function, canvas)| (function, Self::capture_nodes(&canvas.snarl)))
+            .map(|(&function, canvas)| {
+                (
+                    function,
+                    Self::capture_document_nodes(canvas, &fingerprint, || {
+                        project
+                            .user_functions
+                            .get(&function)
+                            .map(build_function_snarl)
+                            .unwrap_or_default()
+                    }),
+                )
+            })
             .collect();
         let target_nodes = workspace
             .target_canvases
             .iter()
-            .map(|(&target, canvas)| (target, Self::capture_nodes(&canvas.snarl)))
+            .map(|(&target, canvas)| {
+                (
+                    target,
+                    Self::capture_document_nodes(canvas, &fingerprint, || {
+                        canvas_build::build_named_target_snarl(project, target)
+                    }),
+                )
+            })
             .collect();
         let mut open_functions = workspace
             .tabs
@@ -823,6 +901,29 @@ impl CanvasLayout {
         }
     }
 
+    fn capture_document_nodes(
+        canvas: &CanvasDocumentState,
+        fingerprint: &str,
+        build_default: impl FnOnce() -> Snarl<CanvasNode>,
+    ) -> Vec<CanvasNodeLayout> {
+        let nodes = Self::capture_nodes(&canvas.snarl);
+        let mut baseline = canvas.default_layout_cache.borrow_mut();
+        if baseline.as_ref().is_none_or(|(key, _)| key != fingerprint) {
+            *baseline = Some((
+                fingerprint.to_owned(),
+                Self::capture_nodes(&build_default()),
+            ));
+        }
+        if baseline
+            .as_ref()
+            .is_some_and(|(_, default)| default == &nodes)
+        {
+            Vec::new()
+        } else {
+            nodes
+        }
+    }
+
     fn capture_nodes(snarl: &Snarl<CanvasNode>) -> Vec<CanvasNodeLayout> {
         let mut nodes: Vec<_> = snarl
             .nodes_pos()
@@ -855,16 +956,15 @@ impl CanvasLayout {
         }
     }
 
-    /// Equality of the view state alone; the fingerprint follows the project.
+    /// Equality of saved canvas geometry; navigation is persisted opportunistically
+    /// on save, but opening or selecting a tab is not an edit.
     fn same_view(&self, other: &Self) -> bool {
         self.version == other.version
             && self.nodes == other.nodes
-            && self.function_nodes == other.function_nodes
-            && self.target_nodes == other.target_nodes
-            && self.open_functions == other.open_functions
-            && self.open_documents == other.open_documents
-            && self.active_function == other.active_function
-            && self.active_document == other.active_document
+            // Empty entries remember a visited default canvas, not custom
+            // geometry. Ignore only those markers when comparing edits.
+            && self.function_nodes.iter().filter(|(_, nodes)| !nodes.is_empty()).eq(other.function_nodes.iter().filter(|(_, nodes)| !nodes.is_empty()))
+            && self.target_nodes.iter().filter(|(_, nodes)| !nodes.is_empty()).eq(other.target_nodes.iter().filter(|(_, nodes)| !nodes.is_empty()))
     }
 
     fn matches_project(&self, project: &Project) -> bool {
@@ -921,16 +1021,19 @@ impl FerruleApp {
             appearance: preferences.appearance,
             show_minimap: preferences.show_minimap,
             mfd_package_manifest: preferences.mfd_package_manifest,
+            recent_projects: preferences.recent_projects,
             ..Self::default()
         }
     }
 
-    pub(crate) fn from_storage_with_saved_file_owner(
+    pub(crate) fn from_storage_with_owners(
         storage: Option<&dyn eframe::Storage>,
         owner: SavedFileRunTeardownPort,
+        preview_service: PreviewServicePort,
     ) -> Self {
         Self {
             file_run_teardown: owner,
+            preview_service,
             ..Self::from_storage(storage)
         }
     }
@@ -1013,6 +1116,7 @@ impl FerruleApp {
             DestructiveAction::NewProject => {
                 self.clear_run_report();
                 self.project = blank_project();
+                self.primary_document = None;
                 self.host_parameters = host_parameters::HostParameterEditor::default();
                 self.mapping_workspace.reset();
                 self.main_canvas = CanvasDocumentState::main(&self.project);
@@ -1040,28 +1144,45 @@ impl FerruleApp {
         let Some(action) = self.pending_destructive_action else {
             return;
         };
-        let mut choice = None;
-        egui::Window::new("Unsaved changes")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .show(ctx, |ui| {
-                ui.label(format!(
-                    "Save changes to {} before continuing?",
-                    self.document.display_path()
-                ));
-                ui.horizontal(|ui| {
-                    if ui.button("Save").clicked() {
-                        choice = Some(true);
-                    }
-                    if ui.button("Discard").clicked() {
-                        choice = Some(false);
-                    }
-                    if ui.button("Cancel").clicked() {
-                        self.pending_destructive_action = None;
-                    }
-                });
-            });
+        let name = self.document.title();
+        let location = self.document.location_hint();
+        let response =
+            crate::ui_kit::dialog(ctx, crate::ui_kit::DialogKind::Modal, "Unsaved changes").show(
+                |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        ui.label("Save changes to ");
+                        ui.label(egui::RichText::new(&name).strong());
+                        ui.label(" before continuing?");
+                    });
+                    ui.add(
+                        egui::Label::new(crate::ui_kit::TextRole::Help.text(&location)).truncate(),
+                    )
+                    .on_hover_text(&location);
+                },
+                |ui| {
+                    crate::ui_kit::dialog_buttons(
+                        ui,
+                        "Save".into(),
+                        Some("Cancel".into()),
+                        Some("Discard changes".into()),
+                    )
+                },
+            );
+        let choice = match response.footer {
+            Some(crate::ui_kit::DialogAction::Primary) => Some(true),
+            Some(crate::ui_kit::DialogAction::Destructive) => Some(false),
+            Some(crate::ui_kit::DialogAction::Secondary) => {
+                self.pending_destructive_action = None;
+                None
+            }
+            None => {
+                if response.close_requested {
+                    self.pending_destructive_action = None;
+                }
+                None
+            }
+        };
 
         match choice {
             Some(true) => {
@@ -1079,12 +1200,24 @@ impl FerruleApp {
         if self.stage_document_actions_blocked() {
             return;
         }
-        let loaded = (|| -> anyhow::Result<Project> {
+        let loaded = (|| -> anyhow::Result<(Project, Option<mapping::PrimarySourcePlan>)> {
             let bytes = std::fs::read(path)?;
-            Ok(mapping::project_file::decode_bytes(&bytes)?)
+            match mapping::project_file::decode_bytes(&bytes) {
+                Ok(project) => Ok((project, None)),
+                // A document project keeps its filename plan beside the project.
+                Err(error) => match mapping::document_project_file::decode_bytes(&bytes) {
+                    Ok(document) => Ok((
+                        document.project().clone(),
+                        Some(document.primary_source().clone()),
+                    )),
+                    Err(_) => Err(error.into()),
+                },
+            }
         })();
         match loaded {
-            Ok(project) => {
+            Ok((project, plan)) => {
+                self.primary_document =
+                    plan.map(|plan| primary_document::PrimaryDocumentSession::new(plan, path));
                 let (layout, layout_warning) = match read_layout(path) {
                     Ok(layout) => (layout, None),
                     Err(error) => (None, Some(error.to_string())),
@@ -1100,6 +1233,10 @@ impl FerruleApp {
                 self.host_parameters = host_parameters::HostParameterEditor::default();
                 self.mapping_workspace = mapping_workspace;
                 self.document = DocumentLocation::saved(path);
+                crate::preferences::remember_recent_project(
+                    &mut self.recent_projects,
+                    path.display().to_string(),
+                );
                 self.selected_scope.clear();
                 self.mark_clean();
                 self.rebase_history();
@@ -1119,10 +1256,10 @@ impl FerruleApp {
                 } else {
                     self.diagnostics.replace("Loaded project", diagnostics);
                 }
-                self.status = format!("loaded {}", path.display());
+                self.status = format!("loaded {}", crate::ui_kit::file_label(path));
             }
             Err(error) => {
-                self.status = format!("failed to load {}", path.display());
+                self.status = format!("failed to load {}", crate::ui_kit::file_label(path));
                 self.diagnostics.error("Open failed", error.to_string());
             }
         }
@@ -1285,6 +1422,11 @@ impl FerruleApp {
             }
             DialogKind::BrowseLibraryRuntime => self.stage_library_runtime_folder(path),
             DialogKind::BrowseInput => self.input_path = path,
+            DialogKind::BrowsePrimaryInputRoot => {
+                if let Some(session) = &mut self.primary_document {
+                    session.input_root = path;
+                }
+            }
             DialogKind::BrowseOutput => self.output_path = path,
             DialogKind::BrowseSourceSchema => {
                 self.stage_mapping_schema(SchemaSide::Source, PathBuf::from(path));
@@ -1345,6 +1487,7 @@ impl FerruleApp {
                     self.main_canvas = CanvasDocumentState::main(&imported.project);
                     self.reset_canvas_view();
                     self.project = imported.project;
+                    self.primary_document = None;
                     self.host_parameters = host_parameters::HostParameterEditor::default();
                     self.mapping_workspace.reset();
                     self.mark_unsaved();
@@ -1368,11 +1511,12 @@ impl FerruleApp {
                         self.diagnostics.replace("MFD import", diagnostics);
                     }
                     self.status = if imported.warnings.is_empty() {
-                        format!("imported {path}")
+                        format!("imported {}", crate::ui_kit::file_label(&path))
                     } else {
                         format!(
-                            "imported {path} with {} warning(s)",
-                            imported.warnings.len()
+                            "imported {} with {}",
+                            crate::ui_kit::file_label(&path),
+                            crate::ui_kit::plural(imported.warnings.len(), "warning")
                         )
                     };
                 }
@@ -1402,7 +1546,8 @@ impl eframe::App for FerruleApp {
                 self.appearance,
                 self.show_minimap,
                 self.mfd_package_manifest.clone(),
-            ),
+            )
+            .with_recent_projects(self.recent_projects.clone()),
         );
     }
 
@@ -1411,13 +1556,13 @@ impl eframe::App for FerruleApp {
         let layout_class = LayoutClass::from_width(ui.available_width());
         if self.last_layout_class != Some(layout_class) {
             self.last_layout_class = Some(layout_class);
-            self.reset_canvas_view();
         }
         let close_requested = ui.ctx().input(|input| input.viewport().close_requested());
         self.poll_dialog_with_close_guard(ui.ctx(), close_requested);
         self.poll_library_generation(ui.ctx());
         self.poll_pipeline_run(ui.ctx());
         self.poll_preview(ui.ctx());
+        self.poll_preview_service(ui.ctx());
         self.poll_file_run(ui.ctx());
         self.poll_rest_run(ui.ctx());
         if !self.guard_library_generation_close_requested(ui.ctx(), close_requested) {
@@ -1460,17 +1605,24 @@ impl eframe::App for FerruleApp {
         });
 
         egui::Panel::bottom("status_bar")
-            .exact_size(28.0)
+            .exact_size(crate::theme::METRICS.status_height)
             .show(ui, |ui| self.show_status_bar(ui));
         if !self.diagnostics.is_empty() {
             let mut navigate = None;
             egui::Panel::bottom("diagnostics_panel")
                 .resizable(true)
-                .default_size(120.0)
+                .default_size(crate::theme::METRICS.diagnostics_height)
                 .show(ui, |ui| navigate = self.diagnostics.show(ui));
             if let Some(diagnostic) = navigate {
                 self.navigate_to_diagnostic(&diagnostic);
             }
+        }
+        crate::ui_kit::set_workspace_rect(ui.ctx(), ui.available_rect_before_wrap());
+
+        if self.is_start_state() {
+            egui::CentralPanel::default().show(ui, |ui| self.show_start_view(ui));
+            self.show_editor_windows(ui, project_editing_enabled, coalesce_history_change);
+            return;
         }
 
         let visibility = WorkspaceVisibility::resolve(
@@ -1481,34 +1633,60 @@ impl eframe::App for FerruleApp {
             self.compact_dock,
             self.narrow_pane,
         );
+        let source_size = crate::theme::METRICS.source_panel;
         if visibility.source_dock {
             egui::Panel::left("source_schema")
-                .default_size(220.0)
-                .min_size(150.0)
-                .max_size(420.0)
+                .resizable(true)
+                .default_size(source_size.default)
+                .min_size(source_size.min)
+                .max_size(source_size.max)
                 .show(ui, |ui| {
-                    self.show_source_explorer(ui, project_editing_enabled)
+                    crate::ui_kit::pane(ui, "source", |ui| {
+                        self.show_source_explorer(ui, project_editing_enabled)
+                    })
                 });
         }
 
+        let inspector_size = crate::theme::METRICS.inspector_panel;
         if visibility.inspector_dock {
             egui::Panel::right("target_schema_and_scopes")
-                .default_size(300.0)
-                .min_size(220.0)
-                .max_size(480.0)
-                .show(ui, |ui| self.show_inspector(ui, project_editing_enabled));
+                .resizable(true)
+                .default_size(inspector_size.default)
+                .min_size(inspector_size.min)
+                .max_size(inspector_size.max)
+                .show(ui, |ui| {
+                    crate::ui_kit::pane(ui, "inspector", |ui| {
+                        self.show_inspector(ui, project_editing_enabled)
+                    })
+                });
         }
 
         egui::CentralPanel::default().show(ui, |ui| match visibility.center {
-            WorkspacePane::Source => {
-                self.show_source_explorer(ui, project_editing_enabled);
-            }
+            WorkspacePane::Source => crate::ui_kit::pane(ui, "source", |ui| {
+                self.show_source_explorer(ui, project_editing_enabled)
+            }),
             WorkspacePane::Canvas => {
                 self.show_mapping_workspace_canvas(ui, project_editing_enabled)
             }
-            WorkspacePane::Inspector => self.show_inspector(ui, project_editing_enabled),
+            WorkspacePane::Inspector => crate::ui_kit::pane(ui, "inspector", |ui| {
+                self.show_inspector(ui, project_editing_enabled)
+            }),
         });
+        self.show_editor_windows(ui, project_editing_enabled, coalesce_history_change);
+    }
+}
 
+impl FerruleApp {
+    /// Windows and dialogs drawn over the workspace, then the per-frame
+    /// history observation and window title.
+    fn show_editor_windows(
+        &mut self,
+        ui: &mut egui::Ui,
+        project_editing_enabled: bool,
+        coalesce_history_change: bool,
+    ) {
+        self.show_run_settings(ui.ctx(), project_editing_enabled);
+        self.show_mfd_import_dialog(ui.ctx());
         crate::appearance_editor::show(
             ui.ctx(),
             &mut self.show_appearance_editor,
@@ -1555,7 +1733,7 @@ impl eframe::App for FerruleApp {
             ui.ctx().request_repaint();
         }
         let marker = if self.observed_dirty() { " *" } else { "" };
-        let name = self.document.display_name();
+        let name = self.document.title();
         ui.ctx()
             .send_viewport_cmd(egui::ViewportCommand::Title(format!(
                 "{name}{marker} - ferrule"
@@ -1617,3 +1795,15 @@ mod typed_value_map_cell_tests;
 
 #[cfg(test)]
 mod named_source_endpoint_tests;
+
+#[cfg(test)]
+mod typed_edit_oracle;
+
+#[cfg(test)]
+mod inspector_commands_tests;
+
+#[cfg(test)]
+mod project_commands_tests;
+
+#[cfg(test)]
+mod primary_document_tests;

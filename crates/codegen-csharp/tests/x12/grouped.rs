@@ -288,7 +288,7 @@ fn fixture(name: &str) -> &'static str {
 fn schema(version: &str) -> SchemaNode {
     serde_json::from_str(fixture(&format!("{version}-schema.json"))).unwrap()
 }
-fn evidence(label: &str) -> std::path::PathBuf {
+fn evidence(label: &str) -> TempDir {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let root = std::env::temp_dir().join(format!(
         "ferrule_x12_grouped_{label}_{}_{}_{}",
@@ -306,7 +306,7 @@ fn evidence(label: &str) -> std::path::PathBuf {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, contents).unwrap();
     }
-    root
+    TempDir(root)
 }
 fn identity(schema: &SchemaNode) -> Project {
     project(
@@ -547,6 +547,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "Runtime/FerruleSourceOrigin.cs",
         "Runtime/FerruleJoins.cs",
         "Runtime/FerruleOwnedDynamicField.cs",
+        "Runtime/FerruleOwnedDynamicLoading.cs",
         "Runtime/FerrulePathHierarchy.cs",
         "Runtime/FerrulePrimaryRoot.cs",
         "Runtime/FerruleRecursiveFilter.cs",
@@ -582,6 +583,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "Runtime/FerruleXml.Output.cs",
         "Runtime/FerruleXml.OutputSet.cs",
         "Runtime/FerruleXml.Owned.cs",
+        "Runtime/FerruleXml.Prepared.cs",
         "Runtime/FerruleXml.cs",
         "Runtime/FerruleXmlMixedContent.Owned.cs",
         "Runtime/FerruleXmlMixedContent.cs",
@@ -594,9 +596,11 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "Runtime/Json/FerruleJson.ObjectOpenness.cs",
         "Runtime/Json/FerruleJson.PatternProperties.cs",
         "Runtime/Json/FerruleJson.Patterns.cs",
+        "Runtime/Json/FerruleJson.Prepared.cs",
         "Runtime/Json/FerruleJson.PropertyCounts.cs",
         "Runtime/Json/FerruleJson.PropertyDependencies.cs",
         "Runtime/Json/FerruleJson.PropertyNames.cs",
+        "Runtime/Json/FerruleJson.SchemaNode.cs",
         "Runtime/Json/FerruleJson.UniqueItems.cs",
         "Runtime/Json/FerruleJson.cs",
         "Runtime/Json/FerruleJsonSourceDocument.cs",
@@ -702,6 +706,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
             &format!("{name}-build"),
             Command::new("dotnet")
                 .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+                .dotnet_temp(&root)
                 .args([
                     "build",
                     &format!("{name}/Ferrule.Generated.csproj"),
@@ -767,6 +772,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "host-build",
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "build",
                 "Harness/Harness.csproj",
@@ -791,6 +797,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "host-run",
         Command::new("dotnet")
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .dotnet_temp(&root)
             .args([
                 "run",
                 "--project",

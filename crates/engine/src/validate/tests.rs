@@ -250,10 +250,7 @@ fn validates_dynamic_extra_source_ownership() {
         path: String::new(),
         schema: SchemaNode::group("records", Vec::new()),
         options: Default::default(),
-        dynamic_path: Some(DynamicSourcePath {
-            node: 99,
-            iteration: vec!["missing".into()],
-        }),
+        dynamic_path: Some(DynamicSourcePath::legacy(99, vec!["missing".into()])),
     });
 
     let issues = validate(&project);
@@ -1122,3 +1119,6 @@ fn reports_dangling_references_paths_unknown_functions_and_cycles() {
 
 #[path = "tests/primary_root_named.rs"]
 mod primary_root_named;
+
+#[path = "tests/json_array_wrappers.rs"]
+mod json_array_wrappers;
