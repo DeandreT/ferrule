@@ -25,7 +25,11 @@ pub(crate) const DYNAMIC_INPUT_DOCUMENT_OUTPUTS_SOURCE: (&str, &str) = (
     ),
 );
 
-pub(crate) const SOURCES: [(&str, &str); 92] = [
+pub(crate) const SOURCES: [(&str, &str); 93] = [
+    (
+        "Runtime/FerruleOwnedInput.cs",
+        include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleOwnedInput.cs"),
+    ),
     (
         "Runtime/Json/FerruleMapForceStringComponents.cs",
         include_str!(

@@ -13,6 +13,30 @@ pub struct SourceBytes {
     pub bytes: Vec<u8>,
 }
 
+/// Direct readers can parse before native release, but native `File`/HTTP Drop
+/// cannot report close failure. Use `OwnedInput` for a fallible host-close policy.
+#[derive(Debug)]
+pub enum InputParseError<E> {
+    Read(SourceReadError),
+    Parse(E),
+}
+impl<E: fmt::Display> fmt::Display for InputParseError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Read(e) => e.fmt(f),
+            Self::Parse(e) => e.fmt(f),
+        }
+    }
+}
+impl<E: std::error::Error + 'static> std::error::Error for InputParseError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(match self {
+            Self::Read(e) => e,
+            Self::Parse(e) => e,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub enum SourceReadError {
     Options,
@@ -117,6 +141,91 @@ impl DirectSourceReader {
             self.file(std::path::PathBuf::from(&identity))?
         };
         Ok(SourceBytes { identity, bytes })
+    }
+
+    /// Read completely and invoke `parse` before the native source is dropped.
+    /// This preserves identity and transport limits, but does not report close
+    /// failure: standard safe File/HTTP Drop offers no such result. The existing
+    /// byte-only `read` still releases the source before returning bytes.
+    pub fn read_with<T, E>(
+        &self,
+        selected: &str,
+        parse: impl FnOnce(&str, &[u8]) -> Result<T, E>,
+    ) -> Result<T, InputParseError<E>> {
+        let identity = selected.trim().to_string();
+        let url = identity
+            .encode_utf16()
+            .position(|u| u == b':' as u16)
+            .is_some_and(|i| i > 1);
+        if url {
+            let mut uri = url::Url::parse(&identity)
+                .map_err(|_| InputParseError::Read(SourceReadError::Protocol))?;
+            if !uri.username().is_empty() || uri.password().is_some() {
+                return Err(InputParseError::Read(SourceReadError::Credentials));
+            }
+            match uri.scheme() {
+                "file" => self.file_with(
+                    uri.to_file_path()
+                        .map_err(|_| InputParseError::Read(SourceReadError::Protocol))?,
+                    &identity,
+                    parse,
+                ),
+                "http" | "https" => {
+                    uri.set_fragment(None);
+                    let mut response = self.agent.get(uri.as_str()).call().map_err(|e| {
+                        InputParseError::Read(match e {
+                            ureq::Error::StatusCode(code) => SourceReadError::Http(Some(code)),
+                            _ => SourceReadError::Http(None),
+                        })
+                    })?;
+                    if !response.status().is_success() {
+                        return Err(InputParseError::Read(SourceReadError::Http(Some(
+                            response.status().as_u16(),
+                        ))));
+                    }
+                    let legacy_chunked = response.version() == ureq::http::Version::HTTP_10
+                        && response
+                            .headers()
+                            .get("transfer-encoding")
+                            .and_then(|v| v.to_str().ok())
+                            .and_then(|v| v.split(',').next_back())
+                            .is_some_and(|v| v.trim().eq_ignore_ascii_case("chunked"));
+                    let bytes = if legacy_chunked {
+                        self.bounded(LegacyChunks::new(response.body_mut().as_reader()))
+                    } else {
+                        self.bounded(response.body_mut().as_reader())
+                    }
+                    .map_err(InputParseError::Read)?;
+                    let result = parse(&identity, &bytes).map_err(InputParseError::Parse);
+                    drop(response);
+                    result
+                }
+                _ => Err(InputParseError::Read(SourceReadError::Protocol)),
+            }
+        } else {
+            self.file_with(std::path::PathBuf::from(&identity), &identity, parse)
+        }
+    }
+    fn file_with<T, E>(
+        &self,
+        path: std::path::PathBuf,
+        identity: &str,
+        parse: impl FnOnce(&str, &[u8]) -> Result<T, E>,
+    ) -> Result<T, InputParseError<E>> {
+        let mut options = OpenOptions::new();
+        options.read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            options.share_mode(1);
+        }
+        let file = options
+            .open(path)
+            .map_err(|e| InputParseError::Read(SourceReadError::File(e)))?;
+        let bytes = self.bounded(&file).map_err(InputParseError::Read)?;
+        let result = parse(identity, &bytes).map_err(InputParseError::Parse);
+        drop(file);
+        result
     }
     fn file(&self, path: std::path::PathBuf) -> Result<Vec<u8>, SourceReadError> {
         let mut options = OpenOptions::new();
