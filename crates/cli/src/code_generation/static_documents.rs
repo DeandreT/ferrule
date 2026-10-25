@@ -2,8 +2,8 @@ use std::path::Path;
 
 use anyhow::{Context, bail};
 use codegen::{
-    DocumentBoundaryOptions, NamedDocumentBoundaryOptions, StaticDocumentBoundaryPolicy,
-    X12BoundaryOptions, X12EnvelopeProfile,
+    DocumentBoundaryOptions, EdifactBoundaryOptions, NamedDocumentBoundaryOptions,
+    StaticDocumentBoundaryPolicy, X12BoundaryOptions, X12EnvelopeProfile,
 };
 use mapping::{EdiBoundaryKind, FormatOptions, Project};
 
@@ -81,6 +81,11 @@ fn boundary(
     // This profile never infers a physical codec from the schema or contents.
     // Retained explicit family/JSON identity takes precedence over suffixes.
     if let Some(kind) = options.edi_kind {
+        if kind == EdiBoundaryKind::Edifact {
+            return EdifactBoundaryOptions::from_format_options(options)
+                .map(DocumentBoundaryOptions::Edifact)
+                .with_context(|| format!("static document {owner} format options"));
+        }
         if kind != EdiBoundaryKind::X12 {
             bail!("static document {owner} does not support the declared EDI family");
         }
@@ -99,7 +104,7 @@ fn boundary(
             Some("edi" | "x12") => true,
             Some("json") => false,
             _ => bail!(
-                "static document {owner} requires an explicit X12 or strict JSON format identity"
+                "static document {owner} requires an explicit EDIFACT, X12 or strict JSON format identity"
             ),
         }
     };

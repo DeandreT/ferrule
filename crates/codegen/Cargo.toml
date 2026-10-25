@@ -9,6 +9,7 @@ description = "Backend-neutral lowering and generated artifact IR for ferrule ma
 [dependencies]
 codegen-schema = { workspace = true }
 engine = { workspace = true }
+format-edi = { workspace = true }
 ir = { workspace = true }
 mapping = { workspace = true }
 serde = { workspace = true }

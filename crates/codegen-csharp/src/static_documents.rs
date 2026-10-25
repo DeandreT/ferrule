@@ -1,10 +1,10 @@
-//! Static JSON/X12 document companions over the ordinary complete mapping.
+//! Static JSON/X12/EDIFACT companions over the ordinary complete mapping.
 //!
 //! `ExecuteDocumentOutputs[WithHost]` and `ExecuteDocumentBytesOutputs[WithHost]`
 //! admit every input once and execute the mapping once. The primary and true
 //! named targets use their own admitted descriptors, in declaration order; no
 //! bundle is returned until every physical writer succeeds. Host context is
-//! shared unchanged by mapping and X12 completion (no implicit clock is added).
+//! shared unchanged by mapping and EDI completion (no implicit clock is added).
 //! Selected-target companions retain their existing contract. XML, dynamic
 //! sources/targets and document iteration remain outside this boundary policy.
 //! Complete input/output bundles each allow 4096 documents and 256 MiB of strict
@@ -23,7 +23,7 @@ use crate::composition::ClassPart;
 use crate::{EmitError, literal};
 use codegen::GenerationProfile;
 
-/// Failures from complete static JSON/X12 document companions.
+/// Failures from complete static JSON/X12/EDIFACT document companions.
 #[derive(Debug)]
 pub enum StaticDocumentEmitError {
     Policy(StaticDocumentBoundaryError),
@@ -74,7 +74,11 @@ pub(crate) fn emit(
         .map_err(StaticDocumentEmitError::Policy)?;
     let mut library = crate::library(program)?;
     library.add_companion("GeneratedMapping.Documents.cs", render(&profile));
-    library.add_runtime(&crate::x12_output::X12_SOURCES);
+    if has_edifact(&profile) {
+        crate::edi_runtime::add_runtime(&mut library);
+    } else {
+        library.add_runtime(&crate::x12_output::X12_SOURCES);
+    }
     library
         .into_artifacts_with(options, GenerationProfile::StaticDocuments)
         .map_err(StaticDocumentEmitError::from)
@@ -84,20 +88,34 @@ fn codec(format: DocumentBoundaryFormat) -> &'static str {
     match format {
         DocumentBoundaryFormat::Json => "FerruleJson",
         DocumentBoundaryFormat::X12 => "FerruleX12",
+        DocumentBoundaryFormat::Edifact => "FerruleEdi",
     }
+}
+
+fn has_edifact(profile: &StaticDocumentBoundaryProfile) -> bool {
+    std::iter::once(&profile.source)
+        .chain(std::iter::once(&profile.target))
+        .chain(profile.extra_sources.iter().map(|source| &source.boundary))
+        .chain(profile.extra_targets.iter().map(|target| &target.boundary))
+        .any(|boundary| boundary.format == DocumentBoundaryFormat::Edifact)
 }
 
 fn format_name(format: DocumentBoundaryFormat) -> &'static str {
     match format {
         DocumentBoundaryFormat::Json => "Json",
         DocumentBoundaryFormat::X12 => "X12",
+        DocumentBoundaryFormat::Edifact => "Edifact",
     }
 }
 
 fn render(profile: &StaticDocumentBoundaryProfile) -> ClassPart {
     let mut types = String::from(crate::document_output_types::OUTPUT_TYPES);
     types.push_str(COMPLETE_OUTPUT_TYPES);
-    let mut output = String::from(COMPLETE_OUTPUT_HELPERS);
+    let mut output = String::from(COMPLETE_OUTPUT_HELPERS_START);
+    if has_edifact(profile) {
+        output.push_str(" or global::Ferrule.Runtime.FerruleEdiException");
+    }
+    output.push_str(COMPLETE_OUTPUT_HELPERS_END);
     for (name, descriptor) in [
         ("DocumentSourceDescriptor", &profile.source.descriptor),
         ("DocumentTargetDescriptor", &profile.target.descriptor),
@@ -185,13 +203,16 @@ public sealed class DocumentBundleResourceException : global::System.Exception
 
 "#;
 
-const COMPLETE_OUTPUT_HELPERS: &str = r#"    private static readonly global::System.Text.UTF8Encoding DocumentOutputsUtf8 = new(false, true);
+const COMPLETE_OUTPUT_HELPERS_START: &str = r#"    private static readonly global::System.Text.UTF8Encoding DocumentOutputsUtf8 = new(false, true);
 
     private static T DocumentBoundaryValue<T>(DocumentBoundaryOwner owner, global::System.Func<T> action)
     {
         try { return action(); }
         catch (global::System.Exception error) when (error is global::Ferrule.Runtime.FerruleRuntimeException
-            or global::Ferrule.Runtime.FerruleX12Exception or global::System.Text.EncoderFallbackException)
+            or global::Ferrule.Runtime.FerruleX12Exception or global::System.Text.EncoderFallbackException
+            or global::System.Text.DecoderFallbackException"#;
+
+const COMPLETE_OUTPUT_HELPERS_END: &str = r#")
         { throw new DocumentExecutionException(owner, error); }
     }
 
@@ -305,12 +326,22 @@ fn render_complete_parse(
             "        var owner_{index} = new DocumentBoundaryOwner.NamedSource({index}, {name});\n        var document_{index} = documents[{name}];\n        budget.Charge(owner_{index}, {size});\n"
         ));
     }
-    let source_codec = codec(profile.source.format);
-    output.push_str(&format!("        var primary = DocumentBoundaryValue(owner, () => global::Ferrule.Runtime.{source_codec}.ParseEmbedded{suffix}(DocumentSourceDescriptor, source));\n        var parsed = new global::System.Collections.Generic.List<NamedInput>({});\n", profile.extra_sources.len()));
+    let call = parsing(
+        &profile.source,
+        "DocumentSourceDescriptor",
+        "source",
+        suffix,
+    );
+    output.push_str(&format!("        var primary = DocumentBoundaryValue(owner, () => {call});\n        var parsed = new global::System.Collections.Generic.List<NamedInput>({});\n", profile.extra_sources.len()));
     for (index, source) in profile.extra_sources.iter().enumerate() {
         let name = literal::string(&source.name);
-        let source_codec = codec(source.boundary.format);
-        output.push_str(&format!("        parsed.Add(new NamedInput({name}, DocumentBoundaryValue(owner_{index}, () => global::Ferrule.Runtime.{source_codec}.ParseEmbedded{suffix}(ExtraDocumentSourceDescriptors[{index}], document_{index}))));\n"));
+        let call = parsing(
+            &source.boundary,
+            &format!("ExtraDocumentSourceDescriptors[{index}]"),
+            &format!("document_{index}"),
+            suffix,
+        );
+        output.push_str(&format!("        parsed.Add(new NamedInput({name}, DocumentBoundaryValue(owner_{index}, () => {call})));\n"));
     }
     output.push_str("        return (primary, parsed);\n    }\n");
 }
@@ -395,8 +426,23 @@ fn render_api(profile: &StaticDocumentBoundaryProfile, bytes: bool, output: &mut
             "",
         )
     };
-    let source_codec = codec(profile.source.format);
-    output.push_str(&format!(r#"
+    let source_call = parsing(
+        &profile.source,
+        "DocumentSourceDescriptor",
+        "source",
+        suffix,
+    );
+    let parse = if has_edifact(profile) {
+        format!(
+            "var parsed = ParseDocument{suffix}OutputsInputs(source, extraSources);\n        var parsedSource = parsed.Primary;\n        var parsedInputs = parsed.Inputs;"
+        )
+    } else {
+        format!(
+            "ValidateNamedDocument{suffix}InputNames(extraSources);\n        var parsedSource = {source_call};\n        var parsedInputs = ParseNamedDocument{suffix}Inputs(extraSources);"
+        )
+    };
+    output.push_str(&format!(
+        r#"
     public static {result} {method}(
         {document} source,
         global::Ferrule.Runtime.FerruleTargetSelection selection)
@@ -414,14 +460,13 @@ fn render_api(profile: &StaticDocumentBoundaryProfile, bytes: bool, output: &mut
         global::System.ArgumentNullException.ThrowIfNull(selection);
         var selected = ResolveTarget(selection);
         global::System.ArgumentNullException.ThrowIfNull(extraSources);
-        ValidateNamedDocument{suffix}InputNames(extraSources);
-        var parsedSource = global::Ferrule.Runtime.{source_codec}.ParseEmbedded{suffix}(DocumentSourceDescriptor, source);
-        var parsedInputs = ParseNamedDocument{suffix}Inputs(extraSources);
+        {parse}
         var outcome = ExecuteSelectedTargetWithHost(
             parsedSource, selection, parsedInputs, executionContext, dynamicSourceLoader: null);
         return Serialize{result}(outcome, selected, executionContext);
     }}
-"#));
+"#
+    ));
 }
 
 fn render_name_validation(
@@ -491,10 +536,13 @@ fn render_named_parse(profile: &StaticDocumentBoundaryProfile, bytes: bool, outp
     output.push_str("        var parsed = new global::System.Collections.Generic.List<NamedInput>(extraSources.Count);\n        foreach (var extraSource in extraSources)\n        {\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Document);\n            var instance = extraSource.Name switch\n            {\n");
     for (index, source) in profile.extra_sources.iter().enumerate() {
         let name = literal::string(&source.name);
-        let source_codec = codec(source.boundary.format);
-        output.push_str(&format!(
-            "                {name} => global::Ferrule.Runtime.{source_codec}.ParseEmbedded{suffix}(ExtraDocumentSourceDescriptors[{index}], extraSource.Document),\n"
-        ));
+        let call = parsing(
+            &source.boundary,
+            &format!("ExtraDocumentSourceDescriptors[{index}]"),
+            "extraSource.Document",
+            suffix,
+        );
+        output.push_str(&format!("                {name} => {call},\n"));
     }
     output.push_str("                _ => throw new global::System.InvalidOperationException(\"Preflighted document source is invalid.\"),\n            };\n            parsed.Add(new NamedInput(extraSource.Name, instance));\n        }\n        return parsed;\n    }\n");
 }
@@ -505,6 +553,17 @@ fn serialization(
     instance: &str,
     suffix: &str,
 ) -> String {
+    if boundary.format == DocumentBoundaryFormat::Edifact {
+        let options = literal::string(&boundary.options_descriptor);
+        let call = format!(
+            "new global::Ferrule.Runtime.FerruleEdi({descriptor}, {options}, \"Edifact\", strictEnvelope: true).Serialize({instance}, executionContext?.CurrentDateTime)"
+        );
+        return if suffix == "Bytes" {
+            call
+        } else {
+            format!("DocumentOutputsUtf8.GetString({call})")
+        };
+    }
     let selected_codec = codec(boundary.format);
     let call = format!(
         "global::Ferrule.Runtime.{selected_codec}.SerializeEmbedded{suffix}({descriptor}, {instance}"
@@ -518,11 +577,36 @@ fn serialization(
     }
 }
 
+fn parsing(
+    boundary: &DocumentBoundaryDescriptor,
+    descriptor: &str,
+    document: &str,
+    suffix: &str,
+) -> String {
+    if boundary.format == DocumentBoundaryFormat::Edifact {
+        let options = literal::string(&boundary.options_descriptor);
+        let bytes = if suffix == "Bytes" {
+            document.to_owned()
+        } else {
+            format!("DocumentOutputsUtf8.GetBytes({document})")
+        };
+        format!(
+            "new global::Ferrule.Runtime.FerruleEdi({descriptor}, {options}, \"Edifact\", input: true, strictEnvelope: true).Parse({bytes})"
+        )
+    } else {
+        format!(
+            "global::Ferrule.Runtime.{}.ParseEmbedded{suffix}({descriptor}, {document})",
+            codec(boundary.format)
+        )
+    }
+}
+
 fn render_selected_serialize(
     profile: &StaticDocumentBoundaryProfile,
     bytes: bool,
     output: &mut String,
 ) {
+    let wrap_boundary = has_edifact(profile);
     let (result, named_output, suffix) = if bytes {
         (
             "SelectedDocumentBytesTargetOutput",
@@ -539,6 +623,11 @@ fn render_selected_serialize(
         "primary.Instance",
         suffix,
     );
+    let primary_call = if wrap_boundary {
+        format!("DocumentBoundaryValue(new DocumentBoundaryOwner.Target(), () => {primary_call})")
+    } else {
+        primary_call
+    };
     output.push_str(&format!(
         r#"
     private static {result} Serialize{result}(
@@ -559,6 +648,13 @@ fn render_selected_serialize(
         let descriptor = format!("ExtraDocumentTargetDescriptors[{index}]");
         let instance = format!("named_{selected}.Output.Instance");
         let call = serialization(&target.boundary, &descriptor, &instance, suffix);
+        let call = if wrap_boundary {
+            format!(
+                "DocumentBoundaryValue(new DocumentBoundaryOwner.NamedTarget({index}, {name}), () => {call})"
+            )
+        } else {
+            call
+        };
         output.push_str(&format!(r#"            case {selected} when outcome is SelectedTargetOutput.Named named_{selected} &&
                 global::System.String.Equals(named_{selected}.Output.Name, {name}, global::System.StringComparison.Ordinal):
                 return new {result}.Named(new {named_output}(
