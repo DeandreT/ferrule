@@ -17,6 +17,7 @@ pub enum PrimaryDocumentFormat {
     Csv,
     Xml,
     Json,
+    FixedWidth,
 }
 
 impl PrimaryDocumentFormat {
@@ -25,6 +26,7 @@ impl PrimaryDocumentFormat {
             Self::Csv => "CSV",
             Self::Xml => "XML",
             Self::Json => "JSON",
+            Self::FixedWidth => "fixed-width",
         }
     }
 }
@@ -65,20 +67,32 @@ impl fmt::Display for PrimaryRouteSide {
 pub enum PrimaryRouteError {
     /// A single-output document route cannot acquire or publish named endpoints.
     NamedEndpoints,
+    FixedWidthSchema {
+        side: PrimaryRouteSide,
+    },
+    FixedWidthFields {
+        side: PrimaryRouteSide,
+        expected: usize,
+        got: usize,
+    },
     /// The selected format does not own all of the boundary's options.
     IncompatibleOptions {
         side: PrimaryRouteSide,
         format: PrimaryDocumentFormat,
     },
     /// Neither a format option nor a recognized saved path names the format.
-    MissingIdentity { side: PrimaryRouteSide },
+    MissingIdentity {
+        side: PrimaryRouteSide,
+    },
     /// The format has no primary document route.
     NotAdmitted {
         side: PrimaryRouteSide,
         format: &'static str,
     },
     /// The target does not use the source's format.
-    TargetFormat { source: PrimaryDocumentFormat },
+    TargetFormat {
+        source: PrimaryDocumentFormat,
+    },
     /// A directly named document cannot supply a source declared as an XML
     /// document set (`local_xml_file_set`).
     DirectDocumentSet,
@@ -90,6 +104,18 @@ pub enum PrimaryRouteError {
 impl fmt::Display for PrimaryRouteError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::FixedWidthSchema { side } => write!(
+                f,
+                "fixed-width {side} requires a flat non-repeating scalar row schema"
+            ),
+            Self::FixedWidthFields {
+                side,
+                expected,
+                got,
+            } => write!(
+                f,
+                "fixed-width {side} needs {expected} field widths, got {got}"
+            ),
             Self::NamedEndpoints => {
                 f.write_str("primary document routes have no named sources or targets")
             }
@@ -170,7 +196,7 @@ fn classify(
         return Ok(PrimaryDocumentFormat::Json);
     }
     if options.fixed_width.is_some() {
-        return refuse("fixed-width text");
+        return Ok(PrimaryDocumentFormat::FixedWidth);
     }
     match options.tabular_kind {
         Some(TabularBoundaryKind::Csv) => return Ok(PrimaryDocumentFormat::Csv),
@@ -222,6 +248,10 @@ impl DocumentProject {
                     side: PrimaryRouteSide::Target,
                     format: "JSON",
                 },
+                Ok(PrimaryDocumentFormat::FixedWidth) => PrimaryRouteError::NotAdmitted {
+                    side: PrimaryRouteSide::Target,
+                    format: "fixed-width text",
+                },
                 _ => PrimaryRouteError::TargetFormat { source: format },
             });
         }
@@ -232,6 +262,50 @@ impl DocumentProject {
             PrimaryFileSelection::FileNameWildcard { .. }
         );
         let shape = match format {
+            PrimaryDocumentFormat::FixedWidth => {
+                for (side, schema, options) in [
+                    (
+                        PrimaryRouteSide::Source,
+                        &project.source,
+                        &project.source_options,
+                    ),
+                    (
+                        PrimaryRouteSide::Target,
+                        &project.target,
+                        &project.target_options,
+                    ),
+                ] {
+                    let ir::SchemaKind::Group { children, .. } = &schema.kind else {
+                        return Err(PrimaryRouteError::FixedWidthSchema { side });
+                    };
+                    if schema.repeating
+                        || schema.contains_json_array_wrapper()
+                        || children.iter().any(|child| {
+                            child.repeating || !matches!(child.kind, ir::SchemaKind::Scalar { .. })
+                        })
+                    {
+                        return Err(PrimaryRouteError::FixedWidthSchema { side });
+                    }
+                    let got = options
+                        .fixed_width
+                        .as_ref()
+                        .map_or(0, |layout| layout.field_widths().len());
+                    if got != children.len() {
+                        return Err(PrimaryRouteError::FixedWidthFields {
+                            side,
+                            expected: children.len(),
+                            got,
+                        });
+                    }
+                }
+                if project.root.output_path().is_some() {
+                    return Err(PrimaryRouteError::NotAdmitted {
+                        side: PrimaryRouteSide::Target,
+                        format: "dynamic fixed-width output documents",
+                    });
+                }
+                PrimaryDocumentShape::Rows
+            }
             PrimaryDocumentFormat::Csv => PrimaryDocumentShape::Rows,
             PrimaryDocumentFormat::Json => {
                 if project.root.output_path().is_some() {
@@ -282,6 +356,9 @@ fn validate_options(
         ..Default::default()
     };
     match format {
+        PrimaryDocumentFormat::FixedWidth => {
+            accepted.fixed_width = options.fixed_width.clone();
+        }
         PrimaryDocumentFormat::Json => {
             accepted.json_document = options.json_document;
         }

@@ -157,6 +157,7 @@ filename evaluation or any host call, including when a wildcard would be empty.
 | Format | Identity | Source the mapping reads |
 | --- | --- | --- |
 | CSV | `tabular_kind: csv`, or a `.csv` saved path | Every document's rows, in selection then row order; each row keeps its own document origin and local position. |
+| Fixed-width | An explicit `fixed_width` layout on both endpoints | Every selected document's rows, in selection then row order, in one combined row run. Each row retains its logical/resolved document identity and physical one-based position. |
 | XML | `xml_document`, or a `.xml` saved path | A direct filename: its one document. A filename wildcard: a document set of every selected document in selection order, each member keeping its request as its path and the host's resolved location as its source path. |
 | JSON | `json_document`, or a `.json` saved path | A direct filename: its one strict JSON document. A filename wildcard: an ordered document set, with the same member-path and shared-context semantics as XML. |
 
@@ -189,6 +190,18 @@ aggregation across those collections in one run.
 
 ### Generated entry points
 
+Fixed-width plans use the native validated `FixedWidthLayout`: widths count
+Unicode scalar values, one leading UTF-8 BOM is ignored, delimited input accepts
+LF and CRLF, and undelimited input is split into exact-width contiguous records.
+Only trailing fill is trimmed. Empty fields follow `treat_empty_as_absent`; writes
+right-pad with the layout's fill and use LF or no record delimiter. Partial or
+oversized records and typed scalar failures stop before any later load. Source
+and target layouts may differ. Incompatible options, non-flat schemas and width
+counts are refused before host calls. There is no implicit layout from a suffix.
+Input is bounded to 64 MiB per document and 256 MiB in total; output is measured
+before allocating its bounded 64 MiB document buffer. Physical row origins are
+metadata, distinct from the mapping's ordinary combined-row `Position` values.
+
 Generated libraries add the same entry point beside the format's existing
 single-document adapter, and the target uses that adapter's writer. They take
 the execution context, a host and a document limit, and return one complete
@@ -203,6 +216,15 @@ embedded plan alone names the documents, and `PRIMARY_FILE_SELECTION` /
   Rust failures are `PrimaryCsvDocumentError::{Acquisition, Output}`; C#
   raises the acquisition exception, with the host's exception as its cause,
   or the mapping and CSV output exceptions.
+- Fixed-width: `emit_with_primary_fixed_width_documents` adds
+  `parse_fixed_width_bytes` / `ParseFixedWidthBytes`,
+  `serialize_fixed_width_bytes` / `SerializeFixedWidthBytes`, and
+  `execute_primary_fixed_width_document_bytes` /
+  `ExecutePrimaryFixedWidthDocumentBytes`. Rust preserves acquisition, assembly
+  and output stages through `PrimaryFixedWidthDocumentError` and native format
+  errors. C# retains acquisition causes and exact fixed-width record/field/limit
+  details, reusing the shared scalar readers and writers. The compatibility
+  manifest profile is `primary_fixed_width_document`.
 - XML: `emit_with_primary_xml_documents` requires a program with the
   single-document XML adapter and no named endpoints, and adds
   `execute_primary_xml_document_bytes` / `ExecutePrimaryXmlDocumentBytes` and
@@ -256,6 +278,9 @@ The portable cohorts in `conformance/primary-filename-documents` (CSV) and
 `conformance/primary-json-documents` (strict JSON) compare complete documents, typed
 failures and the ordered host calls of the interpreter, generated Rust and
 generated C#.
+
+`conformance/primary-fixed-width-documents` covers the fixed-width policies and
+combined row semantics through the same interpreter/generated-host harness.
 
 ## Command-line, editor and generation routes
 

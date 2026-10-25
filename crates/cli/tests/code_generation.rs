@@ -192,6 +192,8 @@ mod primary_documents_harness;
 mod primary_filename_documents;
 #[path = "code_generation/primary_filenames.rs"]
 mod primary_filenames;
+#[path = "code_generation/primary_fixed_width_documents.rs"]
+mod primary_fixed_width_documents;
 #[path = "code_generation/primary_json_documents.rs"]
 mod primary_json_documents;
 #[path = "code_generation/primary_xml_documents.rs"]

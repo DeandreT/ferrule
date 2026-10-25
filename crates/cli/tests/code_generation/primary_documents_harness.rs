@@ -122,6 +122,15 @@ pub(super) fn interpreter_error(
 ) -> TestResult<(&'static str, &'static str, String)> {
     use engine::{PrimaryDocumentRunError as Run, PrimaryFilenameEvaluationError as Filename};
     let run = match error {
+        cli::PrimaryDocumentError::FixedWidthOutput(error) => {
+            if let codegen_runtime::FixedWidthBoundaryError::Format(
+                format_csv::CsvFormatError::FixedWidthFieldOverflow { field, .. },
+            ) = error.as_ref()
+            {
+                return Ok(("output", "field_overflow", field.clone()));
+            }
+            return Ok(("output", "other", error.to_string()));
+        }
         cli::PrimaryDocumentError::Run(run) => run,
         other => return Ok(("output", "other", other.to_string())),
     };
@@ -184,6 +193,7 @@ pub(super) fn interpreter(cohort: &Cohort, root: &Path, case: &Json) -> TestResu
         mapping::PrimaryDocumentFormat::Csv => "csv",
         mapping::PrimaryDocumentFormat::Xml => "xml",
         mapping::PrimaryDocumentFormat::Json => "json",
+        mapping::PrimaryDocumentFormat::FixedWidth => "fixed_width",
     };
     let mut files = LocalPrimaryFiles::new(&root.join(id))?;
     if let Some(limit) = case["max_document_bytes"].as_u64() {

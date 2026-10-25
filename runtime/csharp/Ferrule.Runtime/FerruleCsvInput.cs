@@ -513,7 +513,7 @@ public static class FerruleCsvInput
         }
     }
 
-    private static FerruleValue ParseCell(
+    internal static FerruleValue ParseCell(
         FerruleCsvReadField field, string cell, int row, int record, int column)
     {
         switch (field.Type)
@@ -521,14 +521,14 @@ public static class FerruleCsvInput
             case FerruleScalarType.String:
                 return FerruleValue.FromString(cell);
             case FerruleScalarType.Int64:
-                if (IsIntegerLexical(cell) && long.TryParse(cell,
+                if (cell.Length > 0 && IsIntegerLexical(cell) && long.TryParse(cell,
                     NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var integer))
                 {
                     return FerruleValue.FromInt64(integer);
                 }
                 break;
             case FerruleScalarType.Double:
-                if (IsFloatLexical(cell) && double.TryParse(cell,
+                if (cell.Length > 0 && IsFloatLexical(cell) && double.TryParse(cell,
                     NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent,
                     CultureInfo.InvariantCulture, out var number) && double.IsFinite(number))
                 {

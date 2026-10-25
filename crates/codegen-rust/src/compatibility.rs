@@ -128,6 +128,16 @@ impl<'a> Generator<'a> {
     }
 
     /// [`crate::emit_with_json5`].
+    pub fn emit_with_primary_fixed_width_documents(
+        &self,
+        document: &DocumentProgram,
+    ) -> Result<ArtifactSet, PrimaryDocumentEmitError> {
+        let artifacts = crate::emit_with_primary_fixed_width_documents(document, self.options)?;
+        self.finish(artifacts, GenerationProfile::PrimaryFixedWidthDocument)
+            .map_err(PrimaryDocumentEmitError::Emit)
+    }
+
+    /// [`crate::emit_with_json5`].
     pub fn emit_with_json5(&self, program: &Program) -> Result<ArtifactSet, Json5EmitError> {
         let artifacts = crate::emit_with_json5(program, self.options)?;
         self.finish(artifacts, GenerationProfile::Json5)
