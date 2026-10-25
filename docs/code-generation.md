@@ -1247,6 +1247,22 @@ network parity. Keep dependency features and TLS/proxy/cookie policies attached
 to the execution profile being qualified rather than transferring local-file
 qualification to arbitrary servers.
 
+For an already acquired, host-owned input, `OwnedInput` plus `read_parse_close`
+in Rust and `IFerruleOwnedInput` plus `FerruleOwnedInput.ReadParseClose` in C#
+keep the input open during parsing and attempt close once after every ordinary
+read/parse result. A close error takes precedence and retains an earlier typed
+read or parse failure separately. The parser callback must not publish outputs;
+its value becomes available only after successful close. The host defines read
+bounds and what successful close means. Rust panics unwind without invoking the
+trait's explicit close, and invalid C# arguments leave ownership with the caller.
+
+The separate `read_with` / `ReadWith` methods invoke a parser while the direct
+input remains open; byte-only `read` / `Read` behavior is unchanged. Rust's safe
+native File/HTTP drop cannot report close errors, so use `OwnedInput` when the host
+requires fallible close. C# local files use the owned-input helper. HTTP lifetime
+and multi-resource cleanup need their own qualification; these methods do not
+establish general transport or complete-mapping parity.
+
 `parse_mapforce_x12_source` / `ParseMapForceSourceBytes` adds a separately selected
 native source value view. It removes ignored tab/CR/LF characters while retaining
 an LF segment terminator, treats empty physical values and empty composites as
