@@ -7,11 +7,11 @@ use super::*;
 use mapping::PipelineInput;
 
 /// Space kept between the window and the viewport edges.
-const VIEWPORT_MARGIN: f32 = 16.0;
+const VIEWPORT_MARGIN: f32 = crate::theme::space::XL;
 /// Below this the body would only show a sliver; the window may then extend
 /// past a very short viewport rather than hide the footer's actions.
-const MIN_WINDOW_HEIGHT: f32 = 240.0;
-const DEFAULT_WINDOW_HEIGHT: f32 = 900.0;
+const MIN_WINDOW_HEIGHT: f32 = crate::theme::editor_size::PIPELINE_MIN_HEIGHT;
+const DEFAULT_WINDOW_HEIGHT: f32 = crate::theme::editor_size::PIPELINE_DEFAULT_HEIGHT;
 
 impl FerruleApp {
     pub(in crate::app) fn show_pipeline_run_setup(&mut self, ctx: &egui::Context) {

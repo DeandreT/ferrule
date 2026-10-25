@@ -96,7 +96,7 @@ pub(crate) fn show(
         ui.label("XML type:");
         egui::ComboBox::from_id_salt(ui.scope_id().with("target_xml_type"))
             .selected_text(label)
-            .width(250.0)
+            .width(crate::theme::editor_size::TYPE_PATH_PICKER)
             .show_ui(ui, |ui| {
                 if ui.selectable_label(bindings.is_empty(), "Schema inference").clicked() {
                     action = Some(Action::Infer);

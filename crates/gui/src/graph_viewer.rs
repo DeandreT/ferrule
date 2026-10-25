@@ -158,8 +158,8 @@ pub(crate) fn sequence_arguments_have_no_private_items(
 
 #[cfg(test)]
 const ENDPOINT_LABEL_CHAR_LIMIT: usize = 30;
-const SOURCE_FIELD_EDIT_WIDTH: f32 = 170.0;
-const PATH_EDITOR_WIDTH: f32 = 250.0;
+const SOURCE_FIELD_EDIT_WIDTH: f32 = crate::theme::editor_size::PATH_PICKER;
+const PATH_EDITOR_WIDTH: f32 = crate::theme::editor_size::TYPE_PATH_PICKER;
 
 #[cfg(test)]
 fn compact_endpoint_label(path: &str) -> String {

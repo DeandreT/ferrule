@@ -199,7 +199,7 @@ impl SourcePathCatalog {
         ui.add_enabled_ui(self.xml_source_elements_available(), |ui| {
             egui::ComboBox::from_id_salt(ui.scope_id().with("xml_source_element"))
                 .selected_text("Choose source element")
-                .width(170.0)
+                .width(crate::theme::editor_size::PATH_PICKER)
                 .show_ui(ui, |ui| {
                     for choice in &self.xml_source_elements {
                         if ui
@@ -235,7 +235,7 @@ impl SourcePathCatalog {
         let mut chosen = false;
         egui::ComboBox::from_id_salt(ui.scope_id().with("dynamic_source_object"))
             .selected_text(selected)
-            .width(170.0)
+            .width(crate::theme::editor_size::PATH_PICKER)
             .show_ui(ui, |ui| {
                 for choice in &self.open_scalar_objects {
                     if ui
@@ -284,7 +284,7 @@ impl SourcePathCatalog {
     pub(crate) fn show_primary_root_type_picker(&self, ui: &mut Ui, identity: &mut String) {
         egui::ComboBox::from_id_salt(ui.scope_id().with("primary_root_type"))
             .selected_text(identity.as_str())
-            .width(170.0)
+            .width(crate::theme::editor_size::PATH_PICKER)
             .show_ui(ui, |ui| {
                 for choice in &self.primary_root_types {
                     ui.selectable_value(identity, choice.clone(), choice);
