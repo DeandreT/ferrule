@@ -47,6 +47,48 @@ public sealed class FerruleDirectSourceReader : IDisposable
         else bytes = ReadFile(identity);
         return new(identity, bytes);
     }
+    /// <summary>Invoke a parser after a complete read, while the native input is
+    /// still open. Local files use the explicit owned-source helper, retaining
+    /// a prior read/parse cause if disposal fails. Read remains the separate
+    /// byte-only API which closes before returning its bytes. HTTP lifetime and
+    /// multi-resource cleanup require separate qualification.</summary>
+    public T ReadWith<T>(string selected, Func<string, byte[], T> parse)
+    {
+        ArgumentNullException.ThrowIfNull(selected);
+        ArgumentNullException.ThrowIfNull(parse);
+        string identity = selected.Trim();
+        if (identity.IndexOf(':') <= 1) return FileWith(identity);
+        if (!Uri.TryCreate(identity, UriKind.Absolute, out var uri)) throw new IOException("Unsupported direct-source URI.");
+        if (uri.UserInfo.Length != 0) throw new IOException("Source URI credentials require a separate host policy.");
+        if (uri.IsFile) return FileWith(uri.LocalPath);
+        if (uri.Scheme is not ("http" or "https")) throw new IOException("Unsupported direct-source URI.");
+        using var cancellation = new System.Threading.CancellationTokenSource(timeout);
+        System.Net.Http.HttpResponseMessage response;
+        try { response = client.GetAsync(uri, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, cancellation.Token).GetAwaiter().GetResult(); }
+        catch (System.Net.Http.HttpRequestException) { throw new IOException("HTTP source could not be loaded."); }
+        catch (OperationCanceledException) { throw new IOException("HTTP source timed out."); }
+        using (response)
+        {
+            if (!response.IsSuccessStatusCode) throw new IOException("HTTP source returned status " + (int)response.StatusCode);
+            using var stream = response.Content.ReadAsStream();
+            byte[] bytes;
+            try { bytes = Bounded(stream, cancellation.Token); }
+            catch (System.Net.Http.HttpRequestException) { throw new IOException("HTTP source could not be loaded."); }
+            catch (OperationCanceledException) { throw new IOException("HTTP source timed out."); }
+            return parse(identity, bytes);
+        }
+        T FileWith(string path)
+        {
+            var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            return FerruleOwnedInput.ReadParseClose(
+                new OwnedStream(stream, () => Bounded(stream)), bytes => parse(identity, bytes));
+        }
+    }
+    private sealed class OwnedStream(Stream stream, Func<byte[]> read) : IFerruleOwnedInput
+    {
+        public byte[] ReadAll() => read();
+        public void Close() => stream.Dispose();
+    }
     private byte[] ReadFile(string path) { using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read); return Bounded(stream); }
     private byte[] Bounded(Stream stream, System.Threading.CancellationToken cancellation = default)
     {

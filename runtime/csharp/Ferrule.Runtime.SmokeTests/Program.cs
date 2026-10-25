@@ -26,6 +26,7 @@ internal static partial class Program
             ("String component general fallback limits", StringComponentFallbackLimits),
             ("JSON5 writer complete byte corpus", Json5TextWriter),
             ("Direct source input ownership and limits", DirectSourceInputs),
+            ("Owned input primary and secondary failures", OwnedInputContract),
             ("Deferred XML preparation and materialization", DeferredXmlPreparation),
             ("XML document bytes", XmlDocumentBytes),
             ("Prepared XML stream ownership and failures", XmlPreparedStream),

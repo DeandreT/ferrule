@@ -20,6 +20,8 @@ mod filter_map_tests;
 mod generated_sequence;
 mod invocation_counter;
 mod iteration;
+mod owned_input;
+pub use owned_input::{OwnedInput, OwnedInputError, OwnedInputFailure, read_parse_close};
 mod json;
 mod json_acquisition;
 pub use json_acquisition::{JsonAcquisitionError, JsonSourceAcquisition};
@@ -35,7 +37,7 @@ pub use source_filenames::{
     select_mapforce_source_filenames,
 };
 #[cfg(feature = "native-source-io")]
-pub use source_loader::{DirectSourceReader, SourceBytes, SourceReadError};
+pub use source_loader::{DirectSourceReader, InputParseError, SourceBytes, SourceReadError};
 mod json_native;
 mod json_projection;
 pub use json_native::{NativeJsonSourceError, parse_native_json_source};
