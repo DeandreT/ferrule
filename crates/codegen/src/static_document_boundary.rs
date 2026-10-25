@@ -1,4 +1,4 @@
-//! Complete static JSON/X12 endpoint admission for selected physical output.
+//! Complete static JSON/X12/EDIFACT endpoint admission for physical output.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -20,6 +20,63 @@ mod tests;
 pub enum DocumentBoundaryFormat {
     Json,
     X12,
+    Edifact,
+}
+
+/// Explicit EDIFACT settings, retained without permitting unrelated adapters.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EdifactBoundaryOptions(String);
+
+impl EdifactBoundaryOptions {
+    /// Capture only explicitly selected, self-contained EDIFACT settings.
+    /// Schema-dependent checks run when the complete boundary is admitted.
+    pub fn from_format_options(
+        options: &mapping::FormatOptions,
+    ) -> Result<Self, format_edi::EdiFormatError> {
+        use mapping::{EdiAutocomplete, EdiBoundaryKind, FormatOptions};
+        if [
+            options.edi_value_constraints.len(),
+            options.edi_implied_decimals.len(),
+            options.edi_lexical_formats.len(),
+        ]
+        .into_iter()
+        .any(|count| count > 10_000)
+        {
+            return Err(format_edi::EdiFormatError::UnsupportedSchema(
+                "EDIFACT options exceed entry limit".into(),
+            ));
+        }
+        let accepted = FormatOptions {
+            edi_kind: options
+                .edi_kind
+                .filter(|kind| *kind == EdiBoundaryKind::Edifact),
+            lenient_segments: options.lenient_segments,
+            edi_value_constraints: options.edi_value_constraints.clone(),
+            edi_implied_decimals: options.edi_implied_decimals.clone(),
+            edi_lexical_formats: options.edi_lexical_formats.clone(),
+            mfd_decimal_input_names: options.mfd_decimal_input_names.clone(),
+            mfd_optional_parser_input_names: options.mfd_optional_parser_input_names.clone(),
+            edi_autocomplete: options
+                .edi_autocomplete
+                .as_ref()
+                .filter(|value| matches!(value, EdiAutocomplete::Edifact(_)))
+                .cloned(),
+            ..FormatOptions::default()
+        };
+        if *options != accepted {
+            return Err(format_edi::EdiFormatError::UnsupportedSchema(
+                "static EDIFACT boundary has unsupported or unresolved format options".into(),
+            ));
+        }
+        let encoded = serde_json::to_string(options)
+            .map_err(|error| format_edi::EdiFormatError::UnsupportedSchema(error.to_string()))?;
+        if encoded.len() > MAX_EMBEDDED_JSON_SCHEMA_BYTES {
+            return Err(format_edi::EdiFormatError::UnsupportedSchema(
+                "EDIFACT options exceed descriptor byte limit".into(),
+            ));
+        }
+        Ok(Self(encoded))
+    }
 }
 
 /// Retained physical policy for exactly one declared endpoint.
@@ -27,6 +84,7 @@ pub enum DocumentBoundaryFormat {
 pub enum DocumentBoundaryOptions {
     Json,
     X12(X12BoundaryOptions),
+    Edifact(EdifactBoundaryOptions),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +106,9 @@ pub struct StaticDocumentBoundaryPolicy {
 pub struct DocumentBoundaryDescriptor {
     pub format: DocumentBoundaryFormat,
     pub descriptor: String,
+    /// Raw FormatOptions JSON for EDIFACT; empty for the JSON/X12 descriptors
+    /// whose established wire formats already contain all required policy.
+    pub options_descriptor: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,7 +125,7 @@ pub struct StaticDocumentBoundaryProfile {
     pub extra_targets: Vec<NamedDocumentBoundaryDescriptor>,
 }
 
-/// Exact endpoint ownership retained around existing codec and X12 causes.
+/// Exact endpoint ownership retained around codec and EDI policy causes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StaticDocumentBoundaryOwner {
     Source,
@@ -99,14 +160,19 @@ pub enum StaticDocumentBoundaryError {
         owner: StaticDocumentBoundaryOwner,
         error: Box<X12BoundaryPolicyError>,
     },
+    Edifact {
+        owner: StaticDocumentBoundaryOwner,
+        error: Box<format_edi::EdiFormatError>,
+    },
     Validation(ProgramValidationError),
 }
 
 impl fmt::Display for StaticDocumentBoundaryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NoX12Boundary => formatter
-                .write_str("static document adapters require at least one declared X12 endpoint"),
+            Self::NoX12Boundary => formatter.write_str(
+                "static document adapters require at least one declared X12 or EDIFACT endpoint",
+            ),
             Self::PolicyNames { field } => write!(
                 formatter,
                 "static document {field} policy names must exactly match declaration order"
@@ -121,6 +187,10 @@ impl fmt::Display for StaticDocumentBoundaryError {
             Self::X12 { owner, error } => {
                 write!(formatter, "static document {owner:?} X12 boundary: {error}")
             }
+            Self::Edifact { owner, error } => write!(
+                formatter,
+                "static document {owner:?} EDIFACT boundary: {error}"
+            ),
             Self::Validation(error) => error.fmt(formatter),
         }
     }
@@ -131,6 +201,7 @@ impl std::error::Error for StaticDocumentBoundaryError {
         match self {
             Self::EmbeddedSchema { error, .. } => Some(error),
             Self::X12 { error, .. } => Some(error.as_ref()),
+            Self::Edifact { error, .. } => Some(error.as_ref()),
             Self::Validation(error) => Some(error),
             _ => None,
         }
@@ -218,10 +289,12 @@ fn endpoints<'a>(
                 options: &options.options,
             }),
     );
-    if !result
-        .iter()
-        .any(|endpoint| matches!(endpoint.options, DocumentBoundaryOptions::X12(_)))
-    {
+    if !result.iter().any(|endpoint| {
+        matches!(
+            endpoint.options,
+            DocumentBoundaryOptions::X12(_) | DocumentBoundaryOptions::Edifact(_)
+        )
+    }) {
         return Err(StaticDocumentBoundaryError::NoX12Boundary);
     }
     Ok(result)
@@ -259,9 +332,11 @@ fn prepare(
             DocumentBoundaryOptions::Json => DocumentBoundaryDescriptor {
                 format: DocumentBoundaryFormat::Json,
                 descriptor,
+                options_descriptor: String::new(),
             },
             DocumentBoundaryOptions::X12(options) => DocumentBoundaryDescriptor {
                 format: DocumentBoundaryFormat::X12,
+                options_descriptor: String::new(),
                 descriptor: crate::x12_boundary::descriptor(
                     endpoint.schema,
                     Some(options),
@@ -272,6 +347,53 @@ fn prepare(
                     error: Box::new(error),
                 })?,
             },
+            DocumentBoundaryOptions::Edifact(options) => {
+                let parsed: mapping::FormatOptions =
+                    serde_json::from_str(&options.0).map_err(|error| {
+                        StaticDocumentBoundaryError::Edifact {
+                            owner: endpoint.owner.clone(),
+                            error: Box::new(format_edi::EdiFormatError::UnsupportedSchema(
+                                error.to_string(),
+                            )),
+                        }
+                    })?;
+                let validate = if matches!(
+                    endpoint.owner,
+                    StaticDocumentBoundaryOwner::Source
+                        | StaticDocumentBoundaryOwner::NamedSource { .. }
+                ) {
+                    format_edi::document::validate_input
+                } else {
+                    format_edi::document::validate
+                };
+                validate(endpoint.schema, &parsed, mapping::EdiBoundaryKind::Edifact).map_err(
+                    |error| StaticDocumentBoundaryError::Edifact {
+                        owner: endpoint.owner.clone(),
+                        error: Box::new(error),
+                    },
+                )?;
+                let descriptor = serde_json::to_string(endpoint.schema).map_err(|error| {
+                    StaticDocumentBoundaryError::Edifact {
+                        owner: endpoint.owner.clone(),
+                        error: Box::new(format_edi::EdiFormatError::UnsupportedSchema(
+                            error.to_string(),
+                        )),
+                    }
+                })?;
+                if descriptor.len() > MAX_EMBEDDED_JSON_SCHEMA_BYTES {
+                    return Err(StaticDocumentBoundaryError::Edifact {
+                        owner: endpoint.owner.clone(),
+                        error: Box::new(format_edi::EdiFormatError::UnsupportedSchema(
+                            "EDIFACT schema exceeds descriptor byte limit".into(),
+                        )),
+                    });
+                }
+                DocumentBoundaryDescriptor {
+                    format: DocumentBoundaryFormat::Edifact,
+                    descriptor,
+                    options_descriptor: options.0.clone(),
+                }
+            }
         };
         match endpoint.owner {
             StaticDocumentBoundaryOwner::Source => source = Some(boundary),

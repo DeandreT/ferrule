@@ -1,6 +1,49 @@
 use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+#[test]
+fn edifact_requires_explicit_identity_and_retains_named_ownership() {
+    let options = FormatOptions {
+        edi_kind: Some(EdiBoundaryKind::Edifact),
+        ..Default::default()
+    };
+    for path in [None, Some("source.json"), Some("never-opened.edifact")] {
+        assert!(matches!(
+            boundary(path, &options, "source").unwrap(),
+            DocumentBoundaryOptions::Edifact(_)
+        ));
+    }
+    assert!(boundary(Some("source.edifact"), &FormatOptions::default(), "source").is_err());
+    let mut conflict = options.clone();
+    conflict.json_document = true;
+    assert!(boundary(None, &conflict, "source").is_err());
+    let mut candidate = project();
+    candidate.source_options = options.clone();
+    candidate.extra_sources[0].options = options.clone();
+    candidate.extra_targets[0].options = options;
+    let admitted = policy(&candidate).unwrap();
+    assert!(matches!(
+        admitted.source,
+        DocumentBoundaryOptions::Edifact(_)
+    ));
+    assert!(matches!(
+        admitted.extra_sources[0].options,
+        DocumentBoundaryOptions::Edifact(_)
+    ));
+    assert!(matches!(
+        admitted.extra_targets[0].options,
+        DocumentBoundaryOptions::Edifact(_)
+    ));
+    assert!(
+        policy_with_envelope_profiles(
+            &candidate,
+            Some(X12EnvelopeProfile::SingleTransaction),
+            None
+        )
+        .is_err()
+    );
+}
+
 fn project() -> Project {
     serde_json::from_str(include_str!(
         "../../../tests/code_generation/static_document_adapters/fixtures/projects/base.json"
@@ -93,7 +136,7 @@ fn static_identity_is_explicit_and_never_derived_from_schema() {
         std::fs::write(root.join("OUTCOMES.original.txt"), outcomes.join("\n")).unwrap();
         assert_eq!(
             result.unwrap_err().to_string(),
-            "static document source requires an explicit X12 or strict JSON format identity"
+            "static document source requires an explicit EDIFACT, X12 or strict JSON format identity"
         );
     }
     let conflicting = FormatOptions {
@@ -247,7 +290,7 @@ fn static_unselected_metadata_refusal_precedes_lower_and_preserves_destination()
         .unwrap();
         assert_eq!(
             result.unwrap_err().to_string(),
-            "static document named source \"Unused\" requires an explicit X12 or strict JSON format identity"
+            "static document named source \"Unused\" requires an explicit EDIFACT, X12 or strict JSON format identity"
         );
     }
     assert!(!absent.parent().unwrap().exists());
