@@ -101,3 +101,64 @@ fn provisional_com_catalog_does_not_claim_pinned_release_or_execution() {
     }
     source_only(&com);
 }
+
+#[test]
+fn external_references_keep_historical_and_runtime_boundaries_explicit() {
+    let references = load("external-references.json");
+    let rows = references["references"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    unique_ids(rows, "id");
+    for row in rows {
+        assert!(
+            row["requested_url"]
+                .as_str()
+                .unwrap()
+                .starts_with("https://")
+        );
+        assert!(
+            row["resolved_url"]
+                .as_str()
+                .unwrap()
+                .starts_with("https://")
+        );
+        let hash = row["raw_sha256"].as_str().unwrap();
+        assert_eq!(hash.len(), 64);
+        assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert!(!row["boundary"].as_str().unwrap().is_empty());
+    }
+    source_only(&references);
+}
+
+#[test]
+fn supporting_declarations_preserve_source_and_installer_boundaries() {
+    let supporting = load("supporting.json");
+    assert_eq!(supporting["inventory_complete"], false);
+    let io = supporting["io_classes"].as_array().unwrap();
+    let exceptions = supporting["vendor_exception_classes"].as_array().unwrap();
+    assert_eq!(io.len(), 24);
+    assert_eq!(exceptions.len(), 16);
+    unique_ids(io, "research_id");
+    unique_ids(exceptions, "research_id");
+    assert_eq!(
+        supporting["shared_cpp_exception_methods"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        supporting["platform_exception_references"]
+            .as_array()
+            .unwrap()
+            .len(),
+        9
+    );
+    let requests = supporting["installer_artifact_requests"]["bundles"]
+        .as_array()
+        .unwrap();
+    assert_eq!(requests.len(), 6);
+    for request in requests {
+        assert_eq!(request["resolution"], "not_obtained");
+    }
+    source_only(&supporting);
+}
