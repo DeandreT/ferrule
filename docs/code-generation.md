@@ -1207,7 +1207,11 @@ not implied by this source-value profile.
 
 The native structural profile retains message selection and its original
 segment catalog. A failed selection distinguishes an unknown segment from a
-known, out-of-place segment. Its scanner preserves whitespace that is an active
+known, out-of-place segment. Enclosing groups recognize a selection header before
+resolving its fixed qualifier; an unsupported qualifier fails when that selection
+is reached instead of silently ending the group. Optional grouping headers remain
+optional, and the reader does not scan past an unrecognized trailing prefix to
+find later messages. Its scanner preserves whitespace that is an active
 delimiter and applies the native NUL release character after the ISA header.
 Field projection retains delimiter position: an undeclared component does not
 shift later scalar fields, but a later declared composite may consume it.
