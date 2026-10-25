@@ -62,6 +62,7 @@ impl std::error::Error for DocumentFormatError {}
 /// Why one loaded primary document could not be read.
 #[derive(Debug)]
 pub enum PrimaryInputError {
+    FixedWidth(Box<codegen_runtime::FixedWidthBoundaryError>),
     Csv(CsvSourceError),
     Json(Box<codegen_runtime::JsonBoundaryError>),
     Document(DocumentFormatError),
@@ -70,6 +71,7 @@ pub enum PrimaryInputError {
 impl fmt::Display for PrimaryInputError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::FixedWidth(error) => error.fmt(f),
             Self::Csv(error) => error.fmt(f),
             Self::Json(error) => error.fmt(f),
             Self::Document(error) => error.fmt(f),
@@ -80,6 +82,7 @@ impl fmt::Display for PrimaryInputError {
 impl std::error::Error for PrimaryInputError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::FixedWidth(error) => Some(error.as_ref()),
             Self::Csv(error) => Some(error),
             Self::Json(error) => Some(error.as_ref()),
             Self::Document(error) => Some(error),
@@ -91,6 +94,7 @@ impl std::error::Error for PrimaryInputError {
 /// host's failure.
 #[derive(Debug)]
 pub enum PrimaryDocumentError<E = LocalFileError> {
+    FixedWidthOutput(Box<codegen_runtime::FixedWidthBoundaryError>),
     /// The saved formats have no primary document route.
     Route(PrimaryRouteError),
     /// The input root is unavailable.
@@ -108,6 +112,7 @@ pub enum PrimaryDocumentError<E = LocalFileError> {
 impl<E: fmt::Display> fmt::Display for PrimaryDocumentError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::FixedWidthOutput(error) => error.fmt(f),
             Self::Route(error) => error.fmt(f),
             Self::Root(error) => error.fmt(f),
             Self::Run(error) => error.fmt(f),
@@ -123,6 +128,7 @@ impl<E: fmt::Display> fmt::Display for PrimaryDocumentError<E> {
 impl<E: std::error::Error + 'static> std::error::Error for PrimaryDocumentError<E> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::FixedWidthOutput(error) => Some(error.as_ref()),
             Self::Route(error) => Some(error),
             Self::Root(error) => Some(error),
             Self::Run(error) => Some(error),
@@ -199,6 +205,7 @@ pub fn check_primary_document(document: &DocumentProject) -> anyhow::Result<()> 
 /// a request's own extension never selects another format.
 fn route_identity(format: PrimaryDocumentFormat) -> &'static Path {
     Path::new(match format {
+        PrimaryDocumentFormat::FixedWidth => "document.dat",
         PrimaryDocumentFormat::Csv => "document.csv",
         PrimaryDocumentFormat::Xml => "document.xml",
         PrimaryDocumentFormat::Json => "document.json",
@@ -305,12 +312,32 @@ pub fn execute_primary_document_with_host<H: PrimarySourceHost>(
     member_options.local_xml_file_set = false;
     let mut csv = engine::primary_csv_parser(project, CsvByteDecodingPolicy::StrictUtf8);
     let mut json_budget = codegen_runtime::PrimaryJsonInputBudget::default();
+    let mut fixed_budget = codegen_runtime::FixedWidthInputBudget::default();
     let output = engine::run_primary_document(
         document,
         &execution,
         host,
         max_documents,
         |request, data| match route.format {
+            PrimaryDocumentFormat::FixedWidth => {
+                let layout = project
+                    .source_options
+                    .fixed_width
+                    .as_ref()
+                    .expect("admitted fixed-width layout");
+                fixed_budget
+                    .charge(data.bytes.len())
+                    .and_then(|()| {
+                        codegen_runtime::parse_fixed_width_bytes(
+                            &project.source,
+                            layout,
+                            request,
+                            data.resolved_path.as_deref(),
+                            &data.bytes,
+                        )
+                    })
+                    .map_err(|error| PrimaryInputError::FixedWidth(Box::new(error)))
+            }
             PrimaryDocumentFormat::Csv => csv(request, data).map_err(PrimaryInputError::Csv),
             PrimaryDocumentFormat::Json => {
                 parse_primary_json(&project.source, &mut json_budget, &data.bytes)
@@ -356,6 +383,29 @@ fn render_primary_output<E>(
     current_datetime: &str,
     maximum: usize,
 ) -> Result<(Vec<u8>, usize), PrimaryDocumentError<E>> {
+    if route.format == PrimaryDocumentFormat::FixedWidth {
+        let layout = options
+            .fixed_width
+            .as_ref()
+            .expect("admitted fixed-width output layout");
+        let rows = output.as_repeated().ok_or_else(|| {
+            PrimaryDocumentError::FixedWidthOutput(Box::new(
+                codegen_runtime::FixedWidthBoundaryError::RootShape,
+            ))
+        })?;
+        let bytes = format_csv::to_bytes_fixed_width_bounded(target, rows, layout, maximum)
+            .map_err(|error| match error {
+                format_csv::CsvBoundedError::Format(error) => {
+                    PrimaryDocumentError::FixedWidthOutput(Box::new(
+                        codegen_runtime::FixedWidthBoundaryError::Format(error),
+                    ))
+                }
+                format_csv::CsvBoundedError::OutputTooLarge { maximum } => {
+                    PrimaryDocumentError::OutputTooLarge { maximum }
+                }
+            })?;
+        return Ok((bytes, rows.len()));
+    }
     if route.format == PrimaryDocumentFormat::Json {
         let schema = serde_json::to_string(target).map_err(|error| {
             PrimaryDocumentError::JsonOutput(Box::new(

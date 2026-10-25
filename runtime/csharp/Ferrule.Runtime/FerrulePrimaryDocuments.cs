@@ -98,6 +98,17 @@ public static class FerrulePrimaryDocuments
         ArgumentNullException.ThrowIfNull(filename);
         ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(parse);
+        return AcquireDocuments(filename, selection, host, shape, maximum, (_, data) => parse(data));
+    }
+
+    /// <summary>Like AcquireDocuments, with the exact logical request passed to the parser.</summary>
+    public static FerruleInstance AcquireDocuments(Func<string> filename, FerrulePrimaryFileSelection selection,
+        IFerrulePrimarySourceHost host, FerruleDocumentShape shape, int maximum,
+        Func<string, FerruleCsvSourceData, FerruleInstance> parse)
+    {
+        ArgumentNullException.ThrowIfNull(filename);
+        ArgumentNullException.ThrowIfNull(host);
+        ArgumentNullException.ThrowIfNull(parse);
         if (maximum is < 0 or > FerruleCsvSourceRows.MaximumDocuments)
             throw new FerrulePrimaryDocumentException(FerruleDocumentAcquisitionError.InvalidLimit, count: maximum);
         string name = At(FerruleDocumentAcquisitionError.Filename, filename);
@@ -116,7 +127,7 @@ public static class FerrulePrimaryDocuments
             { throw new FerrulePrimaryDocumentException(FerruleDocumentAcquisitionError.Request, request); }
             var data = At(FerruleDocumentAcquisitionError.Load, () => host.Load(request)
                 ?? throw new InvalidOperationException("Primary document loader returned no bytes."), request);
-            var value = At(FerruleDocumentAcquisitionError.Input, () => parse(data), request);
+            var value = At(FerruleDocumentAcquisitionError.Input, () => parse(request, data), request);
             documents.Add((request, data.ResolvedPath, value));
         }
         return Assemble(shape, documents);

@@ -27,6 +27,7 @@ pub enum PrimaryDocumentBoundaryError {
     XmlAdapter,
     /// Strict JSON entry points do not use an XML adapter.
     JsonAdapter,
+    FixedWidthAdapter,
     /// An observed XML root view reads one document, not a document set.
     RootViewDocumentSet,
 }
@@ -34,6 +35,9 @@ pub enum PrimaryDocumentBoundaryError {
 impl fmt::Display for PrimaryDocumentBoundaryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::FixedWidthAdapter => {
+                f.write_str("fixed-width documents require validated source and target layouts")
+            }
             Self::Route(error) => error.fmt(f),
             Self::Format { expected, found } => write!(
                 f,
@@ -86,6 +90,17 @@ fn route(
         return Err(PrimaryDocumentBoundaryError::NamedEndpoints);
     }
     Ok(route)
+}
+
+pub fn validate_primary_fixed_width_documents(
+    document: &DocumentProgram,
+) -> Result<&crate::document_program::FixedWidthDocumentPolicy, PrimaryDocumentBoundaryError> {
+    route(document, PrimaryDocumentFormat::FixedWidth)?;
+    crate::prepare_boundary_emission(document.program(), CompanionSelection::Complete)
+        .map_err(PrimaryDocumentBoundaryError::Program)?;
+    document
+        .fixed_width_policy()
+        .ok_or(PrimaryDocumentBoundaryError::FixedWidthAdapter)
 }
 
 /// Admit strict JSON source/target document plans before any artifact exists.
