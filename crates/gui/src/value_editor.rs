@@ -7,10 +7,10 @@ use crate::test_ui::ContextExt as _;
 use egui::Ui;
 use ir::Value;
 
-const VALUE_MAP_CELL_WIDTH: f32 = 104.0;
-const VALUE_MAP_CONTENT_WIDTH: f32 = 640.0;
-const VALUE_MAP_COMPACT_CONTENT_WIDTH: f32 = 320.0;
-const VALUE_MAP_MAX_HEIGHT: f32 = 170.0;
+const VALUE_MAP_CELL_WIDTH: f32 = crate::theme::METRICS.value_map_cell_width;
+const VALUE_MAP_CONTENT_WIDTH: f32 = crate::theme::METRICS.value_map_content_width;
+const VALUE_MAP_COMPACT_CONTENT_WIDTH: f32 = crate::theme::METRICS.value_map_compact_width;
+const VALUE_MAP_MAX_HEIGHT: f32 = crate::theme::METRICS.value_map_height;
 const CONST_TITLE_CHAR_LIMIT: usize = 28;
 
 fn parse_finite_float(text: &str) -> Option<f64> {

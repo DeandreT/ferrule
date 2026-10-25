@@ -51,6 +51,11 @@ pub struct Metrics {
     pub source_panel: PanelSize,
     pub inspector_panel: PanelSize,
     pub diagnostics_height: f32,
+    /// Compact value-table editor dimensions shared by canvas popups.
+    pub value_map_cell_width: f32,
+    pub value_map_content_width: f32,
+    pub value_map_compact_width: f32,
+    pub value_map_height: f32,
 }
 
 /// Size limits of a resizable side panel.
@@ -88,6 +93,10 @@ pub const METRICS: Metrics = Metrics {
         max: 520.0,
     },
     diagnostics_height: 120.0,
+    value_map_cell_width: 104.0,
+    value_map_content_width: 640.0,
+    value_map_compact_width: 320.0,
+    value_map_height: 170.0,
 };
 
 /// Width of a single-line field. `Fill` takes the rest of its row.
