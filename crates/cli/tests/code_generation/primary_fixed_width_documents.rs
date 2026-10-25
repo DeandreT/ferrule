@@ -51,6 +51,7 @@ const RUST_CHECKS: &str = r#"
 fn check_boundaries() -> Result<(), Box<dyn std::error::Error>> {
     assert!(matches!(model0::parse_fixed_width_bytes("logical", None, b"short\n"), Err(codegen_runtime::FixedWidthBoundaryError::Format(codegen_runtime::CsvFormatError::PartialFixedWidthRecord { record: 0, expected: 8, got: 5 }))));
     assert!(matches!(model0::parse_fixed_width_bytes("logical", None, b"a_one_x_\n"), Err(codegen_runtime::FixedWidthBoundaryError::Format(codegen_runtime::CsvFormatError::Parse { row: 0, field, .. })) if field == "Count"));
+    assert!(matches!(model0::parse_fixed_width_bytes("logical", None, b"a_one_x_\nshort\n"), Err(codegen_runtime::FixedWidthBoundaryError::Format(codegen_runtime::CsvFormatError::PartialFixedWidthRecord { record: 1, expected: 8, got: 5 }))));
     let parsed = model0::parse_fixed_width_bytes("logical.bin", Some("/chosen/actual.dat"), "\u{feff}é_😀___2_\r\na_two_3_\n".as_bytes())?;
     let rows = parsed.as_repeated().unwrap();
     for (index, row) in rows.iter().enumerate() {
@@ -77,6 +78,8 @@ static void CheckBoundaries()
     catch (FerruleFixedWidthException error) when (error.Error == FerruleFixedWidthError.PartialRecord && error.Record == 0 && error.Expected == 8 && error.Actual == 5) { }
     try { GeneratedMapping.ParseFixedWidthBytes("logical", null, Encoding.UTF8.GetBytes("a_one_x_\n")); throw new Exception("typed value"); }
     catch (FerruleCsvInputException error) when (error.Error == FerruleCsvInputError.Parse && error.Row == 0 && error.Field == "Count") { }
+    try { GeneratedMapping.ParseFixedWidthBytes("logical", null, Encoding.UTF8.GetBytes("a_one_x_\nshort\n")); throw new Exception("record validation precedes scalar conversion"); }
+    catch (FerruleFixedWidthException error) when (error.Error == FerruleFixedWidthError.PartialRecord && error.Record == 1 && error.Expected == 8 && error.Actual == 5) { }
     foreach (bool absent in new[] { false, true })
     {
         var one = FerruleFixedWidth.ParseBytes(Encoding.UTF8.GetBytes("___"), [new FerruleCsvReadField("Text", FerruleScalarType.String)], new FerruleFixedWidthLayout([3], 95, true, absent), "logical");

@@ -70,13 +70,19 @@ public static class FerruleFixedWidth
         catch (DecoderFallbackException error) { throw new FerruleFixedWidthException(FerruleFixedWidthError.Encoding, source: error); }
         if (text.StartsWith('\uFEFF')) text = text[1..];
         var rows = new List<FerruleInstance>();
+        var records = new List<Rune[]>();
         var origin = new FerruleSourceDocumentOrigin(path, resolvedPath);
         void Record(Rune[] runes)
         {
-            int record = rows.Count;
+            int record = records.Count;
             if (runes.Length != layout.RecordWidth)
                 throw new FerruleFixedWidthException(runes.Length < layout.RecordWidth ? FerruleFixedWidthError.PartialRecord : FerruleFixedWidthError.RecordOverflow,
                     layout.RecordWidth, runes.Length, record);
+            records.Add(runes);
+        }
+        void ParseRecord(Rune[] runes)
+        {
+            int record = rows.Count;
             var values = new FerruleField[fields.Count];
             int offset = 0;
             for (int column = 0; column < fields.Count; column++)
@@ -115,6 +121,9 @@ public static class FerruleFixedWidth
                 start += length;
             }
         }
+        // Structural errors in later records precede scalar conversion errors,
+        // matching the native reader's complete record-shape validation.
+        foreach (var record in records) ParseRecord(record);
         return new FerruleRepeated(rows);
     }
 
