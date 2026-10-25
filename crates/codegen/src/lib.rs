@@ -100,8 +100,9 @@ pub use owned_admission::{
 };
 pub use presets::*;
 pub use primary_document_boundary::{
-    PrimaryDocumentBoundaryError, validate_primary_fixed_width_documents,
-    validate_primary_json_documents, validate_primary_xml_documents,
+    PrimaryDocumentBoundaryError, validate_primary_edi_documents,
+    validate_primary_fixed_width_documents, validate_primary_json_documents,
+    validate_primary_xml_documents,
 };
 pub use static_document_boundary::{
     DocumentBoundaryDescriptor, DocumentBoundaryFormat, DocumentBoundaryOptions,

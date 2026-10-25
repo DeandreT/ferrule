@@ -28,6 +28,11 @@ pub enum PrimaryDocumentBoundaryError {
     /// Strict JSON entry points do not use an XML adapter.
     JsonAdapter,
     FixedWidthAdapter,
+    EdiAdapter,
+    EdiDescriptor {
+        bytes: usize,
+        maximum: usize,
+    },
     /// An observed XML root view reads one document, not a document set.
     RootViewDocumentSet,
 }
@@ -35,6 +40,12 @@ pub enum PrimaryDocumentBoundaryError {
 impl fmt::Display for PrimaryDocumentBoundaryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::EdiDescriptor { bytes, maximum } => {
+                write!(f, "EDI descriptor is {bytes} bytes; maximum is {maximum}")
+            }
+            Self::EdiAdapter => {
+                f.write_str("EDI documents require validated source and target policies")
+            }
             Self::FixedWidthAdapter => {
                 f.write_str("fixed-width documents require validated source and target layouts")
             }
@@ -90,6 +101,32 @@ fn route(
         return Err(PrimaryDocumentBoundaryError::NamedEndpoints);
     }
     Ok(route)
+}
+
+pub fn validate_primary_edi_documents(
+    document: &DocumentProgram,
+) -> Result<&crate::document_program::EdiDocumentPolicy, PrimaryDocumentBoundaryError> {
+    let policy = document
+        .edi_policy()
+        .ok_or(PrimaryDocumentBoundaryError::EdiAdapter)?;
+    route(document, PrimaryDocumentFormat::Edi(policy.kind))?;
+    for descriptor in [
+        serde_json::to_vec(&document.program().source),
+        serde_json::to_vec(&document.program().target),
+        serde_json::to_vec(&policy.source),
+        serde_json::to_vec(&policy.target),
+    ] {
+        let bytes = descriptor
+            .map_err(|_| PrimaryDocumentBoundaryError::EdiAdapter)?
+            .len();
+        let maximum = 1024 * 1024;
+        if bytes > maximum {
+            return Err(PrimaryDocumentBoundaryError::EdiDescriptor { bytes, maximum });
+        }
+    }
+    crate::prepare_boundary_emission(document.program(), CompanionSelection::Complete)
+        .map_err(PrimaryDocumentBoundaryError::Program)?;
+    Ok(policy)
 }
 
 pub fn validate_primary_fixed_width_documents(

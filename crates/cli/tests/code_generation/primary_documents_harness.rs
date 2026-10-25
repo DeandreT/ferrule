@@ -122,6 +122,16 @@ pub(super) fn interpreter_error(
 ) -> TestResult<(&'static str, &'static str, String)> {
     use engine::{PrimaryDocumentRunError as Run, PrimaryFilenameEvaluationError as Filename};
     let run = match error {
+        cli::PrimaryDocumentError::EdiOutput(format_edi::EdiFormatError::UnsupportedSchema(_)) => {
+            return Ok(("output", "edi", "schema".into()));
+        }
+        cli::PrimaryDocumentError::EdiOutput(format_edi::EdiFormatError::IdocFieldTooWide {
+            field,
+            ..
+        }) => return Ok(("output", "field_width", field)),
+        cli::PrimaryDocumentError::EdiOutput(format_edi::EdiFormatError::Validation(_)) => {
+            return Ok(("output", "edi", "constraint".into()));
+        }
         cli::PrimaryDocumentError::FixedWidthOutput(error) => {
             if let codegen_runtime::FixedWidthBoundaryError::Format(
                 format_csv::CsvFormatError::FixedWidthFieldOverflow { field, .. },
@@ -194,6 +204,7 @@ pub(super) fn interpreter(cohort: &Cohort, root: &Path, case: &Json) -> TestResu
         mapping::PrimaryDocumentFormat::Xml => "xml",
         mapping::PrimaryDocumentFormat::Json => "json",
         mapping::PrimaryDocumentFormat::FixedWidth => "fixed_width",
+        mapping::PrimaryDocumentFormat::Edi(_) => "edi",
     };
     let mut files = LocalPrimaryFiles::new(&root.join(id))?;
     if let Some(limit) = case["max_document_bytes"].as_u64() {

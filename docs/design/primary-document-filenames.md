@@ -169,6 +169,41 @@ filename; an observed XML root view describes one document and is refused with
 a filename wildcard. Every member is an ordinary XML document of the source
 schema.
 
+EDI plans select X12, EDIFACT, HL7 v2, TRADACOMS, or IDoc explicitly in their
+saved options, or through an unambiguous `.x12`, `.edifact`, `.hl7`,
+`.tradacoms`, or `.idoc` identity. A bare `.edi` never selects a dialect.
+IDoc requires an embedded layout. Unresolved configurations, conflicting
+options, and incompatible schemas/layouts fail before any host call. Wildcards
+form a path-bearing document set, not a concatenated segment stream. Each
+member is parsed in order and the complete set is mapped once. Native and
+generated readers also retain explicitly selected lenient partial schemas:
+unmentioned envelope segments may be skipped without using the schema to guess
+the dialect. Strict sources must admit their selected family's opening segment.
+The native CLI and generated Rust use the shared EDI boundary; generated C# uses package-free
+schema-guided codecs. Input is capped at 64 MiB per document and 256 MiB per
+run; output is capped at 64 MiB. IDoc also caps each document at 100,000 records.
+SWIFT MT remains input-only and cannot provide a same-format output.
+
+EDIFACT syntax is selected by UNB's S001 version component. Versions 1–3 keep
+`*` as literal data; version 4 and later enable typed element repetitions,
+using UNA's repetition character when supplied and `*` otherwise. Writers
+normalize to the default separators and preserve repeated scalar/composite
+instances. Standalone UNH input without a UNB version retains legacy syntax;
+UNA's reserved/repetition slot alone does not choose version 4.
+
+The shared C# codec is `FerruleEdi(schemaJson, optionsJson, kind, input: false,
+strictEnvelope: false)`, with `Parse(byte[])` and
+`Serialize(FerruleInstance, currentDateTime)`. Adapters include it through
+`codegen-csharp::edi_runtime::add_runtime`; there is one codec inventory for
+primary and static wrappers. `strictEnvelope: true` is opt-in for EDIFACT and
+checks UNB/UNZ, UNG/UNE and UNH/UNT ownership, control counts and references on
+input and on the completed output wire. `ValidateEnvelope(byte[])` exposes
+the same check independently. Failures carry `FerruleEdiError.Envelope` and a
+zero-based `SegmentIndex`. Native code exposes
+`format_edi::edifact::validate_envelope(&str)`; Rust generated hosts can call
+`codegen_runtime::validate_edifact_envelope(&[u8])`. Ordinary primary plans
+retain their existing schema-guided, non-strict envelope behavior.
+
 Other formats have no route yet and are refused with a typed `NotAdmitted`
 error naming the format.
 
@@ -246,7 +281,15 @@ embedded plan alone names the documents, and `PRIMARY_FILE_SELECTION` /
   output causes are `JsonBoundaryError`. C# preserves acquisition stages in
   `FerrulePrimaryDocumentException` and mapping/output failures in
   `FerruleRuntimeException`. C# input byte-limit causes retain the measured
-  `Bytes` and `Maximum` in `FerrulePrimaryJsonInputException`.
+   `Bytes` and `Maximum` in `FerrulePrimaryJsonInputException`.
+- EDI: `emit_with_primary_edi_documents` adds
+  `execute_primary_edi_document_bytes` / `ExecutePrimaryEdiDocumentBytes`.
+  The saved source and target retain independent same-family options. Rust
+  exposes `PrimaryEdiDocumentError::{Boundary, Acquisition, Assembly}` and
+  `EdiBoundaryError`; C# preserves acquisition causes and raises
+  `FerruleEdiException` for codec failures. The compatibility manifest profile
+  is `primary_edi_document`. Each embedded schema and options descriptor is
+  bounded to 1 MiB and validated before emission and before host calls.
 
 ## Local filesystem host
 
@@ -281,6 +324,8 @@ generated C#.
 
 `conformance/primary-fixed-width-documents` covers the fixed-width policies and
 combined row semantics through the same interpreter/generated-host harness.
+`conformance/primary-edi-documents` covers the writable EDI families through
+that harness, including cross-document grouping and path identity.
 
 ## Command-line, editor and generation routes
 

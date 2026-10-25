@@ -88,6 +88,7 @@ enum ProfilePolicy {
     PrimaryXmlDocument,
     PrimaryJsonDocument,
     PrimaryFixedWidthDocument,
+    PrimaryEdiDocument,
 }
 
 /// A lowered design with its admitted profile policy.
@@ -263,6 +264,7 @@ fn prepare_document(
         mapping::PrimaryDocumentFormat::Xml => ProfilePolicy::PrimaryXmlDocument,
         mapping::PrimaryDocumentFormat::Json => ProfilePolicy::PrimaryJsonDocument,
         mapping::PrimaryDocumentFormat::FixedWidth => ProfilePolicy::PrimaryFixedWidthDocument,
+        mapping::PrimaryDocumentFormat::Edi(_) => ProfilePolicy::PrimaryEdiDocument,
     };
     let lowered = codegen::lower_document(document).map_err(|error| match error {
         codegen::DocumentLowerError::Mapping(error) => lower_error(error),
@@ -360,6 +362,9 @@ fn emit(
                         document.context("a primary document policy has its document plan")?,
                     )?,
                 ProfilePolicy::X12(policy) => generator.emit_with_x12(program, policy)?,
+                ProfilePolicy::PrimaryEdiDocument => generator.emit_with_primary_edi_documents(
+                    document.context("an EDI policy has its document plan")?,
+                )?,
                 ProfilePolicy::Json5 => generator.emit_with_json5(program)?,
                 ProfilePolicy::CsvOutput(policy) => {
                     generator.emit_with_csv_output(program, policy)?
@@ -408,6 +413,9 @@ fn emit(
                     generator.emit_with_static_document_adapters(program, policy)?
                 }
                 ProfilePolicy::X12(policy) => generator.emit_with_x12(program, policy)?,
+                ProfilePolicy::PrimaryEdiDocument => generator.emit_with_primary_edi_documents(
+                    document.context("an EDI policy has its document plan")?,
+                )?,
                 ProfilePolicy::Json5 => generator.emit_with_json5(program)?,
                 ProfilePolicy::CsvOutput(policy) => {
                     generator.emit_with_csv_output(program, policy)?

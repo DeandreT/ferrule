@@ -164,10 +164,46 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
 /// context. Ordinary projects keep their existing source-path admission rules.
 pub fn validate_primary_document(document: &mapping::DocumentProject) -> Vec<ValidationIssue> {
     let document_set = document.primary_route().is_ok_and(|route| {
-        route.format == mapping::PrimaryDocumentFormat::Json
-            && route.shape == mapping::PrimaryDocumentShape::DocumentSet
+        matches!(
+            route.format,
+            mapping::PrimaryDocumentFormat::Json | mapping::PrimaryDocumentFormat::Edi(_)
+        ) && route.shape == mapping::PrimaryDocumentShape::DocumentSet
     });
-    validate_in_document_context(document.project(), document_set)
+    // Bound EDI schemas before the ordinary recursive mapping validation.
+    let mut issues = Vec::new();
+    if let Ok(mapping::PrimaryDocumentRoute {
+        format: mapping::PrimaryDocumentFormat::Edi(kind),
+        ..
+    }) = document.primary_route()
+    {
+        let project = document.project();
+        for (side, schema, options) in [
+            (
+                "source EDI boundary",
+                &project.source,
+                &project.source_options,
+            ),
+            (
+                "target EDI boundary",
+                &project.target,
+                &project.target_options,
+            ),
+        ] {
+            let result = if side == "source EDI boundary" {
+                format_edi::document::validate_input(schema, options, kind)
+            } else {
+                format_edi::document::validate(schema, options, kind)
+            };
+            if let Err(error) = result {
+                issues.push(ValidationIssue::new(side, error.to_string()));
+            }
+        }
+    }
+    if issues.is_empty() {
+        validate_in_document_context(document.project(), document_set)
+    } else {
+        issues
+    }
 }
 
 fn validate_in_document_context(project: &Project, document_set: bool) -> Vec<ValidationIssue> {

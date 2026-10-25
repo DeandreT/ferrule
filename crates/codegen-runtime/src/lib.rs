@@ -159,7 +159,12 @@ pub use path_hierarchy::{
     MAX_PATH_HIERARCHY_DEPTH, MAX_PATH_HIERARCHY_ITEMS, owned_path_hierarchy, path_hierarchy,
 };
 pub use primary_document::PrimaryXmlDocumentError;
+mod edi_document;
 mod fixed_width;
+pub use edi_document::{
+    EdiBoundaryError, EdiDocumentBoundary, EdiInputBudget, PrimaryEdiDocumentError, PrimaryEdiKind,
+    validate_edifact_envelope,
+};
 pub use fixed_width::{
     FixedWidthBoundaryError, FixedWidthInputBudget, MAX_FIXED_WIDTH_DOCUMENT_BYTES,
     MAX_FIXED_WIDTH_TOTAL_BYTES, PrimaryFixedWidthDocumentError, parse_fixed_width_bytes,

@@ -62,6 +62,8 @@ impl std::error::Error for DocumentFormatError {}
 /// Why one loaded primary document could not be read.
 #[derive(Debug)]
 pub enum PrimaryInputError {
+    EdiBoundary(Box<codegen_runtime::EdiBoundaryError>),
+    Edi(format_edi::EdiFormatError),
     FixedWidth(Box<codegen_runtime::FixedWidthBoundaryError>),
     Csv(CsvSourceError),
     Json(Box<codegen_runtime::JsonBoundaryError>),
@@ -71,6 +73,8 @@ pub enum PrimaryInputError {
 impl fmt::Display for PrimaryInputError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::EdiBoundary(error) => error.fmt(f),
+            Self::Edi(error) => error.fmt(f),
             Self::FixedWidth(error) => error.fmt(f),
             Self::Csv(error) => error.fmt(f),
             Self::Json(error) => error.fmt(f),
@@ -82,6 +86,8 @@ impl fmt::Display for PrimaryInputError {
 impl std::error::Error for PrimaryInputError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::EdiBoundary(error) => Some(error.as_ref()),
+            Self::Edi(error) => Some(error),
             Self::FixedWidth(error) => Some(error.as_ref()),
             Self::Csv(error) => Some(error),
             Self::Json(error) => Some(error.as_ref()),
@@ -94,6 +100,7 @@ impl std::error::Error for PrimaryInputError {
 /// host's failure.
 #[derive(Debug)]
 pub enum PrimaryDocumentError<E = LocalFileError> {
+    EdiOutput(format_edi::EdiFormatError),
     FixedWidthOutput(Box<codegen_runtime::FixedWidthBoundaryError>),
     /// The saved formats have no primary document route.
     Route(PrimaryRouteError),
@@ -112,6 +119,7 @@ pub enum PrimaryDocumentError<E = LocalFileError> {
 impl<E: fmt::Display> fmt::Display for PrimaryDocumentError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::EdiOutput(error) => error.fmt(f),
             Self::FixedWidthOutput(error) => error.fmt(f),
             Self::Route(error) => error.fmt(f),
             Self::Root(error) => error.fmt(f),
@@ -128,6 +136,7 @@ impl<E: fmt::Display> fmt::Display for PrimaryDocumentError<E> {
 impl<E: std::error::Error + 'static> std::error::Error for PrimaryDocumentError<E> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::EdiOutput(error) => Some(error),
             Self::FixedWidthOutput(error) => Some(error.as_ref()),
             Self::Route(error) => Some(error),
             Self::Root(error) => Some(error),
@@ -205,6 +214,7 @@ pub fn check_primary_document(document: &DocumentProject) -> anyhow::Result<()> 
 /// a request's own extension never selects another format.
 fn route_identity(format: PrimaryDocumentFormat) -> &'static Path {
     Path::new(match format {
+        PrimaryDocumentFormat::Edi(_) => "document.edi",
         PrimaryDocumentFormat::FixedWidth => "document.dat",
         PrimaryDocumentFormat::Csv => "document.csv",
         PrimaryDocumentFormat::Xml => "document.xml",
@@ -312,6 +322,7 @@ pub fn execute_primary_document_with_host<H: PrimarySourceHost>(
     member_options.local_xml_file_set = false;
     let mut csv = engine::primary_csv_parser(project, CsvByteDecodingPolicy::StrictUtf8);
     let mut json_budget = codegen_runtime::PrimaryJsonInputBudget::default();
+    let mut edi_budget = codegen_runtime::EdiInputBudget::default();
     let mut fixed_budget = codegen_runtime::FixedWidthInputBudget::default();
     let output = engine::run_primary_document(
         document,
@@ -319,6 +330,13 @@ pub fn execute_primary_document_with_host<H: PrimarySourceHost>(
         host,
         max_documents,
         |request, data| match route.format {
+            PrimaryDocumentFormat::Edi(kind) => {
+                edi_budget
+                    .charge(data.bytes.len())
+                    .map_err(|error| PrimaryInputError::EdiBoundary(Box::new(error)))?;
+                format_edi::document::parse(&project.source, &member_options, kind, &data.bytes)
+                    .map_err(PrimaryInputError::Edi)
+            }
             PrimaryDocumentFormat::FixedWidth => {
                 let layout = project
                     .source_options
@@ -383,6 +401,15 @@ fn render_primary_output<E>(
     current_datetime: &str,
     maximum: usize,
 ) -> Result<(Vec<u8>, usize), PrimaryDocumentError<E>> {
+    if let PrimaryDocumentFormat::Edi(kind) = route.format {
+        let bytes =
+            format_edi::document::serialize(target, options, kind, output, current_datetime)
+                .map_err(PrimaryDocumentError::EdiOutput)?;
+        if bytes.len() > maximum {
+            return Err(PrimaryDocumentError::OutputTooLarge { maximum });
+        }
+        return Ok((bytes, 1));
+    }
     if route.format == PrimaryDocumentFormat::FixedWidth {
         let layout = options
             .fixed_width

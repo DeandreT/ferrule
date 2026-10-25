@@ -137,6 +137,15 @@ impl<'a> Generator<'a> {
             .map_err(PrimaryDocumentEmitError::Emit)
     }
 
+    pub fn emit_with_primary_edi_documents(
+        &self,
+        document: &DocumentProgram,
+    ) -> Result<ArtifactSet, PrimaryDocumentEmitError> {
+        let artifacts = crate::emit_with_primary_edi_documents(document, self.options)?;
+        self.finish(artifacts, GenerationProfile::PrimaryEdiDocument)
+            .map_err(PrimaryDocumentEmitError::Emit)
+    }
+
     /// [`crate::emit_with_json5`].
     pub fn emit_with_json5(&self, program: &Program) -> Result<ArtifactSet, Json5EmitError> {
         let artifacts = crate::emit_with_json5(program, self.options)?;

@@ -1,0 +1,15 @@
+fn check_strict_envelopes() -> Result<(), Box<dyn std::error::Error>> {
+    let cases: serde_json::Value = serde_json::from_str(__STRICT_CASES__)?;
+    for case in cases.as_array().unwrap() {
+        let wire = case["wire"].as_str().unwrap();
+        match codegen_runtime::validate_edifact_envelope(wire.as_bytes()) {
+            Ok(()) => assert_eq!(case["valid"], true, "{wire}"),
+            Err(codegen_runtime::EdiBoundaryError::Format(codegen_runtime::EdiFormatError::EdifactEnvelope { segment, .. })) => {
+                assert_eq!(case["valid"], false, "{wire}");
+                assert_eq!(case["segment"].as_u64(), Some(segment as u64), "{wire}");
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
+}
