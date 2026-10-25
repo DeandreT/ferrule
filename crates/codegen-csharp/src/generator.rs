@@ -100,6 +100,13 @@ impl<'a> Generator<'a> {
         crate::primary_fixed_width_document::emit(document, self.options)
     }
 
+    pub fn emit_with_primary_edi_documents(
+        &self,
+        document: &DocumentProgram,
+    ) -> Result<ArtifactSet, PrimaryDocumentEmitError> {
+        crate::primary_edi_document::emit(document, self.options)
+    }
+
     /// [`crate::emit_with_json5`].
     pub fn emit_with_json5(&self, program: &Program) -> Result<ArtifactSet, Json5EmitError> {
         json5_output::emit(program, self.options)

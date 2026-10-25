@@ -1,0 +1,21 @@
+[
+  {"wire":"UNH+M'UNT+2+M'","valid":true},
+  {"wire":"UNH+M'UNT+002+M'","valid":true},
+  {"wire":"UNH+M?:1'UNT+2+M?:1'","valid":true},
+  {"wire":"UNA;,.! ~UNH,M~UNT,2,M~","valid":true},
+  {"wire":"UNB+UNOC:3+S+R+D+I'UNH+M'BGM+X'UNT+3+M'UNZ+1+I'","valid":true},
+  {"wire":"UNB+UNOC:3+S+R+D+I'UNG+G+S+R+D+G1'UNH+M'UNT+2+M'UNE+1+G1'UNZ+1+I'","valid":true},
+  {"wire":"UNH+M'UNT+3+M'","valid":false,"segment":1},
+  {"wire":"UNH+M'UNT+2+N'","valid":false,"segment":1},
+  {"wire":"UNH+M'UNT+-2+M'","valid":false,"segment":1},
+  {"wire":"UNH+M:1'UNT+2+M'","valid":false,"segment":0},
+  {"wire":"UNH+M'","valid":false,"segment":1},
+  {"wire":"UNH+M'UNH+N'UNT+2+N'","valid":false,"segment":1},
+  {"wire":"UNB+UNOC:3+S+R+D+I'UNH+M'UNT+2+M'","valid":false,"segment":3},
+  {"wire":"UNB+UNOC:3+S+R+D+I'UNH+M'UNT+2+M'UNZ+2+I'","valid":false,"segment":3},
+  {"wire":"UNB+UNOC:3+S+R+D+I'UNH+M'UNT+2+M'UNZ+1+J'","valid":false,"segment":3},
+  {"wire":"UNB+UNOC:3+S+R+D+I'UNG+G+S+R+D+G1'UNH+M'UNT+2+M'UNE+2+G1'UNZ+1+I'","valid":false,"segment":4},
+  {"wire":"UNB+UNOC:3+S+R+D+I'UNG+G+S+R+D+G1'UNH+M'UNT+2+M'UNE+1+G2'UNZ+1+I'","valid":false,"segment":4},
+  {"wire":"UNB+UNOC:3+S+R+D+I'UNH+M'UNT+2+M'UNG+G+S+R+D+G1'","valid":false,"segment":3},
+  {"wire":"UNB+UNOC:3+S+R+D+I'BGM+X'UNZ+0+I'","valid":false,"segment":1}
+]

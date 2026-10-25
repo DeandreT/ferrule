@@ -14,6 +14,7 @@ use crate::{DocumentProject, FormatOptions, PrimaryFileSelection, TabularBoundar
 /// The format of a primary document plan's documents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrimaryDocumentFormat {
+    Edi(crate::EdiBoundaryKind),
     Csv,
     Xml,
     Json,
@@ -23,6 +24,12 @@ pub enum PrimaryDocumentFormat {
 impl PrimaryDocumentFormat {
     pub fn name(self) -> &'static str {
         match self {
+            Self::Edi(crate::EdiBoundaryKind::X12) => "X12",
+            Self::Edi(crate::EdiBoundaryKind::Edifact) => "EDIFACT",
+            Self::Edi(crate::EdiBoundaryKind::Hl7) => "HL7",
+            Self::Edi(crate::EdiBoundaryKind::Tradacoms) => "TRADACOMS",
+            Self::Edi(crate::EdiBoundaryKind::Idoc) => "IDoc",
+            Self::Edi(crate::EdiBoundaryKind::SwiftMt) => "SWIFT MT",
             Self::Csv => "CSV",
             Self::Xml => "XML",
             Self::Json => "JSON",
@@ -180,8 +187,14 @@ fn classify(
     if options.wsdl.is_some() {
         return refuse("a WSDL message");
     }
-    if options.idoc.is_some() || options.swift_mt.is_some() || options.edi_kind.is_some() {
-        return refuse("EDI");
+    if options.swift_mt.is_some() || options.edi_kind == Some(crate::EdiBoundaryKind::SwiftMt) {
+        return refuse("input-only SWIFT MT");
+    }
+    if let Some(kind) = options.edi_kind {
+        return Ok(PrimaryDocumentFormat::Edi(kind));
+    }
+    if options.idoc.is_some() {
+        return Ok(PrimaryDocumentFormat::Edi(crate::EdiBoundaryKind::Idoc));
     }
     if options.xml_document {
         return Ok(PrimaryDocumentFormat::Xml);
@@ -213,7 +226,15 @@ fn classify(
         Some("json") => Ok(PrimaryDocumentFormat::Json),
         Some("json5") => refuse("JSON5"),
         Some("jsonl" | "ndjson") => refuse("JSON Lines"),
-        Some("edi" | "x12" | "edifact" | "hl7" | "idoc" | "fin" | "swift") => refuse("EDI"),
+        Some("x12") => Ok(PrimaryDocumentFormat::Edi(crate::EdiBoundaryKind::X12)),
+        Some("edifact") => Ok(PrimaryDocumentFormat::Edi(crate::EdiBoundaryKind::Edifact)),
+        Some("hl7") => Ok(PrimaryDocumentFormat::Edi(crate::EdiBoundaryKind::Hl7)),
+        Some("tradacoms") => Ok(PrimaryDocumentFormat::Edi(
+            crate::EdiBoundaryKind::Tradacoms,
+        )),
+        Some("idoc") => Ok(PrimaryDocumentFormat::Edi(crate::EdiBoundaryKind::Idoc)),
+        Some("edi") => refuse("ambiguous EDI without an explicit dialect"),
+        Some("fin" | "swift") => refuse("input-only SWIFT MT"),
         Some("xlsx") => refuse("XLSX"),
         Some("db" | "sqlite" | "sqlite3") => refuse("SQLite"),
         Some("pdf") => refuse("PDF"),
@@ -262,6 +283,19 @@ impl DocumentProject {
             PrimaryFileSelection::FileNameWildcard { .. }
         );
         let shape = match format {
+            PrimaryDocumentFormat::Edi(_) => {
+                if project.root.output_path().is_some() {
+                    return Err(PrimaryRouteError::NotAdmitted {
+                        side: PrimaryRouteSide::Target,
+                        format: "dynamic EDI output documents",
+                    });
+                }
+                if wildcard {
+                    PrimaryDocumentShape::DocumentSet
+                } else {
+                    PrimaryDocumentShape::Document
+                }
+            }
             PrimaryDocumentFormat::FixedWidth => {
                 for (side, schema, options) in [
                     (
@@ -356,6 +390,48 @@ fn validate_options(
         ..Default::default()
     };
     match format {
+        PrimaryDocumentFormat::Edi(kind) => {
+            if options.edi_config_reference.is_some()
+                || (kind == crate::EdiBoundaryKind::Idoc && options.idoc.is_none())
+            {
+                return Err(PrimaryRouteError::NotAdmitted {
+                    side,
+                    format: "EDI without a resolved runtime layout",
+                });
+            }
+            accepted.edi_kind = options.edi_kind;
+            accepted.lenient_segments = options.lenient_segments;
+            accepted.edi_value_constraints = options.edi_value_constraints.clone();
+            accepted.edi_implied_decimals = options.edi_implied_decimals.clone();
+            accepted.edi_lexical_formats = options.edi_lexical_formats.clone();
+            if kind == crate::EdiBoundaryKind::X12 {
+                accepted.x12_separators = options.x12_separators;
+                accepted.x12_interchange_version = options.x12_interchange_version.clone();
+            }
+            if kind == crate::EdiBoundaryKind::Idoc {
+                accepted.idoc = options.idoc.clone();
+                accepted.idoc_native_config = options.idoc_native_config.clone();
+                accepted.idoc_native_text_settings = options.idoc_native_text_settings.clone();
+            }
+            if options.edi_autocomplete.as_ref().is_some_and(|completion| {
+                matches!(
+                    (kind, completion),
+                    (crate::EdiBoundaryKind::X12, crate::EdiAutocomplete::X12(_))
+                        | (
+                            crate::EdiBoundaryKind::Edifact,
+                            crate::EdiAutocomplete::Edifact(_)
+                        )
+                        | (crate::EdiBoundaryKind::Idoc, crate::EdiAutocomplete::Idoc)
+                        | (crate::EdiBoundaryKind::Hl7, crate::EdiAutocomplete::Hl7)
+                        | (
+                            crate::EdiBoundaryKind::Tradacoms,
+                            crate::EdiAutocomplete::Tradacoms
+                        )
+                )
+            }) {
+                accepted.edi_autocomplete = options.edi_autocomplete.clone();
+            }
+        }
         PrimaryDocumentFormat::FixedWidth => {
             accepted.fixed_width = options.fixed_width.clone();
         }

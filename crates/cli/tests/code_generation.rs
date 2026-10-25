@@ -188,6 +188,8 @@ mod path_hierarchy;
 mod primary_csv_acquisition;
 #[path = "code_generation/primary_documents_harness.rs"]
 mod primary_documents_harness;
+#[path = "code_generation/primary_edi_documents.rs"]
+mod primary_edi_documents;
 #[path = "code_generation/primary_filename_documents.rs"]
 mod primary_filename_documents;
 #[path = "code_generation/primary_filenames.rs"]

@@ -11,6 +11,8 @@ use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
 use super::FerruleApp;
 use super::host_parameters::HostParameterEntry;
 
+#[path = "primary_edi_document_tests.rs"]
+mod edi;
 #[path = "primary_fixed_width_document_tests.rs"]
 mod fixed;
 #[path = "primary_json_document_tests.rs"]
