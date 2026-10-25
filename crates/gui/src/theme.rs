@@ -22,6 +22,19 @@ pub mod space {
     pub const XXL: f32 = 24.0;
 }
 
+/// Sizes for specialized editor controls that do not use general form widths.
+pub mod editor_size {
+    pub const TYPE_PICKER: f32 = 52.0;
+    pub const PATH_PICKER: f32 = 170.0;
+    pub const SCALAR_PICKER: f32 = 180.0;
+    pub const JOIN_PICKER: f32 = 200.0;
+    pub const FUNCTION_PICKER: f32 = 210.0;
+    pub const TYPE_PATH_PICKER: f32 = 250.0;
+    pub const INSPECTOR_TREE: f32 = 150.0;
+    pub const PIPELINE_MIN_HEIGHT: f32 = 240.0;
+    pub const PIPELINE_DEFAULT_HEIGHT: f32 = 900.0;
+}
+
 /// Stable dimensions shared by the workspace shell, forms and dialogs. Canvas
 /// geometry keeps its own constants beside the canvas code.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -51,6 +64,11 @@ pub struct Metrics {
     pub source_panel: PanelSize,
     pub inspector_panel: PanelSize,
     pub diagnostics_height: f32,
+    /// Compact value-table editor dimensions shared by canvas popups.
+    pub value_map_cell_width: f32,
+    pub value_map_content_width: f32,
+    pub value_map_compact_width: f32,
+    pub value_map_height: f32,
 }
 
 /// Size limits of a resizable side panel.
@@ -88,6 +106,10 @@ pub const METRICS: Metrics = Metrics {
         max: 520.0,
     },
     diagnostics_height: 120.0,
+    value_map_cell_width: 104.0,
+    value_map_content_width: 640.0,
+    value_map_compact_width: 320.0,
+    value_map_height: 170.0,
 };
 
 /// Width of a single-line field. `Fill` takes the rest of its row.

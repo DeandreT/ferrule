@@ -345,7 +345,7 @@ impl FerruleApp {
                     .default_width(tree_width)
                     .min_width(tree_width)
                     .max_width(tree_width)
-                    .default_height(150.0)
+                    .default_height(crate::theme::editor_size::INSPECTOR_TREE)
                     .min_height(64.0)
                     .max_height(max_tree_height)
                     .resizable([false, true])
