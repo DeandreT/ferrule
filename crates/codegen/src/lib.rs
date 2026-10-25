@@ -59,7 +59,8 @@ pub use csv_x12_boundary::{
 };
 pub use diagnostic::{Diagnostic, LowerError, ScopeFeature, UnsupportedNodeKind};
 pub use document_program::{
-    DocumentLowerError, DocumentProgram, PrimaryFilenamePlan, lower_document,
+    DocumentLowerError, DocumentProgram, FixedWidthDocumentPolicy, PrimaryFilenamePlan,
+    lower_document,
 };
 pub use embedded_schema::{
     EmbeddedSchemaError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_EMBEDDED_XML_SCHEMA_BYTES,
@@ -99,7 +100,8 @@ pub use owned_admission::{
 };
 pub use presets::*;
 pub use primary_document_boundary::{
-    PrimaryDocumentBoundaryError, validate_primary_json_documents, validate_primary_xml_documents,
+    PrimaryDocumentBoundaryError, validate_primary_fixed_width_documents,
+    validate_primary_json_documents, validate_primary_xml_documents,
 };
 pub use static_document_boundary::{
     DocumentBoundaryDescriptor, DocumentBoundaryFormat, DocumentBoundaryOptions,

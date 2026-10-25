@@ -198,7 +198,7 @@ public static class FerruleCsv
         }
     }
 
-    private static FerruleCsvField[] ValidateFields(IReadOnlyList<FerruleCsvField> fields)
+    internal static FerruleCsvField[] ValidateFields(IReadOnlyList<FerruleCsvField> fields)
     {
         var ordered = new FerruleCsvField[fields.Count];
         var names = new HashSet<string>(StringComparer.Ordinal);
@@ -262,7 +262,7 @@ public static class FerruleCsv
         return ((byte)delimiter, (byte)quote);
     }
 
-    private static string[] FormatRow(
+    internal static string[] FormatRow(
         int row,
         FerruleInstance instance,
         IReadOnlyList<FerruleCsvField> fields)

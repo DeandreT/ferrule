@@ -154,10 +154,17 @@ pub use json5::{
     Json5SyntaxResource, JsonFormatError, map_json5_bytes_with, map_json5_with,
 };
 pub use mapping::{EmptyFileSelection, PrimaryDocumentShape, PrimaryFileSelection};
+pub use mapping::{FixedFieldWidth, FixedWidthLayout};
 pub use path_hierarchy::{
     MAX_PATH_HIERARCHY_DEPTH, MAX_PATH_HIERARCHY_ITEMS, owned_path_hierarchy, path_hierarchy,
 };
 pub use primary_document::PrimaryXmlDocumentError;
+mod fixed_width;
+pub use fixed_width::{
+    FixedWidthBoundaryError, FixedWidthInputBudget, MAX_FIXED_WIDTH_DOCUMENT_BYTES,
+    MAX_FIXED_WIDTH_TOTAL_BYTES, PrimaryFixedWidthDocumentError, parse_fixed_width_bytes,
+    parse_fixed_width_document, serialize_fixed_width_bytes, serialize_fixed_width_document,
+};
 mod primary_json_document;
 pub use primary_json_document::{
     MAX_PRIMARY_JSON_INPUT_BYTES, PrimaryJsonDocumentError, PrimaryJsonInputBudget,

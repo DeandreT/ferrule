@@ -87,6 +87,7 @@ enum ProfilePolicy {
     PrimaryCsvDocument(codegen::CsvDocumentBoundaryPolicy),
     PrimaryXmlDocument,
     PrimaryJsonDocument,
+    PrimaryFixedWidthDocument,
 }
 
 /// A lowered design with its admitted profile policy.
@@ -261,6 +262,7 @@ fn prepare_document(
         _ if raw => bail!("raw-delimited CRLF output requires a primary CSV document plan"),
         mapping::PrimaryDocumentFormat::Xml => ProfilePolicy::PrimaryXmlDocument,
         mapping::PrimaryDocumentFormat::Json => ProfilePolicy::PrimaryJsonDocument,
+        mapping::PrimaryDocumentFormat::FixedWidth => ProfilePolicy::PrimaryFixedWidthDocument,
     };
     let lowered = codegen::lower_document(document).map_err(|error| match error {
         codegen::DocumentLowerError::Mapping(error) => lower_error(error),
@@ -353,6 +355,10 @@ fn emit(
                 ProfilePolicy::PrimaryJsonDocument => generator.emit_with_primary_json_documents(
                     document.context("a primary document policy has its document plan")?,
                 )?,
+                ProfilePolicy::PrimaryFixedWidthDocument => generator
+                    .emit_with_primary_fixed_width_documents(
+                        document.context("a primary document policy has its document plan")?,
+                    )?,
                 ProfilePolicy::X12(policy) => generator.emit_with_x12(program, policy)?,
                 ProfilePolicy::Json5 => generator.emit_with_json5(program)?,
                 ProfilePolicy::CsvOutput(policy) => {
@@ -388,6 +394,10 @@ fn emit(
                 ProfilePolicy::PrimaryJsonDocument => generator.emit_with_primary_json_documents(
                     document.context("a primary document policy has its document plan")?,
                 )?,
+                ProfilePolicy::PrimaryFixedWidthDocument => generator
+                    .emit_with_primary_fixed_width_documents(
+                        document.context("a primary document policy has its document plan")?,
+                    )?,
                 ProfilePolicy::CsvJson(policy) => {
                     generator.emit_with_csv_json_adapters(program, policy)?
                 }

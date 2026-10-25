@@ -10,7 +10,7 @@ use format_csv::{CsvByteDecodingPolicy, LocalPrimaryFiles, PrimaryAcquisitionErr
 use mapping::document_project_file;
 
 #[path = "../../../../conformance/primary-filename-documents/projects.rs"]
-mod projects;
+pub(super) mod projects;
 
 fn emit(
     program: &codegen::DocumentProgram,

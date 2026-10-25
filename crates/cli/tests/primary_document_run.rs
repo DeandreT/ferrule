@@ -13,6 +13,9 @@ use serde_json::Value as Json;
 
 #[path = "../../../conformance/primary-json-documents/projects.rs"]
 mod json_projects;
+use projects as csv_projects;
+#[path = "../../../conformance/primary-fixed-width-documents/projects.rs"]
+mod fixed_projects;
 #[path = "../../../conformance/primary-filename-documents/projects.rs"]
 mod projects;
 #[path = "../../../conformance/primary-xml-documents/projects.rs"]
@@ -27,7 +30,13 @@ struct Cohort {
     document: fn(&str) -> DocumentProject,
 }
 
-const COHORTS: [Cohort; 3] = [
+const COHORTS: [Cohort; 4] = [
+    Cohort {
+        name: "fixed-width",
+        cases: include_str!("../../../conformance/primary-fixed-width-documents/cases.json"),
+        models: &fixed_projects::MODELS,
+        document: fixed_projects::document,
+    },
     Cohort {
         name: "csv",
         cases: include_str!("../../../conformance/primary-filename-documents/cases.json"),
@@ -194,7 +203,7 @@ fn run_cohort(cohort: &Cohort) -> TestResult<()> {
         );
         match (&expected, library) {
             (Ok(bytes), Ok(output)) => assert_eq!(&output.bytes, bytes, "{id}"),
-            (Err(message), Err(cli::PrimaryDocumentError::Run(error))) => {
+            (Err(message), Err(error)) => {
                 assert_eq!(&error.to_string(), message, "{id}")
             }
             (expected, actual) => panic!("{id}: expected {expected:?}, got {actual:?}"),

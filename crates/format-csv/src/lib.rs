@@ -51,7 +51,8 @@ pub use read::{
 };
 
 pub use fixed_width::{
-    from_str_fixed_width, read_fixed_width, to_string_fixed_width, write_fixed_width,
+    from_str_fixed_width, read_fixed_width, to_bytes_fixed_width_bounded, to_string_fixed_width,
+    write_fixed_width,
 };
 
 /// CSV output dialect and UTF-8 byte-order-mark policy. Legacy writer entry

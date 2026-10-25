@@ -19,6 +19,7 @@ pub enum PrimaryFilenamePlan {
 /// policy or a complete document execution profile.
 #[derive(Debug, Clone)]
 pub struct DocumentProgram {
+    fixed_width: Option<FixedWidthDocumentPolicy>,
     program: Program,
     primary_filename: PrimaryFilenamePlan,
     primary_selection: PrimaryFileSelection,
@@ -26,6 +27,9 @@ pub struct DocumentProgram {
 }
 
 impl DocumentProgram {
+    pub fn fixed_width_policy(&self) -> Option<&FixedWidthDocumentPolicy> {
+        self.fixed_width.as_ref()
+    }
     pub fn program(&self) -> &Program {
         &self.program
     }
@@ -45,6 +49,12 @@ impl DocumentProgram {
     pub fn primary_route(&self) -> Result<PrimaryDocumentRoute, PrimaryRouteError> {
         self.primary_route.clone()
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct FixedWidthDocumentPolicy {
+    pub source: mapping::FixedWidthLayout,
+    pub target: mapping::FixedWidthLayout,
 }
 
 #[derive(Debug)]
@@ -103,6 +113,19 @@ pub fn lower_document(document: &DocumentProject) -> Result<DocumentProgram, Doc
     }
     .map_err(DocumentLowerError::Mapping)?;
     Ok(DocumentProgram {
+        fixed_width: if primary_route
+            .as_ref()
+            .is_ok_and(|route| route.format == PrimaryDocumentFormat::FixedWidth)
+        {
+            project
+                .source_options
+                .fixed_width
+                .clone()
+                .zip(project.target_options.fixed_width.clone())
+                .map(|(source, target)| FixedWidthDocumentPolicy { source, target })
+        } else {
+            None
+        },
         program,
         primary_filename,
         primary_selection: document.primary_source().selection,
