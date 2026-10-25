@@ -58,11 +58,12 @@ fn ordered_text_selection_refuses_non_text_at_every_position_and_has_no_retry_st
             Value::Bool(true),
             Value::decimal(ir::Decimal96::ZERO),
         ] {
+            let expected_kind = invalid.type_name();
             for position in 0..3 {
                 let mut values = vec![text("A"), text("B"), text("A")];
                 values[position] = invalid.clone();
                 assert!(
-                    matches!(aggregate(function, &values, None), Err(RuntimeError::AggregateUnsupportedScalar { function: actual, .. }) if actual==function)
+                    matches!(aggregate(function, &values, None), Err(RuntimeError::AggregateUnsupportedScalar { function: actual, found }) if actual == function && found == expected_kind)
                 );
                 let expected = if function == AggregateFunction::LastPresentText {
                     text("A")
@@ -75,11 +76,16 @@ fn ordered_text_selection_refuses_non_text_at_every_position_and_has_no_retry_st
                 );
             }
         }
+        let expected_function = if function == AggregateFunction::LastPresentText {
+            "last_present_text"
+        } else {
+            "last_distinct_text"
+        };
         assert!(matches!(
             aggregate(function, &[text("A")], Some(Value::Null)),
             Err(RuntimeError::Function(
-                FunctionError::InvalidArgument { .. }
-            ))
+                FunctionError::InvalidArgument { function, .. }
+            )) if function == expected_function
         ));
     }
 }

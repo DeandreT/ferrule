@@ -2,7 +2,16 @@ use super::*;
 use mapping::AggregateOp;
 
 fn project() -> Project {
-    let mut text = string("Text");
+    let mut text = SchemaNode::scalar_union(
+        "Text",
+        ir::ScalarTypeSet::new([
+            ScalarType::String,
+            ScalarType::Int,
+            ScalarType::Float,
+            ScalarType::Bool,
+        ])
+        .unwrap(),
+    );
     text.nullable = true;
     let aggregate = |function| Node::Aggregate {
         function,
@@ -11,14 +20,24 @@ fn project() -> Project {
         expression: None,
         arg: None,
     };
-    Project {
+    let mut project = Project {
         source: SchemaNode::group(
             "Source",
-            vec![SchemaNode::group("Rows", vec![text]).repeating()],
+            vec![
+                SchemaNode::group("Rows", vec![text]).repeating(),
+                string("Mode"),
+            ],
         ),
         target: SchemaNode::group(
             "Target",
-            vec![string("Last"), string("Distinct"), bool_("Present")],
+            vec![
+                string("Last"),
+                string("Distinct"),
+                bool_("Present"),
+                bool_("DistinctPresent"),
+                string("ComputedLast"),
+                string("ComputedDistinct"),
+            ],
         ),
         source_path: None,
         target_path: None,
@@ -53,28 +72,153 @@ fn project() -> Project {
                         args: vec![1],
                     },
                 ),
+                (
+                    6,
+                    Node::SourceField {
+                        path: vec!["Text".into()],
+                        frame: None,
+                    },
+                ),
+                (
+                    7,
+                    Node::Aggregate {
+                        function: AggregateOp::LastPresentText,
+                        collection: vec!["Rows".into()],
+                        value: vec![],
+                        expression: Some(6),
+                        arg: None,
+                    },
+                ),
+                (
+                    8,
+                    Node::Aggregate {
+                        function: AggregateOp::LastDistinctText,
+                        collection: vec!["Rows".into()],
+                        value: vec![],
+                        expression: Some(6),
+                        arg: None,
+                    },
+                ),
+                (
+                    9,
+                    Node::Call {
+                        function: "string".into(),
+                        args: vec![7],
+                    },
+                ),
+                (
+                    10,
+                    Node::Call {
+                        function: "string".into(),
+                        args: vec![8],
+                    },
+                ),
+                (
+                    11,
+                    Node::Call {
+                        function: "exists".into(),
+                        args: vec![2],
+                    },
+                ),
             ]
             .into(),
         },
         root: Scope {
-            bindings: [("Last", 3), ("Distinct", 4), ("Present", 5)]
-                .into_iter()
-                .map(|(field, node)| Binding {
-                    target_field: field.into(),
-                    node,
-                })
-                .collect(),
+            bindings: [
+                ("Last", 3),
+                ("Distinct", 4),
+                ("Present", 5),
+                ("DistinctPresent", 11),
+                ("ComputedLast", 9),
+                ("ComputedDistinct", 10),
+            ]
+            .into_iter()
+            .map(|(field, node)| Binding {
+                target_field: field.into(),
+                node,
+            })
+            .collect(),
             ..Scope::default()
         },
+    };
+    // Select the first binding's probe without rebuilding the generated host.
+    // Every branch is emitted; only the selected operation may fail at runtime.
+    project
+        .graph
+        .nodes
+        .insert(12, Node::Const { value: Value::Null });
+    project.graph.nodes.insert(
+        13,
+        Node::SourceField {
+            path: vec!["Mode".into()],
+            frame: None,
+        },
+    );
+    let mut selected = 1;
+    for (base, mode, function, argument) in [
+        (20, "distinct", AggregateOp::LastDistinctText, false),
+        (30, "present-arg", AggregateOp::LastPresentText, true),
+        (40, "distinct-arg", AggregateOp::LastDistinctText, true),
+    ] {
+        project.graph.nodes.extend([
+            (
+                base,
+                Node::Const {
+                    value: Value::String(mode.into()),
+                },
+            ),
+            (
+                base + 1,
+                Node::Call {
+                    function: "equal".into(),
+                    args: vec![13, base],
+                },
+            ),
+            (
+                base + 2,
+                Node::Aggregate {
+                    function,
+                    collection: vec!["Rows".into()],
+                    value: vec!["Text".into()],
+                    expression: None,
+                    arg: argument.then_some(12),
+                },
+            ),
+            (
+                base + 3,
+                Node::If {
+                    condition: base + 1,
+                    then: base + 2,
+                    else_: selected,
+                },
+            ),
+        ]);
+        selected = base + 3;
     }
+    project.graph.nodes.insert(
+        3,
+        Node::Call {
+            function: "string".into(),
+            args: vec![selected],
+        },
+    );
+    project
 }
 
 #[test]
 fn ordered_text_documents_match_interpreter_and_generated_backends() -> TestResult<()> {
-    let project = project();
+    let authored = project();
+    let encoded = mapping::project_file::encode_pretty(&authored)?;
+    let project = mapping::project_file::decode_str(&encoded)?;
+    assert_eq!(
+        serde_json::to_value(&project)?,
+        serde_json::to_value(&authored)?,
+        "saved/reopened selectors must preserve the complete project"
+    );
+    assert_eq!(mapping::project_file::encode_pretty(&project)?, encoded);
     let directory = TempDir::new("ordered-text-selection")?;
     let path = directory.0.join("mapping.json");
-    std::fs::write(&path, mapping::project_file::encode_pretty(&project)?)?;
+    std::fs::write(&path, encoded)?;
     let validation = engine::validate(&project);
     std::fs::write(
         directory.0.join("validation.txt"),
@@ -97,24 +241,34 @@ fn ordered_text_documents_match_interpreter_and_generated_backends() -> TestResu
             serde_json::to_vec_pretty(&observation)?,
         )?;
         if case.get("error").is_some() {
+            let name = case["function"].as_str().unwrap_or("last_present_text");
+            let expected_kind = case["found"].as_str().unwrap_or("json null");
+            let operation = if name == "last_distinct_text" {
+                AggregateOp::LastDistinctText
+            } else {
+                AggregateOp::LastPresentText
+            };
             assert!(
-                matches!(
-                    result,
-                    Err(engine::EngineError::AggregateUnsupportedScalar {
-                        function: AggregateOp::LastPresentText,
-                        found: "json null"
-                    })
-                ),
+                match &result {
+                    Err(engine::EngineError::AggregateUnsupportedScalar { function, found }) =>
+                        case["error"] == "unsupported"
+                            && *function == operation
+                            && *found == expected_kind,
+                    Err(engine::EngineError::Function(
+                        codegen_runtime::FunctionError::InvalidArgument { function, .. },
+                    )) => case["error"] == "argument" && *function == name,
+                    _ => false,
+                },
                 "{}: {result:?}",
                 case["id"]
             );
         } else {
-            assert_eq!(
-                format_json::to_value(&project.target, &result?)?,
-                case["expected"],
-                "{}",
-                case["id"]
-            );
+            let actual = format_json::to_value(&project.target, &result?)?;
+            let mut expected = case["expected"].clone();
+            expected["DistinctPresent"] = expected["Present"].clone();
+            expected["ComputedLast"] = expected["Last"].clone();
+            expected["ComputedDistinct"] = expected["Distinct"].clone();
+            assert_eq!(actual, expected, "{}", case["id"]);
         }
     }
     let rust = directory.0.join("rust");

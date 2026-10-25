@@ -32,9 +32,11 @@ internal static partial class Program
                     values[position] = invalid;
                     var error = Error(FerruleRuntimeError.AggregateUnsupportedScalar, () => FerruleAggregates.Apply(operation, values));
                     Equal(operation, error.AggregateOperation!.Value);
+                    Equal(invalid.Kind, error.FoundKind!.Value);
                     Equal(operation == FerruleAggregateOperation.LastPresentText ? Text("A") : Text("B"), FerruleAggregates.Apply(operation, new[] { Text("A"), Text("B"), Text("A") }));
                 }
-            Error(FerruleRuntimeError.FunctionInvalidArgument, () => FerruleAggregates.Apply(operation, new[] { Text("A") }, FerruleValue.Null));
+            var argumentError = Error(FerruleRuntimeError.FunctionInvalidArgument, () => FerruleAggregates.Apply(operation, new[] { Text("A") }, FerruleValue.Null));
+            Equal(operation == FerruleAggregateOperation.LastPresentText ? "last_present_text" : "last_distinct_text", argumentError.Function!);
         }
     }
 }

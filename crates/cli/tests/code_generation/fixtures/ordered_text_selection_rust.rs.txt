@@ -1,4 +1,4 @@
-use codegen_runtime::{AggregateFunction, RuntimeError, parse_json, serialize_json_compact};
+use codegen_runtime::{AggregateFunction, FunctionError, RuntimeError, parse_json, serialize_json_compact};
 use ferrule_generated_mapping::execute;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -7,15 +7,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let input = parse_json(include_str!("../source-schema.json"), &case["input"].to_string())?;
         let result = execute(&input);
         if case.get("error").is_some() {
+            let expected_function = case["function"].as_str().unwrap_or("last_present_text");
+            let expected_kind = case["found"].as_str().unwrap_or("json null");
+            let expected_operation = if expected_function == "last_distinct_text" {
+                AggregateFunction::LastDistinctText
+            } else {
+                AggregateFunction::LastPresentText
+            };
             match result {
-                Err(error @ RuntimeError::AggregateUnsupportedScalar { function: AggregateFunction::LastPresentText, found: "json null" }) =>
+                Err(error @ RuntimeError::AggregateUnsupportedScalar { function, found })
+                    if case["error"] == "unsupported" && function == expected_operation && found == expected_kind =>
                     println!("OBSERVATION {}", serde_json::json!({"id":case["id"],"error":"unsupported","detail":format!("{error:?}")})),
+                Err(error @ RuntimeError::Function(FunctionError::InvalidArgument { function, .. }))
+                    if case["error"] == "argument" && function == expected_function =>
+                    println!("OBSERVATION {}", serde_json::json!({"id":case["id"],"error":"argument","detail":format!("{error:?}")})),
                 actual => panic!("{}: unexpected result {actual:?}", case["id"]),
             }
         } else {
             let text = serialize_json_compact(include_str!("../target-schema.json"), &result?)?;
             let output: serde_json::Value = serde_json::from_str(&text)?;
-            assert_eq!(output, case["expected"], "{}", case["id"]);
+            let mut expected = case["expected"].clone();
+            expected["DistinctPresent"] = expected["Present"].clone();
+            expected["ComputedLast"] = expected["Last"].clone();
+            expected["ComputedDistinct"] = expected["Distinct"].clone();
+            assert_eq!(output, expected, "{}", case["id"]);
             println!("OBSERVATION {}", serde_json::json!({"id":case["id"],"output":output}));
         }
         println!("PASS {}", case["id"]);

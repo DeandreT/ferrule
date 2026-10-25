@@ -465,11 +465,12 @@ mod text_selection_tests {
                 Value::Bool(true),
                 Value::decimal(ir::Decimal96::ZERO),
             ] {
+                let expected_kind = invalid.type_name();
                 for position in 0..3 {
                     let mut values = vec![text("A"), text("B"), text("A")];
                     values[position] = invalid.clone();
                     assert!(
-                        matches!(aggregate(function, values.len(), &values, None), Err(EngineError::AggregateUnsupportedScalar { function: actual, .. }) if actual==function)
+                        matches!(aggregate(function, values.len(), &values, None), Err(EngineError::AggregateUnsupportedScalar { function: actual, found }) if actual == function && found == expected_kind)
                     );
                     let expected = if function == AggregateOp::LastPresentText {
                         text("A")
@@ -482,11 +483,16 @@ mod text_selection_tests {
                     );
                 }
             }
+            let expected_function = if function == AggregateOp::LastPresentText {
+                "last_present_text"
+            } else {
+                "last_distinct_text"
+            };
             assert!(matches!(
                 aggregate(function, 1, &[text("A")], Some(Value::Null)),
                 Err(EngineError::Function(
-                    functions::FunctionError::InvalidArgument { .. }
-                ))
+                    functions::FunctionError::InvalidArgument { function, .. }
+                )) if function == expected_function
             ));
         }
     }
