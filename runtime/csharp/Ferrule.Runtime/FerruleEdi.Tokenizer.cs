@@ -11,16 +11,20 @@ public sealed partial class FerruleEdi
         if (_kind == "Hl7") return Hl7Segments(text);
         if (_kind == "X12") return X12Segments(text.TrimStart());
         var syntax = new Syntax('+', ':', '\'', '?', null);
-        char repeatAdvice = '*';
+        Rune repeatAdvice = new('*');
+        Rune? element = null, component = null, terminator = null, release = null;
         text = _kind == "Tradacoms" ? text.TrimStart('\ufeff') : text.TrimStart();
         if (_kind == "Edifact" && text.StartsWith("UNA", StringComparison.Ordinal))
         {
-            if (text.Length < 9) throw Fail(FerruleEdiError.Format, "Truncated UNA service string.");
-            syntax = new(text[4], text[3], text[8], text[6], null);
-            repeatAdvice = text[7];
-            text = text[9..].TrimStart();
+            Rune[] advice = text[3..].EnumerateRunes().Take(6).ToArray();
+            if (advice.Length < 6) throw Fail(FerruleEdiError.Format, "Truncated UNA service string.");
+            component = advice[0]; element = advice[1]; release = advice[3]; terminator = advice[5];
+            repeatAdvice = advice[4];
+            syntax = syntax with { ReadComponent = component.Value.ToString() };
+            int consumed = 3 + advice.Sum(rune => rune.Utf16SequenceLength);
+            text = text[consumed..].TrimStart();
         }
-        List<Segment> segments = Delimited(text, syntax, _kind == "Tradacoms", _kind == "Edifact", repeatAdvice);
+        List<Segment> segments = Delimited(text, syntax, _kind == "Tradacoms", _kind == "Edifact", repeatAdvice, element, component, terminator, release);
         if (segments.Count == 0 || (_kind == "Tradacoms" ? segments[0].Id != "STX" : segments[0].Id is not ("UNB" or "UNH")))
             throw Fail(FerruleEdiError.Format, "Invalid EDI opening segment.");
         return (segments, syntax);
@@ -29,35 +33,58 @@ public sealed partial class FerruleEdi
     // Retain release pairs until the innermost component is decoded. This
     // prevents escaped separators from being split a second time.
     private static List<string> Split(string text, char delimiter, char? release)
+        => Split(text, new Rune(delimiter), release is { } escaped ? new Rune(escaped) : null);
+
+    private static List<string> Split(string text, Rune delimiter, Rune? release)
     {
         var result = new List<string>();
-        int start = 0;
-        for (int at = 0; at < text.Length; at++)
+        int start = 0, at = 0;
+        var runes = text.EnumerateRunes().GetEnumerator();
+        while (runes.MoveNext())
         {
-            if (text[at] == release)
+            Rune rune = runes.Current;
+            int position = at;
+            at += rune.Utf16SequenceLength;
+            if (rune == release)
             {
-                if (++at == text.Length) throw Fail(FerruleEdiError.Format, "Dangling EDI release character.");
+                if (!runes.MoveNext()) throw Fail(FerruleEdiError.Format, "Dangling EDI release character.");
+                at += runes.Current.Utf16SequenceLength;
             }
-            else if (text[at] == delimiter) { result.Add(text[start..at]); start = at + 1; }
+            else if (rune == delimiter) { result.Add(text[start..position]); start = at; }
         }
         result.Add(text[start..]);
         return result;
     }
     private static string Unescape(string text, char? release)
+        => Unescape(text, release is { } escaped ? new Rune(escaped) : null);
+
+    private static string Unescape(string text, Rune? release)
     {
         if (release is null) return text;
         var output = new StringBuilder();
-        for (int at = 0; at < text.Length; at++)
+        var runes = text.EnumerateRunes().GetEnumerator();
+        while (runes.MoveNext())
         {
-            if (text[at] == release && ++at == text.Length) throw Fail(FerruleEdiError.Format, "Dangling EDI release character.");
-            output.Append(text[at]);
+            Rune rune = runes.Current;
+            if (rune == release)
+            {
+                if (!runes.MoveNext()) throw Fail(FerruleEdiError.Format, "Dangling EDI release character.");
+                rune = runes.Current;
+            }
+            output.Append(rune.ToString());
         }
         return output.ToString();
     }
-    private static List<Segment> Delimited(string text, Syntax syntax, bool assigned, bool edifact = false, char repeatAdvice = '*')
+    private static List<Segment> Delimited(string text, Syntax syntax, bool assigned, bool edifact = false, Rune? repeatAdvice = null, Rune? elementOverride = null, Rune? componentOverride = null, Rune? terminatorOverride = null, Rune? releaseOverride = null)
     {
         var segments = new List<Segment>();
-        foreach (string raw in Split(text, syntax.Terminator, syntax.Release))
+        Rune elementSeparator = elementOverride ?? new Rune(syntax.Element);
+        Rune componentSeparator = componentOverride ?? new Rune(syntax.Component);
+        Rune terminator = terminatorOverride ?? new Rune(syntax.Terminator);
+        Rune? release = releaseOverride ?? (syntax.Release is { } escaped ? new Rune(escaped) : null);
+        Rune? repetition = syntax.Repetition is { } repeated ? new Rune(repeated) : null;
+        Rune advice = repeatAdvice ?? new Rune('*');
+        foreach (string raw in Split(text, terminator, release))
         {
             string segment = raw.TrimStart();
             if (segment.Length == 0) continue;
@@ -65,28 +92,28 @@ public sealed partial class FerruleEdi
             List<string> elements;
             if (assigned)
             {
-                var pair = Split(segment, '=', syntax.Release);
+                var pair = Split(segment, new Rune('='), release);
                 if (pair.Count < 2) throw Fail(FerruleEdiError.Format, "TRADACOMS segment has no assignment separator.");
-                id = Unescape(pair[0].Trim(), syntax.Release);
+                id = Unescape(pair[0].Trim(), release);
                 if (id.Length != 3 || !id.All(char.IsAsciiLetterOrDigit)) throw Fail(FerruleEdiError.Format, "Invalid TRADACOMS segment ID.");
-                elements = Split(string.Join('=', pair.Skip(1)), syntax.Element, syntax.Release);
+                elements = Split(string.Join('=', pair.Skip(1)), elementSeparator, release);
             }
             else
             {
-                elements = Split(segment, syntax.Element, syntax.Release);
+                elements = Split(segment, elementSeparator, release);
                 id = elements[0]; elements.RemoveAt(0);
             }
             var parsed = elements.Select(element => id == "ISA" ? new List<List<string>> { new() { element } } :
-                (syntax.Repetition is { } repeat && !(edifact && id == "UNB") ? Split(element, repeat, syntax.Release) : [element])
-                .Select(value => Split(value, syntax.Component, syntax.Release).Select(part => Unescape(part, syntax.Release)).ToList()).ToList()).ToList();
+                (repetition is { } repeat && !(edifact && id == "UNB") ? Split(element, repeat, release) : [element])
+                .Select(value => Split(value, componentSeparator, release).Select(part => Unescape(part, release)).ToList()).ToList()).ToList();
             segments.Add(new(id, parsed));
             if (edifact && id == "UNB")
             {
                 string? version = parsed.FirstOrDefault()?.FirstOrDefault()?.ElementAtOrDefault(1);
                 bool v4 = IsEdifactV4(version);
-                if (v4 && (char.IsWhiteSpace(repeatAdvice) || new char?[] { syntax.Element, syntax.Component, syntax.Terminator, syntax.Release }.Contains(repeatAdvice)))
+                if (v4 && (Rune.IsWhiteSpace(advice) || new Rune?[] { elementSeparator, componentSeparator, terminator, release }.Contains(advice)))
                     throw Fail(FerruleEdiError.Format, "Syntax v4 requires a distinct visible repetition separator.");
-                syntax = syntax with { Repetition = v4 ? repeatAdvice : null };
+                repetition = v4 ? advice : null;
             }
         }
         return segments;

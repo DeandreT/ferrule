@@ -183,6 +183,8 @@ public sealed partial class FerruleEdi
         if (value is FerruleRepeated repeated) { foreach (var item in repeated.Items) Collect(node, item, root, ref syntax, output); return; }
         if (!root && Id(node.Name) is { } id)
         {
+            if (_kind == "Hl7" && (id is "FHS" or "BHS" or "MSH") && node.Children.Length < 2)
+                throw Fail(FerruleEdiError.Schema, "HL7 headers require separator and encoding fields.");
             if (_kind == "Edifact" && id == "UNB")
             {
                 Node? composite = node.Children.FirstOrDefault();

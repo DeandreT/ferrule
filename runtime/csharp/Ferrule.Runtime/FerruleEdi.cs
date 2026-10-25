@@ -35,7 +35,7 @@ public sealed partial class FerruleEdi
     private static readonly UTF8Encoding Utf8 = new(false, true);
     private sealed record Node(string Name, string? Type, Node[] Children, bool Repeating, string? Fixed);
     private sealed record Segment(string Id, List<List<List<string>>> Elements);
-    private sealed record Syntax(char Element, char Component, char Terminator, char? Release, char? Repetition, char? Subcomponent = null);
+    private sealed record Syntax(char Element, char Component, char Terminator, char? Release, char? Repetition, char? Subcomponent = null, string? ReadComponent = null);
     private readonly Node _root;
     private readonly string _kind;
     private readonly JsonElement _options;
@@ -232,7 +232,7 @@ public sealed partial class FerruleEdi
 
     private static FerruleInstance ReadElement(Node node, List<string> parts, Syntax syntax)
     {
-        if (node.Type is not null) return new FerruleScalar(ParseScalar(node.Type, DecodeSubcomponent(string.Join(syntax.Component, parts), syntax)));
+        if (node.Type is not null) return new FerruleScalar(ParseScalar(node.Type, DecodeSubcomponent(string.Join(syntax.ReadComponent ?? syntax.Component.ToString(), parts), syntax)));
         return new FerruleGroup(node.Children.Select((child, at) => new FerruleField(child.Name, ReadComponent(child, at < parts.Count ? parts[at] : "", syntax, syntax.Subcomponent))));
     }
     private static FerruleInstance ReadComponent(Node node, string raw, Syntax syntax, char? separator)

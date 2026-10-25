@@ -5,7 +5,7 @@ use mapping::{
     PrimarySourcePlan,
 };
 
-pub const MODELS: [&str; 17] = [
+pub const MODELS: [&str; 20] = [
     "x12_direct",
     "x12_wildcard",
     "edifact_direct",
@@ -23,9 +23,34 @@ pub const MODELS: [&str; 17] = [
     "edifact_lenient_partial",
     "edifact_v4",
     "edifact_v3_literal",
+    "hl7_short_msh",
+    "hl7_short_fhs",
+    "hl7_short_bhs",
 ];
 
 pub fn document(model: &str) -> DocumentProject {
+    if let Some(header) = match model {
+        "hl7_short_msh" => Some("MSH"),
+        "hl7_short_fhs" => Some("FHS"),
+        "hl7_short_bhs" => Some("BHS"),
+        _ => None,
+    } {
+        let original = document("hl7_direct");
+        let mut project = original.project().clone();
+        let ir::SchemaKind::Group { children, .. } = &mut project.target.kind else {
+            unreachable!()
+        };
+        children[0].name = header.into();
+        let ir::SchemaKind::Group { children, .. } = &mut children[0].kind else {
+            unreachable!()
+        };
+        children.truncate(1);
+        project.root.children[0].target_field = header.into();
+        project.root.children[0]
+            .bindings
+            .retain(|binding| binding.target_field == "F0");
+        return DocumentProject::new(project, original.primary_source().clone());
+    }
     if matches!(model, "edifact_v4" | "edifact_v3_literal") {
         let original = document("edifact_direct");
         let mut project = original.project().clone();

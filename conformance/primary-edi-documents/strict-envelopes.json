@@ -1,4 +1,5 @@
 [
+  {"wire":"UNA:💥.? 'UNH💥M'UNT💥2💥M'","valid":true},
   {"wire":"UNH+M'UNT+2+M'","valid":true},
   {"wire":"UNH+M'UNT+002+M'","valid":true},
   {"wire":"UNH+M?:1'UNT+2+M?:1'","valid":true},

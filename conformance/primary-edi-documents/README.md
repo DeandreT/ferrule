@@ -4,7 +4,8 @@ The authored models run through the native CLI, generated Rust, and package-free
 generated C#. `cases.json` specifies exact output bytes and ordered host calls.
 The cohort covers direct and wildcard X12, EDIFACT, HL7 v2, TRADACOMS, and IDoc
 inputs, cross-file grouping, current-document paths, custom delimiters, escaped
-data, lenient partial schemas, implied decimals, compact date output, envelope completion, IDoc byte
+data, supplementary-plane UNA separators, incomplete HL7 header refusal,
+lenient partial schemas, implied decimals, compact date output, envelope completion, IDoc byte
 widths and BOM handling, output code-list validation, and version-4 EDIFACT
 repetitions distinct from version-3 literal asterisks. `strict-envelopes.json`
 is shared by native and generated hosts for opt-in envelope validation; C#

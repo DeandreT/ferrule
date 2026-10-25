@@ -122,6 +122,9 @@ pub(super) fn interpreter_error(
 ) -> TestResult<(&'static str, &'static str, String)> {
     use engine::{PrimaryDocumentRunError as Run, PrimaryFilenameEvaluationError as Filename};
     let run = match error {
+        cli::PrimaryDocumentError::EdiOutput(format_edi::EdiFormatError::UnsupportedSchema(_)) => {
+            return Ok(("output", "edi", "schema".into()));
+        }
         cli::PrimaryDocumentError::EdiOutput(format_edi::EdiFormatError::IdocFieldTooWide {
             field,
             ..
