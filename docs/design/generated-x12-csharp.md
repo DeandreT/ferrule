@@ -4,8 +4,8 @@ Generated C# libraries can include an explicit raw X12 boundary around the
 ordinary typed mapping. The default envelope profile contains one interchange,
 functional group and transaction. An explicit grouped profile admits declared
 functional-group and transaction collections inside one interchange. An
-explicit repeating-interchange profile admits the hierarchy from an imported
-X12 `Envelope.Config`. Source and
+explicit repeating-interchange profile admits repeated interchanges in the shape of
+the imported X12 `Envelope.Config`. Source and
 target schemas, separators and
 selected format options are embedded in the generated source; execution does not
 download schemas or read an external EDI configuration.
@@ -136,12 +136,12 @@ retains its artifact set and typed/JSON APIs. The companion adds
 
 ### Repeating interchange envelopes
 
-`X12EnvelopeProfile::REPEATING_INTERCHANGES` admits the hierarchy that an
+The repeating-interchange profile admits the ownership that an imported
 X12 `Envelope.Config` produces when Ferrule imports a design. Select it
 explicitly on each intended X12 endpoint, with the CLI value
 `repeating-interchanges` for either envelope flag or through
 `cli::generate_project_with_x12_envelope_profiles` (or its static-document
-counterpart). The descriptor retains its existing serialized profile identifier. The shape is never inferred from
+counterpart). The descriptor retains its serialized envelope-profile value. The shape is never inferred from
 a schema or retained options. Static-document and CSV routes apply the same
 selection to their own X12 endpoints.
 
@@ -280,16 +280,17 @@ context to X12 output after the ordinary mapping succeeds.
 ## Static named documents and selected output
 
 `--static-document-adapters` selects a separate C# companion for a complete
-static JSON/X12 boundary table. Every primary and named endpoint retains its
-own schema, format options and separators. At least one endpoint is X12. The
+static JSON/X12/EDIFACT boundary table. Every primary and named endpoint retains its
+own schema, format options and separators. At least one endpoint is X12 or EDIFACT. The
 flag conflicts with `--x12-adapters`, `--json5-adapters` and `--csv-output`.
 The public writer is `cli::generate_project_with_static_document_adapters`;
 the emitter is `codegen_csharp::emit_with_static_document_adapters`, using a
 `codegen::StaticDocumentBoundaryPolicy` whose named entries exactly match the
 complete declaration order. This route adds `GeneratedMapping.Documents.cs`
-and the same `Runtime/X12` sources.
+and the same `Runtime/X12` sources. EDIFACT endpoints also use the
+[shared EDI codec with strict envelope validation](static-edifact-documents.md).
 
-The CLI selects an endpoint from its explicit saved X12 family, strict JSON
+The CLI selects an endpoint from its explicit saved X12/EDIFACT family, strict JSON
 flag, or `.edi`, `.x12` or `.json` path identity. Unknown identities and other
 physical formats fail admission. Schema shape and document contents do not
 select a codec. All endpoints are static single documents; dynamic physical
@@ -477,7 +478,7 @@ native reader, an absent trailing element has no occurrences, while a present
 element, even an empty one, has one occurrence per delimited part: `REF*ZZ**7~`
 reads one Null `REF02` occurrence, and `N9*X~` reads no `N902` occurrences.
 Every occurrence counts toward the repeated-instance limit. Occurrence paths are
-indexed only under the grouped and repeating-interchange profiles, matching loop
+indexed only under the grouped and repeating-interchange envelope profiles, matching loop
 paths.
 
 A segment ID with no declared repeating element refuses repetition syntax during

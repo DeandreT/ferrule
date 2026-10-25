@@ -963,6 +963,7 @@ version = "0.1.0"
 dependencies = [
  "codegen-schema",
  "engine",
+ "format-edi",
  "format-xml",
  "ir",
  "mapping",

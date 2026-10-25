@@ -1,4 +1,4 @@
-pub(crate) const OUTPUT_TYPES: &str = r#"public enum DocumentBoundaryFormat { Json, X12 }
+pub(crate) const OUTPUT_TYPES: &str = r#"public enum DocumentBoundaryFormat { Json, X12, Edifact }
 
 public sealed record NamedDocumentInput(string Name, string Document);
 public sealed record NamedDocumentBytesInput(string Name, byte[] Document);

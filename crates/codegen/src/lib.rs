@@ -106,9 +106,10 @@ pub use primary_document_boundary::{
 };
 pub use static_document_boundary::{
     DocumentBoundaryDescriptor, DocumentBoundaryFormat, DocumentBoundaryOptions,
-    NamedDocumentBoundaryDescriptor, NamedDocumentBoundaryOptions, StaticDocumentBoundaryError,
-    StaticDocumentBoundaryOwner, StaticDocumentBoundaryPolicy, StaticDocumentBoundaryProfile,
-    prepare_static_document_boundary, prepare_static_document_project_boundaries,
+    EdifactBoundaryOptions, NamedDocumentBoundaryDescriptor, NamedDocumentBoundaryOptions,
+    StaticDocumentBoundaryError, StaticDocumentBoundaryOwner, StaticDocumentBoundaryPolicy,
+    StaticDocumentBoundaryProfile, prepare_static_document_boundary,
+    prepare_static_document_project_boundaries,
 };
 pub use validate::{
     GroupingExpressionRole, JoinKeySide, OwnedDynamicLoading, OwnedSourceCapabilityOrigin,
