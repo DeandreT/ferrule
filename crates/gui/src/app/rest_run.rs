@@ -250,6 +250,27 @@ impl RestRunResult {
 }
 
 impl FerruleApp {
+    /// Explains unavailable request routes without reading files or requesting
+    /// network approval.
+    pub(super) fn rest_run_unavailable_reason(&self) -> Option<String> {
+        if self.primary_document.is_some() {
+            return Some("Document projects do not run JSON requests.".into());
+        }
+        let project_path = self
+            .document
+            .saved_path()
+            .unwrap_or_else(|| self.document.suggested_path());
+        rest_run_preflight(&self.project, project_path)
+            .err()
+            .map(|error| refusal_message(&error))
+            .or_else(|| {
+                self.document
+                    .saved_path()
+                    .is_none()
+                    .then(|| "Save the mapping before running a JSON request.".into())
+            })
+    }
+
     pub(super) fn rest_run_busy(&self) -> bool {
         // Existing external-action entry points share this ownership guard.
         self.rest_run_draft.is_some()
@@ -262,6 +283,7 @@ impl FerruleApp {
             && self.pending_library_generation.is_none()
             && self.pending_dialog.is_none()
             && self.pending_destructive_action.is_none()
+            && self.pending_pipeline_editor_action.is_none()
             && self.mfd_import_dialog.is_none()
             && self.new_mapping_setup.is_none()
             && self.extra_source_draft.is_none()
@@ -531,8 +553,8 @@ impl FerruleApp {
                     ui.label(format!("{}: {} bytes", artifact.path.display(), artifact.bytes.len()));
                 }
                 if result.truncated { ui.weak("Preview is limited to 64 KiB. Complete output is retained for this session."); }
-                egui::ScrollArea::both().max_height(300.0).show(ui, |ui| {
-                    ui.add(egui::TextEdit::multiline(&mut result.preview).interactive(false).desired_width(480.0));
+                egui::ScrollArea::both().max_height(crate::theme::ListHeight::Tall.px()).show(ui, |ui| {
+                    ui.add(egui::TextEdit::multiline(&mut result.preview).interactive(false).desired_width(f32::INFINITY));
                 });
             });
             if !open {

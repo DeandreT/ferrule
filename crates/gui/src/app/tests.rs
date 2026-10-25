@@ -4813,3 +4813,5 @@ fn new_mapping_stages_both_schemas_before_replacing_the_project() {
 
 #[path = "owned_run_worker_tests.rs"]
 mod owned_run_worker_tests;
+#[path = "run_views_visual_tests.rs"]
+mod run_views_visual_tests;

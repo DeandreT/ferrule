@@ -303,7 +303,10 @@ pub(crate) fn show(
     }
     egui::ScrollArea::vertical()
         .id_salt(ui.scope_id().with("filter_map_editor_scroll"))
-        .max_height(ui.available_height().clamp(160.0, 480.0))
+        .max_height(
+            ui.available_height()
+                .max(crate::theme::ListHeight::Short.px()),
+        )
         .show(ui, |ui| {
             show_body(ui, sequence, graph, functions, items, consumer, item_at);
         });
@@ -370,7 +373,7 @@ fn show_body(
     let capture_count = value.captures.len();
     egui::ScrollArea::vertical()
         .id_salt(ui.scope_id().with("filter_map_captures"))
-        .max_height(220.0)
+        .max_height(crate::theme::ListHeight::Medium.px())
         .show(ui, |ui| {
             for (index, capture) in value.captures.iter_mut().enumerate() {
                 let number = index + 1;

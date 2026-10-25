@@ -247,7 +247,13 @@ impl FerruleApp {
             if menu_item(ui, "Preview…", None, preview_blocked) {
                 self.begin_preview();
             }
-            if menu_item(ui, "Run JSON request…", None, None) {
+            let request_unavailable = self.rest_run_unavailable_reason();
+            if menu_item(
+                ui,
+                "Run JSON request…",
+                None,
+                request_unavailable.as_deref(),
+            ) {
                 self.begin_rest_run();
             }
             ui.separator();
@@ -490,9 +496,7 @@ impl FerruleApp {
     }
 
     fn show_runtime_paths(&mut self, ui: &mut egui::Ui) {
-        if let Some(session) = &mut self.primary_document {
-            session.show(ui);
-        }
+        self.show_primary_document_settings(ui);
         let documents = self.primary_document.is_some();
         let mut browse = None;
         ui_kit::form_grid(ui, "run_files", |form| {

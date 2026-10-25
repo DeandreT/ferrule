@@ -175,7 +175,7 @@ impl PendingFileRun {
     }
 
     #[cfg(test)]
-    fn from_test_core(core: FileRunCore) -> Self {
+    pub(super) fn from_test_core(core: FileRunCore) -> Self {
         let port = super::file_run_teardown::SavedFileRunTeardownPort::default();
         let reservation = port.reserve().expect("fresh test saved-file owner slot");
         Self::new(core, reservation)
@@ -847,7 +847,10 @@ impl FerruleApp {
                     pending.started.elapsed(),
                     trace,
                 );
-                self.run_report = Some(crate::run_report::RunReportView::new(report));
+                self.run_report = Some(
+                    crate::run_report::RunReportView::new(report)
+                        .with_project_labels(&self.project),
+                );
                 self.show_run_report = true;
                 self.diagnostics.clear();
             }
@@ -880,17 +883,21 @@ impl FerruleApp {
             .and_then(|status| status.progress_label());
         let closing = self.close_after_file_run;
         let mut action = None;
-        egui::Window::new(if debug { "Debug Run" } else { "Run" })
-            .collapsible(false)
-            .resizable(true)
-            .default_width(600.0)
-            .show(ctx, |ui| {
+        let response = crate::ui_kit::dialog(
+            ctx,
+            crate::ui_kit::DialogKind::Docked,
+            if debug { "Debug run" } else { "Run" },
+        )
+        .id_salt("file_run_progress")
+        .width(crate::ui_kit::DialogWidth::Wide)
+        .show(
+            |ui| {
                 match &phase {
                     FileRunPhase::Running => {
                         ui.horizontal(|ui| {
                             ui.spinner();
                             ui.strong(if debug {
-                                "Debug Run is running"
+                                "Debug run is running"
                             } else {
                                 "Run is running"
                             });
@@ -940,7 +947,8 @@ impl FerruleApp {
                 if closing {
                     ui.weak("The application closes after this run has stopped.");
                 }
-                ui.separator();
+            },
+            |ui| {
                 ui.horizontal(|ui| match &phase {
                     FileRunPhase::Paused(_)
                     | FileRunPhase::PausedNode(_)
@@ -975,7 +983,13 @@ impl FerruleApp {
                     }
                     FileRunPhase::Publishing | FileRunPhase::Stopping => {}
                 });
-            });
+            },
+        );
+        if response.close_requested
+            && !matches!(phase, FileRunPhase::Publishing | FileRunPhase::Stopping)
+        {
+            action = Some(FileRunCommand::Cancel);
+        }
         if let Some(command) = action {
             self.file_run_command(command);
             ctx.request_repaint();
@@ -992,7 +1006,7 @@ impl FerruleApp {
             self.file_run_breakpoint = None;
         }
         ui.horizontal_wrapped(|ui| {
-            ui.label("Debug breakpoint");
+            let breakpoint_label = ui.label("Debug breakpoint");
             egui::ComboBox::from_id_salt("file_run_debug_breakpoint")
                 .selected_text(self.file_run_breakpoint.as_ref().map_or_else(
                     || "Every target-field write".to_owned(),
@@ -1011,7 +1025,9 @@ impl FerruleApp {
                             candidate.label(),
                         );
                     }
-                });
+                })
+                .response
+                .labelled_by(breakpoint_label.id);
         });
         let mut condition_valid = preview_ui::show_breakpoint_value_condition(
             ui,
@@ -1044,7 +1060,7 @@ impl FerruleApp {
             "Pause at the first graph or function evaluation error",
         );
         if ui
-            .add_enabled(condition_valid, egui::Button::new("Debug Run"))
+            .add_enabled(condition_valid, egui::Button::new("Debug run"))
             .clicked()
         {
             self.debug_run(ui.ctx());
