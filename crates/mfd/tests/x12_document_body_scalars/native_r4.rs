@@ -411,6 +411,50 @@ fn native_message_profile_does_not_admit_arbitrary_owned_reads() {
         error.contains("aggregate-owned expression contexts"),
         "{error}"
     );
+    let mut find_context = lowered.program().clone();
+    // Lowering prunes unused constants. Supply a fresh, valid predicate rather
+    // than depending on an unrelated true literal surviving optimization.
+    let predicate = find_context
+        .expressions
+        .iter()
+        .map(|node| node.id)
+        .max()
+        .unwrap()
+        .checked_add(1)
+        .unwrap();
+    find_context.expressions.push(codegen::ExpressionNode {
+        id: predicate,
+        expression: codegen::Expression::Const {
+            value: Value::Bool(true),
+        },
+    });
+    let find = find_context
+        .expressions
+        .iter_mut()
+        .find(|node| matches!(node.expression, codegen::Expression::Aggregate { .. }))
+        .unwrap();
+    find.expression = codegen::Expression::CollectionFind {
+        collection: vec!["Rows".into()],
+        predicate,
+        value: root_field,
+    };
+    let error = codegen::validate_native_x12_nullable_scalars(&find_context, &source)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("find-owned expression contexts"), "{error}");
+    // A permitted outer source filter must not authorize the owned root read
+    // inside the expression-local collection context.
+    find_context.root.children[0].iteration = Some(codegen::IterationPlan::new(
+        codegen::SourceIteration::new(vec!["Rows".into()]),
+        Some(predicate),
+        None,
+        vec![],
+        codegen::IterationOutput::Repeated,
+    ));
+    let error = codegen::validate_native_x12_nullable_scalars(&find_context, &source)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("find-owned expression contexts"), "{error}");
 }
 
 #[test]

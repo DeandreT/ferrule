@@ -152,6 +152,168 @@ fn string(value: &str) -> Option<Value> {
     Some(Value::String(value.into()))
 }
 
+fn sequence_scalar_fixture(last_guard: bool) -> Fixture {
+    let mut functions = r#"
+<component name="constant" library="core" kind="2" uid="20"><targets><datapoint pos="0" key="200"/></targets><data><constant value="MATCH" datatype="string"/></data></component>
+<component name="equal" library="core" kind="5" uid="21"><sources><datapoint pos="0" key="201"/><datapoint pos="1" key="202"/></sources><targets><datapoint pos="0" key="203"/></targets></component>
+<component name="if-else" library="core" kind="4" uid="22"><sources><datapoint pos="0" key="204"/><datapoint pos="1" key="205"/><datapoint/></sources><targets><datapoint pos="0" key="206"/></targets></component>
+"#.to_owned();
+    let mut edges = edge(23, 201) + &edge(200, 202) + &edge(203, 204) + &edge(24, 205);
+    if last_guard {
+        functions += &unary("db", "is-not-null", 207, 208, 23);
+        functions += r#"<component name="if-else" library="core" kind="4" uid="24"><sources><datapoint pos="0" key="209"/><datapoint pos="1" key="210"/><datapoint/></sources><targets><datapoint pos="0" key="211"/></targets></component>"#;
+        edges += &(edge(206, 207) + &edge(206, 210) + &edge(208, 209) + &edge(211, 71));
+    } else {
+        functions += r#"<component name="format-dateTime" library="core" kind="5" uid="23"><sources><datapoint pos="0" key="207"/><datapoint pos="1" key="208"/><datapoint/></sources><targets><datapoint pos="0" key="209"/></targets></component><component name="constant" library="core" kind="2" uid="24"><targets><datapoint pos="0" key="210"/></targets><data><constant value="[Y0001]-[M01]-[D01]" datatype="string"/></data></component>"#;
+        edges += &(edge(206, 207) + &edge(210, 208) + &edge(209, 71));
+    }
+    let fixture = Fixture::new(&functions, &edges, None);
+    fixture.change(
+        "Defs.Segment",
+        r#"name="F2" type="decimal""#,
+        r#"name="F2" type="string""#,
+    );
+    fixture.change(
+        "Defs.Segment",
+        r#"<Data ref="F2"/>"#,
+        r#"<Data ref="F2" minOccurs="0"/>"#,
+    );
+    fixture
+}
+
+fn sequence_input(rows: &[(&str, Option<&str>)]) -> Instance {
+    group(vec![(
+        "Rows",
+        Instance::Repeated(
+            rows.iter()
+                .map(|(tag, value)| {
+                    let mut fields = vec![("F1", text(tag))];
+                    if let Some(value) = value {
+                        fields.push(("F2", text(value)));
+                    }
+                    group(vec![("LIN", group(fields))])
+                })
+                .collect(),
+        ),
+    )])
+}
+
+#[test]
+fn presence_guard_selects_last_value_of_its_shared_sequence() {
+    let fixture = sequence_scalar_fixture(true);
+    let imported = fixture.import().unwrap();
+    let body = &imported.targets[0].body;
+    for (rows, expected) in [
+        (
+            vec![("MATCH", Some("first")), ("MATCH", Some("last"))],
+            text("last"),
+        ),
+        (
+            vec![("MATCH", Some("first")), ("OTHER", Some("ignored"))],
+            text("first"),
+        ),
+        (
+            vec![("MATCH", Some("first")), ("MATCH", None)],
+            text("first"),
+        ),
+        (
+            vec![("MATCH", Some("first")), ("MATCH", Some(""))],
+            text(""),
+        ),
+        (
+            vec![("OTHER", Some("ignored"))],
+            Instance::Scalar(Value::Null),
+        ),
+    ] {
+        let actual = engine::run(body, &sequence_input(&rows)).unwrap();
+        assert_eq!(actual.field("result"), Some(&expected));
+    }
+    assert!(body.graph.nodes.values().any(|node| matches!(
+        node,
+        mapping::Node::Aggregate {
+            function: mapping::AggregateOp::LastPresentText,
+            ..
+        }
+    )));
+    assert!(codegen::lower(body).is_ok());
+}
+
+#[test]
+fn conditional_date_selects_before_conversion_without_demanding_later_values() {
+    let fixture = sequence_scalar_fixture(false);
+    let imported = fixture.import().unwrap();
+    let body = &imported.targets[0].body;
+    for rows in [
+        vec![("MATCH", Some("2026-10-24")), ("MATCH", Some("BAD"))],
+        vec![("OTHER", Some("BAD")), ("MATCH", Some("2026-10-24"))],
+    ] {
+        let actual = engine::run(body, &sequence_input(&rows)).unwrap();
+        assert_eq!(actual.field("result"), Some(&text("2026-10-24")));
+    }
+    for first in ["BAD", ""] {
+        assert!(
+            engine::run(
+                body,
+                &sequence_input(&[("MATCH", Some(first)), ("MATCH", Some("2026-10-24"))])
+            )
+            .is_err()
+        );
+    }
+    assert!(
+        body.graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, mapping::Node::CollectionFind { .. }))
+    );
+    assert!(codegen::lower(body).is_ok());
+}
+
+#[test]
+fn xml_conditional_date_still_converts_later_matching_values() {
+    let fixture = sequence_scalar_fixture(false);
+    let mapping = std::fs::read_to_string(fixture.0.join("mapping.mfd")).unwrap();
+    let start = mapping.find(r#"<component name="Target""#).unwrap();
+    let end = start + mapping[start..].find("</component>").unwrap() + "</component>".len();
+    fixture.change(
+        "mapping.mfd",
+        &mapping[start..end],
+        r#"<component name="Target" library="xml" kind="14" uid="11"><properties DynamicFilenames="1"/><data><root><entry name="FileInstance" inpkey="40"><entry name="document"><entry name="Target"><entry name="result" inpkey="71"/></entry></entry></entry></root><document schema="target.xsd" instanceroot="{}Target"/></data></component>"#,
+    );
+    std::fs::write(
+        fixture.0.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="result" type="xs:string" minOccurs="0"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )
+    .unwrap();
+    let imported = fixture.import().unwrap();
+    let body = &imported.targets[0].body;
+    assert_eq!(
+        engine::run(
+            body,
+            &sequence_input(&[("MATCH", Some("2026-10-24")), ("MATCH", Some("2026-10-25"))])
+        )
+        .unwrap()
+        .field("result"),
+        Some(&Instance::MappedSequence(vec![
+            text("2026-10-24"),
+            text("2026-10-25"),
+        ]))
+    );
+    assert!(
+        engine::run(
+            body,
+            &sequence_input(&[("MATCH", Some("2026-10-24")), ("MATCH", Some("BAD"))])
+        )
+        .is_err()
+    );
+    assert!(
+        !body
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, mapping::Node::CollectionFind { .. }))
+    );
+}
+
 #[test]
 fn value_map_all_entries_misses_empty_null_case_and_whitespace() {
     let fixture = mapped();

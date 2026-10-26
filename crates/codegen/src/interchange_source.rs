@@ -90,7 +90,8 @@ fn native_root_admission(
             | Expression::Raise { .. }
             | Expression::ValueMap { .. }
             | Expression::InvocationCounter { .. }
-            | Expression::Aggregate { .. } => continue,
+            | Expression::Aggregate { .. }
+            | Expression::CollectionFind { .. } => continue,
             _ => {
                 return Err(Binding(
                     "expression is outside the native nullable scalar profile",
@@ -140,7 +141,10 @@ fn native_root_admission(
         .map(|node| (node.id, &node.expression))
         .collect::<std::collections::BTreeMap<_, _>>();
     for node in &program.expressions {
-        if !matches!(node.expression, Expression::Aggregate { .. }) {
+        if !matches!(
+            node.expression,
+            Expression::Aggregate { .. } | Expression::CollectionFind { .. }
+        ) {
             continue;
         }
         let mut pending = crate::validate::graph_dependencies::of(&node.expression);
@@ -148,7 +152,11 @@ fn native_root_admission(
         while let Some(input) = pending.pop() {
             if fields.contains(&input) {
                 return Err(Binding(
-                    "native root reads are not admitted inside aggregate-owned expression contexts",
+                    if matches!(node.expression, Expression::CollectionFind { .. }) {
+                        "native root reads are not admitted inside find-owned expression contexts"
+                    } else {
+                        "native root reads are not admitted inside aggregate-owned expression contexts"
+                    },
                 ));
             }
             if seen.insert(input)
