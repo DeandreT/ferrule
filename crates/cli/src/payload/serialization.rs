@@ -12,7 +12,7 @@ use super::super::{
     reject_protobuf_conflicts, reject_swift_conflicts, reject_xbrl_conflicts, reject_xml_conflicts,
     validate_tabular_fallback, x12_separators,
 };
-use super::profile::BoundaryProfile;
+use super::profile::{self, BoundaryProfile};
 use super::{
     MAX_PAYLOAD_DOCUMENT_BYTES, MAX_PAYLOAD_RUN_BYTES, PayloadArtifact, PayloadDestination,
     visit_target_documents,
@@ -39,6 +39,10 @@ pub(super) struct TargetSerialization<'a> {
 
 enum PayloadBytes {
     Ready(Vec<u8>, usize),
+    CodecRefusal {
+        error: anyhow::Error,
+        records_written: usize,
+    },
     CsvOversize {
         maximum: usize,
         records_written: usize,
@@ -47,6 +51,7 @@ enum PayloadBytes {
 
 enum ArtifactBytes {
     Ready(Vec<u8>),
+    CodecRefusal(anyhow::Error),
     CsvOversize { maximum: usize },
 }
 
@@ -75,6 +80,7 @@ pub(crate) fn render_payload(
         BoundaryProfile::Compatibility,
     )? {
         PayloadBytes::Ready(bytes, records) => Ok((bytes, records)),
+        PayloadBytes::CodecRefusal { .. } => unreachable!("compatibility has no bounded codecs"),
         PayloadBytes::CsvOversize { .. } => unreachable!("unbounded CSV has no byte ceiling"),
     }
 }
@@ -103,6 +109,16 @@ pub(super) fn render_target(
             PayloadBytes::Ready(bytes, records_written) => {
                 (ArtifactBytes::Ready(bytes), records_written)
             }
+            PayloadBytes::CodecRefusal {
+                error,
+                records_written,
+            } => (
+                ArtifactBytes::CodecRefusal(error.context(format!(
+                    "rendering target `{name}` payload {}",
+                    path.display()
+                ))),
+                records_written,
+            ),
             PayloadBytes::CsvOversize {
                 maximum,
                 records_written,
@@ -124,8 +140,9 @@ pub(super) fn finalize(
     limits: Limits,
 ) -> anyhow::Result<Vec<PayloadArtifact>> {
     let mut total = 0usize;
-    for artifact in &artifacts {
-        match &artifact.bytes {
+    let mut ready = Vec::with_capacity(artifacts.len());
+    for artifact in artifacts {
+        let bytes = match artifact.bytes {
             ArtifactBytes::Ready(bytes) => {
                 if bytes.len() > limits.document {
                     bail!(
@@ -137,7 +154,9 @@ pub(super) fn finalize(
                 total = total
                     .checked_add(bytes.len())
                     .context("payload output byte count overflowed")?;
+                bytes
             }
+            ArtifactBytes::CodecRefusal(error) => return Err(error),
             ArtifactBytes::CsvOversize { maximum } => {
                 bail!(
                     "output artifact `{}` exceeds the {} MiB per-document limit",
@@ -145,7 +164,13 @@ pub(super) fn finalize(
                     maximum / (1024 * 1024)
                 );
             }
-        }
+        };
+        ready.push(PayloadArtifact {
+            target: artifact.target,
+            path: artifact.path,
+            records_written: artifact.records_written,
+            bytes,
+        });
     }
     if total > limits.run {
         bail!(
@@ -153,23 +178,8 @@ pub(super) fn finalize(
             limits.run / (1024 * 1024)
         );
     }
-    let artifacts = artifacts
-        .into_iter()
-        .map(|artifact| {
-            let bytes = match artifact.bytes {
-                ArtifactBytes::Ready(bytes) => bytes,
-                ArtifactBytes::CsvOversize { .. } => unreachable!("oversized CSV refused above"),
-            };
-            PayloadArtifact {
-                target: artifact.target,
-                path: artifact.path,
-                records_written: artifact.records_written,
-                bytes,
-            }
-        })
-        .collect::<Vec<_>>();
-    super::validate_artifact_paths(&artifacts)?;
-    Ok(artifacts)
+    super::validate_artifact_paths(&ready)?;
+    Ok(ready)
 }
 
 fn render_payload_with_limit(
@@ -181,7 +191,7 @@ fn render_payload_with_limit(
     csv_maximum: Option<usize>,
     profile: BoundaryProfile<'_>,
 ) -> anyhow::Result<PayloadBytes> {
-    let path = profile.identity(path);
+    let path = profile.identity(path, options)?;
     options
         .validate_xml_schema_hint_options(true)
         .map_err(anyhow::Error::msg)?;
@@ -196,6 +206,13 @@ fn render_payload_with_limit(
             .xbrl
             .as_ref()
             .context("missing XBRL target options")?;
+        if profile.documents() {
+            return bounded_codec_result(
+                format_xbrl::to_bytes_bounded(schema, instance, xbrl, &profile::XBRL_LIMITS),
+                1,
+                "rendering XBRL output payload",
+            );
+        }
         let text = format_xbrl::to_string(schema, instance, xbrl)
             .context("rendering XBRL output payload")?;
         return Ok(PayloadBytes::Ready(text.into_bytes(), 1));
@@ -217,6 +234,13 @@ fn render_payload_with_limit(
     }
     if let Some(layout) = &options.flextext {
         reject_flextext_conflicts(options, "output")?;
+        if profile.documents() {
+            return bounded_codec_result(
+                format_flextext::to_string(schema, instance, layout).map(String::into_bytes),
+                1,
+                "rendering FlexText output payload",
+            );
+        }
         let text = format_flextext::to_string(schema, instance, layout)
             .context("rendering FlexText output payload")?;
         return Ok(PayloadBytes::Ready(text.into_bytes(), 1));
@@ -225,6 +249,18 @@ fn render_payload_with_limit(
         reject_protobuf_conflicts(options, "output")?;
         let layout =
             protobuf_layout(protobuf).context("parsing embedded Protocol Buffers schema")?;
+        if profile.documents() {
+            return bounded_codec_result(
+                format_protobuf::to_vec_bounded(
+                    &layout,
+                    &protobuf.root_message,
+                    instance,
+                    &profile::PROTOBUF_LIMITS,
+                ),
+                1,
+                "rendering Protocol Buffers output payload",
+            );
+        }
         let bytes = format_protobuf::to_vec(&layout, &protobuf.root_message, instance)
             .context("rendering Protocol Buffers output payload")?;
         return Ok(PayloadBytes::Ready(bytes, 1));
@@ -322,6 +358,27 @@ fn render_payload_with_limit(
             .context("rendering CSV output payload")?;
             Ok(PayloadBytes::Ready(text.into_bytes(), rows.len()))
         }
+        "xlsx" if profile.documents() => {
+            let rows = instance
+                .as_repeated()
+                .context("mapping did not produce a repeating row set for an XLSX output")?;
+            bounded_codec_result(
+                format_xlsx::to_bytes_with_options_bounded(
+                    schema,
+                    rows,
+                    format_xlsx::FlatTableWriteOptions {
+                        sheet: options.xlsx_sheet.as_deref(),
+                        start_row: options.xlsx_start_row.unwrap_or(1),
+                        columns: &options.xlsx_columns,
+                        headers: &options.xlsx_headers,
+                        has_header: options.has_header_row.unwrap_or(true),
+                    },
+                    &profile::XLSX_LIMITS,
+                ),
+                rows.len(),
+                "rendering XLSX output payload",
+            )
+        }
         "xlsx" => render_xlsx_payload(schema, instance, options)
             .map(|(bytes, records)| PayloadBytes::Ready(bytes, records)),
         "xml" => {
@@ -380,6 +437,53 @@ fn render_payload_with_limit(
         }
         "pdf" => bail!("PDF output is not supported; PDF is input-only"),
         other => bail!("unsupported output payload extension: .{other}"),
+    }
+}
+
+// Preserve the existing render-all-before-size-refusal ordering. A genuine
+// bounded writer refusal owns no partial bytes, but retains its typed cause.
+// A later format/destination error must still win over this size refusal.
+fn bounded_codec_result<E>(
+    result: Result<Vec<u8>, E>,
+    records_written: usize,
+    context: &'static str,
+) -> anyhow::Result<PayloadBytes>
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    match result {
+        Ok(bytes) => Ok(PayloadBytes::Ready(bytes, records_written)),
+        Err(error) => {
+            let error = anyhow::Error::new(error);
+            let limit = matches!(
+                error.downcast_ref::<format_xlsx::XlsxFormatError>(),
+                Some(format_xlsx::XlsxFormatError::LimitExceeded { .. })
+            ) || matches!(
+                error.downcast_ref::<format_xbrl::XbrlFormatError>(),
+                Some(format_xbrl::XbrlFormatError::LimitExceeded { .. })
+            ) || matches!(
+                error.downcast_ref::<format_protobuf::BoundedEncodeError>(),
+                Some(format_protobuf::BoundedEncodeError::LimitExceeded { .. })
+            ) || matches!(
+                error.downcast_ref::<format_flextext::FlexTextError>(),
+                Some(
+                    format_flextext::FlexTextError::OutputTooLarge
+                        | format_flextext::FlexTextError::ValueTooLarge { .. }
+                        | format_flextext::FlexTextError::InstanceTooDeep
+                        | format_flextext::FlexTextError::TooManyNodes
+                        | format_flextext::FlexTextError::TooManyRecords
+                )
+            );
+            let error = error.context(context);
+            if limit {
+                Ok(PayloadBytes::CodecRefusal {
+                    error,
+                    records_written,
+                })
+            } else {
+                Err(error)
+            }
+        }
     }
 }
 
@@ -674,7 +778,7 @@ mod tests {
             &output,
             "2026-01-02T03:04:05Z",
             limits,
-            false,
+            profile::PayloadProfile::Compatibility,
         );
         if let Err(error) = &rendered {
             directory.error(error)?;
@@ -689,6 +793,9 @@ mod tests {
                 }
                 ArtifactBytes::CsvOversize { maximum } => serde_json::json!({
                     "genuine_csv_refusal_maximum": maximum,
+                }),
+                ArtifactBytes::CodecRefusal(error) => serde_json::json!({
+                    "bounded_codec_refusal": error.to_string(),
                 }),
             };
             metadata.push(serde_json::json!({
@@ -979,7 +1086,7 @@ mod tests {
                 &output,
                 "2026-01-02T03:04:05Z",
                 limits,
-                true,
+                profile::PayloadProfile::BoundedTabular,
             )?;
             assert!(
                 finalize(artifacts, limits)

@@ -2,7 +2,7 @@ mod clock;
 mod profile;
 mod serialization;
 
-use profile::BoundaryProfile;
+use profile::{BoundaryProfile, PayloadProfile};
 pub(crate) use serialization::render_payload;
 use serialization::{Limits, RenderedArtifact, TargetSerialization, render_target};
 
@@ -102,7 +102,7 @@ pub struct PayloadRunOptions<'a> {
     trace_sink: Option<&'a dyn TraceSink>,
     debug_hook: Option<&'a dyn engine::DebugHook>,
     execution_policy: &'a engine::ExecutionPolicy,
-    bounded_tabular: bool,
+    profile: PayloadProfile,
 }
 
 impl<'a> PayloadRunOptions<'a> {
@@ -118,7 +118,7 @@ impl<'a> PayloadRunOptions<'a> {
             trace_sink: None,
             debug_hook: None,
             execution_policy: &crate::execution_policy::TRUSTED,
-            bounded_tabular: false,
+            profile: PayloadProfile::Compatibility,
         }
     }
 
@@ -201,7 +201,27 @@ impl<'a> PayloadRunOptions<'a> {
     /// Selection still fully parses the primary and every required named source,
     /// and renders only the selected target. Omission preserves compatibility.
     pub fn with_bounded_tabular(mut self) -> Self {
-        self.bounded_tabular = true;
+        self.profile = PayloadProfile::BoundedTabular;
+        self
+    }
+
+    /// Opts into the pure-document profile, selected only by saved format options.
+    ///
+    /// Admits explicit JSON (including JSON5/Lines), XML, X12/EDIFACT, CSV/TSV,
+    /// fixed-width, FlexText, flat XLSX, protobuf and bounded native XBRL.
+    /// Filenames, saved paths and output overrides never choose the codec.
+    /// Missing/conflicting identities, unresolved dependencies, stateful formats,
+    /// unsupported layouts and selected dynamic sources/outputs are refused.
+    ///
+    /// Uses the native codecs' immutable finite limits, including bounded XLSX
+    /// byte I/O, protobuf encoding and XBRL byte I/O. CSV/fixed-width admission
+    /// matches `with_bounded_tabular`; FlexText retains its own bounded codec.
+    /// Outer limits remain 64 MiB/document, 256 MiB per input/output set and
+    /// 4096 additional inputs/output artifacts. No partial artifacts are returned.
+    /// This does not bound all interpreter work, allocations or process RSS.
+    /// The last profile builder called wins; omission preserves compatibility.
+    pub fn with_bounded_documents(mut self) -> Self {
+        self.profile = PayloadProfile::BoundedDocuments;
         self
     }
 }
@@ -287,10 +307,14 @@ fn preflight_payload_run<'p>(
             debugging: options.debug_hook.is_some(),
         },
     )?;
-    Ok(options
+    let required = options
         .target
         .map(|selection| engine::required_sources_for_target(project, selection))
-        .transpose()?)
+        .transpose()?;
+    if matches!(options.profile, PayloadProfile::BoundedDocuments) {
+        profile::validate_static_route(project, options.target, required.as_ref())?;
+    }
+    Ok(required)
 }
 
 /// Executes an in-memory project against host-owned input bytes.
@@ -305,7 +329,7 @@ pub fn run_project_value_payloads(
         options.primary,
         &project.source,
         &project.source_options,
-        BoundaryProfile::new(options.bounded_tabular, project.source_path.as_deref()),
+        BoundaryProfile::new(options.profile, project.source_path.as_deref()),
     )
     .context("reading primary input payload")?;
     let required_static_names = required_sources.as_ref().map(|sources| {
@@ -327,7 +351,7 @@ pub fn run_project_value_payloads(
         options.extra_sources,
         required_static_names.as_ref(),
         required_dynamic_names.as_ref(),
-        options.bounded_tabular,
+        options.profile,
     )?;
 
     let runtime_project_path = absolute_mapping_path(project_path)?;
@@ -372,7 +396,7 @@ pub fn run_project_value_payloads(
                 &output,
                 &current_datetime,
                 Limits::PRODUCTION,
-                options.bounded_tabular,
+                options.profile,
             )?
         }
         None => {
@@ -389,7 +413,7 @@ pub fn run_project_value_payloads(
                 &output,
                 &current_datetime,
                 Limits::PRODUCTION,
-                options.bounded_tabular,
+                options.profile,
             )?
         }
     };
@@ -416,7 +440,7 @@ pub(crate) fn render_all_outcome(
         output,
         current_datetime,
         Limits::PRODUCTION,
-        false,
+        PayloadProfile::Compatibility,
     )?;
     Ok(PayloadRunOutcome {
         records_written,
@@ -439,7 +463,7 @@ pub(crate) fn render_selected_outcome(
         output,
         current_datetime,
         Limits::PRODUCTION,
-        false,
+        PayloadProfile::Compatibility,
     )?;
     Ok(PayloadRunOutcome {
         records_written,
@@ -454,7 +478,7 @@ fn render_all_targets(
     output: &engine::ExecutionOutputs,
     current_datetime: &str,
     limits: Limits,
-    bounded_tabular: bool,
+    profile: PayloadProfile,
 ) -> anyhow::Result<(usize, Vec<RenderedArtifact>)> {
     if output.extras.len() != project.extra_targets.len() {
         bail!("engine returned an unexpected number of additional target values");
@@ -477,7 +501,7 @@ fn render_all_targets(
         TargetSerialization {
             current_datetime,
             limits,
-            profile: BoundaryProfile::new(bounded_tabular, project.target_path.as_deref()),
+            profile: BoundaryProfile::new(profile, project.target_path.as_deref()),
         },
     )?;
     let records_written = artifacts
@@ -502,7 +526,7 @@ fn render_all_targets(
             TargetSerialization {
                 current_datetime,
                 limits,
-                profile: BoundaryProfile::new(bounded_tabular, target.path.as_deref()),
+                profile: BoundaryProfile::new(profile, target.path.as_deref()),
             },
         )
         .with_context(|| format!("rendering extra target `{}`", target.name))?;
@@ -518,7 +542,7 @@ fn render_selected_target(
     output: &engine::SelectedTargetOutput,
     current_datetime: &str,
     limits: Limits,
-    bounded_tabular: bool,
+    profile: PayloadProfile,
 ) -> anyhow::Result<(usize, Vec<RenderedArtifact>)> {
     let (name, stored, scope, schema, instance, options, label) = match output {
         engine::SelectedTargetOutput::Primary(instance) => (
@@ -567,7 +591,7 @@ fn render_selected_target(
         TargetSerialization {
             current_datetime,
             limits,
-            profile: BoundaryProfile::new(bounded_tabular, stored),
+            profile: BoundaryProfile::new(profile, stored),
         },
     )
     .with_context(|| format!("rendering {label}"))?;
@@ -608,7 +632,7 @@ fn load_extra_payloads(
     inputs: &[NamedPayloadInput<'_>],
     required_static: Option<&BTreeSet<&str>>,
     required_dynamic: Option<&BTreeSet<&str>>,
-    bounded_tabular: bool,
+    profile: PayloadProfile,
 ) -> anyhow::Result<LoadedPayloadSources> {
     let mut static_payloads = BTreeMap::new();
     let mut dynamic_payloads = BTreeMap::new();
@@ -632,7 +656,7 @@ fn load_extra_payloads(
             input.document,
             &source.schema,
             &source.options,
-            BoundaryProfile::new(bounded_tabular, Some(&source.path)),
+            BoundaryProfile::new(profile, Some(&source.path)),
         )
         .with_context(|| format!("reading payload source `{}`", input.name))?;
         if source.dynamic_path.is_some() {
@@ -906,7 +930,9 @@ fn read_payload_with_profile(
     options: &FormatOptions,
     profile: BoundaryProfile<'_>,
 ) -> anyhow::Result<Instance> {
-    let path = profile.identity(document.path);
+    let path = profile
+        .identity(document.path, options)
+        .with_context(|| format!("admitting input payload {}", document.path.display()))?;
     if options.sqlite_read.is_some() {
         bail!("a declared SQLite query cannot be read from a payload");
     }
@@ -926,6 +952,15 @@ fn read_payload_with_profile(
             .xbrl
             .as_ref()
             .context("missing XBRL source options")?;
+        if profile.documents() {
+            return format_xbrl::from_bytes_bounded(
+                document.bytes,
+                schema,
+                xbrl,
+                &profile::XBRL_LIMITS,
+            )
+            .context("parsing XBRL input payload");
+        }
         return format_xbrl::from_str_with_options(utf8(document, "XBRL")?, schema, xbrl)
             .context("parsing XBRL input payload");
     }
@@ -1051,6 +1086,17 @@ fn read_payload_with_profile(
         )
         .map(Instance::Repeated)
         .context("parsing CSV input payload"),
+        "xlsx" if profile.documents() => format_xlsx::from_bytes_bounded(
+            document.bytes,
+            schema,
+            options.xlsx_sheet.as_deref(),
+            options.xlsx_start_row.unwrap_or(1),
+            &options.xlsx_columns,
+            options.has_header_row.unwrap_or(true),
+            &profile::XLSX_LIMITS,
+        )
+        .map(Instance::Repeated)
+        .context("parsing XLSX input payload"),
         "xlsx" => read_xlsx_payload(document.bytes, schema, options),
         "xml" => format_xml::from_str(utf8(document, "XML")?, schema)
             .context("parsing XML input payload"),
