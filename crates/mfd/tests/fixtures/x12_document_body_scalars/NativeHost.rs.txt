@@ -1,0 +1,39 @@
+use codegen_runtime::ScopeContext;
+use serde_json::{Value, json};
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::path::PathBuf::from(std::env::args().nth(1).ok_or("need X12 path")?);
+    let physical =
+        mfd051_native_control_r3::parse_native_primary_x12_source(&std::fs::read(&path)?)?;
+    let context = ScopeContext::new(&physical);
+    let mut actual = Vec::new();
+    let mut primary_probes = Vec::new();
+    for message in context.walk_source(&["Interchange", "Group", "Message_850"]) {
+        let primary = message.source_root_field(9000, &["BEG", "F1"])?;
+        assert!(
+            matches!(primary, codegen_runtime::Value::Null),
+            "walking messages must not retarget Primary"
+        );
+        primary_probes.push(Value::Null);
+        let document =
+            mfd051_native_control_r3::prepare_primary_x12_json_message(&message, None, None)?
+                .ok_or("missing document")?;
+        let body: Value = serde_json::from_str(
+            &mfd051_native_control_r3::serialize_mapforce_json(document.value())?,
+        )?;
+        actual.push(json!({"path":document.path(),"value":body}));
+    }
+    let wanted: Value =
+        serde_json::from_slice(&std::fs::read(path.with_file_name("expected.json"))?)?;
+    let actual = json!(actual);
+    std::fs::write(
+        path.with_extension("rust-native-results.json"),
+        serde_json::to_vec_pretty(
+            &json!({"actual":actual,"expected":wanted,"physical_primary_probes":primary_probes}),
+        )?,
+    )?;
+    if actual != wanted {
+        return Err(format!("native convenience mismatch: {actual}").into());
+    }
+    println!("3 physical-envelope message convenience entries passed");
+    Ok(())
+}

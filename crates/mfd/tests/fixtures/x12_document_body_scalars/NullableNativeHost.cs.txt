@@ -1,0 +1,36 @@
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static JsonNode? Plain(FerruleInstance value) => value switch {
+    FerruleGroup fields => new JsonObject(fields.Fields.Select(field=>new KeyValuePair<string,JsonNode?>(field.Name,Plain(field.Value)))),
+    FerruleRepeated items => new JsonArray(items.Items.Select(Plain).ToArray()),
+    FerruleMappedSequence items => new JsonArray(items.Items.Select(Plain).ToArray()),
+    FerruleScalar scalar when scalar.Value.Kind==FerruleValueKind.String => JsonValue.Create(scalar.Value.StringValue),
+    FerruleScalar scalar when scalar.Value.Kind==FerruleValueKind.Bool => JsonValue.Create(scalar.Value.BooleanValue),
+    FerruleScalar scalar when scalar.Value.Kind==FerruleValueKind.Null => null,
+    _ => throw new InvalidOperationException("Unexpected native output kind"),
+};
+static void MustReject(Func<FerruleDocument?> action) {
+    try { action(); } catch(FerruleRuntimeException error) when(error.Function=="native_x12_message_binding") { return; }
+    throw new InvalidOperationException("Wrong frame was accepted");
+}
+if(args.Length!=1) throw new InvalidOperationException("Need input path");
+var physical=GeneratedMapping.ParseNativePrimaryX12Source(File.ReadAllBytes(args[0]));
+var execution=new FerruleExecutionContext("neutral.mfd").WithInvocationCounterLimits(new FerruleInvocationCounterLimits(4,1024));
+var root=ScopeContext.FromSource(physical,execution);
+Func<string> bodyClock=()=>"2026-10-24T12:00:00";
+Func<string> filenameClock=()=>"2026-10-25T13:00:00";
+MustReject(()=>GeneratedMapping.PrepareNativeX12NullableMessage(root,bodyClock,filenameClock));
+var actual=new JsonArray();
+foreach(var message in root.IterateSource("Interchange","Group","Message_850")) {
+    if(message.ResolveSourceRootField(9000,new[]{"BEG","F1"}).Kind!=FerruleValueKind.Null) throw new InvalidOperationException("Primary changed");
+    var document=GeneratedMapping.PrepareNativeX12NullableMessage(message,bodyClock,filenameClock) ?? throw new InvalidOperationException("Missing output");
+    actual.Add(new JsonObject { ["path"]=document.Path,["value"]=Plain(document.Value) });
+    foreach(var row in message.IterateSource("Rows")) MustReject(()=>GeneratedMapping.PrepareNativeX12NullableMessage(row,bodyClock,filenameClock));
+    if(message.ResolveSourceRootField(9000,new[]{"BEG","F1"}).Kind!=FerruleValueKind.Null) throw new InvalidOperationException("Primary changed");
+}
+var expected=JsonNode.Parse(File.ReadAllText(Path.Combine(Path.GetDirectoryName(args[0])!,"expected.json")));
+File.WriteAllText(Path.ChangeExtension(args[0],"csharp-native-results.json"),new JsonObject { ["actual"]=actual.DeepClone(),["expected"]=expected!.DeepClone() }.ToJsonString());
+if(!JsonNode.DeepEquals(actual,expected)) throw new InvalidOperationException($"Native selected-message mismatch: {actual}");
+Console.WriteLine("3 selected-message native entries; root isolation, four counter rows and both clocks passed");

@@ -1,0 +1,94 @@
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+static void Check(bool value,string message) {if(!value)throw new InvalidOperationException(message);}
+static void Reject(ScopeContext context,Func<string> body,Func<string> filename) {
+    try {GeneratedMapping.PrepareNativeX12NullableMessage(context,body,filename);}
+    catch(FerruleRuntimeException error) when(error.Function=="native_x12_message_binding") {return;}
+    throw new InvalidOperationException("Entry accepted an invalid frame before an unchosen nullable branch");
+}
+static string[] Counters(FerruleInstance value) {
+    var root=(FerruleGroup)value;
+    var rows=(FerruleRepeated)root.Fields.Single(field=>field.Name=="rows").Value;
+    return rows.Items.Select(item=>{
+        var row=(FerruleGroup)item;
+        Check(((FerruleScalar)row.Fields.Single(field=>field.Name=="mapped").Value).Value.StringValue=="safe","nullable branch must remain unchosen");
+        return ((FerruleScalar)row.Fields.Single(field=>field.Name=="counter").Value).Value.StringValue!;
+    }).ToArray();
+}
+if(args.Length!=1)throw new InvalidOperationException("Need input");
+var owner=new[]{"Interchange","Group","Message_850"};
+var physical=GeneratedMapping.ParseNativePrimaryX12Source(File.ReadAllBytes(args[0]));
+var execution=new FerruleExecutionContext("neutral.mfd").WithInvocationCounterLimits(new FerruleInvocationCounterLimits(4,1024));
+int bodyCalls=0,filenameCalls=0;
+Func<string> body=()=>{bodyCalls++;return "2026-10-24T12:00:00";};
+Func<string> filename=()=>{filenameCalls++;return "2026-10-25T13:00:00";};
+var root=ScopeContext.FromSource(physical,execution);
+var messages=root.IterateSource(owner);Check(messages.Count==3,"message count");
+Reject(root,body,filename);
+foreach(var message in messages) {
+    var duplicates=message.IterateSource(owner);Check(duplicates.Count==3,"duplicate walk count");
+    foreach(var duplicate in duplicates)Reject(duplicate,body,filename);
+    foreach(var row in message.IterateSource("Rows"))Reject(row,body,filename);
+}
+var grouped=root.GroupBy(new[]{messages[0]},owner,_=>FerruleValue.FromString("g"));Check(grouped.Count==1,"group count");
+foreach(var group in grouped)Reject(group,body,filename);
+foreach(var group in grouped) {
+    var members=group.IterateSource(Array.Empty<string>());Check(members.Count>0,"group members");
+    foreach(var member in members) {
+        Check(member.Position(owner)==1&&member.ResolveSourceField(new[]{"BEG","F1"}).StringValue=="A","exact grouped-member alias");
+        Reject(member,body,filename);
+        try {member.NativeX12MessageField(9999,owner,new[]{"BEG","F1"});throw new InvalidOperationException("Synthetic member read accepted");}
+        catch(FerruleRuntimeException error) when(error.Function=="native_x12_message_binding") {}
+    }
+}
+var named=ScopeContext.FromSources(physical,new[]{new FerruleField("Other",physical)},execution);
+var namedMessages=named.IterateSource("Other","Interchange","Group","Message_850");Check(namedMessages.Count==3,"named count");
+foreach(var message in namedMessages)Reject(message,body,filename);
+var emptyPrimary=new FerruleGroup(Array.Empty<FerruleField>());
+var interchange=((FerruleGroup)physical).Fields.Single(field=>field.Name=="Interchange").Value;
+var aliasRoot=ScopeContext.FromSources(emptyPrimary,new[]{new FerruleField("Interchange",interchange)},execution);
+var aliasMessages=aliasRoot.IterateSource(owner);Check(aliasMessages.Count==3,"named Interchange alias count");
+Check(aliasMessages[0].Position(owner)==1&&aliasMessages[0].ResolveSourceField(new[]{"BEG","F1"}).StringValue=="A","exact named Interchange alias");
+foreach(var message in aliasMessages) {
+    Reject(message,body,filename);
+    try {message.NativeX12MessageField(9999,owner,new[]{"BEG","F1"});throw new InvalidOperationException("Named alias read accepted");}
+    catch(FerruleRuntimeException error) when(error.Function=="native_x12_message_binding") {}
+}
+var primaryWithAlias=ScopeContext.FromSources(physical,new[]{new FerruleField("Interchange",interchange)},execution);
+var primaryMessages=primaryWithAlias.IterateSource(owner);Check(primaryMessages.Count==3,"physical primary wins named alias");
+foreach(var message in primaryMessages)message.RequireNativeX12Message(owner);
+foreach(var message in ScopeContext.FromSources(physical,Array.Empty<FerruleField>()).IterateSource(owner))message.RequireNativeX12Message(owner);
+var basicRoots=FerruleBasicSourceRoots.Create(physical,Array.Empty<FerruleDeclaredNamedSourceRoot>(),new FerruleOwnedSourceLimits(4,32,64,1_048_576,4096));
+foreach(var basic in new[]{basicRoots.RootContext(),basicRoots.RootContext(execution)}) {
+    Check(basic.LegacyView.NextPrimarySource(physical) is null,"Basic legacy root is not a physical-primary transition source");
+    var basicMessages=basic.LegacyView.IterateSource(owner);Check(basicMessages.Count==3,"Basic legacy message count");
+    Check(basicMessages[0].ResolveSourceField(new[]{"BEG","F1"}).StringValue=="A","Basic legacy values retained");
+    foreach(var message in basicMessages) {
+        Reject(message,body,filename);
+        try {message.NativeX12MessageField(9999,owner,new[]{"BEG","F1"});throw new InvalidOperationException("Basic legacy read accepted");}
+        catch(FerruleRuntimeException error) when(error.Function=="native_x12_message_binding") {}
+    }
+}
+Check(bodyCalls==0&&filenameCalls==0,"invalid admission sampled clocks");
+var observed=new List<string>();
+foreach(var message in messages)observed.AddRange(Counters(GeneratedMapping.PrepareNativeX12NullableMessage(message,body,filename)!.Value));
+Check(observed.SequenceEqual(new[]{"1","2","3","4"}),"invalid admission advanced counters");
+Check(bodyCalls==3&&filenameCalls==3,"valid clocks");
+bodyCalls=0;filenameCalls=0;
+var documents=new FerruleDocumentSet(new[]{new FerruleDocument("origin.x12",physical,"resolved-origin.x12")});
+var originRoot=ScopeContext.FromSource(documents,execution);Reject(originRoot,body,filename);
+var originMessages=originRoot.IterateSource(owner);Check(originMessages.Count==3,"origin count");
+foreach(var message in originMessages) {
+    Check(message.ResolveSourceDocumentPath().StringValue=="resolved-origin.x12","origin");
+    foreach(var duplicate in message.IterateSource(owner))Reject(duplicate,body,filename);
+}
+Check(bodyCalls==0&&filenameCalls==0,"origin duplicate effects");
+var originCounters=new List<string>();
+foreach(var message in originMessages) {
+    originCounters.AddRange(Counters(GeneratedMapping.PrepareNativeX12NullableMessage(message,body,filename)!.Value));
+    Check(message.ResolveSourceDocumentPath().StringValue=="resolved-origin.x12","origin changed");
+}
+Check(originCounters.SequenceEqual(new[]{"1","2","3","4"}),"origin counters");Check(bodyCalls==3&&filenameCalls==3,"origin clocks");
+File.WriteAllText(Path.ChangeExtension(args[0],"csharp-guard-results.json"),JsonSerializer.Serialize(new {duplicate_unchosen_no_effects=true,named_rejected=true,named_interchange_alias_rejected=true,grouped_rejected=true,iterated_group_members_rejected=true,basic_legacy_rejected=true,origin_preserved=true,counters=observed,origin_counters=originCounters}));
+Console.WriteLine("entry preflight rejected duplicate/named/grouped frames before effects; origin and counters preserved");

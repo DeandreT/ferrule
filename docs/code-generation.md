@@ -1192,6 +1192,25 @@ are refused. Parsed documents from the native and legacy descriptors are not
 interchangeable. Existing flat-descriptor and non-native generated methods keep
 their UTF-8 fallback, and strict codecs are unchanged.
 
+For nullable scalar reads from the selected native message, lower the document
+with `codegen::lower_native_x12_nullable_document`, then use the Rust or C#
+`emit_with_native_primary_eager_x12_nullable_scalars` entry point with the same
+`NativeX12Source` descriptor. This bounded eager-JSON profile admits exact
+primary/root scalar reads beneath ordinary repeated source scopes with optional
+filters. It retains the original expressions and structural validation; owned
+iterations, specialized scopes, isolated functions and failure rules remain
+closed. Ordinary lowering and emission do not acquire this capability.
+
+The generated `prepare_native_x12_nullable_message` /
+`PrepareNativeX12NullableMessage` requires the exact selected-message context.
+Runtime frames carry their construction and traversal provenance: one matching
+message frame must come from a physical-primary root walk, not a named, Basic,
+grouped or synthetic context. Missing, duplicate or wrong-frame admission fails
+before body evaluation, clocks or counters. Descendant scalar reads use that
+same unique message frame without rebasing physical Primary or changing document
+origin. C# packages this already-validated static profile without re-entering the
+ordinary XML classifier; ordinary artifact packaging keeps its existing gates.
+
 `ImportedX12DocumentBodies.source_structure` retains the original source
 particle tree independently of the schema's optional/repeated containers.
 Pass it as `NativeX12Source.structure` to select the structural source reader.

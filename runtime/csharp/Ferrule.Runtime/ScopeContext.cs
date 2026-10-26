@@ -8,6 +8,40 @@ namespace Ferrule.Runtime;
 /// </summary>
 public sealed partial class ScopeContext
 {
+    /// <summary>Require the exact selected-message frame without rebasing Primary.</summary>
+    public void RequireNativeX12Message(IReadOnlyList<string> owner)
+    {
+        var selected = SelectNativeX12Message(owner);
+        if (_collections.Count == 0 || _frames.Count == 0)
+            throw NativeMessageBindingError("requires the exact selected message frame");
+        if (!ReferenceEquals(selected, _collections[^1]) || !ReferenceEquals(selected.Item, _frames[^1]))
+            throw NativeMessageBindingError("requires the exact selected message frame");
+    }
+
+    /// <summary>Read only the named selected-message occurrence; never physical Primary or a same-named row.</summary>
+    public FerruleValue NativeX12MessageField(uint node, IReadOnlyList<string> owner, IReadOnlyList<string> path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        var selected = SelectNativeX12Message(owner);
+        return FerrulePrimaryRoot.Scalar(selected.Item, path, node);
+    }
+
+    // Keep entry admission identical to the read's unique-owner proof so an
+    // unchosen nullable branch cannot defer ambiguity until after effects.
+    private CollectionIdentity SelectNativeX12Message(IReadOnlyList<string> owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        if (owner.Count == 0 || owner.Count > 64) throw NativeMessageBindingError("invalid message owner path");
+        var matches = _collections.Where(item => !item.Grouped && item.DocumentPath is null && item.Path.SequenceEqual(owner, StringComparer.Ordinal)).Take(2).ToArray();
+        if (matches.Length != 1) throw NativeMessageBindingError("message frame is missing or ambiguous");
+        if (matches[0].NativeOrigin != NativeFrameOrigin.RootedPrimaryTraversal) throw NativeMessageBindingError("message frame is not from a physical Primary root walk");
+        if (matches[0].Item is not FerruleGroup) throw NativeMessageBindingError("selected message is not a group");
+        return matches[0];
+    }
+
+    private static FerruleRuntimeException NativeMessageBindingError(string detail) =>
+        new(FerruleRuntimeError.FunctionInvalidArgument, detail, function: "native_x12_message_binding", detail: detail);
+
     public FerruleValue ResolveSourceRootXmlTypeEquals(uint node, string identity) =>
         FerruleValue.FromBoolean(FerrulePrimaryRoot.XmlTypeEquals(_primarySource, identity, node));
 
@@ -17,6 +51,8 @@ public sealed partial class ScopeContext
         FerrulePrimaryRoot.RequiredScalar(_primarySource, path, node);
     private readonly FerruleInstance _primarySource;
     private readonly IReadOnlyList<FerruleInstance> _frames;
+    private readonly IReadOnlyList<NativeFrameOrigin>? _nativeFrameOrigins;
+    internal enum NativeFrameOrigin { PhysicalPrimary, RootedPrimaryTraversal, RelativePrimaryTraversal, Named, Synthetic }
     private readonly IReadOnlyList<CollectionIdentity> _collections;
     private readonly FerruleExecutionContext? _executionContext;
     private readonly IFerruleDynamicSourceLoader? _dynamicSourceLoader;
@@ -34,10 +70,13 @@ public sealed partial class ScopeContext
         FerruleFilterMapBoundary? filterMapBoundary = null,
         int filterMapCallDepth = 0,
         FerruleInvocationCounters? invocationCounters = null,
-        DocumentClock? documentFilenameClock = null)
+        DocumentClock? documentFilenameClock = null,
+        IReadOnlyList<NativeFrameOrigin>? nativeFrameOrigins = null)
     {
         _primarySource = primarySource;
         _frames = frames;
+        _nativeFrameOrigins = nativeFrameOrigins;
+        if (_nativeFrameOrigins is not null && _nativeFrameOrigins.Count != frames.Count) throw new ArgumentException("Frame provenance count differs from frames.", nameof(nativeFrameOrigins));
         _collections = collections;
         _executionContext = executionContext;
         _dynamicSourceLoader = dynamicSourceLoader;
@@ -54,6 +93,18 @@ public sealed partial class ScopeContext
         if (_invocationCounters is null)
             throw new FerruleRuntimeException(FerruleRuntimeError.MissingInvocationCounters,
                 "invocation counters require explicit host limits", node: node);
+    }
+
+    private NativeFrameOrigin NativeOriginAt(int index) =>
+        _nativeFrameOrigins is null ? NativeFrameOrigin.Synthetic : _nativeFrameOrigins[index];
+
+    private IReadOnlyList<NativeFrameOrigin>? AppendNativeFrameOrigins(int count, NativeFrameOrigin origin = NativeFrameOrigin.Synthetic)
+    {
+        if (_nativeFrameOrigins is null && origin == NativeFrameOrigin.Synthetic) return null;
+        var result = new NativeFrameOrigin[_frames.Count + count];
+        for (int index = 0; index < _frames.Count; index++) result[index] = NativeOriginAt(index);
+        Array.Fill(result, origin, _frames.Count, count);
+        return result;
     }
 
     public FerruleValue NextInvocationCounter(uint node, string key, long start, long step, string? restart)
@@ -76,20 +127,20 @@ public sealed partial class ScopeContext
     {
         ArgumentNullException.ThrowIfNull(loader);
         return new ScopeContext(_primarySource, _frames, _collections, _executionContext, loader,
-            _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock);
+            _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock, _nativeFrameOrigins);
     }
 
     /// <summary>Install only on a cloned filename context after its complete body.</summary>
     public ScopeContext WithDocumentFilenameClock(Func<string>? clock) =>
         new ScopeContext(_primarySource, _frames, _collections, _executionContext, _dynamicSourceLoader,
             _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters,
-            clock is null ? null : new DocumentClock(clock, FerruleRuntimeError.DocumentFilenameClock, "The filename clock returned null."));
+            clock is null ? null : new DocumentClock(clock, FerruleRuntimeError.DocumentFilenameClock, "The filename clock returned null."), _nativeFrameOrigins);
 
     /// <summary>Used only by the explicit reached body-clock document profile.</summary>
     public ScopeContext WithDocumentBodyClock(Func<string>? clock) =>
         new ScopeContext(_primarySource, _frames, _collections, _executionContext, _dynamicSourceLoader,
             _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters,
-            clock is null ? null : new DocumentClock(clock, FerruleRuntimeError.DocumentBodyClock, "The body clock returned null."));
+            clock is null ? null : new DocumentClock(clock, FerruleRuntimeError.DocumentBodyClock, "The body clock returned null."), _nativeFrameOrigins);
 
     public static ScopeContext FromSource(
         FerruleInstance source,
@@ -100,7 +151,7 @@ public sealed partial class ScopeContext
             source,
             new ReadOnlyCollection<FerruleInstance>(new[] { source }),
             Array.Empty<CollectionIdentity>(),
-            executionContext);
+            executionContext, nativeFrameOrigins: new[] { NativeFrameOrigin.PhysicalPrimary });
     }
 
     /// <summary>Start a different physical primary input while sharing invocation
@@ -111,7 +162,7 @@ public sealed partial class ScopeContext
         if (_frames.Count != 1 || _collections.Count != 0) return null;
         return new ScopeContext(source, new ReadOnlyCollection<FerruleInstance>(new[] { source }),
             Array.Empty<CollectionIdentity>(), _executionContext, _dynamicSourceLoader,
-            _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock);
+            _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock, new[] { NativeFrameOrigin.PhysicalPrimary });
     }
 
     /// <summary>
@@ -131,7 +182,7 @@ public sealed partial class ScopeContext
             source,
             new ReadOnlyCollection<FerruleInstance>(new FerruleInstance[] { extras, source }),
             Array.Empty<CollectionIdentity>(),
-            executionContext);
+            executionContext, nativeFrameOrigins: new[] { NativeFrameOrigin.Named, NativeFrameOrigin.PhysicalPrimary });
     }
 
     /// <summary>Returns one exact host value or a typed missing-context error.</summary>
@@ -308,11 +359,16 @@ public sealed partial class ScopeContext
         ArgumentNullException.ThrowIfNull(path);
         ValidatePath(path);
 
-        var baseInstance = FindIterationBase(path);
+        var baseInstance = FindIterationBase(path, out var nativeOrigin);
         if (baseInstance is null)
         {
             return Array.Empty<ScopeContext>();
         }
+        nativeOrigin = nativeOrigin switch {
+            NativeFrameOrigin.PhysicalPrimary => NativeFrameOrigin.RootedPrimaryTraversal,
+            NativeFrameOrigin.RootedPrimaryTraversal or NativeFrameOrigin.RelativePrimaryTraversal => NativeFrameOrigin.RelativePrimaryTraversal,
+            _ => nativeOrigin,
+        };
 
         var prefix = path.Count == 0 && _collections.Count != 0 &&
             _collections[^1].Grouped &&
@@ -327,7 +383,7 @@ public sealed partial class ScopeContext
             prefix,
             new List<FerruleInstance>(),
             new List<CollectionIdentity>(),
-            output);
+            output, nativeOrigin: nativeOrigin);
         return new ReadOnlyCollection<ScopeContext>(output);
     }
 
@@ -348,7 +404,7 @@ public sealed partial class ScopeContext
             new List<string> { source },
             new List<FerruleInstance>(),
             new List<CollectionIdentity>(),
-            output);
+            output, nativeOrigin: NativeFrameOrigin.Named);
         return new ReadOnlyCollection<ScopeContext>(output);
     }
 
@@ -755,7 +811,7 @@ public sealed partial class ScopeContext
             _frames,
             new ReadOnlyCollection<CollectionIdentity>(collections),
             _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock, _nativeFrameOrigins);
     }
 
     /// <summary>Clones the innermost source group for independent target ownership.</summary>
@@ -798,12 +854,17 @@ public sealed partial class ScopeContext
         _ => throw new InvalidOperationException("unknown Ferrule instance type"),
     };
 
-    private FerruleInstance? FindIterationBase(IReadOnlyList<string> path, BasicWalkObserver? observed = null)
+    private FerruleInstance? FindIterationBase(IReadOnlyList<string> path, BasicWalkObserver? observed = null) =>
+        FindIterationBase(path, out _, observed);
+
+    private FerruleInstance? FindIterationBase(IReadOnlyList<string> path, out NativeFrameOrigin nativeOrigin, BasicWalkObserver? observed = null)
     {
+        nativeOrigin = NativeFrameOrigin.Synthetic;
         if (path.Count == 0)
         {
             if (_frames.Count == 0) return null;
             observed?.SelectedBase(_frames.Count - 1, _frames[^1]);
+            nativeOrigin = NativeOriginAt(_frames.Count - 1);
             return _frames[^1];
         }
 
@@ -813,12 +874,14 @@ public sealed partial class ScopeContext
             if (TryGetField(_frames[index], path[0], out _))
             {
                 observed?.SelectedBase(index, _frames[index]);
+                nativeOrigin = NativeOriginAt(index);
                 return _frames[index];
             }
         }
 
         if (_frames.Count == 0) return null;
         observed?.SelectedBase(_frames.Count - 1, _frames[^1]);
+        nativeOrigin = NativeOriginAt(_frames.Count - 1);
         return _frames[^1];
     }
 
@@ -836,7 +899,7 @@ public sealed partial class ScopeContext
             new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections),
             _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock, AppendNativeFrameOrigins(1));
     }
 
     private FerruleInstance? FindAggregateBase(IReadOnlyList<string> path)
@@ -897,7 +960,8 @@ public sealed partial class ScopeContext
         List<FerruleInstance> frames,
         List<CollectionIdentity> collections,
         ICollection<ScopeContext> output,
-        BasicWalkObserver? observed = null)
+        BasicWalkObserver? observed = null,
+        NativeFrameOrigin nativeOrigin = NativeFrameOrigin.Synthetic)
     {
         observed?.Enter(current, pathIndex, prefix, frames.Count, collections.Count);
         try
@@ -907,8 +971,8 @@ public sealed partial class ScopeContext
             for (var index = 0; index < leadingRepeated.Items.Count; index++)
             {
                 var item = leadingRepeated.Items[index];
-                PushCollection(item, prefix, index + 1, frames, collections, observed: observed);
-                Walk(item, path, pathIndex, prefix, frames, collections, output, observed);
+                PushCollection(item, prefix, index + 1, frames, collections, observed: observed, nativeOrigin: nativeOrigin);
+                Walk(item, path, pathIndex, prefix, frames, collections, output, observed, nativeOrigin);
                 PopCollection(frames, collections, observed);
             }
             return;
@@ -928,8 +992,8 @@ public sealed partial class ScopeContext
                             index + 1,
                             frames,
                             collections,
-                            document.ResolvedSourcePath ?? document.Path, observed);
-                        AddCandidate(frames, collections, output, observed);
+                            document.ResolvedSourcePath ?? document.Path, observed, nativeOrigin);
+                        AddCandidate(frames, collections, output, observed, nativeOrigin);
                         PopCollection(frames, collections, observed);
                     }
                     return;
@@ -937,8 +1001,8 @@ public sealed partial class ScopeContext
                     for (var index = 0; index < repeated.Items.Count; index++)
                     {
                         var item = repeated.Items[index];
-                        PushCollection(item, prefix, index + 1, frames, collections, observed: observed);
-                        AddCandidate(frames, collections, output, observed);
+                        PushCollection(item, prefix, index + 1, frames, collections, observed: observed, nativeOrigin: nativeOrigin);
+                        AddCandidate(frames, collections, output, observed, nativeOrigin);
                         PopCollection(frames, collections, observed);
                     }
                     return;
@@ -947,7 +1011,7 @@ public sealed partial class ScopeContext
                     if (observed is not null) GrowBasicList(frames, 1, observed);
                     observed?.Plain(current, prefix);
                     frames.Add(current);
-                    AddCandidate(frames, collections, output, observed);
+                    AddCandidate(frames, collections, output, observed, nativeOrigin);
                     frames.RemoveAt(frames.Count - 1);
                     observed?.PlainPopped();
                     return;
@@ -965,8 +1029,8 @@ public sealed partial class ScopeContext
                     index + 1,
                     frames,
                     collections,
-                    document.ResolvedSourcePath ?? document.Path, observed);
-                Walk(document.Value, path, pathIndex, prefix, frames, collections, output, observed);
+                    document.ResolvedSourcePath ?? document.Path, observed, nativeOrigin);
+                Walk(document.Value, path, pathIndex, prefix, frames, collections, output, observed, nativeOrigin);
                 PopCollection(frames, collections, observed);
             }
             return;
@@ -998,21 +1062,21 @@ public sealed partial class ScopeContext
             for (var index = 0; index < repeatedField.Items.Count; index++)
             {
                 var item = repeatedField.Items[index];
-                PushCollection(item, nextPrefix, index + 1, frames, collections, observed: observed);
+                PushCollection(item, nextPrefix, index + 1, frames, collections, observed: observed, nativeOrigin: nativeOrigin);
                 if (pathIndex + 1 == path.Count)
                 {
-                    AddCandidate(frames, collections, output, observed);
+                    AddCandidate(frames, collections, output, observed, nativeOrigin);
                 }
                 else
                 {
-                    Walk(item, path, pathIndex + 1, nextPrefix, frames, collections, output, observed);
+                    Walk(item, path, pathIndex + 1, nextPrefix, frames, collections, output, observed, nativeOrigin);
                 }
                 PopCollection(frames, collections, observed);
             }
             return;
         }
 
-        Walk(next, path, pathIndex + 1, nextPrefix, frames, collections, output, observed);
+        Walk(next, path, pathIndex + 1, nextPrefix, frames, collections, output, observed, nativeOrigin);
         }
         finally
         {
@@ -1026,7 +1090,8 @@ public sealed partial class ScopeContext
         IReadOnlyCollection<FerruleInstance> frames,
         IReadOnlyCollection<CollectionIdentity> collections,
         ICollection<ScopeContext> output,
-        BasicWalkObserver? observed = null)
+        BasicWalkObserver? observed = null,
+        NativeFrameOrigin nativeOrigin = NativeFrameOrigin.Synthetic)
     {
         if (observed is not null)
         {
@@ -1047,7 +1112,8 @@ public sealed partial class ScopeContext
             new ReadOnlyCollection<FerruleInstance>(allFrames),
             new ReadOnlyCollection<CollectionIdentity>(allCollections),
             _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock,
+            AppendNativeFrameOrigins(frames.Count, nativeOrigin));
         output.Add(candidate);
         observed?.Candidate(candidate, frames.Count, collections.Count);
     }
@@ -1059,7 +1125,8 @@ public sealed partial class ScopeContext
         ICollection<FerruleInstance> frames,
         ICollection<CollectionIdentity> collections,
         string? documentPath = null,
-        BasicWalkObserver? observed = null)
+        BasicWalkObserver? observed = null,
+        NativeFrameOrigin nativeOrigin = NativeFrameOrigin.Synthetic)
     {
         if (observed is not null)
         {
@@ -1075,7 +1142,7 @@ public sealed partial class ScopeContext
             path.ToArray(),
             item,
             index,
-            DocumentPath: documentPath));
+            DocumentPath: documentPath, NativeOrigin: nativeOrigin));
         observed?.CollectionPushed(item, path, index);
     }
 
@@ -1274,7 +1341,8 @@ public sealed partial class ScopeContext
         int? JoinPosition = null,
         bool Grouped = false,
         string? DocumentPath = null,
-        bool BasicGroupMembers = false)
+        bool BasicGroupMembers = false,
+        NativeFrameOrigin NativeOrigin = NativeFrameOrigin.Synthetic)
     {
         private int _index = Index;
         public int Index { get => _index; init => _index = value; }
@@ -2417,8 +2485,10 @@ public sealed partial class ScopeContext
     {
         budget.Charge(5); // two frame cells, read-only wrapper, legacy view and root helper state
         var frames = new FerruleInstance[] { projection, primary };
+        // A Basic endpoint owner is not native physical-root provenance.
+        // Null intentionally keeps this view synthetic without allocation.
         return new ScopeContext(primary, new ReadOnlyCollection<FerruleInstance>(frames),
-            Array.Empty<CollectionIdentity>(), execution);
+            Array.Empty<CollectionIdentity>(), execution, nativeFrameOrigins: null);
     }
     internal ScopeContext CloneBasicLegacy(BasicSourceBudget budget, int? slot = null, int index = 0)
     {

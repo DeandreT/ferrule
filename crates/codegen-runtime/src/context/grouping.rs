@@ -316,6 +316,7 @@ impl<'a> GroupedItems<'a> {
                     .iter()
                     .map(|frame| ScopeFrame {
                         instance: frame.instance,
+                        origin: frame.origin,
                         collection: frame.collection.clone(),
                         document_path: frame.document_path,
                         join: frame.join,
@@ -325,6 +326,7 @@ impl<'a> GroupedItems<'a> {
                 if let Some(wrapper) = &group.wrapper {
                     frames.push(ScopeFrame {
                         instance: wrapper,
+                        origin: super::FrameOrigin::Synthetic,
                         collection: None,
                         document_path: None,
                         join: None,

@@ -50,6 +50,79 @@ pub fn emit_with_mapforce_x12_json(
 }
 impl std::error::Error for MapForceSourceEmitError {}
 
+/// Native-only selected-message binding. Ordinary and Basic emitters retain
+/// their existing gates; physical Primary and invocation state are unchanged.
+pub fn emit_with_native_primary_eager_x12_nullable_scalars(
+    document: &codegen::DocumentProgram,
+    source: &codegen::NativeX12Source<'_>,
+    filename_target: &str,
+    driver: &[String],
+) -> Result<ArtifactSet, MapForceSourceEmitError> {
+    let program = document.program();
+    let source_descriptor = codegen::prepare_native_x12_source(program, source)
+        .map_err(MapForceSourceEmitError::Boundary)?;
+    if document.native_x12_nullable_binding() != Some(source_descriptor.as_str()) {
+        return Err(MapForceSourceEmitError::Boundary(
+            MapForceX12SourceError::Binding(
+                "requires explicit native nullable document lowering with this source descriptor",
+            ),
+        ));
+    }
+    codegen::validate_native_x12_nullable_scalars(program, source)
+        .map_err(MapForceSourceEmitError::Boundary)?;
+    let descriptor = crate::literal::string(&source_descriptor);
+    let writer = crate::literal::string(
+        &codegen::prepare_mapforce_json_writer(program).map_err(MapForceSourceEmitError::Writer)?,
+    );
+    let plan = codegen::prepare_eager_x12_json_message(program, filename_target, driver)
+        .map_err(MapForceSourceEmitError::Writer)?;
+    let mapping = crate::mapping::render_native_x12_message(program, source.message)
+        .map_err(MapForceSourceEmitError::Emit)?
+        .replacen(
+            "public static class GeneratedMapping",
+            "public static partial class GeneratedMapping",
+            1,
+        );
+    // Native admission above inventories every target and permits only static
+    // group/scalar scopes; the eager writer also proves a static JSON target.
+    // No dynamic XML document-output extension is possible in this profile.
+    // Package the validated mapping without xml_output_mode(), which would
+    // re-enter ordinary ControlFree admission and reject its nullable roots.
+    let artifacts =
+        crate::emit_mapping_files(mapping, false).map_err(MapForceSourceEmitError::Emit)?;
+    let mut files = crate::primary_filename::append(artifacts, document)
+        .map_err(MapForceSourceEmitError::Emit)?
+        .into_files();
+    for (path, text) in crate::runtime::JSON5_SOURCES {
+        if !files.iter().any(|file| file.path.as_str() == path) {
+            files.push(crate::file(path, text).map_err(MapForceSourceEmitError::Emit)?);
+        }
+    }
+    for (path, text) in crate::x12_output::X12_SOURCES {
+        if !files.iter().any(|file| file.path.as_str() == path) {
+            files.push(crate::file(path, text).map_err(MapForceSourceEmitError::Emit)?);
+        }
+    }
+    let mapping = files
+        .iter_mut()
+        .find(|file| file.path.as_str() == "GeneratedMapping.cs")
+        .ok_or(MapForceSourceEmitError::Artifact)?;
+    mapping.contents.extend_from_slice(format!(r#"
+public static partial class GeneratedMapping {{
+    public static global::Ferrule.Runtime.FerruleInstance ParseNativePrimaryX12Source(byte[] bytes) => global::Ferrule.Runtime.FerruleX12.ParseMapForceSourceBytes({descriptor}, bytes);
+    public static global::Ferrule.Runtime.FerruleParsedX12Source ParseNativePrimaryX12Document(string identity, byte[] bytes) => global::Ferrule.Runtime.FerruleX12.ParseMapForceSourceDocument({descriptor}, identity, bytes);
+    public static string SerializeMapForceJson(global::Ferrule.Runtime.FerruleInstance value) => global::Ferrule.Runtime.FerruleJson.SerializeMapForceJsonAsciiKeys({writer}, value);
+    public static global::System.Collections.Generic.IEnumerable<global::Ferrule.Runtime.FerruleDocument> AcquireNativePrimaryX12(global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.Func<string,global::System.Collections.Generic.IEnumerable<string>> select, global::System.Func<string,global::Ferrule.Runtime.FerruleParsedX12Source> load, int maximum) => global::Ferrule.Runtime.FerruleX12SourceAcquisition.Acquire({descriptor}, () => EvaluatePrimaryFilename(execution), select, load, maximum);
+}}
+"#).as_bytes());
+    mapping.contents.extend_from_slice(
+        crate::mapping::native_nullable_message_entry(program, &plan, source.message).as_bytes(),
+    );
+    ArtifactSet::new(files)
+        .map_err(EmitError::from)
+        .map_err(MapForceSourceEmitError::Emit)
+}
+
 pub fn emit_with_native_deferred_x12_xml(
     document: &codegen::DocumentProgram,
     source: &codegen::NativeX12Source<'_>,

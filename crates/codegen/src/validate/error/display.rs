@@ -8,6 +8,9 @@ use super::ProgramValidationError;
 impl fmt::Display for ProgramValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidNativeX12MessageProfile { reason } => {
+                write!(formatter, "native X12 nullable message profile: {reason}")
+            }
             Self::InvalidSourceRowPath {
                 node,
                 collection,
