@@ -77,6 +77,9 @@ fn label(node: &Node, slot: Slot) -> String {
     match slot {
         Slot::Argument(index) => format!("argument {index}"),
         Slot::Default => "default".into(),
+        Slot::Start => "start".into(),
+        Slot::Step => "step".into(),
+        Slot::Restart => "restart".into(),
         Slot::Message => "message".into(),
         Slot::Condition => "condition".into(),
         Slot::Then => "then branch".into(),

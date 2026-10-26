@@ -1,0 +1,39 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+using System.Reflection;
+
+// Observe the emitted expression with a retained public runtime scope. The
+// failed/cancelled mapping entry itself is not resumed by this unit probe.
+static MethodInfo Node(uint id) => typeof(GeneratedMapping).GetMethod(
+    $"Node_{id}", BindingFlags.Static | BindingFlags.NonPublic)
+    ?? throw new InvalidOperationException($"Missing emitted node {id}");
+
+foreach (var (failStep, operand, nextInner) in new[] {
+    (true, "step", 2L), (false, "restart", 3L),
+})
+{
+    var input = new FerruleGroup(new[] {
+        new FerruleField("fail_step", new FerruleScalar(FerruleValue.FromBoolean(failStep))),
+        new FerruleField("restart", new FerruleScalar(FerruleValue.FromBoolean(true))),
+    });
+    var execution = new FerruleExecutionContext("counter.ferrule")
+        .WithInvocationCounterLimits(new(2, 64));
+    var scope = ScopeContext.FromSource(input, execution);
+    try
+    {
+        Node(1).Invoke(null, new object[] { scope });
+        throw new InvalidOperationException("Expected a later operand refusal");
+    }
+    catch (TargetInvocationException wrapper) when (wrapper.InnerException is FerruleRuntimeException)
+    {
+        var error = (FerruleRuntimeException)wrapper.InnerException!;
+        if (error.Error != FerruleRuntimeError.InvocationCounterOperand || error.Node != 1 ||
+            error.Detail != operand || error.FoundKind != FerruleValueKind.Bool)
+            throw new InvalidOperationException("Wrong typed operand failure", error);
+    }
+    var retained = (FerruleValue)Node(2).Invoke(null, new object[] { scope })!;
+    if (retained.Int64Value != nextInner ||
+        scope.NextInvocationCounter(99, "outer", 50, 1, null).Int64Value != 50)
+        throw new InvalidOperationException("Nested effects were lost or the failed outer counter advanced");
+}
+Console.WriteLine("PASS retained nested counter effects");

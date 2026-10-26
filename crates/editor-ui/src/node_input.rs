@@ -13,6 +13,17 @@ pub fn set_scalar_input(node: &mut Node, index: usize, source: NodeId) -> bool {
         }
         Node::Raise { message } if index == 0 => *message = Some(source),
         Node::RuntimeParameterDefault { default, .. } if index == 0 => *default = source,
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => match index {
+            0 => *start = source,
+            1 => *step = source,
+            2 => *restart = Some(source),
+            _ => return false,
+        },
         Node::If {
             condition,
             then,
@@ -71,6 +82,12 @@ mod tests {
                 args: vec![1, 2],
             },
             Node::Raise { message: Some(1) },
+            Node::InvocationCounter {
+                key: "counter".into(),
+                start: 1,
+                step: 2,
+                restart: Some(3),
+            },
             Node::RuntimeParameterDefault {
                 name: "value".into(),
                 ty: ir::ScalarType::String,
@@ -125,5 +142,13 @@ mod tests {
         let mut optional = Node::Raise { message: None };
         assert!(set_scalar_input(&mut optional, 0, 99));
         assert_eq!(optional.evaluated_inputs(), [99]);
+        let mut counter = Node::InvocationCounter {
+            key: "counter".into(),
+            start: 1,
+            step: 2,
+            restart: None,
+        };
+        assert!(set_scalar_input(&mut counter, 2, 99));
+        assert_eq!(counter.evaluated_inputs(), [1, 2, 99]);
     }
 }

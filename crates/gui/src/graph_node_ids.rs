@@ -198,7 +198,10 @@ impl GraphViewer<'_> {
         let consumers = self.graph_consumers(mapping_id);
         let required_inputs = consumers
             .iter()
-            .filter(|(owner, _)| !matches!(self.graph.nodes.get(owner), Some(Node::Raise { .. })))
+            .filter(|(owner, input)| {
+                !matches!(self.graph.nodes.get(owner), Some(Node::Raise { .. }))
+                    && !matches!(self.graph.nodes.get(owner), Some(Node::InvocationCounter { .. }) if *input == 2)
+            })
             .count();
         let replacements = ids.reserve(required_inputs)?;
         self.disconnect_graph_consumers(&consumers, &replacements, snarl);

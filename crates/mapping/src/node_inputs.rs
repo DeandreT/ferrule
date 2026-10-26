@@ -44,6 +44,12 @@ pub enum NodeInputSlot {
     /// A call argument at this index.
     Argument(usize),
     Default,
+    /// The counter's initial value, evaluated in the receiving context.
+    Start,
+    /// The counter's current increment, evaluated after its initial value.
+    Step,
+    /// The counter's optional restart identity, evaluated last.
+    Restart,
     Message,
     Condition,
     Then,
@@ -109,6 +115,18 @@ impl Node {
             | Self::RuntimeParameter { .. }
             | Self::XmlSerialize { .. } => {}
             Self::RuntimeParameterDefault { default, .. } => input(*default, Slot::Default, Lazy),
+            Self::InvocationCounter {
+                start,
+                step,
+                restart,
+                ..
+            } => {
+                input(*start, Slot::Start, Parent);
+                input(*step, Slot::Step, Parent);
+                if let Some(restart) = restart {
+                    input(*restart, Slot::Restart, Parent);
+                }
+            }
             Self::Raise { message } => {
                 if let Some(message) = message {
                     input(*message, Slot::Message, Parent);
