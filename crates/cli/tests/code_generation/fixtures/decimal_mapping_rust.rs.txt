@@ -10,6 +10,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match (kind, result) {
                 ("conversion", Err(error @ RuntimeError::Function(FunctionError::DecimalConversion { .. }))) => println!("OBSERVATION {}", serde_json::json!({"id":case["id"],"error":"conversion","detail":format!("{error:?}")})),
                 ("sum", Err(error @ RuntimeError::AggregateDecimal { .. })) => println!("OBSERVATION {}", serde_json::json!({"id":case["id"],"error":"sum","detail":format!("{error:?}")})),
+                ("unsupported", Err(error @ RuntimeError::AggregateUnsupportedScalar { function: codegen_runtime::AggregateFunction::DecimalSum, found: "null" })) => println!("OBSERVATION {}", serde_json::json!({"id":case["id"],"error":"unsupported","detail":format!("{error:?}")})),
+                ("argument", Err(error @ RuntimeError::Function(FunctionError::InvalidArgument { function: "decimal_sum", .. }))) => println!("OBSERVATION {}", serde_json::json!({"id":case["id"],"error":"argument","detail":format!("{error:?}")})),
+                ("raise", Err(error @ RuntimeError::MappingException { node: 8, .. })) => println!("OBSERVATION {}", serde_json::json!({"id":case["id"],"error":"raise","detail":format!("{error:?}")})),
                 (_, actual) => panic!("{}: unexpected {actual:?}", case["id"]),
             }
         } else {

@@ -25,6 +25,9 @@ iteration. An arithmetic error stops before the next projected operand is read;
 a later conversion failure must not replace an earlier overflow. Source/cohort
 construction retains its own existing evaluation contract. Ordinary aggregate
 operations retain their existing eager value collection.
+An omitted join expression contributes an implicit Null operand per tuple, which
+`DecimalSum` rejects before the parent argument is evaluated. An empty join has no operand
+to reject and retains its normal parent-argument evaluation.
 
 Ordinary collection, generated-sequence and join aggregates use the ordered
 decimal fold. Explicit owned-collection and owned-join companion profiles also

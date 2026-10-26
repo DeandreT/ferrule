@@ -71,6 +71,10 @@ pub(crate) fn render_owned_join_aggregate(
             "        let mut values = Vec::with_capacity(tuples.len());\n        for tuple in tuples.iter() {{\n            {}\n        }}\n",
             super::aggregate::collect_value(aggregate.function, format!("{}?", call(expression, "tuple")))
         )),
+        None if aggregate.function == mapping::AggregateOp::DecimalSum => body.push_str(&format!(
+            "        let mut values = Vec::with_capacity(tuples.len());\n        for _ in tuples.iter() {{\n            {}\n        }}\n",
+            super::aggregate::collect_value(aggregate.function, "Value::Null".into())
+        )),
         None => body.push_str("        let values = vec![Value::Null; tuples.len()];\n"),
     }
     match aggregate.arg {

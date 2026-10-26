@@ -134,6 +134,158 @@ fn decimal_owned_collections_match_complete_documents_and_failure_order() -> Tes
 }
 
 #[test]
+fn decimal_missing_join_expression_fails_before_constant_or_raising_arguments() -> TestResult<()> {
+    for owned in [false, true] {
+        verify_documents(
+            missing_join_expression_project(owned)?,
+            include_str!("fixtures/decimal_missing_join_expression_cases.json"),
+            if owned {
+                "decimal-owned-missing-expression"
+            } else {
+                "decimal-missing-expression"
+            },
+        )?;
+    }
+    Ok(())
+}
+
+fn missing_join_expression_project(owned: bool) -> TestResult<Project> {
+    let mut project = project();
+    project.source = SchemaNode::group(
+        "Source",
+        vec![
+            string("Mode"),
+            string("Key"),
+            SchemaNode::group("Rows", vec![string("Key")]).repeating(),
+        ],
+    );
+    let source = |parts: &[&str]| mapping::OwnedSourceRef {
+        owner: mapping::SourceOwner::Primary,
+        path: parts.iter().map(|part| (*part).into()).collect(),
+    };
+    let join = |id, arg| -> TestResult<Node> {
+        let join = mapping::JoinId::new(id);
+        Ok(if owned {
+            Node::OwnedJoinAggregate(mapping::OwnedJoinAggregate {
+                function: AggregateOp::DecimalSum,
+                join,
+                plan: mapping::OwnedJoinPlan::new(
+                    mapping::OwnedJoinSource::new(source(&["Rows"])),
+                    mapping::OwnedJoinSource::singleton(source(&["Key"])),
+                    mapping::OwnedJoinConditions::new(mapping::OwnedJoinKey::new(
+                        source(&["Rows"]),
+                        vec!["Key".into()],
+                        vec![],
+                    )),
+                )?,
+                expression: None,
+                arg,
+            })
+        } else {
+            Node::JoinAggregate {
+                function: AggregateOp::DecimalSum,
+                join,
+                plan: mapping::JoinPlan::new(
+                    mapping::JoinSource::new(vec!["Rows".into()]),
+                    mapping::JoinSource::singleton(vec!["Key".into()]),
+                    mapping::JoinConditions::new(mapping::JoinKey::new(
+                        vec!["Rows".into()],
+                        vec!["Key".into()],
+                        vec![],
+                    )),
+                )?,
+                expression: None,
+                arg,
+            }
+        })
+    };
+    project.graph.nodes = [
+        (
+            1,
+            if owned {
+                Node::OwnedSourceField(mapping::OwnedSourceField {
+                    source: source(&["Mode"]),
+                    frame: None,
+                })
+            } else {
+                Node::SourceField {
+                    path: vec!["Mode".into()],
+                    frame: None,
+                }
+            },
+        ),
+        (
+            2,
+            Node::Const {
+                value: Value::String("constant".into()),
+            },
+        ),
+        (
+            3,
+            Node::Call {
+                function: "equal".into(),
+                args: vec![1, 2],
+            },
+        ),
+        (
+            4,
+            Node::Const {
+                value: Value::String("failing".into()),
+            },
+        ),
+        (
+            5,
+            Node::Call {
+                function: "equal".into(),
+                args: vec![1, 4],
+            },
+        ),
+        (
+            6,
+            Node::Const {
+                value: Value::String("unused argument".into()),
+            },
+        ),
+        (
+            7,
+            Node::Const {
+                value: Value::String("argument failed".into()),
+            },
+        ),
+        (8, Node::Raise { message: Some(7) }),
+        (9, join(11, Some(6))?),
+        (10, join(12, Some(8))?),
+        (11, join(13, None)?),
+        (
+            12,
+            Node::If {
+                condition: 5,
+                then: 10,
+                else_: 11,
+            },
+        ),
+        (
+            13,
+            Node::If {
+                condition: 3,
+                then: 9,
+                else_: 12,
+            },
+        ),
+        (
+            14,
+            Node::Call {
+                function: "string".into(),
+                args: vec![13],
+            },
+        ),
+    ]
+    .into();
+    project.root.bindings[0].node = 14;
+    Ok(project)
+}
+
+#[test]
 fn decimal_sequence_and_join_projection_failures_keep_source_order() -> TestResult<()> {
     let cases: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/decimal_projection_cases.json"))?;
@@ -278,7 +430,24 @@ fn verify_documents(project: Project, cases_json: &str, label: &str) -> TestResu
                         codegen_runtime::FunctionError::DecimalConversion { .. },
                     )),
                 )
-                | ("sum", Err(engine::EngineError::AggregateDecimal { .. })) => {}
+                | ("sum", Err(engine::EngineError::AggregateDecimal { .. }))
+                | (
+                    "unsupported",
+                    Err(engine::EngineError::AggregateUnsupportedScalar {
+                        function: AggregateOp::DecimalSum,
+                        found: "null",
+                    }),
+                )
+                | (
+                    "argument",
+                    Err(engine::EngineError::Function(
+                        codegen_runtime::FunctionError::InvalidArgument {
+                            function: "decimal_sum",
+                            ..
+                        },
+                    )),
+                )
+                | ("raise", Err(engine::EngineError::MappingException { node: 8, .. })) => {}
                 (_, actual) => panic!("{}: unexpected failure result {actual:?}", case["id"]),
             }
         } else {

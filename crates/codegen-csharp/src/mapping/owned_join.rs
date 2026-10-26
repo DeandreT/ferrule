@@ -79,6 +79,9 @@ pub(super) fn render_aggregate(
         Some(expression) => output.push_str(&format!(
             "            values_{node}.Add(Node_{expression}(tuple_{node}));\n"
         )),
+        None if aggregate.function == ::mapping::AggregateOp::DecimalSum => output.push_str(&format!(
+            "            global::Ferrule.Runtime.FerruleAggregates.CollectValue(global::Ferrule.Runtime.FerruleAggregateOperation.DecimalSum, values_{node}, global::Ferrule.Runtime.FerruleValue.Null);\n"
+        )),
         None => output.push_str(&format!(
             "            values_{node}.Add(global::Ferrule.Runtime.FerruleValue.Null);\n"
         )),

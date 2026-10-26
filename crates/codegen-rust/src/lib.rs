@@ -1412,6 +1412,10 @@ fn render_expression_in_context_with_scalar_item_at(
                 Some(expression) => body.push_str(&format!(
                     "        let mut values = Vec::with_capacity(tuple_contexts.len());\n        for tuple_context in tuple_contexts {{\n            {}\n        }}\n", aggregate_collect(*function, "values", &format!("expression_{expression}(&tuple_context)?"))
                 )),
+                None if *function == AggregateFunction::DecimalSum => body.push_str(&format!(
+                    "        let mut values = Vec::with_capacity(tuple_contexts.len());\n        for _ in tuple_contexts {{\n            {}\n        }}\n",
+                    aggregate_collect(*function, "values", "Value::Null")
+                )),
                 None => body.push_str(
                     "        let values = vec![Value::Null; tuple_contexts.len()];\n",
                 ),

@@ -14,8 +14,17 @@ foreach (var item in cases.RootElement.EnumerateArray())
         try { _ = GeneratedMapping.Execute(source); throw new InvalidOperationException($"{id}: unexpectedly returned output"); }
         catch (FerruleRuntimeException error)
         {
-            var expected = kind.GetString() == "conversion" ? FerruleRuntimeError.DecimalConversion : FerruleRuntimeError.AggregateDecimal;
+            var expected = kind.GetString() switch {
+                "conversion" => FerruleRuntimeError.DecimalConversion,
+                "unsupported" => FerruleRuntimeError.AggregateUnsupportedScalar,
+                "argument" => FerruleRuntimeError.FunctionInvalidArgument,
+                "raise" => FerruleRuntimeError.MappingException,
+                _ => FerruleRuntimeError.AggregateDecimal
+            };
             if (error.Error != expected) throw new InvalidOperationException($"{id}: wrong error {error.Error}", error);
+            if (kind.GetString() == "unsupported" && (error.FoundKind != FerruleValueKind.Null || error.AggregateOperation != FerruleAggregateOperation.DecimalSum))
+                throw new InvalidOperationException($"{id}: wrong unsupported operand", error);
+            if (kind.GetString() == "raise" && error.Node != 8) throw new InvalidOperationException($"{id}: wrong raised node", error);
             Console.WriteLine("OBSERVATION " + JsonSerializer.Serialize(new { id, error = error.Error.ToString(), detail = error.Message }));
         }
     }
