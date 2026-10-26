@@ -94,7 +94,23 @@ impl SequenceConsumers {
         let (sequence, item_at) = match expression {
             Expression::SequenceItemAt { sequence, .. } if self.item_at => (sequence, true),
             Expression::SequenceExists { sequence, .. } if self.exists => (sequence, false),
-            Expression::SequenceAggregate { sequence, .. } if self.aggregate => (sequence, false),
+            Expression::SequenceAggregate {
+                function, sequence, ..
+            } if self.aggregate
+                && matches!(
+                    function,
+                    crate::AggregateFunction::Count
+                        | crate::AggregateFunction::Sum
+                        | crate::AggregateFunction::DecimalSum
+                        | crate::AggregateFunction::Avg
+                        | crate::AggregateFunction::Min
+                        | crate::AggregateFunction::Max
+                        | crate::AggregateFunction::Join
+                        | crate::AggregateFunction::ItemAt
+                ) =>
+            {
+                (sequence, false)
+            }
             _ => return false,
         };
         matches!(
@@ -485,6 +501,31 @@ impl OwnedPreset {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ordered_text_selectors_do_not_expand_owned_sequence_admission() {
+        for function in crate::AggregateFunction::ALL {
+            let expression = Expression::SequenceAggregate {
+                function: *function,
+                sequence: GeneratedSequence::Tokenize {
+                    input: 1,
+                    delimiter: 2,
+                    item: 3,
+                },
+                predicate: None,
+                expression: Some(3),
+                arg: None,
+            };
+            assert_eq!(
+                AGGREGATE.permits(&expression),
+                !matches!(
+                    function,
+                    crate::AggregateFunction::LastPresentText
+                        | crate::AggregateFunction::LastDistinctText
+                )
+            );
+        }
+    }
 
     #[test]
     fn presets_are_distinct_capability_sets() {

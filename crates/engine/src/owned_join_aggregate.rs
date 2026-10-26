@@ -33,6 +33,23 @@ pub(crate) fn eval_owned_join_aggregate(
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
+    if !matches!(
+        owned.function,
+        mapping::AggregateOp::Count
+            | mapping::AggregateOp::Sum
+            | mapping::AggregateOp::DecimalSum
+            | mapping::AggregateOp::Avg
+            | mapping::AggregateOp::Min
+            | mapping::AggregateOp::Max
+            | mapping::AggregateOp::Join
+            | mapping::AggregateOp::ItemAt
+    ) {
+        return Err(functions::FunctionError::InvalidArgument {
+            function: "owned_join_aggregate",
+            message: "this reducer is not supported for owned joined collections",
+        }
+        .into());
+    }
     let state = owned_state(program, node, "owned_join_aggregate")?;
     let access = access(node);
     let budget = state

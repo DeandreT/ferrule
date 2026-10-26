@@ -96,10 +96,30 @@ pub fn validate_basic_owned_emission_with_capabilities(
                 continue;
             }
             Expression::OwnedSourceDocumentPath(_) => Capability::Document,
-            Expression::OwnedAggregate(_) if capabilities.search.collection_aggregates => continue,
+            Expression::OwnedAggregate(aggregate)
+                if capabilities.search.collection_aggregates
+                    && matches!(
+                        aggregate.function,
+                        mapping::AggregateOp::Count
+                            | mapping::AggregateOp::Sum
+                            | mapping::AggregateOp::DecimalSum
+                            | mapping::AggregateOp::Avg
+                            | mapping::AggregateOp::Min
+                            | mapping::AggregateOp::Max
+                            | mapping::AggregateOp::Join
+                            | mapping::AggregateOp::ItemAt
+                    ) =>
+            {
+                continue;
+            }
             Expression::OwnedLookup(_)
             | Expression::OwnedCollectionFind(_)
             | Expression::OwnedAggregate(_) => Capability::AggregateLookup,
+            Expression::OwnedJoinAggregate(aggregate)
+                if !joins::admitted_reducer(aggregate.function) =>
+            {
+                Capability::Join
+            }
             // Validation binds each read to its dominating owned join, whose
             // tuple admission checked the closed scalar subset.
             Expression::OwnedJoinField(_)
