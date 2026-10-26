@@ -124,9 +124,46 @@ public sealed partial class FerruleEdi
 
     private (List<Segment>, Syntax) X12Segments(string text)
     {
-        if (!text.StartsWith("ISA", StringComparison.Ordinal) || text.Length < 4) throw Fail(FerruleEdiError.Format, "X12 must start with ISA.");
-        char element = text[3];
-        int[] positions = text.Select((c, at) => (c, at)).Where(pair => pair.c == element).Take(16).Select(pair => pair.at).ToArray();
+        int discoveryWork = checked(text.Length * 2);
+        Syntax first = ReadX12Syntax(text, 0, ref discoveryWork), syntax = first;
+        var segments = new List<Segment>();
+        int at = 0;
+        while (at < text.Length)
+        {
+            while (at < text.Length && char.IsWhiteSpace(text[at])) at++;
+            if (at == text.Length) break;
+            if (segments.Count != 0 && text.AsSpan(at).StartsWith("ISA", StringComparison.Ordinal)
+                && (at + 3 == text.Length || !char.IsLetterOrDigit(text[at + 3])))
+                syntax = ReadX12Syntax(text, at, ref discoveryWork);
+            int end = at;
+            while (end < text.Length)
+            {
+                if (text[end] == syntax.Release)
+                {
+                    if (++end == text.Length) throw Fail(FerruleEdiError.Format, "Dangling EDI release character.");
+                }
+                else if (text[end] == syntax.Terminator) break;
+                end++;
+            }
+            string raw = text[at..end];
+            at = end < text.Length ? end + 1 : end;
+            foreach (var segment in Delimited(raw, syntax, false))
+                segments.Add(segment with { ReadSyntax = syntax });
+        }
+        return (segments, first);
+    }
+
+    private Syntax ReadX12Syntax(string text, int start, ref int discoveryWork)
+    {
+        if (text.Length - start < 4 || !text.AsSpan(start).StartsWith("ISA", StringComparison.Ordinal)) throw Fail(FerruleEdiError.Format, "X12 must start with ISA.");
+        char element = text[start + 3];
+        var found = new List<int>(16);
+        for (int at = start; at < text.Length && found.Count < 16; at++)
+        {
+            if (--discoveryWork < 0) throw Fail(FerruleEdiError.Format, "ISA syntax discovery work limit exceeded.");
+            if (text[at] == element) found.Add(at);
+        }
+        int[] positions = found.ToArray();
         if (positions.Length != 16 || positions[15] + 2 >= text.Length) throw Fail(FerruleEdiError.Format, "Truncated ISA segment.");
         string version = text[(positions[11] + 1)..positions[12]], isa11 = text[(positions[10] + 1)..positions[11]];
         if (version.Length != 5 || !version.All(char.IsAsciiDigit)) throw Fail(FerruleEdiError.Format, "Invalid ISA12 version.");
@@ -140,7 +177,7 @@ public sealed partial class FerruleEdi
                 throw Fail(FerruleEdiError.Format, "X12 separators do not match the configured syntax.");
             syntax = syntax with { Release = Text(configured, "release")?.Single() };
         }
-        return (Delimited(text, syntax, false), syntax);
+        return syntax;
     }
 
     private static (List<Segment>, Syntax) Hl7Segments(string text)

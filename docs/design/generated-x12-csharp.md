@@ -196,8 +196,10 @@ path and reason.
 Input validates the physical segments as `(ISA (GS (ST … SE)+ GE)+ IEA)+`
 before typed reading. Every interchange needs at least one functional group and
 every group at least one transaction. Every ISA must carry the selected ISA12
-(`UnsupportedProfile`) and repeat the discovered ISA11 and ISA16 syntax
-(`Syntax`); under `00401`, ISA11 is `U` and any other value is
+(`UnsupportedProfile`) and declare valid ISA11 and ISA16 syntax
+(`Syntax`). Without a configured separator set, each interchange's own syntax
+applies to its body; configured separators must match every ISA. Under `00401`,
+ISA11 is `U` and any other value is
 `UnsupportedProfile`. GS08 is ordinary data: it is never
 compared with the version or filled. Numeric wire controls are ASCII digits:
 ISA13 has exactly nine, while GS06, GE02, IEA02 and the counts have one through
@@ -247,7 +249,8 @@ writes, while 123 fails as an ISA width error, as natively. Completion writes
 123 as `000000123`.
 
 Native reading, writing or completion can accept documents that this profile
-refuses: later interchanges with another version or syntax, missing trailers
+refuses: later interchanges with another selected version, a configured syntax
+mismatch, missing trailers
 without completion, empty interchanges or groups, more than one GE or IEA per
 owner, a missing ISA or GS occurrence, mismatched counts or controls, an
 undeclared ST03, negative or fractional numeric controls, and acknowledgment
@@ -438,8 +441,10 @@ Text must contain valid Unicode and byte methods require strict UTF-8.
 Malformed UTF-8 and unpaired UTF-16 surrogates fail. A BOM or leading whitespace
 is not removed: a complete fixed-width ISA begins at offset zero. ISA fields
 must have their declared ASCII widths. The reader discovers element,
-component and segment separators from that ISA and verifies explicitly
-configured separators against it.
+component and segment separators from each ISA and verifies explicitly
+configured separators against every header. A later interchange can reuse
+characters that had different delimiter roles in an earlier interchange;
+tokenization and typed component/repetition reads stay with their own header.
 
 Element and component separators are distinct visible ASCII punctuation.
 The segment terminator is a third distinct punctuation character or LF.

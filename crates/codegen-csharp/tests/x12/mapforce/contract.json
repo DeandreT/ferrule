@@ -18,15 +18,8 @@
       "label": "later-isa-version",
       "version": "005010",
       "replace": [["*00501*100000322*", "*00401*100000322*"]],
-      "native": "accepts",
+      "native": "rejects",
       "expected": { "type": "FerruleX12Exception", "error": "UnsupportedProfile", "message": "X12 envelope versions do not match the selected profile.", "segment_index": 32, "field_path": "Interchange[1]/ISA" }
-    },
-    {
-      "label": "later-isa-component",
-      "version": "005010",
-      "replace": [["*1*P*:~", "*1*P*>~"]],
-      "native": "accepts",
-      "expected": { "type": "FerruleX12Exception", "error": "Syntax", "message": "ISA16 must match the selected component separator.", "segment_index": 32, "field_path": "Interchange[1]/ISA" }
     },
     {
       "label": "missing-first-iea",

@@ -1,7 +1,7 @@
 //! ANSI X12 tokenizing plus schema-guided read/write (the schema
 //! conventions live in [`crate::segments`]).
 //!
-//! Separators are discovered from the ISA envelope on read: element
+//! Separators are discovered from each ISA envelope on read: element
 //! separator from byte 3, component separator from ISA16, segment
 //! terminator from the character after ISA16, and the 5010 repetition
 //! separator from ISA11 when ISA12 selects the 5010-or-newer envelope
@@ -15,10 +15,13 @@ use ir::{Instance, SchemaKind, SchemaNode, Value};
 
 use crate::autocomplete as envelope;
 use crate::segments::{
-    Segment, WriteOptions, WriteStyle, read_segments, serialize_segments_with_encoding,
+    Segment, WriteOptions, WriteStyle, read_x12_segments, serialize_segments_with_encoding,
     validate_instance_shape, write_segments, write_segments_with_encoding,
 };
-use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
+use crate::{EdiFormatError, read_bounded_input};
+
+#[path = "x12/tokenizer.rs"]
+mod tokenizer;
 
 #[path = "x12/segment_descriptions.rs"]
 mod segment_descriptions;
@@ -28,6 +31,9 @@ pub use segment_descriptions::segment_description;
 #[cfg(test)]
 #[path = "x12/document_role_tests.rs"]
 mod document_role_tests;
+#[cfg(test)]
+#[path = "x12/interchange_syntax_tests.rs"]
+mod interchange_syntax_tests;
 #[cfg(test)]
 #[path = "x12/isa_encoding_tests.rs"]
 mod isa_encoding_tests;
@@ -197,7 +203,7 @@ impl Separators {
 }
 
 /// Splits raw X12 text into segments (elements split into repeats, repeats
-/// into components), discovering the separators from the ISA envelope.
+/// into components), discovering each interchange's separators from its ISA.
 pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
     tokenize_with_component_separator(text, None).map(|(segments, _)| segments)
 }
@@ -206,134 +212,8 @@ fn tokenize_with_component_separator(
     text: &str,
     configured: Option<Separators>,
 ) -> Result<(Vec<Segment>, char), EdiFormatError> {
-    if text.len() > MAX_RUNTIME_INPUT_BYTES {
-        return Err(EdiFormatError::NotX12("input exceeds the 64 MiB limit"));
-    }
-    let text = text.trim_start();
-    if !text.starts_with("ISA") {
-        return Err(EdiFormatError::NotX12("interchange must start with ISA"));
-    }
-    let element_separator = text
-        .chars()
-        .nth(3)
-        .ok_or(EdiFormatError::NotX12("truncated ISA segment"))?;
-
-    // ISA is self-describing: its 16th element is the component separator,
-    // the character after that is the segment terminator, and (since 5010)
-    // its 11th element is the repetition separator. ISA12 determines which
-    // meaning ISA11 has; guessing from punctuation misreads malformed 4010
-    // envelopes and accepts malformed 5010 envelopes.
-    let mut separator_positions = Vec::with_capacity(16);
-    for (i, c) in text.char_indices() {
-        if c == element_separator {
-            separator_positions.push(i);
-            if separator_positions.len() == 16 {
-                break;
-            }
-        }
-    }
-    if separator_positions.len() < 16 {
-        return Err(EdiFormatError::NotX12("ISA has fewer than 16 elements"));
-    }
-    let isa11 =
-        &text[separator_positions[10] + element_separator.len_utf8()..separator_positions[11]];
-    let isa12 =
-        &text[separator_positions[11] + element_separator.len_utf8()..separator_positions[12]];
-    let repetition_separator = repetition_separator(isa11, isa12)?;
-
-    let isa16_start = separator_positions[15] + element_separator.len_utf8();
-    let mut rest = text[isa16_start..].chars();
-    let component_separator = rest
-        .next()
-        .ok_or(EdiFormatError::NotX12("truncated ISA segment"))?;
-    let segment_terminator = rest
-        .next()
-        .ok_or(EdiFormatError::NotX12("missing segment terminator"))?;
-
-    if let Some(configured) = configured {
-        configured.validate()?;
-        for (kind, expected, found) in [
-            ("element", configured.element, element_separator),
-            ("component", configured.component, component_separator),
-            ("segment", configured.segment, segment_terminator),
-        ] {
-            if expected != found {
-                return Err(EdiFormatError::X12SeparatorMismatch {
-                    kind,
-                    expected,
-                    found,
-                });
-            }
-        }
-        if let (Some(expected), Some(found)) = (configured.repetition, repetition_separator)
-            && expected != found
-        {
-            return Err(EdiFormatError::X12SeparatorMismatch {
-                kind: "repetition",
-                expected,
-                found,
-            });
-        }
-    }
-
-    let mut segments = Vec::new();
-    for raw in split_unescaped(
-        text,
-        segment_terminator,
-        configured.and_then(|syntax| syntax.release),
-    )? {
-        // Only whitespace between a terminator and the next segment is
-        // formatting. Spaces before the terminator belong to the final
-        // element and must survive tokenization.
-        let raw = raw.trim_start();
-        if raw.is_empty() {
-            continue;
-        }
-        let mut parts = split_unescaped(
-            raw,
-            element_separator,
-            configured.and_then(|syntax| syntax.release),
-        )?
-        .into_iter();
-        let id = parts.next().unwrap_or_default().to_string();
-        // The ISA segment's own elements ARE the separator characters
-        // (ISA11, ISA16), so splitting them would corrupt the envelope. This
-        // applies to every interchange header in the stream, not only the
-        // first.
-        let is_isa = id == "ISA";
-        let elements = parts
-            .map(|element| {
-                if is_isa {
-                    return Ok(vec![vec![element.to_string()]]);
-                }
-                let repeats = match repetition_separator {
-                    Some(separator) => split_unescaped(
-                        element,
-                        separator,
-                        configured.and_then(|syntax| syntax.release),
-                    )?,
-                    None => vec![element],
-                };
-                repeats
-                    .into_iter()
-                    .map(|repeat| {
-                        split_unescaped(
-                            repeat,
-                            component_separator,
-                            configured.and_then(|syntax| syntax.release),
-                        )?
-                        .into_iter()
-                        .map(|component| {
-                            decode_release(component, configured.and_then(|syntax| syntax.release))
-                        })
-                        .collect::<Result<Vec<_>, _>>()
-                    })
-                    .collect::<Result<Vec<_>, EdiFormatError>>()
-            })
-            .collect::<Result<Vec<_>, EdiFormatError>>()?;
-        segments.push(Segment { id, elements });
-    }
-    Ok((segments, component_separator))
+    let tokenized = tokenizer::tokenize(text, configured)?;
+    Ok((tokenized.segments, tokenized.first_component))
 }
 
 fn split_unescaped(
@@ -429,7 +309,7 @@ pub fn from_str(
 }
 
 /// Reads X12 using retained boundary syntax. Declared separators are checked
-/// against the ISA envelope, and the optional release character is decoded.
+/// against every ISA envelope, and the optional release character is decoded.
 pub fn read_with_separators(
     path: &Path,
     schema: &SchemaNode,
@@ -452,8 +332,13 @@ pub fn from_str_with_separators(
     lenient: bool,
     separators: Option<Separators>,
 ) -> Result<Instance, EdiFormatError> {
-    let (segments, component_separator) = tokenize_with_component_separator(text, separators)?;
-    read_segments(schema, &segments, component_separator, None, lenient)
+    let tokenized = tokenizer::tokenize(text, separators)?;
+    read_x12_segments(
+        schema,
+        &tokenized.segments,
+        &tokenized.component_joins,
+        lenient,
+    )
 }
 
 /// Writes an [`Instance`] tree shaped by `schema` as X12.
