@@ -830,7 +830,7 @@ fn write_json_any(
                 got: "non-finite float",
             }),
         Value::JsonNull(_) => Ok(serde_json::Value::Null),
-        Value::Null | Value::XmlNil(_) => Err(JsonFormatError::Shape {
+        Value::Null | Value::XmlNil(_) | Value::Decimal(_) => Err(JsonFormatError::Shape {
             name: schema.name.clone(),
             expected: "arbitrary JSON value",
             got: value.type_name(),
@@ -867,7 +867,7 @@ fn write_scalar_union(
         Value::Float(_) => types.contains(ScalarType::Float),
         Value::Bool(_) => types.contains(ScalarType::Bool),
         Value::JsonNull(_) => nullable,
-        Value::Null | Value::XmlNil(_) => false,
+        Value::Null | Value::XmlNil(_) | Value::Decimal(_) => false,
     };
     if !allowed {
         if matches!(value, Value::Int(_)) && types.contains(ScalarType::Float) {
@@ -923,7 +923,7 @@ fn write_scalar_union(
             }),
         Value::Bool(value) => Ok((*value).into()),
         Value::JsonNull(_) => Ok(serde_json::Value::Null),
-        Value::Null | Value::XmlNil(_) => Err(JsonFormatError::Shape {
+        Value::Null | Value::XmlNil(_) | Value::Decimal(_) => Err(JsonFormatError::Shape {
             name: name.to_string(),
             expected: "declared scalar union",
             got: value.type_name(),

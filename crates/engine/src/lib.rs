@@ -595,6 +595,11 @@ pub enum EngineError {
     AggregateIntegerOverflow { function: mapping::AggregateOp },
     #[error("{function:?} aggregate encountered or produced a non-finite number")]
     AggregateNonFinite { function: mapping::AggregateOp },
+    #[error("{function:?} aggregate cannot accept a {found} value")]
+    AggregateUnsupportedScalar {
+        function: mapping::AggregateOp,
+        found: &'static str,
+    },
     #[error(transparent)]
     Function(#[from] functions::FunctionError),
 }

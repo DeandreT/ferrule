@@ -22,24 +22,48 @@ fn line(sku: &str, qty: i64) -> Instance {
     group(vec![("Sku", text(sku)), ("Qty", int(qty))])
 }
 /// One row; `price` is omitted when absent.
-fn row(code: &str, name: &str, rank: i64, price: Option<&str>, lines: Vec<Instance>, tags: &[&str]) -> Instance {
-    let mut fields = vec![("Code", text(code)), ("Name", text(name)), ("Rank", int(rank))];
+fn row(
+    code: &str,
+    name: &str,
+    rank: i64,
+    price: Option<&str>,
+    lines: Vec<Instance>,
+    tags: &[&str],
+) -> Instance {
+    let mut fields = vec![
+        ("Code", text(code)),
+        ("Name", text(name)),
+        ("Rank", int(rank)),
+    ];
     if let Some(price) = price {
         fields.push(("Price", text(price)));
     }
     fields.push(("Lines", Instance::Repeated(lines)));
-    fields.push(("Tags", Instance::Repeated(tags.iter().map(|tag| text(tag)).collect())));
+    fields.push((
+        "Tags",
+        Instance::Repeated(tags.iter().map(|tag| text(tag)).collect()),
+    ));
     group(fields)
 }
 pub fn endpoint(note: &str, rows: Vec<Instance>) -> Instance {
-    group(vec![("Note", text(note)), ("Rows", Instance::Repeated(rows))])
+    group(vec![
+        ("Note", text(note)),
+        ("Rows", Instance::Repeated(rows)),
+    ])
 }
 /// Primary repeats code A and carries one non-numeric price.
 fn primary(note: &str) -> Instance {
     endpoint(
         note,
         vec![
-            row("A", "P-A", 1, Some("1.5"), vec![line("a1", 1), line("a2", 5)], &["x", "y"]),
+            row(
+                "A",
+                "P-A",
+                1,
+                Some("1.5"),
+                vec![line("a1", 1), line("a2", 5)],
+                &["x", "y"],
+            ),
             row("B", "P-B", 2, Some("2"), vec![line("b1", 7)], &[]),
             row("A", "P-A2", 3, Some("oops"), vec![], &["z"]),
         ],
@@ -176,13 +200,26 @@ pub fn cases() -> Vec<Case> {
             ],
         ))
     };
-    let c08_audit = |value: i64, sum: i64| output(&[("Value", Value::Int(value)), ("Sum", Value::Int(sum))]);
+    let c08_audit =
+        |value: i64, sum: i64| output(&[("Value", Value::Int(value)), ("Sum", Value::Int(sum))]);
     let policy = with_ref(group(vec![(
         "Rows",
         Instance::Repeated(vec![
-            group(vec![("Code", text("n")), ("Rank", int(1)), ("Price", Instance::Scalar(Value::Null))]),
-            group(vec![("Code", Instance::Scalar(Value::Null)), ("Rank", int(2)), ("Price", text(" 4 "))]),
-            group(vec![("Code", text("m")), ("Rank", int(4)), ("Price", text("2.5"))]),
+            group(vec![
+                ("Code", text("n")),
+                ("Rank", int(1)),
+                ("Price", Instance::Scalar(Value::Null)),
+            ]),
+            group(vec![
+                ("Code", Instance::Scalar(Value::Null)),
+                ("Rank", int(2)),
+                ("Price", text(" 4 ")),
+            ]),
+            group(vec![
+                ("Code", text("m")),
+                ("Rank", int(4)),
+                ("Price", text("2.5")),
+            ]),
         ]),
     )]));
     let primary_avg = Value::Float(1.75);
@@ -298,7 +335,10 @@ pub fn cases() -> Vec<Case> {
             "C04-grouped-subset",
             primary("P.note"),
             inputs(),
-            output_items(Value::Int(3), &[("A", "2/2/6/P-A+P-A2"), ("B", "1/2/7/P-B")]),
+            output_items(
+                Value::Int(3),
+                &[("A", "2/2/6/P-A+P-A2"), ("B", "1/2/7/P-B")],
+            ),
             output(&[("Value", Value::Int(3))]),
         ),
         case(
@@ -318,7 +358,10 @@ pub fn cases() -> Vec<Case> {
             "C06-block-members",
             primary("P.note"),
             inputs(),
-            output_items(string("P-B"), &[("A", "2/2/13/P-A+P-B"), ("A", "1/2/0/P-A2")]),
+            output_items(
+                string("P-B"),
+                &[("A", "2/2/13/P-A+P-B"), ("A", "1/2/0/P-A2")],
+            ),
             output(&[("Value", string("R-D"))]),
         ),
         case(
@@ -337,12 +380,47 @@ pub fn cases() -> Vec<Case> {
             Err(unavailable(BATCH, 90)),
             Err(unavailable(BATCH, 91)),
         ),
-        case("C08", c08, primary("P.note"), inputs(), output(&[("Value", string("R-C,R-D"))]), c08_audit(9, 10)),
-        case("C08-item-raise", c08, primary("P.note"), raising(), Err(raised(61, "R-X")), c08_audit(5, 11)),
-        case("C08-arg-raise", c08, primary("bad"), inputs(), Err(raised(64, "bad")), c08_audit(9, 10)),
-        case("C08-item-before-arg", c08, primary("bad"), raising(), Err(raised(61, "R-X")), c08_audit(5, 11)),
+        case(
+            "C08",
+            c08,
+            primary("P.note"),
+            inputs(),
+            output(&[("Value", string("R-C,R-D"))]),
+            c08_audit(9, 10),
+        ),
+        case(
+            "C08-item-raise",
+            c08,
+            primary("P.note"),
+            raising(),
+            Err(raised(61, "R-X")),
+            c08_audit(5, 11),
+        ),
+        case(
+            "C08-arg-raise",
+            c08,
+            primary("bad"),
+            inputs(),
+            Err(raised(64, "bad")),
+            c08_audit(9, 10),
+        ),
+        case(
+            "C08-item-before-arg",
+            c08,
+            primary("bad"),
+            raising(),
+            Err(raised(61, "R-X")),
+            c08_audit(5, 11),
+        ),
         // The argument still evaluates when no item does.
-        case("C08-empty-arg-raise", c08, primary("bad"), empty_ref(), Err(raised(64, "bad")), c08_audit(0, 0)),
+        case(
+            "C08-empty-arg-raise",
+            c08,
+            primary("bad"),
+            empty_ref(),
+            Err(raised(64, "bad")),
+            c08_audit(0, 0),
+        ),
         // An unsupplied owner fails before any item value or argument.
         case(
             "C08-unsupplied",
@@ -358,7 +436,10 @@ pub fn cases() -> Vec<Case> {
             primary("P.note"),
             with_ref(endpoint(
                 "R.note",
-                vec![row("C", "R-C", i64::MAX, None, vec![], &[]), row("D", "R-D", 1, None, vec![], &[])],
+                vec![
+                    row("C", "R-C", i64::MAX, None, vec![], &[]),
+                    row("D", "R-D", 1, None, vec![], &[]),
+                ],
             )),
             output(&[("Value", string("R-C,R-D"))]),
             Err(reducer_failure("AggregateIntegerOverflow")),
@@ -369,7 +450,10 @@ pub fn cases() -> Vec<Case> {
             primary("P.note"),
             with_ref(endpoint(
                 "R.note",
-                vec![row("C", "R-C", 4, Some("1e999"), vec![], &[]), row("D", "R-D", 5, None, vec![], &[])],
+                vec![
+                    row("C", "R-C", 4, Some("1e999"), vec![], &[]),
+                    row("D", "R-D", 5, None, vec![], &[]),
+                ],
             )),
             output(&[("Value", string("R-C,R-D"))]),
             Err(reducer_failure("AggregateNonFinite")),
@@ -410,7 +494,14 @@ pub fn cases() -> Vec<Case> {
             ]),
             output(&[("Value", Value::Int(3))]),
         ),
-        case("C09-empty", c09, primary("P.note"), empty_ref(), empty_reducers(primary_avg.clone()), output(&[("Value", Value::Int(3))])),
+        case(
+            "C09-empty",
+            c09,
+            primary("P.note"),
+            empty_ref(),
+            empty_reducers(primary_avg.clone()),
+            output(&[("Value", Value::Int(3))]),
+        ),
         case(
             "C09-absent",
             c09,

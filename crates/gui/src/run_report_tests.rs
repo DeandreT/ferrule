@@ -10,6 +10,7 @@ fn trace_event(node: mapping::NodeId, value: ir::Value) -> cli::TraceEvent {
         ir::Value::Bool(value) => ("bool", value.to_string()),
         ir::Value::Int(value) => ("int", value.to_string()),
         ir::Value::Float(value) => ("float", value.to_string()),
+        ir::Value::Decimal(value) => ("decimal", value.to_string()),
         ir::Value::String(value) => ("string", value),
     };
     cli::TraceEvent::NodeValue {

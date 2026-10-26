@@ -11,6 +11,7 @@ use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 
 mod decimal;
+mod decimal_value;
 mod instance_group;
 mod primary_root;
 mod scalar_lexical;
@@ -388,6 +389,9 @@ pub enum Value {
     Int(i64),
     Float(f64),
     String(String),
+    /// Explicit bounded decimal identity, distinct from integer and binary64.
+    /// The box preserves the existing scalar/instance union layout.
+    Decimal(#[serde(with = "decimal_value")] Box<Decimal96>),
     XmlNil(XmlNil),
 }
 
@@ -474,6 +478,7 @@ impl Value {
             Value::Int(_) => "int",
             Value::Float(_) => "float",
             Value::String(_) => "string",
+            Value::Decimal(_) => "decimal",
             Value::XmlNil(_) => "xml nil",
         }
     }
@@ -496,6 +501,17 @@ impl Value {
 
     pub fn is_null_like(&self) -> bool {
         matches!(self, Self::Null | Self::JsonNull(_) | Self::XmlNil(_))
+    }
+
+    pub fn decimal(value: Decimal96) -> Self {
+        Self::Decimal(Box::new(value))
+    }
+
+    pub fn as_decimal(&self) -> Option<&Decimal96> {
+        match self {
+            Self::Decimal(value) => Some(value),
+            _ => None,
+        }
     }
 }
 

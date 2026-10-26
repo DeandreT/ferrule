@@ -277,6 +277,10 @@ pub enum RuntimeError {
     AggregateNonFinite {
         function: AggregateFunction,
     },
+    AggregateUnsupportedScalar {
+        function: AggregateFunction,
+        found: &'static str,
+    },
     CopyCurrentSourceRequiresGroup {
         found: &'static str,
     },
@@ -519,6 +523,10 @@ impl fmt::Display for RuntimeError {
             Self::AggregateNonFinite { function } => write!(
                 formatter,
                 "{function:?} aggregate encountered or produced a non-finite number"
+            ),
+            Self::AggregateUnsupportedScalar { function, found } => write!(
+                formatter,
+                "{function:?} aggregate cannot accept a {found} value"
             ),
             Self::CopyCurrentSourceRequiresGroup { found } => write!(
                 formatter,
@@ -775,6 +783,7 @@ impl std::error::Error for RuntimeError {
             | Self::UserFunctionArity { .. }
             | Self::AggregateIntegerOverflow { .. }
             | Self::AggregateNonFinite { .. }
+            | Self::AggregateUnsupportedScalar { .. }
             | Self::CopyCurrentSourceRequiresGroup { .. }
             | Self::RecursiveFilterDepth { .. }
             | Self::RecursiveFilterRequiresGroup { .. }
@@ -969,7 +978,7 @@ pub fn adapt_union_target_value(value: Value, expected: &[ScalarType]) -> Value 
         Value::Int(_) => Some(ScalarType::Int),
         Value::Float(_) => Some(ScalarType::Float),
         Value::Bool(_) => Some(ScalarType::Bool),
-        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => None,
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Decimal(_) => None,
     };
     if actual.is_some_and(|ty| expected.contains(&ty)) {
         return value;
