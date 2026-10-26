@@ -1,6 +1,23 @@
 use super::*;
 
 impl Builder<'_> {
+    fn source_literal_fallback(&self, function: &Function) -> Option<u32> {
+        if function.parsed.library != "db"
+            || function.parsed.name != "substitute-null"
+            || function.inputs.len() != 2
+        {
+            return None;
+        }
+        let input = self.feed(function.inputs[0]).ok()?;
+        ((self.ports.contains_key(&input) || self.filtered_source_value(input))
+            && self
+                .feed(function.inputs[1])
+                .ok()
+                .and_then(|feed| self.literal_text(feed))
+                .is_some())
+        .then_some(input)
+    }
+
     fn date_input(&self, feed: u32) -> bool {
         self.date_ports.contains(&feed)
             || self.functions.get(&feed).is_some_and(|function| {
@@ -36,9 +53,10 @@ impl Builder<'_> {
     fn filtered_source_sequence(&self, feed: u32) -> bool {
         // JSON object construction coerces this sequence before formatting.
         // XML keeps its eager per-occurrence conversion, including later errors.
-        if self.format != X12DocumentBodyFormat::Json {
-            return false;
-        }
+        self.format == X12DocumentBodyFormat::Json && self.filtered_source_value(feed)
+    }
+
+    fn filtered_source_value(&self, feed: u32) -> bool {
         let Some(function) = self.functions.get(&feed) else {
             return false;
         };
@@ -199,6 +217,7 @@ impl Builder<'_> {
     ) -> Result<Option<Vec<String>>, MfdError> {
         if let Some(function) = self.functions.get(&feed)
             && (self.sequence_presence_guard(function).is_some()
+                || self.source_literal_fallback(function).is_some()
                 || (function.parsed.library == "core"
                     && function.parsed.name == "format-dateTime"
                     && function
@@ -497,7 +516,14 @@ impl Builder<'_> {
                 Ok(self.present_value(value))
             }
             ("db", "substitute-null") if f.inputs.len() == 2 => {
-                let left = self.input(&f, 0, anchor)?;
+                let left = if let Some(input) = self.source_literal_fallback(&f) {
+                    // Coerce the optional source sequence before testing it for
+                    // absence. Reducing the whole fallback expression inside
+                    // that sequence loses the fallback when the owner is empty.
+                    self.reduced(input, anchor, ScalarType::String)?
+                } else {
+                    self.input(&f, 0, anchor)?
+                };
                 let right = self.input(&f, 1, anchor)?;
                 let present = if left.always || right.always {
                     self.yes()
