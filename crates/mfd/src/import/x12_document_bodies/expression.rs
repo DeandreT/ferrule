@@ -1,6 +1,25 @@
 use super::*;
 
 impl Builder<'_> {
+    fn date_input(&self, feed: u32) -> bool {
+        self.date_ports.contains(&feed)
+            || self.functions.get(&feed).is_some_and(|function| {
+                function.parsed.kind == 4
+                    && function.inputs.len() == 3
+                    && function.inputs[2].is_none()
+                    && self
+                        .feed(function.inputs[1])
+                        .ok()
+                        .is_some_and(|port| self.date_ports.contains(&port))
+            })
+    }
+
+    fn date_text(&mut self, expr: Expr) -> Expr {
+        let picture = self.constant(Value::String("[Y0001]-[M01]-[D01][Z]".into()));
+        let value = self.call("format_date", vec![expr.value, picture]);
+        self.guard(value, expr.present, expr.always)
+    }
+
     fn sequence_presence_guard(&self, function: &Function) -> Option<u32> {
         if function.parsed.kind != 4 || function.inputs.len() != 3 || function.inputs[2].is_some() {
             return None;
@@ -524,6 +543,11 @@ impl Builder<'_> {
                 } else {
                     self.input(&f, 0, anchor)?
                 };
+                let input = if self.date_input(input_feed) {
+                    self.date_text(input)
+                } else {
+                    input
+                };
                 let picture = self.scalar(picture_feed, anchor)?;
                 let datetime = self.call("coerce_datetime", vec![input.value]);
                 let value = self.call(
@@ -609,7 +633,7 @@ impl Builder<'_> {
                 return Err(refuse("volatile sequence reduction is not admitted"));
             }
             let expr = self.scalar(feed, &owner)?;
-            let expr = self.cast(expr, ty)?;
+            let expr = self.cast_target(feed, expr, ty)?;
             let text = self.call("string", vec![expr.value]);
             let text = self.guard(text, expr.present, expr.always);
             let value = self.alloc(Node::Aggregate {
@@ -630,6 +654,25 @@ impl Builder<'_> {
             )
         } else {
             let expr = self.scalar(feed, anchor)?;
+            self.cast_target(feed, expr, ty)
+        }
+    }
+
+    pub(super) fn cast_target(
+        &mut self,
+        feed: u32,
+        expr: Expr,
+        ty: ScalarType,
+    ) -> Result<Expr, MfdError> {
+        if self.format == X12DocumentBodyFormat::Xml
+            && ty == ScalarType::String
+            && self.date_ports.contains(&feed)
+        {
+            // A native date source wired straight to XML text passes through
+            // ParseDate/DateToString. Keep the lexical reader tolerant and
+            // demand calendar validity only when this target value is reached.
+            Ok(self.date_text(expr))
+        } else {
             self.cast(expr, ty)
         }
     }

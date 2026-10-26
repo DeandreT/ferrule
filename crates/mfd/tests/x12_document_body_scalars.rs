@@ -268,8 +268,7 @@ fn conditional_date_selects_before_conversion_without_demanding_later_values() {
     assert!(codegen::lower(body).is_ok());
 }
 
-#[test]
-fn xml_conditional_date_still_converts_later_matching_values() {
+fn xml_sequence_fixture() -> Fixture {
     let fixture = sequence_scalar_fixture(false);
     let mapping = std::fs::read_to_string(fixture.0.join("mapping.mfd")).unwrap();
     let start = mapping.find(r#"<component name="Target""#).unwrap();
@@ -284,6 +283,12 @@ fn xml_conditional_date_still_converts_later_matching_values() {
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="result" type="xs:string" minOccurs="0"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )
     .unwrap();
+    fixture
+}
+
+#[test]
+fn xml_conditional_date_still_converts_later_matching_values() {
+    let fixture = xml_sequence_fixture();
     let imported = fixture.import().unwrap();
     let body = &imported.targets[0].body;
     assert_eq!(
@@ -312,6 +317,63 @@ fn xml_conditional_date_still_converts_later_matching_values() {
             .values()
             .any(|node| matches!(node, mapping::Node::CollectionFind { .. }))
     );
+}
+
+#[test]
+fn xml_direct_date_text_conversion_is_reached_per_occurrence() {
+    let fixture = xml_sequence_fixture();
+    fixture.change("mapping.mfd", &edge(209, 71), &edge(24, 71));
+    fixture.change(
+        "Defs.Segment",
+        r#"name="F2" type="string""#,
+        r#"name="F2" type="date" minLength="8" maxLength="8""#,
+    );
+    let imported = fixture.import().unwrap();
+    let body = &imported.targets[0].body;
+    let value = engine::run(
+        body,
+        &sequence_input(&[("A", Some("2024-02-29")), ("B", None)]),
+    )
+    .unwrap();
+    assert_eq!(
+        value.field("result"),
+        Some(&Instance::MappedSequence(vec![text("2024-02-29")]))
+    );
+    for invalid in ["BAD", "2026-02-29", "2026-13-01", "2026-10-24T12:00:00"] {
+        assert!(
+            engine::run(
+                body,
+                &sequence_input(&[("A", Some("2024-02-29")), ("B", Some(invalid))])
+            )
+            .is_err(),
+            "accepted {invalid}"
+        );
+    }
+    assert!(codegen::lower(body).is_ok());
+}
+
+#[test]
+fn json_typed_date_selection_validates_only_the_selected_date() {
+    let fixture = sequence_scalar_fixture(false);
+    fixture.change(
+        "Defs.Segment",
+        r#"name="F2" type="string""#,
+        r#"name="F2" type="date" minLength="8" maxLength="8""#,
+    );
+    let imported = fixture.import().unwrap();
+    let body = &imported.targets[0].body;
+    for invalid in ["2026-02-29", "2026-10-24T12:00:00", "BAD"] {
+        assert!(engine::run(body, &sequence_input(&[("MATCH", Some(invalid))])).is_err());
+        assert_eq!(
+            engine::run(
+                body,
+                &sequence_input(&[("MATCH", Some("2024-02-29")), ("MATCH", Some(invalid))])
+            )
+            .unwrap()
+            .field("result"),
+            Some(&text("2024-02-29")),
+        );
+    }
 }
 
 #[test]
