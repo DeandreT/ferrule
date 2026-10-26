@@ -148,6 +148,7 @@ impl Builder<'_> {
         anchor: &[String],
         format: X12DocumentBodyFormat,
     ) -> Result<Scope, MfdError> {
+        let original_entry = entry;
         let entry = payload(entry, false, format)?
             .ok_or_else(|| refuse("target group lacks its value wrapper"))?;
         if !matches!(schema.kind, SchemaKind::Group { .. }) {
@@ -159,7 +160,34 @@ impl Builder<'_> {
             target_field: schema.name.clone(),
             ..Default::default()
         };
-        if let Some(input) = entry.attribute("inpkey") {
+        let mut driver_input = entry.attribute("inpkey");
+        if format == X12DocumentBodyFormat::Json {
+            // A repeated JSON value may carry its driver on the array wrapper
+            // instead of the object payload. Unwrapping must not discard that
+            // connector or turn an empty source collection into a singleton.
+            for wrapper in entry
+                .ancestors()
+                .skip(1)
+                .take_while(|node| Some(*node) != original_entry.parent())
+            {
+                let Some(input) = wrapper.attribute("inpkey") else {
+                    continue;
+                };
+                self.check_entry(wrapper)?;
+                if !schema.repeating
+                    || wrapper.attribute("name") != Some("array")
+                    || wrapper.attribute("type") == Some("json-property")
+                {
+                    return Err(refuse("unsupported JSON target wrapper driver"));
+                }
+                if driver_input.replace(input).is_some() {
+                    return Err(refuse(
+                        "multiple JSON target drivers require separate admission",
+                    ));
+                }
+            }
+        }
+        if let Some(input) = driver_input {
             let input = number(Some(input))?;
             self.consumed_target_inputs.insert(input);
             let driver = self.driver(self.feed(Some(input))?, anchor)?;

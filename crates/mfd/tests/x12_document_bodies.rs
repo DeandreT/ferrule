@@ -173,6 +173,100 @@ fn reads_original_ports_and_keeps_message_bodies_separate_from_filenames() {
     assert!(codegen::lower(&target.body).is_ok());
 }
 #[test]
+fn json_array_wrapper_retains_its_declared_driver() {
+    let baseline = imported();
+    for (orders, lines) in [(true, false), (false, true), (true, true)] {
+        let fixture = Fixture::new();
+        fixture.change("mapping.mfd", |mut xml| {
+            for (enabled, pin) in [(orders, 42), (lines, 44)] {
+                if enabled {
+                    let from = format!(
+                        r#"<entry name="array"><entry name="item"><entry name="object" inpkey="{pin}">"#
+                    );
+                    let to = format!(
+                        r#"<entry name="array" inpkey="{pin}"><entry name="item"><entry name="object">"#
+                    );
+                    assert_eq!(xml.matches(&from).count(), 1);
+                    xml = xml.replacen(&from, &to, 1);
+                }
+            }
+            xml
+        });
+        let original = std::fs::read(fixture.0.join("mapping.mfd")).unwrap();
+        let actual = fixture.import().unwrap();
+        assert_eq!(
+            mapping::project_file::encode_pretty(&actual.targets[0].body).unwrap(),
+            mapping::project_file::encode_pretty(&baseline.targets[0].body).unwrap()
+        );
+        assert_eq!(
+            mapping::project_file::encode_pretty(&actual.targets[0].filename).unwrap(),
+            mapping::project_file::encode_pretty(&baseline.targets[0].filename).unwrap()
+        );
+        for input in [
+            source(&actual.targets[0].body.source),
+            group(vec![
+                (
+                    "BEG",
+                    wrap(
+                        actual.targets[0].body.source.child("BEG").unwrap(),
+                        group(vec![("F1", text("EMPTY"))]),
+                    ),
+                ),
+                ("Rows", Instance::Repeated(vec![])),
+            ]),
+        ] {
+            let expected =
+                engine::run_with_context(&baseline.targets[0].body, &input, &context()).unwrap();
+            let value =
+                engine::run_with_context(&actual.targets[0].body, &input, &context()).unwrap();
+            assert_eq!(value, expected);
+        }
+        assert_eq!(
+            std::fs::read(fixture.0.join("mapping.mfd")).unwrap(),
+            original
+        );
+    }
+}
+
+#[test]
+fn json_wrapper_drivers_do_not_relax_owner_admission() {
+    for replacement in [
+        r#"<entry name="orders" type="json-property" inpkey="42"><entry name="array"><entry name="item"><entry name="object">"#,
+        r#"<entry name="orders" type="json-property"><entry name="array"><entry name="item" inpkey="42"><entry name="object">"#,
+    ] {
+        let fixture = Fixture::new();
+        fixture.change("mapping.mfd", |xml| {
+            let from = r#"<entry name="orders" type="json-property"><entry name="array"><entry name="item"><entry name="object" inpkey="42">"#;
+            assert_eq!(xml.matches(from).count(), 1);
+            xml.replacen(from, replacement, 1)
+        });
+        assert!(
+            fixture
+                .import()
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("wrapper driver")
+        );
+    }
+    let fixture = Fixture::new();
+    fixture.change("mapping.mfd", |xml| {
+        let from = r#"<entry name="array"><entry name="item"><entry name="object" inpkey="42">"#;
+        assert_eq!(xml.matches(from).count(), 1);
+        xml.replacen(from, r#"<entry name="array" inpkey="42"><entry name="item"><entry name="object" inpkey="901">"#, 1)
+            .replace(r#"<edge vertexkey="42"/>"#, r#"<edge vertexkey="42"/><edge vertexkey="901"/>"#)
+    });
+    assert!(
+        fixture
+            .import()
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("multiple JSON target drivers")
+    );
+}
+
+#[test]
 fn configured_required_scalar_fails_only_when_the_body_is_executed() {
     let imported = imported();
     let schema = &imported.targets[0].body.source;
