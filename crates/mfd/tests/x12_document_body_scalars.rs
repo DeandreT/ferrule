@@ -229,6 +229,157 @@ fn accepts_only_disabled_default_forms_and_explicit_string_types() {
 }
 
 #[test]
+fn main_selection_preserves_uncalled_library_definitions_in_either_order() {
+    // Reuse main graph UIDs and ports in an unsupported definition: namespaces
+    // must not leak, and no definition body is deleted, evaluated or inlined.
+    let definition = r#"<component name="unused_helper" library="ExampleFunctions" uid="900" inline="1"><structure><children><component name="unsupported" library="ExampleFunctions" kind="99" uid="20"><targets><datapoint pos="0" key="102"/></targets></component></children></structure></component>"#;
+    for before_main in [false, true] {
+        let fixture = mapped();
+        if before_main {
+            fixture.change(
+                "mapping.mfd",
+                "<mapping version=\"36\">",
+                &format!("<mapping version=\"36\">{definition}"),
+            );
+        } else {
+            fixture.change(
+                "mapping.mfd",
+                "</mapping>",
+                &format!("{definition}</mapping>"),
+            );
+        }
+        fixture.change(
+            "mapping.mfd",
+            "name=\"map\" uid=\"1\"",
+            "name=\"ArbitraryMain\" uid=\"801\"",
+        );
+        let original = std::fs::read(fixture.0.join("mapping.mfd")).unwrap();
+        let imported = fixture.import().unwrap();
+        assert_eq!(
+            run(&imported.targets[0].body, string("A"))
+                .unwrap()
+                .field("result"),
+            Some(&text("alpha"))
+        );
+        assert_eq!(
+            std::fs::read(fixture.0.join("mapping.mfd")).unwrap(),
+            original
+        );
+    }
+}
+
+#[test]
+fn main_selection_refuses_ambiguous_main_and_reached_definition_calls() {
+    let fixture = mapped();
+    fixture.change("mapping.mfd", "</mapping>", r#"<component name="SecondMain" uid="900"><structure><children/></structure></component></mapping>"#);
+    assert!(
+        fixture
+            .import()
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("requires one unqualified main mapping wrapper")
+    );
+
+    let fixture = mapped();
+    fixture.change("mapping.mfd", "</mapping>", r#"<component name="helper" library="ExampleFunctions" uid="900" inline="1"><structure><children/></structure></component></mapping>"#);
+    fixture.change(
+        "mapping.mfd",
+        &map(),
+        &unary("ExampleFunctions", "helper", 101, 102, 20),
+    );
+    // Existing connected inputs/outputs now reach the unsupported call. A
+    // sibling declaration must not turn it into an identity or inline body.
+    assert!(
+        fixture
+            .import()
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("unsupported function ExampleFunctions:helper")
+    );
+}
+
+#[test]
+fn value_map_display_labels_do_not_define_semantic_columns() {
+    for (input_label, result_label) in [
+        ("SourceCode", "MappedCategory"),
+        ("SharedLabel", "SharedLabel"),
+    ] {
+        let fixture = mapped();
+        fixture.change(
+            "mapping.mfd",
+            r#"name="input" type="string""#,
+            &format!(r#"name="{input_label}" type="String""#),
+        );
+        fixture.change(
+            "mapping.mfd",
+            r#"name="result" type="string""#,
+            &format!(r#"name="{result_label}" type="string""#),
+        );
+        let original = std::fs::read(fixture.0.join("mapping.mfd")).unwrap();
+        let imported = fixture.import().unwrap();
+        let project = &imported.targets[0].body;
+        assert_eq!(
+            run(project, string("A")).unwrap().field("result"),
+            Some(&text("alpha"))
+        );
+        assert_eq!(
+            run(project, string("E")).unwrap().field("result"),
+            Some(&text(""))
+        );
+        assert_eq!(
+            run(project, string("missing")).unwrap().field("result"),
+            Some(&Instance::Scalar(Value::Null))
+        );
+        assert_eq!(
+            std::fs::read(fixture.0.join("mapping.mfd")).unwrap(),
+            original
+        );
+    }
+}
+
+#[test]
+fn display_labels_do_not_relax_value_map_structure_types_or_defaults() {
+    for (from, to) in [
+        (r#"name="input" type="string""#, r#"name="" type="string""#),
+        (
+            r#"name="result" type="string""#,
+            r#"name=" " type="string""#,
+        ),
+        (r#"name="input" type="string""#, r#"type="string""#),
+        (
+            r#"name="result" type="string""#,
+            r#"name="MappedCategory" type="integer""#,
+        ),
+        (
+            r#"name="input" type="string""#,
+            r#"name="SourceCode" type="MysteryString""#,
+        ),
+        (
+            r#"name="result" type="string""#,
+            r#"name="MappedCategory" type="string" defaultValue="fallback""#,
+        ),
+        (r#"pos="0" key="101""#, r#"pos="1" key="101""#),
+        (
+            r#"<input name="input" type="string"/>"#,
+            r#"<result name="SourceCode" type="string"/>"#,
+        ),
+        (
+            r#"<entry from="B" to="beta"/>"#,
+            r#"<entry from="A" to="beta"/>"#,
+        ),
+    ] {
+        let fixture = mapped();
+        fixture.change("mapping.mfd", from, to);
+        assert!(
+            fixture.import().is_err(),
+            "accepted display-label mutation: {from} -> {to}"
+        );
+    }
+}
+
+#[test]
 fn value_map_rejects_defaults_foreign_unknown_malformed_and_duplicate_metadata() {
     let mutations = [
         (r#"defaultValueMode="none""#, r#"defaultValueMode="custom""#),

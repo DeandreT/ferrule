@@ -152,9 +152,14 @@ pub(super) fn valid(component: XmlNode<'_, '_>, feeds: &BTreeMap<u32, u32>) -> b
     ) else {
         return false;
     };
-    for (node, name) in [(input, "input"), (result, "result")] {
+    // The input/result elements and their single position-zero ports define
+    // the column roles. Their names are display labels, not role identifiers.
+    // The String declarations above the table remain the scalar authority.
+    for node in [input, result] {
         if !leaf(node, &["name", "type"])
-            || node.attribute("name") != Some(name)
+            || node
+                .attribute("name")
+                .is_none_or(|name| name.trim().is_empty())
             || !matches!(node.attribute("type"), Some("string" | "String"))
         {
             return false;
