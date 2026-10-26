@@ -35,7 +35,8 @@
     {"id": "edi-export", "kind": "repository", "location": "crates/mfd/src/export/edi.rs", "description": "Retained Ferrule EDI layout and lexical metadata."},
     {"id": "external-export", "kind": "repository", "location": "crates/mfd/src/export/external_source.rs", "description": "Captured-response boundaries and Ferrule provenance."},
     {"id": "stage-pipeline", "kind": "repository", "location": "crates/engine/src/pipeline.rs", "description": "Typed in-memory stage DAG execution and validation; MFD stage import, GUI authoring and host effects are separate."},
-    {"id": "pipeline-file-host", "kind": "repository", "location": "crates/cli/src/pipeline.rs", "description": "Typed pipeline file host with explicit inputs and selected atomic output publication."}
+    {"id": "pipeline-file-host", "kind": "repository", "location": "crates/cli/src/pipeline.rs", "description": "Typed pipeline file host with explicit inputs and selected atomic output publication."},
+    {"id": "xml-schema-reference", "kind": "vendor_execution", "location": "docs/conformance/xml-schema-reference.md", "description": "Finite 2026r2 Wine observation of physical XML schema-reference controls, complete outputs and an actual Ferrule export save/reopen."}
   ],
   "capabilities": [
     {
@@ -398,7 +399,7 @@
       "support": {
         "import": {"status": "partial", "evidence": ["interop-docs", "roadmap"], "detail": "Broad XML/XSD subset exists; remaining derivation, wildcard and schema-semantic cases are explicitly bounded."},
         "interpreter": {"status": "partial", "evidence": ["interop-docs", "roadmap"], "detail": "Broad XML/XSD subset exists; remaining derivation, wildcard and schema-semantic cases are explicitly bounded."},
-        "native_export": {"status": "unverified", "evidence": ["survey-vendor-harness"], "detail": "Vendor open, validate, execute and re-save evidence has not been attached."},
+        "native_export": {"status": "partial", "evidence": ["survey-vendor-harness", "xml-schema-reference"], "detail": "A finite unqualified Envelope/integer/string physical-target export was opened, executed, saved and reopened in 2026r2 under Wine; explicit AddSchemaLocation=0 preserves the no-hint output. The original control uses xs:long; Ferrule exports xs:integer, so bounded-long schema preservation is not qualified. General XML export, namespace/derivation profiles, other backends and publication parity remain unqualified."},
         "ferrule_roundtrip": {"status": "partial", "evidence": ["survey-structural"], "detail": "Canonical Ferrule re-import is covered for the documented subset; this is not native vendor acceptance."},
         "gui": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},
         "debug": {"status": "unassessed", "evidence": [], "detail": "This surface has not been inventoried for this capability."},

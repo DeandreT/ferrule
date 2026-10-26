@@ -170,10 +170,15 @@ pub(super) fn render_schema_component(
         Side::Source => ("source", "", "<view rbx=\"300\" rby=\"400\"/>"),
         Side::Target => (
             "target",
-            if default_output {
-                "<properties XSLTDefaultOutput=\"1\"/>\n\t\t\t\t\t"
-            } else {
-                ""
+            // Native XML components otherwise default to adding a schema URI.
+            // Ordinary Ferrule XML output has no hint; encode that choice.
+            match (format, default_output) {
+                (SideFormat::Xml, true) => {
+                    "<properties XSLTDefaultOutput=\"1\" AddSchemaLocation=\"0\"/>\n\t\t\t\t\t"
+                }
+                (SideFormat::Xml, false) => "<properties AddSchemaLocation=\"0\"/>\n\t\t\t\t\t",
+                (_, true) => "<properties XSLTDefaultOutput=\"1\"/>\n\t\t\t\t\t",
+                (_, false) => "",
             },
             "<view ltx=\"700\" rbx=\"1000\" rby=\"400\"/>",
         ),
