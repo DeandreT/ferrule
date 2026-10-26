@@ -80,10 +80,6 @@ Physical workbook cell tests and desktop persistence are separate evidence.
 
 ### 2. Close exception-ordering and integer edge qualification
 
-- [ ] Resolve native XML root schema annotations in
-  [#93](https://github.com/DeandreT/ferrule/issues/93) and retain the separately
-  observed failure-publication differences. Controls and saved metadata remain
-  unobserved; the latest attempt refused before settings inspection.
 - [ ] Expand accepted shapes only with a concrete owner/order proof and
   counterexamples for ambiguous, shared, or fallible branches.
 

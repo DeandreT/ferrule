@@ -94,8 +94,13 @@ fn boundary_xml(
         xml_attr(instance_path)
     );
     let file = xml_attr(schema_file);
+    let properties = if role == Role::Target {
+        "<properties AddSchemaLocation=\"0\"/>"
+    } else {
+        ""
+    };
     format!(
-        "<component name=\"{root_name}\" uid=\"{uid}\" library=\"xml\" kind=\"14\"><data><root><header><namespaces>{headers}</namespaces></header><entry name=\"FileInstance\" ns=\"1\"><entry name=\"document\" ns=\"1\"><entry name=\"{root_name}\" ns=\"{root_slot}\" displayselectionmode=\"all\">{}</entry><entry name=\"{root_name}\" ns=\"{root_slot}\"><condition><expression><function name=\"equal\" library=\"core\"><expression><attribute name=\"type\" ns=\"http://www.w3.org/2001/XMLSchema-instance\"/></expression><expression><constant value=\"{}\" datatype=\"QName\"/></expression></function></expression></condition>{}</entry></entry></entry></root><document schema=\"{file}\" instanceroot=\"{root_expanded}\" {io}/></data></component>",
+        "<component name=\"{root_name}\" uid=\"{uid}\" library=\"xml\" kind=\"14\">{properties}<data><root><header><namespaces>{headers}</namespaces></header><entry name=\"FileInstance\" ns=\"1\"><entry name=\"document\" ns=\"1\"><entry name=\"{root_name}\" ns=\"{root_slot}\" displayselectionmode=\"all\">{}</entry><entry name=\"{root_name}\" ns=\"{root_slot}\"><condition><expression><function name=\"equal\" library=\"core\"><expression><attribute name=\"type\" ns=\"http://www.w3.org/2001/XMLSchema-instance\"/></expression><expression><constant value=\"{}\" datatype=\"QName\"/></expression></function></expression></condition>{}</entry></entry></entry></root><document schema=\"{file}\" instanceroot=\"{root_expanded}\" {io}/></data></component>",
         members(&base.members, false),
         xml_attr(&raw_type),
         members(&selected_members.members, true)

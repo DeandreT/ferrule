@@ -52,6 +52,42 @@ fn selection(profile: &str, id: &str, backend: &str) -> Selection {
     }
 }
 
+// The v2 migration itself preserved the historical cells. This later, reviewed
+// XML qualification changes exactly one cell and adds its execution evidence.
+// Check both completely before comparing the remaining archival document.
+fn check_later_xml_qualification(current: &mut Value, previous: &Value) {
+    assert_eq!(
+        support(current, "formats.xml")["native_export"],
+        json!({
+            "status": "partial",
+            "evidence": ["survey-vendor-harness", "xml-schema-reference"],
+            "detail": "A finite unqualified Envelope/integer/string physical-target export was opened, executed, saved and reopened in 2026r2 under Wine; explicit AddSchemaLocation=0 preserves the no-hint output. The original control uses xs:long; Ferrule exports xs:integer, so bounded-long schema preservation is not qualified. General XML export, namespace/derivation profiles, other backends and publication parity remain unqualified."
+        })
+    );
+    let historical = previous["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|capability| capability["id"] == "formats.xml")
+        .unwrap();
+    support(current, "formats.xml")["native_export"] =
+        historical["support"]["native_export"].clone();
+    let evidence = current["evidence"].as_array_mut().unwrap();
+    let index = evidence
+        .iter()
+        .position(|entry| entry["id"] == "xml-schema-reference")
+        .unwrap();
+    assert_eq!(
+        evidence.remove(index),
+        json!({
+            "id": "xml-schema-reference",
+            "kind": "vendor_execution",
+            "location": "docs/conformance/xml-schema-reference.md",
+            "description": "Finite 2026r2 Wine observation of physical XML schema-reference controls, complete outputs and an actual Ferrule export save/reopen."
+        })
+    );
+}
+
 #[test]
 fn schema_v2_preserves_every_legacy_row_and_assessment() {
     for (input, legacy) in [
@@ -78,6 +114,7 @@ fn schema_v2_preserves_every_legacy_row_and_assessment() {
             current["description"] = previous["description"].clone();
         }
         if legacy == LEGACY_CANONICAL {
+            check_later_xml_qualification(&mut current, &previous);
             // Inventory additions do not change the archived capability prefix.
             // Other tests validate every current row and all required dimensions.
             let historical_count = previous["capabilities"]
