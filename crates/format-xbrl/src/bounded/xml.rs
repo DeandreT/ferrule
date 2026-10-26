@@ -120,8 +120,9 @@ impl<'a> XmlBudget<'a> {
             }
             Event::Eof => {}
             _ => {
-                // Empty text events produce no XML node in the byte stream.
-                if !event.is_empty() {
+                // Only absent text is exempt. Empty comments and CDATA still
+                // materialize DOM nodes and must consume the pre-DOM budget.
+                if !matches!(event, Event::Text(text) if text.is_empty()) {
                     self.node()?;
                 }
                 self.text(event.len())?;

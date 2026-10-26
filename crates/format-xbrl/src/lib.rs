@@ -851,7 +851,18 @@ fn project_document(
         facts: &facts,
         namespaces,
     };
-    materialize(schema, &row_path, &row_path, &projection, 0, &mut budget)
+    // Preserve legacy recursion accounting, but bounded model depth starts at
+    // one and includes the Repeated container plus each row, just like writer
+    // input admission. A returned model must fit those same depth limits.
+    let root_depth = usize::from(budget.is_some());
+    materialize(
+        schema,
+        &row_path,
+        &row_path,
+        &projection,
+        root_depth,
+        &mut budget,
+    )
 }
 
 #[derive(Clone, Copy)]

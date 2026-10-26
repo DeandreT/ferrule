@@ -28,18 +28,29 @@ content is:
   `xml:lang`. Every fact, including unselected concepts, must reference an
   existing context; every supplied unit reference must resolve. Duplicate
   expanded concept/context pairs fail. References may precede their definitions.
-- Ordinary comments, processing instructions, CDATA, the five XML character
-  references and numeric character references, subject to XML validity/budgets.
+- Comments and processing instructions in structural containers, plus CDATA,
+  the five XML character references and numeric character references, subject
+  to XML validity/budgets. A leaf may contain at most one DOM text node and no
+  comments or processing instructions. Adjacent text/CDATA/references merged
+  by the DOM are supported; split or comment/PI-delimited leaf text is refused
+  rather than letting the native first-child-text reader truncate it.
 
 The reader projects the native connected fact/identifier/period fields, not
 dimension ports or root unit definitions. A schema requesting `explicitMember`
-or `typedMember` input ports is explicitly refused rather than filled with null
-values. Explicit dimensions can be validated on input and rendered from native
+or `typedMember` input ports (including prefixed/expanded spellings) is explicitly
+refused rather than filled with null values. Explicit dimensions can be
+validated on input and rendered from native
 target dimension groups. This is not taxonomy validation: period values use the
 native lexical handling, and measures are not classified against a taxonomy.
 Target dimension groups require namespace bindings for both the axis and its
 `xbrldi:explicitMember` port. Simple-content target fact groups and conflicting
 target periods/unit forms are refused instead of silently dropping values.
+The native writer consumes the bare `explicitMember` field name; prefixed or
+expanded target dimension ports are refused. Unbound simple-content target
+groups fail for a missing namespace, even when absent or empty. Bound
+nonstructural simple-content target groups are unsupported. Output `XmlNil`
+values, including unselected fields, are refused; ordinary `Null` remains
+supported absence.
 
 DTD/entity declarations, arbitrary general entities, tuples/nested facts,
 typed dimensions, scenario content, multi-measure units, nil facts, unknown
@@ -64,6 +75,9 @@ network or filesystem resource is loaded, even if a URI/path is present.
 | Model text / individual string bytes | 64 MiB / 1 MiB |
 
 Zero allows no occurrences; depth must be 1–256. Limits must fit in `isize`.
+Configured contexts cannot exceed 100,000 and facts cannot exceed 1,000,000,
+the native reader's hard maxima. Larger configurations are rejected by
+`XbrlLimits::new` for either API; they are not silently advertised as usable.
 Limits are inclusive, and additions are checked. Failures return typed
 `LimitExceeded { limit, maximum, actual }`, `InvalidLimit`, or explicit profile
 errors. Existing scalar, duplicate-fact, unit and target errors stay typed.
@@ -76,11 +90,16 @@ fragments may count separately even when the DOM merges them. Attribute counts
 include namespace declarations. Text bytes include raw attribute values,
 comments, declaration/PI content and text/reference spellings. These
 conservative wire counts bound normalized DOM data without entity expansion.
+Empty comments and empty CDATA consume node budget; only genuinely empty text
+events are exempt.
 Selected materialized nodes and strings are checked before retaining them.
 
 Schema and option names/paths count toward the model budget. On write, the
 entire supplied instance counts too, including fields the schema does not
-select. A separate model budget bounds collected target rows/facts, including
+select. Model depth starts at one for the root and counts a `Repeated`
+container separately from its row instances, on both read and write. A read
+result cannot exceed the configured model depth even if its schema is shallower.
+A separate model budget bounds collected target rows/facts, including
 candidate rows before pruning and copies of shared identifiers/defaults.
 The shared renderer first writes to a checked counting sink, enforcing XML and
 output byte limits without retaining the document. Escaped text is streamed

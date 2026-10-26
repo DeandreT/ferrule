@@ -78,6 +78,8 @@ impl Default for XbrlLimitOptions {
 
 /// Validated, immutable limits. Zero permits no occurrences of a resource;
 /// depth must be in 1..=256 and every value must fit in `isize`.
+/// Contexts cannot exceed 100,000 and facts cannot exceed 1,000,000, the native
+/// reader's hard maxima. Larger configurations return `InvalidLimit`.
 #[derive(Clone, Debug, Default)]
 pub struct XbrlLimits(XbrlLimitOptions);
 
@@ -105,6 +107,12 @@ impl XbrlLimits {
             {
                 return Err(XbrlFormatError::InvalidLimit(limit));
             }
+        }
+        if options.max_contexts > crate::MAX_CONTEXTS {
+            return Err(XbrlFormatError::InvalidLimit(Contexts));
+        }
+        if options.max_facts > crate::MAX_FACTS {
+            return Err(XbrlFormatError::InvalidLimit(Facts));
         }
         Ok(Self(options))
     }
@@ -224,6 +232,12 @@ pub(crate) struct ModelBudget<'a> {
     text: usize,
 }
 
+// Use the native codec's local-name handling after recognizing its expanded
+// QName spelling too, so lexical prefixes cannot bypass strict port refusal.
+fn port_local_name(name: &str) -> &str {
+    crate::local_name(crate::expanded_qname(name).map_or(name, |(_, local)| local))
+}
+
 impl<'a> ModelBudget<'a> {
     pub(crate) fn new(limits: &'a XbrlLimitOptions) -> Self {
         Self {
@@ -265,9 +279,15 @@ impl<'a> ModelBudget<'a> {
     ) -> Result<(), XbrlFormatError> {
         self.node(depth)?;
         self.text(&schema.name)?;
-        if schema.name == "typedMember" || (reading && schema.name == "explicitMember") {
+        let local = port_local_name(&schema.name);
+        if local == "typedMember" || (reading && local == "explicitMember") {
             return Err(XbrlFormatError::UnsupportedBoundedProfile(
                 "typed dimensions and input dimension ports are not supported by the native table codec",
+            ));
+        }
+        if local == "explicitMember" && schema.name != "explicitMember" {
+            return Err(XbrlFormatError::UnsupportedBoundedProfile(
+                "prefixed or expanded target dimension ports are not consumed by the native writer",
             ));
         }
         if let SchemaKind::Group { children, .. } = &schema.kind {
@@ -300,6 +320,11 @@ impl<'a> ModelBudget<'a> {
         self.node(depth)?;
         match instance {
             Instance::Scalar(Value::String(text)) => self.text(text)?,
+            Instance::Scalar(Value::XmlNil(_)) => {
+                return Err(XbrlFormatError::UnsupportedBoundedProfile(
+                    "XML nil output values",
+                ));
+            }
             Instance::Scalar(_) => {}
             Instance::Group(fields) => {
                 for (name, value) in fields.iter() {

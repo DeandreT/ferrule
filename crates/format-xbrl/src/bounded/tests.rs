@@ -3,6 +3,9 @@ use crate::{XBRLDI, XBRLI};
 use ir::{ScalarType, Value, XML_TEXT_FIELD};
 use mapping::{XbrlBoundaryOptions, XbrlNamespaceBinding};
 
+#[path = "review_tests.rs"]
+mod review;
+
 fn fixture() -> String {
     format!(
         r#"<xbrli:xbrl xmlns:xbrli="{XBRLI}" xmlns:xbrldi="{XBRLDI}" xmlns:a="urn:a" xmlns:b="urn:b"><xbrli:context id="c"><xbrli:entity><xbrli:identifier scheme="urn:id">Entity</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2026-06-30</xbrli:instant></xbrli:period></xbrli:context><xbrli:unit id="u"><xbrli:measure>xbrli:pure</xbrli:measure></xbrli:unit><a:Amount contextRef="c" unitRef="u">0</a:Amount><b:Amount contextRef="c" unitRef="u">2</b:Amount></xbrli:xbrl>"#

@@ -41,6 +41,22 @@ fn leaf(node: Node<'_>) -> Result<(), XbrlFormatError> {
     if elements(node).next().is_some() {
         return Err(unsupported("nested or tuple facts"));
     }
+    // Native projection uses node.text(), i.e. only a first-child text node.
+    // Do not validate one prefix while silently losing suffixes (or all text
+    // after a leading comment/PI). Adjacent text/CDATA/references that the DOM
+    // merges into one text node remain supported.
+    if node.children().any(|child| !child.is_text())
+        || node
+            .children()
+            .filter(roxmltree::Node::is_text)
+            .take(2)
+            .count()
+            > 1
+    {
+        return Err(unsupported(
+            "comments, processing instructions, or split text in leaf content",
+        ));
+    }
     Ok(())
 }
 
@@ -229,12 +245,26 @@ pub(super) fn target_schema(
 ) -> Result<(), XbrlFormatError> {
     if let ir::SchemaKind::Group { children, .. } = &schema.kind {
         let namespace = crate::namespace_at(namespaces, path);
-        if children.iter().any(|child| child.text)
-            && namespace.is_some_and(|namespace| !crate::is_structural_namespace(namespace))
+        if children
+            .iter()
+            .any(|child| child.text || child.name == ir::XML_TEXT_FIELD)
         {
-            return Err(unsupported("simple-content target fact groups"));
+            match namespace {
+                None => {
+                    return Err(XbrlFormatError::MissingFactNamespace {
+                        path: path.join("/"),
+                    });
+                }
+                Some(namespace) if !crate::is_structural_namespace(namespace) => {
+                    return Err(unsupported("simple-content target fact groups"));
+                }
+                Some(_) => {}
+            }
         }
-        if let Some(member) = children.iter().find(|child| child.name == "explicitMember") {
+        if let Some(member) = children
+            .iter()
+            .find(|child| super::port_local_name(&child.name) == "explicitMember")
+        {
             if namespace.is_none() {
                 return Err(XbrlFormatError::MissingFactNamespace {
                     path: path.join("/"),
