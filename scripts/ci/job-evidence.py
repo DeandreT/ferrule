@@ -49,9 +49,10 @@ def identity(environment):
             "job": values["GITHUB_JOB"], "source": values["GITHUB_SHA"], "suite": suite}
 
 
-def directory_identity(fd):
+def directory_identity(fd, *, owner=None):
     current = os.fstat(fd)
-    require(stat.S_ISDIR(current.st_mode) and current.st_uid == os.getuid()
+    owner = os.getuid() if owner is None else owner
+    require(stat.S_ISDIR(current.st_mode) and current.st_uid == owner
             and not current.st_mode & 0o022, "Unsafe owned directory")
     return {"device": current.st_dev, "inode": current.st_ino}
 
@@ -113,11 +114,12 @@ def publish(directory, name, record):
     os.fsync(directory)
 
 
-def read_record(directory, name):
+def read_record(directory, name, *, owner=None):
+    owner = os.getuid() if owner is None else owner
     fd = os.open(name, os.O_RDONLY | os.O_NONBLOCK | FILE_FLAGS, dir_fd=directory)
     try:
         before = os.fstat(fd)
-        require(stat.S_ISREG(before.st_mode) and before.st_uid == os.getuid()
+        require(stat.S_ISREG(before.st_mode) and before.st_uid == owner
                 and before.st_nlink == 1 and stat.S_IMODE(before.st_mode) == 0o444
                 and before.st_size <= MAX_RECORD, "Unsafe metadata record")
         data = bytearray()
@@ -170,20 +172,20 @@ def begin(home, environment, *, nonce=None):
             "FERRULE_CI_EVIDENCE_CANARY": str(root / "receipts" / "evidence-canary.json")}
 
 
-def retained_job(directory, job_id):
+def retained_job(directory, job_id, *, owner=None):
     """Admit an existing job for archival using its pinned preparation receipt.
 
     This validates custody and identity only. Producer closure and archive
     verification remain the responsibility of the pre-job compactor.
     """
-    pin = directory_identity(directory)
+    pin = directory_identity(directory, owner=owner)
     require(stat.S_IMODE(os.fstat(directory).st_mode) == 0o700, "Unsafe job root")
     receipts = os.open("receipts", DIRECTORY_FLAGS, dir_fd=directory)
     try:
-        directory_identity(receipts)
+        directory_identity(receipts, owner=owner)
         require(stat.S_IMODE(os.fstat(receipts).st_mode) == 0o700,
                 "Unsafe receipts directory")
-        initial = read_record(receipts, "UNARCHIVED.json")
+        initial = read_record(receipts, "UNARCHIVED.json", owner=owner)
     finally:
         os.close(receipts)
     require(isinstance(initial, dict), "Invalid preparation record")
