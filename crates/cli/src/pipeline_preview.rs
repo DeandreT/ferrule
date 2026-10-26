@@ -10,6 +10,7 @@ use engine::{ExecutionContext, ExecutionPurpose};
 use mapping::{FormatOptions, Pipeline};
 
 use super::cancellation::{CancellableHook, check_cancelled};
+use super::format_selection::{self, Direction, SelectedFormat};
 use super::payload::{
     PayloadDestination, read_payload, render_payload, target_artifact_count, validate_logical_path,
     visit_target_documents,
@@ -24,8 +25,8 @@ use super::pipeline::{
 };
 use super::{
     FilesystemPdfReader, MAX_PAYLOAD_ARTIFACTS, MAX_PAYLOAD_DOCUMENT_BYTES, MAX_PAYLOAD_NAME_BYTES,
-    MAX_PAYLOAD_RUN_BYTES, PayloadDocument, extension_for_dispatch, http_url,
-    read_instance_with_pdf_reader, resolve_run_path,
+    MAX_PAYLOAD_RUN_BYTES, PayloadDocument, extension_of, http_url, read_instance_with_pdf_reader,
+    resolve_run_path,
 };
 
 /// One host input supplied entirely as bounded bytes and a logical identity.
@@ -730,44 +731,32 @@ fn preflight_format(path: &Path, options: &FormatOptions, output: bool) -> anyho
     if output {
         preflight_output_options(options)?;
     }
-    preflight_typed_options(options, output)?;
-    if options.json_document || options.json5 || options.json_lines {
-        super::json5_selected(path, options)?;
-    }
-    if options.xbrl.is_some()
-        || options.idoc.is_some()
-        || options.swift_mt.is_some()
-        || options.external_source.is_some()
-        || options.pdf.is_some()
-        || options.flextext.is_some()
-        || options.protobuf.is_some()
-        || options.edi_kind.is_some()
-        || options.xml_document
-        || options.json_document
-        || options.json5
-        || options.json_lines
-        || options.fixed_width.is_some()
-    {
-        return Ok(());
-    }
-    super::validate_tabular_fallback(path, options, if output { "output" } else { "input" })?;
-    match extension_for_dispatch(path, options)?.as_str() {
-        "json" | "json5" | "jsonl" | "ndjson" => {
-            super::json5_selected(path, options)?;
-            Ok(())
-        }
-        "csv" | "txt" | "xlsx" | "xml" | "edi" | "x12" | "edifact" | "hl7" => Ok(()),
-        "db" | "sqlite" | "sqlite3" => bail!(
+    let direction = if output {
+        Direction::Output
+    } else {
+        Direction::Input
+    };
+    match format_selection::select_preview(path, options, direction)? {
+        SelectedFormat::Sqlite => bail!(
             "SQLite requires persistent filesystem state and is unavailable in pipeline preview"
         ),
-        other => bail!("unsupported pipeline preview payload extension: .{other}"),
+        SelectedFormat::Unsupported(other) => {
+            bail!("unsupported pipeline preview payload extension: .{other}")
+        }
+        SelectedFormat::MissingIdoc | SelectedFormat::MissingSwift | SelectedFormat::MissingPdf => {
+            bail!(
+                "unsupported pipeline preview payload extension: .{}",
+                extension_of(path)?
+            )
+        }
+        _ => Ok(()),
     }
 }
 
 fn preflight_output_options(options: &FormatOptions) -> anyhow::Result<()> {
     format_csv::require_executable_dependency(options.csv_text_repair_dependency)?;
     reject_stateful_options(options)?;
-    preflight_typed_options(options, true)?;
+    format_selection::validate_declared(options, Direction::Output)?;
     if options.json5 && options.json_lines {
         bail!("JSON5 cannot be combined with JSON Lines");
     }
@@ -785,35 +774,6 @@ fn preflight_output_options(options: &FormatOptions) -> anyhow::Result<()> {
         bail!("hierarchical XLSX output conflicts with legacy XLSX layout options");
     }
     Ok(())
-}
-
-fn preflight_typed_options(options: &FormatOptions, output: bool) -> anyhow::Result<()> {
-    let side = if output { "output" } else { "input" };
-    if options.xbrl.is_some() {
-        super::reject_xbrl_conflicts(options, side)
-    } else if options.idoc.is_some() {
-        super::reject_idoc_conflicts(options, side)
-    } else if options.swift_mt.is_some() {
-        super::reject_swift_conflicts(options, side)
-    } else if options.external_source.is_some() {
-        super::reject_external_source_conflicts(options, side)
-    } else if options.pdf.is_some() {
-        super::reject_pdf_conflicts(options, side)
-    } else if options.flextext.is_some() {
-        super::reject_flextext_conflicts(options, side)
-    } else if options.protobuf.is_some() {
-        super::reject_protobuf_conflicts(options, side)
-    } else if options.edi_kind.is_some() {
-        super::reject_edi_conflicts(options, side)
-    } else if options.xml_document {
-        super::reject_xml_conflicts(options, side)
-    } else if options.json_document || options.json5 || options.json_lines {
-        super::reject_json_conflicts(options, side)
-    } else if options.fixed_width.is_some() {
-        super::reject_fixed_width_csv_options(options, side)
-    } else {
-        Ok(())
-    }
 }
 
 fn logical_absolute(path: &Path) -> anyhow::Result<PathBuf> {

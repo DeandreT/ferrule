@@ -14,6 +14,10 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, bail};
+use format_selection::{
+    Direction, JsonMode, Origin, SelectedFormat, reject_inactive_root_xml_read_options,
+    validate_csv_metadata_identity, xml_read_options,
+};
 use ir::{Instance, SchemaNode};
 use mapping::{
     EdiAutocomplete, EdiBoundaryKind, EdiConfigDependency, ExternalPayloadFormat, FormatOptions,
@@ -78,6 +82,8 @@ mod trace_json;
 
 #[cfg(test)]
 mod dynamic_source_load_tests;
+#[cfg(test)]
+mod format_selection_tests;
 #[cfg(test)]
 mod owned_observer_preflight_tests;
 
@@ -559,62 +565,49 @@ fn write_output(
     if options.local_xml_file_set {
         bail!("`local_xml_file_set` is input-only");
     }
-    if options.xbrl.is_some() {
-        reject_xbrl_conflicts(options, "output")?;
-        let xbrl = options
-            .xbrl
-            .as_ref()
-            .context("missing XBRL target options")?;
+    let selected = format_selection::select(path, options, Direction::Output, false)?;
+    if let SelectedFormat::Xbrl(xbrl) = selected {
         format_xbrl::write(path, schema, instance, xbrl)
             .with_context(|| format!("writing XBRL output {}", path.display()))?;
         return Ok(1);
     }
-    if let Some(layout) = &options.idoc {
-        reject_idoc_conflicts(options, "output")?;
+    if let SelectedFormat::Idoc(layout) = selected {
         let formatted = formatted_edi_output(instance, options)?;
         format_edi::idoc::write(path, schema, &formatted, layout)
             .with_context(|| format!("writing SAP IDoc output {}", path.display()))?;
         return Ok(1);
     }
-    if options.swift_mt.is_some() {
-        reject_swift_conflicts(options, "output")?;
+    if let SelectedFormat::Swift(_) = selected {
         bail!("SWIFT MT output is not supported; `swift_mt` is input-only");
     }
-    if options.pdf.is_some() {
-        reject_pdf_conflicts(options, "output")?;
+    if let SelectedFormat::Pdf(_) = selected {
         bail!("PDF output is not supported; `pdf` is input-only");
     }
-    if let Some(layout) = &options.flextext {
-        reject_flextext_conflicts(options, "output")?;
+    if let SelectedFormat::FlexText(layout) = selected {
         format_flextext::write(path, schema, instance, layout)
             .with_context(|| format!("writing output {}", path.display()))?;
         return Ok(1);
     }
-    if let Some(protobuf) = &options.protobuf {
-        reject_protobuf_conflicts(options, "output")?;
+    if let SelectedFormat::Protobuf(protobuf) = selected {
         let layout =
             protobuf_layout(protobuf).context("parsing embedded Protocol Buffers schema")?;
         format_protobuf::write(path, &layout, &protobuf.root_message, instance)
             .with_context(|| format!("writing output {}", path.display()))?;
         return Ok(1);
     }
-    if let Some(kind) = options.edi_kind {
-        reject_edi_conflicts(options, "output")?;
+    if let SelectedFormat::Edi(Some(kind)) = selected {
         let formatted = formatted_edi_output(instance, options)?;
         return write_edi_output(path, schema, &formatted, options, kind, current_datetime);
     }
-    if options.xml_document {
-        reject_xml_conflicts(options, "output")?;
+    if let SelectedFormat::Xml(Origin::Explicit) = selected {
         format_xml::write_with_options(path, schema, instance, &xml_write_options(options))
             .with_context(|| format!("writing XML output {}", path.display()))?;
         return Ok(1);
     }
-    if options.json_document || options.json5 || options.json_lines {
-        reject_json_conflicts(options, "output")?;
-        let json5 = json5_selected(path, options)?;
-        let write = if options.json_lines {
+    if let SelectedFormat::Json(mode, Origin::Explicit) = selected {
+        let write = if mode == JsonMode::Lines {
             format_json::write_lines
-        } else if json5 {
+        } else if mode == JsonMode::Json5 {
             format_json::write_json5
         } else {
             format_json::write
@@ -623,8 +616,7 @@ fn write_output(
             .with_context(|| format!("writing JSON output {}", path.display()))?;
         return Ok(instance.as_repeated().map_or(1, <[Instance]>::len));
     }
-    if let Some(layout) = &options.fixed_width {
-        reject_fixed_width_csv_options(options, "output")?;
+    if let SelectedFormat::FixedWidth(layout) = selected {
         let rows = instance
             .as_repeated()
             .context("mapping did not produce a repeating row set for a fixed-width output")?;
@@ -633,10 +625,8 @@ fn write_output(
         return Ok(rows.len());
     }
 
-    validate_tabular_fallback(path, options, "output")?;
-
-    match extension_for_dispatch(path, options)?.as_str() {
-        "csv" | "txt" => {
+    match selected {
+        SelectedFormat::Csv => {
             let rows = instance
                 .as_repeated()
                 .context("mapping did not produce a repeating row set for a CSV output")?;
@@ -649,7 +639,7 @@ fn write_output(
             .with_context(|| format!("writing output {}", path.display()))?;
             Ok(rows.len())
         }
-        "xlsx" => {
+        SelectedFormat::Xlsx => {
             if let Some(layout) = &options.xlsx_hierarchical {
                 if options.xlsx_grid.is_some()
                     || options.xlsx_composite.is_some()
@@ -708,20 +698,15 @@ fn write_output(
             result.with_context(|| format!("writing output {}", path.display()))?;
             Ok(rows.len())
         }
-        "xml" => {
+        SelectedFormat::Xml(Origin::Fallback) => {
             format_xml::write_with_options(path, schema, instance, &xml_write_options(options))
                 .with_context(|| format!("writing output {}", path.display()))?;
             Ok(1)
         }
-        "json" | "json5" | "jsonl" | "ndjson" => {
-            let json_lines =
-                options.json_lines || matches!(extension_of(path)?.as_str(), "jsonl" | "ndjson");
-            if json_lines && json5_selected(path, options)? {
-                bail!("JSON5 cannot be combined with JSON Lines");
-            }
-            if json_lines {
+        SelectedFormat::Json(mode, Origin::Fallback) => {
+            if mode == JsonMode::Lines {
                 format_json::write_lines(path, schema, instance)
-            } else if json5_selected(path, options)? {
+            } else if mode == JsonMode::Json5 {
                 format_json::write_json5(path, schema, instance)
             } else {
                 format_json::write(path, schema, instance)
@@ -729,12 +714,12 @@ fn write_output(
             .with_context(|| format!("writing output {}", path.display()))?;
             Ok(instance.as_repeated().map_or(1, <[Instance]>::len))
         }
-        "db" | "sqlite" | "sqlite3" => {
+        SelectedFormat::Sqlite => {
             format_db::write_instance(path, schema, instance)
                 .with_context(|| format!("writing output {}", path.display()))?;
             Ok(instance.as_repeated().map_or(1, <[Instance]>::len))
         }
-        "edi" | "x12" | "edifact" | "hl7" => {
+        SelectedFormat::Edi(None) => {
             let formatted = formatted_edi_output(instance, options)?;
             match format_edi::dialect_of(schema)? {
                 format_edi::Dialect::X12 => {
@@ -751,8 +736,14 @@ fn write_output(
             .with_context(|| format!("writing output {}", path.display()))?;
             Ok(1)
         }
-        "pdf" => bail!("PDF output is not supported; PDF is input-only"),
-        other => bail!("unsupported output file extension: .{other}"),
+        SelectedFormat::MissingPdf => bail!("PDF output is not supported; PDF is input-only"),
+        SelectedFormat::MissingIdoc => bail!("unsupported output file extension: .idoc"),
+        SelectedFormat::MissingSwift => bail!(
+            "unsupported output file extension: .{}",
+            extension_of(path)?
+        ),
+        SelectedFormat::Unsupported(other) => bail!("unsupported output file extension: .{other}"),
+        _ => unreachable!("explicit formats returned above"),
     }
 }
 
@@ -806,18 +797,13 @@ fn read_instance_with_pdf_reader(
     if options.local_xml_file_set && !options.xml_document {
         bail!("`local_xml_file_set` requires `xml_document` for input");
     }
-    if options.xbrl.is_some() {
-        reject_xbrl_conflicts(options, "input")?;
-        let xbrl = options
-            .xbrl
-            .as_ref()
-            .context("missing XBRL source options")?;
+    let selected = format_selection::select(path, options, Direction::Input, true)?;
+    if let SelectedFormat::Xbrl(xbrl) = selected {
         return format_xbrl::read_with_options(path, schema, xbrl)
             .with_context(|| format!("reading XBRL input {}", path.display()));
     }
 
-    if let Some(layout) = &options.idoc {
-        reject_idoc_conflicts(options, "input")?;
+    if let SelectedFormat::Idoc(layout) = selected {
         let mut instance = format_edi::idoc::read(path, schema, layout, options.lenient_segments)
             .with_context(|| format!("reading SAP IDoc input {}", path.display()))?;
         format_edi::apply_implied_decimals(&mut instance, &options.edi_implied_decimals)
@@ -825,8 +811,7 @@ fn read_instance_with_pdf_reader(
         return Ok(instance);
     }
 
-    if let Some(layout) = &options.swift_mt {
-        reject_swift_conflicts(options, "input")?;
+    if let SelectedFormat::Swift(layout) = selected {
         let mut instance = format_edi::swift::read(path, schema, layout, options.lenient_segments)
             .with_context(|| format!("reading SWIFT MT input {}", path.display()))?;
         format_edi::apply_implied_decimals(&mut instance, &options.edi_implied_decimals)
@@ -834,8 +819,7 @@ fn read_instance_with_pdf_reader(
         return Ok(instance);
     }
 
-    if let Some(boundary) = &options.external_source {
-        reject_external_source_conflicts(options, "input")?;
+    if let SelectedFormat::External(boundary) = selected {
         if let Some(url) = http_url(path) {
             bail!(
                 "external HTTP POST response `{}` must be supplied as a local captured {} file; ferrule does not send POST requests",
@@ -854,8 +838,7 @@ fn read_instance_with_pdf_reader(
         };
     }
 
-    if let Some(pdf) = &options.pdf {
-        reject_pdf_conflicts(options, "input")?;
+    if let SelectedFormat::Pdf(pdf) = selected {
         let instance = match reader {
             Some(reader) => reader.read_pdf(path, pdf),
             None => format_pdf::read(path, pdf).map_err(anyhow::Error::new),
@@ -863,27 +846,23 @@ fn read_instance_with_pdf_reader(
         return instance.with_context(|| format!("reading input {}", path.display()));
     }
 
-    if let Some(layout) = &options.flextext {
-        reject_flextext_conflicts(options, "input")?;
+    if let SelectedFormat::FlexText(layout) = selected {
         return format_flextext::read(path, schema, layout)
             .with_context(|| format!("reading input {}", path.display()));
     }
 
-    if let Some(protobuf) = &options.protobuf {
-        reject_protobuf_conflicts(options, "input")?;
+    if let SelectedFormat::Protobuf(protobuf) = selected {
         let layout =
             protobuf_layout(protobuf).context("parsing embedded Protocol Buffers schema")?;
         return format_protobuf::read(path, &layout, &protobuf.root_message)
             .with_context(|| format!("reading Protocol Buffers input {}", path.display()));
     }
 
-    if let Some(kind) = options.edi_kind {
-        reject_edi_conflicts(options, "input")?;
+    if let SelectedFormat::Edi(Some(kind)) = selected {
         return read_edi_input(path, schema, options, kind);
     }
 
-    if options.xml_document {
-        reject_xml_conflicts(options, "input")?;
+    if let SelectedFormat::Xml(Origin::Explicit) = selected {
         if options.local_xml_file_set {
             let base = path
                 .parent()
@@ -913,12 +892,10 @@ fn read_instance_with_pdf_reader(
             .with_context(|| format!("reading XML input {}", path.display()));
     }
 
-    if options.json_document || options.json5 || options.json_lines {
-        reject_json_conflicts(options, "input")?;
-        let json5 = json5_selected(path, options)?;
-        let read = if options.json_lines {
+    if let SelectedFormat::Json(mode, Origin::Explicit) = selected {
+        let read = if mode == JsonMode::Lines {
             format_json::read_lines
-        } else if json5 {
+        } else if mode == JsonMode::Json5 {
             format_json::read_json5
         } else {
             format_json::read
@@ -927,21 +904,18 @@ fn read_instance_with_pdf_reader(
             .with_context(|| format!("reading JSON input {}", path.display()));
     }
 
-    if let Some(url) = http_url(path) {
+    if let SelectedFormat::HttpXml(url) = selected {
         return read_http_xml(url, schema, options, execution_policy);
     }
 
-    if let Some(layout) = &options.fixed_width {
-        reject_fixed_width_csv_options(options, "input")?;
+    if let SelectedFormat::FixedWidth(layout) = selected {
         let rows = format_csv::read_fixed_width(path, schema, layout)
             .with_context(|| format!("reading input {}", path.display()))?;
         return Ok(Instance::Repeated(rows));
     }
 
-    validate_tabular_fallback(path, options, "input")?;
-
-    let instance = match extension_for_dispatch(path, options)?.as_str() {
-        "csv" | "txt" => {
+    let instance = match selected {
+        SelectedFormat::Csv => {
             let rows = format_csv::read_with_options(
                 path,
                 schema,
@@ -950,7 +924,7 @@ fn read_instance_with_pdf_reader(
             .with_context(|| format!("reading input {}", path.display()))?;
             Instance::Repeated(rows)
         }
-        "xlsx" => {
+        SelectedFormat::Xlsx => {
             if let Some(layout) = &options.xlsx_hierarchical {
                 if options.xlsx_grid.is_some()
                     || options.xlsx_composite.is_some()
@@ -1018,26 +992,19 @@ fn read_instance_with_pdf_reader(
                 Instance::Repeated(rows)
             }
         }
-        "xml" => format_xml::read(path, schema)
+        SelectedFormat::Xml(Origin::Fallback) => format_xml::read(path, schema)
             .with_context(|| format!("reading input {}", path.display()))?,
-        "json" | "json5" | "jsonl" | "ndjson" => {
-            let json_lines =
-                options.json_lines || matches!(extension_of(path)?.as_str(), "jsonl" | "ndjson");
-            if json_lines && json5_selected(path, options)? {
-                bail!("JSON5 cannot be combined with JSON Lines");
-            }
-            if json_lines {
-                format_json::read_lines(path, schema)
-            } else if json5_selected(path, options)? {
-                format_json::read_json5(path, schema)
-            } else {
-                format_json::read(path, schema)
-            }
-            .with_context(|| format!("reading input {}", path.display()))?
+        SelectedFormat::Json(mode, Origin::Fallback) => if mode == JsonMode::Lines {
+            format_json::read_lines(path, schema)
+        } else if mode == JsonMode::Json5 {
+            format_json::read_json5(path, schema)
+        } else {
+            format_json::read(path, schema)
         }
-        "db" | "sqlite" | "sqlite3" => format_db::read_instance(path, schema)
+        .with_context(|| format!("reading input {}", path.display()))?,
+        SelectedFormat::Sqlite => format_db::read_instance(path, schema)
             .with_context(|| format!("reading input {}", path.display()))?,
-        "edi" | "x12" | "edifact" | "hl7" => {
+        SelectedFormat::Edi(None) => {
             let read = match format_edi::dialect_of(schema)? {
                 format_edi::Dialect::X12 => format_edi::x12::read,
                 format_edi::Dialect::Edifact => format_edi::edifact::read,
@@ -1047,10 +1014,13 @@ fn read_instance_with_pdf_reader(
             read(path, schema, options.lenient_segments)
                 .with_context(|| format!("reading input {}", path.display()))?
         }
-        "idoc" => bail!("SAP IDoc input requires an embedded `idoc` layout"),
-        "fin" | "swift" => bail!("SWIFT MT input requires an embedded `swift_mt` layout"),
-        "pdf" => bail!("PDF input requires embedded `pdf` extraction options"),
-        other => bail!("unsupported input file extension: .{other}"),
+        SelectedFormat::MissingIdoc => bail!("SAP IDoc input requires an embedded `idoc` layout"),
+        SelectedFormat::MissingSwift => {
+            bail!("SWIFT MT input requires an embedded `swift_mt` layout")
+        }
+        SelectedFormat::MissingPdf => bail!("PDF input requires embedded `pdf` extraction options"),
+        SelectedFormat::Unsupported(other) => bail!("unsupported input file extension: .{other}"),
+        _ => unreachable!("explicit formats returned above"),
     };
     Ok(instance)
 }
@@ -1204,431 +1174,627 @@ fn sanitize_uri(uri: &ureq::http::Uri) -> String {
     }
 }
 
-fn validate_csv_metadata_identity(
-    path: &Path,
-    options: &FormatOptions,
-    side: &str,
-) -> anyhow::Result<()> {
-    format_csv::require_executable_dependency(options.csv_text_repair_dependency)?;
-    if options.csv_preserve_empty_strings
-        && !matches!(
-            extension_for_dispatch(path, options)?.as_str(),
-            "csv" | "txt"
-        )
-    {
-        bail!("`csv_preserve_empty_strings` requires a CSV {side} boundary");
-    }
-    if options.csv_utf8_bom
-        && !matches!(
-            extension_for_dispatch(path, options)?.as_str(),
-            "csv" | "txt"
-        )
-    {
-        bail!("`csv_utf8_bom` requires a CSV {side} boundary");
-    }
-    Ok(())
-}
+/// Internal boundary identity and conflict checking. Route admission, metadata
+/// prerequisites and codec work deliberately stay at their original call sites.
+mod format_selection {
+    use super::*;
 
-fn reject_fixed_width_csv_options(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
-    if options.delimiter.is_some()
-        || options.csv_quote.is_some()
-        || options.csv_quote_disabled
-        || options.csv_utf8_bom
-        || options.csv_preserve_empty_strings
-        || options.has_header_row.is_some()
-        || options.xml_document
-        || options.local_xml_file_set
-    {
-        bail!(
-            "`fixed_width` cannot be combined with `delimiter`, `csv_quote`, `has_header_row`, \
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(super) enum Direction {
+        Input,
+        Output,
+    }
+
+    impl Direction {
+        fn label(self) -> &'static str {
+            match self {
+                Self::Input => "input",
+                Self::Output => "output",
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(super) enum Origin {
+        Explicit,
+        Fallback,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(super) enum JsonMode {
+        Document,
+        Json5,
+        Lines,
+    }
+
+    /// Only codec identity is selected here: inferred EDI dialects, layout parsing,
+    /// acquisition and stateful/input-only restrictions remain route-local.
+    pub(super) enum SelectedFormat<'a> {
+        Xbrl(&'a mapping::XbrlBoundaryOptions),
+        Idoc(&'a mapping::IdocLayout),
+        Swift(&'a mapping::SwiftMtLayout),
+        External(&'a mapping::ExternalSourceOptions),
+        Pdf(&'a mapping::PdfLayout),
+        FlexText(&'a mapping::FlexTextLayout),
+        Protobuf(&'a ProtobufOptions),
+        Edi(Option<EdiBoundaryKind>),
+        Xml(Origin),
+        Json(JsonMode, Origin),
+        HttpXml(&'a str),
+        FixedWidth(&'a mapping::FixedWidthLayout),
+        Csv,
+        Xlsx,
+        Sqlite,
+        MissingIdoc,
+        MissingSwift,
+        MissingPdf,
+        Unsupported(String),
+    }
+
+    enum Declaration<'a> {
+        Selected(SelectedFormat<'a>),
+        Json,
+    }
+
+    // Preview checks declarations before it has a destination identity. Its legacy
+    // input-only target check includes captured sources; ordinary output dispatch
+    // never selects them. Fixed-width is checked after the filesystem HTTP fallback.
+    fn declaration(
+        options: &FormatOptions,
+        direction: Direction,
+        captured: bool,
+    ) -> anyhow::Result<Option<Declaration<'_>>> {
+        let side = direction.label();
+        let selected = if let Some(value) = &options.xbrl {
+            reject_xbrl_conflicts(options, side)?;
+            SelectedFormat::Xbrl(value)
+        } else if let Some(value) = &options.idoc {
+            reject_idoc_conflicts(options, side)?;
+            SelectedFormat::Idoc(value)
+        } else if let Some(value) = &options.swift_mt {
+            reject_swift_conflicts(options, side)?;
+            SelectedFormat::Swift(value)
+        } else if let Some(value) = options.external_source.as_ref().filter(|_| captured) {
+            reject_external_source_conflicts(options, side)?;
+            SelectedFormat::External(value)
+        } else if let Some(value) = &options.pdf {
+            reject_pdf_conflicts(options, side)?;
+            SelectedFormat::Pdf(value)
+        } else if let Some(value) = &options.flextext {
+            reject_flextext_conflicts(options, side)?;
+            SelectedFormat::FlexText(value)
+        } else if let Some(value) = &options.protobuf {
+            reject_protobuf_conflicts(options, side)?;
+            SelectedFormat::Protobuf(value)
+        } else if let Some(value) = options.edi_kind {
+            reject_edi_conflicts(options, side)?;
+            SelectedFormat::Edi(Some(value))
+        } else if options.xml_document {
+            reject_xml_conflicts(options, side)?;
+            SelectedFormat::Xml(Origin::Explicit)
+        } else if options.json_document || options.json5 || options.json_lines {
+            reject_json_conflicts(options, side)?;
+            return Ok(Some(Declaration::Json));
+        } else {
+            return Ok(None);
+        };
+        Ok(Some(Declaration::Selected(selected)))
+    }
+
+    pub(super) fn validate_declared(
+        options: &FormatOptions,
+        direction: Direction,
+    ) -> anyhow::Result<bool> {
+        if declaration(options, direction, true)?.is_some() {
+            return Ok(true);
+        }
+        if options.fixed_width.is_some() {
+            reject_fixed_width_csv_options(options, direction.label())?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    pub(super) fn select<'a>(
+        path: &'a Path,
+        options: &'a FormatOptions,
+        direction: Direction,
+        filesystem_input: bool,
+    ) -> anyhow::Result<SelectedFormat<'a>> {
+        if let Some(declaration) = declaration(options, direction, direction == Direction::Input)? {
+            return match declaration {
+                Declaration::Selected(selected) => Ok(selected),
+                Declaration::Json => Ok(SelectedFormat::Json(
+                    json_mode(path, options, Origin::Explicit)?,
+                    Origin::Explicit,
+                )),
+            };
+        }
+        if filesystem_input
+            && direction == Direction::Input
+            && let Some(url) = http_url(path)
+        {
+            return Ok(SelectedFormat::HttpXml(url));
+        }
+        if let Some(layout) = &options.fixed_width {
+            reject_fixed_width_csv_options(options, direction.label())?;
+            return Ok(SelectedFormat::FixedWidth(layout));
+        }
+        validate_tabular_fallback(path, options, direction.label())?;
+        Ok(match extension_for_dispatch(path, options)?.as_str() {
+            "csv" | "txt" => SelectedFormat::Csv,
+            "xlsx" => SelectedFormat::Xlsx,
+            "xml" => SelectedFormat::Xml(Origin::Fallback),
+            "json" | "json5" | "jsonl" | "ndjson" => SelectedFormat::Json(
+                json_mode(path, options, Origin::Fallback)?,
+                Origin::Fallback,
+            ),
+            "db" | "sqlite" | "sqlite3" => SelectedFormat::Sqlite,
+            "edi" | "x12" | "edifact" | "hl7" => SelectedFormat::Edi(None),
+            "idoc" => SelectedFormat::MissingIdoc,
+            "fin" | "swift" => SelectedFormat::MissingSwift,
+            "pdf" => SelectedFormat::MissingPdf,
+            other => SelectedFormat::Unsupported(other.to_owned()),
+        })
+    }
+
+    /// Preview historically checks JSON flags even on a captured JSON source,
+    /// whose runtime reader uses the captured-response codec unconditionally.
+    pub(super) fn select_preview<'a>(
+        path: &'a Path,
+        options: &'a FormatOptions,
+        direction: Direction,
+    ) -> anyhow::Result<SelectedFormat<'a>> {
+        let selected = select(path, options, direction, false)?;
+        if options.json_document || options.json5 || options.json_lines {
+            json5_selected(path, options)?;
+        }
+        Ok(selected)
+    }
+
+    fn json_mode(path: &Path, options: &FormatOptions, origin: Origin) -> anyhow::Result<JsonMode> {
+        let json5 = json5_selected(path, options)?;
+        let lines = options.json_lines
+            || (origin == Origin::Fallback
+                && matches!(extension_of(path)?.as_str(), "jsonl" | "ndjson"));
+        if lines && json5 {
+            bail!("JSON5 cannot be combined with JSON Lines");
+        }
+        Ok(if lines {
+            JsonMode::Lines
+        } else if json5 {
+            JsonMode::Json5
+        } else {
+            JsonMode::Document
+        })
+    }
+
+    pub(super) fn validate_csv_metadata_identity(
+        path: &Path,
+        options: &FormatOptions,
+        side: &str,
+    ) -> anyhow::Result<()> {
+        format_csv::require_executable_dependency(options.csv_text_repair_dependency)?;
+        if options.csv_preserve_empty_strings
+            && !matches!(
+                extension_for_dispatch(path, options)?.as_str(),
+                "csv" | "txt"
+            )
+        {
+            bail!("`csv_preserve_empty_strings` requires a CSV {side} boundary");
+        }
+        if options.csv_utf8_bom
+            && !matches!(
+                extension_for_dispatch(path, options)?.as_str(),
+                "csv" | "txt"
+            )
+        {
+            bail!("`csv_utf8_bom` requires a CSV {side} boundary");
+        }
+        Ok(())
+    }
+
+    fn reject_fixed_width_csv_options(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+        if options.delimiter.is_some()
+            || options.csv_quote.is_some()
+            || options.csv_quote_disabled
+            || options.csv_utf8_bom
+            || options.csv_preserve_empty_strings
+            || options.has_header_row.is_some()
+            || options.xml_document
+            || options.local_xml_file_set
+        {
+            bail!(
+                "`fixed_width` cannot be combined with `delimiter`, `csv_quote`, `has_header_row`, \
              `xml_document`, or `local_xml_file_set` for {side}"
-        );
+            );
+        }
+        Ok(())
     }
-    Ok(())
-}
 
-fn reject_idoc_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
-    if options
-        .edi_kind
-        .is_some_and(|kind| kind != EdiBoundaryKind::Idoc)
-        || options.delimiter.is_some()
-        || options.csv_quote.is_some()
-        || options.csv_quote_disabled
-        || options.csv_utf8_bom
-        || options.csv_preserve_empty_strings
-        || options.has_header_row.is_some()
-        || options.fixed_width.is_some()
-        || options.flextext.is_some()
-        || options.http_get.is_some()
-        || options.external_source.is_some()
-        || options.xml_document
-        || options.local_xml_file_set
-        || options.json_document
-        || options.json5
-        || options.json_lines
-        || options.pdf.is_some()
-        || options.protobuf.is_some()
-        || options.xbrl.is_some()
-        || options.swift_mt.is_some()
-        || has_any_xlsx_layout(options)
-    {
-        bail!("`idoc` cannot be combined with another format's options for {side}");
+    fn reject_idoc_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+        if options
+            .edi_kind
+            .is_some_and(|kind| kind != EdiBoundaryKind::Idoc)
+            || options.delimiter.is_some()
+            || options.csv_quote.is_some()
+            || options.csv_quote_disabled
+            || options.csv_utf8_bom
+            || options.csv_preserve_empty_strings
+            || options.has_header_row.is_some()
+            || options.fixed_width.is_some()
+            || options.flextext.is_some()
+            || options.http_get.is_some()
+            || options.external_source.is_some()
+            || options.xml_document
+            || options.local_xml_file_set
+            || options.json_document
+            || options.json5
+            || options.json_lines
+            || options.pdf.is_some()
+            || options.protobuf.is_some()
+            || options.xbrl.is_some()
+            || options.swift_mt.is_some()
+            || has_any_xlsx_layout(options)
+        {
+            bail!("`idoc` cannot be combined with another format's options for {side}");
+        }
+        Ok(())
     }
-    Ok(())
-}
 
-fn reject_swift_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
-    if options
-        .edi_kind
-        .is_some_and(|kind| kind != EdiBoundaryKind::SwiftMt)
-        || options.delimiter.is_some()
-        || options.csv_quote.is_some()
-        || options.csv_quote_disabled
-        || options.csv_utf8_bom
-        || options.csv_preserve_empty_strings
-        || options.has_header_row.is_some()
-        || options.fixed_width.is_some()
-        || options.flextext.is_some()
-        || options.http_get.is_some()
-        || options.external_source.is_some()
-        || options.idoc.is_some()
-        || options.xml_document
-        || options.local_xml_file_set
-        || options.json_document
-        || options.json5
-        || options.json_lines
-        || options.pdf.is_some()
-        || options.protobuf.is_some()
-        || options.xbrl.is_some()
-        || has_any_xlsx_layout(options)
-    {
-        bail!("`swift_mt` cannot be combined with another format's options for {side}");
+    fn reject_swift_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+        if options
+            .edi_kind
+            .is_some_and(|kind| kind != EdiBoundaryKind::SwiftMt)
+            || options.delimiter.is_some()
+            || options.csv_quote.is_some()
+            || options.csv_quote_disabled
+            || options.csv_utf8_bom
+            || options.csv_preserve_empty_strings
+            || options.has_header_row.is_some()
+            || options.fixed_width.is_some()
+            || options.flextext.is_some()
+            || options.http_get.is_some()
+            || options.external_source.is_some()
+            || options.idoc.is_some()
+            || options.xml_document
+            || options.local_xml_file_set
+            || options.json_document
+            || options.json5
+            || options.json_lines
+            || options.pdf.is_some()
+            || options.protobuf.is_some()
+            || options.xbrl.is_some()
+            || has_any_xlsx_layout(options)
+        {
+            bail!("`swift_mt` cannot be combined with another format's options for {side}");
+        }
+        Ok(())
     }
-    Ok(())
-}
 
-fn reject_xbrl_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
-    if options.lenient_segments
-        || options.edi_kind.is_some()
-        || options.delimiter.is_some()
-        || options.csv_quote.is_some()
-        || options.csv_quote_disabled
-        || options.csv_utf8_bom
-        || options.csv_preserve_empty_strings
-        || options.has_header_row.is_some()
-        || options.fixed_width.is_some()
-        || options.flextext.is_some()
-        || options.idoc.is_some()
-        || options.swift_mt.is_some()
-        || options.http_get.is_some()
-        || options.external_source.is_some()
-        || options.xml_document
-        || options.local_xml_file_set
-        || options.json_document
-        || options.json5
-        || options.json_lines
-        || options.pdf.is_some()
-        || options.protobuf.is_some()
-        || has_any_xlsx_layout(options)
-    {
-        bail!("`xbrl` cannot be combined with another format's options for {side}");
+    fn reject_xbrl_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+        if options.lenient_segments
+            || options.edi_kind.is_some()
+            || options.delimiter.is_some()
+            || options.csv_quote.is_some()
+            || options.csv_quote_disabled
+            || options.csv_utf8_bom
+            || options.csv_preserve_empty_strings
+            || options.has_header_row.is_some()
+            || options.fixed_width.is_some()
+            || options.flextext.is_some()
+            || options.idoc.is_some()
+            || options.swift_mt.is_some()
+            || options.http_get.is_some()
+            || options.external_source.is_some()
+            || options.xml_document
+            || options.local_xml_file_set
+            || options.json_document
+            || options.json5
+            || options.json_lines
+            || options.pdf.is_some()
+            || options.protobuf.is_some()
+            || has_any_xlsx_layout(options)
+        {
+            bail!("`xbrl` cannot be combined with another format's options for {side}");
+        }
+        Ok(())
     }
-    Ok(())
-}
 
-fn reject_protobuf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
-    if options.lenient_segments
-        || options.edi_kind.is_some()
-        || options.delimiter.is_some()
-        || options.csv_quote.is_some()
-        || options.csv_quote_disabled
-        || options.csv_utf8_bom
-        || options.csv_preserve_empty_strings
-        || options.has_header_row.is_some()
-        || options.fixed_width.is_some()
-        || options.flextext.is_some()
-        || options.idoc.is_some()
-        || options.swift_mt.is_some()
-        || options.http_get.is_some()
-        || options.external_source.is_some()
-        || options.xml_document
-        || options.local_xml_file_set
-        || options.json_document
-        || options.json5
-        || options.json_lines
-        || options.pdf.is_some()
-        || options.xbrl.is_some()
-        || has_any_xlsx_layout(options)
-    {
-        bail!("`protobuf` cannot be combined with another format's options for {side}");
+    fn reject_protobuf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+        if options.lenient_segments
+            || options.edi_kind.is_some()
+            || options.delimiter.is_some()
+            || options.csv_quote.is_some()
+            || options.csv_quote_disabled
+            || options.csv_utf8_bom
+            || options.csv_preserve_empty_strings
+            || options.has_header_row.is_some()
+            || options.fixed_width.is_some()
+            || options.flextext.is_some()
+            || options.idoc.is_some()
+            || options.swift_mt.is_some()
+            || options.http_get.is_some()
+            || options.external_source.is_some()
+            || options.xml_document
+            || options.local_xml_file_set
+            || options.json_document
+            || options.json5
+            || options.json_lines
+            || options.pdf.is_some()
+            || options.xbrl.is_some()
+            || has_any_xlsx_layout(options)
+        {
+            bail!("`protobuf` cannot be combined with another format's options for {side}");
+        }
+        Ok(())
     }
-    Ok(())
-}
 
-fn reject_flextext_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
-    if options.lenient_segments
-        || options.edi_kind.is_some()
-        || options.delimiter.is_some()
-        || options.csv_quote.is_some()
-        || options.csv_quote_disabled
-        || options.csv_utf8_bom
-        || options.csv_preserve_empty_strings
-        || options.has_header_row.is_some()
-        || options.fixed_width.is_some()
-        || options.idoc.is_some()
-        || options.swift_mt.is_some()
-        || options.http_get.is_some()
-        || options.external_source.is_some()
-        || options.xml_document
-        || options.local_xml_file_set
-        || options.json_document
-        || options.json5
-        || options.json_lines
-        || options.pdf.is_some()
-        || options.protobuf.is_some()
-        || options.xbrl.is_some()
-        || has_any_xlsx_layout(options)
-    {
-        bail!("`flextext` cannot be combined with another format's options for {side}");
+    fn reject_flextext_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+        if options.lenient_segments
+            || options.edi_kind.is_some()
+            || options.delimiter.is_some()
+            || options.csv_quote.is_some()
+            || options.csv_quote_disabled
+            || options.csv_utf8_bom
+            || options.csv_preserve_empty_strings
+            || options.has_header_row.is_some()
+            || options.fixed_width.is_some()
+            || options.idoc.is_some()
+            || options.swift_mt.is_some()
+            || options.http_get.is_some()
+            || options.external_source.is_some()
+            || options.xml_document
+            || options.local_xml_file_set
+            || options.json_document
+            || options.json5
+            || options.json_lines
+            || options.pdf.is_some()
+            || options.protobuf.is_some()
+            || options.xbrl.is_some()
+            || has_any_xlsx_layout(options)
+        {
+            bail!("`flextext` cannot be combined with another format's options for {side}");
+        }
+        Ok(())
     }
-    Ok(())
-}
 
-fn reject_pdf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
-    if options.lenient_segments
-        || options.edi_kind.is_some()
-        || options.delimiter.is_some()
-        || options.csv_quote.is_some()
-        || options.csv_quote_disabled
-        || options.csv_utf8_bom
-        || options.csv_preserve_empty_strings
-        || options.has_header_row.is_some()
-        || options.fixed_width.is_some()
-        || options.flextext.is_some()
-        || options.idoc.is_some()
-        || options.swift_mt.is_some()
-        || options.http_get.is_some()
-        || options.external_source.is_some()
-        || options.xml_document
-        || options.local_xml_file_set
-        || options.json_document
-        || options.json5
-        || options.json_lines
-        || options.protobuf.is_some()
-        || options.xbrl.is_some()
-        || has_any_xlsx_layout(options)
-    {
-        bail!("`pdf` cannot be combined with another format's options for {side}");
+    fn reject_pdf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+        if options.lenient_segments
+            || options.edi_kind.is_some()
+            || options.delimiter.is_some()
+            || options.csv_quote.is_some()
+            || options.csv_quote_disabled
+            || options.csv_utf8_bom
+            || options.csv_preserve_empty_strings
+            || options.has_header_row.is_some()
+            || options.fixed_width.is_some()
+            || options.flextext.is_some()
+            || options.idoc.is_some()
+            || options.swift_mt.is_some()
+            || options.http_get.is_some()
+            || options.external_source.is_some()
+            || options.xml_document
+            || options.local_xml_file_set
+            || options.json_document
+            || options.json5
+            || options.json_lines
+            || options.protobuf.is_some()
+            || options.xbrl.is_some()
+            || has_any_xlsx_layout(options)
+        {
+            bail!("`pdf` cannot be combined with another format's options for {side}");
+        }
+        Ok(())
     }
-    Ok(())
-}
 
-fn reject_edi_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
-    match options.edi_config_reference.as_ref() {
-        Some(EdiConfigDependency::ExternalReference(reference)) => {
-            bail!(
-                "{side} requires unresolved external EDI configuration `{reference}`; \
+    fn reject_edi_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+        match options.edi_config_reference.as_ref() {
+            Some(EdiConfigDependency::ExternalReference(reference)) => {
+                bail!(
+                    "{side} requires unresolved external EDI configuration `{reference}`; \
                  import from a package containing the exact configuration or a matching release pack"
-            );
-        }
-        Some(EdiConfigDependency::MissingConfiguration) => {
-            bail!(
-                "{side} requires an EDI configuration because its imported entry-tree schema is \
+                );
+            }
+            Some(EdiConfigDependency::MissingConfiguration) => {
+                bail!(
+                    "{side} requires an EDI configuration because its imported entry-tree schema is \
                  untyped; supply a complete EDI configuration and re-import the mapping"
+                );
+            }
+            None => {}
+        }
+        let kind = options
+            .edi_kind
+            .context("missing EDI boundary kind during runtime dispatch")?;
+        if matches!(kind, EdiBoundaryKind::Idoc | EdiBoundaryKind::SwiftMt) {
+            bail!("`edi_kind` `{kind:?}` requires its embedded runtime layout for {side}");
+        }
+        if options.x12_separators.is_some() && kind != EdiBoundaryKind::X12 {
+            bail!("X12 separator metadata requires `edi_kind` `X12` for {side}");
+        }
+        if options.x12_interchange_version.is_some() && kind != EdiBoundaryKind::X12 {
+            bail!("X12 interchange version requires `edi_kind` `X12` for {side}");
+        }
+        if options.idoc.is_some()
+            || options.swift_mt.is_some()
+            || options.delimiter.is_some()
+            || options.csv_quote.is_some()
+            || options.csv_quote_disabled
+            || options.csv_utf8_bom
+            || options.csv_preserve_empty_strings
+            || options.has_header_row.is_some()
+            || options.fixed_width.is_some()
+            || options.flextext.is_some()
+            || options.http_get.is_some()
+            || options.external_source.is_some()
+            || options.xml_document
+            || options.local_xml_file_set
+            || options.json_document
+            || options.json5
+            || options.json_lines
+            || options.pdf.is_some()
+            || options.protobuf.is_some()
+            || options.xbrl.is_some()
+            || has_any_xlsx_layout(options)
+        {
+            bail!("`edi_kind` cannot be combined with another format's options for {side}");
+        }
+        Ok(())
+    }
+
+    fn reject_json_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+        if options.lenient_segments
+            || options.edi_kind.is_some()
+            || options.idoc.is_some()
+            || options.swift_mt.is_some()
+            || options.delimiter.is_some()
+            || options.csv_quote.is_some()
+            || options.csv_quote_disabled
+            || options.csv_utf8_bom
+            || options.csv_preserve_empty_strings
+            || options.has_header_row.is_some()
+            || options.fixed_width.is_some()
+            || options.flextext.is_some()
+            || options.http_get.is_some()
+            || options.external_source.is_some()
+            || options.xml_document
+            || options.local_xml_file_set
+            || options.pdf.is_some()
+            || options.protobuf.is_some()
+            || options.xbrl.is_some()
+            || has_any_xlsx_layout(options)
+        {
+            bail!(
+                "`json_document`/`json5`/`json_lines` cannot be combined with another format's options for {side}"
             );
         }
-        None => {}
+        Ok(())
     }
-    let kind = options
-        .edi_kind
-        .context("missing EDI boundary kind during runtime dispatch")?;
-    if matches!(kind, EdiBoundaryKind::Idoc | EdiBoundaryKind::SwiftMt) {
-        bail!("`edi_kind` `{kind:?}` requires its embedded runtime layout for {side}");
-    }
-    if options.x12_separators.is_some() && kind != EdiBoundaryKind::X12 {
-        bail!("X12 separator metadata requires `edi_kind` `X12` for {side}");
-    }
-    if options.x12_interchange_version.is_some() && kind != EdiBoundaryKind::X12 {
-        bail!("X12 interchange version requires `edi_kind` `X12` for {side}");
-    }
-    if options.idoc.is_some()
-        || options.swift_mt.is_some()
-        || options.delimiter.is_some()
-        || options.csv_quote.is_some()
-        || options.csv_quote_disabled
-        || options.csv_utf8_bom
-        || options.csv_preserve_empty_strings
-        || options.has_header_row.is_some()
-        || options.fixed_width.is_some()
-        || options.flextext.is_some()
-        || options.http_get.is_some()
-        || options.external_source.is_some()
-        || options.xml_document
-        || options.local_xml_file_set
-        || options.json_document
-        || options.json5
-        || options.json_lines
-        || options.pdf.is_some()
-        || options.protobuf.is_some()
-        || options.xbrl.is_some()
-        || has_any_xlsx_layout(options)
-    {
-        bail!("`edi_kind` cannot be combined with another format's options for {side}");
-    }
-    Ok(())
-}
 
-fn reject_json_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
-    if options.lenient_segments
-        || options.edi_kind.is_some()
-        || options.idoc.is_some()
-        || options.swift_mt.is_some()
-        || options.delimiter.is_some()
-        || options.csv_quote.is_some()
-        || options.csv_quote_disabled
-        || options.csv_utf8_bom
-        || options.csv_preserve_empty_strings
-        || options.has_header_row.is_some()
-        || options.fixed_width.is_some()
-        || options.flextext.is_some()
-        || options.http_get.is_some()
-        || options.external_source.is_some()
-        || options.xml_document
-        || options.local_xml_file_set
-        || options.pdf.is_some()
-        || options.protobuf.is_some()
-        || options.xbrl.is_some()
-        || has_any_xlsx_layout(options)
-    {
-        bail!(
-            "`json_document`/`json5`/`json_lines` cannot be combined with another format's options for {side}"
-        );
-    }
-    Ok(())
-}
-
-fn json5_selected(path: &Path, options: &FormatOptions) -> anyhow::Result<bool> {
-    let selected = options.json5
-        || path
-            .extension()
-            .and_then(|value| value.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("json5"));
-    if selected && options.json_lines {
-        bail!("JSON5 cannot be combined with JSON Lines");
-    }
-    Ok(selected)
-}
-
-fn reject_inactive_root_xml_read_options(
-    path: &Path,
-    schema: &SchemaNode,
-    options: &FormatOptions,
-    side: &str,
-) -> anyhow::Result<()> {
-    if !options.xml_allow_inactive_root_type_members && !options.xml_root_view_read_policy {
-        return Ok(());
-    }
-    let accepted_options = FormatOptions {
-        xml_document: true,
-        xml_allow_inactive_root_type_members: true,
-        xml_root_view_read_policy: options.xml_root_view_read_policy,
-        ..Default::default()
-    };
-    if side != "input"
-        || !options.xml_document
-        || !options.xml_allow_inactive_root_type_members
-        || *options != accepted_options
-        || http_url(path).is_some()
-        || !ir::xml_inactive_root_type_members_are_supported(schema)
-        || (options.xml_root_view_read_policy
-            && !ir::xml_root_view_read_policy_is_supported(schema))
-    {
-        bail!(
-            "`xml_allow_inactive_root_type_members` requires a closed flat typed local XML input with no other format options"
-        );
-    }
-    Ok(())
-}
-
-fn xml_read_options(options: &FormatOptions) -> format_xml::XmlReadOptions {
-    format_xml::XmlReadOptions {
-        allow_inactive_root_type_members: options.xml_allow_inactive_root_type_members,
-        root_view_policy: options.xml_root_view_read_policy,
-    }
-}
-
-fn reject_xml_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
-    let external_xml = options
-        .external_source
-        .as_ref()
-        .is_some_and(|boundary| boundary.payload() == ExternalPayloadFormat::Xml);
-    if options.lenient_segments
-        || options.edi_kind.is_some()
-        || options.idoc.is_some()
-        || options.swift_mt.is_some()
-        || options.delimiter.is_some()
-        || options.csv_quote.is_some()
-        || options.csv_quote_disabled
-        || options.csv_utf8_bom
-        || options.csv_preserve_empty_strings
-        || options.has_header_row.is_some()
-        || options.fixed_width.is_some()
-        || options.flextext.is_some()
-        || options.pdf.is_some()
-        || options.json_document
-        || options.json5
-        || options.json_lines
-        || options.protobuf.is_some()
-        || options.xbrl.is_some()
-        || has_any_xlsx_layout(options)
-        || (options.external_source.is_some() && !external_xml)
-        || (options.local_xml_file_set && side == "output")
-        || (options.local_xml_file_set
-            && (options.http_get.is_some() || options.external_source.is_some()))
-        || (side == "output" && options.http_get.is_some())
-        || (options.http_get.is_some() && options.external_source.is_some())
-    {
-        bail!("`xml_document` cannot be combined with another format's options for {side}");
-    }
-    Ok(())
-}
-
-fn reject_external_source_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
-    let boundary = options
-        .external_source
-        .as_ref()
-        .context("missing captured external source metadata")?;
-    let owns_identity = match boundary.payload() {
-        ExternalPayloadFormat::Json => !options.xml_document,
-        ExternalPayloadFormat::Xml => {
-            !options.json_document && !options.json5 && !options.json_lines
+    pub(super) fn json5_selected(path: &Path, options: &FormatOptions) -> anyhow::Result<bool> {
+        let selected = options.json5
+            || path
+                .extension()
+                .and_then(|value| value.to_str())
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("json5"));
+        if selected && options.json_lines {
+            bail!("JSON5 cannot be combined with JSON Lines");
         }
-    };
-    if !owns_identity
-        || options.lenient_segments
-        || options.edi_kind.is_some()
-        || options.idoc.is_some()
-        || options.swift_mt.is_some()
-        || options.delimiter.is_some()
-        || options.csv_quote.is_some()
-        || options.csv_quote_disabled
-        || options.csv_utf8_bom
-        || options.csv_preserve_empty_strings
-        || options.has_header_row.is_some()
-        || options.fixed_width.is_some()
-        || options.flextext.is_some()
-        || options.http_get.is_some()
-        || options.local_xml_file_set
-        || options.pdf.is_some()
-        || options.protobuf.is_some()
-        || options.xbrl.is_some()
-        || has_any_xlsx_layout(options)
-    {
-        bail!(
-            "captured external source metadata conflicts with another format's options for {side}"
-        );
+        Ok(selected)
     }
-    Ok(())
+
+    pub(super) fn reject_inactive_root_xml_read_options(
+        path: &Path,
+        schema: &SchemaNode,
+        options: &FormatOptions,
+        side: &str,
+    ) -> anyhow::Result<()> {
+        if !options.xml_allow_inactive_root_type_members && !options.xml_root_view_read_policy {
+            return Ok(());
+        }
+        let accepted_options = FormatOptions {
+            xml_document: true,
+            xml_allow_inactive_root_type_members: true,
+            xml_root_view_read_policy: options.xml_root_view_read_policy,
+            ..Default::default()
+        };
+        if side != "input"
+            || !options.xml_document
+            || !options.xml_allow_inactive_root_type_members
+            || *options != accepted_options
+            || http_url(path).is_some()
+            || !ir::xml_inactive_root_type_members_are_supported(schema)
+            || (options.xml_root_view_read_policy
+                && !ir::xml_root_view_read_policy_is_supported(schema))
+        {
+            bail!(
+                "`xml_allow_inactive_root_type_members` requires a closed flat typed local XML input with no other format options"
+            );
+        }
+        Ok(())
+    }
+
+    pub(super) fn xml_read_options(options: &FormatOptions) -> format_xml::XmlReadOptions {
+        format_xml::XmlReadOptions {
+            allow_inactive_root_type_members: options.xml_allow_inactive_root_type_members,
+            root_view_policy: options.xml_root_view_read_policy,
+        }
+    }
+
+    fn reject_xml_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+        let external_xml = options
+            .external_source
+            .as_ref()
+            .is_some_and(|boundary| boundary.payload() == ExternalPayloadFormat::Xml);
+        if options.lenient_segments
+            || options.edi_kind.is_some()
+            || options.idoc.is_some()
+            || options.swift_mt.is_some()
+            || options.delimiter.is_some()
+            || options.csv_quote.is_some()
+            || options.csv_quote_disabled
+            || options.csv_utf8_bom
+            || options.csv_preserve_empty_strings
+            || options.has_header_row.is_some()
+            || options.fixed_width.is_some()
+            || options.flextext.is_some()
+            || options.pdf.is_some()
+            || options.json_document
+            || options.json5
+            || options.json_lines
+            || options.protobuf.is_some()
+            || options.xbrl.is_some()
+            || has_any_xlsx_layout(options)
+            || (options.external_source.is_some() && !external_xml)
+            || (options.local_xml_file_set && side == "output")
+            || (options.local_xml_file_set
+                && (options.http_get.is_some() || options.external_source.is_some()))
+            || (side == "output" && options.http_get.is_some())
+            || (options.http_get.is_some() && options.external_source.is_some())
+        {
+            bail!("`xml_document` cannot be combined with another format's options for {side}");
+        }
+        Ok(())
+    }
+
+    fn reject_external_source_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+        let boundary = options
+            .external_source
+            .as_ref()
+            .context("missing captured external source metadata")?;
+        let owns_identity = match boundary.payload() {
+            ExternalPayloadFormat::Json => !options.xml_document,
+            ExternalPayloadFormat::Xml => {
+                !options.json_document && !options.json5 && !options.json_lines
+            }
+        };
+        if !owns_identity
+            || options.lenient_segments
+            || options.edi_kind.is_some()
+            || options.idoc.is_some()
+            || options.swift_mt.is_some()
+            || options.delimiter.is_some()
+            || options.csv_quote.is_some()
+            || options.csv_quote_disabled
+            || options.csv_utf8_bom
+            || options.csv_preserve_empty_strings
+            || options.has_header_row.is_some()
+            || options.fixed_width.is_some()
+            || options.flextext.is_some()
+            || options.http_get.is_some()
+            || options.local_xml_file_set
+            || options.pdf.is_some()
+            || options.protobuf.is_some()
+            || options.xbrl.is_some()
+            || has_any_xlsx_layout(options)
+        {
+            bail!(
+                "captured external source metadata conflicts with another format's options for {side}"
+            );
+        }
+        Ok(())
+    }
 }
 
 fn read_edi_input(

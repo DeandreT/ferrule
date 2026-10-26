@@ -18,13 +18,10 @@ use anyhow::{Context, bail};
 use ir::{Instance, SchemaNode};
 use mapping::{EdiBoundaryKind, ExternalPayloadFormat, FormatOptions};
 
+use super::format_selection::{self, Direction, JsonMode, Origin, SelectedFormat};
 use super::{
-    TraceSink, absolute_mapping_path, extension_for_dispatch, extension_of, has_legacy_xlsx_layout,
-    json5_selected, protobuf_layout, reject_edi_conflicts, reject_external_source_conflicts,
-    reject_fixed_width_csv_options, reject_flextext_conflicts, reject_idoc_conflicts,
-    reject_json_conflicts, reject_pdf_conflicts, reject_protobuf_conflicts, reject_swift_conflicts,
-    reject_xbrl_conflicts, reject_xml_conflicts, require_valid, resolve_run_path,
-    validate_tabular_fallback, x12_separators,
+    TraceSink, absolute_mapping_path, has_legacy_xlsx_layout, protobuf_layout, require_valid,
+    resolve_run_path, x12_separators,
 };
 
 pub const MAX_PAYLOAD_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
@@ -946,12 +943,8 @@ fn read_payload_with_profile(
             "`local_xml_file_set` requires multiple filesystem documents and is unavailable for a single payload"
         );
     }
-    if options.xbrl.is_some() {
-        reject_xbrl_conflicts(options, "input")?;
-        let xbrl = options
-            .xbrl
-            .as_ref()
-            .context("missing XBRL source options")?;
+    let selected = format_selection::select(path, options, Direction::Input, false)?;
+    if let SelectedFormat::Xbrl(xbrl) = selected {
         if profile.documents() {
             return format_xbrl::from_bytes_bounded(
                 document.bytes,
@@ -964,8 +957,7 @@ fn read_payload_with_profile(
         return format_xbrl::from_str_with_options(utf8(document, "XBRL")?, schema, xbrl)
             .context("parsing XBRL input payload");
     }
-    if let Some(layout) = &options.idoc {
-        reject_idoc_conflicts(options, "input")?;
+    if let SelectedFormat::Idoc(layout) = selected {
         let mut instance =
             format_edi::idoc::from_bytes(document.bytes, schema, layout, options.lenient_segments)
                 .context("parsing SAP IDoc input payload")?;
@@ -973,8 +965,7 @@ fn read_payload_with_profile(
             .context("applying EDI numeric formats to SAP IDoc input payload")?;
         return Ok(instance);
     }
-    if let Some(layout) = &options.swift_mt {
-        reject_swift_conflicts(options, "input")?;
+    if let SelectedFormat::Swift(layout) = selected {
         let mut instance =
             format_edi::swift::from_bytes(document.bytes, schema, layout, options.lenient_segments)
                 .context("parsing SWIFT MT input payload")?;
@@ -982,8 +973,7 @@ fn read_payload_with_profile(
             .context("applying EDI numeric formats to SWIFT MT input payload")?;
         return Ok(instance);
     }
-    if let Some(boundary) = &options.external_source {
-        reject_external_source_conflicts(options, "input")?;
+    if let SelectedFormat::External(boundary) = selected {
         return match boundary.payload() {
             ExternalPayloadFormat::Json => format_json::from_str(utf8(document, "JSON")?, schema)
                 .context("parsing captured JSON input payload"),
@@ -991,24 +981,20 @@ fn read_payload_with_profile(
                 .context("parsing captured XML input payload"),
         };
     }
-    if let Some(pdf) = &options.pdf {
-        reject_pdf_conflicts(options, "input")?;
+    if let SelectedFormat::Pdf(pdf) = selected {
         return format_pdf::from_bytes(document.bytes, pdf).context("parsing PDF input payload");
     }
-    if let Some(layout) = &options.flextext {
-        reject_flextext_conflicts(options, "input")?;
+    if let SelectedFormat::FlexText(layout) = selected {
         return format_flextext::from_str(utf8(document, "FlexText")?, schema, layout)
             .context("parsing FlexText input payload");
     }
-    if let Some(protobuf) = &options.protobuf {
-        reject_protobuf_conflicts(options, "input")?;
+    if let SelectedFormat::Protobuf(protobuf) = selected {
         let layout =
             protobuf_layout(protobuf).context("parsing embedded Protocol Buffers schema")?;
         return format_protobuf::from_slice(&layout, &protobuf.root_message, document.bytes)
             .context("parsing Protocol Buffers input payload");
     }
-    if let Some(kind) = options.edi_kind {
-        reject_edi_conflicts(options, "input")?;
+    if let SelectedFormat::Edi(Some(kind)) = selected {
         let text = utf8(document, "EDI")?;
         let mut instance = match kind {
             EdiBoundaryKind::X12 => format_edi::x12::from_str_with_separators(
@@ -1034,8 +1020,7 @@ fn read_payload_with_profile(
             .context("applying EDI numeric formats to input payload")?;
         return Ok(instance);
     }
-    if options.xml_document {
-        reject_xml_conflicts(options, "input")?;
+    if let SelectedFormat::Xml(Origin::Explicit) = selected {
         let text = utf8(document, "XML")?;
         return match &options.wsdl {
             Some(wsdl) => format_xml::from_wsdl_message_str(text, schema, wsdl.operation()),
@@ -1045,11 +1030,10 @@ fn read_payload_with_profile(
         }
         .context("parsing XML input payload");
     }
-    if options.json_document || options.json5 || options.json_lines {
-        reject_json_conflicts(options, "input")?;
-        let json5 = json5_selected(path, options)?;
+    if let SelectedFormat::Json(mode, Origin::Explicit) = selected {
+        let json5 = mode == JsonMode::Json5;
         let text = utf8(document, if json5 { "JSON5" } else { "JSON" })?;
-        return if options.json_lines {
+        return if mode == JsonMode::Lines {
             format_json::from_lines(text, schema)
         } else if json5 {
             format_json::from_json5_str(text, schema)
@@ -1058,8 +1042,7 @@ fn read_payload_with_profile(
         }
         .context("parsing JSON input payload");
     }
-    if let Some(layout) = &options.fixed_width {
-        reject_fixed_width_csv_options(options, "input")?;
+    if let SelectedFormat::FixedWidth(layout) = selected {
         if profile.bounded() {
             return format_csv::from_bytes_fixed_width_bounded(document.bytes, schema, layout)
                 .map(Instance::Repeated)
@@ -1070,23 +1053,22 @@ fn read_payload_with_profile(
         return Ok(Instance::Repeated(rows));
     }
 
-    validate_tabular_fallback(path, options, "input")?;
-    match extension_for_dispatch(path, options)?.as_str() {
-        "csv" | "txt" if profile.bounded() => format_csv::from_bytes_with_options_bounded(
+    match selected {
+        SelectedFormat::Csv if profile.bounded() => format_csv::from_bytes_with_options_bounded(
             document.bytes,
             schema,
             &format_csv::CsvReadOptions::from(options),
         )
         .map(Instance::Repeated)
         .context("parsing CSV input payload"),
-        "csv" | "txt" => format_csv::from_str_with_options(
+        SelectedFormat::Csv => format_csv::from_str_with_options(
             utf8(document, "CSV")?,
             schema,
             &format_csv::CsvReadOptions::from(options),
         )
         .map(Instance::Repeated)
         .context("parsing CSV input payload"),
-        "xlsx" if profile.documents() => format_xlsx::from_bytes_bounded(
+        SelectedFormat::Xlsx if profile.documents() => format_xlsx::from_bytes_bounded(
             document.bytes,
             schema,
             options.xlsx_sheet.as_deref(),
@@ -1097,29 +1079,23 @@ fn read_payload_with_profile(
         )
         .map(Instance::Repeated)
         .context("parsing XLSX input payload"),
-        "xlsx" => read_xlsx_payload(document.bytes, schema, options),
-        "xml" => format_xml::from_str(utf8(document, "XML")?, schema)
-            .context("parsing XML input payload"),
-        "json" | "json5" | "jsonl" | "ndjson" => {
-            let lines =
-                options.json_lines || matches!(extension_of(path)?.as_str(), "jsonl" | "ndjson");
-            let json5 = json5_selected(path, options)?;
-            if lines && json5 {
-                bail!("JSON5 cannot be combined with JSON Lines");
-            }
-            if lines {
-                format_json::from_lines(utf8(document, "JSON")?, schema)
-            } else if json5 {
-                format_json::from_json5_str(utf8(document, "JSON5")?, schema)
-            } else {
-                format_json::from_str(utf8(document, "JSON")?, schema)
-            }
-            .context("parsing JSON input payload")
+        SelectedFormat::Xlsx => read_xlsx_payload(document.bytes, schema, options),
+        SelectedFormat::Xml(Origin::Fallback) => {
+            format_xml::from_str(utf8(document, "XML")?, schema)
+                .context("parsing XML input payload")
         }
-        "db" | "sqlite" | "sqlite3" => {
+        SelectedFormat::Json(mode, Origin::Fallback) => if mode == JsonMode::Lines {
+            format_json::from_lines(utf8(document, "JSON")?, schema)
+        } else if mode == JsonMode::Json5 {
+            format_json::from_json5_str(utf8(document, "JSON5")?, schema)
+        } else {
+            format_json::from_str(utf8(document, "JSON")?, schema)
+        }
+        .context("parsing JSON input payload"),
+        SelectedFormat::Sqlite => {
             bail!("SQLite input requires a persistent database and is unavailable as a payload")
         }
-        "edi" | "x12" | "edifact" | "hl7" => {
+        SelectedFormat::Edi(None) => {
             let text = utf8(document, "EDI")?;
             match format_edi::dialect_of(schema)? {
                 format_edi::Dialect::X12 => {
@@ -1137,10 +1113,15 @@ fn read_payload_with_profile(
             }
             .context("parsing EDI input payload")
         }
-        "idoc" => bail!("SAP IDoc input requires an embedded `idoc` layout"),
-        "fin" | "swift" => bail!("SWIFT MT input requires an embedded `swift_mt` layout"),
-        "pdf" => bail!("PDF input requires embedded `pdf` extraction options"),
-        other => bail!("unsupported input payload extension: .{other}"),
+        SelectedFormat::MissingIdoc => bail!("SAP IDoc input requires an embedded `idoc` layout"),
+        SelectedFormat::MissingSwift => {
+            bail!("SWIFT MT input requires an embedded `swift_mt` layout")
+        }
+        SelectedFormat::MissingPdf => bail!("PDF input requires embedded `pdf` extraction options"),
+        SelectedFormat::Unsupported(other) => {
+            bail!("unsupported input payload extension: .{other}")
+        }
+        _ => unreachable!("explicit formats returned above"),
     }
 }
 
