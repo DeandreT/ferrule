@@ -140,7 +140,16 @@ fn render_mapping(
     }
     types.push_str(SELECTED_TARGET_OUTPUT_TYPES);
     let mut output = String::new();
-    render_entry_points(program, primary_scope, &extra_scopes, &mut output);
+    let selected_xml = plan
+        .xml()
+        .is_some_and(|xml| xml.selected_inputs().is_some());
+    render_entry_points(
+        program,
+        primary_scope,
+        &extra_scopes,
+        selected_xml,
+        &mut output,
+    );
     if plan.json_companions() {
         render_json_entry_points(program, &mut output)?;
         selected_json_api::render(program, &mut output);
@@ -598,12 +607,17 @@ fn render_selected_target_entry_points(
     program: &Program,
     primary_scope: usize,
     extra_scopes: &[(&str, usize)],
+    selected_xml: bool,
     output: &mut String,
 ) {
     output.push_str(
         "\n    public static SelectedTargetOutput ExecuteSelectedTarget(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleTargetSelection selection)\n    {\n        return ExecuteSelectedTargetWithHost(source, selection, global::System.Array.Empty<NamedInput>());\n    }\n\n    public static SelectedTargetOutput ExecuteSelectedTargetWithHost(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleTargetSelection selection,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext? executionContext = null,\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader? dynamicSourceLoader = null)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(selection);\n        var selected = ResolveTarget(selection);\n        var context = CreateContext(source, extraSources, executionContext, dynamicSourceLoader);\n",
     );
-    output.push_str("        return ExecuteSelectedTargetFromContext(context, selected);\n    }\n\n    private static SelectedTargetOutput ExecuteSelectedTargetFromContext(global::Ferrule.Runtime.ScopeContext context, int selected)\n    {\n");
+    // Only selected XML enters execution with an already-admitted context.
+    // Other profiles retain their original inline typed entry-point body.
+    if selected_xml {
+        output.push_str("        return ExecuteSelectedTargetFromContext(context, selected);\n    }\n\n    private static SelectedTargetOutput ExecuteSelectedTargetFromContext(global::Ferrule.Runtime.ScopeContext context, int selected)\n    {\n");
+    }
     if !program.failure_rules.is_empty() {
         output.push_str("        EvaluateFailureRules(context);\n");
     }
@@ -622,6 +636,7 @@ fn render_entry_points(
     program: &Program,
     primary_scope: usize,
     extra_scopes: &[(&str, usize)],
+    selected_xml: bool,
     output: &mut String,
 ) {
     output.push_str(
@@ -658,7 +673,7 @@ fn render_entry_points(
          \n    public static ExecutionOutputs ExecuteOutputsWithSourcesAndDynamicSourceLoader(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(loader);\n        return ExecuteOutputs(CreateContext(source, extraSources, null, loader));\n    }\n\
          \n    public static ExecutionOutputs ExecuteOutputsWithSourcesContextAndDynamicSourceLoader(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext,\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader loader)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(executionContext);\n        global::System.ArgumentNullException.ThrowIfNull(loader);\n        return ExecuteOutputs(CreateContext(source, extraSources, executionContext, loader));\n    }\n",
     );
-    render_selected_target_entry_points(program, primary_scope, extra_scopes, output);
+    render_selected_target_entry_points(program, primary_scope, extra_scopes, selected_xml, output);
     render_source_context(program, output);
     output.push_str(
         "\n    private static ExecutionOutputs ExecuteOutputs(\n        global::Ferrule.Runtime.ScopeContext context)\n    {\n",
