@@ -46,6 +46,45 @@ open the [constant-output mapping](../examples/constant-preview.json), enter
 `{}`, and scroll to the action row. Preview should return
 `{"Value":"complete preview result"}`.
 
+### Exercise mapping paths in the desktop editor
+
+On Linux, use a fresh directory and the [desktop helper](../scripts/qualification/mapping-path-desktop.py)
+with a GUI build, Xvfb, xdotool, D-Bus, ImageMagick, xclip and a native file
+chooser. `desktop` stays open until Ferrule exits. In a second terminal use
+`action "$work"` for input, snapshots and clipboard reads; it verifies the
+display and process identities in `owner.json`. A snapshot copies the **saved**
+project and layout, so save before each capture.
+
+```sh
+tool=scripts/qualification/mapping-path-desktop.py
+python3 "$tool" prepare "$work"
+python3 "$tool" desktop "$work" /absolute/path/to/ferrule-gui
+```
+
+1. Open `seed.json` using **File → Open**. On the main canvas, search the
+   right-click palette for `active mapping file` and `top level caller`. Wire
+   **Mapping path** to `Active`, **Main mapping path** to `Main`, input `Keep`
+   to `Keep`, and the function call to `Function`. Save As `saved.json`.
+2. On the `audit` target create both path nodes again. Wire the same fields
+   using the audit constant for `Keep`. Open `runtime_paths` from **Functions
+   → Browse functions → Open in tab**. Wire its own path nodes to concat
+   inputs 1 and 3, leaving the separator on input 2.
+3. Visit main and audit to initialize both layouts, then save. On main, audit
+   and function, move one node, undo, then redo. At each stage use
+   `action "$work" snapshot history-CANVAS-STAGE`, replacing `CANVAS` with
+   `main`, `audit` or `function` and `STAGE` with `before`, `after`, `undo`
+   or `redo`.
+4. On each canvas, save and take `lock-CANVAS-before`. Open Save As, focus
+   Ferrule and try the palette and Undo while the chooser is pending. Cancel,
+   refocus Ferrule, save and take `lock-CANVAS-after`.
+5. Take `before-reopen`, reopen `saved.json` in the chooser, save and take
+   `after-reopen`. Preview main and audit independently with
+   `{"Keep":"self-authored desktop 108"}`. Use **Copy preview**, then
+   `action "$work" clipboard main-preview.json` or `audit-preview.json`.
+6. Close the window normally. Run `python3 "$tool" verify "$work"` to compare
+   the saved trees, layouts and full Preview outputs. The guard tests run
+   separately: `python3 -B scripts/qualification/test_mapping_path_desktop.py`.
+
 ## Run the appropriate checks
 
 Native and generated-backend CI can use the dedicated OVHcloud build runner.
