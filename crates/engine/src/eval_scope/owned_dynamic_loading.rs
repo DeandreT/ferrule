@@ -14,9 +14,8 @@ use std::sync::Arc;
 use ir::{Instance, Value};
 use mapping::{NamedSource, NodeId, OwnedSourceRef, Scope};
 
-use super::{
-    BasicSelection, eval_basic_owned_selected, owned_access_error, record_basic_candidate,
-};
+use super::owned_access_error;
+use super::owned_selection::{BasicSelection, eval_basic_owned_selected, record_basic_candidate};
 use crate::eval_expr::{EvalProgram, eval_expr};
 use crate::owned_context::{OwnedContext, OwnerKey, SourceOrigin, SourceOriginKind, WorkBudget};
 use crate::source_iteration::{
