@@ -150,6 +150,40 @@ pub struct ImportedX12FixedXmlBody {
 }
 
 impl ImportedX12FixedXmlBody {
+    /// Split explicitly proven early fields from deferred XML values without
+    /// mutating the complete body. Counter state must stay in the early phase;
+    /// the returned projects are not a license to reorder acquisition or writes.
+    pub fn preparation_projects(
+        &self,
+        early_fields: &[Vec<String>],
+    ) -> Result<(Project, Project), MfdError> {
+        let (early, late) =
+            mapping::split_xml_preparation(&self.body.graph, &self.body.root, early_fields)
+                .map_err(refuse)?;
+        let mut prepared = self.body.clone();
+        prepared.root = early;
+        prepared.prune_unreachable_nodes();
+        let mut deferred = self.body.clone();
+        deferred.root = late;
+        deferred.prune_unreachable_nodes();
+        if deferred
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::InvocationCounter { .. }))
+        {
+            return Err(refuse(
+                "fixed XML counters must remain in the prepared phase",
+            ));
+        }
+        for project in [&prepared, &deferred] {
+            if !engine::validate(project).is_empty() {
+                return Err(refuse("invalid fixed XML preparation project"));
+            }
+        }
+        Ok((prepared, deferred))
+    }
+
     /// Bind already parsed physical envelopes beneath one invocation owner.
     /// An empty input set still has that owner, so unconnected constructed
     /// target groups are not implicitly repeated once per source document.

@@ -664,6 +664,63 @@ fn fixed_xml_scalar_driver_keeps_optional_collection_owner() {
 }
 
 #[test]
+fn fixed_xml_preparation_preserves_the_body_and_refuses_deferred_counters() {
+    let fixture = fixed_xml_fixture();
+    let options = mfd::ImportOptions::default().with_package_root(&fixture.0);
+    let imported = mfd::import_x12_fixed_xml_body_with_options(
+        &fixture.0.join("mapping.mfd"),
+        &options,
+        "FixedXml",
+    )
+    .unwrap();
+    let before = mapping::project_file::encode_pretty(&imported.body).unwrap();
+    let (early, late) = imported
+        .preparation_projects(&[vec!["Kind".into()]])
+        .unwrap();
+    let input = imported.source_documents(vec![]).unwrap();
+    assert_eq!(
+        engine::run(&early, &input).unwrap(),
+        group(vec![("Kind", text("demo"))])
+    );
+    assert!(engine::run(&late, &input).unwrap().field("Kind").is_none());
+    assert_eq!(
+        mapping::project_file::encode_pretty(&imported.body).unwrap(),
+        before
+    );
+    assert!(
+        imported
+            .preparation_projects(&[vec!["Unknown".into()]])
+            .is_err()
+    );
+    assert!(
+        imported
+            .preparation_projects(&[vec!["Kind".into()], vec!["Kind".into()]])
+            .is_err()
+    );
+    fixture.change("mapping.mfd", |xml| {
+        xml.replace(r#"<edge vertexkey="105"/>"#, "").replace(
+            r#"<edge vertexkey="45"/>"#,
+            r#"<edge vertexkey="45"/><edge vertexkey="105"/>"#,
+        )
+    });
+    let counted = mfd::import_x12_fixed_xml_body_with_options(
+        &fixture.0.join("mapping.mfd"),
+        &options,
+        "FixedXml",
+    )
+    .unwrap();
+    assert!(
+        counted
+            .preparation_projects(&[])
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("counters must remain")
+    );
+    assert!(counted.preparation_projects(&[vec!["Kind".into()]]).is_ok());
+}
+
+#[test]
 fn xml_scalar_after_child_keeps_declared_evaluation_and_output_order() {
     let fixture = Fixture::new();
     std::fs::write(fixture.0.join("target.xsd"), r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Order"><xs:complexType><xs:sequence><xs:element name="Head" type="xs:string"/><xs:element name="Child"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string" minOccurs="0" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element><xs:element name="Tail" type="xs:string" minOccurs="0"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
