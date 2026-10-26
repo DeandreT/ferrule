@@ -232,6 +232,38 @@ fn the_owned_join_profile_lowers_joined_aggregates_and_older_routes_refuse() {
 }
 
 #[test]
+fn decimal_sum_is_admitted_through_owned_joined_aggregates() {
+    for reached in [true, false] {
+        let mut program = crate::lower_with_basic_owned_joins(&aggregate_project()).unwrap();
+        let expression = &mut program
+            .expressions
+            .iter_mut()
+            .find(|node| node.id == 1)
+            .unwrap()
+            .expression;
+        let Expression::OwnedJoinAggregate(aggregate) = expression else {
+            panic!("authored joined aggregate");
+        };
+        aggregate.function = AggregateOp::DecimalSum;
+        aggregate.arg = None;
+        if !reached {
+            program
+                .root
+                .bindings
+                .retain(|binding| binding.expression != 1);
+        }
+        assert!(crate::validate_basic_owned_joins_emission(&program).is_ok());
+    }
+    let mut project = aggregate_project();
+    let Node::OwnedJoinAggregate(aggregate) = project.graph.nodes.get_mut(&1).unwrap() else {
+        panic!("authored joined aggregate");
+    };
+    aggregate.function = AggregateOp::DecimalSum;
+    aggregate.arg = None;
+    assert!(crate::lower_with_basic_owned_joins(&project).is_ok());
+}
+
+#[test]
 fn tuple_expressions_admit_only_their_join_reads_and_pure_scalars() {
     let tuple_refusal =
         |request| capability(2, request, crate::OwnedSourceCapabilityReason::Join, 1);

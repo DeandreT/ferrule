@@ -8,8 +8,8 @@
 //! expression then evaluates once per tuple with only this join's members and
 //! flattened position active, and `arg` evaluates once in the receiving
 //! context after every tuple value, exactly as for the legacy joined
-//! aggregate. The reducers are the legacy ones, so empty, null and type
-//! policies are unchanged.
+//! aggregate. Ordinary reducers retain their empty, null and type policies;
+//! DecimalSum folds each projection before evaluating the next tuple.
 
 use std::collections::HashSet;
 
@@ -17,7 +17,7 @@ use ir::{Instance, Value};
 use mapping::{NodeId, OwnedJoinAggregate};
 
 use crate::EngineError;
-use crate::aggregate::aggregate;
+use crate::aggregate::{aggregate, collect_value};
 use crate::eval_expr::{EvalProgram, eval_node_input};
 use crate::owned_join_tuple;
 use crate::owned_search::{access, owned_state};
@@ -44,7 +44,7 @@ pub(crate) fn eval_owned_join_aggregate(
         owned_join_tuple::execute(state, positions, owned.join, &owned.plan, &budget, &access)?;
     let mut values = Vec::with_capacity(tuples.len());
     for tuple in &tuples {
-        values.push(match owned.expression {
+        let value = match owned.expression {
             Some(expression) => eval_node_input(
                 program.with_owned_join(tuple),
                 node,
@@ -55,7 +55,8 @@ pub(crate) fn eval_owned_join_aggregate(
                 in_progress,
             )?,
             None => Value::Null,
-        });
+        };
+        collect_value(owned.function, &mut values, value)?;
     }
     let arg = match owned.arg {
         Some(arg) => Some(eval_node_input(

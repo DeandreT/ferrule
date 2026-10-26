@@ -177,6 +177,49 @@ fn owned_aggregates_lower_exactly_and_stay_demand_driven() {
 }
 
 #[test]
+fn decimal_sum_is_admitted_only_through_owned_aggregate_profiles() {
+    for (id, owner) in [(2, SourceOwner::Primary), (3, named()), (99, named())] {
+        let mut p = project();
+        let mut aggregate = sum(owner.clone());
+        aggregate.function = AggregateOp::DecimalSum;
+        let mut direct = lower_with_basic_owned_collection_aggregates(&p).unwrap();
+        if id == 99 {
+            direct.expressions.push(ExpressionNode {
+                id,
+                expression: Expression::OwnedAggregate(aggregate.clone()),
+            });
+        } else {
+            direct
+                .expressions
+                .iter_mut()
+                .find(|node| node.id == id)
+                .unwrap()
+                .expression = Expression::OwnedAggregate(aggregate.clone());
+        }
+        assert_eq!(
+            validate_program_with_basic_owned_collection_aggregates(&direct),
+            Ok(())
+        );
+        assert_eq!(
+            validate_basic_owned_collection_aggregates_emission(&direct),
+            Ok(())
+        );
+        assert!(
+            legacy_named_input_admission_plan_with_basic_owned_collection_aggregates(&direct)
+                .is_ok()
+        );
+        p.graph.nodes.insert(id, Node::OwnedAggregate(aggregate));
+        if id == 99 {
+            // Ordinary lowering still prunes unreachable graph nodes.
+            let lowered = lower_with_basic_owned_collection_aggregates(&p).unwrap();
+            assert!(lowered.expressions.iter().all(|node| node.id != 99));
+        } else {
+            assert!(lower_with_basic_owned_collection_aggregates(&p).is_ok());
+        }
+    }
+}
+
+#[test]
 fn every_earlier_profile_refuses_owned_aggregates() {
     let p = project();
     let program = lower_with_basic_owned_collection_aggregates(&p).unwrap();

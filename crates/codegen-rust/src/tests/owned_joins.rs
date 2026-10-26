@@ -284,3 +284,37 @@ fn older_rust_emitters_refuse_joined_aggregates() {
         );
     }
 }
+
+#[test]
+fn decimal_sum_owned_joined_emission_folds_each_value_immediately() {
+    for reached in [true, false] {
+        let mut program =
+            codegen::lower_with_basic_owned_joins(&joined_aggregate_project()).unwrap();
+        let expression = &mut program
+            .expressions
+            .iter_mut()
+            .find(|node| node.id == 1)
+            .unwrap()
+            .expression;
+        let codegen::Expression::OwnedJoinAggregate(aggregate) = expression else {
+            panic!("authored joined aggregate");
+        };
+        aggregate.function = mapping::AggregateOp::DecimalSum;
+        aggregate.arg = None;
+        if !reached {
+            program
+                .root
+                .bindings
+                .retain(|binding| binding.expression != 1);
+        }
+        let artifacts = crate::emit_with_basic_owned_joins(&program, &options()).unwrap();
+        if reached {
+            let source = artifacts
+                .files()
+                .iter()
+                .find(|file| file.path.as_str() == "src/lib.rs")
+                .unwrap();
+            assert!(String::from_utf8_lossy(&source.contents).contains("collect_aggregate_value(codegen_runtime::AggregateFunction::DecimalSum, &mut values,"));
+        }
+    }
+}

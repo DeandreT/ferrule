@@ -581,7 +581,7 @@ pub(super) fn eval_sequence_aggregate(
             None => true,
         };
         if keep {
-            values.push(match expression {
+            let value = match expression {
                 Some(expression) => eval_node_input(
                     program,
                     consumer,
@@ -592,7 +592,8 @@ pub(super) fn eval_sequence_aggregate(
                     in_progress,
                 )?,
                 None => value,
-            });
+            };
+            super::aggregate::collect_value(function, &mut values, value)?;
         }
     }
     let arg = arg

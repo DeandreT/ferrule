@@ -34,11 +34,13 @@ schemas still describe String, Int, Float and Bool, not Decimal.
 - Count and item selection preserve scalar identity; text joins use canonical
   text. These are not decimal arithmetic operations.
 - Ordinary typed writers and user-function boundaries do not admit Decimal as
-  another existing schema type. Rust/C# literal emission and `.mfd` export remain
-  refused, including stored unused literals and value-map entries in exports.
+  another existing schema type. Rust/C# literal emission reconstructs the exact
+  bounded coefficient and scale without Float. `.mfd` export remains refused,
+  including stored unused literals and value-map entries in exports.
 - The editor displays saved decimal literals read-only; it does not add a decimal
   authoring choice or automatically turn them into strings or floats.
 
-Decimal conversion functions, decimal aggregates, schema/import rules and output
-policies require separate end-to-end admission. A carrier round trip or successful
-library build alone does not establish those capabilities.
+The admitted conversion and aggregate path is described in
+[decimal mapping operations](decimal-mapping-operations.md). Schema/import rules
+and native decimal output policies remain separate from explicit canonical text
+output; a carrier round trip alone does not establish those capabilities.

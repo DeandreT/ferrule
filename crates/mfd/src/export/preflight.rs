@@ -165,6 +165,26 @@ pub(super) fn validate_decimal_values(project: &Project) -> Result<(), MfdError>
             .map(|function| &function.body),
     ) {
         for (node, value) in &graph.nodes {
+            if matches!(value,
+                mapping::Node::Call { function, .. } if function == "decimal_from_nullable_text")
+                || matches!(
+                    value,
+                    mapping::Node::Aggregate {
+                        function: mapping::AggregateOp::DecimalSum,
+                        ..
+                    } | mapping::Node::SequenceAggregate {
+                        function: mapping::AggregateOp::DecimalSum,
+                        ..
+                    } | mapping::Node::JoinAggregate {
+                        function: mapping::AggregateOp::DecimalSum,
+                        ..
+                    }
+                )
+            {
+                return Err(MfdError::Unsupported(format!(
+                    "decimal operation at node {node} has no admitted .mfd export profile"
+                )));
+            }
             let decimal = match value {
                 mapping::Node::Const { value } => matches!(value, ir::Value::Decimal(_)),
                 mapping::Node::ValueMap { table, default, .. } => {

@@ -24,6 +24,8 @@ mod datetime_add;
 #[cfg(feature = "runtime")]
 mod decimal;
 #[cfg(feature = "runtime")]
+mod decimal_value;
+#[cfg(feature = "runtime")]
 mod filepath;
 #[cfg(feature = "runtime")]
 mod flextext;
@@ -64,6 +66,11 @@ pub enum FunctionError {
     DivideByZero,
     #[error("`{function}` integer arithmetic overflowed")]
     IntegerOverflow { function: &'static str },
+    #[error("`{function}`: {source}")]
+    DecimalConversion {
+        function: &'static str,
+        source: ir::DecimalError,
+    },
     #[error("`{function}` {message}")]
     InvalidArgument {
         function: &'static str,

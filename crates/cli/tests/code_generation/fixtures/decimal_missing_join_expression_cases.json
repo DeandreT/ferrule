@@ -1,0 +1,8 @@
+[
+  {"id":"missing-expression-before-constant-argument","input":{"Mode":"constant","Key":"x","Rows":[{"Key":"x"}]},"error":"unsupported"},
+  {"id":"missing-expression-before-raising-argument","input":{"Mode":"failing","Key":"x","Rows":[{"Key":"x"}]},"error":"unsupported"},
+  {"id":"missing-expression-without-argument","input":{"Mode":"none","Key":"x","Rows":[{"Key":"x"}]},"error":"unsupported"},
+  {"id":"empty-retains-argument-refusal","input":{"Mode":"constant","Key":"x","Rows":[]},"error":"argument"},
+  {"id":"empty-retains-argument-failure","input":{"Mode":"failing","Key":"x","Rows":[]},"error":"raise"},
+  {"id":"empty-without-argument-is-zero","input":{"Mode":"none","Key":"x","Rows":[]},"expected":{"Total":"0"}}
+]

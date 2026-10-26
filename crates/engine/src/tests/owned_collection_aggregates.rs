@@ -283,6 +283,31 @@ fn items_scope(owner: SourceOwner, group_by: Option<NodeId>, bindings: Vec<Bindi
     }
 }
 
+#[test]
+fn decimal_sum_requires_explicit_conversion_for_owned_collections() {
+    for owner in [SourceOwner::Primary, named()] {
+        for node in [
+            aggregate(
+                AggregateOp::DecimalSum,
+                owner.clone(),
+                &["Rows"],
+                &["Price"],
+                None,
+            ),
+            computed(AggregateOp::DecimalSum, owner, &["Rows"], 2, None),
+        ] {
+            let p = root_value(vec![(1, node), (2, constant(Value::String("bad".into())))]);
+            assert_eq!(
+                root_result(&p, inputs()),
+                Err(EngineError::AggregateUnsupportedScalar {
+                    function: AggregateOp::DecimalSum,
+                    found: "string",
+                })
+            );
+        }
+    }
+}
+
 /// Function, collection, value path, argument, Primary and Ref results.
 type RootCase = (
     AggregateOp,
