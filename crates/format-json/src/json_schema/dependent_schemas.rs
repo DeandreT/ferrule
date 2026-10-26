@@ -123,7 +123,7 @@ fn apply_selected(
     )?;
 
     property_dependencies::ensure_feasible(name, node)?;
-    super::predicate::validate_private_unique_items(node)?;
+    crate::runtime_constraints::validate_private_unique_items(node)?;
     if node.json_dependent_schemas_are_valid() && node.json_pattern_budget_is_valid() {
         Ok(())
     } else {
@@ -263,32 +263,6 @@ fn append_all_of(
                 });
             };
             existing.extend(assertions);
-        }
-    }
-    Ok(())
-}
-
-pub(crate) fn validate_object(
-    schema: &SchemaNode,
-    value: &serde_json::Value,
-    properties: impl IntoIterator<Item = impl AsRef<str>>,
-    patterns: &mut crate::PatternRuntime,
-) -> Result<(), JsonFormatError> {
-    let Some(constraints) = &schema.json_dependent_schemas else {
-        return Ok(());
-    };
-    let present = properties
-        .into_iter()
-        .map(|property| property.as_ref().to_string())
-        .collect::<BTreeSet<_>>();
-    for constraint in constraints.as_slice() {
-        if present.contains(constraint.trigger())
-            && !super::predicate::matches(constraint.predicate(), value, patterns)?
-        {
-            return Err(JsonFormatError::DependentSchemaMismatch {
-                object: schema.name.clone(),
-                trigger: constraint.trigger().to_string(),
-            });
         }
     }
     Ok(())

@@ -68,27 +68,6 @@ pub(super) fn intersect(
     }
 }
 
-pub(crate) fn validate_json(
-    schema: &SchemaNode,
-    value: &serde_json::Value,
-) -> Result<(), JsonFormatError> {
-    let Some(range) = schema.string_length_range else {
-        return Ok(());
-    };
-    let serde_json::Value::String(value) = value else {
-        return Ok(());
-    };
-    let length = value.chars().count();
-    if range.contains_len(length) {
-        return Ok(());
-    }
-    Err(JsonFormatError::StringLengthMismatch {
-        name: schema.name.clone(),
-        range: describe(range),
-        got: length,
-    })
-}
-
 pub(super) fn render(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json::Value>) {
     let Some(range) = node.string_length_range else {
         return;
@@ -133,19 +112,6 @@ fn exact_length(
             &format!("`{keyword}` must be an exact non-negative integer JSON token"),
         )
     })
-}
-
-fn describe(range: StringLengthRange) -> String {
-    match (range.minimum(), range.maximum()) {
-        (minimum, Some(maximum)) if minimum == maximum => {
-            format!("exactly {minimum} Unicode scalar values")
-        }
-        (0, Some(maximum)) => format!("at most {maximum} Unicode scalar values"),
-        (minimum, None) => format!("at least {minimum} Unicode scalar values"),
-        (minimum, Some(maximum)) => {
-            format!("between {minimum} and {maximum} Unicode scalar values")
-        }
-    }
 }
 
 fn unsupported(name: &str, reason: &str) -> JsonFormatError {

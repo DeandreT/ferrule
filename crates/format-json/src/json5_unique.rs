@@ -8,7 +8,7 @@
 
 use ir::SchemaNode;
 
-use crate::{JsonFormatError, MAX_JSON5_DOCUMENT_BYTES, json_schema::unique_items};
+use crate::{JsonFormatError, MAX_JSON5_DOCUMENT_BYTES, runtime_constraints::unique_items};
 
 const MAX_NORMALIZED_BYTES: usize = MAX_JSON5_DOCUMENT_BYTES;
 
