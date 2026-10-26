@@ -10,8 +10,10 @@ import ctypes
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import shutil
+import stat
 import subprocess
 import time
 
@@ -165,6 +167,8 @@ def desktop(directory, binary):
         if not number.isdecimal():
             raise RuntimeError("Private Xvfb did not allocate a display")
         env.update(DISPLAY=":" + number, GDK_BACKEND="x11")
+        identity = process_identity(server.pid)
+        binding = display_binding(server.pid, env["DISPLAY"])
         with (directory / "gui.log").open("wb") as log:
             app = subprocess.Popen(
                 ["dbus-run-session", "--", str(binary)], cwd=directory,
@@ -172,6 +176,7 @@ def desktop(directory, binary):
             )
             (directory / "owner.json").write_text(json.dumps({
                 "display": env["DISPLAY"], "xvfb": server.pid,
+                "xvfb_identity": identity, "display_binding": binding,
                 "session": app.pid, "binary": str(binary),
             }, indent=2))
             try:
@@ -187,34 +192,116 @@ def desktop(directory, binary):
     return result
 
 
+def process_identity(pid, proc_root=Path("/proc")):
+    """A PID alone is not an identity: retain its boot, start time and executable."""
+    process = proc_root / str(pid)
+    fields = (process / "stat").read_text().rsplit(")", 1)[1].split()
+    executable = process / "exe"
+    metadata = executable.stat()
+    if fields[0] in ("Z", "X"):
+        raise RuntimeError("The owned X server has exited")
+    return {
+        "boot_id": (proc_root / "sys/kernel/random/boot_id").read_text().strip(),
+        "start_ticks": int(fields[19]),
+        "executable": str(executable.readlink()),
+        "executable_device": metadata.st_dev,
+        "executable_inode": metadata.st_ino,
+    }
+
+
+def display_binding(pid, display, proc_root=Path("/proc"),
+                    socket_directory=Path("/tmp/.X11-unix")):
+    """Tie the display pathname and its listening socket to this exact process."""
+    if not isinstance(display, str) or not re.fullmatch(r":[0-9]+", display):
+        raise RuntimeError("Owner metadata does not name a local X display")
+    path = socket_directory / ("X" + display[1:])
+    metadata = path.lstat()
+    if not stat.S_ISSOCK(metadata.st_mode):
+        raise RuntimeError("The owned display path is not a socket")
+    listeners = {
+        fields[6]
+        for line in (proc_root / "net/unix").read_text().splitlines()[1:]
+        if len(fields := line.split()) == 8 and fields[7] == str(path)
+        and fields[3] == "00010000" and fields[4] == "0001"
+    }
+    descriptors = {fd.readlink().as_posix() for fd in (proc_root / str(pid) / "fd").iterdir()}
+    owned = sorted(inode for inode in listeners if f"socket:[{inode}]" in descriptors)
+    if len(owned) != 1:
+        raise RuntimeError("The recorded X server does not own this display socket")
+    return {"device": metadata.st_dev, "inode": metadata.st_ino, "listener": owned[0]}
+
+
+def validate_owner(owner, proc_root=Path("/proc"),
+                   socket_directory=Path("/tmp/.X11-unix")):
+    """Fail closed for legacy, stale or reused owner records before any action."""
+    try:
+        current = process_identity(owner["xvfb"], proc_root)
+        if Path(current["executable"]).name != "Xvfb" or current != owner["xvfb_identity"]:
+            raise RuntimeError("The owned X server process identity changed")
+        if display_binding(owner["xvfb"], owner["display"], proc_root,
+                           socket_directory) != owner["display_binding"]:
+            raise RuntimeError("The owned X display socket changed")
+    except (OSError, KeyError, ValueError, IndexError, TypeError) as error:
+        raise RuntimeError("The owned desktop is unavailable or its metadata is stale") from error
+
+
+def destination(directory, name, suffix=""):
+    """Every artifact is a regular file directly beneath the private run directory."""
+    if (not isinstance(name, str) or not name or name.strip() != name
+            or name in (".", "..") or any(char in name for char in ("/", "\\", "\0"))
+            or Path(name).name != name):
+        raise ValueError("Artifact name must be a nonempty basename, not a path")
+    root = directory.resolve(strict=True)
+    path = root / (name + suffix)
+    if path.is_symlink() or path.resolve().parent != root:
+        raise ValueError("Artifact destination must not be a symlink or escape the run directory")
+    if path.exists() and not path.is_file():
+        raise ValueError("Artifact destination must be a regular file")
+    return path
+
+
+def output_file(path, append=False):
+    flags = os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW
+    flags |= os.O_APPEND if append else os.O_TRUNC
+    return os.fdopen(os.open(path, flags, 0o600), "ab" if append else "wb")
+
+
+def capture(path, env):
+    # Write stdout through our no-follow descriptor, never an external tool's path opener.
+    with output_file(path) as stream:
+        subprocess.run(["import", "-window", "root", "png:-"],
+                       env=env, stdout=stream, check=True)
+
+
 def action(directory, arguments):
     owner = json.loads((directory / "owner.json").read_text())
-    # Refuse an old owner file rather than directing input at a reused display.
-    if not Path(f"/proc/{owner['xvfb']}").exists():
-        raise RuntimeError("The owned desktop is no longer running")
+    validate_owner(owner)
     env = dict(os.environ, DISPLAY=owner["display"])
     if arguments[0] == "close":
         retain_process_inventory(directory, owner)
         close_window(owner["display"], int(arguments[1], 0))
     elif arguments[0] == "snapshot":
         name = arguments[1]
-        if Path(name).name != name:
-            raise ValueError("Snapshot name must be a filename, not a path")
+        # Preflight the whole set so a bad later destination cannot partially overwrite it.
+        paths = {suffix: destination(directory, name, suffix)
+                 for suffix in (".json", ".layout.json", ".png")}
         for suffix in (".json", ".layout.json"):
-            shutil.copyfile(directory / ("saved" + suffix), directory / (name + suffix))
-        subprocess.run(["import", "-window", "root", str(directory / (name + ".png"))],
-                       env=env, check=True)
+            with (directory / ("saved" + suffix)).open("rb") as source:
+                with output_file(paths[suffix]) as target:
+                    shutil.copyfileobj(source, target)
+        capture(paths[".png"], env)
     elif arguments[0] == "capture":
-        destination = directory / (arguments[1] + ".png")
-        subprocess.run(["import", "-window", "root", str(destination)], env=env, check=True)
+        capture(destination(directory, arguments[1], ".png"), env)
     elif arguments[0] == "clipboard":
+        path = destination(directory, arguments[1])
         data = subprocess.check_output(["xclip", "-selection", "clipboard", "-o"], env=env)
-        (directory / arguments[1]).write_bytes(data)
+        with output_file(path) as stream:
+            stream.write(data)
     else:
         subprocess.run(["xdotool", *arguments], env=env, check=True)
         time.sleep(0.4)
-    with (directory / "actions.jsonl").open("a") as log:
-        log.write(json.dumps(arguments) + "\n")
+    with output_file(destination(directory, "actions.jsonl"), append=True) as log:
+        log.write((json.dumps(arguments) + "\n").encode())
 
 
 def retain_process_inventory(directory, owner):
@@ -232,7 +319,8 @@ def retain_process_inventory(directory, owner):
     while children := [row for row in rows if row["ppid"] in ids and row["pid"] not in ids]:
         owned.extend(children)
         ids.update(row["pid"] for row in children)
-    (directory / "owned-processes.json").write_text(json.dumps(owned, indent=2) + "\n")
+    with output_file(destination(directory, "owned-processes.json")) as stream:
+        stream.write((json.dumps(owned, indent=2) + "\n").encode())
 
 
 def close_window(display_name, window):

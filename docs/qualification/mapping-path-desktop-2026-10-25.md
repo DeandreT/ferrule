@@ -79,6 +79,20 @@ launcher removes `WAYLAND_DISPLAY`, `WAYLAND_SOCKET`, `XDG_RUNTIME_DIR`,
 `XDG_SESSION_TYPE` and the inherited D-Bus address. It starts its own D-Bus
 session and closes its X server when Ferrule exits.
 
+Every action verifies the recorded Xvfb boot/start/executable identity and the
+display socket's identity and ownership before using that display. A stale,
+reused or legacy owner record is refused; old qualification originals remain
+readable by `verify`, but cannot be used to control a new desktop. Snapshot,
+capture and clipboard names must be plain basenames within the run directory.
+Symlinks, absolute paths and traversal paths are refused; writes use no-follow
+file descriptors, including screenshot output.
+
+Run the helper's standard-library guard tests independently of any desktop:
+
+```sh
+python3 -B scripts/qualification/test_mapping_path_desktop.py
+```
+
 1. Open `seed.json` through **File → Open**. The seed has schemas, a source
    field, an audit constant, a function call and the function's concat scaffold,
    but no runtime nodes and no target bindings.
