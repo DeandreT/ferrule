@@ -32,6 +32,8 @@ pub(super) fn validate(
         mfd_decimal_input_names,
         mfd_optional_parser_input_names,
         json5: _,
+        json5_interchange_dependency,
+        mfd_json5_string_dependencies,
         tabular_kind,
         delimiter,
         csv_quote,
@@ -76,6 +78,7 @@ pub(super) fn validate(
         xml_schema_hints,
         wsdl,
         json_schema_unresolved_reference,
+        json5_interchange_dependency,
         tabular_kind,
         delimiter,
         csv_quote,
@@ -97,6 +100,7 @@ pub(super) fn validate(
         sqlite_read
     );
     empty!(
+        mfd_json5_string_dependencies,
         edi_implied_decimals,
         edi_lexical_formats,
         edi_value_constraints,

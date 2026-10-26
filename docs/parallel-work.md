@@ -422,7 +422,7 @@ shared verification slot.
 | --- | --- | --- |
 | [#103 Typed SQLite query boundary](https://github.com/DeandreT/ferrule/issues/103) | Settle the read-only query contract first. | Boundary model, SQLite and CLI input; #233 metadata inspection is a separate scope. |
 | [#105 Offline mapping bundle export](https://github.com/DeandreT/ferrule/issues/105) | Settle the bundle contract first. | CLI staging, resources and path codecs. |
-| [#106 JSON5 interchange metadata](https://github.com/DeandreT/ferrule/issues/106) | Observe saved metadata before implementation. | Coordinate alternate-display access with #93. |
+| [#106 JSON5 interchange metadata](https://github.com/DeandreT/ferrule/issues/106) | Observed metadata retained; executable interchange refused. | [Recorded setting and numeric incompatibilities](conformance/json5-interchange.md); no shared display is retained. |
 | [#108 Mapping-path desktop workflow](https://github.com/DeandreT/ferrule/issues/108) | Qualify the existing implementation's desktop workflow. | Coordinate the desktop scenario with #92/#93. |
 | [#160 C# JSON5 allocation attribution](https://github.com/DeandreT/ferrule/issues/160) | Agree a matched profiling/retention plan before attribution. | Benchmark/report only; production optimization and filesystem #107 are excluded. |
 | [#347 Nested JSON Schema array wrappers](https://github.com/DeandreT/ferrule/issues/347) | Design independent wrapper representation and native/export/generated behavior first; retain the typed refusal until qualified. | Shared IR, format-json and codegen ownership must coordinate with #346. |

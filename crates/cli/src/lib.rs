@@ -1244,6 +1244,9 @@ mod format_selection {
         direction: Direction,
         captured: bool,
     ) -> anyhow::Result<Option<Declaration<'_>>> {
+        if let Some(dependency) = options.json5_interchange_blocker() {
+            return Err(dependency.clone().into());
+        }
         let side = direction.label();
         let selected = if let Some(value) = &options.xbrl {
             reject_xbrl_conflicts(options, side)?;

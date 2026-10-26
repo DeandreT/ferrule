@@ -4,6 +4,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use ir::{Instance, Value};
 use mapping::Node;
 
+#[path = "support/json5_string_dependency.rs"]
+mod json5_string_dependency;
+
 struct TempDir(PathBuf);
 
 static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
@@ -109,6 +112,7 @@ fn imports_executes_and_round_trips_nested_json_string_serializer() {
     assert!(engine::validate(&roundtrip.project).is_empty());
     assert_eq!(engine::run(&roundtrip.project, &input).unwrap(), output);
 
+    json5_string_dependency::assert_retained(&dir.0, mapping::Json5StringComponentKind::Serializer);
     let mut unsupported = imported.project;
     let Some((_, Node::Call { args, .. })) = unsupported.graph.nodes.iter().find(|(_, node)| {
         matches!(

@@ -171,6 +171,36 @@ fn explicit_families_override_paths_without_parsing_layouts() {
 }
 
 #[test]
+fn retained_json5_dependency_cannot_be_overridden_by_another_format() {
+    for name in FAMILIES {
+        let mut options = FormatOptions {
+            json5_interchange_dependency: Some(
+                mapping::Json5InterchangeDependency::ComponentSetting { value: "1".into() },
+            ),
+            ..FormatOptions::default()
+        };
+        add_family(&mut options, name);
+        for direction in [Direction::Input, Direction::Output] {
+            let error = match format_selection::select(
+                Path::new("override.json"),
+                &options,
+                direction,
+                false,
+            ) {
+                Err(error) => error,
+                Ok(_) => panic!("retained JSON5 dependency selected {name}"),
+            };
+            assert!(
+                error
+                    .downcast_ref::<mapping::Json5InterchangeDependency>()
+                    .is_some(),
+                "{name}: {error:#}"
+            );
+        }
+    }
+}
+
+#[test]
 fn every_explicit_pair_keeps_the_first_conflict_owner_across_routes() {
     let schema = SchemaNode::group("Root", vec![]);
     let document =

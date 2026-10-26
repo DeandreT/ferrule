@@ -996,9 +996,13 @@ An X12 variable cannot introduce parser-error ports absent from its selected
 configuration; configured fields whose names begin with `ParserErrors_` remain
 ordinary data.
 
-JSON5 endpoint syntax currently rejects before export because the native
-component setting has not been verified; emitting an ordinary JSON component
-would change the document syntax.
+JSON5 component settings and `.json5` instance paths are retained as a typed
+repair dependency, not executable native JSON5 mode. Legacy filename attributes
+take precedence over nested input/output file roles. Strict import, runtime and
+export refuse marked primary and named boundaries: observed vendor filename
+selection and numeric behavior differ from Ferrule's codec. Emitting ordinary
+JSON would silently change the design. See the
+[JSON5 interchange observation](conformance/json5-interchange.md).
 Supported named sources, independent targets, dynamic XML paths, HTTP response
 boundaries, selected joins, exception sinks, and configured format components
 retain their ownership in the exported design. A complementary source-backed

@@ -119,9 +119,10 @@ for a complete format standard or another product.
   exchange strict schema-shaped JSON with their hosts; the explicit
   `--json5-adapters` profile adds singular JSON5-input, strict-JSON-output
   companions for closed object schemas, as described in the
-  [generated JSON5 companion contract](generated-json5-contract.md). Native
-  `.mfd` export rejects JSON5 boundaries until the native component setting is
-  represented and verified.
+   [generated JSON5 companion contract](generated-json5-contract.md). MFD import
+   retains observed JSON5 metadata separately and refuses execution/export: the
+   vendor setting, filename selection and numeric behavior differ from these
+   codecs. See the [interchange observation](conformance/json5-interchange.md).
 - PDF targets are not supported.
 - XBRL taxonomy formula, presentation, calculation, and linkbase execution are
   outside the current runtime.

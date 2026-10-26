@@ -689,9 +689,9 @@ fn reject_json5_boundary(
         .and_then(|path| Path::new(path).extension())
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| extension.eq_ignore_ascii_case("json5"));
-    if options.json5 || extension_selects_json5 {
+    if options.json5 || extension_selects_json5 || options.json5_interchange_blocker().is_some() {
         return Err(MfdError::Unsupported(format!(
-            "{label} uses JSON5 document syntax, which .mfd export cannot encode"
+            "{label} uses JSON5 document syntax, whose component and numeric semantics have no admitted .mfd export profile"
         )));
     }
     Ok(())
