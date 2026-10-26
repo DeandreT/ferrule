@@ -50,6 +50,12 @@ fn malformed_or_noncanonical_decimal_tags_are_refused() {
         assert!(serde_json::from_str::<Value>(&format!(r#"{{"$decimal96":"{text}"}}"#)).is_err());
     }
     for text in [
+        r#"["1"]"#,
+        r#"["0"]"#,
+        r#"["1","2"]"#,
+        r#"[{"$decimal96":"1"}]"#,
+        "[]",
+        "{}",
         r#"{"$decimal96":1}"#,
         r#"{"$decimal96":"1","extra":true}"#,
         r#"{"$decimal96":"1","$decimal96":"2"}"#,

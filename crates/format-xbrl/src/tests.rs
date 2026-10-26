@@ -1,6 +1,93 @@
 use super::*;
 use mapping::{XbrlBoundaryOptions, XbrlFactBinding, XbrlFactType, XbrlNamespaceBinding};
 
+#[test]
+fn decimal_carrier_is_refused_by_existing_xbrl_scalar_schemas()
+-> Result<(), Box<dyn std::error::Error>> {
+    let text = |value: &str| Instance::Scalar(Value::String(value.into()));
+    let instance = |value| {
+        Instance::Group(
+            vec![(
+                "rows".into(),
+                Instance::Repeated(vec![Instance::Group(
+                    vec![
+                        (
+                            "identifier".into(),
+                            Instance::Group(
+                                vec![
+                                    ("scheme".into(), text("urn:entity")),
+                                    (XML_TEXT_FIELD.into(), text("Example")),
+                                ]
+                                .into(),
+                            ),
+                        ),
+                        (
+                            "period".into(),
+                            Instance::Group(vec![("instant".into(), text("2026-06-30"))].into()),
+                        ),
+                        ("Amount".into(), Instance::Scalar(value)),
+                    ]
+                    .into(),
+                )]),
+            )]
+            .into(),
+        )
+    };
+    let options = XbrlBoundaryOptions::external_target("taxonomy/report.xsd", None)?
+        .with_namespace_bindings(vec![
+            XbrlNamespaceBinding::new(vec!["rows".into(), "identifier".into()], XBRLI)?,
+            XbrlNamespaceBinding::new(vec!["rows".into(), "period".into()], XBRLI)?,
+            XbrlNamespaceBinding::new(vec!["rows".into(), "Amount".into()], "urn:decimal-test")?,
+        ])?;
+    for (ty, ordinary, expected) in [
+        (ScalarType::Float, Value::Float(1.25), "1.25"),
+        (ScalarType::String, Value::String("1.25".into()), "1.25"),
+        (ScalarType::Bool, Value::Bool(true), "true"),
+    ] {
+        let schema = SchemaNode::group(
+            "xbrl",
+            vec![
+                SchemaNode::group(
+                    "rows",
+                    vec![
+                        SchemaNode::group(
+                            "identifier",
+                            vec![
+                                SchemaNode::scalar("scheme", ScalarType::String).attribute(),
+                                SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
+                            ],
+                        ),
+                        SchemaNode::group(
+                            "period",
+                            vec![SchemaNode::scalar("instant", ScalarType::String)],
+                        ),
+                        SchemaNode::scalar("Amount", ty),
+                    ],
+                )
+                .repeating(),
+            ],
+        );
+        let decimal = Value::decimal(ir::Decimal96::parse_exact("1.25")?);
+        assert!(
+            matches!(
+                to_string(&schema, &instance(decimal), &options),
+                Err(XbrlFormatError::TargetShape { path }) if path == "rows/Amount"
+            ),
+            "{ty:?}"
+        );
+        // The String case also proves that an explicit upstream conversion
+        // to canonical text remains supported.
+        let xml = to_string(&schema, &instance(ordinary), &options)?;
+        let document = roxmltree::Document::parse(&xml)?;
+        let amount = document
+            .descendants()
+            .find(|node| node.has_tag_name(("urn:decimal-test", "Amount")))
+            .ok_or("missing amount")?;
+        assert_eq!(amount.text(), Some(expected), "{ty:?}");
+    }
+    Ok(())
+}
+
 fn table_schema() -> SchemaNode {
     let mut row = SchemaNode::group(
         "table1",
