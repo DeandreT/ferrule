@@ -76,9 +76,16 @@ impl Read for NeverRead {
 #[test]
 fn retained_dependencies_refuse_before_native_io_or_generated_publication() -> anyhow::Result<()> {
     for source in [true, false] {
-        for dependency in [
-            Json5InterchangeDependency::ComponentSetting { value: "1".into() },
-            Json5InterchangeDependency::InstanceExtension {},
+        for (dependency, internal) in [
+            (
+                Json5InterchangeDependency::ComponentSetting { value: "1".into() },
+                false,
+            ),
+            (Json5InterchangeDependency::InstanceExtension {}, false),
+            (
+                Json5InterchangeDependency::ComponentSetting { value: "1".into() },
+                true,
+            ),
         ] {
             let directory = Directory::new();
             let mut project = project();
@@ -87,7 +94,19 @@ fn retained_dependencies_refuse_before_native_io_or_generated_publication() -> a
             } else {
                 &mut project.target_options
             };
-            options.json5_interchange_dependency = Some(dependency);
+            if internal {
+                options.mfd_json5_string_dependencies.push(
+                    mapping::Json5StringInterchangeDependency {
+                        component: "parser".into(),
+                        kind: mapping::Json5StringComponentKind::Parser,
+                        dependency,
+                        input_instance: Some("preview.json".into()),
+                        output_instance: None,
+                    },
+                );
+            } else {
+                options.json5_interchange_dependency = Some(dependency);
+            }
             let project_path = directory.0.join("project.json");
             std::fs::write(
                 &project_path,
@@ -167,7 +186,8 @@ fn retained_dependencies_refuse_before_native_io_or_generated_publication() -> a
                         .unwrap_err();
                         assert!(
                             format!("{error:#}").contains(REFUSAL)
-                                || format!("{error:#}").contains("json5_interchange_dependency"),
+                                || format!("{error:#}").contains("json5_interchange_dependency")
+                                || format!("{error:#}").contains("mfd_json5_string_dependencies"),
                             "{error:#}"
                         );
                         if existing {

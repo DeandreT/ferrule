@@ -1244,7 +1244,7 @@ mod format_selection {
         direction: Direction,
         captured: bool,
     ) -> anyhow::Result<Option<Declaration<'_>>> {
-        if let Some(dependency) = &options.json5_interchange_dependency {
+        if let Some(dependency) = options.json5_interchange_blocker() {
             return Err(dependency.clone().into());
         }
         let side = direction.label();

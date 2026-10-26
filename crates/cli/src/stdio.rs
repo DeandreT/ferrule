@@ -140,7 +140,7 @@ impl<'a> PreparedStreamRun<'a> {
             .chain(project.extra_sources.iter().map(|source| &source.options))
             .chain(project.extra_targets.iter().map(|target| &target.options))
         {
-            if let Some(dependency) = &options.json5_interchange_dependency {
+            if let Some(dependency) = options.json5_interchange_blocker() {
                 return Err(dependency.clone().into());
             }
         }

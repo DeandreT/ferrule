@@ -27,6 +27,41 @@ impl fmt::Display for Json5InterchangeDependency {
 
 impl std::error::Error for Json5InterchangeDependency {}
 
+/// The role of a non-document JSON component retained by an MFD import.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Json5StringComponentKind {
+    Parser,
+    Serializer,
+}
+
+/// Original settings of an internal string adapter. These live on the
+/// primary source options beside other MFD-wide parser metadata, because the
+/// adapter is lowered into graph expressions rather than a document endpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Json5StringInterchangeDependency {
+    pub component: String,
+    pub kind: Json5StringComponentKind,
+    pub dependency: Json5InterchangeDependency,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_instance: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_instance: Option<String>,
+}
+
+impl crate::FormatOptions {
+    /// A retained document or internal string component that forbids codec
+    /// admission. The full original metadata remains on the options value.
+    pub fn json5_interchange_blocker(&self) -> Option<&Json5InterchangeDependency> {
+        self.json5_interchange_dependency.as_ref().or_else(|| {
+            self.mfd_json5_string_dependencies
+                .first()
+                .map(|component| &component.dependency)
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -57,6 +92,12 @@ mod tests {
     fn absent_dependency_does_not_change_legacy_serialization() {
         let options = FormatOptions::default();
         let value = serde_json::to_value(&options).unwrap();
+        assert!(
+            !value
+                .as_object()
+                .unwrap()
+                .contains_key("mfd_json5_string_dependencies")
+        );
         assert!(
             !value
                 .as_object()

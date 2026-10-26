@@ -181,9 +181,15 @@ fn retained_json5_dependency_cannot_be_overridden_by_another_format() {
         };
         add_family(&mut options, name);
         for direction in [Direction::Input, Direction::Output] {
-            let error =
-                format_selection::select(Path::new("override.json"), &options, direction, false)
-                    .unwrap_err();
+            let error = match format_selection::select(
+                Path::new("override.json"),
+                &options,
+                direction,
+                false,
+            ) {
+                Err(error) => error,
+                Ok(_) => panic!("retained JSON5 dependency selected {name}"),
+            };
             assert!(
                 error
                     .downcast_ref::<mapping::Json5InterchangeDependency>()

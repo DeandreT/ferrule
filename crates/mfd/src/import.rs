@@ -1605,6 +1605,7 @@ fn import_resolved(
     let mut exception_recipes = Vec::new();
     let mut pending_joins = join::PendingJoins::default();
     let mut skipped_libraries: Vec<String> = Vec::new();
+    let mut json5_string_dependencies = Vec::new();
     let inspect_unused_input = unused_xml_source::may_contain_unused_input(structure);
     let root_view_inventory = xml_root_view::Inventory::read(structure);
     if !retain_primary_filename
@@ -1727,36 +1728,66 @@ fn import_resolved(
                 }
                 "json" => {
                     match read_json_component_in_package(&component, resources, &mut warnings) {
-                        Some(sc) => match json_serializer::read(&component, &sc) {
-                            Ok(Some(serializer)) => json_serializers.push(serializer),
-                            Ok(None) => match json_parser::read(
-                                &component,
-                                &sc,
-                                &edges.feeds.values().copied().collect(),
-                            ) {
-                                Ok(Some(parser)) => json_parsers.push(parser),
-                                Ok(None) => {
-                                    if !sc.is_variable {
-                                        document_paths::warn(
-                                            component,
-                                            &edges.feeds,
-                                            "JSON",
-                                            &mut warnings,
-                                        );
+                        Some(sc) => {
+                            // String adapters cease to own FormatOptions when lowered.
+                            // Retain their original refusal independently of the recipe.
+                            if let Some(dependency) = &sc.options.json5_interchange_dependency {
+                                for kind in component.descendants().filter_map(|node| {
+                                    if !node.has_tag_name("parameter") {
+                                        return None;
                                     }
+                                    match node.attribute("usageKind") {
+                                        Some("stringparse") => {
+                                            Some(mapping::Json5StringComponentKind::Parser)
+                                        }
+                                        Some("stringserialize") => {
+                                            Some(mapping::Json5StringComponentKind::Serializer)
+                                        }
+                                        _ => None,
+                                    }
+                                }) {
+                                    json5_string_dependencies.push(
+                                        mapping::Json5StringInterchangeDependency {
+                                            component: sc.name.clone(),
+                                            kind,
+                                            dependency: dependency.clone(),
+                                            input_instance: sc.input_instance.clone(),
+                                            output_instance: sc.output_instance.clone(),
+                                        },
+                                    );
+                                }
+                            }
+                            match json_serializer::read(&component, &sc) {
+                                Ok(Some(serializer)) => json_serializers.push(serializer),
+                                Ok(None) => match json_parser::read(
+                                    &component,
+                                    &sc,
+                                    &edges.feeds.values().copied().collect(),
+                                ) {
+                                    Ok(Some(parser)) => json_parsers.push(parser),
+                                    Ok(None) => {
+                                        if !sc.is_variable {
+                                            document_paths::warn(
+                                                component,
+                                                &edges.feeds,
+                                                "JSON",
+                                                &mut warnings,
+                                            );
+                                        }
+                                        schema_components.push(sc);
+                                    }
+                                    Err(reason) => warnings.push(format!(
+                                        "JSON string parser `{name}` is unsupported: {reason}"
+                                    )),
+                                },
+                                Err(reason) => {
+                                    warnings.push(format!(
+                                        "JSON string serializer `{name}` is unsupported: {reason}"
+                                    ));
                                     schema_components.push(sc);
                                 }
-                                Err(reason) => warnings.push(format!(
-                                    "JSON string parser `{name}` is unsupported: {reason}"
-                                )),
-                            },
-                            Err(reason) => {
-                                warnings.push(format!(
-                                    "JSON string serializer `{name}` is unsupported: {reason}"
-                                ));
-                                schema_components.push(sc);
                             }
-                        },
+                        }
                         None => warnings.push(format!("skipped json component `{name}`")),
                     }
                 }
@@ -2656,6 +2687,7 @@ fn import_resolved(
         std::mem::take(&mut builder.native_decimal_input_names);
     source_options.mfd_optional_parser_input_names =
         std::mem::take(&mut builder.optional_parser_input_names);
+    source_options.mfd_json5_string_dependencies = json5_string_dependencies;
     let mut project = Project {
         source: primary.schema.clone(),
         target: runtime_target_schema(target, &edge_from),

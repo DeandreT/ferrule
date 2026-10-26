@@ -106,7 +106,9 @@ pub use iteration::{
     JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, JoinSourceCardinality,
     ScopeIteration, ScopeSequence,
 };
-pub use json5_interchange::Json5InterchangeDependency;
+pub use json5_interchange::{
+    Json5InterchangeDependency, Json5StringComponentKind, Json5StringInterchangeDependency,
+};
 pub use model::{
     AggregateOp, Binding, DynamicBinding, DynamicChild, DynamicSourcePath, EdiConfigDependency,
     FailureIteration, FailureRule, FailureSelection, FormatOptions, FunctionId, FunctionParameter,

@@ -13,6 +13,12 @@ text, including unknown spellings. A `.json5` instance path without that
 attribute retains an extension dependency. Both survive project save/reload.
 Absent dependencies add nothing to legacy serialized options.
 
+Internal string parsers and serializers lose their component options when they
+become graph expressions. Their names, roles, settings and instance paths remain
+in `mfd_json5_string_dependencies` on the primary source options, alongside other
+MFD-wide parser metadata. This is not a new physical input. Host validation and
+export inspect it, and direct browser codec helpers apply the same refusal.
+
 ## Reference and scope
 
 The reference GUI identified itself as MapForce Enterprise 2026 release 2, x64;

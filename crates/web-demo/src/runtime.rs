@@ -71,6 +71,10 @@ pub enum RuntimeError {
         side: DataSide,
         dependency: mapping::CsvTextRepairDependency,
     },
+    Json5InterchangeDependency {
+        side: DataSide,
+        dependency: mapping::Json5InterchangeDependency,
+    },
 }
 
 impl fmt::Display for RuntimeError {
@@ -107,6 +111,9 @@ impl fmt::Display for RuntimeError {
             Self::CsvRepairDependency { side, dependency } => {
                 write!(formatter, "the project {side} requires {dependency}")
             }
+            Self::Json5InterchangeDependency { side, dependency } => {
+                write!(formatter, "the project {side}: {dependency}")
+            }
             Self::CsvFormatRequired { side } => {
                 write!(
                     formatter,
@@ -131,6 +138,12 @@ pub fn parse_source(
     text: &str,
     format: DataFormat,
 ) -> Result<Instance, RuntimeError> {
+    if let Some(dependency) = project.source_options.json5_interchange_blocker() {
+        return Err(RuntimeError::Json5InterchangeDependency {
+            side: DataSide::Source,
+            dependency: dependency.clone(),
+        });
+    }
     if let Some(dependency) = project.source_options.csv_text_repair_dependency {
         return Err(RuntimeError::CsvRepairDependency {
             side: DataSide::Source,
@@ -211,6 +224,12 @@ pub fn serialize_target(
     target: &Instance,
     format: DataFormat,
 ) -> Result<String, RuntimeError> {
+    if let Some(dependency) = project.target_options.json5_interchange_blocker() {
+        return Err(RuntimeError::Json5InterchangeDependency {
+            side: DataSide::Target,
+            dependency: dependency.clone(),
+        });
+    }
     if let Some(dependency) = project.target_options.csv_text_repair_dependency {
         return Err(RuntimeError::CsvRepairDependency {
             side: DataSide::Target,
@@ -436,6 +455,51 @@ mod tests {
                 ],
                 ..Scope::default()
             },
+        }
+    }
+
+    #[test]
+    fn direct_codecs_refuse_json5_metadata_before_any_format_dispatch() {
+        for internal in [false, true] {
+            let mut project = scalar_project(false);
+            let dependency =
+                mapping::Json5InterchangeDependency::ComponentSetting { value: "1".into() };
+            for options in [&mut project.source_options, &mut project.target_options] {
+                if internal {
+                    options.mfd_json5_string_dependencies.push(
+                        mapping::Json5StringInterchangeDependency {
+                            component: "adapter".into(),
+                            kind: mapping::Json5StringComponentKind::Parser,
+                            dependency: dependency.clone(),
+                            input_instance: None,
+                            output_instance: None,
+                        },
+                    );
+                } else {
+                    options.json5_interchange_dependency = Some(dependency.clone());
+                }
+            }
+            for format in [
+                DataFormat::Json,
+                DataFormat::Xml,
+                DataFormat::Csv,
+                DataFormat::Xbrl,
+            ] {
+                assert_eq!(
+                    parse_source(&project, "not input", format),
+                    Err(RuntimeError::Json5InterchangeDependency {
+                        side: DataSide::Source,
+                        dependency: dependency.clone()
+                    })
+                );
+                assert_eq!(
+                    serialize_target(&project, &Instance::Scalar(Value::Null), format),
+                    Err(RuntimeError::Json5InterchangeDependency {
+                        side: DataSide::Target,
+                        dependency: dependency.clone()
+                    })
+                );
+            }
         }
     }
 

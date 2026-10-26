@@ -163,7 +163,7 @@ fn classify(
     side: PrimaryRouteSide,
 ) -> Result<PrimaryDocumentFormat, PrimaryRouteError> {
     let refuse = |format| Err(PrimaryRouteError::NotAdmitted { side, format });
-    if options.json5_interchange_dependency.is_some() {
+    if options.json5_interchange_blocker().is_some() {
         return refuse("native JSON5 interchange");
     }
     if options.sqlite_read.is_some() {
