@@ -1,0 +1,46 @@
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+using var cases=JsonDocument.Parse(File.ReadAllBytes(args[0]));
+foreach(var value in cases.RootElement.EnumerateArray())
+{
+    var source=File.ReadAllBytes(value.GetProperty("source").GetString()!);
+    var inputs=value.GetProperty("inputs").EnumerateArray().Select(x=>new NamedXmlBytesInput(x.GetProperty("name").GetString()!,File.ReadAllBytes(x.GetProperty("path").GetString()!))).ToArray();
+    var sizes=new[]{source.LongLength}.Concat(inputs.Select(x=>x.Document.LongLength)).ToArray();
+    var row=new Dictionary<string,object?>{{"case",value.GetProperty("case").GetString()},{"sizes",sizes},{"total",sizes.Sum()}};
+    try
+    {
+        var target=value.GetProperty("target").GetString()!;
+        var context=new FerruleExecutionContext("mapping.json","mapping.json","2026-10-26T00:00:00Z");
+        byte[][] documents;
+        if(target=="all")
+        {
+            var result=GeneratedMapping.ExecuteXmlBytesOutputsWithSources(source,inputs,context);
+            documents=new[]{result.Primary}.Concat(result.Extras.Select(x=>x.Document)).ToArray();
+        }
+        else
+        {
+            var selection=target=="primary"?FerruleTargetSelection.Primary():FerruleTargetSelection.Named(target);
+            var result=GeneratedMapping.ExecuteXmlBytesSelectedTargetWithHost(source,selection,inputs,context);
+            documents=result switch
+            {
+                SelectedXmlBytesTargetOutput.Primary primary=>[primary.Document],
+                SelectedXmlBytesTargetOutput.Named named when named.Output.Name==target=>[named.Output.Document],
+                _=>throw new Exception("selected output identity"),
+            };
+        }
+        row["kind"]="ok";row["documents"]=documents.Select(Convert.ToHexStringLower).ToArray();
+    }
+    catch(FerruleXmlExecutionException error)
+    {
+        row["kind"]=error.Boundary.Kind.ToString();row["input"]=error.Input?.Kind==FerruleXmlInputSourceKind.Primary?"primary":error.Input?.Name;
+        row["inputIndex"]=error.Input?.Index;row["output"]=error.Output?.Kind==FerruleXmlOutputTargetKind.Primary?"primary":error.Output?.Name;
+        row["preserved"]=ReferenceEquals(error.InnerException,error.Boundary);
+        if(error.Boundary.InnerException is FerruleRuntimeException runtime)
+        {row["runtime"]=runtime.Error.ToString();row["rule"]=runtime.FailureRule;row["message"]=runtime.MappingFailureMessage;}
+        if(error.Boundary.InnerException is FerruleXmlInputSetResourceException resource)
+        {row["resource"]=resource.Resource;row["observed"]=resource.ObservedCount;row["limit"]=resource.Limit;}
+    }
+    Console.WriteLine(JsonSerializer.Serialize(row));
+}

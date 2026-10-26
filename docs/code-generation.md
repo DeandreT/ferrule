@@ -2362,6 +2362,56 @@ successful lowering alone does not guarantee that an artifact tree can be
 produced. An observed root-view policy remains a separate strict request and
 does not fall back to `Structured`.
 
+### Isolated Selected XML Byte Output
+
+Ordinary Structured mappings with static named inputs and single-document
+primary/named outputs also expose a separate selected-target byte API. It uses
+the existing typed selected executor; it does not call the complete-output API
+and discard unrelated results.
+
+```rust
+pub fn execute_xml_bytes_selected_target(
+    source: &[u8], selection: TargetSelection<'_>,
+) -> Result<SelectedXmlBytesTargetOutput, codegen_runtime::XmlExecutionError>;
+
+pub fn execute_xml_bytes_selected_target_with_host(
+    source: &[u8], inputs: &[NamedXmlBytesInput<'_>],
+    execution: Option<&ExecutionContext<'_>>, selection: TargetSelection<'_>,
+) -> Result<SelectedXmlBytesTargetOutput, codegen_runtime::XmlExecutionError>;
+```
+
+```csharp
+public static SelectedXmlBytesTargetOutput ExecuteXmlBytesSelectedTarget(
+    byte[] source, FerruleTargetSelection selection);
+
+public static SelectedXmlBytesTargetOutput ExecuteXmlBytesSelectedTargetWithHost(
+    byte[] source, FerruleTargetSelection selection,
+    IReadOnlyList<NamedXmlBytesInput> extraSources,
+    FerruleExecutionContext? executionContext = null);
+```
+
+The result is `Primary` with owned document bytes, or `Named` with the exact
+declared name and owned document bytes. The input names must equal the selected
+target's static source requirements, including those of global failure rules.
+An unused supplied source is an unexpected name, not an instruction to parse it.
+The original declaration indices remain attached to errors even when required
+inputs form a subset or arrive in a different order. Primary input is always
+required and parsed. Target resolution, input count, exact names, all original
+sizes and combined bytes are checked before any XML is parsed.
+
+After input parsing, global failure rules run normally and only the selected
+target is evaluated and serialized. An unrelated target's mapping or writer
+failure therefore cannot fail this call. The existing per-document XML parser
+and writer limits and complete typed cause chains apply. Name/selection/mapping
+failures are unowned `XmlExecutionError` / `FerruleXmlExecutionException` values;
+input parsing and output serialization retain their exact input or output owner.
+No error returns partial document bytes. Publication remains the caller's job.
+
+This API has no text, dynamic-loader, RootView or document-list variant and does
+not change the Basic-owned document-set family. Existing complete-output and
+singular XML methods keep their original semantics, including complete input
+admission and evaluation/serialization of every output before selecting primary.
+
 ### Static Named Inputs
 
 The `Structured` profile adds document APIs that accept the complete declared
