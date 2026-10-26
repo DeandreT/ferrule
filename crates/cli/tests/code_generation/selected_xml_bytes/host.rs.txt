@@ -1,0 +1,43 @@
+use xml_selected_mapping::*;
+use codegen_runtime::{XmlExecutionError, XmlInputSource, XmlOutputTarget};
+use serde_json::{Value, json};
+use std::error::Error;
+
+fn capture(case: &Value) -> Result<Vec<Vec<u8>>, XmlExecutionError> {
+    let mut source: Vec<u8> = serde_json::from_value(case["source"].clone()).unwrap();
+    if case["name"] == "input-size" { source = vec![b'x'; 64 * 1024 * 1024 + 1]; }
+    if case["name"] == "output-size" { source = format!("<o:Orders xmlns:o=\"urn:orders\"><o:Row><Text><![CDATA[{}]]></Text></o:Row></o:Orders>", "&".repeat(14 * 1024 * 1024)).into_bytes(); }
+    let values: Vec<(String, Vec<u8>)> = case["inputs"].as_array().unwrap().iter().map(|input|
+        (input["name"].as_str().unwrap().to_owned(), serde_json::from_value(input["bytes"].clone()).unwrap())).collect();
+    let inputs: Vec<_> = values.iter().map(|(name, bytes)| NamedXmlBytesInput { name, document: bytes }).collect();
+    if case["legacy"] == true { return execute_xml_bytes_with_sources(&source, &inputs).map(|x| vec![x]); }
+    let target = case["target"].as_str().unwrap();
+    if target == "all" {
+        let result = execute_xml_bytes_outputs_with_sources(&source, &inputs)?;
+        return Ok(std::iter::once(result.primary).chain(result.extras.into_iter().map(|x| x.document)).collect());
+    }
+    let selection = if target == "primary" { codegen_runtime::TargetSelection::Primary } else { codegen_runtime::TargetSelection::Named(target) };
+    let context = codegen_runtime::ExecutionContext::new(std::path::Path::new("mapping.json")).with_current_datetime("2026-10-25T00:00:00Z");
+    let result = if target == "primary" && inputs.is_empty() { execute_xml_bytes_selected_target(&source, selection) } else {
+        execute_xml_bytes_selected_target_with_host(&source, &inputs, Some(&context), selection)
+    }?;
+    Ok(vec![match result { SelectedXmlBytesTargetOutput::Primary(bytes) => bytes, SelectedXmlBytesTargetOutput::Named(value) => { assert_eq!(value.name, target); value.document } }])
+}
+fn main() {
+    let cases: Vec<Value> = serde_json::from_slice(&std::fs::read(std::env::args_os().nth(1).unwrap()).unwrap()).unwrap();
+    for case in cases {
+        let row = match capture(&case) {
+            Ok(documents) => json!({"case":case["name"], "kind":"ok", "documents": documents.iter().map(|bytes| bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()).collect::<Vec<_>>()}),
+            Err(error) => {
+                let (input, input_index) = match error.input { Some(XmlInputSource::Primary) => (Some("primary"), None), Some(XmlInputSource::Named {name,index}) => (Some(name),Some(index)), None => (None,None) };
+                let (output, output_index) = match error.output { Some(XmlOutputTarget::Primary) => (Some("primary"), None), Some(XmlOutputTarget::Named {name,index}) => (Some(name),Some(index)), None => (None,None) };
+                // Compare the concrete boundary allocation, not trait-object vtables,
+                // which Rust may duplicate across codegen units.
+                let preserved = error.source().and_then(|source| source.downcast_ref::<codegen_runtime::XmlBoundaryError>())
+                    .is_some_and(|boundary| std::ptr::eq(boundary, error.boundary.as_ref()));
+                json!({"case":case["name"], "kind":format!("{:?}",error.boundary.kind), "input":input, "inputIndex":input_index, "output":output, "outputIndex":output_index, "detail":format!("{error:?}"), "causePreserved":preserved})
+            }
+        };
+        println!("{row}");
+    }
+}

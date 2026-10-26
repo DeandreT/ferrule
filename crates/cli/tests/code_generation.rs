@@ -236,6 +236,8 @@ mod selected_json_targets_csharp;
 mod selected_json_targets_rust;
 #[path = "code_generation/selected_targets.rs"]
 mod selected_targets;
+#[path = "code_generation/selected_xml_bytes.rs"]
+mod selected_xml_bytes;
 #[path = "code_generation/sequence_context.rs"]
 mod sequence_context;
 #[path = "code_generation/sequence_reducers.rs"]
