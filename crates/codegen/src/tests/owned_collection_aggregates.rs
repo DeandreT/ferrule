@@ -177,6 +177,55 @@ fn owned_aggregates_lower_exactly_and_stay_demand_driven() {
 }
 
 #[test]
+fn ordered_text_owned_aggregate_profiles_refuse_new_selectors() {
+    for function in [AggregateOp::LastPresentText, AggregateOp::LastDistinctText] {
+        for (id, owner) in [(2, SourceOwner::Primary), (3, named()), (99, named())] {
+            let mut p = project();
+            let mut aggregate = sum(owner.clone());
+            aggregate.function = function;
+            let mut direct = lower_with_basic_owned_collection_aggregates(&p).unwrap();
+            if id == 99 {
+                direct.expressions.push(ExpressionNode {
+                    id,
+                    expression: Expression::OwnedAggregate(aggregate.clone()),
+                });
+            } else {
+                direct
+                    .expressions
+                    .iter_mut()
+                    .find(|node| node.id == id)
+                    .unwrap()
+                    .expression = Expression::OwnedAggregate(aggregate.clone());
+            }
+            let expected = retained(id, owner);
+            assert_eq!(
+                validate_program_with_basic_owned_collection_aggregates(&direct),
+                Err(expected.clone())
+            );
+            assert_eq!(
+                validate_basic_owned_collection_aggregates_emission(&direct),
+                Err(expected.clone())
+            );
+            assert_eq!(
+                legacy_named_input_admission_plan_with_basic_owned_collection_aggregates(&direct),
+                Err(expected)
+            );
+            p.graph.nodes.insert(id, Node::OwnedAggregate(aggregate));
+            if id == 99 {
+                let lowered = lower_with_basic_owned_collection_aggregates(&p).unwrap();
+                assert!(lowered.expressions.iter().all(|node| node.id != 99));
+            } else {
+                let error = lower_with_basic_owned_collection_aggregates(&p).unwrap_err();
+                assert_eq!(
+                    reason(&error),
+                    Some(OwnedSourceCapabilityReason::AggregateLookup)
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn decimal_sum_is_admitted_only_through_owned_aggregate_profiles() {
     for (id, owner) in [(2, SourceOwner::Primary), (3, named()), (99, named())] {
         let mut p = project();

@@ -284,6 +284,28 @@ fn items_scope(owner: SourceOwner, group_by: Option<NodeId>, bindings: Vec<Bindi
 }
 
 #[test]
+fn ordered_text_owned_collections_refuse_new_selectors() {
+    for function in [AggregateOp::LastPresentText, AggregateOp::LastDistinctText] {
+        for owner in [SourceOwner::Primary, named()] {
+            for node in [
+                aggregate(function, owner.clone(), &["Rows"], &["Price"], None),
+                computed(function, owner, &["Rows"], 2, None),
+            ] {
+                let p = root_value(vec![(1, node), (2, constant(Value::String("bad".into())))]);
+                assert_eq!(
+                    root_result(&p, inputs()),
+                    Err(functions::FunctionError::InvalidArgument {
+                        function: "owned_aggregate",
+                        message: "this reducer is not supported for owned collections",
+                    }
+                    .into())
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn decimal_sum_requires_explicit_conversion_for_owned_collections() {
     for owner in [SourceOwner::Primary, named()] {
         for node in [

@@ -175,6 +175,39 @@ pub(super) fn validate_invocation_counters(project: &Project) -> Result<(), MfdE
     Ok(())
 }
 
+pub(super) fn validate_text_selection_operations(project: &Project) -> Result<(), MfdError> {
+    for graph in std::iter::once(&project.graph).chain(
+        project
+            .user_functions
+            .values()
+            .map(|function| &function.body),
+    ) {
+        for (node, value) in &graph.nodes {
+            if matches!(
+                value,
+                mapping::Node::Aggregate {
+                    function: mapping::AggregateOp::LastPresentText
+                        | mapping::AggregateOp::LastDistinctText,
+                    ..
+                } | mapping::Node::SequenceAggregate {
+                    function: mapping::AggregateOp::LastPresentText
+                        | mapping::AggregateOp::LastDistinctText,
+                    ..
+                } | mapping::Node::JoinAggregate {
+                    function: mapping::AggregateOp::LastPresentText
+                        | mapping::AggregateOp::LastDistinctText,
+                    ..
+                }
+            ) {
+                return Err(MfdError::Unsupported(format!(
+                    "ordered text selection at node {node} has no admitted .mfd export profile"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn validate_decimal_values(project: &Project) -> Result<(), MfdError> {
     // Scan stored literals, including unused nodes and declared function bodies.
     // A decimal type must not be reinterpreted as the legacy Float export path.

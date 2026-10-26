@@ -31,6 +31,23 @@ pub(crate) fn eval_owned_aggregate(
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
+    if !matches!(
+        owned.function,
+        AggregateOp::Count
+            | AggregateOp::Sum
+            | AggregateOp::DecimalSum
+            | AggregateOp::Avg
+            | AggregateOp::Min
+            | AggregateOp::Max
+            | AggregateOp::Join
+            | AggregateOp::ItemAt
+    ) {
+        return Err(functions::FunctionError::InvalidArgument {
+            function: "owned_aggregate",
+            message: "this reducer is not supported for owned collections",
+        }
+        .into());
+    }
     let state = owned_state(program, node, "owned_aggregate")?;
     let access = access(node);
     let (rows, work) = candidates(state, &owned.collection, positions.len()).map_err(&access)?;

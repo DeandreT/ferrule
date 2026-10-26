@@ -1415,6 +1415,19 @@ mod tests {
     };
 
     #[test]
+    fn ordered_text_selector_names_have_no_import_lowering_contract() {
+        for name in [
+            "last_present_text",
+            "last_distinct_text",
+            "last-present-text",
+            "last-distinct-text",
+        ] {
+            assert_eq!(super::aggregate_op(name), None);
+            assert_eq!(map_name(name), None);
+        }
+    }
+
+    #[test]
     fn scalar_names_use_canonical_ir_spelling() {
         assert_eq!(map_name("string"), Some("string"));
         assert_eq!(map_name("numeric"), Some("is_numeric"));

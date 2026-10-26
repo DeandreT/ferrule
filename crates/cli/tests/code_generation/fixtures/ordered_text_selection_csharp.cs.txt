@@ -1,0 +1,48 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+using System.Text.Json;
+
+using var cases = JsonDocument.Parse(File.ReadAllText("cases.json"));
+var sourceSchema = File.ReadAllText("source-schema.json");
+var targetSchema = File.ReadAllText("target-schema.json");
+foreach (var item in cases.RootElement.EnumerateArray())
+{
+    var id = item.GetProperty("id").GetString();
+    var input = FerruleJson.Parse(sourceSchema, item.GetProperty("input").GetRawText());
+    if (item.TryGetProperty("error", out _))
+    {
+        try { _ = GeneratedMapping.Execute(input); throw new InvalidOperationException($"{id}: unexpectedly returned output"); }
+        catch (FerruleRuntimeException error)
+        {
+            var function = item.TryGetProperty("function", out var named) ? named.GetString() : "last_present_text";
+            var operation = function == "last_distinct_text" ? FerruleAggregateOperation.LastDistinctText : FerruleAggregateOperation.LastPresentText;
+            var found = item.TryGetProperty("found", out var foundProperty) ? foundProperty.GetString() : "json null";
+            var expectedKind = found switch { "int" => FerruleValueKind.Int64, "float" => FerruleValueKind.Double, "bool" => FerruleValueKind.Bool, _ => FerruleValueKind.JsonNull };
+            var kind = item.GetProperty("error").GetString();
+            var expected = kind == "argument"
+                ? error.Error == FerruleRuntimeError.FunctionInvalidArgument && error.Function == function
+                : error.Error == FerruleRuntimeError.AggregateUnsupportedScalar && error.AggregateOperation == operation && error.FoundKind == expectedKind;
+            if (!expected)
+                throw new InvalidOperationException($"{id}: unexpected error", error);
+            Console.WriteLine("OBSERVATION " + JsonSerializer.Serialize(new { id, error = kind, detail = error.Message }));
+        }
+    }
+    else
+    {
+        var text = FerruleJson.Serialize(targetSchema, GeneratedMapping.Execute(input));
+        using var actual = JsonDocument.Parse(text);
+        var expected = item.GetProperty("expected");
+        var result = actual.RootElement;
+        if (result.ValueKind != JsonValueKind.Object || result.EnumerateObject().Count() != 6 ||
+            result.GetProperty("Last").ValueKind != JsonValueKind.String || result.GetProperty("Distinct").ValueKind != JsonValueKind.String ||
+            result.GetProperty("Last").GetString() != expected.GetProperty("Last").GetString() ||
+            result.GetProperty("Distinct").GetString() != expected.GetProperty("Distinct").GetString() ||
+            result.GetProperty("ComputedLast").GetString() != expected.GetProperty("Last").GetString() ||
+            result.GetProperty("ComputedDistinct").GetString() != expected.GetProperty("Distinct").GetString() ||
+            result.GetProperty("DistinctPresent").GetBoolean() != expected.GetProperty("Present").GetBoolean() ||
+            result.GetProperty("Present").GetBoolean() != expected.GetProperty("Present").GetBoolean())
+            throw new InvalidOperationException($"{id}: wrong document {text}");
+        Console.WriteLine("OBSERVATION " + JsonSerializer.Serialize(new { id, output = result }));
+    }
+    Console.WriteLine($"PASS {id}");
+}

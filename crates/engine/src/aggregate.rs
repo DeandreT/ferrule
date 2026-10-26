@@ -30,6 +30,37 @@ pub(crate) fn aggregate(
 ) -> Result<Value, EngineError> {
     use mapping::AggregateOp;
     match function {
+        AggregateOp::LastPresentText | AggregateOp::LastDistinctText => {
+            if arg.is_some() {
+                return Err(functions::FunctionError::InvalidArgument {
+                    function: if function == AggregateOp::LastPresentText {
+                        "last_present_text"
+                    } else {
+                        "last_distinct_text"
+                    },
+                    message: "does not accept an argument",
+                }
+                .into());
+            }
+            let distinct = function == AggregateOp::LastDistinctText;
+            let mut seen = std::collections::HashSet::new();
+            let mut selected = None;
+            for value in values {
+                if matches!(value, Value::Null) {
+                    continue;
+                }
+                let Value::String(text) = value else {
+                    return Err(EngineError::AggregateUnsupportedScalar {
+                        function,
+                        found: value.type_name(),
+                    });
+                };
+                if !distinct || seen.insert(text.as_str()) {
+                    selected = Some(text.clone());
+                }
+            }
+            Ok(selected.map_or(Value::Null, Value::String))
+        }
         AggregateOp::DecimalSum => {
             if arg.is_some() {
                 return Err(functions::FunctionError::InvalidArgument {
@@ -376,6 +407,94 @@ fn value_text(value: &Value) -> String {
         Value::Float(value) => value.to_string(),
         Value::Decimal(value) => value.to_string(),
         Value::String(value) => value.clone(),
+    }
+}
+
+#[cfg(test)]
+mod text_selection_tests {
+    use super::*;
+    use mapping::AggregateOp;
+
+    fn text(value: &str) -> Value {
+        Value::String(value.into())
+    }
+
+    #[test]
+    fn ordered_text_selection_keeps_distinct_order_and_presence() {
+        let cases = [
+            (vec![], Value::Null, Value::Null),
+            (vec![Value::Null], Value::Null, Value::Null),
+            (vec![text("A"), text("B"), text("A")], text("A"), text("B")),
+            (
+                vec![text("A"), Value::Null, text("B"), Value::Null],
+                text("B"),
+                text("B"),
+            ),
+            (vec![text("A"), text(""), text("A")], text("A"), text("")),
+            (
+                vec![text(" X "), text("X"), text(" X ")],
+                text(" X "),
+                text("X"),
+            ),
+            (
+                vec![text("é"), text("e\u{301}"), text("é")],
+                text("é"),
+                text("e\u{301}"),
+            ),
+        ];
+        for (values, last, distinct) in cases {
+            assert_eq!(
+                aggregate(AggregateOp::LastPresentText, values.len(), &values, None).unwrap(),
+                last
+            );
+            assert_eq!(
+                aggregate(AggregateOp::LastDistinctText, values.len(), &values, None).unwrap(),
+                distinct
+            );
+        }
+    }
+
+    #[test]
+    fn ordered_text_selection_refuses_other_kinds_without_retaining_failed_state() {
+        for function in [AggregateOp::LastPresentText, AggregateOp::LastDistinctText] {
+            for invalid in [
+                Value::json_null(),
+                Value::xml_nil(),
+                Value::Int(1),
+                Value::Float(0.25),
+                Value::Bool(true),
+                Value::decimal(ir::Decimal96::ZERO),
+            ] {
+                let expected_kind = invalid.type_name();
+                for position in 0..3 {
+                    let mut values = vec![text("A"), text("B"), text("A")];
+                    values[position] = invalid.clone();
+                    assert!(
+                        matches!(aggregate(function, values.len(), &values, None), Err(EngineError::AggregateUnsupportedScalar { function: actual, found }) if actual == function && found == expected_kind)
+                    );
+                    let expected = if function == AggregateOp::LastPresentText {
+                        text("A")
+                    } else {
+                        text("B")
+                    };
+                    assert_eq!(
+                        aggregate(function, 3, &[text("A"), text("B"), text("A")], None).unwrap(),
+                        expected
+                    );
+                }
+            }
+            let expected_function = if function == AggregateOp::LastPresentText {
+                "last_present_text"
+            } else {
+                "last_distinct_text"
+            };
+            assert!(matches!(
+                aggregate(function, 1, &[text("A")], Some(Value::Null)),
+                Err(EngineError::Function(
+                    functions::FunctionError::InvalidArgument { function, .. }
+                )) if function == expected_function
+            ));
+        }
     }
 }
 
