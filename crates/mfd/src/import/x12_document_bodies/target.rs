@@ -239,17 +239,29 @@ impl Builder<'_> {
                                 ..Default::default()
                             })
                         } else {
-                            if saw_child {
+                            if saw_child && target.repeating {
                                 return Err(refuse(
-                                    "scalar binding after a child requires explicit target-order lowering",
+                                    "repeating scalar after a child requires explicit target-order lowering",
                                 ));
                             }
                             let expr = self.reduced(feed, &current, *ty)?;
-                            scope.bindings.push(Binding {
-                                target_field: name.into(),
-                                node: expr.value,
-                            });
-                            None
+                            if saw_child {
+                                // A non-iterating scalar child uses the same
+                                // source frame and preserves Null as a value.
+                                // It runs in declaration order after earlier
+                                // children, rather than before them as a binding.
+                                Some(Scope {
+                                    target_field: name.into(),
+                                    construction: ScopeConstruction::Scalar { value: expr.value },
+                                    ..Default::default()
+                                })
+                            } else {
+                                scope.bindings.push(Binding {
+                                    target_field: name.into(),
+                                    node: expr.value,
+                                });
+                                None
+                            }
                         }
                     } else {
                         if saw_child {
