@@ -730,9 +730,11 @@ survey design or backend.
 
 - [x] Support bounded local JSON5 parsing and output while retaining typed
   JSON-schema mapping behavior.
-- [ ] Observe the external application's JSON5 setting and saved metadata in
-  isolated checkbox and filename controls.
-- [ ] Identify an exact import/export representation before changing admission.
+- [x] Observe the external application's JSON5 setting and saved metadata in
+   isolated checkbox and filename controls.
+- [x] Retain the observed setting separately and document the concrete
+  incompatible boundary before changing admission. Executable JSON5 MFD
+  import/export remains refused.
 - [x] Keep ordinary generated JSON adapters strict JSON; JSON5 uses separate
   explicit eligible APIs and tests.
 - [x] Add bounded pure syntax normalization for Rust in
@@ -792,7 +794,8 @@ Separate allocation attribution in
 production optimization included. Native token admission and original-byte
 accounting are now separately qualified in #130/#163; generated-host evidence
 does not establish native component metadata or desktop behavior. The JSON5
-metadata lane [#106](https://github.com/DeandreT/ferrule/issues/106) remains open.
+metadata lane [#106](https://github.com/DeandreT/ferrule/issues/106) records the
+[observed settings and incompatible runtime boundary](docs/conformance/json5-interchange.md).
 
 Exit: a self-authored fixture demonstrates metadata, values, errors, and a saved
 round trip. A `.json5` filename is not enough to infer a native component flag.

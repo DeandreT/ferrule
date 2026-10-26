@@ -144,6 +144,9 @@ pub(super) fn validate_json5_options(
     options: &FormatOptions,
     issues: &mut Vec<ValidationIssue>,
 ) {
+    if let Some(dependency) = &options.json5_interchange_dependency {
+        issues.push(ValidationIssue::new(location, dependency.to_string()));
+    }
     if !options.json5 {
         return;
     }

@@ -849,17 +849,37 @@ fn read_json_component_resolved(
     }
 
     let json_lines = json_el.is_some_and(|json| json.attribute("jsonlines") == Some("1"));
-    for attribute in ["inputinstance", "outputinstance"] {
-        let json5_path = json_el
-            .and_then(|json| json.attribute(attribute))
-            .and_then(|path| Path::new(path).extension())
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("json5"));
-        if json5_path {
-            warnings.push(format!(
-                "JSON component `{name}` has a .json5 {attribute} path, but the native .mfd JSON5 setting is unverified; ordinary JSON import would be unsafe. Supply a reference-saved JSON5 design before executable import"
-            ));
-        }
+    let input_instance = json_el
+        .and_then(|json| json.attribute("inputinstance"))
+        .map(str::to_string)
+        .or_else(|| nested_file_instance(&root_el, "inputinstance"));
+    let output_instance = json_el
+        .and_then(|json| json.attribute("outputinstance"))
+        .map(str::to_string)
+        .or_else(|| nested_file_instance(&root_el, "outputinstance"));
+    let json5_setting = json_el.and_then(|json| json.attribute("json5"));
+    let json5_extension = [input_instance.as_deref(), output_instance.as_deref()]
+        .into_iter()
+        .flatten()
+        .any(|path| {
+            Path::new(path)
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("json5"))
+        });
+    let json5_interchange_dependency = json5_setting
+        .map(
+            |value| mapping::Json5InterchangeDependency::ComponentSetting {
+                value: value.into(),
+            },
+        )
+        .or_else(|| {
+            json5_extension.then_some(mapping::Json5InterchangeDependency::InstanceExtension {})
+        });
+    if let Some(dependency) = &json5_interchange_dependency {
+        warnings.push(format!(
+            "JSON component `{name}` retains its native setting and instance paths for repair: {dependency}"
+        ));
     }
     let external_source = json_el.and_then(|json| {
         let metadata = json
@@ -1038,17 +1058,14 @@ fn read_json_component_resolved(
         name,
         format: ComponentFormat::Json,
         schema,
-        input_instance: json_el
-            .and_then(|j| j.attribute("inputinstance"))
-            .map(str::to_string),
-        output_instance: json_el
-            .and_then(|j| j.attribute("outputinstance"))
-            .map(str::to_string),
+        input_instance,
+        output_instance,
         options: FormatOptions {
             external_source,
             json_document: true,
             json_schema_unresolved_reference,
             json_lines,
+            json5_interchange_dependency,
             ..FormatOptions::default()
         },
         is_source,

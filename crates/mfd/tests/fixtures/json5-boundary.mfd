@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="30" ferrule-primary-source="2">
+  <resources/>
+  <component name="defaultmap" uid="1">
+    <structure>
+      <children>
+        <component name="Source" library="json" uid="2" kind="31">
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object">
+              <entry name="value" type="json-property"><entry name="string" outkey="10"/></entry>
+            </entry></entry></entry></entry></root>
+            <json schema="json5-boundary.schema.json" inputinstance="source.json"/>
+          </data>
+        </component>
+        <component name="Auxiliary" library="json" uid="3" kind="31">
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object">
+              <entry name="value" type="json-property"><entry name="string" outkey="20"/></entry>
+            </entry></entry></entry></entry></root>
+            <json schema="json5-boundary.schema.json" inputinstance="auxiliary.json"/>
+          </data>
+        </component>
+        <component name="Target" library="json" uid="4" kind="31">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object">
+              <entry name="value" type="json-property"><entry name="string" inpkey="30"/></entry>
+              <entry name="other" type="json-property"><entry name="string" inpkey="31"/></entry>
+            </entry></entry></entry></entry></root>
+            <json schema="json5-boundary.schema.json" outputinstance="target.json"/>
+          </data>
+        </component>
+        <component name="Additional" library="json" uid="5" kind="31">
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object">
+              <entry name="value" type="json-property"><entry name="string" inpkey="40"/></entry>
+            </entry></entry></entry></entry></root>
+            <json schema="json5-boundary.schema.json" outputinstance="additional.json"/>
+          </data>
+        </component>
+      </children>
+      <graph><vertices>
+        <vertex vertexkey="10"><edges><edge vertexkey="30"/><edge vertexkey="40"/></edges></vertex>
+        <vertex vertexkey="20"><edges><edge vertexkey="31"/></edges></vertex>
+      </vertices></graph>
+    </structure>
+  </component>
+</mapping>

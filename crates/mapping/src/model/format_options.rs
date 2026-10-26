@@ -353,6 +353,11 @@ pub struct FormatOptions {
     /// selected independently of the instance filename extension.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub json5: bool,
+    /// Native JSON5 component metadata retained for repair, separately from
+    /// executable `json5` syntax. All execution and faithful export must refuse
+    /// this dependency until an equivalent interchange profile is established.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json5_interchange_dependency: Option<crate::Json5InterchangeDependency>,
     /// Flat tabular component family retained when an instance filename has
     /// no recognized format extension. Explicit extensions and embedded
     /// format adapters take precedence over this fallback identity.
