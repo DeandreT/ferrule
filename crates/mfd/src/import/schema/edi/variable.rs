@@ -260,7 +260,7 @@ mod tests {
         let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/edi-structure-variables");
         let compiled =
-            format_edi::config::import_config(&directory.join("Envelope.Config"), &["850".into()])
+            format_edi_config::import_config(&directory.join("Envelope.Config"), &["850".into()])
                 .unwrap();
         let text = std::fs::read_to_string(directory.join("mapping.mfd")).unwrap();
         let document = roxmltree::Document::parse(&text).unwrap();

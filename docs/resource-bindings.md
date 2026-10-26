@@ -136,7 +136,7 @@ omitting evidence. No sink is retained or populated unless the host requests it.
 
 `format_xml::xsd` exposes additive root/type/base entry points accepting an
 `XmlSchemaByteReader`, plus raw-byte decoding for annotations.
-`format_edi::config::import_config_with_byte_reader` accepts an
+`format_edi_config::import_config_with_byte_reader` accepts an
 `EdiConfigByteReader`. `format_json::json_schema::import_with_byte_reader`
 accepts a `JsonSchemaByteReader` for the root and relative local-file `$ref`
 dependencies, retaining the ordinary schema semantics and import limits.

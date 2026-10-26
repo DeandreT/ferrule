@@ -255,7 +255,7 @@ pub(super) fn read(
                         .to_string());
                 }
                 let result = match kind {
-                    "EDIFIXED" => format_edi::config::idoc::import_config(resolved.path())
+                    "EDIFIXED" => format_edi_config::idoc::import_config(resolved.path())
                         .map(|compiled| {
                             (
                                 compiled.schema,
@@ -269,7 +269,7 @@ pub(super) fn read(
                         })
                         .map_err(|error| error.to_string()),
                     "SWIFTMT" => {
-                        format_edi::config::swift::import_config_confined(
+                        format_edi_config::swift::import_config_confined(
                             resolved.path(),
                             resolved.authorization_root(),
                             &selected_messages,
@@ -288,7 +288,7 @@ pub(super) fn read(
                     })
                     .map_err(|error| error.to_string()),
                     _ => if let Some(package) = resolved.package() {
-                        format_edi::config::import_config_with_byte_reader(
+                        format_edi_config::import_config_with_byte_reader(
                             resolved.path(),
                             resolved.authorization_root(),
                             &selected_messages,
@@ -296,13 +296,13 @@ pub(super) fn read(
                         )
                     } else {
                         match resolved.bound() {
-                            Some(reader) => format_edi::config::import_config_with_byte_reader(
+                            Some(reader) => format_edi_config::import_config_with_byte_reader(
                                 resolved.path(),
                                 resolved.authorization_root(),
                                 &selected_messages,
                                 reader.clone(),
                             ),
-                            None => format_edi::config::import_config_confined(
+                            None => format_edi_config::import_config_confined(
                                 resolved.path(),
                                 resolved.authorization_root(),
                                 &selected_messages,

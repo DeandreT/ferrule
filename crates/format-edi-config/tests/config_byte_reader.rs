@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use format_edi::config::{self, EdiConfigByteReader};
+use format_edi_config::{self as config, EdiConfigByteReader};
 
 const ENVELOPE: &str = r#"<Config><Format standard="X12"/><Include href="Fields.Segment"/><Group name="Envelope"><Group name="Interchange" maxOccurs="unbounded"><Segment ref="ISA"/><Group name="Group" maxOccurs="unbounded"><Segment ref="GS"/><Select field="ST/F143" maxOccurs="unbounded"/><Segment ref="GE" minOccurs="0"/></Group><Segment ref="IEA" minOccurs="0"/></Group></Group></Config>"#;
 const MESSAGE: &str = r#"<Config><Format standard="X12"/><Include href="Fields.Segment"/><Message><MessageType>850</MessageType><Group name="Message_850" maxOccurs="unbounded"><Segment ref="ST"/><Segment ref="BEG"/><Segment ref="SE"/></Group></Message></Config>"#;
@@ -100,15 +100,48 @@ fn escaping_edi_include_is_refused_before_host_read() -> Result<(), Box<dyn std:
     let root = std::env::current_dir()?.join("authored-edi-byte-identities");
     let envelope = ENVELOPE.replace("Fields.Segment", "../outside.Segment");
     let source = source(&root, &envelope, "850.Config");
-    assert!(
+    assert!(matches!(
         config::import_config_with_byte_reader(
             &root.join("Envelope.Config"),
             &root,
             &["850".into()],
             source.clone()
-        )
-        .is_err()
+        ),
+        Err(config::ConfigError::Invalid(message)) if message.contains("escapes its authorized root")
+    ));
+    assert_eq!(&*source.calls.borrow(), &[root.join("Envelope.Config")]);
+    Ok(())
+}
+
+#[test]
+fn supplied_limits_keep_typed_failures_and_validation_order()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = std::env::current_dir()?.join("authored-edi-byte-identities");
+    let source = source(&root, ENVELOPE, "850.Config");
+    assert!(matches!(
+        config::import_config_with_byte_reader(
+            &root.join("Envelope.Config"),
+            Path::new("not-absolute"),
+            &vec!["850".into(); 33],
+            source.clone(),
+        ),
+        Err(config::ConfigError::Limit("selected message count"))
+    ));
+    assert!(source.calls.borrow().is_empty());
+
+    source.files.borrow_mut().insert(
+        root.join("Envelope.Config"),
+        Arc::from(vec![b' '; 8 * 1024 * 1024 + 1]),
     );
+    assert!(matches!(
+        config::import_config_with_byte_reader(
+            &root.join("Envelope.Config"),
+            &root,
+            &["850".into()],
+            source.clone(),
+        ),
+        Err(config::ConfigError::Limit("total input size"))
+    ));
     assert_eq!(&*source.calls.borrow(), &[root.join("Envelope.Config")]);
     Ok(())
 }

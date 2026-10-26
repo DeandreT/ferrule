@@ -225,7 +225,7 @@ impl format_json::json_schema::JsonSchemaByteReader for PackageReader {
         }
     }
 }
-impl format_edi::config::EdiConfigByteReader for PackageReader {
+impl format_edi_config::EdiConfigByteReader for PackageReader {
     fn read(&self, path: &Path) -> std::io::Result<Arc<[u8]>> {
         self.read(path)
     }

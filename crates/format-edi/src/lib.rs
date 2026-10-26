@@ -6,9 +6,11 @@
 //! ordinary [`ir::SchemaNode`] tree and parses by recursive descent over
 //! it -- the exact schema conventions are documented in [`segments`], and
 //! the dialect-specific tokenizing lives in [`x12`] and [`edifact`].
+//!
+//! Design-time configuration import lives in the separate `format-edi-config`
+//! crate. These runtime codecs consume only embedded schemas and layouts.
 
 mod autocomplete;
-pub mod config;
 pub mod document;
 pub mod edifact;
 pub mod hl7;

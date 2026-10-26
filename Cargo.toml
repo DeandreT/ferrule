@@ -22,6 +22,7 @@ members = [
     "crates/format-xlsx",
     "crates/format-db",
     "crates/format-edi",
+    "crates/format-edi-config",
     "crates/format-flextext",
     "crates/format-pdf",
     "crates/pdf-worker",
@@ -59,6 +60,7 @@ format-csv = { path = "crates/format-csv" }
 format-xlsx = { path = "crates/format-xlsx" }
 format-db = { path = "crates/format-db" }
 format-edi = { path = "crates/format-edi" }
+format-edi-config = { path = "crates/format-edi-config" }
 format-flextext = { path = "crates/format-flextext" }
 format-pdf = { path = "crates/format-pdf" }
 format-protobuf = { path = "crates/format-protobuf" }
