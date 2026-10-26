@@ -169,6 +169,21 @@ fn owned_emitters_refuse_reachable_and_unused_counters() {
 }
 
 #[test]
+fn ordinary_counter_emission_accepts_both_companion_selections() {
+    let program = codegen::lower(&fixture::project()).unwrap();
+    let options = codegen_rust::Options {
+        package_name: "counter_companions".into(),
+        runtime_dependency: codegen_rust::RuntimeDependency::Version("0.1.0".into()),
+    };
+    for companions in [
+        codegen::CompanionSelection::Complete,
+        codegen::CompanionSelection::TypedOnly,
+    ] {
+        assert!(codegen_rust::emit_with_companions(&program, &options, companions).is_ok());
+    }
+}
+
+#[test]
 fn unused_user_function_counter_is_refused_without_closing_scalar_functions() {
     let (mut program, expected) = admission::function_program();
     let options = codegen_rust::Options {

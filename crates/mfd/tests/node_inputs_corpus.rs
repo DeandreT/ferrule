@@ -37,6 +37,15 @@ fn legacy_dependencies(node: &Node) -> Vec<NodeId> {
         | Node::RuntimeParameter { .. }
         | Node::XmlSerialize { .. } => Vec::new(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .into_iter()
+            .flatten()
+            .collect(),
         Node::Raise { message } => message.iter().copied().collect(),
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::If {
@@ -106,6 +115,15 @@ fn legacy_auto_number(node: &Node) -> Vec<NodeId> {
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .into_iter()
+            .flatten()
+            .collect(),
         Node::If {
             condition,
             then,
@@ -193,6 +211,15 @@ fn legacy_recursive(node: &Node) -> Vec<NodeId> {
     match node {
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .into_iter()
+            .flatten()
+            .collect(),
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
@@ -282,6 +309,15 @@ fn legacy_join(node: &Node) -> Vec<NodeId> {
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .into_iter()
+            .flatten()
+            .collect(),
         Node::If {
             condition,
             then,
@@ -379,6 +415,15 @@ fn legacy_graph_references(node: &Node) -> Vec<NodeId> {
         | Node::XmlSerialize { .. } => Vec::new(),
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .into_iter()
+            .flatten()
+            .collect(),
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::If {
             condition,
@@ -455,6 +500,15 @@ fn legacy_canvas(node: &Node) -> Vec<NodeId> {
         | Node::XmlSerialize { .. } => vec![],
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .into_iter()
+            .flatten()
+            .collect(),
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::If {
             condition,
@@ -512,6 +566,15 @@ fn legacy_dynamic_json(node: &Node) -> Vec<NodeId> {
     match node {
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .into_iter()
+            .flatten()
+            .collect(),
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
@@ -601,6 +664,15 @@ fn legacy_position(node: &Node) -> Vec<NodeId> {
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .into_iter()
+            .flatten()
+            .collect(),
         Node::If {
             condition,
             then,

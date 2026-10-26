@@ -15,6 +15,15 @@ fn legacy_input_at(node: &Node, idx: usize) -> Option<NodeId> {
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.get(idx).copied(),
         Node::Raise { message } => (idx == 0).then_some(*message).flatten(),
         Node::RuntimeParameterDefault { default, .. } => (idx == 0).then_some(*default),
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .get(idx)
+            .copied()
+            .flatten(),
         Node::If {
             condition,
             then,

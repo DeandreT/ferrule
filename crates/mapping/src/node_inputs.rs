@@ -115,7 +115,12 @@ impl Node {
             | Self::RuntimeParameter { .. }
             | Self::XmlSerialize { .. } => {}
             Self::RuntimeParameterDefault { default, .. } => input(*default, Slot::Default, Lazy),
-            Self::InvocationCounter { start, step, restart, .. } => {
+            Self::InvocationCounter {
+                start,
+                step,
+                restart,
+                ..
+            } => {
                 input(*start, Slot::Start, Parent);
                 input(*step, Slot::Step, Parent);
                 if let Some(restart) = restart {

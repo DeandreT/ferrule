@@ -165,3 +165,14 @@ fn unused_user_function_counter_is_refused_without_closing_scalar_functions() {
     admission::make_function_valid(&mut program);
     assert!(codegen_csharp::emit(&program).is_ok());
 }
+
+#[test]
+fn ordinary_counter_emission_accepts_both_companion_selections() {
+    let program = codegen::lower(&fixture::project()).unwrap();
+    for companions in [
+        codegen::CompanionSelection::Complete,
+        codegen::CompanionSelection::TypedOnly,
+    ] {
+        assert!(codegen_csharp::emit_with_companions(&program, companions).is_ok());
+    }
+}

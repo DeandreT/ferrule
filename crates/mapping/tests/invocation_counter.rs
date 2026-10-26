@@ -11,11 +11,14 @@ fn invocation_counter_retains_key_and_ordered_dependencies() {
     assert_eq!(node.dependencies(), [30, 10, 20]);
     let mut inputs = Vec::new();
     node.visit_inputs(&mut |input| inputs.push((input.node, input.slot, input.role)));
-    assert_eq!(inputs, [
-        (30, NodeInputSlot::Start, NodeInputRole::Parent),
-        (10, NodeInputSlot::Step, NodeInputRole::Parent),
-        (20, NodeInputSlot::Restart, NodeInputRole::Parent),
-    ]);
+    assert_eq!(
+        inputs,
+        [
+            (30, NodeInputSlot::Start, NodeInputRole::Parent),
+            (10, NodeInputSlot::Step, NodeInputRole::Parent),
+            (20, NodeInputSlot::Restart, NodeInputRole::Parent),
+        ]
+    );
     let wire = serde_json::to_value(&node).unwrap();
     assert_eq!(wire["kind"], "invocation_counter");
     assert_eq!(wire["key"], "A\0é");
