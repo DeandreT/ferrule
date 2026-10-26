@@ -1344,6 +1344,19 @@ fn basic_exists_producer(sequence: &SequenceExpr) -> bool {
     basic_item_at_producer(sequence) && !matches!(sequence, SequenceExpr::OwnedRecursiveCollect(_))
 }
 
+fn basic_sequence_reducer(function: mapping::AggregateOp) -> bool {
+    matches!(
+        function,
+        mapping::AggregateOp::Count
+            | mapping::AggregateOp::Sum
+            | mapping::AggregateOp::Avg
+            | mapping::AggregateOp::Min
+            | mapping::AggregateOp::Max
+            | mapping::AggregateOp::Join
+            | mapping::AggregateOp::ItemAt
+    )
+}
+
 fn basic_item_at_producer(sequence: &SequenceExpr) -> bool {
     matches!(
         sequence,
@@ -1372,12 +1385,12 @@ fn basic_consumer_parents(project: &Project, graph: &mapping::Graph, node: &Node
             predicate,
         } if basic_exists_producer(sequence) => (sequence, vec![*predicate]),
         Node::SequenceAggregate {
+            function,
             sequence,
             predicate,
             expression,
             arg,
-            ..
-        } if basic_exists_producer(sequence) => (
+        } if basic_exists_producer(sequence) && basic_sequence_reducer(*function) => (
             sequence,
             [*predicate, *expression, *arg]
                 .into_iter()
@@ -1434,9 +1447,12 @@ fn node_context(node: &Node) -> OwnedCapabilityContext {
         Node::SequenceItemAt { sequence, .. } if basic_item_at_producer(sequence) => {
             OwnedCapabilityContext::Basic
         }
-        Node::SequenceExists { sequence, .. } | Node::SequenceAggregate { sequence, .. }
-            if basic_exists_producer(sequence) =>
-        {
+        Node::SequenceExists { sequence, .. } if basic_exists_producer(sequence) => {
+            OwnedCapabilityContext::Basic
+        }
+        Node::SequenceAggregate {
+            function, sequence, ..
+        } if basic_exists_producer(sequence) && basic_sequence_reducer(*function) => {
             OwnedCapabilityContext::Basic
         }
         Node::SequenceExists { .. }
