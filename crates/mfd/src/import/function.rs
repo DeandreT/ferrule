@@ -8,6 +8,7 @@ use crate::canonical_function;
 use super::schema::parse_u32;
 
 mod clock;
+mod constant;
 mod count;
 mod parse_date;
 #[cfg(test)]
@@ -299,6 +300,9 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         name = "edifact-to-datetime".to_string();
     }
     let kind = parse_u32(component.attribute("kind")).unwrap_or(0);
+    if name != "constant" && constant::is_supported_literal(component) {
+        name = "constant".to_string();
+    }
     let pins = |tag: &str| -> Vec<Option<u32>> {
         component
             .children()
@@ -1846,10 +1850,12 @@ mod tests {
             original.to_string(),
             original.replace("<targets>", "<sources/><targets>"),
             original.replace(" pos=\"0\"", ""),
+            original.replace("name=\"constant\"", "name=\"other\""),
         ] {
             let document = roxmltree::Document::parse(&valid).unwrap();
             let component = read(&document.root_element());
             assert!(component.bounded_scalar_pins_valid, "{valid}");
+            assert_eq!(component.name, "constant");
             assert!(component.inputs.is_empty());
             assert_eq!(component.outputs, [4]);
             assert_eq!(component.output_pins, [Some(4)]);
@@ -1872,7 +1878,9 @@ mod tests {
             original.replace("<datapoint", "<other"),
             original.replace("kind=\"2\"", "kind=\"4\""),
             original.replace("library=\"core\"", "library=\"foreign\""),
-            original.replace("name=\"constant\"", "name=\"other\""),
+            original
+                .replace("name=\"constant\"", "name=\"other\"")
+                .replace("datatype=\"string\"", "datatype=\"unknown\""),
         ] {
             let document = roxmltree::Document::parse(&invalid).unwrap();
             assert!(
