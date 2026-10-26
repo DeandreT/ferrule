@@ -1349,6 +1349,7 @@ fn basic_sequence_reducer(function: mapping::AggregateOp) -> bool {
         function,
         mapping::AggregateOp::Count
             | mapping::AggregateOp::Sum
+            | mapping::AggregateOp::DecimalSum
             | mapping::AggregateOp::Avg
             | mapping::AggregateOp::Min
             | mapping::AggregateOp::Max

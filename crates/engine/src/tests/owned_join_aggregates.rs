@@ -268,10 +268,14 @@ fn ordered_text_owned_joined_aggregates_remain_closed() {
                 (primary_rows(), lookup_rows()),
                 (document(Instance::Repeated(vec![])), lookup_rows()),
             ] {
-                assert_eq!(value(&p, primary, named), Err(functions::FunctionError::InvalidArgument {
-                    function: "owned_join_aggregate",
-                    message: "this reducer is not supported for owned joined collections",
-                }.into()));
+                assert_eq!(
+                    value(&p, primary, named),
+                    Err(functions::FunctionError::InvalidArgument {
+                        function: "owned_join_aggregate",
+                        message: "this reducer is not supported for owned joined collections",
+                    }
+                    .into())
+                );
             }
         }
     }

@@ -236,19 +236,35 @@ fn ordered_text_owned_joined_aggregates_remain_closed() {
     for function in [AggregateOp::LastPresentText, AggregateOp::LastDistinctText] {
         for reached in [true, false] {
             let mut program = crate::lower_with_basic_owned_joins(&aggregate_project()).unwrap();
-            let expression = &mut program.expressions.iter_mut().find(|node| node.id == 1).unwrap().expression;
-            let Expression::OwnedJoinAggregate(aggregate) = expression else { panic!("authored joined aggregate"); };
+            let expression = &mut program
+                .expressions
+                .iter_mut()
+                .find(|node| node.id == 1)
+                .unwrap()
+                .expression;
+            let Expression::OwnedJoinAggregate(aggregate) = expression else {
+                panic!("authored joined aggregate");
+            };
             aggregate.function = function;
-            if !reached { program.root.bindings.retain(|binding| binding.expression != 1); }
+            if !reached {
+                program
+                    .root
+                    .bindings
+                    .retain(|binding| binding.expression != 1);
+            }
             let error = crate::validate_basic_owned_joins_emission(&program).unwrap_err();
-            assert!(matches!(error, ProgramValidationError::OwnedSource { diagnostic }
+            assert!(
+                matches!(error, ProgramValidationError::OwnedSource { diagnostic }
                 if matches!(diagnostic.as_ref(), crate::OwnedSourceDiagnostic::Capability {
                     location: crate::OwnedSourceDiagnosticLocation::Expression { node: 1, .. },
                     reason: crate::OwnedSourceCapabilityReason::Join, ..
-                })));
+                }))
+            );
         }
         let mut project = aggregate_project();
-        let Node::OwnedJoinAggregate(aggregate) = project.graph.nodes.get_mut(&1).unwrap() else { panic!("authored joined aggregate"); };
+        let Node::OwnedJoinAggregate(aggregate) = project.graph.nodes.get_mut(&1).unwrap() else {
+            panic!("authored joined aggregate");
+        };
         aggregate.function = function;
         assert!(crate::lower_with_basic_owned_joins(&project).is_err());
     }

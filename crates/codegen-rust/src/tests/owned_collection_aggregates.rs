@@ -154,15 +154,25 @@ fn options() -> crate::Options {
 
 #[test]
 fn ordered_text_owned_emission_refuses_new_selectors() {
-    for function in [mapping::AggregateOp::LastPresentText, mapping::AggregateOp::LastDistinctText] {
+    for function in [
+        mapping::AggregateOp::LastPresentText,
+        mapping::AggregateOp::LastDistinctText,
+    ] {
         let mut program = owned_aggregate_program();
-        let node = program.expressions.iter_mut().find(|node| node.id == 2).unwrap();
+        let node = program
+            .expressions
+            .iter_mut()
+            .find(|node| node.id == 2)
+            .unwrap();
         let codegen::Expression::OwnedAggregate(aggregate) = &mut node.expression else {
             panic!("expected owned aggregate");
         };
         aggregate.function = function;
         let result = crate::emit_with_basic_owned_collection_aggregates(&program, &options());
-        assert!(matches!(&result, Err(crate::EmitError::InvalidProgram(error)) if *error == closed_aggregate()), "{result:?}");
+        assert!(
+            matches!(&result, Err(crate::EmitError::InvalidProgram(error)) if *error == closed_aggregate()),
+            "{result:?}"
+        );
     }
 }
 

@@ -276,6 +276,31 @@ fn ordered_text_owned_scalar_sequences_remain_closed() {
 }
 
 #[test]
+fn decimal_sum_owned_scalar_sequence_keeps_qualified_admission() {
+    for owner in [SourceOwner::Primary, named("Cfg")] {
+        let mut p = project(owner.clone(), ScalarType::String);
+        p.graph
+            .nodes
+            .insert(10, field(owner, &["Cfg", "Text"], Some(&[])));
+        p.graph.nodes.insert(
+            900,
+            constant(Value::decimal(ir::Decimal96::parse_exact("1").unwrap())),
+        );
+        p.graph.nodes.insert(
+            40,
+            aggregate(AggregateOp::DecimalSum, tokenize(10), None, Some(900), None),
+        );
+        valid(&p);
+        assert_eq!(
+            run(&p),
+            Ok(out(Value::decimal(
+                ir::Decimal96::parse_exact("2").unwrap()
+            )))
+        );
+    }
+}
+
+#[test]
 fn predicate_reads_item_and_exact_owner_without_colliding_primary_or_alias_fallback() {
     for (owner, expected) in [
         (SourceOwner::Primary, 0),

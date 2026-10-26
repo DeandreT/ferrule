@@ -190,20 +190,36 @@ fn ordered_text_owned_aggregate_profiles_refuse_new_selectors() {
                     expression: Expression::OwnedAggregate(aggregate.clone()),
                 });
             } else {
-                direct.expressions.iter_mut().find(|node| node.id == id).unwrap().expression =
-                    Expression::OwnedAggregate(aggregate.clone());
+                direct
+                    .expressions
+                    .iter_mut()
+                    .find(|node| node.id == id)
+                    .unwrap()
+                    .expression = Expression::OwnedAggregate(aggregate.clone());
             }
             let expected = retained(id, owner);
-            assert_eq!(validate_program_with_basic_owned_collection_aggregates(&direct), Err(expected.clone()));
-            assert_eq!(validate_basic_owned_collection_aggregates_emission(&direct), Err(expected.clone()));
-            assert_eq!(legacy_named_input_admission_plan_with_basic_owned_collection_aggregates(&direct), Err(expected));
+            assert_eq!(
+                validate_program_with_basic_owned_collection_aggregates(&direct),
+                Err(expected.clone())
+            );
+            assert_eq!(
+                validate_basic_owned_collection_aggregates_emission(&direct),
+                Err(expected.clone())
+            );
+            assert_eq!(
+                legacy_named_input_admission_plan_with_basic_owned_collection_aggregates(&direct),
+                Err(expected)
+            );
             p.graph.nodes.insert(id, Node::OwnedAggregate(aggregate));
             if id == 99 {
                 let lowered = lower_with_basic_owned_collection_aggregates(&p).unwrap();
                 assert!(lowered.expressions.iter().all(|node| node.id != 99));
             } else {
                 let error = lower_with_basic_owned_collection_aggregates(&p).unwrap_err();
-                assert_eq!(reason(&error), Some(OwnedSourceCapabilityReason::AggregateLookup));
+                assert_eq!(
+                    reason(&error),
+                    Some(OwnedSourceCapabilityReason::AggregateLookup)
+                );
             }
         }
     }
