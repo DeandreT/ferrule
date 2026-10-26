@@ -316,32 +316,24 @@ fn read_shape(
                 item: Box::new(read_shape(*typed, &child, child_path, ports, depth + 1)?),
             })
         }
-        Some("string")
-            if schema.kind
-                == (SchemaKind::Scalar {
-                    ty: ScalarType::String,
-                }) =>
-        {
-            Ok(JsonSourceShape::String)
-        }
+        Some("string") if accepts_scalar(schema, ScalarType::String) => Ok(JsonSourceShape::String),
         Some("number")
-            if matches!(
-                schema.kind,
-                SchemaKind::Scalar {
-                    ty: ScalarType::Int | ScalarType::Float
-                }
-            ) =>
+            if accepts_scalar(schema, ScalarType::Int)
+                || accepts_scalar(schema, ScalarType::Float) =>
         {
             Ok(JsonSourceShape::Number)
         }
-        Some("boolean")
-            if schema.kind
-                == (SchemaKind::Scalar {
-                    ty: ScalarType::Bool,
-                }) =>
-        {
-            Ok(JsonSourceShape::Boolean)
-        }
+        Some("boolean") if accepts_scalar(schema, ScalarType::Bool) => Ok(JsonSourceShape::Boolean),
         _ => Err(refuse("typed entry differs from its original schema")),
+    }
+}
+
+fn accepts_scalar(schema: &SchemaNode, selected: ScalarType) -> bool {
+    // A saved typed connector selects one alternative, not the whole union.
+    // The authoritative source schema stays intact on the imported result.
+    match schema.kind {
+        SchemaKind::Scalar { ty } => ty == selected,
+        SchemaKind::ScalarUnion { types } => types.contains(selected),
+        SchemaKind::Group { .. } => false,
     }
 }
