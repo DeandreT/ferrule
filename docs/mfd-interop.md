@@ -661,6 +661,13 @@ MFD entries and generated XSD attributes preserve tabs and line breaks through
 XML character references, including field names, paths, fixed values, and
 defaults.
 
+Physical XML document targets explicitly set `AddSchemaLocation="0"` so the
+reference application's automatic schema URI does not change Ferrule's normal
+no-hint output. This applies to primary and named targets; explicit XML schema
+hints remain outside MFD export. The finite
+[schema-reference observation](conformance/xml-schema-reference.md) covers real
+controls, full outputs and a native save/reopen of an actual Ferrule export.
+
 ```sh
 cargo run -p cli -- export-mfd --project project.json --out design.mfd
 cargo run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd --check --report-json
@@ -673,7 +680,8 @@ and “Export native MFD...”. Both suggest an `.mfd` filename in the project's
 folder. Native rejection lists each affected component and retains its
 compatibility feature and emitted identity; existing design/schema files remain
 unchanged. A successful native-profile export confirms the local compatibility
-checks, while acceptance by the reference application remains unverified.
+checks, not general acceptance by the reference application. Separately recorded
+native observations apply only to their stated fixtures and profiles.
 
 Export writes the representable project subset plus generated schema or layout
 siblings. Component kinds are selected from endpoint format metadata and paths.

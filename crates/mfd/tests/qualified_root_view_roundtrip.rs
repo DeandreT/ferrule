@@ -100,6 +100,7 @@ fn detected_invalid_root_profile_refuses_both_import_profiles() {
     let path = directory.0.join("mapping.mfd");
     mfd::export(&project(Shape::Unqualified, true, false), &path).unwrap();
     let original = std::fs::read_to_string(&path).unwrap();
+    assert!(original.contains("AddSchemaLocation=\"0\""));
     for invalid in [
         original.replace(
             "displayselectionmode=\"all\"",
@@ -107,7 +108,10 @@ fn detected_invalid_root_profile_refuses_both_import_profiles() {
         ),
         original.replace("name=\"equal\"", "name=\"unequal\""),
         original.replace("datatype=\"QName\"", "datatype=\"string\""),
+        original.replace("AddSchemaLocation=\"0\"", "AddSchemaLocation=\"1\""),
+        original.replace("AddSchemaLocation=\"0\"", "AddSchemaLocation=\"invalid\""),
     ] {
+        assert_ne!(invalid, original);
         std::fs::write(&path, invalid).unwrap();
         for profile in [
             mfd::ImportProfile::BestEffort,

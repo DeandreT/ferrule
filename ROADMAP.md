@@ -578,10 +578,12 @@ Physical workbook cell tests and desktop persistence are separate evidence.
   [#172](https://github.com/DeandreT/ferrule/pull/172). Thirty direct observations,
   affected native/Rust suites and all 178 C# smoke groups pass. The separate
   #169 compiled cohort passes its strict mapping witness and is merged in #174.
-- [ ] Resolve native XML root schema annotations in
+- [x] Resolve native XML root schema annotations in
   [#93](https://github.com/DeandreT/ferrule/issues/93) and retain the separately
-  observed failure-publication differences. Controls and saved metadata remain
-  unobserved; the latest attempt refused before settings inspection.
+  observed failure-publication differences. Physical XML exports explicitly
+  disable the reference application's automatic schema URI; the
+  [finite control and save/reopen observation](docs/conformance/xml-schema-reference.md)
+  does not broaden general XML or native-dialog qualification.
 - [ ] Expand accepted shapes only with a concrete owner/order proof and
   counterexamples for ambiguous, shared, or fallible branches.
 

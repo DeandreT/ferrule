@@ -367,7 +367,12 @@ fn boundary(
     for p in properties {
         attrs(
             p,
-            &["XSLTTargetEncoding", "XSLTDefaultOutput", "PassThrough"],
+            &[
+                "XSLTTargetEncoding",
+                "XSLTDefaultOutput",
+                "PassThrough",
+                "AddSchemaLocation",
+            ],
         )?;
         empty(p)?;
         if !elements(p).is_empty()
@@ -375,6 +380,7 @@ fn boundary(
                 .is_some_and(|s| s != "UTF-8")
             || p.attribute("XSLTDefaultOutput").is_some_and(|s| s != "1")
             || p.attribute("PassThrough").is_some_and(|s| s != "0")
+            || p.attribute("AddSchemaLocation").is_some_and(|s| s != "0")
         {
             return reject("component", "unrepresented property behavior");
         }
