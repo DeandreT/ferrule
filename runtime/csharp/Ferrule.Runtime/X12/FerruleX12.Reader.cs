@@ -7,7 +7,7 @@ public static partial class FerruleX12
     private sealed class Cursor(List<Segment> segments, Syntax syntax, Profile profile)
     {
         internal List<Segment> Segments { get; } = segments;
-        internal Syntax Syntax { get; } = syntax;
+        internal Syntax Syntax => Position < Segments.Count ? Segments[Position].ReadSyntax ?? syntax : syntax;
         internal Profile Profile { get; } = profile;
         internal HashSet<string> DeclaredIds { get; } = new(DeclaredSegmentIds(profile.Root, root: true), StringComparer.Ordinal);
         internal int Position { get; set; }

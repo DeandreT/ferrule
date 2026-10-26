@@ -427,6 +427,7 @@ fn describe_trigger(trigger: &SchemaNode) -> String {
 
 struct Cursor<'a> {
     segments: &'a [Segment],
+    component_joins: Option<&'a [char]>,
     pos: usize,
 }
 
@@ -462,6 +463,31 @@ pub(crate) fn read_segments(
             subcomponent_escape: None,
         },
         lenient,
+        None,
+    )
+}
+
+/// X12 can declare a different component separator in each interchange. Keep
+/// scalar reconstruction tied to the segment that supplied those components.
+pub(crate) fn read_x12_segments(
+    schema: &SchemaNode,
+    segments: &[Segment],
+    component_joins: &[char],
+    lenient: bool,
+) -> Result<Instance, EdiFormatError> {
+    if component_joins.len() != segments.len() {
+        return Err(EdiFormatError::NotX12("incomplete segment syntax metadata"));
+    }
+    read_segments_with_syntax(
+        schema,
+        segments,
+        ReadSyntax {
+            component_join: ':',
+            subcomponent: None,
+            subcomponent_escape: None,
+        },
+        lenient,
+        Some(component_joins),
     )
 }
 
@@ -485,6 +511,7 @@ pub(crate) fn read_segments_with_subcomponent_escape(
             subcomponent_escape: Some(escape),
         },
         lenient,
+        None,
     )
 }
 
@@ -500,8 +527,13 @@ fn read_segments_with_syntax(
     segments: &[Segment],
     syntax: ReadSyntax,
     lenient: bool,
+    component_joins: Option<&[char]>,
 ) -> Result<Instance, EdiFormatError> {
-    let mut cursor = Cursor { segments, pos: 0 };
+    let mut cursor = Cursor {
+        segments,
+        component_joins,
+        pos: 0,
+    };
     let instance = read_node(schema, &mut cursor, syntax, true, lenient, &[])?;
     if let Some(segment) = cursor.peek()
         && !lenient
@@ -617,6 +649,14 @@ fn read_segment(
     cursor: &mut Cursor,
     syntax: ReadSyntax,
 ) -> Result<Instance, EdiFormatError> {
+    let syntax = ReadSyntax {
+        component_join: cursor
+            .component_joins
+            .and_then(|values| values.get(cursor.pos))
+            .copied()
+            .unwrap_or(syntax.component_join),
+        ..syntax
+    };
     let segment = cursor
         .peek()
         .ok_or_else(|| EdiFormatError::UnexpectedSegment {

@@ -34,7 +34,7 @@ public sealed partial class FerruleEdi
     private const int MaximumBytes = 64 * 1024 * 1024;
     private static readonly UTF8Encoding Utf8 = new(false, true);
     private sealed record Node(string Name, string? Type, Node[] Children, bool Repeating, string? Fixed);
-    private sealed record Segment(string Id, List<List<List<string>>> Elements);
+    private sealed record Segment(string Id, List<List<List<string>>> Elements, Syntax? ReadSyntax = null);
     private sealed record Syntax(char Element, char Component, char Terminator, char? Release, char? Repetition, char? Subcomponent = null, string? ReadComponent = null);
     private readonly Node _root;
     private readonly string _kind;
@@ -180,7 +180,7 @@ public sealed partial class FerruleEdi
             var parts = index < segment.Elements.Count && segment.Elements[index].Count > 0 ? segment.Elements[index][0] : [];
             if (child.Type is not null) { if (child.Fixed is not null && (parts.Count == 0 || parts[0] != child.Fixed)) return false; }
             else for (int at = 0; at < child.Children.Length; at++)
-                if (child.Children[at].Fixed is { } fixedValue && (at >= parts.Count || parts[at] != fixedValue)) return false;
+                    if (child.Children[at].Fixed is { } fixedValue && (at >= parts.Count || parts[at] != fixedValue)) return false;
         }
         return true;
     }
@@ -192,9 +192,11 @@ public sealed partial class FerruleEdi
         {
             if (position >= segments.Count) throw Fail(FerruleEdiError.Schema, "Missing required EDI segment.");
             var segment = segments[position++];
-            return new FerruleGroup(node.Children.Select((child, at) => {
+            var segmentSyntax = segment.ReadSyntax ?? syntax;
+            return new FerruleGroup(node.Children.Select((child, at) =>
+            {
                 var repeats = at < segment.Elements.Count ? segment.Elements[at] : [];
-                FerruleInstance value = child.Repeating ? new FerruleRepeated(repeats.Select(parts => ReadElement(child, parts, syntax))) : ReadElement(child, repeats.FirstOrDefault() ?? [], syntax);
+                FerruleInstance value = child.Repeating ? new FerruleRepeated(repeats.Select(parts => ReadElement(child, parts, segmentSyntax))) : ReadElement(child, repeats.FirstOrDefault() ?? [], segmentSyntax);
                 return new FerruleField(child.Name, value);
             }));
         }

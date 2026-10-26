@@ -57,6 +57,8 @@ mod grouped;
 mod mapforce;
 #[path = "x12/mapforce_acknowledgments.rs"]
 mod mapforce_acknowledgments;
+#[path = "x12/mixed_syntax.rs"]
+mod mixed_syntax;
 #[path = "x12/modern.rs"]
 mod modern;
 #[path = "x12/repeated.rs"]

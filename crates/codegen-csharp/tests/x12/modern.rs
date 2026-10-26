@@ -600,8 +600,10 @@ fn modern_profiles_compiled_public_boundaries_match_complete_oracles() {
     );
     assert!(
         result.status.success(),
-        "complete public host evidence at {}",
-        root.display()
+        "complete public host evidence at {}\n{}\n{}",
+        root.display(),
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
     );
     let summary: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
     assert_eq!(summary["failed"], 0);

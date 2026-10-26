@@ -438,7 +438,7 @@ fn mapforce_native_profiles_match_complete_values_and_wire_oracles() {
         root.display()
     );
     let cases = materialize_cases(&root);
-    assert_eq!(cases.len(), 31);
+    assert_eq!(cases.len(), 30);
 }
 
 #[test]
@@ -586,5 +586,5 @@ fn mapforce_profiles_compiled_public_boundaries_match_complete_oracles() {
     let summary: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(summary["failed"], 0);
     assert_eq!(summary["cases"], cases.len());
-    assert_eq!(summary["passed"], 170);
+    assert_eq!(summary["passed"], 168);
 }
