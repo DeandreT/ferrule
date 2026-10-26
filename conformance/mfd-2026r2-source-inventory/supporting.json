@@ -1111,7 +1111,7 @@
     },
     {
       "id": "installer-binding",
-      "question": "The executable, type library and four ConvertProducts inputs now match selected official 2026r2 installer members; C#/Java source generation is observed. Complete installed/generated artifact coverage, schema-wrapper bundles and runtime qualification remain incomplete. See artifact-observations.json."
+      "question": "The copied application tree and four ConvertProducts inputs now match official 2026r2 installer members; C#/Java source generation is observed. Product-wide installation and platform dependency coverage, schema-wrapper bundles and runtime qualification remain incomplete. See artifact-observations.json."
     }
   ],
   "installer_artifact_requests": {
