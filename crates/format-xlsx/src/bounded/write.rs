@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
 use ir::{Instance, SchemaNode, Value};
-use rust_xlsxwriter::Workbook;
+use rust_xlsxwriter::{DocProperties, ExcelDateTime, Workbook};
 
 use super::{XlsxLimit, XlsxLimits, add, check, fields};
 use crate::{
@@ -10,7 +10,8 @@ use crate::{
 };
 
 /// Creates a new flat workbook with finite preflight and output budgets.
-/// Equivalent to [`crate::to_bytes`] for accepted values; never updates a file.
+/// Equivalent to [`crate::to_bytes`] for accepted cell values, with fixed
+/// document timestamps for reproducible bytes; never updates a file.
 pub fn to_bytes_bounded(
     schema: &SchemaNode,
     rows: &[Instance],
@@ -176,7 +177,8 @@ pub(super) fn preflight<'a>(
 /// Creates a new flat workbook, retaining physical headers and sparse columns.
 /// Rows, cell values, string storage and a conservative XML growth charge are
 /// checked before constructing the workbook. The ZIP writer cannot grow the
-/// returned buffer beyond `max_output_bytes`.
+/// returned buffer beyond `max_output_bytes`. Document creation/modification
+/// metadata is fixed at 1980-01-01 00:00:00 UTC for reproducible bytes.
 pub fn to_bytes_with_options_bounded(
     schema: &SchemaNode,
     rows: &[Instance],
@@ -186,6 +188,11 @@ pub fn to_bytes_with_options_bounded(
     let PreparedFlat { fields, columns } = preflight(schema, rows, options, limits)?;
     let limits = limits.options();
     let mut workbook = Workbook::new();
+    // Match the ZIP epoch without changing cell values or the legacy writers.
+    // The upstream property sets both core creation and modification times.
+    let properties =
+        DocProperties::new().set_creation_datetime(&ExcelDateTime::from_ymd(1980, 1, 1)?);
+    workbook.set_properties(&properties);
     let worksheet = workbook.add_worksheet();
     if let Some(sheet) = options.sheet {
         worksheet.set_name(sheet)?;

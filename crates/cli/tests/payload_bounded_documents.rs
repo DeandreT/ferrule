@@ -96,6 +96,8 @@ fn mixed_families_all_primary_named_ignore_every_filename() -> anyhow::Result<()
     assert_eq!(table.len(), 2);
     assert_eq!(all.artifacts[2].bytes, b"\x0a\x06binary");
     assert_eq!(all.artifacts[3].bytes, b"one\ntwo\n");
+    // XLSX replay must stay byte-identical across document/ZIP clock ticks too.
+    std::thread::sleep(std::time::Duration::from_millis(2100));
     for (selection, index) in [
         (TargetSelection::Primary, 0),
         (TargetSelection::Named("workbook"), 1),
@@ -104,10 +106,7 @@ fn mixed_families_all_primary_named_ignore_every_filename() -> anyhow::Result<()
     ] {
         let selected = run(&project, br#"{"Value":"primary"}"#, &named, Some(selection))?;
         assert_eq!(selected.artifacts.len(), 1);
-        // ZIP timestamps are not a stable byte comparison; decode the workbook above.
-        if index != 1 {
-            assert_eq!(selected.artifacts[0].bytes, all.artifacts[index].bytes);
-        }
+        assert_eq!(selected.artifacts[0].bytes, all.artifacts[index].bytes);
         assert_eq!(selected.artifacts[0].target, all.artifacts[index].target);
         assert_eq!(
             selected.artifacts[0].path,

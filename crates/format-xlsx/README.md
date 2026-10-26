@@ -79,6 +79,13 @@ It reuses the existing value conversion rules. A
 partial buffer is returned on failure. Limits are per call, so a failed workbook
 does not poison a corrected retry.
 
+Bounded new writes fix the document creation and modification metadata at
+`1980-01-01T00:00:00Z`, matching the ZIP epoch. Identical accepted inputs and
+options produce identical bytes with the same writer version, independent of
+wall-clock time. This timestamp is package metadata, not a cell value or the
+mapping's current date/time. Legacy/unbounded writers retain their metadata
+behavior; no existing workbook or user properties are read or rewritten.
+
 The write preflight deliberately overcounts repeated strings, field names and
 fixed metadata. Consequently a tight budget may reject a workbook whose final
 compressed bytes would fit. Input-byte limits apply to reads; output-byte limits
