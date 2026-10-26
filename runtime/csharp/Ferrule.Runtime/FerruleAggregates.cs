@@ -13,6 +13,8 @@ public enum FerruleAggregateOperation
     Join,
     ItemAt,
     DecimalSum,
+    LastPresentText,
+    LastDistinctText,
 }
 
 /// <summary>Applies one scalar reduction over an already-evaluated item sequence.</summary>
@@ -42,6 +44,8 @@ public static class FerruleAggregates
         ArgumentNullException.ThrowIfNull(values);
         return operation switch
         {
+            FerruleAggregateOperation.LastPresentText or FerruleAggregateOperation.LastDistinctText =>
+                SelectText(operation, values, argument),
             FerruleAggregateOperation.DecimalSum => DecimalSum(values, argument),
             FerruleAggregateOperation.Count => FerruleValue.FromInt64(values.Count),
             FerruleAggregateOperation.Sum => Sum(values),
@@ -52,6 +56,33 @@ public static class FerruleAggregates
             FerruleAggregateOperation.ItemAt => ItemAt(values, argument),
             _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, null),
         };
+    }
+
+    private static FerruleValue SelectText(
+        FerruleAggregateOperation operation,
+        IReadOnlyList<FerruleValue> values,
+        FerruleValue? argument)
+    {
+        var function = operation == FerruleAggregateOperation.LastPresentText
+            ? "last_present_text" : "last_distinct_text";
+        if (argument.HasValue)
+            throw new FerruleRuntimeException(FerruleRuntimeError.FunctionInvalidArgument,
+                $"`{function}` does not accept an argument.", function: function);
+        var distinct = operation == FerruleAggregateOperation.LastDistinctText;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var selected = FerruleValue.Null;
+        foreach (var value in values)
+        {
+            if (value.Kind == FerruleValueKind.Null)
+                continue;
+            if (value.Kind != FerruleValueKind.String)
+                throw new FerruleRuntimeException(FerruleRuntimeError.AggregateUnsupportedScalar,
+                    $"{operation} aggregate cannot accept a {value.Kind} value.",
+                    foundKind: value.Kind, aggregateOperation: operation);
+            if (!distinct || seen.Add(value.StringValue))
+                selected = value;
+        }
+        return selected;
     }
 
     private static FerruleValue DecimalSum(IReadOnlyList<FerruleValue> values, FerruleValue? argument)

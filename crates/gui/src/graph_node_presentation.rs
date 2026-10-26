@@ -121,6 +121,8 @@ fn aggregate_label(function: AggregateOp) -> &'static str {
         AggregateOp::Max => "Maximum",
         AggregateOp::Join => "String join",
         AggregateOp::ItemAt => "Item at",
+        AggregateOp::LastPresentText => "Last present text",
+        AggregateOp::LastDistinctText => "Last distinct text",
     }
 }
 

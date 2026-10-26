@@ -150,6 +150,8 @@ mod json_parser_ports;
 mod json_structure_variables;
 #[path = "code_generation/legacy_artifact_policy.rs"]
 mod legacy_artifact_policy;
+#[path = "code_generation/ordered_text_selection.rs"]
+mod ordered_text_selection;
 #[path = "code_generation/owned_capability_presets.rs"]
 mod owned_capability_presets;
 #[path = "code_generation/owned_row_document_path.rs"]

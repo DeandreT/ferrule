@@ -254,6 +254,34 @@ const REDUCERS: [(&str, AggregateOp); 7] = [
 ];
 
 #[test]
+fn ordered_text_owned_joined_aggregates_remain_closed() {
+    for function in [AggregateOp::LastPresentText, AggregateOp::LastDistinctText] {
+        for expression in [None, Some(2)] {
+            let p = root_value(vec![
+                (1, aggregate(function, rows_plan(), expression, Some(3))),
+                (2, Node::Raise { message: Some(4) }),
+                (3, Node::Raise { message: Some(5) }),
+                (4, constant(text_value("projection must not run"))),
+                (5, constant(text_value("argument must not run"))),
+            ]);
+            for (primary, named) in [
+                (primary_rows(), lookup_rows()),
+                (document(Instance::Repeated(vec![])), lookup_rows()),
+            ] {
+                assert_eq!(
+                    value(&p, primary, named),
+                    Err(functions::FunctionError::InvalidArgument {
+                        function: "owned_join_aggregate",
+                        message: "this reducer is not supported for owned joined collections",
+                    }
+                    .into())
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn decimal_sum_preserves_owned_join_tuple_count_and_empty_zero() {
     let decimal = ir::Decimal96::parse_exact("0.1").unwrap();
     let p = root_value(vec![

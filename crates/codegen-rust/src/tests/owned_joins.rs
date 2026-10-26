@@ -1,5 +1,42 @@
 //! #449 owned join scopes render one owned join and member reads by identity;
 //! #450 joined aggregates render one owned join per aggregate.
+#[test]
+fn ordered_text_owned_joined_aggregates_remain_closed() {
+    for function in [
+        mapping::AggregateOp::LastPresentText,
+        mapping::AggregateOp::LastDistinctText,
+    ] {
+        for reached in [true, false] {
+            let mut program =
+                codegen::lower_with_basic_owned_joins(&joined_aggregate_project()).unwrap();
+            let expression = &mut program
+                .expressions
+                .iter_mut()
+                .find(|node| node.id == 1)
+                .unwrap()
+                .expression;
+            let codegen::Expression::OwnedJoinAggregate(aggregate) = expression else {
+                panic!("authored joined aggregate");
+            };
+            aggregate.function = function;
+            if !reached {
+                program
+                    .root
+                    .bindings
+                    .retain(|binding| binding.expression != 1);
+            }
+            assert!(
+                matches!(crate::emit_with_basic_owned_joins(&program, &options()),
+                Err(crate::EmitError::InvalidProgram(codegen::ProgramValidationError::OwnedSource { diagnostic }))
+                    if matches!(diagnostic.as_ref(), codegen::OwnedSourceDiagnostic::Capability {
+                        location: codegen::OwnedSourceDiagnosticLocation::Expression { node: 1, .. },
+                        reason: codegen::OwnedSourceCapabilityReason::Join, ..
+                    }))
+            );
+        }
+    }
+}
+
 fn path(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).into()).collect()
 }
