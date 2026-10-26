@@ -324,6 +324,7 @@ struct Builder<'a> {
     ports: &'a BTreeMap<u32, Vec<String>>,
     message: &'a SchemaNode,
     required: &'a BTreeSet<Vec<String>>,
+    date_ports: &'a BTreeSet<u32>,
     format: X12DocumentBodyFormat,
     target: String,
     cache: BTreeMap<(u32, Vec<String>, bool), Expr>,
@@ -556,6 +557,24 @@ fn import_document_bodies(
                 }
             })
             .collect::<BTreeSet<_>>();
+        let date_paths = source_schema
+            .options
+            .edi_lexical_formats
+            .iter()
+            .filter(|format| {
+                matches!(
+                    format.kind(),
+                    mapping::EdiLexicalKind::CompactDate6 | mapping::EdiLexicalKind::CompactDate8
+                )
+            })
+            .map(|format| format.path())
+            .collect::<BTreeSet<_>>();
+        let date_ports = source_schema
+            .ports
+            .iter()
+            .filter(|(_, path)| date_paths.contains(path.as_slice()))
+            .map(|(port, _)| *port)
+            .collect::<BTreeSet<_>>();
         let mut functions = BTreeMap::new();
         let mut roles = BTreeMap::new();
         let mut uids = BTreeSet::new();
@@ -763,6 +782,7 @@ fn import_document_bodies(
                 ports: &ports,
                 message: &message,
                 required: &required,
+                date_ports: &date_ports,
                 format,
                 target: target.name.clone(),
                 cache: BTreeMap::new(),
