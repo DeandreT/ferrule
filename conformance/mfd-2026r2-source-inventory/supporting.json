@@ -1062,7 +1062,7 @@
         57369,
         57376
       ],
-      "question": "The prose describes an inner-exception pointer and NULL absence, but the table says std::exception inner(). Pointer/reference/value return, lifetime, ownership and actual absence representation remain unresolved."
+      "question": "The prose describes an inner-exception pointer and NULL absence, but the table says std::exception inner(). The release-bound exception header separately declares a const std::exception* return; see artifact-observations.json. Lifetime, ownership and actual absence behavior remain unresolved."
     },
     {
       "id": "java-exception-spellings",
@@ -1071,7 +1071,7 @@
         57616,
         57642
       ],
-      "question": "SourceInstanceUnvailableException and java.lang.IllegalArgumentsException are literal source spellings, not silently corrected aliases. Their correspondence to installed declarations is unknown."
+      "question": "SourceInstanceUnvailableException and java.lang.IllegalArgumentsException are literal manual spellings, not silently corrected aliases. The release-bound source separately declares com.altova.SourceInstanceUnavailableException; see artifact-observations.json. No compatibility alias or throw-site is inferred, and the platform-exception spelling discrepancy remains separate."
     },
     {
       "id": "host-file-name",
