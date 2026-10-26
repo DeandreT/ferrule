@@ -385,6 +385,243 @@ fn json_reduction_evaluates_all_matching_dates_but_not_nonmatching_dates() {
 }
 
 #[test]
+fn fixed_xml_body_spans_complete_envelopes_without_changing_message_profile() {
+    let fixture = fixed_xml_fixture();
+    assert!(fixture.import().is_err());
+    let imported = mfd::import_x12_fixed_xml_body_with_options(
+        &fixture.0.join("mapping.mfd"),
+        &mfd::ImportOptions::default().with_package_root(&fixture.0),
+        "FixedXml",
+    )
+    .unwrap();
+    assert_eq!(imported.input_parameter, "Input");
+    assert_eq!(imported.output_filename, "fixed.xml");
+    assert_eq!(imported.source_schema.name, "Envelope");
+    assert_eq!(imported.body.source.name, "X12DocumentBatch");
+    let document = |names: &[&str]| {
+        let messages = names
+            .iter()
+            .map(|name| group(vec![("BEG", group(vec![("F1", text(name))]))]))
+            .collect();
+        let functional_group = group(vec![("Message_850", Instance::Repeated(messages))]);
+        let interchange = group(vec![("Group", Instance::Repeated(vec![functional_group]))]);
+        group(vec![("Interchange", Instance::Repeated(vec![interchange]))])
+    };
+    let inputs = [
+        imported
+            .source_documents(vec![document(&["A", "B"])])
+            .unwrap(),
+        imported
+            .source_documents(vec![document(&["A"]), document(&["B"])])
+            .unwrap(),
+    ];
+    let expected = group(vec![
+        ("Kind", text("demo")),
+        (
+            "Items",
+            group(vec![(
+                "Item",
+                Instance::Repeated(vec![
+                    group(vec![("Id", text("A"))]),
+                    group(vec![("Id", text("B"))]),
+                ]),
+            )]),
+        ),
+        (
+            "Summary",
+            Instance::Repeated(vec![group(vec![(
+                "Id",
+                Instance::MappedSequence(vec![text("A"), text("B")]),
+            )])]),
+        ),
+    ]);
+    for input in inputs {
+        assert_eq!(engine::run(&imported.body, &input).unwrap(), expected);
+    }
+    let empty = engine::run(&imported.body, &imported.source_documents(vec![]).unwrap()).unwrap();
+    assert_eq!(empty.field("Kind"), Some(&text("demo")));
+    assert_eq!(
+        empty.field("Items").unwrap().field("Item"),
+        Some(&Instance::Repeated(vec![]))
+    );
+    assert_eq!(
+        empty.field("Summary").unwrap().as_repeated().unwrap()[0].field("Id"),
+        Some(&Instance::MappedSequence(vec![]))
+    );
+    let program = codegen::lower(&imported.body).unwrap();
+    codegen_rust::emit(&program, &rust_options()).unwrap();
+    codegen_csharp::emit(&program).unwrap();
+
+    fixture.change("mapping.mfd", |xml| {
+        let without_group_driver = xml.replace(r#"<edge vertexkey="101"/>"#, "");
+        assert_ne!(without_group_driver, xml);
+        without_group_driver.replace(
+            r#"<edge vertexkey="43"/>"#,
+            r#"<edge vertexkey="43"/><edge vertexkey="101"/>"#,
+        )
+    });
+    let scalar_driven = mfd::import_x12_fixed_xml_body_with_options(
+        &fixture.0.join("mapping.mfd"),
+        &mfd::ImportOptions::default().with_package_root(&fixture.0),
+        "FixedXml",
+    )
+    .unwrap();
+    assert_eq!(
+        engine::run(
+            &scalar_driven.body,
+            &scalar_driven
+                .source_documents(vec![document(&["A", "B"])])
+                .unwrap()
+        )
+        .unwrap(),
+        expected
+    );
+    assert_eq!(
+        engine::run(
+            &scalar_driven.body,
+            &scalar_driven.source_documents(vec![]).unwrap()
+        )
+        .unwrap()
+        .field("Items")
+        .unwrap()
+        .field("Item"),
+        Some(&Instance::Repeated(vec![]))
+    );
+    assert!(
+        scalar_driven
+            .source_documents(vec![Instance::Scalar(Value::Null)])
+            .is_err()
+    );
+    if let Some(root) = std::env::var_os("MFD051_GENERATED_DIR") {
+        let root = PathBuf::from(root).join("fixed-xml");
+        let program = codegen::lower(&scalar_driven.body).unwrap();
+        for (language, artifacts) in [
+            (
+                "rust",
+                codegen_rust::emit(&program, &rust_options()).unwrap(),
+            ),
+            ("csharp", codegen_csharp::emit(&program).unwrap()),
+        ] {
+            for file in artifacts.into_files() {
+                let path = root.join(language).join(file.path.as_str());
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(path, file.contents).unwrap();
+            }
+        }
+        let physical = |names: &[&str]| {
+            let messages = names
+                .iter()
+                .map(|name| serde_json::json!({"BEG":{"F1":name}}))
+                .collect::<Vec<_>>();
+            serde_json::json!({"Interchange":[{"Group":[{"Message_850":messages}]}]})
+        };
+        let expected = serde_json::json!({"Kind":"demo","Items":{"Item":[{"Id":"A"},{"Id":"B"}]},"Summary":[{"Id":["A","B"]}]});
+        let cases = serde_json::json!([
+            {"label":"two-messages","input":{"Documents":[physical(&["A","B"])]},"expected":expected.clone()},
+            {"label":"two-documents","input":{"Documents":[physical(&["A"]),physical(&["B"])]},"expected":expected},
+            {"label":"no-documents","input":{"Documents":[]},"expected":{"Kind":"demo","Items":{"Item":[]},"Summary":[{"Id":[]}]}}
+        ]);
+        std::fs::write(
+            root.join("cases.json"),
+            serde_json::to_vec_pretty(&cases).unwrap(),
+        )
+        .unwrap();
+    }
+}
+
+fn fixed_xml_fixture() -> Fixture {
+    let fixture = Fixture::new();
+    std::fs::write(fixture.0.join("target.xsd"), r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Root"><xs:complexType><xs:sequence><xs:element name="Kind" type="xs:string"/><xs:element name="Items"><xs:complexType><xs:sequence><xs:element name="Item" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Id" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element><xs:element name="Summary" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Id" type="xs:string" minOccurs="0"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    fixture.change("mapping.mfd", |xml| xml.replace("</children>", r#"<component name="FixedXml" library="xml" kind="14" uid="12"><properties/><data><root><entry name="FileInstance"><file role="outputinstance" name="fixed.xml"/><entry name="document"><entry name="Root"><entry name="Kind" inpkey="105"/><entry name="Items"><entry name="Item" inpkey="101"><entry name="Id" inpkey="102"/></entry></entry><entry name="Summary"><entry name="Id" inpkey="103"/></entry></entry></entry></entry></root><document schema="target.xsd" instanceroot="{}Root"/></data></component></children>"#)
+        .replace(r#"<edge vertexkey="42"/>"#, r#"<edge vertexkey="42"/><edge vertexkey="101"/>"#)
+        .replace(r#"<edge vertexkey="43"/>"#, r#"<edge vertexkey="43"/><edge vertexkey="102"/><edge vertexkey="103"/>"#)
+        .replace(r#"<edge vertexkey="41"/>"#, r#"<edge vertexkey="41"/><edge vertexkey="105"/>"#));
+    fixture
+}
+
+#[test]
+fn fixed_xml_body_requires_explicit_filename_and_static_target_mode() {
+    let fixture = fixed_xml_fixture();
+    for name in ["", "Missing", "Target"] {
+        assert!(
+            mfd::import_x12_fixed_xml_body_with_options(
+                &fixture.0.join("mapping.mfd"),
+                &mfd::ImportOptions::default().with_package_root(&fixture.0),
+                name,
+            )
+            .is_err()
+        );
+    }
+    for (from, to) in [
+        (r#"<file role="outputinstance" name="fixed.xml"/>"#, ""),
+        (r#"name="fixed.xml""#, r#"name="""#),
+        ("<properties/>", r#"<properties DynamicFilenames="1"/>"#),
+        ("<properties/>", r#"<properties Other="1"/>"#),
+        (
+            r#"<entry name="FileInstance"><file"#,
+            r#"<entry name="FileInstance" inpkey="901"><file"#,
+        ),
+    ] {
+        let fixture = fixed_xml_fixture();
+        fixture.change("mapping.mfd", |xml| {
+            assert_eq!(xml.matches(from).count(), 1);
+            xml.replacen(from, to, 1)
+        });
+        assert!(
+            mfd::import_x12_fixed_xml_body_with_options(
+                &fixture.0.join("mapping.mfd"),
+                &mfd::ImportOptions::default().with_package_root(&fixture.0),
+                "FixedXml",
+            )
+            .is_err()
+        );
+    }
+}
+
+#[test]
+fn fixed_xml_scalar_driver_keeps_optional_collection_owner() {
+    let fixture = fixed_xml_fixture();
+    fixture.change("mapping.mfd", |xml| {
+        xml.replace(r#"<edge vertexkey="101"/>"#, "").replace(
+            r#"<edge vertexkey="43"/>"#,
+            r#"<edge vertexkey="43"/><edge vertexkey="101"/>"#,
+        )
+    });
+    fixture.change("850.Config", |xml| {
+        assert_eq!(xml.matches(r#"<Segment ref="BEG"/>"#).count(), 1);
+        xml.replace(
+            r#"<Segment ref="BEG"/>"#,
+            r#"<Segment ref="BEG" minOccurs="0"/>"#,
+        )
+    });
+    let imported = mfd::import_x12_fixed_xml_body_with_options(
+        &fixture.0.join("mapping.mfd"),
+        &mfd::ImportOptions::default().with_package_root(&fixture.0),
+        "FixedXml",
+    )
+    .unwrap();
+    // Optional EDI groups have an explicit collection owner. Missing content
+    // must skip the driver, not resolve a scalar through an absent ancestor.
+    let item = &imported.body.root.children[0].children[0];
+    assert!(
+        matches!(&item.iteration, mapping::ScopeIteration::Source(path) if path.last().map(String::as_str)==Some("BEG"))
+    );
+    let message = group(vec![("BEG", Instance::Repeated(vec![]))]);
+    let functional = group(vec![("Message_850", Instance::Repeated(vec![message]))]);
+    let interchange = group(vec![("Group", Instance::Repeated(vec![functional]))]);
+    let document = group(vec![("Interchange", Instance::Repeated(vec![interchange]))]);
+    let value = engine::run(
+        &imported.body,
+        &imported.source_documents(vec![document]).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        value.field("Items").unwrap().field("Item"),
+        Some(&Instance::Repeated(vec![]))
+    );
+}
+
+#[test]
 fn xml_scalar_after_child_keeps_declared_evaluation_and_output_order() {
     let fixture = Fixture::new();
     std::fs::write(fixture.0.join("target.xsd"), r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Order"><xs:complexType><xs:sequence><xs:element name="Head" type="xs:string"/><xs:element name="Child"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string" minOccurs="0" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element><xs:element name="Tail" type="xs:string" minOccurs="0"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
