@@ -10,8 +10,11 @@ use std::path::Path;
 use ir::Instance;
 use thiserror::Error;
 
+mod bounded;
 mod schema;
 mod wire;
+
+pub use bounded::{BoundedEncodeError, EncodeLimit, EncodeLimits};
 
 /// Maximum accepted `.proto` schema size.
 pub const MAX_SCHEMA_BYTES: usize = 1024 * 1024;
@@ -103,6 +106,42 @@ pub fn to_vec_message(
         )));
     }
     wire::encode(layout, root, instance)
+}
+
+/// Encodes one root with explicit input and output data budgets.
+///
+/// Root resolution and input-budget admission precede native format validation.
+/// Within admitted input, the complete native validation/counting pass finishes
+/// before an output-limit error is returned, preserving later format errors.
+/// No output, nested-message, packed-field, or implicit-default byte buffer is
+/// allocated during that pass. Successful output is byte-identical to [`to_vec`].
+/// Native errors are owned unchanged by [`BoundedEncodeError::Protobuf`].
+/// See [`EncodeLimits`] and the crate README for the finite-memory guarantees.
+pub fn to_vec_bounded(
+    layout: &Layout,
+    root: impl AsRef<str>,
+    instance: &Instance,
+    limits: &EncodeLimits,
+) -> Result<Vec<u8>, BoundedEncodeError> {
+    let message = layout.resolve_message(root.as_ref())?;
+    wire::encode_bounded(layout, message, instance, limits)
+}
+
+/// Already-resolved-root variant of [`to_vec_bounded`].
+pub fn to_vec_message_bounded(
+    layout: &Layout,
+    root: MessageId,
+    instance: &Instance,
+    limits: &EncodeLimits,
+) -> Result<Vec<u8>, BoundedEncodeError> {
+    if layout.message(root).is_none() {
+        return Err(ProtobufError::schema(format!(
+            "message id {} does not belong to this layout",
+            root.index()
+        ))
+        .into());
+    }
+    wire::encode_bounded(layout, root, instance, limits)
 }
 
 /// Decodes one root message from a bounded byte slice.

@@ -1,10 +1,14 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 use ir::{Instance, Value};
 
 use crate::{
-    Cardinality, EnumId, Field, FieldType, Layout, Message, MessageId, ProtobufError, ScalarType,
+    BoundedEncodeError, Cardinality, EncodeLimit, EncodeLimits, EnumId, Field, FieldType, Layout,
+    Message, MessageId, ProtobufError, ScalarType,
 };
+
+use super::output::{BoundedOutput, Count, Output};
 
 const MAX_MESSAGE_DEPTH: usize = 128;
 
@@ -28,13 +32,49 @@ pub(crate) fn encode(
     Ok(output)
 }
 
-fn encode_message(
+pub(crate) fn encode_bounded(
+    layout: &Layout,
+    root: MessageId,
+    instance: &Instance,
+    limits: &EncodeLimits,
+) -> Result<Vec<u8>, BoundedEncodeError> {
+    let message = layout.message(root).ok_or_else(|| {
+        ProtobufError::schema(format!("unknown resolved message id {}", root.index()))
+    })?;
+    limits.validate(instance)?;
+    let mut count = Count::new();
+    encode_message(
+        layout,
+        message,
+        instance,
+        message.full_name(),
+        0,
+        &mut count,
+    )?;
+    let length = count.finish()?;
+    crate::bounded::check(length, EncodeLimit::OutputBytes, limits.max_output_bytes)?;
+
+    // The immutable input has passed the same codec with a counting sink. Each
+    // buffer now enforces that measured final length before every reservation.
+    let mut output = BoundedOutput::new(length);
+    encode_message(
+        layout,
+        message,
+        instance,
+        message.full_name(),
+        0,
+        &mut output,
+    )?;
+    output.finish()
+}
+
+fn encode_message<O: Output>(
     layout: &Layout,
     message: &Message,
     instance: &Instance,
     path: &str,
     depth: usize,
-    output: &mut Vec<u8>,
+    output: &mut O,
 ) -> Result<(), ProtobufError> {
     if depth > MAX_MESSAGE_DEPTH {
         return Err(ProtobufError::instance(
@@ -139,13 +179,13 @@ fn encode_message(
     Ok(())
 }
 
-fn encode_repeated(
+fn encode_repeated<O: Output>(
     layout: &Layout,
     field: &Field,
     instance: &Instance,
     path: &str,
     depth: usize,
-    output: &mut Vec<u8>,
+    output: &mut O,
 ) -> Result<(), ProtobufError> {
     let values = match instance {
         Instance::Repeated(values) | Instance::MappedSequence(values) => values,
@@ -163,16 +203,17 @@ fn encode_repeated(
         validate_map_entries(layout, field, values, path)?;
     }
     if field.packed() {
-        let mut payload = Vec::new();
+        let mut payload = output.child();
         for (index, value) in values.iter().enumerate() {
             let item_path = indexed_path(path, index);
             encode_scalar_or_enum_payload(layout, field.ty(), value, &item_path, &mut payload)?;
         }
-        if !payload.is_empty() {
+        if payload.len() != 0 {
             encode_key(field.number(), 2, output);
             encode_len(payload.len(), output);
-            output.extend_from_slice(&payload);
         }
+        // Also propagate a failed child allocation when it wrote no bytes.
+        output.append(payload);
         return Ok(());
     }
     for (index, value) in values.iter().enumerate() {
@@ -189,10 +230,10 @@ fn encode_repeated(
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
-enum MapKey {
+enum MapKey<'a> {
     Bool(bool),
     Int(i64),
-    String(String),
+    String(Cow<'a, str>),
 }
 
 fn validate_map_entries(
@@ -244,11 +285,11 @@ fn validate_map_entries(
     Ok(())
 }
 
-fn encoded_map_key(
+fn encoded_map_key<'a>(
     field: &Field,
-    instance: Option<&Instance>,
+    instance: Option<&'a Instance>,
     path: &str,
-) -> Result<MapKey, ProtobufError> {
+) -> Result<MapKey<'a>, ProtobufError> {
     let value = match instance {
         None | Some(Instance::Scalar(Value::Null | Value::JsonNull(_))) => None,
         Some(Instance::Scalar(value)) => Some(value),
@@ -268,11 +309,13 @@ fn encoded_map_key(
             Some(value) => boolean(value, path).map(MapKey::Bool),
         },
         ScalarType::String => match value {
-            None => Ok(MapKey::String(String::new())),
-            Some(Value::String(value)) => Ok(MapKey::String(value.clone())),
-            Some(Value::Int(value)) => Ok(MapKey::String(value.to_string())),
-            Some(Value::Float(value)) if value.is_finite() => Ok(MapKey::String(value.to_string())),
-            Some(Value::Bool(value)) => Ok(MapKey::String(value.to_string())),
+            None => Ok(MapKey::String(Cow::Borrowed(""))),
+            Some(Value::String(value)) => Ok(MapKey::String(Cow::Borrowed(value))),
+            Some(Value::Int(value)) => Ok(MapKey::String(Cow::Owned(value.to_string()))),
+            Some(Value::Float(value)) if value.is_finite() => {
+                Ok(MapKey::String(Cow::Owned(value.to_string())))
+            }
+            Some(Value::Bool(value)) => Ok(MapKey::String(Cow::Owned(value.to_string()))),
             Some(value) => Err(type_error(path, "finite scalar", value)),
         },
         ScalarType::Int32 | ScalarType::Sint32 | ScalarType::Sfixed32 => {
@@ -307,24 +350,24 @@ fn encoded_map_key(
     }
 }
 
-fn encode_occurrence(
+fn encode_occurrence<O: Output>(
     layout: &Layout,
     field: &Field,
     instance: &Instance,
     path: &str,
     depth: usize,
-    output: &mut Vec<u8>,
+    output: &mut O,
 ) -> Result<(), ProtobufError> {
     match field.ty() {
         FieldType::Message(id) => {
             let message = layout.message(id).ok_or_else(|| {
                 ProtobufError::schema(format!("unknown resolved message id {}", id.index()))
             })?;
-            let mut payload = Vec::new();
+            let mut payload = output.child();
             encode_message(layout, message, instance, path, depth + 1, &mut payload)?;
             encode_key(field.number(), 2, output);
             encode_len(payload.len(), output);
-            output.extend_from_slice(&payload);
+            output.append(payload);
         }
         FieldType::Scalar(_) | FieldType::Enum(_) => {
             encode_key(field.number(), wire_type(field.ty()), output);
@@ -334,12 +377,12 @@ fn encode_occurrence(
     Ok(())
 }
 
-fn encode_scalar_or_enum_payload(
+fn encode_scalar_or_enum_payload<O: Output>(
     layout: &Layout,
     ty: FieldType,
     instance: &Instance,
     path: &str,
-    output: &mut Vec<u8>,
+    output: &mut O,
 ) -> Result<(), ProtobufError> {
     let Instance::Scalar(value) = instance else {
         return Err(ProtobufError::instance(
@@ -376,7 +419,7 @@ fn is_implicit_default(
     if matches!(ty, FieldType::Message(_)) {
         return Ok(false);
     }
-    let mut payload = Vec::new();
+    let mut payload = Count::new();
     encode_scalar_or_enum_payload(layout, ty, instance, path, &mut payload)?;
     let zero = match (ty, instance) {
         (FieldType::Scalar(ScalarType::Double), Instance::Scalar(value)) => {
@@ -385,16 +428,16 @@ fn is_implicit_default(
         (FieldType::Scalar(ScalarType::Float), Instance::Scalar(value)) => {
             (numeric_float(value, path)? as f32) == 0.0
         }
-        _ => payload.iter().all(|byte| *byte == 0),
+        _ => payload.all_zero,
     };
     Ok(zero)
 }
 
-fn encode_scalar(
+fn encode_scalar<O: Output>(
     ty: ScalarType,
     value: &Value,
     path: &str,
-    output: &mut Vec<u8>,
+    output: &mut O,
 ) -> Result<(), ProtobufError> {
     match ty {
         ScalarType::Double => output.extend_from_slice(&numeric_float(value, path)?.to_le_bytes()),
@@ -658,15 +701,15 @@ fn wire_type(ty: FieldType) -> u8 {
     }
 }
 
-fn encode_key(number: u32, wire_type: u8, output: &mut Vec<u8>) {
+fn encode_key<O: Output>(number: u32, wire_type: u8, output: &mut O) {
     encode_varint((u64::from(number) << 3) | u64::from(wire_type), output);
 }
 
-fn encode_len(length: usize, output: &mut Vec<u8>) {
+fn encode_len<O: Output>(length: usize, output: &mut O) {
     encode_varint(length as u64, output);
 }
 
-fn encode_varint(mut value: u64, output: &mut Vec<u8>) {
+fn encode_varint<O: Output>(mut value: u64, output: &mut O) {
     while value >= 0x80 {
         output.push((value as u8 & 0x7f) | 0x80);
         value >>= 7;
