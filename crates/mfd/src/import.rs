@@ -1732,20 +1732,21 @@ fn import_resolved(
                             // String adapters cease to own FormatOptions when lowered.
                             // Retain their original refusal independently of the recipe.
                             if let Some(dependency) = &sc.options.json5_interchange_dependency {
-                                for kind in component.descendants().filter_map(|node| {
-                                    if !node.has_tag_name("parameter") {
-                                        return None;
+                                // At most one copy per role, even if malformed input
+                                // repeats parameters beside a large setting value.
+                                for (usage, kind) in [
+                                    ("stringparse", mapping::Json5StringComponentKind::Parser),
+                                    (
+                                        "stringserialize",
+                                        mapping::Json5StringComponentKind::Serializer,
+                                    ),
+                                ] {
+                                    if !component.descendants().any(|node| {
+                                        node.has_tag_name("parameter")
+                                            && node.attribute("usageKind") == Some(usage)
+                                    }) {
+                                        continue;
                                     }
-                                    match node.attribute("usageKind") {
-                                        Some("stringparse") => {
-                                            Some(mapping::Json5StringComponentKind::Parser)
-                                        }
-                                        Some("stringserialize") => {
-                                            Some(mapping::Json5StringComponentKind::Serializer)
-                                        }
-                                        _ => None,
-                                    }
-                                }) {
                                     json5_string_dependencies.push(
                                         mapping::Json5StringInterchangeDependency {
                                             component: sc.name.clone(),

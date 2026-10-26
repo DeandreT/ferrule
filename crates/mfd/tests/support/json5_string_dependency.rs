@@ -3,12 +3,18 @@ use std::path::Path;
 pub fn assert_retained(directory: &Path, kind: mapping::Json5StringComponentKind) {
     let design = directory.join("mapping.mfd");
     let original = std::fs::read_to_string(&design).unwrap();
-    for value in ["1", "0", "invalid"] {
+    for (value, repetitions) in [("1", 1), ("0", 1), ("invalid", 1), ("1", 64)] {
         let marked = original.replacen(
             "<json schema=",
             &format!("<json json5=\"{value}\" schema="),
             1,
         );
+        let usage = match kind {
+            mapping::Json5StringComponentKind::Parser => "stringparse",
+            mapping::Json5StringComponentKind::Serializer => "stringserialize",
+        };
+        let parameter = format!("<parameter usageKind=\"{usage}\"/>");
+        let marked = marked.replacen(&parameter, &parameter.repeat(repetitions), 1);
         assert_ne!(marked, original);
         std::fs::write(&design, marked).unwrap();
         let imported = mfd::import(&design).unwrap();
