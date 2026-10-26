@@ -18,7 +18,8 @@ Successful typed or JSON generation does not by itself establish an XML adapter.
 
 ## Route families
 
-Every row has text and UTF-8 byte inputs and an execution-context variant.
+Except for the explicitly byte-only selected-target row, every row has text
+and UTF-8 byte inputs and an execution-context variant.
 The table shows the text method without a context. In Rust, replace
 `execute_xml` with `execute_xml_bytes` for the byte method. In C#, replace
 `ExecuteXml` with `ExecuteXmlBytes`. Input bytes and returned bytes are distinct
@@ -27,6 +28,7 @@ coverage cells even when one call exercises both.
 | Input domain and output form | Rust text method | C# text method | Source fixture family |
 | --- | --- | --- | --- |
 | Structured or admitted RootView primary → one primary document | `execute_xml` | `ExecuteXml` | [structured_xml_public](../crates/cli/tests/code_generation/structured_xml_public.rs), [xml_text](../crates/cli/tests/code_generation/xml_text.rs) |
+| Static Structured inputs → one explicitly selected primary or named physical document (bytes only) | `execute_xml_bytes_selected_target`, `execute_xml_bytes_selected_target_with_host` | `ExecuteXmlBytesSelectedTarget`, `ExecuteXmlBytesSelectedTargetWithHost` | [selected_xml_bytes](../crates/cli/tests/code_generation/selected_xml_bytes.rs) |
 | Primary → primary plus static named documents | `execute_xml_outputs` | `ExecuteXmlOutputs` | [xml_output_sets](../crates/cli/tests/code_generation/xml_output_sets.rs) |
 | Primary plus complete static named inputs → primary or static output set | `execute_xml_with_sources`, `execute_xml_outputs_with_sources` | `ExecuteXmlWithSources`, `ExecuteXmlOutputsWithSources` | [xml_input_sets](../crates/cli/tests/code_generation/xml_input_sets.rs), [rootview_named_inputs](../crates/cli/tests/code_generation/rootview_named_inputs.rs) |
 | Structured primary, optional static inputs and dynamic named loader → primary or static output set | `execute_xml_with_sources_and_dynamic_source_loader`, `execute_xml_outputs_with_sources_and_dynamic_source_loader` | `ExecuteXmlWithSourcesAndDynamicSourceLoader`, `ExecuteXmlOutputsWithSourcesAndDynamicSourceLoader` | [xml_dynamic_inputs](../crates/cli/tests/code_generation/xml_dynamic_inputs.rs) |
@@ -38,7 +40,13 @@ coverage cells even when one call exercises both.
 | Structured primary, optional static inputs and dynamic named loader → static primary plus named document lists | `execute_xml_document_outputs_with_sources_and_dynamic_source_loader` | `ExecuteXmlDocumentOutputsWithSourcesAndDynamicSourceLoader` | [xml_dynamic_input_document_outputs](../crates/cli/tests/code_generation/xml_dynamic_input_document_outputs.rs), [validation child](../crates/cli/tests/code_generation/xml_dynamic_input_document_outputs/validation.rs) |
 | Structured primary, no named inputs → static primary, one static named document and one or more named document lists | `execute_xml_mixed_outputs` | `ExecuteXmlMixedOutputs` | [xml_mixed_named_outputs](../crates/cli/tests/code_generation/xml_mixed_named_outputs.rs) |
 
-Context names follow three rules:
+The selected-target row is byte-only, not part of the text/byte substitution
+rule above. Its source-aware host call accepts an optional execution context and
+admits exactly the selected target's required static inputs, including global
+failure-rule requirements. It returns `SelectedXmlBytesTargetOutput`, not a
+complete output set. The old singular XML calls remain complete-set calls.
+
+Context names for the other rows follow three rules:
 
 | Method family | Rust context spelling | C# context spelling |
 | --- | --- | --- |

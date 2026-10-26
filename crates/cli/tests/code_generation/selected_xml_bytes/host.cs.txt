@@ -1,0 +1,42 @@
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static byte[] Bytes(JsonElement value) => value.EnumerateArray().Select(x => x.GetByte()).ToArray();
+static List<byte[]> Capture(JsonElement value)
+{
+    var source = Bytes(value.GetProperty("source"));
+    if (value.GetProperty("name").GetString() == "input-size") source = new byte[64 * 1024 * 1024 + 1];
+    if (value.GetProperty("name").GetString() == "output-size") source = System.Text.Encoding.UTF8.GetBytes("<o:Orders xmlns:o=\"urn:orders\"><o:Row><Text><![CDATA[" + new string('&',14 * 1024 * 1024) + "]]></Text></o:Row></o:Orders>");
+    var inputs = value.GetProperty("inputs").EnumerateArray().Select(x => new NamedXmlBytesInput(x.GetProperty("name").GetString()!, Bytes(x.GetProperty("bytes")))).ToArray();
+    if (value.GetProperty("legacy").GetBoolean()) return [GeneratedMapping.ExecuteXmlBytesWithSources(source, inputs)];
+    var target = value.GetProperty("target").GetString()!;
+    if (target == "all")
+    {
+        var result = GeneratedMapping.ExecuteXmlBytesOutputsWithSources(source, inputs);
+        return new[] {result.Primary}.Concat(result.Extras.Select(x => x.Document)).ToList();
+    }
+    var selection = target == "primary" ? FerruleTargetSelection.Primary() : FerruleTargetSelection.Named(target);
+    var context = new FerruleExecutionContext("mapping.json", "mapping.json", "2026-10-25T00:00:00Z");
+    var selected = target == "primary" && inputs.Length == 0 ? GeneratedMapping.ExecuteXmlBytesSelectedTarget(source, selection) :
+        GeneratedMapping.ExecuteXmlBytesSelectedTargetWithHost(source, selection, inputs, context);
+    return selected switch
+    {
+        SelectedXmlBytesTargetOutput.Primary primary => [primary.Document],
+        SelectedXmlBytesTargetOutput.Named named when named.Output.Name == target => [named.Output.Document],
+        _ => throw new Exception("selected output identity"),
+    };
+}
+using var cases = JsonDocument.Parse(File.ReadAllBytes(args[0]));
+foreach (var value in cases.RootElement.EnumerateArray())
+{
+    object row;
+    try { row = new { @case = value.GetProperty("name").GetString(), kind = "ok", documents = Capture(value).Select(Convert.ToHexStringLower).ToArray() }; }
+    catch (FerruleXmlExecutionException error)
+    {
+        row = new { @case = value.GetProperty("name").GetString(), kind = error.Boundary.Kind.ToString(), input = error.Input?.Kind == FerruleXmlInputSourceKind.Primary ? "primary" : error.Input?.Name,
+            inputIndex = error.Input?.Index, output = error.Output?.Kind == FerruleXmlOutputTargetKind.Primary ? "primary" : error.Output?.Name, outputIndex = error.Output?.Index,
+            detail = error.ToString(), causePreserved = ReferenceEquals(error.InnerException, error.Boundary) };
+    }
+    Console.WriteLine(JsonSerializer.Serialize(row));
+}

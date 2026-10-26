@@ -73,7 +73,7 @@ pub fn legacy_named_input_admission_plan_with_owned_capabilities(
     ))
 }
 
-fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
+pub(crate) fn admission_plan(program: &Program) -> NamedInputAdmissionPlan<'_> {
     admission_plan_with_profiles(program, false, false)
 }
 

@@ -7,6 +7,7 @@ mod mixed_named_outputs;
 mod named_document_outputs;
 mod named_inputs;
 mod owned_document_sets;
+mod selected_bytes;
 pub(crate) use owned_document_sets::render as render_owned_document_sets;
 
 use crate::{EmitError, rust_string};
@@ -115,6 +116,9 @@ fn render_single_document(
     }
     if plan.inputs() == XmlDocumentInputs::Structured {
         output.push_str(&dynamic_inputs::render(program));
+    }
+    if plan.selected_inputs().is_some() {
+        output.push_str(&selected_bytes::render(program, plan)?);
     }
     for bytes in [false, true] {
         let stem = if bytes {
