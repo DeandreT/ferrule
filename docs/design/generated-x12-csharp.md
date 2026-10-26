@@ -4,8 +4,8 @@ Generated C# libraries can include an explicit raw X12 boundary around the
 ordinary typed mapping. The default envelope profile contains one interchange,
 functional group and transaction. An explicit grouped profile admits declared
 functional-group and transaction collections inside one interchange. An
-explicit repeating-interchange profile admits repeated interchanges in the shape of
-the imported X12 `Envelope.Config`. Source and
+explicit repeating-interchange profile admits the hierarchy from an imported
+X12 `Envelope.Config`. Source and
 target schemas, separators and
 selected format options are embedded in the generated source; execution does not
 download schemas or read an external EDI configuration.
@@ -136,12 +136,12 @@ retains its artifact set and typed/JSON APIs. The companion adds
 
 ### Repeating interchange envelopes
 
-The repeating-interchange profile admits the ownership that an imported
+`X12EnvelopeProfile::REPEATING_INTERCHANGES` admits the hierarchy that an
 X12 `Envelope.Config` produces when Ferrule imports a design. Select it
 explicitly on each intended X12 endpoint, with the CLI value
 `repeating-interchanges` for either envelope flag or through
 `cli::generate_project_with_x12_envelope_profiles` (or its static-document
-counterpart). The descriptor retains its serialized envelope-profile value. The shape is never inferred from
+counterpart). The descriptor retains its existing serialized profile identifier. The shape is never inferred from
 a schema or retained options. Static-document and CSV routes apply the same
 selection to their own X12 endpoints.
 
@@ -195,8 +195,10 @@ path and reason.
 Input validates the physical segments as `(ISA (GS (ST … SE)+ GE)+ IEA)+`
 before typed reading. Every interchange needs at least one functional group and
 every group at least one transaction. Every ISA must carry the selected ISA12
-(`UnsupportedProfile`) and repeat the discovered ISA11 and ISA16 syntax
-(`Syntax`); under `00401`, ISA11 is `U` and any other value is
+(`UnsupportedProfile`) and declare valid ISA11 and ISA16 syntax
+(`Syntax`). Without a configured separator set, each interchange's own syntax
+applies to its body; configured separators must match every ISA. Under `00401`,
+ISA11 is `U` and any other value is
 `UnsupportedProfile`. GS08 is ordinary data: it is never
 compared with the version or filled. Numeric wire controls are ASCII digits:
 ISA13 has exactly nine, while GS06, GE02, IEA02 and the counts have one through
@@ -245,7 +247,8 @@ writes, while 123 fails as an ISA width error, as natively. Completion writes
 123 as `000000123`.
 
 Native reading, writing or completion can accept documents that this profile
-refuses: later interchanges with another version or syntax, missing trailers
+refuses: later interchanges with another selected version, a configured syntax
+mismatch, missing trailers
 without completion, empty interchanges or groups, more than one GE or IEA per
 owner, a missing ISA or GS occurrence, mismatched counts or controls, an
 undeclared ST03, negative or fractional numeric controls, and acknowledgment
@@ -436,8 +439,10 @@ Text must contain valid Unicode and byte methods require strict UTF-8.
 Malformed UTF-8 and unpaired UTF-16 surrogates fail. A BOM or leading whitespace
 is not removed: a complete fixed-width ISA begins at offset zero. ISA fields
 must have their declared ASCII widths. The reader discovers element,
-component and segment separators from that ISA and verifies explicitly
-configured separators against it.
+component and segment separators from each ISA and verifies explicitly
+configured separators against every header. A later interchange can reuse
+characters that had different delimiter roles in an earlier interchange;
+tokenization and typed component/repetition reads stay with their own header.
 
 Element and component separators are distinct visible ASCII punctuation.
 The segment terminator is a third distinct punctuation character or LF.
@@ -478,7 +483,7 @@ native reader, an absent trailing element has no occurrences, while a present
 element, even an empty one, has one occurrence per delimited part: `REF*ZZ**7~`
 reads one Null `REF02` occurrence, and `N9*X~` reads no `N902` occurrences.
 Every occurrence counts toward the repeated-instance limit. Occurrence paths are
-indexed only under the grouped and repeating-interchange envelope profiles, matching loop
+indexed only under the grouped and repeating-interchange profiles, matching loop
 paths.
 
 A segment ID with no declared repeating element refuses repetition syntax during

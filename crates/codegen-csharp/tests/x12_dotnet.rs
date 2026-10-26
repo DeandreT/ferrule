@@ -57,6 +57,8 @@ mod grouped;
 mod repeating_envelope;
 #[path = "x12/repeating_envelope_acknowledgments.rs"]
 mod repeating_envelope_acknowledgments;
+#[path = "x12/mixed_syntax.rs"]
+mod mixed_syntax;
 #[path = "x12/modern.rs"]
 mod modern;
 #[path = "x12/repeated.rs"]
