@@ -171,6 +171,42 @@ fn runtime_values_require_an_explicit_execution_context() {
 }
 
 #[test]
+fn each_mapping_path_reports_its_own_missing_context_in_a_function() {
+    for value in [
+        RuntimeValue::MappingFilePath,
+        RuntimeValue::MainMappingFilePath,
+    ] {
+        let mut project = runtime_project();
+        let function = mapping::FunctionId::new(7);
+        project.user_functions.insert(
+            function,
+            mapping::UserFunction {
+                library: "local".into(),
+                name: "path".into(),
+                description: None,
+                parameters: Vec::new(),
+                output_name: "path".into(),
+                output_type: ScalarType::String,
+                body: graph_from(vec![(0, Node::RuntimeValue { value })]),
+                output: 0,
+            },
+        );
+        project.graph = graph_from(vec![(
+            0,
+            Node::UserFunctionCall {
+                function,
+                args: Vec::new(),
+            },
+        )]);
+        project.root.bindings.truncate(1);
+        assert_eq!(
+            run(&project, &Instance::Group(Vec::new().into())),
+            Err(EngineError::MissingRuntimeValue(value))
+        );
+    }
+}
+
+#[test]
 fn runtime_values_distinguish_active_and_main_mapping_paths() {
     let project = runtime_project();
     let source = Instance::Group((Vec::new()).into());
