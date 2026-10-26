@@ -91,6 +91,14 @@ Source fan-out and separately declared target occurrences retain their own
 cardinality and ordering rules; competing bindings to a singular target remain
 subject to executable validation.
 
+Renamed `core` kind-2 constants retain their literal identity rather than
+becoming function calls named after the display label. The renamed profile
+requires one well-formed string, Boolean, signed-integer or finite-number
+literal, no input pins and one output pin. Extra behavior metadata and malformed
+literals do not gain admission through a rename. Existing canonical constants
+keep their compatibility behavior; export still uses canonical component names.
+Specialized raw-metadata proofs retain their own narrower admission rules.
+
 Native value-maps with `defaultValueMode="input"` retain an explicit unsupported-
 mode diagnostic, including in embedded function declarations. Executable import
 refuses that diagnostic rather than admitting a map with its fallback removed.

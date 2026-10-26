@@ -251,9 +251,26 @@ fn namespace_headers_require_supported_protocol_identities() -> Result<(), Box<d
 }
 
 #[test]
-fn unknown_kind_two_function_is_not_reclassified_as_a_literal() -> Result<(), Box<dyn Error>> {
+fn renamed_kind_two_literal_keeps_its_filename_value() -> Result<(), Box<dyn Error>> {
     let fixture = Fixture::new()?;
     let expression = LITERAL.replace("name=\"constant\"", "name=\"path\"");
+    let path = fixture.write(&design(&expression, 1))?;
+    let imported = mfd::import_csv_document(&path)?;
+    compare_legacy(&path, &imported)?;
+    assert_eq!(
+        imported.document.global_filename(),
+        Ok(GlobalFilename::Literal(" ./雪 & β/*.csv "))
+    );
+    Ok(())
+}
+
+#[test]
+fn unknown_kind_two_function_is_not_reclassified_without_literal_metadata()
+-> Result<(), Box<dyn Error>> {
+    let fixture = Fixture::new()?;
+    let expression = LITERAL
+        .replace("name=\"constant\"", "name=\"path\"")
+        .replace("datatype=\"string\"", "datatype=\"unknown\"");
     let path = fixture.write(&design(&expression, 1))?;
     let imported = mfd::import_csv_document(&path)?;
     compare_legacy(&path, &imported)?;
