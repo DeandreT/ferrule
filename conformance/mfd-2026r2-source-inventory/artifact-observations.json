@@ -72,6 +72,26 @@
     ],
     "scope": "Candidate public declaration facts from these two source bundles only. No generated program was compiled or run. Lifetime, ownership, null/error behavior and undocumented overloads are not inferred."
   },
+  "installed_declarations": [
+    {
+      "cab_member": "exception.h_1207",
+      "sha256": "e8f0720e121becb89b25391e5cd07ceb2dbac43e5351df50b5a3fcc7b2b4ab5c",
+      "language": "C++",
+      "types": ["altova::Error", "altova::Exception"],
+      "public_member": "inner",
+      "return_type": "const std::exception*",
+      "const_member": true,
+      "scope": "Declaration only. This resolves the pointer-versus-value source discrepancy, not lifetime, ownership or null/error behavior."
+    },
+    {
+      "cab_member": "SourceInstanceUnavailableException.java_1639",
+      "sha256": "faca6b42cfaab1ef8ba2597b42da98dc9e066dfcc69bb925db5e740dc3cd0d0f",
+      "language": "Java",
+      "public_type": "com.altova.SourceInstanceUnavailableException",
+      "declared_base": "RuntimeException",
+      "scope": "Declaration spelling only. The different literal spelling in the manual remains preserved; no throw-site, compatibility-alias or runtime claim follows."
+    }
+  ],
   "remaining": [
     "Complete installed and generated supporting-artifact inventory",
     "Platform, registry, external-catalog and installation dependencies outside the copied application tree",
