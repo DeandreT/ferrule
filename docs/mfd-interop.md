@@ -339,6 +339,9 @@ binding each even when one expression feeds them, so a repeating scalar emits
 every entry's value in entry-tree order. Multiple feeds to a singular target,
 identical or distinct, retain their duplicate-binding refusal; their selection
 semantics are tracked separately in [#241](https://github.com/DeandreT/ferrule/issues/241).
+The [singular-feed observation](conformance/singular-target-feeds.md) distinguishes
+native same-connector validation failures from cloned entries that can emit
+schema-invalid output; neither admits a singular winner rule.
 
 Bounded adjacent C# and Java source modules can likewise lower direct numeric
 picture wrappers to ferrule's deterministic formatter, while bounded XQuery
