@@ -58,7 +58,7 @@ fn every_role_flag_combination_matches_or_refuses_contradictions() {
             node.nullable = bits & 64 != 0;
             node.container_nullable = bits & 128 != 0;
             match (
-                super::validate_namespace_siblings(&node),
+                crate::declaration::validate_schema(&node),
                 declaration(&node),
             ) {
                 (Ok(()), Ok(declared)) => {

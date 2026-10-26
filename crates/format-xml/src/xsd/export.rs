@@ -67,7 +67,7 @@ fn export_document_inner(
     partition_cross_substitutions: bool,
     reserved_type_names: Option<&BTreeSet<String>>,
 ) -> Result<String, XmlFormatError> {
-    crate::instance::validate_namespace_siblings(schema)?;
+    crate::declaration::validate_schema(schema)?;
     let recursive_anchors = recursive_export_anchors(schema)?;
     let mut alternatives = if partition_cross_substitutions {
         AlternativeExportPlan::build_set(schema, external_references)?
@@ -153,7 +153,7 @@ pub(super) fn export_set_substitution_member(
     external_references: &[ExternalReference],
     reserved_type_names: &BTreeSet<String>,
 ) -> Result<String, XmlFormatError> {
-    crate::instance::validate_namespace_siblings(head)?;
+    crate::declaration::validate_schema(head)?;
     let recursive_anchors = recursive_export_anchors(head)?;
     let mut alternatives = AlternativeExportPlan::build_set(head, external_references)?;
     alternatives.set_export_namespace(Some(target_namespace.to_string()));

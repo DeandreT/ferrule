@@ -231,7 +231,7 @@ impl ParseState {
                 group: group.to_string(),
             });
         }
-        crate::instance::validate_namespace_siblings(&schema)?;
+        crate::declaration::validate_schema(&schema)?;
         Ok(schema)
     }
 
