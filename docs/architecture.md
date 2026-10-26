@@ -223,6 +223,20 @@ logical output-path override to the selected named target. SQLite and
 update-existing XLSX stay on the filesystem runner because their behavior
 depends on persistent prior state.
 
+`PayloadRunOptions::with_bounded_tabular()` explicitly opts into bounded native
+CSV (including tab-delimited CSV) and fixed-width admission: 8 MiB per input,
+1 MiB per cell, 100,000 records, 256 columns and 1,000,000 instance nodes.
+CSV headers count toward the record limit; fixed-width fill counts toward the
+cell-byte limit while widths still count Unicode scalars. Fixed-width output is
+measured before its buffer is allocated. Empty documents remain valid. This
+profile validates every fixed-width output row before returning a byte-budget
+refusal, so later native format errors retain their original row and field.
+The profile uses declared endpoint paths/options for format identity, independently
+of uploaded names or output overrides; missing format identity rejects rather
+than guessing. Native non-tabular codecs retain their behavior, as do the outer
+64 MiB/document and 256 MiB/run budgets. Target selection still parses the entire
+primary input and every required named source without evaluating unused targets.
+
 The CLI exposes that payload boundary as `ferrule run PROJECT - -`: stdin is
 the primary document and stdout receives raw bytes only when exactly one
 artifact is produced. The configured source and target paths remain the

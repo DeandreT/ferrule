@@ -1,8 +1,10 @@
 mod clock;
+mod profile;
 mod serialization;
 
+use profile::BoundaryProfile;
 pub(crate) use serialization::render_payload;
-use serialization::{Limits, RenderedArtifact, render_target};
+use serialization::{Limits, RenderedArtifact, TargetSerialization, render_target};
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -100,6 +102,7 @@ pub struct PayloadRunOptions<'a> {
     trace_sink: Option<&'a dyn TraceSink>,
     debug_hook: Option<&'a dyn engine::DebugHook>,
     execution_policy: &'a engine::ExecutionPolicy,
+    bounded_tabular: bool,
 }
 
 impl<'a> PayloadRunOptions<'a> {
@@ -115,6 +118,7 @@ impl<'a> PayloadRunOptions<'a> {
             trace_sink: None,
             debug_hook: None,
             execution_policy: &crate::execution_policy::TRUSTED,
+            bounded_tabular: false,
         }
     }
 
@@ -179,6 +183,25 @@ impl<'a> PayloadRunOptions<'a> {
     /// bytes, so the policy's filesystem and HTTP rights are never exercised.
     pub fn with_execution_policy(mut self, policy: &'a engine::ExecutionPolicy) -> Self {
         self.execution_policy = policy;
+        self
+    }
+
+    /// Opts into bounded native CSV/TSV and fixed-width payload admission.
+    ///
+    /// Tabular inputs allow 8 MiB, 1 MiB per cell (including fixed-width fill),
+    /// 100,000 records (including CSV headers), 256 columns and 1,000,000 nodes.
+    /// Fixed-width output is measured before allocating its text buffer. The
+    /// existing 64 MiB/document and 256 MiB/run budgets still apply.
+    ///
+    /// Format identity comes from each declared source/target path and its format
+    /// options, not uploaded filenames or output overrides. Without a declared
+    /// path, explicit format options are required. TSV uses the native CSV codec
+    /// with a declared CSV identity and a tab delimiter. Other format boundaries
+    /// retain their native behavior; this is not a sandbox for those codecs.
+    /// Selection still fully parses the primary and every required named source,
+    /// and renders only the selected target. Omission preserves compatibility.
+    pub fn with_bounded_tabular(mut self) -> Self {
+        self.bounded_tabular = true;
         self
     }
 }
@@ -278,8 +301,13 @@ pub fn run_project_value_payloads(
 ) -> anyhow::Result<PayloadRunOutcome> {
     let required_sources = preflight_payload_run(project, options)?;
 
-    let source = read_payload(options.primary, &project.source, &project.source_options)
-        .context("reading primary input payload")?;
+    let source = read_payload_with_profile(
+        options.primary,
+        &project.source,
+        &project.source_options,
+        BoundaryProfile::new(options.bounded_tabular, project.source_path.as_deref()),
+    )
+    .context("reading primary input payload")?;
     let required_static_names = required_sources.as_ref().map(|sources| {
         sources
             .static_sources
@@ -299,6 +327,7 @@ pub fn run_project_value_payloads(
         options.extra_sources,
         required_static_names.as_ref(),
         required_dynamic_names.as_ref(),
+        options.bounded_tabular,
     )?;
 
     let runtime_project_path = absolute_mapping_path(project_path)?;
@@ -343,6 +372,7 @@ pub fn run_project_value_payloads(
                 &output,
                 &current_datetime,
                 Limits::PRODUCTION,
+                options.bounded_tabular,
             )?
         }
         None => {
@@ -359,6 +389,7 @@ pub fn run_project_value_payloads(
                 &output,
                 &current_datetime,
                 Limits::PRODUCTION,
+                options.bounded_tabular,
             )?
         }
     };
@@ -385,6 +416,7 @@ pub(crate) fn render_all_outcome(
         output,
         current_datetime,
         Limits::PRODUCTION,
+        false,
     )?;
     Ok(PayloadRunOutcome {
         records_written,
@@ -407,6 +439,7 @@ pub(crate) fn render_selected_outcome(
         output,
         current_datetime,
         Limits::PRODUCTION,
+        false,
     )?;
     Ok(PayloadRunOutcome {
         records_written,
@@ -421,6 +454,7 @@ fn render_all_targets(
     output: &engine::ExecutionOutputs,
     current_datetime: &str,
     limits: Limits,
+    bounded_tabular: bool,
 ) -> anyhow::Result<(usize, Vec<RenderedArtifact>)> {
     if output.extras.len() != project.extra_targets.len() {
         bail!("engine returned an unexpected number of additional target values");
@@ -440,8 +474,11 @@ fn render_all_targets(
         &project.target,
         &output.primary,
         &project.target_options,
-        current_datetime,
-        limits,
+        TargetSerialization {
+            current_datetime,
+            limits,
+            profile: BoundaryProfile::new(bounded_tabular, project.target_path.as_deref()),
+        },
     )?;
     let records_written = artifacts
         .iter()
@@ -462,8 +499,11 @@ fn render_all_targets(
             &target.schema,
             &output.instance,
             &target.options,
-            current_datetime,
-            limits,
+            TargetSerialization {
+                current_datetime,
+                limits,
+                profile: BoundaryProfile::new(bounded_tabular, target.path.as_deref()),
+            },
         )
         .with_context(|| format!("rendering extra target `{}`", target.name))?;
         artifacts.extend(rendered);
@@ -478,6 +518,7 @@ fn render_selected_target(
     output: &engine::SelectedTargetOutput,
     current_datetime: &str,
     limits: Limits,
+    bounded_tabular: bool,
 ) -> anyhow::Result<(usize, Vec<RenderedArtifact>)> {
     let (name, stored, scope, schema, instance, options, label) = match output {
         engine::SelectedTargetOutput::Primary(instance) => (
@@ -523,8 +564,11 @@ fn render_selected_target(
         schema,
         instance,
         options,
-        current_datetime,
-        limits,
+        TargetSerialization {
+            current_datetime,
+            limits,
+            profile: BoundaryProfile::new(bounded_tabular, stored),
+        },
     )
     .with_context(|| format!("rendering {label}"))?;
     let records_written = artifacts
@@ -564,6 +608,7 @@ fn load_extra_payloads(
     inputs: &[NamedPayloadInput<'_>],
     required_static: Option<&BTreeSet<&str>>,
     required_dynamic: Option<&BTreeSet<&str>>,
+    bounded_tabular: bool,
 ) -> anyhow::Result<LoadedPayloadSources> {
     let mut static_payloads = BTreeMap::new();
     let mut dynamic_payloads = BTreeMap::new();
@@ -583,8 +628,13 @@ fn load_extra_payloads(
         {
             continue;
         }
-        let instance = read_payload(input.document, &source.schema, &source.options)
-            .with_context(|| format!("reading payload source `{}`", input.name))?;
+        let instance = read_payload_with_profile(
+            input.document,
+            &source.schema,
+            &source.options,
+            BoundaryProfile::new(bounded_tabular, Some(&source.path)),
+        )
+        .with_context(|| format!("reading payload source `{}`", input.name))?;
         if source.dynamic_path.is_some() {
             let key = (
                 input.name.to_string(),
@@ -847,14 +897,24 @@ pub(crate) fn read_payload(
     schema: &SchemaNode,
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
+    read_payload_with_profile(document, schema, options, BoundaryProfile::Compatibility)
+}
+
+fn read_payload_with_profile(
+    document: PayloadDocument<'_>,
+    schema: &SchemaNode,
+    options: &FormatOptions,
+    profile: BoundaryProfile<'_>,
+) -> anyhow::Result<Instance> {
+    let path = profile.identity(document.path);
     if options.sqlite_read.is_some() {
         bail!("a declared SQLite query cannot be read from a payload");
     }
     options
         .validate_xml_schema_hint_options(false)
         .map_err(anyhow::Error::msg)?;
-    super::validate_csv_metadata_identity(document.path, options, "input")?;
-    super::reject_inactive_root_xml_read_options(document.path, schema, options, "input")?;
+    super::validate_csv_metadata_identity(path, options, "input")?;
+    super::reject_inactive_root_xml_read_options(path, schema, options, "input")?;
     if options.local_xml_file_set {
         bail!(
             "`local_xml_file_set` requires multiple filesystem documents and is unavailable for a single payload"
@@ -952,7 +1012,7 @@ pub(crate) fn read_payload(
     }
     if options.json_document || options.json5 || options.json_lines {
         reject_json_conflicts(options, "input")?;
-        let json5 = json5_selected(document.path, options)?;
+        let json5 = json5_selected(path, options)?;
         let text = utf8(document, if json5 { "JSON5" } else { "JSON" })?;
         return if options.json_lines {
             format_json::from_lines(text, schema)
@@ -965,13 +1025,25 @@ pub(crate) fn read_payload(
     }
     if let Some(layout) = &options.fixed_width {
         reject_fixed_width_csv_options(options, "input")?;
+        if profile.bounded() {
+            return format_csv::from_bytes_fixed_width_bounded(document.bytes, schema, layout)
+                .map(Instance::Repeated)
+                .context("parsing fixed-width input payload");
+        }
         let rows = format_csv::from_str_fixed_width(utf8(document, "fixed-width")?, schema, layout)
             .context("parsing fixed-width input payload")?;
         return Ok(Instance::Repeated(rows));
     }
 
-    validate_tabular_fallback(document.path, options, "input")?;
-    match extension_for_dispatch(document.path, options)?.as_str() {
+    validate_tabular_fallback(path, options, "input")?;
+    match extension_for_dispatch(path, options)?.as_str() {
+        "csv" | "txt" if profile.bounded() => format_csv::from_bytes_with_options_bounded(
+            document.bytes,
+            schema,
+            &format_csv::CsvReadOptions::from(options),
+        )
+        .map(Instance::Repeated)
+        .context("parsing CSV input payload"),
         "csv" | "txt" => format_csv::from_str_with_options(
             utf8(document, "CSV")?,
             schema,
@@ -983,9 +1055,9 @@ pub(crate) fn read_payload(
         "xml" => format_xml::from_str(utf8(document, "XML")?, schema)
             .context("parsing XML input payload"),
         "json" | "json5" | "jsonl" | "ndjson" => {
-            let lines = options.json_lines
-                || matches!(extension_of(document.path)?.as_str(), "jsonl" | "ndjson");
-            let json5 = json5_selected(document.path, options)?;
+            let lines =
+                options.json_lines || matches!(extension_of(path)?.as_str(), "jsonl" | "ndjson");
+            let json5 = json5_selected(path, options)?;
             if lines && json5 {
                 bail!("JSON5 cannot be combined with JSON Lines");
             }
