@@ -1,6 +1,52 @@
 use super::*;
 
 impl Builder<'_> {
+    fn sequence_presence_guard(&self, function: &Function) -> Option<u32> {
+        if function.parsed.kind != 4 || function.inputs.len() != 3 || function.inputs[2].is_some() {
+            return None;
+        }
+        let selected = self.feed(function.inputs[1]).ok()?;
+        let condition = self.functions.get(&self.feed(function.inputs[0]).ok()?)?;
+        (condition.parsed.library == "db"
+            && condition.parsed.name == "is-not-null"
+            && condition.inputs.len() == 1
+            && self.feed(condition.inputs[0]).ok() == Some(selected))
+        .then_some(selected)
+    }
+
+    fn filtered_source_sequence(&self, feed: u32) -> bool {
+        // JSON object construction coerces this sequence before formatting.
+        // XML keeps its eager per-occurrence conversion, including later errors.
+        if self.format != X12DocumentBodyFormat::Json {
+            return false;
+        }
+        let Some(function) = self.functions.get(&feed) else {
+            return false;
+        };
+        if function.parsed.kind != 4 || function.inputs.len() != 3 || function.inputs[2].is_some() {
+            return false;
+        }
+        let Ok(value) = self.feed(function.inputs[1]) else {
+            return false;
+        };
+        let Ok(condition) = self.feed(function.inputs[0]) else {
+            return false;
+        };
+        let Some(condition) = self.functions.get(&condition) else {
+            return false;
+        };
+        self.ports.contains_key(&value)
+            && condition.parsed.library == "core"
+            && condition.parsed.name == "equal"
+            && condition.inputs.len() == 2
+            && condition.inputs.iter().any(|input| {
+                self.feed(*input)
+                    .ok()
+                    .and_then(|feed| self.literal_text(feed))
+                    .is_some()
+            })
+    }
+
     pub(super) fn alloc(&mut self, node: Node) -> NodeId {
         let id = self.next;
         self.next += 1;
@@ -132,6 +178,18 @@ impl Builder<'_> {
         feed: u32,
         anchor: &[String],
     ) -> Result<Option<Vec<String>>, MfdError> {
+        if let Some(function) = self.functions.get(&feed)
+            && (self.sequence_presence_guard(function).is_some()
+                || (function.parsed.library == "core"
+                    && function.parsed.name == "format-dateTime"
+                    && function
+                        .inputs
+                        .first()
+                        .and_then(|input| self.feed(*input).ok())
+                        .is_some_and(|input| self.filtered_source_sequence(input))))
+        {
+            return Ok(None);
+        }
         let mut selected: Option<Vec<String>> = None;
         for key in self.dependencies(feed, &mut BTreeSet::new())? {
             let owner = self.owner(&self.ports[&key])?;
@@ -325,6 +383,29 @@ impl Builder<'_> {
             if f.inputs.len() != 3 {
                 return Err(refuse("requires one conditional branch"));
             }
+            if let Some(input) = self.sequence_presence_guard(&f)
+                && let Some(owner) = self.external_owner(input, anchor)?
+            {
+                if self.volatile(input, &mut BTreeSet::new())? {
+                    return Err(refuse("volatile sequence presence guard is not admitted"));
+                }
+                let value = self.scalar(input, &owner)?;
+                let text = self.call("string", vec![value.value]);
+                let text = self.guard(text, value.present, value.always);
+                let value = self.alloc(Node::Aggregate {
+                    function: mapping::AggregateOp::LastPresentText,
+                    collection: owner[anchor.len()..].to_vec(),
+                    value: vec![],
+                    expression: Some(text.value),
+                    arg: None,
+                });
+                let present = self.call("exists", vec![value]);
+                return Ok(Expr {
+                    value,
+                    present,
+                    always: false,
+                });
+            }
             let condition_feed = self.feed(f.inputs[0])?;
             if self.volatile(condition_feed, &mut BTreeSet::new())? {
                 return Err(refuse("volatile conditional presence is not admitted"));
@@ -419,7 +500,30 @@ impl Builder<'_> {
                 if self.literal_text(picture_feed).is_none() {
                     return Err(refuse("dateTime picture must be a literal"));
                 }
-                let input = self.input(&f, 0, anchor)?;
+                let input_feed = self.feed(f.inputs[0])?;
+                let input = if self.filtered_source_sequence(input_feed) {
+                    if let Some(owner) = self.external_owner(input_feed, anchor)? {
+                        if self.volatile(input_feed, &mut BTreeSet::new())? {
+                            return Err(refuse("volatile first-date selection is not admitted"));
+                        }
+                        let item = self.scalar(input_feed, &owner)?;
+                        let value = self.alloc(Node::CollectionFind {
+                            collection: owner[anchor.len()..].to_vec(),
+                            predicate: item.present,
+                            value: item.value,
+                        });
+                        let present = self.call("exists", vec![value]);
+                        Expr {
+                            value,
+                            present,
+                            always: false,
+                        }
+                    } else {
+                        self.input(&f, 0, anchor)?
+                    }
+                } else {
+                    self.input(&f, 0, anchor)?
+                };
                 let picture = self.scalar(picture_feed, anchor)?;
                 let datetime = self.call("coerce_datetime", vec![input.value]);
                 let value = self.call(
