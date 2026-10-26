@@ -6775,8 +6775,8 @@ csv_output       err:760f111731522540 generated_CSV_output_requires_a_CSV
 csv_document     err:87a7e78e16bfe506 generated_CSV_document_source_requires_an
 raw_delimited    err:87a7e78e16bfe506 generated_CSV_document_source_requires_an
 json5            err:280e0967d74e3dfa JSON5_Source_schema:_JSON5_schema_metadata
-x12              ok:74e770515d8b8bae files=102 mapping=498306719e1572c1 project=df31dcb5aad478b6
-static_documents ok:55f365c753a3847e files=102 mapping=498306719e1572c1 project=4e73eb9f4a1178b7
+x12              ok:769b5504a2746865 files=102 mapping=498306719e1572c1 project=df31dcb5aad478b6
+static_documents ok:f34e98a1cfaa0af5 files=102 mapping=498306719e1572c1 project=4e73eb9f4a1178b7
 csv_x12          err:f84b92f4ba677cbb generated_CSV-to-X12_source_requires_an_explicit
 csv_json         err:616f630afbc7429c generated_CSV-to-JSON_source_requires_an_explicit
 
@@ -6786,8 +6786,8 @@ csv_output       err:760f111731522540 generated_CSV_output_requires_a_CSV
 csv_document     err:87a7e78e16bfe506 generated_CSV_document_source_requires_an
 raw_delimited    err:87a7e78e16bfe506 generated_CSV_document_source_requires_an
 json5            err:280e0967d74e3dfa JSON5_Source_schema:_JSON5_schema_metadata
-x12              ok:dbf029eb01f540a7 files=102 mapping=498306719e1572c1 project=df31dcb5aad478b6
-static_documents ok:44d7d904453522fc files=102 mapping=498306719e1572c1 project=4e73eb9f4a1178b7
+x12              ok:c28f0d63e22f7ef4 files=102 mapping=498306719e1572c1 project=df31dcb5aad478b6
+static_documents ok:871255943af73917 files=102 mapping=498306719e1572c1 project=4e73eb9f4a1178b7
 csv_x12          err:f84b92f4ba677cbb generated_CSV-to-X12_source_requires_an_explicit
 csv_json         err:616f630afbc7429c generated_CSV-to-JSON_source_requires_an_explicit
 
@@ -6797,8 +6797,8 @@ csv_output       err:75a948b53f79f165 generated_CSV_output_requires_a_CSV
 csv_document     err:87a7e78e16bfe506 generated_CSV_document_source_requires_an
 raw_delimited    err:87a7e78e16bfe506 generated_CSV_document_source_requires_an
 json5            err:280e0967d74e3dfa JSON5_Source_schema:_JSON5_schema_metadata
-x12              ok:680fe61410c23d98 files=102 mapping=498306719e1572c1 project=df31dcb5aad478b6
-static_documents ok:79ea99a4739f49a2 files=102 mapping=498306719e1572c1 project=4e73eb9f4a1178b7
+x12              ok:b18ebef466af7e4b files=102 mapping=498306719e1572c1 project=df31dcb5aad478b6
+static_documents ok:a1ee8ef312970e51 files=102 mapping=498306719e1572c1 project=4e73eb9f4a1178b7
 csv_x12          err:f84b92f4ba677cbb generated_CSV-to-X12_source_requires_an_explicit
 csv_json         err:616f630afbc7429c generated_CSV-to-JSON_source_requires_an_explicit
 
@@ -7602,7 +7602,7 @@ raw_delimited    err:f6f8376466277186 generated_CSV_document_target_requires_an
 json5            err:4fed26a7fc7f12cc JSON5_Source_format_option_tabular_kind_is
 x12              err:519b378301b62682 generated_raw_X12_source_does_not
 static_documents err:3a7eb417c164b434 static_document_primary_source_requires_an
-csv_x12          ok:a1be769bee72b110 files=104 mapping=baee70235fef84c9 project=89bbc1f21695feee
+csv_x12          ok:67f75210d094ac23 files=104 mapping=baee70235fef84c9 project=89bbc1f21695feee
 csv_json         err:3aa06843569a591f generated_CSV-to-JSON_primary_target_requires_an
 
 ## saved/crates/cli/tests/code_generation/csv_x12_adapters/projects/base.json
@@ -7613,7 +7613,7 @@ raw_delimited    err:f6f8376466277186 generated_CSV_document_target_requires_an
 json5            err:4fed26a7fc7f12cc JSON5_Source_format_option_tabular_kind_is
 x12              err:519b378301b62682 generated_raw_X12_source_does_not
 static_documents err:3a7eb417c164b434 static_document_primary_source_requires_an
-csv_x12          ok:a1be769bee72b110 files=104 mapping=baee70235fef84c9 project=89bbc1f21695feee
+csv_x12          ok:67f75210d094ac23 files=104 mapping=baee70235fef84c9 project=89bbc1f21695feee
 csv_json         err:3aa06843569a591f generated_CSV-to-JSON_primary_target_requires_an
 
 ## saved/crates/cli/tests/code_generation/csv_x12_adapters/projects/dialect.json
@@ -7624,7 +7624,7 @@ raw_delimited    err:f6f8376466277186 generated_CSV_document_target_requires_an
 json5            err:4fed26a7fc7f12cc JSON5_Source_format_option_tabular_kind_is
 x12              err:519b378301b62682 generated_raw_X12_source_does_not
 static_documents err:3a7eb417c164b434 static_document_primary_source_requires_an
-csv_x12          ok:7d1a1770682bb4da files=104 mapping=baee70235fef84c9 project=89bbc1f21695feee
+csv_x12          ok:6fd8ead515667829 files=104 mapping=baee70235fef84c9 project=89bbc1f21695feee
 csv_json         err:3aa06843569a591f generated_CSV-to-JSON_primary_target_requires_an
 
 ## saved/crates/cli/tests/code_generation/csv_x12_adapters/projects/failure.json
@@ -7635,7 +7635,7 @@ raw_delimited    err:f6f8376466277186 generated_CSV_document_target_requires_an
 json5            err:4fed26a7fc7f12cc JSON5_Source_format_option_tabular_kind_is
 x12              err:519b378301b62682 generated_raw_X12_source_does_not
 static_documents err:3a7eb417c164b434 static_document_primary_source_requires_an
-csv_x12          ok:7aaf5cb50dbc7f0c files=104 mapping=4cd1137fcc07b3ff project=89bbc1f21695feee
+csv_x12          ok:8d15815479a0aa27 files=104 mapping=4cd1137fcc07b3ff project=89bbc1f21695feee
 csv_json         err:3aa06843569a591f generated_CSV-to-JSON_primary_target_requires_an
 
 ## saved/crates/cli/tests/code_generation/fixtures/typed_document_driver_sources/dynamic-source-root-document-driver.project.json
@@ -7766,7 +7766,7 @@ csv_document     err:87a7e78e16bfe506 generated_CSV_document_source_requires_an
 raw_delimited    err:87a7e78e16bfe506 generated_CSV_document_source_requires_an
 json5            err:d116e6016c14a524 JSON5_boundary:_JSON5_program_field_extra_sources
 x12              err:0444541422b5b596 X12_boundary:_the_explicit_X12_profile
-static_documents ok:fb0aaa7b293ccd14 files=102 mapping=24c03c4ff827bc75 project=4e73eb9f4a1178b7
+static_documents ok:6071e6810776e32f files=102 mapping=24c03c4ff827bc75 project=4e73eb9f4a1178b7
 csv_x12          err:f84b92f4ba677cbb generated_CSV-to-X12_source_requires_an_explicit
 csv_json         err:616f630afbc7429c generated_CSV-to-JSON_source_requires_an_explicit
 
@@ -7777,7 +7777,7 @@ csv_document     err:87a7e78e16bfe506 generated_CSV_document_source_requires_an
 raw_delimited    err:87a7e78e16bfe506 generated_CSV_document_source_requires_an
 json5            err:d116e6016c14a524 JSON5_boundary:_JSON5_program_field_extra_sources
 x12              err:0444541422b5b596 X12_boundary:_the_explicit_X12_profile
-static_documents ok:997c8b8191c27613 files=102 mapping=58fa74bbde407aba project=4e73eb9f4a1178b7
+static_documents ok:5df4fec0b4055648 files=102 mapping=58fa74bbde407aba project=4e73eb9f4a1178b7
 csv_x12          err:f84b92f4ba677cbb generated_CSV-to-X12_source_requires_an_explicit
 csv_json         err:616f630afbc7429c generated_CSV-to-JSON_source_requires_an_explicit
 
@@ -7788,7 +7788,7 @@ csv_document     err:87a7e78e16bfe506 generated_CSV_document_source_requires_an
 raw_delimited    err:87a7e78e16bfe506 generated_CSV_document_source_requires_an
 json5            err:166fc568e1e6cd29 JSON5_Source_format_option_edi_kind_is
 x12              err:9439239463131962 X12_boundary:_generated_X12_program_field
-static_documents ok:f3ca7b60e98db164 files=102 mapping=9ba26622c9ccd503 project=4e73eb9f4a1178b7
+static_documents ok:b1cf0098752bf3bf files=102 mapping=9ba26622c9ccd503 project=4e73eb9f4a1178b7
 csv_x12          err:f84b92f4ba677cbb generated_CSV-to-X12_source_requires_an_explicit
 csv_json         err:616f630afbc7429c generated_CSV-to-JSON_source_requires_an_explicit
 
@@ -7799,7 +7799,7 @@ csv_document     err:87a7e78e16bfe506 generated_CSV_document_source_requires_an
 raw_delimited    err:87a7e78e16bfe506 generated_CSV_document_source_requires_an
 json5            err:166fc568e1e6cd29 JSON5_Source_format_option_edi_kind_is
 x12              err:a2321abc012de26a X12_boundary:_generated_X12_program_field
-static_documents ok:0cf89704dc0b581c files=102 mapping=0a867677e88c6a95 project=4e73eb9f4a1178b7
+static_documents ok:a1242c6ec7b89c37 files=102 mapping=0a867677e88c6a95 project=4e73eb9f4a1178b7
 csv_x12          err:f84b92f4ba677cbb generated_CSV-to-X12_source_requires_an_explicit
 csv_json         err:616f630afbc7429c generated_CSV-to-JSON_source_requires_an_explicit
 
@@ -7811,7 +7811,7 @@ raw_delimited    err:f6f8376466277186 generated_CSV_document_target_requires_an
 json5            err:4fed26a7fc7f12cc JSON5_Source_format_option_tabular_kind_is
 x12              err:519b378301b62682 generated_raw_X12_source_does_not
 static_documents err:3a7eb417c164b434 static_document_primary_source_requires_an
-csv_x12          ok:a1be769bee72b110 files=104 mapping=baee70235fef84c9 project=89bbc1f21695feee
+csv_x12          ok:67f75210d094ac23 files=104 mapping=baee70235fef84c9 project=89bbc1f21695feee
 csv_json         err:3aa06843569a591f generated_CSV-to-JSON_primary_target_requires_an
 
 ## saved/crates/cli/tests/fixtures/edi/project.json
@@ -7921,7 +7921,7 @@ raw_delimited    err:f6f8376466277186 generated_CSV_document_target_requires_an
 json5            err:4fed26a7fc7f12cc JSON5_Source_format_option_tabular_kind_is
 x12              err:519b378301b62682 generated_raw_X12_source_does_not
 static_documents err:3a7eb417c164b434 static_document_primary_source_requires_an
-csv_x12          ok:a1be769bee72b110 files=104 mapping=baee70235fef84c9 project=89bbc1f21695feee
+csv_x12          ok:67f75210d094ac23 files=104 mapping=baee70235fef84c9 project=89bbc1f21695feee
 csv_json         err:3aa06843569a591f generated_CSV-to-JSON_primary_target_requires_an
 
 ## saved/crates/codegen/src/csv_x12_boundary/fixtures/constant-envelope-project.json
@@ -7932,7 +7932,7 @@ raw_delimited    err:f6f8376466277186 generated_CSV_document_target_requires_an
 json5            err:4fed26a7fc7f12cc JSON5_Source_format_option_tabular_kind_is
 x12              err:519b378301b62682 generated_raw_X12_source_does_not
 static_documents err:3a7eb417c164b434 static_document_primary_source_requires_an
-csv_x12          ok:4097c4924e905d76 files=104 mapping=81fbc31d91edbbe5 project=89bbc1f21695feee
+csv_x12          ok:662bb8a5b59dd50d files=104 mapping=81fbc31d91edbbe5 project=89bbc1f21695feee
 csv_json         err:3aa06843569a591f generated_CSV-to-JSON_primary_target_requires_an
 
 ## saved/crates/codegen/src/tests/fixtures/dynamic_named_xml_input.json
