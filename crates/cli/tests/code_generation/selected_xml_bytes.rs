@@ -556,6 +556,7 @@ fn exercise(language: &str) -> TestResult<()> {
                     "quiet",
                     "-m:1",
                     "/p:UseSharedCompilation=false",
+                    "-p:DisableTransitiveFrameworkReferenceDownloads=true",
                 ])
                 .arg("--artifacts-path")
                 .arg(dir.join("artifacts"))
