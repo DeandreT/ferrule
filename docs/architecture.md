@@ -237,6 +237,14 @@ than guessing. Native non-tabular codecs retain their behavior, as do the outer
 64 MiB/document and 256 MiB/run budgets. Target selection still parses the entire
 primary input and every required named source without evaluating unused targets.
 
+`PayloadRunOptions::with_bounded_documents()` selects the separate
+[pure-document profile](design/bounded-document-payloads.md). Only saved format
+options choose codecs, never design-time or uploaded filenames. It admits the
+bounded CSV/fixed-width, flat XLSX, protobuf and XBRL APIs alongside native
+FlexText, explicit JSON/XML and X12/EDIFACT, refusing unsupported or selected
+dynamic boundaries. Native codec limits sit inside the existing outer payload
+budgets; they are not an interpreter-work or process-memory ceiling.
+
 The CLI exposes that payload boundary as `ferrule run PROJECT - -`: stdin is
 the primary document and stdout receives raw bytes only when exactly one
 artifact is produced. The configured source and target paths remain the
