@@ -5,11 +5,24 @@
 //! descendants see the compacted output position. Raw member positions never
 //! change.
 
-use mapping::{JoinId, OwnedJoinPlan};
+use std::collections::HashSet;
 
-use super::*;
+use ir::Instance;
+use mapping::{IterationOutput, JoinId, NamedSource, OwnedJoinPlan, Scope, SortFilterOrder};
+
+use super::construction::ItemEvaluator;
+use super::passes_scope_filter;
+use super::windows::{EvaluatedWindow, apply_basic_owned_sequence_windows, eval_sequence_window};
+use crate::aggregate::sort_value_ordering;
+use crate::eval_expr::{EvalProgram, eval_expr};
+use crate::iteration_output::finalize_scope_output;
 use crate::owned_join_tuple::{self, OwnedJoinTuple};
-use crate::trace::TraceIteration;
+use crate::source_iteration::PositionFrame;
+use crate::trace::{
+    TraceEvent, TraceFilterPhase, TraceIteration, TraceOutputKind, TraceScope, TraceSortKey,
+    TraceValue, record_owned_event, trace_positions,
+};
+use crate::{DynamicSourceLoader, EngineError};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn eval_owned_join_scope<'a>(

@@ -10,9 +10,8 @@
 use ir::{DocumentMember, Instance};
 use mapping::{NamedSource, OwnedSourceRef, Scope};
 
-use super::{
-    BasicSelection, eval_basic_owned_selected, owned_access_error, record_basic_candidate,
-};
+use super::owned_access_error;
+use super::owned_selection::{BasicSelection, eval_basic_owned_selected, record_basic_candidate};
 use crate::eval_expr::EvalProgram;
 use crate::owned_context::{OwnedContext, OwnerKey, SourceOrigin, SourceOriginKind, WorkBudget};
 use crate::source_iteration::{ObservedWalkRequest, PositionFrame};
