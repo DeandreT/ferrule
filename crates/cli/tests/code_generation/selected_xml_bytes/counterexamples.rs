@@ -409,6 +409,7 @@ fn exercise_counterexamples(language: &str) -> TestResult<()> {
                     "quiet",
                     "-m:1",
                     "/p:UseSharedCompilation=false",
+                    "-p:DisableTransitiveFrameworkReferenceDownloads=true",
                     "--artifacts-path",
                 ])
                 .arg(dir.join("artifacts"))
