@@ -78,6 +78,28 @@ Document loading, source ownership and output-document execution require their
 own validated profiles. Filename evaluation does not interpret empty strings,
 wildcards, URI schemes or filesystem syntax, and does not enable I/O.
 
+## Acquisition ownership
+
+The `document-source` crate owns the format-neutral `SourceData`,
+`PrimarySourceHost`, `PrimaryDocument`, acquisition and assembly APIs. A host
+returns bytes and an optional resolved path; the caller supplies the parser.
+Acquisition evaluates the filename and selects once, then loads and parses each
+request in host order before returning the complete document list. Its errors
+retain the filename, selection, request, load and parse stages.
+
+`LocalPrimaryFiles` is an explicit local-file policy in that crate. Its lexical
+and symlink checks, direct-versus-wildcard behavior and per-document byte limit
+are unchanged. They do not provide atomic confinement against concurrent file
+replacement. Other hosts need not use local filesystem policy.
+
+CSV parsing, lazy row acquisition and physical row occurrences remain in
+`format-csv`. Existing `format_csv` host and acquisition exports are compatible
+re-exports; `format_csv::CsvSourceData` names the same type as
+`document_source::SourceData`. `codegen_runtime` keeps its existing public names
+and also exposes the neutral type. Callers may migrate imports without adapting
+host implementations or changing saved projects. Generated C# entry points and
+their public host contracts are unchanged.
+
 ## Generated filename companions
 
 `codegen::lower_document` produces a `DocumentProgram` that retains a separate
@@ -127,7 +149,7 @@ separate stages:
    unrouted format, an unsupported filename expression and an invalid mapping
    are refused before the filename is evaluated or any host is called.
 2. The filename plan is evaluated once, without a source instance or preview.
-3. A `format_csv::PrimarySourceHost` receives the filename text and the plan's
+3. A `document_source::PrimarySourceHost` receives the filename text and the plan's
    selection mode, and returns logical requests in load order. The host
    chooses where requests load from; it does not choose the selection mode. A
    direct filename must select exactly one request.
@@ -293,7 +315,7 @@ embedded plan alone names the documents, and `PRIMARY_FILE_SELECTION` /
 
 ## Local filesystem host
 
-`format_csv::LocalPrimaryFiles` (C# `FerruleLocalPrimaryFiles`) is the explicit
+`document_source::LocalPrimaryFiles` (C# `FerruleLocalPrimaryFiles`) is the explicit
 local filesystem host. Nothing else performs filesystem access, and no host
 reaches a network: a host that wants another transport must be supplied
 explicitly.

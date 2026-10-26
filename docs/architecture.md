@@ -330,6 +330,8 @@ what evidence closes each gate.
 - `crates/ir`: Format-independent schema, scalar value, and instance trees
 - `crates/mapping`: Serialized project, graph, scope, join, and format-option
   model
+- `crates/document-source`: Format-neutral primary document acquisition,
+  assembly, and explicit local-file policy
 - `crates/functions`: Scalar built-in function library
 - `crates/engine`: Project validation and mapping interpreter
 - `crates/edit-ops`: Typed, replayable headless mapping edits

@@ -22,12 +22,11 @@ mod byte_decoding;
 mod encoding;
 mod fixed_width;
 mod fixed_width_bounded;
-mod local_files;
 mod primary_documents;
 mod read;
 mod source_document;
 
-pub use acquisition::{CsvAcquisitionError, CsvSourceAcquisition, CsvSourceData};
+pub use acquisition::{CsvAcquisitionError, CsvSourceAcquisition};
 pub use bounded::{CsvBoundedError, to_bytes_with_options_bounded, to_string_with_options_bounded};
 pub use bounded_read::{
     CsvReadError, CsvReadLimit, MAX_CSV_INPUT_BYTES, MAX_CSV_INPUT_CELL_BYTES,
@@ -36,11 +35,16 @@ pub use bounded_read::{
     from_str_with_options_bounded,
 };
 pub use byte_decoding::CsvByteDecodingPolicy;
-pub use local_files::{DEFAULT_LOCAL_DOCUMENT_BYTES, LocalFileError, LocalPrimaryFiles};
-pub use primary_documents::{
-    PrimaryAcquisitionError, PrimaryAssemblyError, PrimaryDocument, PrimarySourceHost,
-    acquire_primary_csv_rows, acquire_primary_documents, assemble_primary_documents,
+
+// Compatibility names retain the same concrete host/data types after their
+// format-neutral implementation moved to `document-source`.
+pub use document_source::{
+    DEFAULT_LOCAL_DOCUMENT_BYTES, LocalFileError, LocalPrimaryFiles, PrimaryAcquisitionError,
+    PrimaryAssemblyError, PrimaryDocument, PrimarySourceHost, SourceData as CsvSourceData,
+    acquire_primary_documents, assemble_primary_documents,
 };
+
+pub use primary_documents::acquire_primary_csv_rows;
 pub use source_document::{
     CsvDocumentRows, CsvRowOccurrence, CsvSourceDocument, CsvSourceError, CsvSourceLoadError,
     CsvSourceRows, MAX_CSV_SOURCE_DOCUMENTS, MAX_CSV_SOURCE_PATH_BYTES,

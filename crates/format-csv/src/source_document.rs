@@ -7,8 +7,8 @@ use thiserror::Error;
 
 use crate::{CsvByteDecodingPolicy, CsvReadError, CsvReadOptions};
 
-pub const MAX_CSV_SOURCE_PATH_BYTES: usize = ir::MAX_SOURCE_ORIGIN_PATH_BYTES;
-pub const MAX_CSV_SOURCE_DOCUMENTS: usize = 1_000_000;
+pub const MAX_CSV_SOURCE_PATH_BYTES: usize = document_source::MAX_SOURCE_PATH_BYTES;
+pub const MAX_CSV_SOURCE_DOCUMENTS: usize = document_source::MAX_SOURCE_DOCUMENTS;
 
 #[derive(Debug, Error)]
 pub enum CsvSourceError {
@@ -95,7 +95,7 @@ impl CsvSourceDocument {
 }
 
 pub(crate) fn validate_path(path: &str, field: &'static str) -> Result<(), CsvSourceError> {
-    if path.is_empty() || path.contains('\0') || path.len() > MAX_CSV_SOURCE_PATH_BYTES {
+    if !document_source::is_valid_source_path(path) {
         Err(CsvSourceError::Path { field })
     } else {
         Ok(())

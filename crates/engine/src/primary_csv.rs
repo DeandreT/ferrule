@@ -1,9 +1,12 @@
 use std::{error::Error, fmt};
 
+use document_source::{
+    PrimaryAcquisitionError, PrimaryAssemblyError, PrimarySourceHost, SourceData,
+    acquire_primary_documents, assemble_primary_documents,
+};
 use format_csv::{
     CsvAcquisitionError, CsvByteDecodingPolicy, CsvReadOptions, CsvSourceAcquisition,
-    CsvSourceData, CsvSourceDocument, CsvSourceError, PrimaryAcquisitionError,
-    PrimaryAssemblyError, PrimarySourceHost,
+    CsvSourceDocument, CsvSourceError,
 };
 use ir::Instance;
 use mapping::{DocumentProject, PrimaryDocumentFormat, PrimaryRouteError, PrimaryRouteSide};
@@ -30,7 +33,7 @@ pub fn acquire_primary_csv<'a, E: 'a, I, Select, Load>(
 where
     I: Iterator<Item = Result<String, E>> + 'a,
     Select: FnOnce(&str) -> Result<I, E> + 'a,
-    Load: FnMut(&str) -> Result<CsvSourceData, E> + 'a,
+    Load: FnMut(&str) -> Result<SourceData, E> + 'a,
 {
     let execution = *execution;
     CsvSourceAcquisition::new(
@@ -103,7 +106,7 @@ pub fn run_primary_document<H: PrimarySourceHost, P>(
     execution: &ExecutionContext<'_>,
     host: &H,
     maximum: usize,
-    parse: impl FnMut(&str, CsvSourceData) -> Result<Instance, P>,
+    parse: impl FnMut(&str, SourceData) -> Result<Instance, P>,
 ) -> Result<Instance, PrimaryDocumentRunError<H::Error, P>> {
     let route = document
         .primary_route()
@@ -120,7 +123,7 @@ pub fn run_primary_document<H: PrimarySourceHost, P>(
     if !issues.is_empty() {
         return Err(PrimaryDocumentRunError::Invalid(issues));
     }
-    let documents = format_csv::acquire_primary_documents(
+    let documents = acquire_primary_documents(
         || evaluate_primary_filename(document, execution),
         document.primary_source().selection,
         host,
@@ -128,7 +131,7 @@ pub fn run_primary_document<H: PrimarySourceHost, P>(
         parse,
     )
     .map_err(PrimaryDocumentRunError::Acquisition)?;
-    let source = format_csv::assemble_primary_documents(route.shape, documents)
+    let source = assemble_primary_documents(route.shape, documents)
         .map_err(PrimaryDocumentRunError::Assembly)?;
     crate::run_with_context(project, &source, execution).map_err(PrimaryDocumentRunError::Mapping)
 }
@@ -168,7 +171,7 @@ pub fn run_primary_csv_document<H: PrimarySourceHost>(
 pub fn primary_csv_parser(
     project: &mapping::Project,
     decoding: CsvByteDecodingPolicy,
-) -> impl FnMut(&str, CsvSourceData) -> Result<Instance, CsvSourceError> + '_ {
+) -> impl FnMut(&str, SourceData) -> Result<Instance, CsvSourceError> + '_ {
     let options = CsvReadOptions::from(&project.source_options);
     move |request, data| {
         let parsed = CsvSourceDocument::parse_bytes(
