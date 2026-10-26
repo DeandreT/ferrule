@@ -13,6 +13,7 @@ use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use rust_xlsxwriter::{Workbook, Worksheet};
 use thiserror::Error;
 
+mod bounded;
 mod composite;
 mod grid;
 mod hierarchical;
@@ -21,6 +22,10 @@ mod test_support;
 mod update;
 mod worksheet_set;
 
+pub use bounded::{
+    XlsxLimit, XlsxLimitOptions, XlsxLimits, from_bytes_bounded, to_bytes_bounded,
+    to_bytes_with_options_bounded,
+};
 pub use composite::{from_bytes_composite, read_composite};
 pub use grid::{from_bytes_grid, read_grid};
 pub use hierarchical::{
@@ -31,6 +36,18 @@ pub use worksheet_set::{from_bytes_worksheet_set, read_worksheet_set};
 
 #[derive(Debug, Error)]
 pub enum XlsxFormatError {
+    #[error("XLSX {limit:?} limit exceeded: maximum {maximum}, observed {actual}")]
+    LimitExceeded {
+        limit: XlsxLimit,
+        maximum: usize,
+        actual: usize,
+    },
+    #[error("invalid XLSX limit: {0:?}")]
+    InvalidLimit(XlsxLimit),
+    #[error("unsupported bounded XLSX profile: {0}")]
+    UnsupportedBoundedProfile(&'static str),
+    #[error("invalid bounded XLSX package: {0}")]
+    InvalidBoundedPackage(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("xlsx read error: {0}")]
@@ -644,57 +661,74 @@ fn write_cell(
     value: &Value,
     row_index: usize,
 ) -> Result<(), XlsxFormatError> {
+    match cell_value(field, ty, value, row_index)? {
+        CellValue::Empty => {}
+        CellValue::String(value) => {
+            worksheet.write_string(row, column, value.as_ref())?;
+        }
+        CellValue::Number(value) => {
+            worksheet.write_number(row, column, value)?;
+        }
+        CellValue::Bool(value) => {
+            worksheet.write_boolean(row, column, value)?;
+        }
+    }
+    Ok(())
+}
+
+enum CellValue<'a> {
+    Empty,
+    String(std::borrow::Cow<'a, str>),
+    Number(f64),
+    Bool(bool),
+}
+
+fn cell_value<'a>(
+    field: &str,
+    ty: ScalarType,
+    value: &'a Value,
+    row_index: usize,
+) -> Result<CellValue<'a>, XlsxFormatError> {
     let bad = |got| XlsxFormatError::ValueType {
         row: row_index,
         field: field.to_string(),
         expected: ty,
         got,
     };
-    match (ty, value) {
-        (_, Value::Null | Value::JsonNull(_)) => {}
-        (ScalarType::String, Value::String(value)) => {
-            worksheet.write_string(row, column, value)?;
-        }
-        (ScalarType::String, Value::Bool(value)) => {
-            worksheet.write_boolean(row, column, *value)?;
-        }
-        (ScalarType::String, Value::Int(value)) => {
-            worksheet.write_string(row, column, value.to_string())?;
-        }
+    Ok(match (ty, value) {
+        (_, Value::Null | Value::JsonNull(_)) => CellValue::Empty,
+        (ScalarType::String, Value::String(value)) => CellValue::String(value.as_str().into()),
+        (ScalarType::String, Value::Bool(value)) => CellValue::Bool(*value),
+        (ScalarType::String, Value::Int(value)) => CellValue::String(value.to_string().into()),
         (ScalarType::String, Value::Float(value)) if value.is_finite() => {
-            worksheet.write_string(row, column, value.to_string())?;
+            CellValue::String(value.to_string().into())
         }
         (ScalarType::Int, Value::Int(value)) => {
             let number = exact_f64(*value).ok_or_else(|| bad("int outside the exact f64 range"))?;
-            worksheet.write_number(row, column, number)?;
+            CellValue::Number(number)
         }
         (ScalarType::Int, Value::String(value)) => {
             let number = lexical_i64(value)
                 .and_then(exact_f64)
                 .ok_or_else(|| bad("string"))?;
-            worksheet.write_number(row, column, number)?;
+            CellValue::Number(number)
         }
         (ScalarType::Float, Value::Int(value)) => {
             let number = exact_f64(*value).ok_or_else(|| bad("int outside the exact f64 range"))?;
-            worksheet.write_number(row, column, number)?;
+            CellValue::Number(number)
         }
-        (ScalarType::Float, Value::Float(value)) if value.is_finite() => {
-            worksheet.write_number(row, column, *value)?;
-        }
+        (ScalarType::Float, Value::Float(value)) if value.is_finite() => CellValue::Number(*value),
         (ScalarType::Float, Value::String(value)) => {
             let number = lexical_f64(value).ok_or_else(|| bad("string"))?;
-            worksheet.write_number(row, column, number)?;
+            CellValue::Number(number)
         }
-        (ScalarType::Bool, Value::Bool(value)) => {
-            worksheet.write_boolean(row, column, *value)?;
-        }
+        (ScalarType::Bool, Value::Bool(value)) => CellValue::Bool(*value),
         (ScalarType::Bool, Value::String(value)) => {
             let boolean = boolean_lexical(value).ok_or_else(|| bad("string"))?;
-            worksheet.write_boolean(row, column, boolean)?;
+            CellValue::Bool(boolean)
         }
         (_, value) => return Err(bad(value.type_name())),
-    }
-    Ok(())
+    })
 }
 
 fn exact_f64(value: i64) -> Option<f64> {

@@ -13,3 +13,5 @@ calamine = { workspace = true }
 rust_xlsxwriter = { workspace = true }
 umya-spreadsheet = { workspace = true }
 thiserror = { workspace = true }
+zip = { workspace = true }
+quick-xml = { workspace = true }
