@@ -152,6 +152,72 @@ fn source_import_preserves_typed_paths_and_never_uses_preview_bytes() {
     );
     assert_eq!(without_output.shape, result.shape);
     assert_eq!(without_output.ports, result.ports);
+    let original_schema = std::fs::read_to_string(root.join("source.json")).unwrap();
+    for (entry, schema_types, selected) in [
+        (
+            "number",
+            r#"["number","string","null"]"#,
+            JsonSourceShape::Number,
+        ),
+        (
+            "string",
+            r#"["number","string","null"]"#,
+            JsonSourceShape::String,
+        ),
+        (
+            "boolean",
+            r#"["boolean","string","null"]"#,
+            JsonSourceShape::Boolean,
+        ),
+    ] {
+        let schema =
+            original_schema.replace(r#""type":"number""#, &format!(r#""type":{schema_types}"#));
+        std::fs::write(root.join("source.json"), &schema).unwrap();
+        let mapping_text = text.replace(r#"name="number""#, &format!(r#"name="{entry}""#));
+        std::fs::write(&mapping, &mapping_text).unwrap();
+        let projected = mfd::import_json_source_projection_with_options(
+            &mapping,
+            &mfd::ImportOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(projected.ports, result.ports);
+        let JsonSourceShape::Object { properties } = &projected.shape else {
+            panic!("object root");
+        };
+        let JsonSourceShape::Array { item } = &properties[0].shape else {
+            panic!("array");
+        };
+        let JsonSourceShape::Object { properties } = item.as_ref() else {
+            panic!("object item");
+        };
+        assert_eq!(properties[0].shape, selected);
+        assert!(matches!(
+            projected
+                .source_schema
+                .child("rows")
+                .unwrap()
+                .child("n")
+                .unwrap()
+                .kind,
+            ir::SchemaKind::ScalarUnion { .. }
+        ));
+        assert_eq!(
+            std::fs::read_to_string(root.join("source.json")).unwrap(),
+            schema
+        );
+        assert_eq!(std::fs::read_to_string(&mapping).unwrap(), mapping_text);
+    }
+    std::fs::write(
+        root.join("source.json"),
+        original_schema.replace(r#""type":"number""#, r#""type":["boolean","string"]"#),
+    )
+    .unwrap();
+    std::fs::write(&mapping, text).unwrap();
+    assert!(
+        mfd::import_json_source_projection_with_options(&mapping, &mfd::ImportOptions::default())
+            .is_err()
+    );
+    std::fs::write(root.join("source.json"), &original_schema).unwrap();
     std::fs::write(&mapping, text.replace("outkey=\"51\"", "outkey=\"\"")).unwrap();
     assert!(
         mfd::import_json_source_projection_with_options(&mapping, &mfd::ImportOptions::default())
