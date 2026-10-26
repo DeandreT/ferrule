@@ -303,7 +303,25 @@ pub fn import_x12_document_bodies_with_options(
     path: &Path,
     options: &ImportOptions,
 ) -> Result<ImportedX12DocumentBodies, MfdError> {
-    import_document_bodies(path, options, None)
+    import_document_bodies(path, options, BodySelection::AllDynamic)
+}
+
+/// Import one explicitly named dynamic JSON body without dropping or rewriting
+/// other components in the original design. This is a selected-body view, not
+/// a claim that all of the mapping's output or acquisition contracts are covered.
+pub fn import_x12_json_body_with_options(
+    path: &Path,
+    options: &ImportOptions,
+    target_name: &str,
+) -> Result<ImportedX12DocumentBodies, MfdError> {
+    if target_name.is_empty() {
+        return Err(refuse("JSON target name is required"));
+    }
+    let imported = import_document_bodies(path, options, BodySelection::Json(target_name))?;
+    if imported.targets.len() != 1 {
+        return Err(refuse("JSON target is absent or ambiguous"));
+    }
+    Ok(imported)
 }
 
 /// Import a fixed XML target without projecting its input down to one message.
@@ -317,7 +335,7 @@ pub fn import_x12_fixed_xml_body_with_options(
     if target_name.is_empty() {
         return Err(refuse("fixed XML target name is required"));
     }
-    let mut imported = import_document_bodies(path, options, Some(target_name))?;
+    let mut imported = import_document_bodies(path, options, BodySelection::FixedXml(target_name))?;
     if imported.targets.len() != 1 {
         return Err(refuse("fixed XML target is absent or ambiguous"));
     }
@@ -338,11 +356,26 @@ pub fn import_x12_fixed_xml_body_with_options(
     })
 }
 
+#[derive(Clone, Copy)]
+enum BodySelection<'a> {
+    AllDynamic,
+    Json(&'a str),
+    FixedXml(&'a str),
+}
+
 fn import_document_bodies(
     path: &Path,
     options: &ImportOptions,
-    fixed_xml: Option<&str>,
+    selection: BodySelection<'_>,
 ) -> Result<ImportedX12DocumentBodies, MfdError> {
+    let fixed_xml = match selection {
+        BodySelection::FixedXml(name) => Some(name),
+        _ => None,
+    };
+    let selected_name = match selection {
+        BodySelection::Json(name) | BodySelection::FixedXml(name) => Some(name),
+        BodySelection::AllDynamic => None,
+    };
     let resources = super::resolved_resources(path, options)?;
     let result = (|| {
         let text = resources.read_design()?;
@@ -624,7 +657,7 @@ fn import_document_bodies(
         for component in components
             .iter()
             .filter(|n| matches!(n.attribute("library"), Some("json" | "xml")))
-            .filter(|n| fixed_xml.is_none_or(|name| n.attribute("name") == Some(name)))
+            .filter(|n| selected_name.is_none_or(|name| n.attribute("name") == Some(name)))
         {
             check_component_properties(*component, false, fixed_xml.is_some())?;
             let format = if component.attribute("library") == Some("json") {
@@ -632,6 +665,10 @@ fn import_document_bodies(
             } else {
                 X12DocumentBodyFormat::Xml
             };
+            if matches!(selection, BodySelection::Json(_)) && format != X12DocumentBodyFormat::Json
+            {
+                return Err(refuse("selected target is not a JSON body"));
+            }
             warnings.clear();
             let target = match format {
                 X12DocumentBodyFormat::Json => {
