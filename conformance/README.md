@@ -6,6 +6,11 @@ capability inventory, not a claim of full compatibility or a product-parity
 percentage. The release pin is
 intentional even when the vendor's release-history page changes.
 
+`mfd-2026r2-source-inventory/artifact-observations.json` records a bounded official
+installer/source binding and C#/Java public declaration observations. It is not
+runtime, ABI or complete-inventory evidence; the canonical ledger remains
+incomplete. Proprietary installers and generated implementation stay private.
+
 Run these commands from the workspace root:
 
 ```sh
@@ -57,10 +62,8 @@ Each capability independently assesses MFD import, interpreter execution,
 native MFD export acceptance, Ferrule self-roundtrip, GUI authoring,
 debugging, Ferrule Rust/C# generation, and vendor XSLT 1.0, XSLT 2.0, XSLT 3.0,
 XQuery 1.0, C++, Java, C# and BUILT-IN environments. These eight vendor
-environments follow the official Enterprise manual's
-[feature](https://www.altova.com/manual/mapforce/mapforceenterprise/appendices_supportnotes_featingencode.html)
-and [format](https://www.altova.com/manual/mapforce/mapforceenterprise/appendices_supportnotes_sourcestargets.html)
-matrices. Vendor BUILT-IN execution is distinct from Ferrule's `interpreter`;
+environments follow the feature and format matrices in the
+[pinned inventory](mfd-2026r2.json). Vendor BUILT-IN execution is distinct from Ferrule's `interpreter`;
 neither its applicability nor its results transfer between those dimensions.
 Vendor-backend applicability must be checked for the pinned release and exact
 operation: a matrix column does not establish that every format or operation is

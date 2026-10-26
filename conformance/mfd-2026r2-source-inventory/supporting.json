@@ -1053,7 +1053,7 @@
         56831,
         56832
       ],
-      "question": "Is StreamOutput(String filename) the actual declaration or a documentation error? Preserve it; do not invent java.io.OutputStream or another overload."
+      "question": "The literal manual signature remains StreamOutput(String filename). The release-bound ConvertProducts source bundle separately exposes an OutputStream constructor; see artifact-observations.json. That does not by itself settle the documentation discrepancy or runtime contract."
     },
     {
       "id": "cpp-inner-return",
@@ -1111,11 +1111,11 @@
     },
     {
       "id": "installer-binding",
-      "question": "Public manual release binding does not bind installed/generated supporting libraries, samples, templates or runtime artifacts to a specific 2026r2 build. Requested bundles are not obtained or inspected."
+      "question": "The executable, type library and four ConvertProducts inputs now match selected official 2026r2 installer members; C#/Java source generation is observed. Complete installed/generated artifact coverage, schema-wrapper bundles and runtime qualification remain incomplete. See artifact-observations.json."
     }
   ],
   "installer_artifact_requests": {
-    "rule": "Finite requested bundles below have editorial request names, not claimed vendor archive filenames. Obtain only with authorization; retain privately with provenance and hashes. Do not copy proprietary implementation into the repository. No download, installation, code generation or runtime execution occurred in this lane.",
+    "rule": "Finite requested bundles below have editorial request names, not claimed vendor archive filenames. Retain authorized artifacts privately with provenance and hashes; do not copy proprietary implementation into the repository. Selected installer members and C#/Java generated source bundles are now observed in artifact-observations.json; no downloaded installer or generated program was executed.",
     "required_provenance": [
       "Exact product/edition/release/build and architecture",
       "Installer origin and digest plus installed-file manifest/digests",
@@ -1131,7 +1131,8 @@
           "Manifest binding generated-code libraries and installed samples to that build"
         ],
         "source_constraint": "The pinned manual is documentation, not an installer manifest. No installer filename, build or digest is invented.",
-        "resolution": "not_obtained"
+        "resolution": "partial_selected_members",
+        "observation": "artifact-observations.json"
       },
       {
         "request_id": "csharp-convertproducts-io",
@@ -1147,7 +1148,8 @@
           56888
         ],
         "source_constraint": "The page names the installed Tutorials location and the example. Collect the actual dependency manifest; do not guess missing filenames.",
-        "resolution": "not_obtained"
+        "resolution": "source_bundle_obtained",
+        "observation": "artifact-observations.json"
       },
       {
         "request_id": "java-convertproducts-io",
@@ -1163,7 +1165,8 @@
           56848
         ],
         "source_constraint": "Resolve declared APIs from the exact build without treating the manual's String filename signature as an OutputStream declaration.",
-        "resolution": "not_obtained"
+        "resolution": "source_bundle_obtained",
+        "observation": "artifact-observations.json"
       },
       {
         "request_id": "cpp-schema-wrapper",

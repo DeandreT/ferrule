@@ -158,7 +158,75 @@ fn supporting_declarations_preserve_source_and_installer_boundaries() {
         .unwrap();
     assert_eq!(requests.len(), 6);
     for request in requests {
-        assert_eq!(request["resolution"], "not_obtained");
+        let expected = match request["request_id"].as_str().unwrap() {
+            "installer-release-manifest" => "partial_selected_members",
+            "csharp-convertproducts-io" | "java-convertproducts-io" => "source_bundle_obtained",
+            "cpp-schema-wrapper" | "csharp-schema-wrapper" | "java-schema-wrapper" => {
+                "not_obtained"
+            }
+            other => panic!("unreviewed artifact request {other}"),
+        };
+        assert_eq!(request["resolution"], expected);
+        if expected != "not_obtained" {
+            assert_eq!(request["observation"], "artifact-observations.json");
+        }
     }
     source_only(&supporting);
+}
+
+#[test]
+fn artifact_observations_do_not_promote_execution_or_completeness() {
+    let observation = load("artifact-observations.json");
+    assert_eq!(observation["inventory_complete"], false);
+    assert_eq!(observation["runtime_proof"], false);
+    assert_eq!(observation["release"]["release"], "2026r2");
+    assert_eq!(observation["release"]["executable_version"], "28.2.0.0");
+    assert_eq!(
+        observation["release"]["archive_sha256"],
+        "16fc9298366a93921d85a9165beb34736e227ba0985699743b53a5c6c6758278"
+    );
+    assert!(
+        observation["release"]["archive_url"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://cdn.sw.altova.com/v2026r2/")
+    );
+    let members = observation["matched_members"].as_array().unwrap();
+    assert_eq!(members.len(), 6);
+    unique_ids(members, "name");
+    for value in members.iter().chain(
+        observation["release"]["container_chain"]
+            .as_array()
+            .unwrap(),
+    ) {
+        let hash = value["sha256"].as_str().unwrap();
+        assert_eq!(hash.len(), 64);
+        assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    }
+    let generated = &observation["generated_source"];
+    assert_eq!(generated["documented_io_classes_matched"], 24);
+    assert_eq!(generated["csharp_files"], 41);
+    assert_eq!(generated["java_files"], 98);
+    assert!(
+        generated["csharp_project_target"]
+            .as_str()
+            .unwrap()
+            .contains("v4.8.1")
+    );
+    let declarations = generated["public_declaration_observations"]
+        .as_array()
+        .unwrap();
+    assert_eq!(declarations.len(), 4);
+    unique_ids(declarations, "type");
+    assert_eq!(
+        generated["public_declaration_observations"],
+        serde_json::json!([
+            {"type":"Altova.IO.StreamOutput","constructor_parameter_types":[["System.IO.Stream"],["System.String","System.IO.FileMode"]]},
+            {"type":"Altova.IO.StringOutput","constructor_parameter_types":[["System.Text.StringBuilder"]]},
+            {"type":"com.altova.io.StreamOutput","constructor_parameter_types":[["java.io.OutputStream"]],"getStream_return_type":"java.io.OutputStream"},
+            {"type":"com.altova.io.StringOutput","constructor_parameter_types":[[]],"getString_return_type":"java.lang.StringBuffer"}
+        ])
+    );
+    assert!(!observation["remaining"].as_array().unwrap().is_empty());
+    source_only(&observation);
 }
