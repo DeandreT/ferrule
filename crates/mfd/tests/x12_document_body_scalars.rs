@@ -377,6 +377,66 @@ fn json_typed_date_selection_validates_only_the_selected_date() {
 }
 
 #[test]
+fn source_literal_fallback_is_available_when_its_collection_is_empty() {
+    let functions = r#"<component name="substitute-null" library="db" kind="5" uid="20"><sources><datapoint pos="0" key="101"/><datapoint pos="1" key="102"/></sources><targets><datapoint pos="0" key="103"/></targets></component><component name="constant" library="core" kind="2" uid="21"><targets><datapoint pos="0" key="104"/></targets><data><constant value="fallback" datatype="string"/></data></component>"#;
+    let fixture = Fixture::new(
+        functions,
+        &(edge(24, 101) + &edge(104, 102) + &edge(103, 71)),
+        None,
+    );
+    fixture.change(
+        "Defs.Segment",
+        r#"name="F2" type="decimal""#,
+        r#"name="F2" type="string""#,
+    );
+    fixture.change(
+        "Defs.Segment",
+        r#"<Data ref="F2"/>"#,
+        r#"<Data ref="F2" minOccurs="0"/>"#,
+    );
+    let imported = fixture.import().unwrap();
+    let body = &imported.targets[0].body;
+    for (rows, expected) in [
+        (vec![], "fallback"),
+        (vec![("A", None)], "fallback"),
+        (vec![("A", Some("first")), ("B", Some("second"))], "first"),
+    ] {
+        assert_eq!(
+            engine::run(body, &sequence_input(&rows))
+                .unwrap()
+                .field("result"),
+            Some(&text(expected))
+        );
+    }
+    assert!(codegen::lower(body).is_ok());
+}
+
+#[test]
+fn filtered_source_fallback_is_available_when_no_value_survives() {
+    let fixture = sequence_scalar_fixture(false);
+    fixture.change("mapping.mfd", &edge(209, 71), "");
+    fixture.change("mapping.mfd", "</children>", r#"<component name="substitute-null" library="db" kind="5" uid="30"><sources><datapoint pos="0" key="221"/><datapoint pos="1" key="222"/></sources><targets><datapoint pos="0" key="220"/></targets></component><component name="constant" library="core" kind="2" uid="31"><targets><datapoint pos="0" key="223"/></targets><data><constant value="fallback" datatype="string"/></data></component></children>"#);
+    fixture.change(
+        "mapping.mfd",
+        "</vertices>",
+        &(edge(206, 221) + &edge(223, 222) + &edge(220, 71) + "</vertices>"),
+    );
+    let imported = fixture.import().unwrap();
+    for rows in [
+        vec![],
+        vec![("OTHER", Some("ignored"))],
+        vec![("MATCH", None)],
+    ] {
+        assert_eq!(
+            engine::run(&imported.targets[0].body, &sequence_input(&rows))
+                .unwrap()
+                .field("result"),
+            Some(&text("fallback"))
+        );
+    }
+}
+
+#[test]
 fn value_map_all_entries_misses_empty_null_case_and_whitespace() {
     let fixture = mapped();
     let imported = fixture.import().unwrap();
