@@ -36,6 +36,18 @@
     {"name": "Tutorial/ProductValuePairs.xsd", "cab_member": "ProductValuePairs.xsd_685", "bytes": 744, "sha256": "4c0e3a8b7595e10fe9a05a5a72fb2cb8d030ad3f15892f662bcc18320c488a75"}
   ],
   "comparison": "Each of the six selected installed/reference files was byte-identical to the corresponding member extracted from the downloaded package. This is not a complete installed-file manifest.",
+  "copied_application_tree": {
+    "original_manifest_files": 1980,
+    "additional_installer_resources": 1,
+    "matched_files": 1981,
+    "unexpected_or_missing_files": 0,
+    "containers": ["DATA1.cab", "3rdPartyLibs_Legacy_Win64.cab"],
+    "support_cab_sha256": "40e3978a8c735be21757fdfc8674d4256ed902f8057b8b2763a38eedd6f7af38",
+    "comparison_manifest_sha256": "a03b33553186f8fe838272339eb473a945ace4e439a48cf52f89a0cc0576bc22",
+    "manifest_encoding": "UTF-8 JSON of records sorted by path; object keys sorted, separators comma/colon, no extra whitespace. Each record carries path, bytes, sha256, container and matching_cab_members.",
+    "comparison": "Every file in the copied application tree matched installer-member bytes, including the added MapForce.inst resource. The comparison inspected hashes and names, not implementation bodies.",
+    "scope": "This binds that copied application tree, not the complete product installation, registry, license state, Wine or operating-system libraries, external catalogs, or generated output. It does not establish signature trust or execution semantics."
+  },
   "type_library": {
     "name": "MapForceLib",
     "version": "4.1",
@@ -62,7 +74,7 @@
   },
   "remaining": [
     "Complete installed and generated supporting-artifact inventory",
-    "Generator templates and support dependencies beyond the six matched files",
+    "Platform, registry, external-catalog and installation dependencies outside the copied application tree",
     "Schema-wrapper bundles for C++, C# and Java",
     "Full public API, exception and execution contracts",
     "Independent completeness review and exact backend applicability",

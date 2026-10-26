@@ -207,6 +207,16 @@ fn artifact_observations_do_not_promote_execution_or_completeness() {
     assert_eq!(generated["documented_io_classes_matched"], 24);
     assert_eq!(generated["csharp_files"], 41);
     assert_eq!(generated["java_files"], 98);
+    let copied = &observation["copied_application_tree"];
+    assert_eq!(copied["matched_files"], 1981);
+    assert_eq!(copied["original_manifest_files"], 1980);
+    assert_eq!(copied["additional_installer_resources"], 1);
+    assert_eq!(copied["unexpected_or_missing_files"], 0);
+    for field in ["support_cab_sha256", "comparison_manifest_sha256"] {
+        let hash = copied[field].as_str().unwrap();
+        assert_eq!(hash.len(), 64);
+        assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    }
     assert!(
         generated["csharp_project_target"]
             .as_str()
