@@ -19,6 +19,7 @@ mod filter_map;
 #[cfg(test)]
 mod filter_map_tests;
 mod generated_sequence;
+mod invocation_counter;
 mod iteration;
 mod json;
 mod json5;
@@ -130,6 +131,7 @@ pub use generated_sequence::{
     generate_sequence, owned_recursive_collect, recursive_collect, recursive_sequence_parameter,
     tokenize, tokenize_by_length, tokenize_regex,
 };
+pub use invocation_counter::{invocation_counter_integer, invocation_counter_restart};
 pub use ir::SchemaNode;
 pub use ir::{
     Decimal96, DocumentMember, Instance, InstanceGroup, MAX_SOURCE_ORIGIN_PATH_BYTES,
@@ -224,6 +226,19 @@ pub enum TargetSelection<'a> {
 /// Failure produced while executing generated mapping code.
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
+    MissingInvocationCounters {
+        node: u32,
+    },
+    InvocationCounterOperand {
+        node: u32,
+        operand: &'static str,
+        expected: &'static str,
+        found: &'static str,
+    },
+    InvocationCounter {
+        node: u32,
+        source: InvocationCounterError,
+    },
     FilterMapRuntime {
         boundary: FilterMapBoundary,
         source: Box<RuntimeError>,
@@ -638,6 +653,20 @@ impl fmt::Display for RuntimeError {
             Self::MissingRuntimeValue { value } => {
                 write!(formatter, "execution context does not provide {value:?}")
             }
+            Self::MissingInvocationCounters { node } => write!(
+                formatter,
+                "node {node}: invocation counters require explicit host limits"
+            ),
+            Self::InvocationCounterOperand {
+                node,
+                operand,
+                expected,
+                found,
+            } => write!(
+                formatter,
+                "node {node}: counter {operand} expected {expected}, got {found}"
+            ),
+            Self::InvocationCounter { node, source } => write!(formatter, "node {node}: {source}"),
             Self::MissingRuntimeParameter { node, name } => write!(
                 formatter,
                 "node {node}: execution context does not provide runtime parameter `{name}`"
@@ -782,6 +811,7 @@ impl std::error::Error for RuntimeError {
             Self::Function(error) => Some(error),
             Self::AggregateDecimal { source, .. } => Some(source),
             Self::DynamicSourceFailure(failure) => Some(&failure.fault),
+            Self::InvocationCounter { source, .. } => Some(source),
             Self::FilterMapBudget { .. }
             | Self::FilterMapValueType { .. }
             | Self::FilterMapNonFinite { .. }
@@ -817,6 +847,8 @@ impl std::error::Error for RuntimeError {
             | Self::ZeroWidthTokenizeRegex
             | Self::TokenizeRegexTooLarge { .. }
             | Self::MissingRuntimeValue { .. }
+            | Self::MissingInvocationCounters { .. }
+            | Self::InvocationCounterOperand { .. }
             | Self::MissingRuntimeParameter { .. }
             | Self::RuntimeParameterType { .. }
             | Self::PrimaryFilenameType { .. }

@@ -24,6 +24,15 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
         | Expression::RuntimeValue { .. }
         | Expression::RuntimeParameter { .. } => Vec::new(),
         Expression::RuntimeParameterDefault { default, .. } => vec![*default],
+        Expression::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .into_iter()
+            .flatten()
+            .collect(),
         Expression::DynamicSourceField { key, .. } => vec![*key],
         Expression::OwnedDynamicSourceField(field) => vec![field.key],
         Expression::XmlMixedContent { replacements, .. } => replacements

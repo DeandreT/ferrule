@@ -18,6 +18,15 @@ fn legacy_port_inputs(node: &Node) -> Vec<NodeId> {
     match node {
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .into_iter()
+            .flatten()
+            .collect(),
         Node::If {
             condition,
             then,
@@ -56,6 +65,12 @@ fn legacy_selector_inputs(node: &Node) -> SelectorInputs {
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => parent.extend(args),
         Node::Raise { message } => parent.extend(message.iter().copied()),
         Node::RuntimeParameterDefault { default, .. } => parent.push(*default),
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => parent.extend([Some(*start), Some(*step), *restart].into_iter().flatten()),
         Node::If {
             condition,
             then,

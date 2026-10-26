@@ -268,6 +268,7 @@ fn validate_stage(
 
 fn unsupported_kind(expression: &Expression) -> &'static str {
     match expression {
+        Expression::InvocationCounter { .. } => "invocation_counter",
         Expression::RuntimeValue { .. } => "runtime_value",
         Expression::RuntimeParameter { .. } => "runtime_parameter",
         Expression::RuntimeParameterDefault { .. } => "runtime_parameter_default",

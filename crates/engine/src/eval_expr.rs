@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashSet};
 
 use ir::{
@@ -24,6 +24,7 @@ use crate::{DebugHook, EngineError, ExecutionPurpose};
 
 #[derive(Clone, Copy)]
 pub(crate) struct EvalProgram<'a> {
+    pub(crate) invocation_counters: Option<&'a RefCell<functions::InvocationCounters>>,
     pub(crate) graph: &'a Graph,
     pub(crate) user_functions: &'a BTreeMap<FunctionId, UserFunction>,
     pub(crate) trace_sink: Option<&'a dyn TraceSink>,
@@ -51,6 +52,7 @@ impl<'a> EvalProgram<'a> {
         first_failure_reported: &'a Cell<bool>,
     ) -> Self {
         Self {
+            invocation_counters: None,
             graph,
             user_functions,
             trace_sink,
@@ -76,6 +78,14 @@ impl<'a> EvalProgram<'a> {
     ) -> Self {
         self.restricted = policy;
         self.budget = budget;
+        self
+    }
+
+    pub(crate) fn with_invocation_counters(
+        mut self,
+        counters: Option<&'a RefCell<functions::InvocationCounters>>,
+    ) -> Self {
+        self.invocation_counters = counters;
         self
     }
 
@@ -455,6 +465,68 @@ fn eval_expr_inner(
             .and_then(Instance::as_scalar)
             .cloned()
             .ok_or(EngineError::MissingRuntimeValue(*value)),
+        Node::InvocationCounter {
+            key,
+            start,
+            step,
+            restart,
+        } => {
+            let counters = program
+                .invocation_counters
+                .ok_or(EngineError::MissingInvocationCounters { node: node_id })?;
+            let start_value =
+                eval_node_input(program, node_id, *start, 0, context, positions, in_progress)?;
+            let Value::Int(start_value) = start_value else {
+                return Err(EngineError::InvocationCounterOperand {
+                    node: node_id,
+                    operand: "start",
+                    expected: "integer",
+                    found: start_value.type_name(),
+                });
+            };
+            let step_value =
+                eval_node_input(program, node_id, *step, 1, context, positions, in_progress)?;
+            let Value::Int(step_value) = step_value else {
+                return Err(EngineError::InvocationCounterOperand {
+                    node: node_id,
+                    operand: "step",
+                    expected: "integer",
+                    found: step_value.type_name(),
+                });
+            };
+            let restart_value = match restart {
+                Some(restart) => eval_node_input(
+                    program,
+                    node_id,
+                    *restart,
+                    2,
+                    context,
+                    positions,
+                    in_progress,
+                )?,
+                None => Value::Null,
+            };
+            let restart = match &restart_value {
+                Value::Null => None,
+                Value::String(text) => Some(text.as_str()),
+                other => {
+                    return Err(EngineError::InvocationCounterOperand {
+                        node: node_id,
+                        operand: "restart",
+                        expected: "string or missing",
+                        found: other.type_name(),
+                    });
+                }
+            };
+            counters
+                .borrow_mut()
+                .next(key, start_value, step_value, restart)
+                .map(Value::Int)
+                .map_err(|source| EngineError::InvocationCounter {
+                    node: node_id,
+                    source,
+                })
+        }
         Node::RuntimeParameter { name, ty, preview } => {
             let value = parameter_value(
                 context.first().copied(),
@@ -1303,6 +1375,10 @@ mod tests {
         assert_eq!(value, Value::String("second".into()));
     }
 }
+
+#[cfg(test)]
+#[path = "tests/invocation_counter_effects.rs"]
+mod invocation_counter_effect_tests;
 
 #[cfg(test)]
 mod primary_root_owner_tests {

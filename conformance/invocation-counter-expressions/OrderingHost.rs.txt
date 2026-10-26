@@ -1,0 +1,17 @@
+use codegen_runtime::{ExecutionContext, InvocationCounterLimits};
+use std::path::Path;
+
+fn main() {
+    let context = ExecutionContext::new(Path::new("counter.ferrule"))
+        .with_invocation_counter_limits(InvocationCounterLimits {
+            max_counters: 2, max_text_bytes: 64,
+        });
+    for _ in 0..2 {
+        let output = counter_order::execute_json_outputs_with_context("{}", &context).unwrap();
+        assert_eq!(output.primary, "{\n  \"A\": 1,\n  \"B\": 4\n}\n");
+        assert_eq!(output.extras.len(), 1);
+        assert_eq!(output.extras[0].name, "audit");
+        assert_eq!(output.extras[0].document, "{\n  \"Value\": 7\n}\n");
+    }
+    println!("PASS ordered nested counters");
+}

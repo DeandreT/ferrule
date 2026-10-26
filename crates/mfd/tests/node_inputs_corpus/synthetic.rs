@@ -58,9 +58,10 @@ pub(crate) fn kind(node: &Node) -> usize {
         Node::Aggregate { .. } => 38,
         Node::JoinAggregate { .. } => 39,
         Node::OwnedSourceDocumentPath(_) => 40,
+        Node::InvocationCounter { .. } => 41,
     }
 }
-pub(crate) const KINDS: usize = 41;
+pub(crate) const KINDS: usize = 42;
 
 pub(crate) fn sequence_kind(sequence: &SequenceExpr) -> usize {
     match sequence {
@@ -319,6 +320,12 @@ fn nodes(ids: &mut Ids, present: bool) -> Vec<Node> {
             ty: ScalarType::String,
             default: ids.id(),
             preview: None,
+        },
+        Node::InvocationCounter {
+            key: "counter".into(),
+            start: ids.id(),
+            step: ids.id(),
+            restart: ids.optional(present),
         },
         Node::Call {
             function: "concat".into(),

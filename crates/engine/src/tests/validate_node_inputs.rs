@@ -42,6 +42,15 @@ fn legacy_dependencies(node: &Node) -> Vec<NodeId> {
         | Node::RuntimeParameter { .. }
         | Node::XmlSerialize { .. } => Vec::new(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => [Some(*start), Some(*step), *restart]
+            .into_iter()
+            .flatten()
+            .collect(),
         Node::Raise { message } => message.iter().copied().collect(),
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::If {
@@ -144,6 +153,16 @@ fn legacy_node_inputs(node: &Node) -> Vec<(String, NodeId)> {
         | Node::XmlSerialize { .. } => Vec::new(),
         Node::RuntimeParameterDefault { default, .. } => {
             vec![("default".into(), *default)]
+        }
+        Node::InvocationCounter {
+            start,
+            step,
+            restart,
+            ..
+        } => {
+            let mut inputs = vec![("start".into(), *start), ("step".into(), *step)];
+            inputs.extend(restart.map(|id| ("restart".into(), id)));
+            inputs
         }
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args
             .iter()
@@ -375,9 +394,10 @@ fn kind(node: &Node) -> usize {
         Node::Aggregate { .. } => 38,
         Node::JoinAggregate { .. } => 39,
         Node::OwnedSourceDocumentPath(_) => 40,
+        Node::InvocationCounter { .. } => 41,
     }
 }
-const KINDS: usize = 41;
+const KINDS: usize = 42;
 
 fn sequence_kind(sequence: &SequenceExpr) -> usize {
     match sequence {
@@ -636,6 +656,12 @@ fn nodes(ids: &mut Ids, present: bool) -> Vec<Node> {
             ty: ScalarType::String,
             default: ids.id(),
             preview: None,
+        },
+        Node::InvocationCounter {
+            key: "counter".into(),
+            start: ids.id(),
+            step: ids.id(),
+            restart: ids.optional(present),
         },
         Node::Call {
             function: "concat".into(),
