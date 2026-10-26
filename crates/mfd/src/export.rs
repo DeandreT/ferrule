@@ -368,6 +368,7 @@ fn prepare_export_mode(
         });
     }
     preflight::validate_decimal_values(project)?;
+    preflight::validate_invocation_counters(project)?;
     preflight::validate_optional_parser_input_provenance(project)?;
     preflight::validate_source_ownership(project)?;
     preflight::validate_optional_presence(project)?;

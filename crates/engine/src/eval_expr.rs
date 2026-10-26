@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashSet};
 
 use ir::{
@@ -24,6 +24,7 @@ use crate::{DebugHook, EngineError, ExecutionPurpose};
 
 #[derive(Clone, Copy)]
 pub(crate) struct EvalProgram<'a> {
+    pub(crate) invocation_counters: Option<&'a RefCell<functions::InvocationCounters>>,
     pub(crate) graph: &'a Graph,
     pub(crate) user_functions: &'a BTreeMap<FunctionId, UserFunction>,
     pub(crate) trace_sink: Option<&'a dyn TraceSink>,
@@ -51,6 +52,7 @@ impl<'a> EvalProgram<'a> {
         first_failure_reported: &'a Cell<bool>,
     ) -> Self {
         Self {
+            invocation_counters: None,
             graph,
             user_functions,
             trace_sink,
@@ -76,6 +78,14 @@ impl<'a> EvalProgram<'a> {
     ) -> Self {
         self.restricted = policy;
         self.budget = budget;
+        self
+    }
+
+    pub(crate) fn with_invocation_counters(
+        mut self,
+        counters: Option<&'a RefCell<functions::InvocationCounters>>,
+    ) -> Self {
+        self.invocation_counters = counters;
         self
     }
 
@@ -455,6 +465,68 @@ fn eval_expr_inner(
             .and_then(Instance::as_scalar)
             .cloned()
             .ok_or(EngineError::MissingRuntimeValue(*value)),
+        Node::InvocationCounter {
+            key,
+            start,
+            step,
+            restart,
+        } => {
+            let counters = program
+                .invocation_counters
+                .ok_or(EngineError::MissingInvocationCounters { node: node_id })?;
+            let start_value =
+                eval_node_input(program, node_id, *start, 0, context, positions, in_progress)?;
+            let Value::Int(start_value) = start_value else {
+                return Err(EngineError::InvocationCounterOperand {
+                    node: node_id,
+                    operand: "start",
+                    expected: "integer",
+                    found: start_value.type_name(),
+                });
+            };
+            let step_value =
+                eval_node_input(program, node_id, *step, 1, context, positions, in_progress)?;
+            let Value::Int(step_value) = step_value else {
+                return Err(EngineError::InvocationCounterOperand {
+                    node: node_id,
+                    operand: "step",
+                    expected: "integer",
+                    found: step_value.type_name(),
+                });
+            };
+            let restart_value = match restart {
+                Some(restart) => eval_node_input(
+                    program,
+                    node_id,
+                    *restart,
+                    2,
+                    context,
+                    positions,
+                    in_progress,
+                )?,
+                None => Value::Null,
+            };
+            let restart = match &restart_value {
+                Value::Null => None,
+                Value::String(text) => Some(text.as_str()),
+                other => {
+                    return Err(EngineError::InvocationCounterOperand {
+                        node: node_id,
+                        operand: "restart",
+                        expected: "string or missing",
+                        found: other.type_name(),
+                    });
+                }
+            };
+            counters
+                .borrow_mut()
+                .next(key, start_value, step_value, restart)
+                .map(Value::Int)
+                .map_err(|source| EngineError::InvocationCounter {
+                    node: node_id,
+                    source,
+                })
+        }
         Node::RuntimeParameter { name, ty, preview } => {
             let value = parameter_value(
                 context.first().copied(),
@@ -1301,6 +1373,139 @@ mod tests {
         .expect("nested lookup should evaluate");
 
         assert_eq!(value, Value::String("second".into()));
+    }
+}
+
+#[cfg(test)]
+mod invocation_counter_effect_tests {
+    use super::*;
+    use functions::{InvocationCounterLimits, InvocationCounters};
+
+    #[test]
+    fn both_earlier_operand_effects_survive_restart_refusal() {
+        for outer_key in ["line", "outer"] {
+            let graph = Graph {
+                nodes: [
+                    (
+                        1,
+                        Node::InvocationCounter {
+                            key: outer_key.into(),
+                            start: 2,
+                            step: 2,
+                            restart: Some(4),
+                        },
+                    ),
+                    (
+                        2,
+                        Node::InvocationCounter {
+                            key: "line".into(),
+                            start: 3,
+                            step: 3,
+                            restart: None,
+                        },
+                    ),
+                    (
+                        3,
+                        Node::Const {
+                            value: Value::Int(1),
+                        },
+                    ),
+                    (
+                        4,
+                        Node::Const {
+                            value: Value::Bool(true),
+                        },
+                    ),
+                ]
+                .into(),
+            };
+            let functions = BTreeMap::new();
+            let reported = Cell::new(false);
+            let counters = RefCell::new(InvocationCounters::new(InvocationCounterLimits {
+                max_counters: 2,
+                max_text_bytes: 32,
+            }));
+            let program = EvalProgram::new(&graph, &functions, None, &reported)
+                .with_invocation_counters(Some(&counters));
+            assert_eq!(
+                eval_expr(program, 1, &[], &[], &mut HashSet::new()),
+                Err(EngineError::InvocationCounterOperand {
+                    node: 1,
+                    operand: "restart",
+                    expected: "string or missing",
+                    found: "bool",
+                })
+            );
+            assert_eq!(counters.borrow().len(), 1);
+            // The shared operand node executes twice, not once per NodeId.
+            assert_eq!(counters.borrow_mut().next("line", 1, 1, None), Ok(3));
+            if outer_key == "outer" {
+                assert_eq!(counters.borrow_mut().next("outer", 9, 1, None), Ok(9));
+            }
+        }
+    }
+
+    #[test]
+    fn nested_counter_effect_survives_a_later_outer_operand_refusal() {
+        for outer_key in ["line", "outer"] {
+            let graph = Graph {
+                nodes: [
+                    (
+                        1,
+                        Node::InvocationCounter {
+                            key: outer_key.into(),
+                            start: 2,
+                            step: 4,
+                            restart: None,
+                        },
+                    ),
+                    (
+                        2,
+                        Node::InvocationCounter {
+                            key: "line".into(),
+                            start: 3,
+                            step: 3,
+                            restart: None,
+                        },
+                    ),
+                    (
+                        3,
+                        Node::Const {
+                            value: Value::Int(1),
+                        },
+                    ),
+                    (
+                        4,
+                        Node::Const {
+                            value: Value::Bool(true),
+                        },
+                    ),
+                ]
+                .into(),
+            };
+            let functions = BTreeMap::new();
+            let reported = Cell::new(false);
+            let counters = RefCell::new(InvocationCounters::new(InvocationCounterLimits {
+                max_counters: 2,
+                max_text_bytes: 32,
+            }));
+            let program = EvalProgram::new(&graph, &functions, None, &reported)
+                .with_invocation_counters(Some(&counters));
+            assert_eq!(
+                eval_expr(program, 1, &[], &[], &mut HashSet::new()),
+                Err(EngineError::InvocationCounterOperand {
+                    node: 1,
+                    operand: "step",
+                    expected: "integer",
+                    found: "bool"
+                })
+            );
+            assert_eq!(counters.borrow().len(), 1);
+            assert_eq!(counters.borrow_mut().next("line", 1, 1, None), Ok(2));
+            if outer_key == "outer" {
+                assert_eq!(counters.borrow_mut().next("outer", 9, 1, None), Ok(9));
+            }
+        }
     }
 }
 

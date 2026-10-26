@@ -1,0 +1,14 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var context = new FerruleExecutionContext("counter.ferrule")
+    .WithInvocationCounterLimits(new(2, 64));
+for (int repeat = 0; repeat < 2; repeat++)
+{
+    var output = GeneratedMapping.ExecuteJsonOutputs("{}", context);
+    if (output.Primary != "{\n  \"A\": 1,\n  \"B\": 4\n}\n" ||
+        output.Extras.Count != 1 || output.Extras[0].Name != "audit" ||
+        output.Extras[0].Document != "{\n  \"Value\": 7\n}\n")
+        throw new InvalidOperationException("Nested operands were reordered or memoized.");
+}
+Console.WriteLine("PASS ordered nested counters");

@@ -22,6 +22,8 @@ impl Shape {
         self.namespace()
             .map_or_else(|| "Extended".into(), |ns| format!("{{{ns}}}Extended"))
     }
+    // Shared fixtures may be used only to inspect or export their project.
+    #[allow(dead_code)]
     pub fn xml(self, type_name: Option<&str>, extra: bool) -> String {
         let namespaces = self.namespace().map_or_else(String::new, |ns| {
             format!(" xmlns=\"{ns}\" xmlns:t=\"{ns}\"")

@@ -623,6 +623,7 @@ fn unsupported_kind(node: &Node) -> &'static str {
         Node::RuntimeValue { .. } => "runtime_value",
         Node::RuntimeParameter { .. } => "runtime_parameter",
         Node::RuntimeParameterDefault { .. } => "runtime_parameter_default",
+        Node::InvocationCounter { .. } => "invocation_counter",
         Node::ValueMap { .. } => "value_map",
         Node::SequenceExists { .. } => "sequence_exists",
         Node::SequenceItemAt { .. } => "sequence_item_at",

@@ -836,6 +836,7 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
         | Node::RuntimeValue { .. }
         | Node::RuntimeParameter { .. }
         | Node::RuntimeParameterDefault { .. }
+        | Node::InvocationCounter { .. }
         | Node::Call { .. }
         | Node::UserFunctionCall { .. }
         | Node::If { .. }
