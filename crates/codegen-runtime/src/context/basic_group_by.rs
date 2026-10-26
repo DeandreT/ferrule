@@ -501,6 +501,7 @@ impl<'src> GroupPrefixTemplate<'src> {
         });
         if let Some(wrapper) = wrapper {
             context.legacy.frames.push(ScopeFrame {
+                origin: super::super::FrameOrigin::Synthetic,
                 instance: wrapper,
                 collection: None,
                 document_path: None,

@@ -1,7 +1,8 @@
 use crate::{Instance, Value};
 
 use super::{
-    CollectionIdentity, ScopeContext, ScopeFrame, SourcePathError, collection_frame, document_frame,
+    CollectionIdentity, FrameOrigin, ScopeContext, ScopeFrame, SourcePathError, collection_frame,
+    document_frame,
 };
 
 impl<'a> ScopeContext<'a> {
@@ -39,7 +40,10 @@ impl<'a> ScopeContext<'a> {
     /// current repeated/document value, or selects one ordinary current
     /// value. Repetition crossed at any depth branches in source order.
     pub fn walk_source(&self, path: &[&str]) -> Vec<Self> {
-        let mut observer = LegacyNoop { context: self };
+        let mut observer = LegacyNoop {
+            context: self,
+            origin: FrameOrigin::Synthetic,
+        };
         match walk_source_observed(self, path, &mut observer) {
             Ok(contexts) => contexts,
             Err(impossible) => match impossible {},
@@ -66,13 +70,18 @@ impl<'a> ScopeContext<'a> {
                     .iter()
                     .map(|frame| ScopeFrame {
                         instance: frame.instance,
+                        origin: frame.origin,
                         collection: frame.collection.clone(),
                         document_path: frame.document_path,
                         join: frame.join,
                         join_position: frame.join_position,
                     })
                     .collect::<Vec<_>>();
-                frames.extend(extension);
+                frames.extend(
+                    extension
+                        .into_iter()
+                        .map(|frame| frame.with_origin(FrameOrigin::Named)),
+                );
                 ScopeContext {
                     primary_source: self.primary_source,
                     frames,
@@ -334,6 +343,7 @@ fn walk_source_frames<'a>(
                 let mut next = acc.to_vec();
                 next.push(ScopeFrame {
                     instance: base,
+                    origin: FrameOrigin::Synthetic,
                     collection: None,
                     document_path: None,
                     join: None,
@@ -478,11 +488,23 @@ pub(super) trait LegacyWalkObserver<'a> {
 
 struct LegacyNoop<'c, 'a> {
     context: &'c ScopeContext<'a>,
+    origin: FrameOrigin,
 }
 impl<'a> LegacyWalkObserver<'a> for LegacyNoop<'_, 'a> {
     type Error = std::convert::Infallible;
     type Output = ScopeContext<'a>;
-    fn selected(&mut self, _: LegacySelected, _: usize) -> Result<(), Self::Error> {
+    fn selected(&mut self, selected: LegacySelected, _: usize) -> Result<(), Self::Error> {
+        // This is the actual selector witness, not a path or pointer guess.
+        self.origin = match selected {
+            LegacySelected::Frame(index) => match self.context.frames[index].origin {
+                FrameOrigin::PhysicalPrimary => FrameOrigin::RootedPrimaryTraversal,
+                FrameOrigin::RootedPrimaryTraversal | FrameOrigin::RelativePrimaryTraversal => {
+                    FrameOrigin::RelativePrimaryTraversal
+                }
+                other => other,
+            },
+            LegacySelected::NamedBinding(_) => FrameOrigin::Named,
+        };
         Ok(())
     }
     fn enter(&mut self, _: &'a Instance, _: usize) -> Result<(), Self::Error> {
@@ -523,7 +545,12 @@ impl<'a> LegacyWalkObserver<'a> for LegacyNoop<'_, 'a> {
         _: &'a Instance,
         _: &[String],
     ) -> Result<Self::Output, Self::Error> {
-        Ok(self.context.extend(acc.to_vec()))
+        Ok(self.context.extend(
+            acc.iter()
+                .cloned()
+                .map(|frame| frame.with_origin(self.origin))
+                .collect(),
+        ))
     }
 }
 
@@ -696,6 +723,7 @@ fn observed_source_frames<'a, O: LegacyWalkObserver<'a>>(
                 observer.frame_push(acc, None)?;
                 acc.push(ScopeFrame {
                     instance: base,
+                    origin: FrameOrigin::Synthetic,
                     collection: None,
                     document_path: None,
                     join: None,

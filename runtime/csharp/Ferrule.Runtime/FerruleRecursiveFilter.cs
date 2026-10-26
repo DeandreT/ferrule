@@ -421,7 +421,8 @@ public sealed partial class ScopeContext
             new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections),
             _executionContext,
-            _dynamicSourceLoader, invocationCounters: _invocationCounters, documentFilenameClock: _documentFilenameClock);
+            _dynamicSourceLoader, invocationCounters: _invocationCounters, documentFilenameClock: _documentFilenameClock,
+            nativeFrameOrigins: AppendNativeFrameOrigins(1));
     }
 }
 
@@ -449,7 +450,8 @@ public sealed partial class ScopeContext
         collections[^1] = new CollectionIdentity(path, item, index);
         return new ScopeContext(_primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections), _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock,
+            AppendNativeFrameOrigins(1));
     }
 }
 

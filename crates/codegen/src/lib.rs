@@ -55,6 +55,7 @@ pub use csv_x12_boundary::{
 pub use diagnostic::{Diagnostic, LowerError, ScopeFeature, UnsupportedNodeKind};
 pub use document_program::{
     DocumentLowerError, DocumentProgram, PrimaryFilenamePlan, lower_document,
+    lower_native_x12_nullable_document,
 };
 pub use document_visitor::{
     DocumentVisitorBoundaryError, DocumentVisitorEmitError, validate_document_clocks,
@@ -98,7 +99,8 @@ pub use mapforce_json5_documents::{
     prepare_csv_to_mapforce_json5_documents,
 };
 pub use mapforce_x12_source::{
-    MapForceX12SourceError, NativeX12Source, prepare_mapforce_x12_source, prepare_native_x12_source,
+    MapForceX12SourceError, NativeX12Source, prepare_mapforce_x12_source,
+    prepare_native_x12_source, validate_native_x12_nullable_scalars,
 };
 pub use mapforce_x12_writer::{MapForceX12WriterError, prepare_mapforce_x12_writer};
 pub use model::{

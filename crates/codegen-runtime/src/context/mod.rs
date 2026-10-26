@@ -91,10 +91,29 @@ pub struct ScopeContext<'a> {
 #[derive(Clone)]
 struct ScopeFrame<'a> {
     instance: &'a Instance,
+    origin: FrameOrigin,
     collection: Option<CollectionIdentity>,
     document_path: Option<&'a str>,
     join: Option<u64>,
     join_position: Option<(u64, usize)>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+// Set by root construction or a traversal's actual selected-frame witness.
+// Never inferred from a collection name or an instance pointer.
+enum FrameOrigin {
+    PhysicalPrimary,
+    RootedPrimaryTraversal,
+    RelativePrimaryTraversal,
+    Named,
+    Synthetic,
+}
+
+impl ScopeFrame<'_> {
+    fn with_origin(mut self, origin: FrameOrigin) -> Self {
+        self.origin = origin;
+        self
+    }
 }
 
 #[derive(Clone)]
@@ -137,6 +156,78 @@ impl CollectionIdentity {
 }
 
 impl<'a> ScopeContext<'a> {
+    /// Verify that a convenience entry was invoked on the selected message,
+    /// not on the physical root or one of the message's row contexts.
+    pub fn require_native_x12_message(&self, owner: &[&str]) -> Result<(), RuntimeError> {
+        let selected = self.native_x12_message_frame(owner)?;
+        let valid = self
+            .frames
+            .last()
+            .is_some_and(|last| std::ptr::eq(last, selected));
+        if valid {
+            Ok(())
+        } else {
+            Err(crate::FunctionError::InvalidArgument {
+                function: "native_x12_message_binding",
+                message: "requires the exact selected message frame",
+            }
+            .into())
+        }
+    }
+
+    /// Nullable scalar read from one explicitly named message frame. The
+    /// physical primary, invocation counters, clocks and all frames are intact.
+    pub fn native_x12_message_field(
+        &self,
+        node: u32,
+        owner: &[&str],
+        path: &[&str],
+    ) -> Result<Value, RuntimeError> {
+        let selected = self.native_x12_message_frame(owner)?;
+        ir::primary_root_scalar(Some(selected.instance), path)
+            .map_err(|source| RuntimeError::PrimaryRoot { node, source })
+    }
+
+    // Entry admission and reads deliberately use the same unique-owner proof.
+    // Checking only the last frame allows nested full-path walks to duplicate
+    // the owner and run effects before a later read discovers the ambiguity.
+    fn native_x12_message_frame(&self, owner: &[&str]) -> Result<&ScopeFrame<'a>, RuntimeError> {
+        if owner.is_empty() || owner.len() > 64 {
+            return Err(crate::FunctionError::InvalidArgument {
+                function: "native_x12_message_binding",
+                message: "invalid message owner path",
+            }
+            .into());
+        }
+        let mut matches = self.frames.iter().filter(|frame| {
+            matches!(&frame.collection, Some(CollectionIdentity::Repeated { path, .. })
+                if path.iter().map(String::as_str).eq(owner.iter().copied()))
+        });
+        let selected = matches.next().filter(|_| matches.next().is_none());
+        let Some(selected) = selected else {
+            return Err(crate::FunctionError::InvalidArgument {
+                function: "native_x12_message_binding",
+                message: "message frame is missing or ambiguous",
+            }
+            .into());
+        };
+        if selected.origin != FrameOrigin::RootedPrimaryTraversal {
+            return Err(crate::FunctionError::InvalidArgument {
+                function: "native_x12_message_binding",
+                message: "message frame is not from physical Primary",
+            }
+            .into());
+        }
+        if !matches!(selected.instance, Instance::Group(_)) {
+            return Err(crate::FunctionError::InvalidArgument {
+                function: "native_x12_message_binding",
+                message: "selected message is not a group",
+            }
+            .into());
+        }
+        Ok(selected)
+    }
+
     /// Creates the root context for one generated mapping execution.
     pub fn new(source: &'a Instance) -> Self {
         Self {
@@ -145,6 +236,7 @@ impl<'a> ScopeContext<'a> {
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
+                origin: FrameOrigin::PhysicalPrimary,
                 collection: None,
                 document_path: None,
                 join: None,
@@ -160,12 +252,31 @@ impl<'a> ScopeContext<'a> {
     /// Creates a root context with borrowed secondary inputs available as
     /// one outer named frame.
     pub fn with_named_inputs(source: &'a Instance, inputs: &'a [NamedInput<'a>]) -> Self {
+        Self::with_named_input_origin(source, inputs, FrameOrigin::PhysicalPrimary)
+    }
+
+    /// A Basic endpoint's `Primary` identity is not proof of native physical
+    /// provenance. Keep its legacy view nonnative without extra metadata or
+    /// allocation, even when it contains the same instance as a native root.
+    pub(super) fn with_basic_named_inputs(
+        source: &'a Instance,
+        inputs: &'a [NamedInput<'a>],
+    ) -> Self {
+        Self::with_named_input_origin(source, inputs, FrameOrigin::Synthetic)
+    }
+
+    fn with_named_input_origin(
+        source: &'a Instance,
+        inputs: &'a [NamedInput<'a>],
+        origin: FrameOrigin,
+    ) -> Self {
         Self {
             invocation_counters: None,
             document_filename_clock: None,
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
+                origin,
                 collection: None,
                 document_path: None,
                 join: None,
@@ -188,6 +299,7 @@ impl<'a> ScopeContext<'a> {
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
+                origin: FrameOrigin::PhysicalPrimary,
                 collection: None,
                 document_path: None,
                 join: None,
@@ -209,6 +321,7 @@ impl<'a> ScopeContext<'a> {
     {
         if self.frames.len() != 1
             || self.frames[0].collection.is_some()
+            || self.frames[0].origin != FrameOrigin::PhysicalPrimary
             || !self.named_inputs.is_empty()
         {
             return None;
@@ -234,6 +347,7 @@ impl<'a> ScopeContext<'a> {
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
+                origin: FrameOrigin::PhysicalPrimary,
                 collection: None,
                 document_path: None,
                 join: None,
@@ -555,6 +669,7 @@ impl<'a> ScopeContext<'a> {
                 .iter()
                 .map(|frame| ScopeFrame {
                     instance: frame.instance,
+                    origin: frame.origin,
                     collection: frame.collection.clone(),
                     document_path: frame.document_path,
                     join: frame.join,
@@ -608,6 +723,7 @@ impl<'a> ScopeContext<'a> {
             .iter()
             .map(|frame| ScopeFrame {
                 instance: frame.instance,
+                origin: frame.origin,
                 collection: frame.collection.clone(),
                 document_path: frame.document_path,
                 join: frame.join,
@@ -650,6 +766,7 @@ impl<'a> ScopeContext<'a> {
             .iter()
             .map(|frame| ScopeFrame {
                 instance: frame.instance,
+                origin: frame.origin,
                 collection: frame.collection.clone(),
                 document_path: frame.document_path,
                 join: frame.join,
@@ -686,6 +803,7 @@ impl<'a> ScopeContext<'a> {
 fn collection_frame<'a>(instance: &'a Instance, collection: CollectionIdentity) -> ScopeFrame<'a> {
     ScopeFrame {
         instance,
+        origin: FrameOrigin::Synthetic,
         collection: Some(collection),
         document_path: None,
         join: None,
@@ -700,6 +818,7 @@ fn document_frame<'a>(
 ) -> ScopeFrame<'a> {
     ScopeFrame {
         instance,
+        origin: FrameOrigin::Synthetic,
         collection: Some(collection),
         document_path: Some(source_path),
         join: None,

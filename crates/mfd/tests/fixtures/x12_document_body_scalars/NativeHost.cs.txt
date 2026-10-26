@@ -1,0 +1,18 @@
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+if(args.Length!=1) throw new InvalidOperationException("Need X12 path");
+var physical=GeneratedMapping.ParseNativePrimaryX12Source(File.ReadAllBytes(args[0]));
+var root=ScopeContext.FromSource(physical);
+var actual=new JsonArray();
+var primaryProbes=new JsonArray();
+foreach(var context in root.IterateSource("Interchange","Group","Message_850")) {
+    if(context.ResolveSourceRootField(9000,new[]{"BEG","F1"}).Kind!=FerruleValueKind.Null) throw new InvalidOperationException("Walking messages must not retarget Primary");
+    primaryProbes.Add((JsonNode?)null);
+    var document=GeneratedMapping.PreparePrimaryX12JsonMessage(context) ?? throw new InvalidOperationException("Missing document");
+    actual.Add(new JsonObject { ["path"]=document.Path,["value"]=JsonNode.Parse(GeneratedMapping.SerializeMapForceJson(document.Value)) });
+}
+var expected=JsonNode.Parse(File.ReadAllText(Path.Combine(Path.GetDirectoryName(args[0])!,"expected.json")));
+File.WriteAllText(Path.ChangeExtension(args[0],"csharp-native-results.json"),new JsonObject { ["actual"]=actual.DeepClone(),["expected"]=expected!.DeepClone(),["physical_primary_probes"]=primaryProbes }.ToJsonString());
+if(!JsonNode.DeepEquals(actual,expected)) throw new InvalidOperationException($"Native convenience mismatch: {actual}");
+Console.WriteLine("3 physical-envelope message convenience entries passed");

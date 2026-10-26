@@ -1,0 +1,84 @@
+use codegen_runtime::{ExecutionContext, Instance, InvocationCounterLimits, ScopeContext, Value};
+use serde_json::{Value as Json, json};
+
+fn plain(value: &Instance) -> Json {
+    match value {
+        Instance::Group(fields) => Json::Object(
+            fields
+                .iter()
+                .map(|(key, value)| (key.clone(), plain(value)))
+                .collect(),
+        ),
+        Instance::Repeated(items) | Instance::MappedSequence(items) => {
+            Json::Array(items.iter().map(plain).collect())
+        }
+        Instance::Scalar(Value::String(value)) => json!(value),
+        Instance::Scalar(Value::Bool(value)) => json!(value),
+        Instance::Scalar(Value::Null) => Json::Null,
+        _ => panic!("unexpected native output kind"),
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::path::PathBuf::from(std::env::args().nth(1).ok_or("need input path")?);
+    let physical =
+        mfd051_native_nullable_r4::parse_native_primary_x12_source(&std::fs::read(&path)?)?;
+    let execution = ExecutionContext::new(std::path::Path::new("neutral.mfd"))
+        .with_invocation_counter_limits(InvocationCounterLimits {
+            max_counters: 4,
+            max_text_bytes: 1024,
+        });
+    let root = ScopeContext::with_execution_context(&physical, &execution);
+    let body_clock = || Ok("2026-10-24T12:00:00".to_string());
+    let filename_clock = || Ok("2026-10-25T13:00:00".to_string());
+    assert!(
+        mfd051_native_nullable_r4::prepare_native_x12_nullable_message(
+            &root,
+            Some(&body_clock),
+            Some(&filename_clock)
+        )
+        .is_err()
+    );
+    let mut actual = Vec::new();
+    for message in root.walk_source(&["Interchange", "Group", "Message_850"]) {
+        assert!(matches!(
+            message.source_root_field(9000, &["BEG", "F1"])?,
+            Value::Null
+        ));
+        let document = mfd051_native_nullable_r4::prepare_native_x12_nullable_message(
+            &message,
+            Some(&body_clock),
+            Some(&filename_clock),
+        )?
+        .ok_or("missing output document")?;
+        actual.push(json!({"path":document.path(),"value":plain(document.value())}));
+        for row in message.walk_source(&["Rows"]) {
+            assert!(
+                mfd051_native_nullable_r4::prepare_native_x12_nullable_message(
+                    &row,
+                    Some(&body_clock),
+                    Some(&filename_clock)
+                )
+                .is_err()
+            );
+        }
+        assert!(matches!(
+            message.source_root_field(9000, &["BEG", "F1"])?,
+            Value::Null
+        ));
+    }
+    let expected: Json =
+        serde_json::from_slice(&std::fs::read(path.with_file_name("expected.json"))?)?;
+    let actual = json!(actual);
+    std::fs::write(
+        path.with_extension("rust-native-results.json"),
+        serde_json::to_vec_pretty(&json!({"actual":actual,"expected":expected}))?,
+    )?;
+    if actual != expected {
+        return Err(format!("native selected-message mismatch: {actual}").into());
+    }
+    println!(
+        "3 selected-message native entries; root isolation, four counter rows and both clocks passed"
+    );
+    Ok(())
+}

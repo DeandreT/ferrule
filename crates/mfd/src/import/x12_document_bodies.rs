@@ -11,6 +11,7 @@ use std::{
 };
 
 mod expression;
+mod scalar_metadata;
 mod target;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -257,9 +258,10 @@ struct Builder<'a> {
     message: &'a SchemaNode,
     required: &'a BTreeSet<Vec<String>>,
     target: String,
-    cache: BTreeMap<(u32, Vec<String>), Expr>,
-    active: BTreeSet<(u32, Vec<String>)>,
+    cache: BTreeMap<(u32, Vec<String>, bool), Expr>,
+    active: BTreeSet<(u32, Vec<String>, bool)>,
     consumed_target_inputs: BTreeSet<u32>,
+    nullable_input: bool,
 }
 
 /// Import supported JSON and XML body targets from their original raw entries.
@@ -411,7 +413,12 @@ pub fn import_x12_document_bodies_with_options(
             ) {
                 continue;
             }
-            if !super::json_edi_document::function_metadata(*component) {
+            let explicit_scalar = scalar_metadata::is_explicit_scalar(*component);
+            if !(if explicit_scalar {
+                scalar_metadata::valid(*component, &edges.feeds)
+            } else {
+                super::json_edi_document::function_metadata(*component)
+            }) {
                 return Err(refuse("unsupported function metadata"));
             }
             let parsed = Rc::new(function::read(component));
@@ -433,6 +440,9 @@ pub fn import_x12_document_bodies_with_options(
                     )
                     | ("db", 5, "substitute-null")
                     | ("lang", 5, "now" | "create-guid")
+                    | ("core", 23, "value-map")
+                    | ("db", 5, "is-not-null")
+                    | ("lang", 5, "format-guid-string")
             ) {
                 return Err(refuse(format!(
                     "unsupported function {}:{}",
@@ -575,6 +585,7 @@ pub fn import_x12_document_bodies_with_options(
                 cache: BTreeMap::new(),
                 active: BTreeSet::new(),
                 consumed_target_inputs: BTreeSet::new(),
+                nullable_input: false,
             };
             let driver_ports = builder.dependencies(filename_feed, &mut BTreeSet::new())?;
             let [driver] = driver_ports.iter().copied().collect::<Vec<_>>()[..] else {

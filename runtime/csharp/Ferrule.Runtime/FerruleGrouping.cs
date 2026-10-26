@@ -241,13 +241,15 @@ public sealed partial class ScopeContext
                 members,
                 index + 1,
                 Grouped: sourcePath.Count != 0,
-                DocumentPath: group.DocumentPath));
+                DocumentPath: group.DocumentPath,
+                NativeOrigin: NativeFrameOrigin.Synthetic));
             contexts[index] = new ScopeContext(
                 _primarySource,
                 new ReadOnlyCollection<FerruleInstance>(frames),
                 new ReadOnlyCollection<CollectionIdentity>(collections),
                 _executionContext,
-                _dynamicSourceLoader, invocationCounters: _invocationCounters, documentFilenameClock: _documentFilenameClock);
+                _dynamicSourceLoader, invocationCounters: _invocationCounters, documentFilenameClock: _documentFilenameClock,
+                nativeFrameOrigins: AppendNativeFrameOrigins(frames.Count - _frames.Count));
         }
         return new ReadOnlyCollection<ScopeContext>(contexts);
     }
