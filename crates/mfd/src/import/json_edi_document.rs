@@ -39,7 +39,7 @@ struct Builder {
     feeds: BTreeMap<u32, u32>,
     ports: BTreeMap<u32, Vec<String>>,
     port_kinds: BTreeMap<u32, String>,
-    filename_port: u32,
+    filename_port: Option<u32>,
     string_targets: BTreeSet<u32>,
     cache: BTreeMap<(u32, Option<u32>, Vec<String>), NodeId>,
     active: BTreeSet<(u32, Option<u32>, Vec<String>)>,
@@ -145,7 +145,7 @@ pub fn import_json_edi_document_with_options(
             let inputs = pins(component, "sources")?;
             for key in &f.outputs {
                 if source.ports.contains_key(key)
-                    || *key == source.filename_output_port
+                    || source.filename_output_port == Some(*key)
                     || functions
                         .insert(
                             *key,
@@ -450,7 +450,7 @@ impl Builder {
             .ok_or_else(|| refuse("missing input feed"))
     }
     fn dependencies(&self, feed: u32, seen: &mut BTreeSet<u32>) -> Result<BTreeSet<u32>, MfdError> {
-        if self.ports.contains_key(&feed) || feed == self.filename_port {
+        if self.ports.contains_key(&feed) || self.filename_port == Some(feed) {
             return Ok(BTreeSet::from([feed]));
         }
         if !seen.insert(feed) {
@@ -768,7 +768,7 @@ impl Builder {
         let mut leaf = active_leaf;
         if let Some(key) = entry.attribute("inpkey") {
             let feed = self.feed(number(Some(key))?)?;
-            if feed == self.filename_port {
+            if self.filename_port == Some(feed) {
                 current = vec!["Documents".into()];
                 if current != anchor {
                     scope.iteration = ScopeIteration::Source(relative(&current, anchor)?);

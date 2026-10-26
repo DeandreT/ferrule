@@ -121,6 +121,7 @@ fn source_import_preserves_typed_paths_and_never_uses_preview_bytes() {
         mfd::import_json_source_projection_with_options(&mapping, &mfd::ImportOptions::default())
             .unwrap();
     assert_eq!(result.filename_parameter, "InputPath");
+    assert_eq!(result.filename_output_port, Some(51));
     assert_eq!(
         result.filename_preview.as_deref(),
         Some("must-not-open.json")
@@ -138,6 +139,24 @@ fn source_import_preserves_typed_paths_and_never_uses_preview_bytes() {
             .is_some()
     );
     assert_eq!(std::fs::read_to_string(&mapping).unwrap(), text);
+    let no_filename_output = text.replace(" inpkey=\"50\" outkey=\"51\"", " inpkey=\"50\"");
+    assert_ne!(no_filename_output, text);
+    std::fs::write(&mapping, &no_filename_output).unwrap();
+    let without_output =
+        mfd::import_json_source_projection_with_options(&mapping, &mfd::ImportOptions::default())
+            .unwrap();
+    assert_eq!(without_output.filename_output_port, None);
+    assert_eq!(
+        without_output.filename_input_port,
+        result.filename_input_port
+    );
+    assert_eq!(without_output.shape, result.shape);
+    assert_eq!(without_output.ports, result.ports);
+    std::fs::write(&mapping, text.replace("outkey=\"51\"", "outkey=\"\"")).unwrap();
+    assert!(
+        mfd::import_json_source_projection_with_options(&mapping, &mfd::ImportOptions::default())
+            .is_err()
+    );
     std::fs::write(
         &mapping,
         text.replace("<json schema=", "<json json5=\"1\" schema="),
