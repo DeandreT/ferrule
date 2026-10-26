@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run as Cleo's ordinary SSH account. Supply a registration token on stdin.
+# Run as Cleo's ordinary SSH account. New homes need a registration token on stdin.
 set +x
 set -euo pipefail
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -30,8 +30,6 @@ if (( available_kib < 32 * 1024 * 1024 )); then
   echo 'Cleo provisioning needs 32 GiB free; existing artifacts are preserved.' >&2
   exit 1
 fi
-IFS= read -r registration_token
-test -n "$registration_token"
 podman build --jobs 1 -f "$script_dir/cleo-runner.Containerfile" \
   -t localhost/ferrule-cleo:latest "$script_dir"
 mkdir -p "$service_home/home"
@@ -68,7 +66,13 @@ for (( attempt = 0; attempt < 600; attempt++ )); do
   sleep 2
 done
 [[ $ready == true ]] || { echo 'Inspect the Cleo runner service startup log.' >&2; exit 1; }
-printf '%s\n' "$registration_token" | podman exec -i --user ferrule-runner "$runner_name" \
-  bash -c 'set +x; set -e; IFS= read -r token; cd /home/ferrule-runner/actions-runner; ./config.sh --unattended --url https://github.com/DeandreT/ferrule --token "$token" --name "$1" --labels ferrule-cleo,ferrule-primary,ferrule-ovh --work _work' _ "$runner_name"
-unset registration_token
+# Inspect inside the container: rootless mapped ownership may hide this file
+# from the host account. A retained home already has its registration.
+if ! podman exec "$runner_name" test -f /home/ferrule-runner/actions-runner/.runner; then
+  IFS= read -r registration_token
+  test -n "$registration_token"
+  printf '%s\n' "$registration_token" | podman exec -i --user ferrule-runner "$runner_name" \
+    bash -c 'set +x; set -e; IFS= read -r token; cd /home/ferrule-runner/actions-runner; ./config.sh --unattended --url https://github.com/DeandreT/ferrule --token "$token" --name "$1" --labels ferrule-cleo,ferrule-primary,ferrule-ovh --work _work' _ "$runner_name"
+  unset registration_token
+fi
 loginctl show-user "$(id -un)" -p Linger

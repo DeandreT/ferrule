@@ -25,12 +25,24 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn("job-evidence.py", over)
 
     def test_independent_slots_and_bounded_pool_without_host_mutation(self):
+        self.check_provisioning(retained=False)
+
+    def test_retained_homes_skip_registration_without_a_token(self):
+        self.check_provisioning(retained=True)
+
+    def check_provisioning(self, *, retained):
         if os.geteuid() == 0:
             self.skipTest("provisioning deliberately refuses root")
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             binaries = home / "bin"
             binaries.mkdir()
+            registrations = [home / "services/ferrule" / suffix / "home/actions-runner/.runner"
+                             for suffix in ("", "slots/2")]
+            if retained:
+                for registration in registrations:
+                    registration.parent.mkdir(parents=True)
+                    registration.write_text("retained registration")
             # These executables never access Podman, systemd or a real runner.
             stub = f"#!{sys.executable}\n" + '''import os, sys
 from pathlib import Path
@@ -41,6 +53,15 @@ with (Path(os.environ["HOME"]) / "calls").open("a") as log:
 if name == "podman":
     if args[:1] == ["info"]: print("true")
     if args[:2] == ["container", "exists"]: sys.exit(1)
+    if args[:1] == ["exec"]:
+        suffix = "slots/2" if "ferrule-cleo-2" in args else ""
+        registration = Path(os.environ["HOME"]) / "services/ferrule" / suffix / "home/actions-runner/.runner"
+        if args[-3:] == ["test", "-f", "/home/ferrule-runner/actions-runner/.runner"]:
+            sys.exit(0 if registration.is_file() else 1)
+        if "./config.sh" in " ".join(args):
+            if registration.exists(): sys.exit(1)
+            registration.parent.mkdir(parents=True, exist_ok=True)
+            registration.write_text("new registration")
 elif name == "systemctl" and "show" in args:
     print("ferrule-ci.slice")
 elif name == "df":
@@ -55,7 +76,7 @@ elif name == "uname": print("x86_64")
             environment = dict(os.environ, HOME=str(home), PATH=f"{binaries}:{os.environ['PATH']}")
             for slot in ("1", "2"):
                 result = subprocess.run(["bash", str(ROOT / "provision-cleo-runner.sh"), slot],
-                                        input="test-registration-token\n", text=True,
+                                        input="" if retained else "test-registration-token\n", text=True,
                                         capture_output=True, env=environment, timeout=30)
                 self.assertEqual(result.returncode, 0, result.stderr)
             units = home / ".config/containers/systemd"
@@ -67,6 +88,10 @@ elif name == "uname": print("x86_64")
             self.assertEqual((home / ".config/systemd/user/ferrule-ci.slice").read_text(),
                              (ROOT / "ferrule-ci.slice").read_text())
             calls = (home / "calls").read_text()
+            self.assertEqual(calls.count("./config.sh"), 0 if retained else 2)
+            for registration in registrations:
+                self.assertEqual(registration.read_text(),
+                                 "retained registration" if retained else "new registration")
             self.assertNotIn("test-registration-token", calls)
             self.assertNotIn("--replace", calls)
             self.assertNotIn(" stop ", calls)

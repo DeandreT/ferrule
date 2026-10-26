@@ -73,6 +73,9 @@ display sockets, credentials or Docker sockets.
 
 For an approved installation, copy `scripts/ci` to Cleo, then deliver a
 short-lived registration token on stdin to `provision-cleo-runner.sh 1` or `2`.
+When replacing a removed container with its configured persistent home intact,
+the installer preserves the registration and does not read a token or rerun
+`config.sh`. The existing-container refusal still applies.
 Do not put the token in command arguments, files or logs. The resulting Quadlet
 units live in `~/.config/containers/systemd`; persistent homes are
 `services/ferrule/home` and `services/ferrule/slots/2/home`. User service startup
