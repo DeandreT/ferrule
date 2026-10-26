@@ -75,10 +75,11 @@ def signature(entry):
             entry.st_size, entry.st_mtime_ns, entry.st_ctime_ns, entry.st_nlink)
 
 
-def owned_directory(path, *, parent=None):
+def owned_directory(path, *, parent=None, owner=None):
     fd = os.open(path, DIRECTORY_FLAGS, dir_fd=parent)
     entry = os.fstat(fd)
-    if entry.st_uid != os.getuid() or entry.st_mode & 0o022:
+    owner = os.getuid() if owner is None else owner
+    if entry.st_uid != owner or entry.st_mode & 0o022:
         os.close(fd)
         raise ValueError("Evidence directory has unsafe ownership or permissions")
     return fd
@@ -119,8 +120,9 @@ def reject_mounts(root, *, mountinfo=None, descendants=True):
                 "Mounted evidence requires inspection")
 
 
-def inventory(root):
+def inventory(root, *, owner=None):
     """Snapshot a finite tree through directory descriptors without following links."""
+    owner = os.getuid() if owner is None else owner
     entries = {".": signature(os.fstat(root))}
     reject_mounts(root)
     device = os.fstat(root).st_dev
@@ -129,7 +131,7 @@ def inventory(root):
         for name in sorted(os.listdir(directory)):
             path = prefix + name
             entry = os.stat(name, dir_fd=directory, follow_symlinks=False)
-            require(entry.st_dev == device and entry.st_uid == os.getuid()
+            require(entry.st_dev == device and entry.st_uid == owner
                     and (stat.S_ISLNK(entry.st_mode) or not entry.st_mode & 0o022),
                     "Evidence entry has foreign ownership, permissions or filesystem")
             require(stat.S_ISREG(entry.st_mode) or stat.S_ISDIR(entry.st_mode)
