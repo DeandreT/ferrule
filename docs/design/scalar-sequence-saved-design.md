@@ -2,11 +2,22 @@
 
 This design is the bounded deliverable for [#203](https://github.com/DeandreT/ferrule/issues/203). It inventories a possible saved-design representation of the existing scalar `filter_map_v1` operation. It changes no importer, exporter, model, engine, backend, or GUI code.
 
-**No `filter_map_v1` saved-design form is qualified by this proposal.** Ordinary external create/save/reopen and external execution comparisons are UNRUN. The current exporter must retain `MfdError::UnsupportedSequenceComposition { item }` for every such descriptor, including an unselected or otherwise valid one. XML parsing, a warning-free preflight, or a successful Ferrule reimport cannot establish behavior in another authoring application.
+**No `filter_map_v1` saved-design form is qualified by this proposal.** The
+[native controls](../conformance/scalar-sequence-native-controls.md) cover limited
+legacy Generate and identity-stage observations, not complete descriptor
+reconstruction or the distinguishing filter/map execution cases. The current
+exporter must retain `MfdError::UnsupportedSequenceComposition { item }` for every
+such descriptor, including an unselected or otherwise valid one. XML parsing,
+a warning-free preflight, or a successful Ferrule reimport cannot establish
+behavior in another authoring application.
 
 ## Evidence and statuses
 
-The inventory comes from repository source only. No external designs or installation material informed the synthetic literals. The source snapshot includes the current declared-ancestor ownership implementation for nested cloned targets; this design does not replace or flatten it.
+The original inventory and frozen literals come from repository source only.
+Later isolated native observations are recorded separately; they do not rewrite
+the frozen recipes. The source snapshot includes the current declared-ancestor
+ownership implementation for nested cloned targets; this design does not replace
+or flatten it.
 
 Statuses have distinct meanings:
 
@@ -18,12 +29,12 @@ Every new `filter_map_v1` cell below is currently **Rejected by the exporter**, 
 
 | Cell | Source evidence | Interchange status |
 | --- | --- | --- |
-| Legacy inclusive Generate, explicit bounds | `export/node.rs` emits `core/generate-sequence` with lower/upper ordered pins; `import.rs::sequence_expr` reconstructs `Generate` | Source path exists; fresh save/reopen UNRUN |
+| Legacy inclusive Generate, explicit bounds | `export/node.rs` emits `core/generate-sequence` with lower/upper ordered pins; `import.rs::sequence_expr` reconstructs `Generate` | Limited native decimal/anySimpleType-bound controls saved/reopened and matched complete values; exact Int-bound descriptor reconstruction remains unverified |
 | Legacy omitted lower bound | Export leaves the lower connection absent; import retains optional `from`; native engine defaults to 1 | Source path exists; disconnected-input default in the authoring application UNVERIFIED |
 | Reversed or absent/null bounds | Native engine yields an empty sequence, with existing expression short circuits | Source result fixed; external empty/null/coercion/error order UNVERIFIED |
 | Dynamic bounds and bound errors | Both bound expressions complete before coercion, except an absent bound short circuit | Candidate UNVERIFIED; a later upper expression error must precede an earlier lower coercion error |
 | Primitive item cap | Existing Generate refuses more than 1,000,000 items before materialization | Native invariant; no inspected saved component establishes that same refusal |
-| Predicate scalar interface | `export/udf.rs` retains ordered typed input ports and scalar output; filter has true/false outputs | Vocabulary exists; invocation order, exact Bool boundary and descriptor reconstruction UNVERIFIED |
+| Predicate scalar interface | `export/udf.rs` retains ordered typed input ports and scalar output; filter has true/false outputs | Required integer input declarations and a Boolean output were observed in the limited native candidate; invocation order, exact Bool boundary and descriptor reconstruction remain UNVERIFIED |
 | Total predicate constants/arithmetic | Existing UDF scalar bodies admit ordinary constants/calls | Small candidate probes only; this does not admit a transform |
 | Predicate/mapper `If` and nested scalar UDF | Export emits lazy conditional and nested UDF wires with cycle/depth admission | Interfaces exist; execution, argument adaptation order, and transitive stage identities UNVERIFIED |
 | Reached or unselected `Raise` in a stage | Filter/map admits lazy Raise; current scalar UDF exporter rejects that node as context-sensitive or non-scalar | Rejected by current UDF export and by the transform guard; no substitution with an empty value |
@@ -36,7 +47,7 @@ Every new `filter_map_v1` cell below is currently **Rejected by the exporter**, 
 | Null/JsonNull/XmlNil or nonfinite stage output | Native rejects it with the original adapted value or binary64 bits | Rejected as successful output; saved null/absent collapse is insufficient |
 | Source owner versus output owner | Two different uniquely owned unframed empty-path source IDs; only output is downstream-visible | Required descriptor relation; current native wire vocabulary has no qualified two-owner reconstruction |
 | Original source position | Stages receive 1-based pre-filter index; it is not the generated integer when lower is not 1 | Candidate UNVERIFIED |
-| Dense output position | Consumer sees 1-based position of the completed mapped sequence | Candidate UNVERIFIED; cannot wire the original source position to it |
+| Dense output position | Consumer sees 1-based position of the completed mapped sequence | Direct Position on the tested mapper/filter outputs failed native validation; no general representation is qualified, and original source position is not a replacement |
 | Generated scope rows | Legacy export wires producer to a row-shaped target entry and positions to its iteration stage | Source path exists for legacy; transformed scalar row/target reconstruction UNVERIFIED |
 | Exists consumer | Legacy import recognizes a filter whose value feed is the direct generator and whose predicate depends on it | Source path exists for that legacy shape; transformed/mapped input is not a supported new producer |
 | ItemAt consumer | Legacy import requires the direct generated producer; index is a parent expression | Source path exists for direct legacy form; filtered/mapped input and eager transform-before-index behavior UNVERIFIED |
@@ -52,7 +63,7 @@ The relevant source paths are [`export.rs`](../../crates/mfd/src/export.rs), [`e
 
 ## Frozen synthetic controls
 
-The [24 complete descriptor recipes](fixtures/scalar-sequence-saved-design203.json) contain seven legacy controls and seventeen filter/map controls. They freeze the complete parent node table, source/output owners, stage FunctionIds, ordered typed parameter IDs, stage bodies and transitive callees, captures, consumer expressions, parent frame identity, and independently chosen typed outcomes or error envelopes. They were frozen as descriptor/materialization recipes, rather than serialized Projects or saved-design XML files. The bounded public tests below materialize complete Projects and inputs from them. External create/save/reopen and external execution remain UNRUN.
+The [24 complete descriptor recipes](fixtures/scalar-sequence-saved-design203.json) contain seven legacy controls and seventeen filter/map controls. They freeze the complete parent node table, source/output owners, stage FunctionIds, ordered typed parameter IDs, stage bodies and transitive callees, captures, consumer expressions, parent frame identity, and independently chosen typed outcomes or error envelopes. They were frozen as descriptor/materialization recipes, rather than serialized Projects or saved-design XML files. The bounded public tests below materialize complete Projects and inputs from them. Exact external descriptor/execution qualification for these recipes remains unrun; the later limited native controls do not silently replace their types, owners or expected errors.
 
 The generated integers deliberately start at 3. The position control generates `[3,4,5,6,7]`, captures parent position 7 once, retains items greater than 4, and maps `item * 10 + source_position + capture`. Its values are `[60,71,82]`, stage positions `[3,4,5]`, and consumer positions `[1,2,3]`. Equal numeric values elsewhere do not establish frame or owner identity.
 
