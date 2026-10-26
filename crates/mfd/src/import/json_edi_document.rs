@@ -36,6 +36,7 @@ struct Builder {
     graph: Graph,
     next: NodeId,
     functions: BTreeMap<u32, Function>,
+    udf_outputs: BTreeMap<u32, super::udf::ScalarCallOutput>,
     feeds: BTreeMap<u32, u32>,
     ports: BTreeMap<u32, Vec<String>>,
     port_kinds: BTreeMap<u32, String>,
@@ -120,6 +121,12 @@ pub fn import_json_edi_document_with_options(
             return Err(refuse("output root differs from schema"));
         }
         let mut functions = BTreeMap::new();
+        let definitions = super::udf::Registry::read_in_package(
+            &parsed.root_element(),
+            &resources,
+            &mut Vec::new(),
+        );
+        let mut udf_outputs = BTreeMap::new();
         let mut port_kinds = BTreeMap::new();
         for component in children.children().filter(|n| n.has_tag_name("component")) {
             for entry in component
@@ -138,6 +145,21 @@ pub fn import_json_edi_document_with_options(
             if matches!(component.attribute("library"), Some("json" | "text")) {
                 continue;
             }
+            if component.attribute("kind") == Some("19") {
+                let outputs = definitions
+                    .string_call_outputs(&component)
+                    .map_err(refuse)?;
+                for (port, output) in outputs {
+                    if source.ports.contains_key(&port)
+                        || source.filename_output_port == Some(port)
+                        || functions.contains_key(&port)
+                        || udf_outputs.insert(port, output).is_some()
+                    {
+                        return Err(refuse("ambiguous embedded scalar output"));
+                    }
+                }
+                continue;
+            }
             let f = std::rc::Rc::new(function::read(&component));
             if f.outputs.is_empty() {
                 continue;
@@ -146,6 +168,7 @@ pub fn import_json_edi_document_with_options(
             for key in &f.outputs {
                 if source.ports.contains_key(key)
                     || source.filename_output_port == Some(*key)
+                    || udf_outputs.contains_key(key)
                     || functions
                         .insert(
                             *key,
@@ -169,6 +192,7 @@ pub fn import_json_edi_document_with_options(
             graph: Graph::default(),
             next: 0,
             functions,
+            udf_outputs,
             feeds: edges.feeds,
             ports: source.ports.clone(),
             port_kinds,
@@ -456,6 +480,14 @@ impl Builder {
         if !seen.insert(feed) {
             return Err(refuse("cyclic dependency"));
         }
+        if let Some(call) = self.udf_outputs.get(&feed) {
+            let mut result = BTreeSet::new();
+            for input in call.inputs.values() {
+                result.extend(self.dependencies(self.feed(*input)?, seen)?);
+            }
+            seen.remove(&feed);
+            return Ok(result);
+        }
         let function = self
             .functions
             .get(&feed)
@@ -519,6 +551,9 @@ impl Builder {
             } else {
                 Ok(value)
             };
+        }
+        if let Some(call) = self.udf_outputs.get(&feed).cloned() {
+            return self.compile_udf(&call.expression, &call.inputs, leaf, anchor, 0);
         }
         let f = self
             .functions
@@ -642,6 +677,67 @@ impl Builder {
             args.push(self.compile(self.input(&f, index)?, leaf, anchor)?);
         }
         self.call(name, args)
+    }
+
+    fn compile_udf(
+        &mut self,
+        expression: &super::udf::ScalarExpr,
+        inputs: &BTreeMap<u32, u32>,
+        leaf: Option<u32>,
+        anchor: &[String],
+        depth: usize,
+    ) -> Result<NodeId, MfdError> {
+        use super::udf::ScalarExpr;
+        if depth > 64 {
+            return Err(refuse("embedded scalar expression depth exceeded"));
+        }
+        match expression {
+            ScalarExpr::Parameter(parameter) => {
+                let input = inputs
+                    .get(parameter)
+                    .copied()
+                    .ok_or_else(|| refuse("missing scalar parameter binding"))?;
+                self.compile(self.feed(input)?, leaf, anchor)
+            }
+            ScalarExpr::Const(value) => self.constant(value.clone()),
+            ScalarExpr::RuntimeValue(value) => self.alloc(Node::RuntimeValue { value: *value }),
+            ScalarExpr::Call { function, args } => {
+                let args = args
+                    .iter()
+                    .map(|arg| self.compile_udf(arg, inputs, leaf, anchor, depth + 1))
+                    .collect::<Result<_, _>>()?;
+                self.call(function, args)
+            }
+            ScalarExpr::If {
+                condition,
+                then,
+                else_,
+            } => {
+                let condition = self.compile_udf(condition, inputs, leaf, anchor, depth + 1)?;
+                let then = self.compile_udf(then, inputs, leaf, anchor, depth + 1)?;
+                let else_ = self.compile_udf(else_, inputs, leaf, anchor, depth + 1)?;
+                self.alloc(Node::If {
+                    condition,
+                    then,
+                    else_,
+                })
+            }
+            ScalarExpr::ValueMap {
+                input,
+                input_type,
+                table,
+                default,
+            } => {
+                let input = self.compile_udf(input, inputs, leaf, anchor, depth + 1)?;
+                self.alloc(Node::ValueMap {
+                    input,
+                    input_type: *input_type,
+                    table: table.clone(),
+                    default: default.clone(),
+                })
+            }
+            _ => Err(refuse("unsupported embedded scalar expression")),
+        }
     }
     fn binding(
         &mut self,
