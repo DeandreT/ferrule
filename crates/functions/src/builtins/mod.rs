@@ -72,6 +72,7 @@ pub(super) fn call_builtin(
         BuiltinId::String => string(args),
         BuiltinId::IsNumeric => is_numeric(args),
         BuiltinId::ToNumber => to_number(args),
+        BuiltinId::DecimalFromNullableText => crate::decimal_value::from_nullable_text(args),
         BuiltinId::Boolean => effective_boolean(args),
         BuiltinId::Positive => positive(args),
         BuiltinId::Floor => floor(args),

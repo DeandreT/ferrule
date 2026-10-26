@@ -1,5 +1,40 @@
 //! #449 owned join scopes render one owned join and member reads by identity;
 //! #450 joined aggregates render one owned join per aggregate.
+
+#[test]
+fn decimal_sum_owned_joined_emission_folds_each_value_immediately() {
+    for reached in [true, false] {
+        let mut program =
+            codegen::lower_with_basic_owned_joins(&joined_aggregate_project()).unwrap();
+        let expression = &mut program
+            .expressions
+            .iter_mut()
+            .find(|node| node.id == 1)
+            .unwrap()
+            .expression;
+        let codegen::Expression::OwnedJoinAggregate(aggregate) = expression else {
+            panic!("authored joined aggregate");
+        };
+        aggregate.function = mapping::AggregateOp::DecimalSum;
+        aggregate.arg = None;
+        if !reached {
+            program
+                .root
+                .bindings
+                .retain(|binding| binding.expression != 1);
+        }
+        let artifacts = crate::emit_with_basic_owned_joins(&program).unwrap();
+        if reached {
+            let source = artifacts
+                .files()
+                .iter()
+                .find(|file| file.path.as_str() == "GeneratedMapping.cs")
+                .unwrap();
+            assert!(String::from_utf8_lossy(&source.contents).contains("FerruleAggregates.CollectValue(global::Ferrule.Runtime.FerruleAggregateOperation.DecimalSum, values_1,"));
+        }
+    }
+}
+
 fn path(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).into()).collect()
 }

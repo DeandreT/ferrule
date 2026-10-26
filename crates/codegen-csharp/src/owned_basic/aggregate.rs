@@ -3,6 +3,16 @@
 use super::search::{owned_call, walk_call};
 use super::*;
 
+pub(super) fn collect_value(node: NodeId, function: ::mapping::AggregateOp, value: &str) -> String {
+    if function == ::mapping::AggregateOp::DecimalSum {
+        format!(
+            "global::Ferrule.Runtime.FerruleAggregates.CollectValue(global::Ferrule.Runtime.FerruleAggregateOperation.DecimalSum, values_{node}, {value});"
+        )
+    } else {
+        format!("values_{node}.Add({value});")
+    }
+}
+
 /// The complete owned cohort is admitted before any item value. Count never
 /// reads a value path; the argument runs once in the parent after every item
 /// value, and the shared reducer keeps the legacy empty/null/type policy.
@@ -33,13 +43,15 @@ pub(crate) fn render_owned_aggregate(
             mapping::basic_path(&path, &mut call);
             call.push_str(", null)");
             output.push_str(&format!(
-                "            foreach (var candidate_{node} in cohort_{node})\n            {{\n                var item_context_{node} = candidate_{node}.Context;\n                global::Ferrule.Runtime.FerruleValue value_{node};\n                {}\n                values_{node}.Add(value_{node});\n            }}\n",
-                owned_call(node, &format!("value_{node} = "), &call)
+                "            foreach (var candidate_{node} in cohort_{node})\n            {{\n                var item_context_{node} = candidate_{node}.Context;\n                global::Ferrule.Runtime.FerruleValue value_{node};\n                {}\n                {}\n            }}\n",
+                owned_call(node, &format!("value_{node} = "), &call),
+                collect_value(node, aggregate.function, &format!("value_{node}"))
             ));
         }
         ::mapping::OwnedAggregateValue::Expression(expression) => {
             output.push_str(&format!(
-                "            foreach (var candidate_{node} in cohort_{node})\n            {{\n                values_{node}.Add(Node_{expression}(candidate_{node}.Context));\n            }}\n"
+                "            foreach (var candidate_{node} in cohort_{node})\n            {{\n                {}\n            }}\n",
+                collect_value(node, aggregate.function, &format!("Node_{expression}(candidate_{node}.Context)"))
             ));
         }
     }

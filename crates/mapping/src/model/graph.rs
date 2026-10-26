@@ -686,6 +686,7 @@ pub enum AggregateOp {
     Max,
     Join,
     ItemAt,
+    DecimalSum,
 }
 
 /// The mapping graph for one project: every node that can be wired into a

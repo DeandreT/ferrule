@@ -73,6 +73,9 @@ pub(super) fn render_aggregate(
         ");\n        }}\n        catch (global::Ferrule.Runtime.FerruleRuntimeException error_{node}) {{ error_{node}.WithOwnedSourceNode({node}U); throw; }}\n        var values_{node} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleValue>(tuples_{node}.Count);\n        foreach (var tuple_{node} in tuples_{node})\n        {{\n"
     ));
     match aggregate.expression {
+        Some(expression) if aggregate.function == ::mapping::AggregateOp::DecimalSum => output.push_str(&format!(
+            "            global::Ferrule.Runtime.FerruleAggregates.CollectValue(global::Ferrule.Runtime.FerruleAggregateOperation.DecimalSum, values_{node}, Node_{expression}(tuple_{node}));\n"
+        )),
         Some(expression) => output.push_str(&format!(
             "            values_{node}.Add(Node_{expression}(tuple_{node}));\n"
         )),

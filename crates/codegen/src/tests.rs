@@ -607,6 +607,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "string",
         "is_numeric",
         "to_number",
+        "decimal_from_nullable_text",
         "boolean",
         "positive",
         "floor",

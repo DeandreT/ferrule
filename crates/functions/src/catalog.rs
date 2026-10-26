@@ -18,6 +18,7 @@ pub enum BuiltinCategory {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ScalarDomain {
     Any,
+    Decimal,
     String,
     Boolean,
     Numeric,
@@ -190,6 +191,7 @@ pub(crate) enum BuiltinId {
     String,
     IsNumeric,
     ToNumber,
+    DecimalFromNullableText,
     Boolean,
     Positive,
     Floor,
@@ -788,6 +790,19 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Authoring,
         "Converts a scalar to a finite number."
+    ),
+    builtin!(
+        DecimalFromNullableText,
+        "decimal_from_nullable_text",
+        "Decimal from Nullable Text",
+        Conversion,
+        &[parameter("value", Any)],
+        BuiltinArity::fixed(1),
+        Decimal,
+        true,
+        true,
+        Internal,
+        "Parses bounded decimal numeric text, using zero for missing or JSON null. Plain decimal and exponent conversion policies remain distinct."
     ),
     builtin!(
         Boolean,

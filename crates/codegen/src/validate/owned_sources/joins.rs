@@ -14,6 +14,21 @@ pub(super) fn is_join_read(expression: &Expression) -> bool {
     )
 }
 
+/// Joined projection and failure ordering are qualified only for these folds.
+pub(super) fn admitted_reducer(function: mapping::AggregateOp) -> bool {
+    matches!(
+        function,
+        mapping::AggregateOp::Count
+            | mapping::AggregateOp::Sum
+            | mapping::AggregateOp::DecimalSum
+            | mapping::AggregateOp::Avg
+            | mapping::AggregateOp::Min
+            | mapping::AggregateOp::Max
+            | mapping::AggregateOp::Join
+            | mapping::AggregateOp::ItemAt
+    )
+}
+
 /// The closed scalar subset of an owned join tuple.
 pub(super) fn admitted_in_tuple(expression: &Expression) -> bool {
     matches!(
@@ -127,7 +142,7 @@ impl<'a> Admission<'a> {
             namespace: visit.namespace,
             node: visit.node,
         };
-        if !self.capabilities.joins {
+        if !self.capabilities.joins || !admitted_reducer(aggregate.function) {
             return Err(failure(
                 location,
                 aggregate_request(aggregate),

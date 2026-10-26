@@ -153,6 +153,30 @@ fn options() -> crate::Options {
 }
 
 #[test]
+fn decimal_sum_owned_emission_folds_each_value_immediately() {
+    let mut program = owned_aggregate_program();
+    let node = program
+        .expressions
+        .iter_mut()
+        .find(|node| node.id == 2)
+        .unwrap();
+    let codegen::Expression::OwnedAggregate(aggregate) = &mut node.expression else {
+        panic!("expected owned aggregate");
+    };
+    aggregate.function = mapping::AggregateOp::DecimalSum;
+    let artifacts =
+        crate::emit_with_basic_owned_collection_aggregates(&program, &options()).unwrap();
+    let source = artifacts
+        .files()
+        .iter()
+        .find(|file| file.path.as_str() == "src/lib.rs")
+        .unwrap();
+    assert!(String::from_utf8_lossy(&source.contents).contains(
+        "collect_aggregate_value(codegen_runtime::AggregateFunction::DecimalSum, &mut values,"
+    ));
+}
+
+#[test]
 fn owned_aggregates_render_item_values_before_the_parent_argument() {
     let program = owned_aggregate_program();
     let artifacts = crate::emit_with_basic_owned_collection_aggregates(&program, &options())

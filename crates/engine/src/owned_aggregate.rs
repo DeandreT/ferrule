@@ -6,8 +6,8 @@
 //! path is never consulted. Each item's value is then read or computed in that
 //! item's owned context, and `arg` evaluates once in the parent context after
 //! every item value, exactly as for the legacy collection aggregate. The
-//! reducers themselves are the legacy ones, so empty, null and type policies
-//! are unchanged.
+//! ordinary reducers retain their empty, null and type policies. DecimalSum
+//! folds each projection immediately so arithmetic errors precede later reads.
 
 use std::collections::HashSet;
 
@@ -15,7 +15,7 @@ use ir::{Instance, Value};
 use mapping::{AggregateOp, NodeId, OwnedAggregate, OwnedAggregateValue};
 
 use crate::EngineError;
-use crate::aggregate::aggregate;
+use crate::aggregate::{aggregate, collect_value};
 use crate::eval_expr::{EvalProgram, eval_node_input};
 use crate::owned_context::OwnedContext;
 use crate::owned_search::{access, candidates, item_field, item_frames, owned_state};
@@ -48,7 +48,11 @@ pub(crate) fn eval_owned_aggregate(
                     origins: row.origins,
                     owned_ancestry: state.owned_ancestry,
                 };
-                values.push(item.field(&field).map_err(&access)?);
+                collect_value(
+                    owned.function,
+                    &mut values,
+                    item.field(&field).map_err(&access)?,
+                )?;
             }
         }
         OwnedAggregateValue::Expression(expression) => {
@@ -62,7 +66,7 @@ pub(crate) fn eval_owned_aggregate(
                     origins: row.origins,
                     owned_ancestry: state.owned_ancestry,
                 };
-                values.push(eval_node_input(
+                let value = eval_node_input(
                     program.with_owned_context(&item),
                     node,
                     *expression,
@@ -70,7 +74,8 @@ pub(crate) fn eval_owned_aggregate(
                     &item_context,
                     &item_positions,
                     in_progress,
-                )?);
+                )?;
+                collect_value(owned.function, &mut values, value)?;
             }
         }
     }

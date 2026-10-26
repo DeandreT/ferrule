@@ -41,8 +41,9 @@ requires ASCII digits and at least one mantissa digit, plus exponent digits when
 an exponent is present. `NaN`, `INF` and `-INF` overflow; malformed text returns
 `InvalidNumberLexical`. Null is not numeric text. The plain parsers remain strict.
 
-These types do not change `Value`, `ScalarType`, existing Int/Float arithmetic,
-serialization, import admission, generated libraries or format readers/writers.
-Those boundaries require an explicit decimal profile before they can use it.
-Multiplication, division and general external runtime equivalence are not
-supplied by this type's plain-decimal/addition contract.
+The boxed [`Value::Decimal` carrier](decimal-value-domain.md) and its explicit
+[mapping operations](decimal-mapping-operations.md) preserve this domain through
+native and generated execution. `ScalarType`, ordinary Int/Float arithmetic and
+implicit format conversion remain unchanged. Multiplication, division and
+general external runtime equivalence are not supplied by this type's
+plain-decimal/addition contract.

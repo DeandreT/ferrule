@@ -1627,10 +1627,21 @@ fn render_single_window(
     ));
 }
 
+fn aggregate_collect_prefix(function: AggregateFunction, values: &str) -> String {
+    if function == AggregateFunction::DecimalSum {
+        format!(
+            "global::Ferrule.Runtime.FerruleAggregates.CollectValue(global::Ferrule.Runtime.FerruleAggregateOperation.DecimalSum, {values}, "
+        )
+    } else {
+        format!("{values}.Add(")
+    }
+}
+
 pub(crate) const fn aggregate_function_name(function: AggregateFunction) -> &'static str {
     match function {
         AggregateFunction::Count => "Count",
         AggregateFunction::Sum => "Sum",
+        AggregateFunction::DecimalSum => "DecimalSum",
         AggregateFunction::Avg => "Avg",
         AggregateFunction::Min => "Min",
         AggregateFunction::Max => "Max",
@@ -2267,6 +2278,7 @@ fn render_expression(
             value,
             arg,
         } => {
+            let collect = aggregate_collect_prefix(*function, &format!("values_{node}"));
             output.push_str("\n    {\n");
             output.push_str(&format!(
                 "        var items_{node} = context.AggregateItems("
@@ -2278,13 +2290,13 @@ fn render_expression(
             match value {
                 AggregateValue::Path(path) => {
                     output.push_str(&format!(
-                        "            values_{node}.Add(item_context_{node}.AggregateCurrentScalar("
+                        "            {collect}item_context_{node}.AggregateCurrentScalar("
                     ));
                     render_path(path, output);
                     output.push_str("));\n");
                 }
                 AggregateValue::Expression(expression) => output.push_str(&format!(
-                    "            values_{node}.Add(Node_{expression}(item_context_{node}));\n"
+                    "            {collect}Node_{expression}(item_context_{node}));\n"
                 )),
             }
             output.push_str("        }\n");
@@ -2307,6 +2319,7 @@ fn render_expression(
             expression,
             arg,
         } => {
+            let collect = aggregate_collect_prefix(*function, &format!("values_{node}"));
             output.push_str("\n    {\n");
             output.push_str(&format!("        var tuple_contexts_{node} = "));
             render_inner_join_call(join, output);
@@ -2315,10 +2328,10 @@ fn render_expression(
             ));
             match expression {
                 Some(expression) => output.push_str(&format!(
-                    "            values_{node}.Add(Node_{expression}(tuple_context_{node}));\n"
+                    "            {collect}Node_{expression}(tuple_context_{node}));\n"
                 )),
                 None => output.push_str(&format!(
-                    "            values_{node}.Add(global::Ferrule.Runtime.FerruleValue.Null);\n"
+                    "            {collect}global::Ferrule.Runtime.FerruleValue.Null);\n"
                 )),
             }
             output.push_str("        }\n");
@@ -2372,6 +2385,8 @@ fn render_expression(
             output.push_str("\n    {\n");
             let identifier = format!("node_{node}");
             render_generated_values(&identifier, sequence, output)?;
+            let collect =
+                aggregate_collect_prefix(*function, &format!("aggregate_values_{identifier}"));
             output.push_str(&format!(
                 "        var aggregate_values_{identifier} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleValue>();\n        foreach (var sequence_context_{identifier} in context.EnumerateGenerated(sequence_values_{identifier}))\n        {{\n"
             ));
@@ -2381,7 +2396,7 @@ fn render_expression(
                 ));
             }
             output.push_str(&format!(
-                "            aggregate_values_{identifier}.Add(Node_{}(sequence_context_{identifier}));\n        }}\n",
+                "            {collect}Node_{}(sequence_context_{identifier}));\n        }}\n",
                 expression.unwrap_or(sequence.item())
             ));
             match arg {

@@ -2,6 +2,16 @@
 
 use super::*;
 
+pub(super) fn collect_value(function: mapping::AggregateOp, value: String) -> String {
+    if function == mapping::AggregateOp::DecimalSum {
+        format!(
+            "codegen_runtime::collect_aggregate_value(codegen_runtime::AggregateFunction::DecimalSum, &mut values, {value})?;"
+        )
+    } else {
+        format!("values.push({value});")
+    }
+}
+
 /// The complete owned cohort is admitted before any item value. Count never
 /// reads a value path; the argument runs once in the parent after every item
 /// value, and the shared reducer keeps the legacy empty/null/type policy.
@@ -17,8 +27,8 @@ pub(crate) fn render_owned_aggregate(
     );
     match &aggregate.value {
         mapping::OwnedAggregateValue::Expression(expression) => body.push_str(&format!(
-            "        let mut values = Vec::with_capacity(cohort.len());\n        for candidate in cohort.iter() {{\n            let item_context = candidate.context();\n            values.push({}?);\n        }}\n",
-            call(*expression, "item_context")
+            "        let mut values = Vec::with_capacity(cohort.len());\n        for candidate in cohort.iter() {{\n            let item_context = candidate.context();\n            {}\n        }}\n",
+            collect_value(aggregate.function, format!("{}?", call(*expression, "item_context")))
         )),
         mapping::OwnedAggregateValue::Path(_)
             if aggregate.function == mapping::AggregateOp::Count =>
@@ -30,7 +40,8 @@ pub(crate) fn render_owned_aggregate(
             path.extend(relative.iter().cloned());
             let path = render_string_path(&path);
             body.push_str(&format!(
-                "        let mut values = Vec::with_capacity(cohort.len());\n        for candidate in cohort.iter() {{\n            let item_context = candidate.context();\n            values.push(item_context.owned_field({owner}, &[{path}], None).map_err(|error| error.with_owned_source_node({id}))?);\n        }}\n"
+                "        let mut values = Vec::with_capacity(cohort.len());\n        for candidate in cohort.iter() {{\n            let item_context = candidate.context();\n            {}\n        }}\n",
+                collect_value(aggregate.function, format!("item_context.owned_field({owner}, &[{path}], None).map_err(|error| error.with_owned_source_node({id}))?"))
             ));
         }
     }
