@@ -324,6 +324,9 @@ what evidence closes each gate.
 
 ## Workspace Layout
 
+The [EDI configuration boundary](edi-configuration.md) keeps design-time
+compilation separate from runtime codecs and documents the public API migration.
+
 <!-- BEGIN GENERATED workspace from docs/reference/workspace.toml; edit that file and run `cargo run -p reference-docs` -->
 ### Core model and execution
 
@@ -357,6 +360,8 @@ what evidence closes each gate.
 - `crates/format-db`: SQLite introspection and instance I/O
 - `crates/format-edi`: X12, EDIFACT, HL7 v2, TRADACOMS, SAP IDoc, and SWIFT MT
   I/O
+- `crates/format-edi-config`: Design-time EDI configuration compilation into
+  embedded schemas and layouts
 - `crates/format-flextext`: Bounded FlexText layout I/O
 - `crates/format-protobuf`: Validated proto2/proto3 layouts and binary I/O
 - `crates/format-pdf`: Bounded visual PDF source extraction

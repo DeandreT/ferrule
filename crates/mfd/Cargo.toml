@@ -15,6 +15,7 @@ format-xml = { workspace = true }
 format-json = { workspace = true }
 format-db = { workspace = true }
 format-edi = { workspace = true }
+format-edi-config = { workspace = true }
 format-protobuf = { workspace = true }
 roxmltree = { workspace = true }
 serde = { workspace = true }

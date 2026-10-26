@@ -4,10 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "EDI (ANSI X12) schema-guided instance read/write"
+description = "Schema-guided X12, EDIFACT, HL7, TRADACOMS, IDoc, and SWIFT runtime codecs"
 
 [dependencies]
 ir = { workspace = true }
 mapping = { workspace = true }
-roxmltree = { workspace = true }
 thiserror = { workspace = true }

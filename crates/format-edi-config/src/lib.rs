@@ -1,9 +1,13 @@
-//! Bounded import of .mfd-style EDI configuration files.
+//! Design-time compilation of bounded .mfd-style EDI configuration files.
 //!
 //! The configuration is a library of positional data, composite, and
 //! segment definitions plus a message/envelope tree. Import expands that
 //! library into ferrule's ordinary EDI [`SchemaNode`] representation so the
 //! original configuration is not needed at execution time.
+//!
+//! Runtime schemas remain owned by [`ir`] and serialized constraints and
+//! layouts by [`mapping`]. This crate does not form part of the runtime codec
+//! dependency graph; execute its embedded results with `format-edi`.
 
 mod definitions;
 mod files;
@@ -13,6 +17,9 @@ pub mod swift;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod test_support;
 
 use std::path::{Path, PathBuf};
 

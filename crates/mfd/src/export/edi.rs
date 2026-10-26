@@ -248,7 +248,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
         .as_ref()
         .map(|descriptor| {
             let contents =
-                format_edi::config::idoc::render_native_config(descriptor).map_err(|error| {
+                format_edi_config::idoc::render_native_config(descriptor).map_err(|error| {
                     MfdError::Unsupported(format!(
                         "the IDoc native configuration descriptor cannot be rendered: {error}"
                     ))

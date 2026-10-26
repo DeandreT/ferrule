@@ -465,7 +465,7 @@ impl format_json::json_schema::JsonSchemaByteReader for BoundResource {
         self.bytes(path)
     }
 }
-impl format_edi::config::EdiConfigByteReader for BoundResource {
+impl format_edi_config::EdiConfigByteReader for BoundResource {
     fn read(&self, path: &Path) -> io::Result<Arc<[u8]>> {
         self.bytes(path)
     }

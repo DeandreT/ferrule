@@ -86,6 +86,10 @@ path = "crates/format-edi"
 role = "X12, EDIFACT, HL7 v2, TRADACOMS, SAP IDoc, and SWIFT MT I/O"
 
 [[area.component]]
+path = "crates/format-edi-config"
+role = "Design-time EDI configuration compilation into embedded schemas and layouts"
+
+[[area.component]]
 path = "crates/format-flextext"
 role = "Bounded FlexText layout I/O"
 
