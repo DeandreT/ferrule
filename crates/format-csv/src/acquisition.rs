@@ -5,16 +5,9 @@ use std::{error::Error, fmt, iter::FusedIterator};
 use ir::SchemaNode;
 
 use crate::{
-    CsvByteDecodingPolicy, CsvDocumentRows, CsvReadOptions, CsvRowOccurrence, CsvSourceDocument,
-    CsvSourceError, MAX_CSV_SOURCE_DOCUMENTS,
+    CsvByteDecodingPolicy, CsvDocumentRows, CsvReadOptions, CsvRowOccurrence, CsvSourceData,
+    CsvSourceDocument, CsvSourceError, MAX_CSV_SOURCE_DOCUMENTS,
 };
-
-/// Raw bytes returned by the host for one selected request. The request itself
-/// remains the logical path; the host may separately supply a resolved location.
-pub struct CsvSourceData {
-    pub bytes: Vec<u8>,
-    pub resolved_path: Option<String>,
-}
 
 #[derive(Debug)]
 pub enum CsvAcquisitionError<F, E> {

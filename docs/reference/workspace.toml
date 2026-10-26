@@ -16,6 +16,10 @@ path = "crates/mapping"
 role = "Serialized project, graph, scope, join, and format-option model"
 
 [[area.component]]
+path = "crates/document-source"
+role = "Format-neutral primary document acquisition, assembly, and explicit local-file policy"
+
+[[area.component]]
 path = "crates/functions"
 role = "Scalar built-in function library"
 

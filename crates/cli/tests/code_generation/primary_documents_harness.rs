@@ -5,8 +5,8 @@
 use super::*;
 use std::cell::RefCell;
 
-use format_csv::{
-    CsvSourceData, LocalFileError, LocalPrimaryFiles, PrimaryAcquisitionError, PrimarySourceHost,
+use document_source::{
+    LocalFileError, LocalPrimaryFiles, PrimaryAcquisitionError, PrimarySourceHost, SourceData,
 };
 use mapping::{DocumentProject, PrimaryFileSelection, document_project_file};
 use serde_json::{Value as Json, json};
@@ -82,7 +82,7 @@ impl PrimarySourceHost for Recording {
         self.inner.select(filename, selection)
     }
 
-    fn load(&self, request: &str) -> Result<CsvSourceData, LocalFileError> {
+    fn load(&self, request: &str) -> Result<SourceData, LocalFileError> {
         self.calls.borrow_mut().push(format!("load:{request}"));
         self.inner.load(request)
     }
