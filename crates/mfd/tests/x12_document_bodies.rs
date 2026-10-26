@@ -385,6 +385,48 @@ fn json_reduction_evaluates_all_matching_dates_but_not_nonmatching_dates() {
 }
 
 #[test]
+fn explicit_json_selection_preserves_the_designs_other_output() {
+    let fixture = fixed_xml_fixture();
+    let before = std::fs::read(fixture.0.join("mapping.mfd")).unwrap();
+    let actual = mfd::import_x12_json_body_with_options(
+        &fixture.0.join("mapping.mfd"),
+        &mfd::ImportOptions::default().with_package_root(&fixture.0),
+        "Target",
+    )
+    .unwrap();
+    let expected = imported();
+    assert_eq!(actual.targets.len(), 1);
+    assert_eq!(actual.targets[0].name, "Target");
+    assert_eq!(
+        actual.targets[0].driver_path,
+        expected.targets[0].driver_path
+    );
+    assert_eq!(
+        mapping::project_file::encode_pretty(&actual.targets[0].body).unwrap(),
+        mapping::project_file::encode_pretty(&expected.targets[0].body).unwrap()
+    );
+    assert_eq!(
+        mapping::project_file::encode_pretty(&actual.targets[0].filename).unwrap(),
+        mapping::project_file::encode_pretty(&expected.targets[0].filename).unwrap()
+    );
+    assert_eq!(
+        std::fs::read(fixture.0.join("mapping.mfd")).unwrap(),
+        before
+    );
+    assert!(fixture.import().is_err());
+    for name in ["", "Missing", "FixedXml"] {
+        assert!(
+            mfd::import_x12_json_body_with_options(
+                &fixture.0.join("mapping.mfd"),
+                &mfd::ImportOptions::default().with_package_root(&fixture.0),
+                name,
+            )
+            .is_err()
+        );
+    }
+}
+
+#[test]
 fn fixed_xml_body_spans_complete_envelopes_without_changing_message_profile() {
     let fixture = fixed_xml_fixture();
     assert!(fixture.import().is_err());
