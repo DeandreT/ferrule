@@ -42,19 +42,54 @@ fn copy_runtime(source: &Path, target: &Path) {
     }
 }
 
+fn body_values(schema: &mut SchemaNode) {
+    if schema.name == "W06" {
+        let children = children_mut(schema);
+        children[1] = SchemaNode::group(
+            children[1].name.clone(),
+            vec![scalar("value"), scalar("detail")],
+        );
+        children[2].repeating = true;
+    } else if let SchemaKind::Group { children, .. } = &mut schema.kind {
+        for child in children {
+            body_values(child);
+        }
+    }
+}
+
+fn wire_body_values(input: &str) -> String {
+    input
+        .lines()
+        .map(|line| {
+            if line.starts_with("W06*") {
+                let fields: Vec<_> = line.trim_end_matches('~').split('*').collect();
+                assert_eq!(fields.len(), 4);
+                format!(
+                    "{}*{}*{}:DETAIL*{}^20301231~\n",
+                    fields[0], fields[1], fields[2], fields[3]
+                )
+            } else {
+                format!("{line}\n")
+            }
+        })
+        .collect()
+}
+
 #[test]
 fn mixed_interchanges_match_native_through_generated_and_shared_csharp_readers() {
-    let schema: SchemaNode = serde_json::from_str(SCHEMA).unwrap();
-    let start = INPUT.rfind("ISA*").unwrap();
-    let second = INPUT[start..]
+    let mut schema: SchemaNode = serde_json::from_str(SCHEMA).unwrap();
+    body_values(&mut schema);
+    let input = wire_body_values(INPUT);
+    let start = input.rfind("ISA*").unwrap();
+    let second = input[start..]
         .replace('*', "|")
         .replace(':', ">")
         .replace('~', "!")
         .replace('^', "?");
-    let mixed = INPUT[..start].to_string() + &second;
-    let component_only = INPUT[..start].to_string() + &INPUT[start..].replace(':', ">");
-    let crossing = INPUT[..start].to_string()
-        + &INPUT[start..]
+    let mixed = input[..start].to_string() + &second;
+    let component_only = input[..start].to_string() + &input[start..].replace(':', ">");
+    let crossing = input[..start].to_string()
+        + &input[start..]
             .chars()
             .map(|value| match value {
                 '*' => '|',
@@ -67,6 +102,11 @@ fn mixed_interchanges_match_native_through_generated_and_shared_csharp_readers()
     let native = format_edi::x12::from_str(&mixed, &schema, false).unwrap();
     let expected = format_json::to_string(&schema, &native).unwrap();
     assert!(expected.contains("SHIP-0005"));
+    let value: serde_json::Value = serde_json::from_str(&expected).unwrap();
+    let body = &value["Interchange"][1]["Group"][0]["Message_945"][0]["W06"];
+    assert_eq!(body["F145"]["value"], "SHIP-0005");
+    assert_eq!(body["F145"]["detail"], "DETAIL");
+    assert_eq!(body["F373"], serde_json::json!(["20300617", "20301231"]));
     assert_eq!(
         native.field("Interchange").and_then(|value| match value {
             ir::Instance::Repeated(items) => Some(items.len()),
@@ -106,14 +146,18 @@ fn mixed_interchanges_match_native_through_generated_and_shared_csharp_readers()
     )
     .unwrap();
     fs::write(root.join("configured.json"), configured.source_descriptor).unwrap();
-    fs::write(root.join("schema.json"), SCHEMA).unwrap();
+    fs::write(
+        root.join("schema.json"),
+        serde_json::to_vec(&schema).unwrap(),
+    )
+    .unwrap();
     fs::write(root.join("input.x12"), &mixed).unwrap();
     fs::write(root.join("component-only.x12"), &component_only).unwrap();
     fs::write(root.join("crossing.x12"), &crossing).unwrap();
-    fs::write(root.join("homogeneous.x12"), INPUT).unwrap();
+    fs::write(root.join("homogeneous.x12"), &input).unwrap();
     fs::write(
         root.join("invalid.x12"),
-        INPUT[..start].to_string() + "ISA|truncated!",
+        input[..start].to_string() + "ISA|truncated!",
     )
     .unwrap();
     copy_runtime(
@@ -199,7 +243,7 @@ try {
             "homogeneous.x12",
             format_json::to_string(
                 &schema,
-                &format_edi::x12::from_str(INPUT, &schema, false).unwrap(),
+                &format_edi::x12::from_str(&input, &schema, false).unwrap(),
             )
             .unwrap(),
         ),
