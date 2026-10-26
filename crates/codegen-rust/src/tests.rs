@@ -17,12 +17,11 @@ use ir::{SchemaKind, SchemaNode};
 use mapping::{FunctionId, FunctionParameterId};
 
 #[test]
-fn decimal_literal_emission_remains_explicitly_refused() {
+fn decimal_literal_emission_uses_exact_coefficient_and_scale() {
     let value = Value::decimal(ir::Decimal96::parse_exact("9007199254740993.1").unwrap());
-    assert!(matches!(
-        rust_value(7, &value),
-        Err(EmitError::UnsupportedDecimalValue { node: 7 })
-    ));
+    let source = rust_value(7, &value).unwrap();
+    assert!(source.contains("Decimal96::from_parts(false, 90071992547409931_u128, 1_u8)"));
+    assert!(!source.contains("f64"));
 }
 
 mod collection_find;

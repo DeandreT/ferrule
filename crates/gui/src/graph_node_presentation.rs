@@ -115,6 +115,7 @@ fn aggregate_label(function: AggregateOp) -> &'static str {
     match function {
         AggregateOp::Count => "Count",
         AggregateOp::Sum => "Sum",
+        AggregateOp::DecimalSum => "Decimal sum",
         AggregateOp::Avg => "Average",
         AggregateOp::Min => "Minimum",
         AggregateOp::Max => "Maximum",

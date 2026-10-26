@@ -24,12 +24,18 @@ pub(crate) fn string(value: &str) -> String {
     output
 }
 
-pub(crate) fn value(node: u32, value: &Value) -> Result<String, EmitError> {
+pub(crate) fn value(_node: u32, value: &Value) -> Result<String, EmitError> {
     Ok(match value {
         Value::Null => "global::Ferrule.Runtime.FerruleValue.Null".to_string(),
         Value::JsonNull(_) => "global::Ferrule.Runtime.FerruleValue.JsonNull".to_string(),
         Value::XmlNil(_) => "global::Ferrule.Runtime.FerruleValue.XmlNil".to_string(),
-        Value::Decimal(_) => return Err(EmitError::UnsupportedDecimalValue { node }),
+        Value::Decimal(value) => format!(
+            "global::Ferrule.Runtime.FerruleValue.FromDecimal(global::Ferrule.Runtime.FerruleDecimal96.FromParts({}, ((global::System.UInt128){}UL << 64) | {}UL, {}))",
+            if value.is_negative() { "true" } else { "false" },
+            value.coefficient() >> 64,
+            value.coefficient() as u64,
+            value.scale(),
+        ),
         Value::Bool(value) => format!(
             "global::Ferrule.Runtime.FerruleValue.FromBoolean({})",
             if *value { "true" } else { "false" }
@@ -54,12 +60,12 @@ pub(crate) fn value(node: u32, value: &Value) -> Result<String, EmitError> {
 #[cfg(test)]
 mod decimal_tests {
     #[test]
-    fn decimal_literal_emission_remains_explicitly_refused() {
+    fn decimal_literal_emission_uses_exact_coefficient_and_scale() {
         let decimal = ir::Value::decimal(ir::Decimal96::parse_exact("9007199254740993.1").unwrap());
-        assert!(matches!(
-            super::value(7, &decimal),
-            Err(crate::EmitError::UnsupportedDecimalValue { node: 7 })
-        ));
+        let source = super::value(7, &decimal).unwrap();
+        assert!(source.contains("FerruleDecimal96.FromParts(false,"));
+        assert!(source.ends_with(", 1))"));
+        assert!(!source.contains("Double"));
     }
 }
 

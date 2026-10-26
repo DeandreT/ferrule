@@ -253,6 +253,34 @@ const REDUCERS: [(&str, AggregateOp); 7] = [
     ("item", AggregateOp::ItemAt),
 ];
 
+#[test]
+fn decimal_sum_preserves_owned_join_tuple_count_and_empty_zero() {
+    let decimal = ir::Decimal96::parse_exact("0.1").unwrap();
+    let p = root_value(vec![
+        (
+            1,
+            aggregate(AggregateOp::DecimalSum, rows_plan(), Some(2), None),
+        ),
+        (2, constant(Value::decimal(decimal))),
+    ]);
+    let count = root_value(vec![(
+        1,
+        aggregate(AggregateOp::Count, rows_plan(), None, None),
+    )]);
+    for (primary, named) in [
+        (primary_rows(), lookup_rows()),
+        (document(Instance::Repeated(vec![])), lookup_rows()),
+    ] {
+        let Value::Int(count) = value(&count, primary.clone(), named.clone()).unwrap() else {
+            panic!("tuple count");
+        };
+        let expected = (0..count).fold(ir::Decimal96::ZERO, |total, _| {
+            total.add_rounded(decimal).unwrap()
+        });
+        assert_eq!(value(&p, primary, named), Ok(Value::decimal(expected)));
+    }
+}
+
 fn reducer_target() -> Vec<SchemaNode> {
     vec![
         int("count"),

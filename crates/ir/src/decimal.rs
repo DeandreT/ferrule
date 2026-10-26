@@ -108,6 +108,10 @@ impl Decimal96 {
         if text.len() > MAX_DECIMAL_LEXICAL_BYTES {
             return Err(DecimalError::InputTooLong);
         }
+        Self::parse_digits(text, rounding)
+    }
+
+    fn parse_digits(text: &str, rounding: bool) -> Result<Self, DecimalError> {
         let negative = text.starts_with('-');
         let text = text.strip_prefix(['-', '+']).unwrap_or(text);
         let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));

@@ -75,6 +75,11 @@ public readonly struct FerruleDecimal96 : IEquatable<FerruleDecimal96>, ICompara
     public static FerruleDecimal96 ParseRounded(string text)
     {
         ValidateLexical(text);
+        return ParseRoundedCore(text);
+    }
+
+    private static FerruleDecimal96 ParseRoundedCore(string text)
+    {
         try
         {
             return new(decimal.Parse(text, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
@@ -104,6 +109,35 @@ public readonly struct FerruleDecimal96 : IEquatable<FerruleDecimal96>, ICompara
             + (fraction.Length == 0 ? "" : "." + fraction);
         if (result.ToString() != canonical) throw new FerruleDecimalException(FerruleDecimalError.PrecisionLoss);
         return result;
+    }
+
+    /// <summary>Mapping decimal text; shifts exponent digits exactly before rounding.</summary>
+    public static FerruleDecimal96 ParseDecimalText(string text)
+    {
+        ValidateTextSize(text, FerruleDecimalError.InvalidNumberLexical);
+        text = text.Trim();
+        if (!HasExponent(text)) return ParseRounded(text);
+        int marker = text.IndexOfAny(['e', 'E']);
+        string mantissa = text[..marker];
+        string exponentText = text[(marker + 1)..];
+        int exponent = 0;
+        foreach (char digit in exponentText.TrimStart('+', '-'))
+            exponent = Math.Min(8192, exponent * 10 + digit - '0');
+        if (exponentText.StartsWith('-')) exponent = -exponent;
+        bool negative = mantissa.StartsWith('-');
+        mantissa = mantissa.TrimStart('+', '-');
+        int dot = mantissa.IndexOf('.');
+        string whole = dot < 0 ? mantissa : mantissa[..dot];
+        string digits = dot < 0 ? mantissa : whole + mantissa[(dot + 1)..];
+        string significant = digits.TrimStart('0');
+        if (significant.Length == 0) return Zero;
+        int point = whole.Length + exponent - (digits.Length - significant.Length);
+        if (point > 29) throw new FerruleDecimalException(FerruleDecimalError.Overflow);
+        if (point < -28) return Zero;
+        string plain = point <= 0 ? "0." + new string('0', -point) + significant
+            : point >= significant.Length ? significant + new string('0', point - significant.Length)
+            : significant[..point] + "." + significant[point..];
+        return ParseRoundedCore((negative ? "-" : "") + plain);
     }
 
     /// <summary>Trims numeric text; exponent forms explicitly pass through binary64.</summary>

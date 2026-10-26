@@ -10,6 +10,26 @@ pub enum AggregateFunction {
     Max,
     Join,
     ItemAt,
+    DecimalSum,
+}
+
+/// Append an ordinary aggregate operand, or advance a decimal fold immediately.
+/// Decimal projection failures and arithmetic failures therefore keep input
+/// order. A failed append leaves the previously collected values unchanged.
+pub fn collect_aggregate_value(
+    function: AggregateFunction,
+    values: &mut Vec<Value>,
+    value: Value,
+) -> Result<(), RuntimeError> {
+    if function == AggregateFunction::DecimalSum {
+        let total = aggregate(function, values, None)?;
+        let total = aggregate(function, &[total, value], None)?;
+        values.clear();
+        values.push(total);
+    } else {
+        values.push(value);
+    }
+    Ok(())
 }
 
 /// Applies one aggregate after generated code has evaluated every item value.
@@ -19,6 +39,28 @@ pub fn aggregate(
     arg: Option<Value>,
 ) -> Result<Value, RuntimeError> {
     match function {
+        AggregateFunction::DecimalSum => {
+            if arg.is_some() {
+                return Err(crate::FunctionError::InvalidArgument {
+                    function: "decimal_sum",
+                    message: "does not accept an argument",
+                }
+                .into());
+            }
+            let mut total = ir::Decimal96::ZERO;
+            for value in values {
+                let Value::Decimal(decimal) = value else {
+                    return Err(RuntimeError::AggregateUnsupportedScalar {
+                        function,
+                        found: value.type_name(),
+                    });
+                };
+                total = total
+                    .add_rounded(**decimal)
+                    .map_err(|source| RuntimeError::AggregateDecimal { function, source })?;
+            }
+            Ok(Value::decimal(total))
+        }
         AggregateFunction::Count => Ok(Value::Int(values.len() as i64)),
         AggregateFunction::Sum => {
             let numbers = numeric_values(function, values)?;
