@@ -124,6 +124,76 @@ pub fn nested_project() -> Project {
     project
 }
 
+/// An outer counter whose later operand can fail after nested effects.
+#[allow(dead_code)]
+pub fn failure_project() -> Project {
+    let mut project = project();
+    project.extra_targets.clear();
+    project.source = SchemaNode::group(
+        "Input",
+        vec![
+            SchemaNode::scalar("fail_step", ScalarType::Bool),
+            SchemaNode::scalar("restart", ScalarType::String),
+        ],
+    );
+    project.graph.nodes = [
+        (
+            1,
+            Node::InvocationCounter {
+                key: "outer".into(),
+                start: 2,
+                step: 5,
+                restart: Some(4),
+            },
+        ),
+        (
+            2,
+            Node::InvocationCounter {
+                key: "inner".into(),
+                start: 3,
+                step: 3,
+                restart: None,
+            },
+        ),
+        (
+            3,
+            Node::Const {
+                value: Value::Int(1),
+            },
+        ),
+        (
+            4,
+            Node::SourceField {
+                path: vec!["restart".into()],
+                frame: None,
+            },
+        ),
+        (
+            5,
+            Node::If {
+                condition: 6,
+                then: 7,
+                else_: 2,
+            },
+        ),
+        (
+            6,
+            Node::SourceField {
+                path: vec!["fail_step".into()],
+                frame: None,
+            },
+        ),
+        (
+            7,
+            Node::Const {
+                value: Value::Bool(true),
+            },
+        ),
+    ]
+    .into();
+    project
+}
+
 fn input_fields() -> Vec<SchemaNode> {
     vec![
         SchemaNode::scalar("start", ScalarType::Int),

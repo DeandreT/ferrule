@@ -64,11 +64,42 @@ fn generated_counter_rows_share_state_and_keep_restart_presence() -> Result<(), 
     )
 }
 
+#[test]
+fn generated_counter_failures_retain_nested_operand_effects() -> Result<(), Box<dyn Error>> {
+    run_fixture_harness(
+        fixture::failure_project(),
+        "counter_effects",
+        FixtureHarness::Unit(include_str!(
+            "../../../conformance/invocation-counter-expressions/RetainedEffects.rs.txt"
+        )),
+    )
+}
+
+enum FixtureHarness<'a> {
+    Main { source: &'a str, expected: &'a str },
+    Unit(&'a str),
+}
+
 fn run_fixture(
     project: mapping::Project,
     package_name: &str,
     host: &str,
     expected: &str,
+) -> Result<(), Box<dyn Error>> {
+    run_fixture_harness(
+        project,
+        package_name,
+        FixtureHarness::Main {
+            source: host,
+            expected,
+        },
+    )
+}
+
+fn run_fixture_harness(
+    project: mapping::Project,
+    package_name: &str,
+    harness: FixtureHarness<'_>,
 ) -> Result<(), Box<dyn Error>> {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
@@ -103,19 +134,40 @@ fn run_fixture(
         runtime.join("../ir")
     ));
     std::fs::write(manifest_path, manifest)?;
-    std::fs::write(root.0.join("src/main.rs"), host)?;
-    let output = Command::new("cargo")
-        .args(["run", "--quiet", "--offline"])
+    let mut command = Command::new("cargo");
+    match &harness {
+        FixtureHarness::Main { source, .. } => {
+            std::fs::write(root.0.join("src/main.rs"), source)?;
+            command.args(["run", "--quiet", "--offline"]);
+        }
+        FixtureHarness::Unit(source) => {
+            let path = root.0.join("src/lib.rs");
+            let mut library = std::fs::read_to_string(&path)?;
+            library.push('\n');
+            library.push_str(source);
+            std::fs::write(path, library)?;
+            command.args(["test", "--quiet", "--offline", "--lib"]);
+        }
+    }
+    let output = command
         .current_dir(&root.0)
         .generated_host_output(&root.0)?;
     std::fs::write(root.0.join("stdout.txt"), &output.stdout)?;
     std::fs::write(root.0.join("stderr.txt"), &output.stderr)?;
     assert!(
         output.status.success(),
-        "{}",
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected);
+    match harness {
+        FixtureHarness::Main { expected, .. } => {
+            assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected)
+        }
+        FixtureHarness::Unit(_) => {
+            assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed; 0 failed"))
+        }
+    }
     Ok(())
 }
 

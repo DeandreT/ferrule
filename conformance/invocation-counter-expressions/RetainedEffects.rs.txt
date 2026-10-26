@@ -1,0 +1,32 @@
+// Appended as a unit-test module, without changing any emitted expression body.
+// Retain a public ScopeContext to observe the expression's state after failure;
+// this does not resume a failed or cancelled public mapping entry call.
+#[cfg(test)]
+mod retained_counter_effects {
+    use codegen_runtime::{ExecutionContext, InvocationCounterLimits, RuntimeError, ScopeContext,
+        Value, field, group, scalar};
+    use std::path::Path;
+
+    #[test]
+    fn later_operand_failure_retains_nested_effects_without_advancing_outer() {
+        for (fail_step, operand, expected, next_inner) in [
+            (true, "step", "integer", 2),
+            (false, "restart", "string or missing", 3),
+        ] {
+            let input = group([
+                field("fail_step", scalar(Value::Bool(fail_step))),
+                field("restart", scalar(Value::Bool(true))),
+            ]);
+            let execution = ExecutionContext::new(Path::new("counter.ferrule"))
+                .with_invocation_counter_limits(InvocationCounterLimits {
+                    max_counters: 2, max_text_bytes: 64,
+                });
+            let scope = ScopeContext::with_execution_context(&input, &execution);
+            assert_eq!(super::expression_1(&scope), Err(RuntimeError::InvocationCounterOperand {
+                node: 1, operand, expected, found: "bool",
+            }));
+            assert_eq!(super::expression_2(&scope), Ok(Value::Int(next_inner)));
+            assert_eq!(scope.next_invocation_counter(99, "outer", 50, 1, None), Ok(Value::Int(50)));
+        }
+    }
+}

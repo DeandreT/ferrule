@@ -55,6 +55,17 @@ fn generated_counter_rows_share_state_and_keep_restart_presence() -> Result<(), 
     )
 }
 
+#[test]
+fn generated_counter_failures_retain_nested_operand_effects() -> Result<(), Box<dyn Error>> {
+    run_fixture(
+        fixture::failure_project(),
+        include_str!(
+            "../../../conformance/invocation-counter-expressions/RetainedEffectsHost.cs.txt"
+        ),
+        "PASS retained nested counter effects",
+    )
+}
+
 fn run_fixture(
     project: mapping::Project,
     host: &str,
