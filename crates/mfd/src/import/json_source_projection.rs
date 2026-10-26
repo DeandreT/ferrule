@@ -19,7 +19,9 @@ pub struct ImportedJsonSourceProjection {
     pub filename_parameter: String,
     pub filename_preview: Option<String>,
     pub filename_input_port: u32,
-    pub filename_output_port: u32,
+    /// Present only when the raw source exposes its filename as an output.
+    /// An unused filename output is not synthesized during import.
+    pub filename_output_port: Option<u32>,
     /// Exact execution-view collections for the original typed output ports.
     pub ports: BTreeMap<u32, Vec<String>>,
     pub mapping_path: PathBuf,
@@ -62,7 +64,10 @@ pub fn import_json_source_projection_with_options(
                     && n.descendants().any(|entry| {
                         entry.has_tag_name("entry")
                             && entry.attribute("name") == Some("FileInstance")
-                            && entry.attribute("outkey").is_some()
+                            && entry.attribute("inpkey").is_some()
+                            && entry.descendants().any(|child| {
+                                child.has_tag_name("entry") && child.attribute("outkey").is_some()
+                            })
                     })
             })
             .collect();
@@ -119,7 +124,14 @@ pub fn import_json_source_projection_with_options(
                 .ok_or_else(|| refuse("invalid filename port"))
         };
         let filename_input_port = key("inpkey")?;
-        let filename_output_port = key("outkey")?;
+        let filename_output_port = file
+            .attribute("outkey")
+            .map(|value| {
+                value
+                    .parse::<u32>()
+                    .map_err(|_| refuse("invalid filename port"))
+            })
+            .transpose()?;
         let parameter_port = edges
             .feeds
             .get(&filename_input_port)
@@ -164,6 +176,9 @@ pub fn import_json_source_projection_with_options(
         if !warnings.is_empty() {
             return Err(refuse("unresolved source schema diagnostics"));
         }
+        if !source.is_source || source.is_variable {
+            return Err(refuse("requires a physical JSON source"));
+        }
         let typed = file
             .descendants()
             .find(|n| n.has_tag_name("entry") && n.attribute("name") == Some("root"))
@@ -201,7 +216,7 @@ pub fn import_json_source_projection_with_options(
         if unique.len() != declared.len() || unique != ports.keys().copied().collect() {
             return Err(refuse("unsupported or duplicate source output port"));
         }
-        if ports.contains_key(&filename_output_port) {
+        if filename_output_port.is_some_and(|port| ports.contains_key(&port)) {
             return Err(refuse("filename/data port collision"));
         }
         shape
