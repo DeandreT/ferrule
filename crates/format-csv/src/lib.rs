@@ -21,6 +21,7 @@ mod bounded_read;
 mod byte_decoding;
 mod encoding;
 mod fixed_width;
+mod fixed_width_bounded;
 mod local_files;
 mod primary_documents;
 mod read;
@@ -53,6 +54,10 @@ pub use read::{
 pub use fixed_width::{
     from_str_fixed_width, read_fixed_width, to_bytes_fixed_width_bounded, to_string_fixed_width,
     write_fixed_width,
+};
+pub use fixed_width_bounded::{
+    FixedWidthReadError, FixedWidthReadLimit, from_bytes_fixed_width_bounded,
+    from_str_fixed_width_bounded,
 };
 
 /// CSV output dialect and UTF-8 byte-order-mark policy. Legacy writer entry

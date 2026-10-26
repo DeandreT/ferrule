@@ -66,10 +66,19 @@ pub fn to_string_fixed_width(
     layout: &FixedWidthLayout,
 ) -> Result<String, CsvFormatError> {
     let fields = checked_fields(schema, layout)?;
-    let mut output = String::new();
+    format_records(&fields, rows, layout, 0)
+}
+
+fn format_records(
+    fields: &[(&str, ScalarType)],
+    rows: &[Instance],
+    layout: &FixedWidthLayout,
+    capacity: usize,
+) -> Result<String, CsvFormatError> {
+    let mut output = String::with_capacity(capacity);
 
     for (row, instance) in rows.iter().enumerate() {
-        let values = format_row(row, instance, &fields)?;
+        let values = format_row(row, instance, fields)?;
         for (((field, _), value), width) in fields.iter().zip(values).zip(layout.field_widths()) {
             let width = width.get() as usize;
             let got = value.chars().count();
@@ -115,22 +124,22 @@ pub fn to_bytes_fixed_width_bounded(
                 }
                 .into());
             }
-            bytes = bytes
-                .saturating_add(value.len())
-                .saturating_add((width - got).saturating_mul(layout.fill_char().len_utf8()));
-            if bytes > maximum {
-                return Err(crate::CsvBoundedError::OutputTooLarge { maximum });
-            }
+            bytes = (width - got)
+                .checked_mul(layout.fill_char().len_utf8())
+                .and_then(|padding| padding.checked_add(value.len()))
+                .and_then(|field| bytes.checked_add(field))
+                .filter(|bytes| *bytes <= maximum)
+                .ok_or(crate::CsvBoundedError::OutputTooLarge { maximum })?;
         }
-        bytes = bytes.saturating_add(usize::from(layout.record_delimiters()));
-        if bytes > maximum {
-            return Err(crate::CsvBoundedError::OutputTooLarge { maximum });
-        }
+        bytes = bytes
+            .checked_add(usize::from(layout.record_delimiters()))
+            .filter(|bytes| *bytes <= maximum)
+            .ok_or(crate::CsvBoundedError::OutputTooLarge { maximum })?;
     }
-    Ok(to_string_fixed_width(schema, rows, layout)?.into_bytes())
+    Ok(format_records(&fields, rows, layout, bytes)?.into_bytes())
 }
 
-fn checked_fields<'a>(
+pub(super) fn checked_fields<'a>(
     schema: &'a SchemaNode,
     layout: &FixedWidthLayout,
 ) -> Result<Vec<(&'a str, ScalarType)>, CsvFormatError> {
@@ -172,7 +181,15 @@ fn checked_record(
     characters: Vec<char>,
     expected: usize,
 ) -> Result<Vec<char>, CsvFormatError> {
-    let got = characters.len();
+    check_record_width(record, characters.len(), expected)?;
+    Ok(characters)
+}
+
+pub(super) fn check_record_width(
+    record: usize,
+    got: usize,
+    expected: usize,
+) -> Result<(), CsvFormatError> {
     if got < expected {
         return Err(CsvFormatError::PartialFixedWidthRecord {
             record,
@@ -187,7 +204,7 @@ fn checked_record(
             got,
         });
     }
-    Ok(characters)
+    Ok(())
 }
 
 fn parse_record(
@@ -201,16 +218,26 @@ fn parse_record(
     for ((name, ty), width) in fields.iter().zip(layout.field_widths()) {
         let width = width.get() as usize;
         let raw: String = characters[offset..offset + width].iter().collect();
-        let value = raw.trim_end_matches(layout.fill_char());
-        let value = if value.is_empty() && layout.treat_empty_as_absent() {
-            Value::Null
-        } else {
-            parse_present_value(name, *ty, value, record)?
-        };
+        let value = parse_field(record, name, *ty, &raw, layout)?;
         values.push((name.to_string(), Instance::Scalar(value)));
         offset += width;
     }
     Ok(Instance::Group((values).into()))
+}
+
+pub(super) fn parse_field(
+    record: usize,
+    name: &str,
+    ty: ScalarType,
+    raw: &str,
+    layout: &FixedWidthLayout,
+) -> Result<Value, CsvFormatError> {
+    let value = raw.trim_end_matches(layout.fill_char());
+    if value.is_empty() && layout.treat_empty_as_absent() {
+        Ok(Value::Null)
+    } else {
+        parse_present_value(name, ty, value, record)
+    }
 }
 
 #[cfg(test)]

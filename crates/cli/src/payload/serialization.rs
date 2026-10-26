@@ -12,6 +12,7 @@ use super::super::{
     reject_protobuf_conflicts, reject_swift_conflicts, reject_xbrl_conflicts, reject_xml_conflicts,
     validate_tabular_fallback, x12_separators,
 };
+use super::profile::BoundaryProfile;
 use super::{
     MAX_PAYLOAD_DOCUMENT_BYTES, MAX_PAYLOAD_RUN_BYTES, PayloadArtifact, PayloadDestination,
     visit_target_documents,
@@ -28,6 +29,12 @@ impl Limits {
         document: MAX_PAYLOAD_DOCUMENT_BYTES,
         run: MAX_PAYLOAD_RUN_BYTES,
     };
+}
+
+pub(super) struct TargetSerialization<'a> {
+    pub(super) current_datetime: &'a str,
+    pub(super) limits: Limits,
+    pub(super) profile: BoundaryProfile<'a>,
 }
 
 enum PayloadBytes {
@@ -58,7 +65,15 @@ pub(crate) fn render_payload(
     options: &FormatOptions,
     current_datetime: &str,
 ) -> anyhow::Result<(Vec<u8>, usize)> {
-    match render_payload_with_limit(path, schema, instance, options, current_datetime, None)? {
+    match render_payload_with_limit(
+        path,
+        schema,
+        instance,
+        options,
+        current_datetime,
+        None,
+        BoundaryProfile::Compatibility,
+    )? {
         PayloadBytes::Ready(bytes, records) => Ok((bytes, records)),
         PayloadBytes::CsvOversize { .. } => unreachable!("unbounded CSV has no byte ceiling"),
     }
@@ -70,8 +85,7 @@ pub(super) fn render_target(
     schema: &SchemaNode,
     instance: &Instance,
     options: &FormatOptions,
-    current_datetime: &str,
-    limits: Limits,
+    settings: TargetSerialization<'_>,
 ) -> anyhow::Result<Vec<RenderedArtifact>> {
     let mut artifacts = Vec::new();
     visit_target_documents(destination, instance, |path, instance| {
@@ -80,8 +94,9 @@ pub(super) fn render_target(
             schema,
             instance,
             options,
-            current_datetime,
-            Some(limits.document),
+            settings.current_datetime,
+            Some(settings.limits.document),
+            settings.profile,
         )
         .with_context(|| format!("rendering target payload {}", path.display()))?;
         let (bytes, records_written) = match rendered {
@@ -164,7 +179,9 @@ fn render_payload_with_limit(
     options: &FormatOptions,
     current_datetime: &str,
     csv_maximum: Option<usize>,
+    profile: BoundaryProfile<'_>,
 ) -> anyhow::Result<PayloadBytes> {
+    let path = profile.identity(path);
     options
         .validate_xml_schema_hint_options(true)
         .map_err(anyhow::Error::msg)?;
@@ -249,6 +266,22 @@ fn render_payload_with_limit(
         let rows = instance
             .as_repeated()
             .context("mapping did not produce a repeating row set for a fixed-width output")?;
+        if profile.bounded()
+            && let Some(maximum) = csv_maximum
+        {
+            return match format_csv::to_bytes_fixed_width_bounded(schema, rows, layout, maximum) {
+                Ok(bytes) => Ok(PayloadBytes::Ready(bytes, rows.len())),
+                Err(format_csv::CsvBoundedError::Format(error)) => {
+                    Err(anyhow::Error::new(error)).context("rendering fixed-width output payload")
+                }
+                Err(format_csv::CsvBoundedError::OutputTooLarge { maximum }) => {
+                    Ok(PayloadBytes::CsvOversize {
+                        maximum,
+                        records_written: rows.len(),
+                    })
+                }
+            };
+        }
         let text = format_csv::to_string_fixed_width(schema, rows, layout)
             .context("rendering fixed-width output payload")?;
         return Ok(PayloadBytes::Ready(text.into_bytes(), rows.len()));
@@ -639,6 +672,7 @@ mod tests {
             &output,
             "2026-01-02T03:04:05Z",
             limits,
+            false,
         );
         if let Err(error) = &rendered {
             directory.error(error)?;
@@ -909,6 +943,49 @@ mod tests {
         assert_eq!(bytes, b"xxxxxxxxxxxxxxxx\n");
         assert_eq!(records, 1);
         directory.1.set(true);
+        Ok(())
+    }
+
+    #[test]
+    fn bounded_fixed_width_preserves_deferred_document_and_aggregate_budgets() -> anyhow::Result<()>
+    {
+        for (width, limit, expected) in [(16, 100, "per-document limit"), (11, 20, "total limit")] {
+            let mut project = project("x", "y");
+            for options in [
+                &mut project.target_options,
+                &mut project.extra_targets[0].options,
+            ] {
+                *options = FormatOptions {
+                    fixed_width: Some(mapping::FixedWidthLayout::new(
+                        vec![mapping::FixedFieldWidth::new(width).unwrap()],
+                        ' ',
+                        true,
+                        true,
+                    )?),
+                    ..Default::default()
+                };
+            }
+            let output = engine::run_outputs(&project, &source(&["a.json"]))?;
+            let limits = Limits {
+                document: 16,
+                run: limit,
+            };
+            let (_, artifacts) = super::super::render_all_targets(
+                &project,
+                Path::new("/virtual/project.json"),
+                None,
+                &output,
+                "2026-01-02T03:04:05Z",
+                limits,
+                true,
+            )?;
+            assert!(
+                finalize(artifacts, limits)
+                    .unwrap_err()
+                    .to_string()
+                    .contains(expected)
+            );
+        }
         Ok(())
     }
 }
