@@ -6,6 +6,7 @@ use crate::{
 };
 
 mod aliases;
+mod bounded;
 mod imports;
 mod packing;
 mod reserved;
@@ -48,7 +49,10 @@ fn parse(source: &str) -> Layout {
 
 fn encode(layout: &Layout, root: &str, instance: &Instance) -> Vec<u8> {
     match to_vec(layout, root, instance) {
-        Ok(bytes) => bytes,
+        Ok(bytes) => {
+            bounded::assert_parity(layout, root, instance, &bytes);
+            bytes
+        }
         Err(error) => panic!("instance should encode: {error}"),
     }
 }
