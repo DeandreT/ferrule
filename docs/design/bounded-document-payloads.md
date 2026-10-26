@@ -18,8 +18,9 @@ select or modify the codec. Internal codec paths are not returned as artifact
 paths or diagnostic identities.
 
 Missing identity, conflicting/unsupported options and unresolved format
-dependencies refuse rather than falling back to filename dispatch. Only flat
-new-workbook XLSX is admitted: transposed, composite, grid, worksheet-set,
+dependencies refuse rather than falling back to filename dispatch.
+EDI autocomplete may be absent; when present, its dialect must match `edi_kind`.
+Only flat new-workbook XLSX is admitted: transposed, composite, grid, worksheet-set,
 hierarchical and update-existing layouts refuse. PDF, SQLite, IDoc, SWIFT,
 HL7/TRADACOMS, captured external-service boundaries, HTTP acquisition and local
 file sets are outside this profile. WSDL metadata remains available on explicit

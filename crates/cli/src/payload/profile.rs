@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 use anyhow::bail;
-use mapping::{EdiBoundaryKind, FormatOptions, TabularBoundaryKind};
+use mapping::{EdiAutocomplete, EdiBoundaryKind, FormatOptions, TabularBoundaryKind};
 
 #[derive(Clone, Copy, Default)]
 pub(super) enum PayloadProfile {
@@ -148,6 +148,14 @@ fn document_identity(options: &FormatOptions) -> anyhow::Result<&'static Path> {
     } else if let Some(kind) = options.edi_kind {
         if !matches!(kind, EdiBoundaryKind::X12 | EdiBoundaryKind::Edifact) {
             bail!("bounded document profile does not support EDI kind {kind:?}");
+        }
+        if !matches!(
+            (kind, options.edi_autocomplete.as_ref()),
+            (_, None)
+                | (EdiBoundaryKind::X12, Some(EdiAutocomplete::X12(_)))
+                | (EdiBoundaryKind::Edifact, Some(EdiAutocomplete::Edifact(_)))
+        ) {
+            bail!("bounded document profile requires `edi_autocomplete` to match `edi_kind`");
         }
         accepted.edi_kind = Some(kind);
         accepted.lenient_segments = options.lenient_segments;
