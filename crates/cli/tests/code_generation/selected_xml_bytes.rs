@@ -2,6 +2,9 @@
 use super::*;
 use serde_json::{Value as Json, json};
 
+#[path = "selected_xml_bytes/counterexamples.rs"]
+mod counterexamples;
+
 const SOURCE: &str = r#"<o:Orders xmlns:o="urn:orders" token="A&amp;B" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><o:Row><Id>1</Id><Text>bolt😀&lt;&amp;&gt;</Text><Maybe xsi:nil="true"/></o:Row><o:Row><Id>2</Id><Text>nut</Text></o:Row></o:Orders>"#;
 const RATES: &str = "<Rates><Value>approved</Value><UseContext>false</UseContext></Rates>";
 const UNUSED: &str = "<Unused><Value>unused</Value></Unused>";

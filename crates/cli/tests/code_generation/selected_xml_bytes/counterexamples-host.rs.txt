@@ -1,0 +1,51 @@
+use xml_counterexample_mapping::*;
+use codegen_runtime::{RuntimeError, XmlExecutionError, XmlInputSource, XmlOutputTarget};
+use serde_json::{Value,json};
+use std::error::Error;
+
+fn main() {
+    let cases:Vec<Value>=serde_json::from_slice(&std::fs::read(std::env::args_os().nth(1).unwrap()).unwrap()).unwrap();
+    for case in cases {
+        let source=std::fs::read(case["source"].as_str().unwrap()).unwrap();
+        let values:Vec<(String,Vec<u8>)>=case["inputs"].as_array().unwrap().iter().map(|input|
+            (input["name"].as_str().unwrap().into(),std::fs::read(input["path"].as_str().unwrap()).unwrap())).collect();
+        let sizes:Vec<_>=std::iter::once(source.len()).chain(values.iter().map(|(_,data)|data.len())).collect();
+        let total:usize=sizes.iter().sum();
+        let inputs:Vec<_>=values.iter().map(|(name,document)|NamedXmlBytesInput{name,document}).collect();
+        let target=case["target"].as_str().unwrap();
+        let context=codegen_runtime::ExecutionContext::new(std::path::Path::new("mapping.json")).with_current_datetime("2026-10-26T00:00:00Z");
+        let result:Result<Vec<Vec<u8>>,XmlExecutionError>=if target=="all" {
+            execute_xml_bytes_outputs_with_sources_and_context(&source,&inputs,&context)
+                .map(|x|std::iter::once(x.primary).chain(x.extras.into_iter().map(|e|e.document)).collect())
+        } else {
+            let selection=if target=="primary" {codegen_runtime::TargetSelection::Primary} else {codegen_runtime::TargetSelection::Named(target)};
+            execute_xml_bytes_selected_target_with_host(&source,&inputs,Some(&context),selection).map(|x|vec![match x {
+                SelectedXmlBytesTargetOutput::Primary(data)=>data,
+                SelectedXmlBytesTargetOutput::Named(data)=>{assert_eq!(data.name,target);data.document},
+            }])
+        };
+        let row=match result {
+            Ok(documents)=>json!({"case":case["case"],"kind":"ok","sizes":sizes,"total":total,
+                "documents":documents.iter().map(|data|data.iter().map(|b|format!("{b:02x}")).collect::<String>()).collect::<Vec<_>>()}),
+            Err(error)=>{
+                let (input,input_index)=match error.input {Some(XmlInputSource::Primary)=>(Some("primary"),None),Some(XmlInputSource::Named{name,index})=>(Some(name),Some(index)),None=>(None,None)};
+                let output=match error.output {Some(XmlOutputTarget::Primary)=>Some("primary"),Some(XmlOutputTarget::Named{name,..})=>Some(name),None=>None};
+                let mut row=json!({"case":case["case"],"kind":format!("{:?}",error.boundary.kind),"input":input,"inputIndex":input_index,"output":output,"sizes":sizes,"total":total,
+                    "preserved":error.source().and_then(|x|x.downcast_ref::<codegen_runtime::XmlBoundaryError>()).is_some_and(|x|std::ptr::eq(x,error.boundary.as_ref()))});
+                if let Some(runtime)=error.boundary.source().and_then(|x|x.downcast_ref::<RuntimeError>()) {
+                    match runtime {
+                        RuntimeError::MappingFailure{rule,message}=>{row["runtime"]=json!("MappingFailure");row["rule"]=json!(rule);row["message"]=json!(message);},
+                        RuntimeError::UnexpectedNamedSource{..}=>row["runtime"]=json!("UnexpectedNamedSource"),
+                        RuntimeError::MissingNamedSource{..}=>row["runtime"]=json!("MissingNamedSource"),
+                        other=>row["runtime"]=json!(format!("{other:?}")),
+                    }
+                }
+                if let Some(resource)=error.boundary.source().and_then(|x|x.downcast_ref::<codegen_runtime::XmlInputSetResourceError>()) {
+                    row["resource"]=json!(resource.resource);row["observed"]=json!(resource.observed_count);row["limit"]=json!(resource.limit);
+                }
+                row
+            }
+        };
+        println!("{row}");
+    }
+}
