@@ -11,6 +11,9 @@ internal static partial class Program
         using var reader = new FerruleDirectSourceReader(3, TimeSpan.FromSeconds(1));
         Throws<IOException>(() => reader.Read("ftp://127.0.0.1:1/fixture"));
         Throws<IOException>(() => reader.Read("http://user:secret@127.0.0.1:1/fixture"));
+        using var ftp = new FerruleDirectSourceReader(3, TimeSpan.FromSeconds(1), allowFtp: true);
+        Throws<IOException>(() => ftp.Read("ftp://user:secret@127.0.0.1:1/fixture"));
+        Throws<IOException>(() => ftp.Read("ftp://127.0.0.1:1/bad%0D%0Acommand"));
         string file = Path.GetTempFileName();
         try
         {

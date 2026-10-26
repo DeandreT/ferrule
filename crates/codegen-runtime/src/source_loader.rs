@@ -1,4 +1,4 @@
-//! Opt-in direct source I/O. This is a bounded file/HTTP(S) transport, not a
+//! Opt-in direct source I/O. This is a bounded file/HTTP(S)/FTP transport, not a
 //! source parser. Proxy, cookie and credential policies remain explicit host
 //! profiles; this direct profile sends no credentials or automatic cookies.
 use std::{
@@ -44,6 +44,7 @@ pub enum SourceReadError {
     Credentials,
     File(io::Error),
     Http(Option<u16>),
+    Ftp,
     Read,
     Bytes,
 }
@@ -58,6 +59,7 @@ impl fmt::Display for SourceReadError {
             Self::File(error) => error.fmt(f),
             Self::Http(Some(status)) => write!(f, "HTTP source returned status {status}"),
             Self::Http(None) => f.write_str("HTTP source could not be loaded"),
+            Self::Ftp => f.write_str("FTP source could not be loaded"),
             Self::Read => f.write_str("source stream could not be read"),
             Self::Bytes => f.write_str("source byte limit exceeded"),
         }
@@ -75,6 +77,8 @@ impl std::error::Error for SourceReadError {
 pub struct DirectSourceReader {
     agent: ureq::Agent,
     maximum: usize,
+    #[cfg(feature = "native-source-ftp")]
+    timeout: Duration,
 }
 impl DirectSourceReader {
     pub fn new(maximum: usize, timeout: Duration) -> Result<Self, SourceReadError> {
@@ -95,6 +99,8 @@ impl DirectSourceReader {
         Ok(Self {
             agent: config.into(),
             maximum,
+            #[cfg(feature = "native-source-ftp")]
+            timeout,
         })
     }
     /// Trim only at loading, preserve the selected identity, and finish reading
@@ -112,6 +118,15 @@ impl DirectSourceReader {
             }
             match uri.scheme() {
                 "file" => self.file(uri.to_file_path().map_err(|_| SourceReadError::Protocol)?)?,
+                #[cfg(feature = "native-source-ftp")]
+                "ftp" => self
+                    .ftp_with(&uri, &identity, |_, bytes| {
+                        Ok::<_, std::convert::Infallible>(bytes.to_vec())
+                    })
+                    .map_err(|error| match error {
+                        InputParseError::Read(error) => error,
+                        InputParseError::Parse(never) => match never {},
+                    })?,
                 "http" | "https" => {
                     uri.set_fragment(None);
                     let mut response =
@@ -170,6 +185,8 @@ impl DirectSourceReader {
                     &identity,
                     parse,
                 ),
+                #[cfg(feature = "native-source-ftp")]
+                "ftp" => self.ftp_with(&uri, &identity, parse),
                 "http" | "https" => {
                     uri.set_fragment(None);
                     let mut response = self.agent.get(uri.as_str()).call().map_err(|e| {
@@ -226,6 +243,91 @@ impl DirectSourceReader {
         let result = parse(identity, &bytes).map_err(InputParseError::Parse);
         drop(file);
         result
+    }
+
+    #[cfg(feature = "native-source-ftp")]
+    fn ftp_with<T, E>(
+        &self,
+        uri: &url::Url,
+        identity: &str,
+        parse: impl FnOnce(&str, &[u8]) -> Result<T, E>,
+    ) -> Result<T, InputParseError<E>> {
+        use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+        let protocol = || InputParseError::Read(SourceReadError::Protocol);
+        let transport = |_| InputParseError::Read(SourceReadError::Ftp);
+        let path = percent_encoding::percent_decode_str(uri.path())
+            .decode_utf8()
+            .map_err(|_| protocol())?;
+        if path.contains(['\r', '\n', '\0']) {
+            return Err(protocol());
+        }
+        let port = uri.port().unwrap_or(21);
+        let addresses = match uri.host().ok_or_else(protocol)? {
+            url::Host::Domain(host) => (host, port)
+                .to_socket_addrs()
+                .map_err(|_| InputParseError::Read(SourceReadError::Ftp))?
+                .take(16)
+                .collect::<Vec<_>>(),
+            url::Host::Ipv4(host) => vec![SocketAddr::new(host.into(), port)],
+            url::Host::Ipv6(host) => vec![SocketAddr::new(host.into(), port)],
+        };
+        let mut connected = None;
+        for address in addresses {
+            if let Ok(stream) = TcpStream::connect_timeout(&address, self.timeout) {
+                connected = Some(stream);
+                break;
+            }
+        }
+        let stream = connected.ok_or(InputParseError::Read(SourceReadError::Ftp))?;
+        stream
+            .set_read_timeout(Some(self.timeout))
+            .map_err(|_| InputParseError::Read(SourceReadError::Ftp))?;
+        stream
+            .set_write_timeout(Some(self.timeout))
+            .map_err(|_| InputParseError::Read(SourceReadError::Ftp))?;
+        let peer = stream
+            .peer_addr()
+            .map_err(|_| InputParseError::Read(SourceReadError::Ftp))?
+            .ip();
+        let timeout = self.timeout;
+        let mut ftp = suppaftp::FtpStream::connect_with_stream(stream)
+            .map_err(transport)?
+            .passive_stream_builder(move |address| {
+                // A passive reply must not redirect the host to an unrelated
+                // address. Authentication and broader network policy remain
+                // the caller's responsibility, as with the HTTP profile.
+                if address.ip() != peer {
+                    return Err(suppaftp::FtpError::ConnectionError(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "FTP data peer differs from the control peer",
+                    )));
+                }
+                let stream = TcpStream::connect_timeout(&address, timeout)
+                    .map_err(suppaftp::FtpError::ConnectionError)?;
+                stream
+                    .set_read_timeout(Some(timeout))
+                    .map_err(suppaftp::FtpError::ConnectionError)?;
+                stream
+                    .set_write_timeout(Some(timeout))
+                    .map_err(suppaftp::FtpError::ConnectionError)?;
+                Ok(stream)
+            });
+        ftp.login("anonymous", "anonymous@").map_err(transport)?;
+        ftp.transfer_type(suppaftp::types::FileType::Binary)
+            .map_err(transport)?;
+        let mut data = ftp.retr_as_stream(path.as_ref()).map_err(transport)?;
+        let parsed = self
+            .bounded(&mut data)
+            .map_err(InputParseError::Read)
+            .and_then(|bytes| parse(identity, &bytes).map_err(InputParseError::Parse));
+        let finished = data.finish().map_err(transport);
+        let closed = ftp.quit().map_err(transport);
+        // Preserve the first read/parser failure while still attempting both
+        // data and control cleanup. Successful parsing requires both to finish.
+        let value = parsed?;
+        finished?;
+        closed?;
+        Ok(value)
     }
     fn file(&self, path: std::path::PathBuf) -> Result<Vec<u8>, SourceReadError> {
         let mut options = OpenOptions::new();
@@ -351,6 +453,9 @@ impl<R: Read> Read for LegacyChunks<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "native-source-ftp")]
+    #[path = "ftp_tests.rs"]
+    mod ftp;
     #[test]
     fn source_limits_and_credentials_fail_without_a_request() {
         assert!(matches!(
@@ -362,9 +467,14 @@ mod tests {
             reader.read("http://user:secret@127.0.0.1:1/"),
             Err(SourceReadError::Credentials)
         ));
+        #[cfg(not(feature = "native-source-ftp"))]
         assert!(matches!(
             reader.read("ftp://127.0.0.1:1/a"),
             Err(SourceReadError::Protocol)
+        ));
+        assert!(matches!(
+            reader.read("ftp://user:secret@127.0.0.1:1/a"),
+            Err(SourceReadError::Credentials)
         ));
         assert!(matches!(
             reader.bounded(&b"x"[..]),
