@@ -1,0 +1,12 @@
+[package]
+name = "document-source"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Format-neutral primary document acquisition and local file policy"
+
+[dependencies]
+ir = { workspace = true }
+mapping = { workspace = true }
+thiserror = { workspace = true }

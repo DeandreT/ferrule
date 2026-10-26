@@ -9,6 +9,7 @@ description = "Interprets a mapping graph against source instance(s) to produce 
 [dependencies]
 ir = { workspace = true }
 mapping = { workspace = true }
+document-source = { workspace = true }
 functions = { workspace = true }
 format-csv = { workspace = true }
 format-edi = { workspace = true }

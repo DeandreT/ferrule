@@ -87,6 +87,11 @@ pub use csv::{
     CsvBoundaryError, CsvDocumentError, MAX_CSV_DOCUMENT_BYTES, PrimaryCsvDocumentError,
     serialize_csv, serialize_csv_bytes,
 };
+pub use document_source::{
+    DEFAULT_LOCAL_DOCUMENT_BYTES, LocalFileError, LocalPrimaryFiles, MAX_SOURCE_DOCUMENTS,
+    MAX_SOURCE_PATH_BYTES, PrimaryAcquisitionError, PrimaryAssemblyError, PrimaryDocument,
+    PrimarySourceHost, SourceData, acquire_primary_documents, assemble_primary_documents,
+};
 pub use dynamic_document::dynamic_document;
 pub use dynamic_source::{
     DynamicJsonSourceLoader, DynamicSourceCategory, DynamicSourceCause, DynamicSourceCodecKind,
@@ -110,9 +115,7 @@ pub use format_csv::{
     CsvAcquisitionError, CsvByteDecodingPolicy, CsvDocumentRows, CsvFormatError, CsvReadError,
     CsvReadLimit, CsvReadOptions, CsvRowOccurrence, CsvSourceAcquisition, CsvSourceData,
     CsvSourceDocument, CsvSourceError, CsvSourceLoadError, CsvSourceRows, CsvWriteOptions,
-    LocalFileError, LocalPrimaryFiles, MAX_CSV_SOURCE_DOCUMENTS, MAX_CSV_SOURCE_PATH_BYTES,
-    PrimaryAcquisitionError, PrimaryAssemblyError, PrimaryDocument, PrimarySourceHost,
-    acquire_primary_csv_rows, acquire_primary_documents, assemble_primary_documents,
+    MAX_CSV_SOURCE_DOCUMENTS, MAX_CSV_SOURCE_PATH_BYTES, acquire_primary_csv_rows,
     from_bytes_with_decoding_policy_bounded as parse_csv_rows_bytes_with_decoding_policy,
     from_bytes_with_options_bounded as parse_csv_rows_bytes,
     from_str_with_options_bounded as parse_csv_rows,

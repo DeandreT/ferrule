@@ -13,10 +13,10 @@ use std::path::{Path, PathBuf};
 use mapping::{EmptyFileSelection, PrimaryFileSelection};
 use thiserror::Error;
 
-use crate::{CsvSourceData, PrimarySourceHost};
+use crate::{PrimarySourceHost, SourceData};
 
-/// Default per-document byte limit, matching the bounded CSV reader.
-pub const DEFAULT_LOCAL_DOCUMENT_BYTES: u64 = crate::MAX_CSV_INPUT_BYTES as u64;
+/// Default per-document byte limit of the explicit local-file policy.
+pub const DEFAULT_LOCAL_DOCUMENT_BYTES: u64 = 8 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum LocalFileError {
@@ -258,7 +258,7 @@ impl PrimarySourceHost for LocalPrimaryFiles {
             .collect())
     }
 
-    fn load(&self, request: &str) -> Result<CsvSourceData, LocalFileError> {
+    fn load(&self, request: &str) -> Result<SourceData, LocalFileError> {
         let parts = components(request)?;
         let path = self.check(&parts, false)?;
         let request = parts.join("/");
@@ -278,7 +278,7 @@ impl PrimarySourceHost for LocalPrimaryFiles {
                 limit: self.max_document_bytes,
             });
         }
-        Ok(CsvSourceData {
+        Ok(SourceData {
             bytes,
             resolved_path: Some(self.resolve(&parts).display().to_string()),
         })

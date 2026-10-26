@@ -913,6 +913,7 @@ dependencies = [
  "codegen-runtime",
  "codegen-rust",
  "codegen-schema",
+ "document-source",
  "engine",
  "flate2",
  "format-csv",
@@ -993,6 +994,7 @@ name = "codegen-runtime"
 version = "0.1.0"
 dependencies = [
  "codegen-schema",
+ "document-source",
  "format-csv",
  "format-edi",
  "format-json",
@@ -1334,6 +1336,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "document-source"
+version = "0.1.0"
+dependencies = [
+ "ir",
+ "mapping",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "downcast-rs"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1593,6 +1604,7 @@ checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 name = "engine"
 version = "0.1.0"
 dependencies = [
+ "document-source",
  "format-csv",
  "format-edi",
  "format-json",
@@ -1902,6 +1914,7 @@ version = "0.1.0"
 dependencies = [
  "csv",
  "csv-core",
+ "document-source",
  "ir",
  "mapping",
  "serde_json",
