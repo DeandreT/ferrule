@@ -385,6 +385,132 @@ fn json_reduction_evaluates_all_matching_dates_but_not_nonmatching_dates() {
 }
 
 #[test]
+fn xml_scalar_after_child_keeps_declared_evaluation_and_output_order() {
+    let fixture = Fixture::new();
+    std::fs::write(fixture.0.join("target.xsd"), r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Order"><xs:complexType><xs:sequence><xs:element name="Head" type="xs:string"/><xs:element name="Child"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string" minOccurs="0" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element><xs:element name="Tail" type="xs:string" minOccurs="0"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    fixture.change("mapping.mfd", |xml| {
+        xml.replace("</children>", r#"<component name="XmlTarget" library="xml" kind="14" uid="12"><properties DynamicFilenames="1"/><data><root><entry name="FileInstance" inpkey="100"><entry name="document"><entry name="Order"><entry name="Head" inpkey="101"/><entry name="Child"><entry name="Code" inpkey="102"/></entry><entry name="Tail" inpkey="103"/></entry></entry></entry></root><document schema="target.xsd" instanceroot="{}Order"/></data></component></children>"#)
+            .replace(r#"<edge vertexkey="40"/>"#, r#"<edge vertexkey="40"/><edge vertexkey="100"/>"#)
+            .replace(r#"<edge vertexkey="41"/>"#, r#"<edge vertexkey="41"/><edge vertexkey="101"/>"#)
+            .replace(r#"<edge vertexkey="46"/>"#, r#"<edge vertexkey="46"/><edge vertexkey="102"/>"#)
+            .replace(r#"<edge vertexkey="43"/>"#, r#"<edge vertexkey="43"/><edge vertexkey="103"/>"#)
+    });
+    let original = std::fs::read(fixture.0.join("mapping.mfd")).unwrap();
+    let imported = fixture.import().unwrap();
+    let body = &imported.targets[1].body;
+    assert_eq!(body.root.bindings.len(), 1);
+    assert_eq!(body.root.bindings[0].target_field, "Head");
+    assert_eq!(body.root.children.len(), 2);
+    assert_eq!(body.root.children[0].target_field, "Child");
+    assert_eq!(body.root.children[1].target_field, "Tail");
+    assert!(matches!(
+        body.root.children[1].construction,
+        mapping::ScopeConstruction::Scalar { .. }
+    ));
+    assert!(matches!(
+        body.root.children[1].iteration,
+        mapping::ScopeIteration::None
+    ));
+    assert_eq!(body.root.children[1].filter, None);
+    let value = engine::run_with_context(body, &source(&body.source), &context()).unwrap();
+    assert_eq!(
+        value,
+        group(vec![
+            ("Head", text("demo")),
+            (
+                "Child",
+                group(vec![(
+                    "Code",
+                    Instance::Repeated(vec![text("A"), text("B")])
+                )])
+            ),
+            ("Tail", text("ORDER")),
+        ])
+    );
+    let xml = format_xml::to_string_with_options(
+        &body.target,
+        &value,
+        &format_xml::XmlWriteOptions {
+            declaration: false,
+            indent: false,
+            default_namespace: None,
+            schema_hints: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        xml,
+        "<Order><Head>demo</Head><Child><Code>A</Code><Code>B</Code></Child><Tail>ORDER</Tail></Order>"
+    );
+    let program = codegen::lower(body).unwrap();
+    let rust = codegen_rust::emit(&program, &rust_options()).unwrap();
+    let csharp = codegen_csharp::emit(&program).unwrap();
+    if let Some(root) = std::env::var_os("MFD051_GENERATED_DIR") {
+        let root = PathBuf::from(root).join("ordered-xml");
+        for (language, artifacts) in [("rust", rust), ("csharp", csharp)] {
+            for file in artifacts.into_files() {
+                let path = root.join(language).join(file.path.as_str());
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(path, file.contents).unwrap();
+            }
+        }
+        let cases = serde_json::json!([
+            {"label":"two-children", "input":{"BEG":{"F1":"ORDER"},"Rows":[{"LIN":{"F1":"A","F2":"2.5"}},{"LIN":{"F1":"B","F2":"3"}}]}, "expected":{"Head":"demo","Child":{"Code":["A","B"]},"Tail":"ORDER"}},
+            {"label":"empty-children-and-tail", "input":{"BEG":{"F1":""},"Rows":[]}, "expected":{"Head":"demo","Child":{"Code":[]},"Tail":""}}
+        ]);
+        std::fs::write(
+            root.join("cases.json"),
+            serde_json::to_vec_pretty(&cases).unwrap(),
+        )
+        .unwrap();
+    }
+    // Moving the same scalar expression from a normal binding into an
+    // uniterated child must not filter, wrap or invent a missing/null value.
+    let mut binding_control = body.clone();
+    let tail = binding_control.root.children.pop().unwrap();
+    let mapping::ScopeConstruction::Scalar { value: node } = tail.construction else {
+        panic!("expected the ordered scalar child");
+    };
+    binding_control.root.bindings.push(mapping::Binding {
+        target_field: "Tail".into(),
+        node,
+    });
+    for input in [
+        group(vec![("BEG", group(vec![("F1", text(""))]))]),
+        group(vec![("BEG", group(vec![]))]),
+        group(vec![(
+            "BEG",
+            group(vec![("F1", Instance::Scalar(Value::Null))]),
+        )]),
+        group(vec![]),
+    ] {
+        let tail_value = |project: &mapping::Project| {
+            engine::run(project, &input)
+                .map(|value| value.field("Tail").cloned())
+                .map_err(|error| error.to_string())
+        };
+        assert_eq!(tail_value(body), tail_value(&binding_control));
+    }
+    assert_eq!(
+        std::fs::read(fixture.0.join("mapping.mfd")).unwrap(),
+        original
+    );
+    fixture.change("target.xsd", |xml| {
+        let from = r#"name="Tail" type="xs:string" minOccurs="0""#;
+        assert_eq!(xml.matches(from).count(), 1);
+        xml.replacen(from, &format!(r#"{from} maxOccurs="unbounded""#), 1)
+    });
+    assert!(
+        fixture
+            .import()
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("repeating scalar after a child")
+    );
+}
+
+#[test]
 fn xml_scalar_occurrences_retain_schema_and_native_negative_zero() {
     let fixture = Fixture::new();
     std::fs::write(fixture.0.join("target.xsd"), r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Order"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string"/><xs:element name="Quantity" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
