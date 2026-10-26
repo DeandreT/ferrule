@@ -1,0 +1,71 @@
+{
+  "format": "mapforce-enterprise-2026r2-artifact-observations",
+  "format_version": 1,
+  "inventory_complete": false,
+  "runtime_proof": false,
+  "status": "unassessed",
+  "applicability": "unknown",
+  "execution_evidence": [],
+  "purpose": "Finite release-source and public declaration observations, not runtime or ABI qualification. Proprietary artifacts remain private.",
+  "acquired_on": "2026-10-26",
+  "release": {
+    "product": "MapForce",
+    "edition": "Enterprise",
+    "release": "2026r2",
+    "executable_version": "28.2.0.0",
+    "architecture": "x64",
+    "official_page": "https://www.altova.com/ThankYou?productcode=MF&editioncode=E&lang=en&release=2026r2&installertype=Product&operatingsystem=win64&FromArchive=true",
+    "archive_url": "https://cdn.sw.altova.com/v2026r2/en/MapForceEnt2026rel2_x64.zip",
+    "archive_bytes": 156727287,
+    "archive_sha256": "16fc9298366a93921d85a9165beb34736e227ba0985699743b53a5c6c6758278",
+    "acquisition": "The official release page linked this HTTPS download. The ZIP, embedded installer package and selected members were read without executing the downloaded installer.",
+    "container_chain": [
+      {"member": "MapForceEnt2026rel2_x64.exe", "sha256": "cbed79653ad86c6518bdcbb52a6445eb8426dd7b74da87863f5144f9a7fa9db7"},
+      {"member": "PE resource .rsrc/40/PACKAGE_0", "sha256": "26806b72e0cc8d342cb06316cf0fa2ddd0dcc86384ffca2f5e2fba3588682201"},
+      {"member": "Altova MapForce 2026 rel. 2 (x64) Enterprise Edition.msi", "sha256": "5b2012296f1913b658a8c9c793443e2f4c1c9adcf05f242d58519d3d96121647"},
+      {"member": "MSI stream DATA1.cab", "sha256": "0e8b381e62a6b637669326bd8ce9056037b4e4f7c1cd1778cd0dbd4744c8e5d1"}
+    ],
+    "signature_boundary": "Embedded code-signing certificates were observed, but Authenticode image integrity, timestamp and certificate-chain trust were not verified. HTTPS acquisition and byte equality are the asserted source binding."
+  },
+  "matched_members": [
+    {"name": "MapForce.exe", "cab_member": "MapForce_ExecutableFile", "bytes": 126267504, "sha256": "4dc5b2bf1fb9644ba8224a9df19b7f92cb014d7bad1f8a2a217541e0a69ddd55"},
+    {"name": "MapForce.tlb", "cab_member": "MapForce.tlb_1193", "bytes": 54108, "sha256": "785c484fbaa882cae724a3568b04650300eb18941084ac23eb2d041dfb4a2789"},
+    {"name": "Tutorial/ConvertProducts.mfd", "cab_member": "ConvertProducts.mfd_589", "bytes": 3688, "sha256": "f36889cd8ed91b57ef66923fd56960de396db136ba4968352ad212796a34bd67"},
+    {"name": "Tutorial/Products.xml", "cab_member": "Products.xml_683", "bytes": 413, "sha256": "45a93f80ae4406c079148d0a006195df50d2bd68e82d3803756b06940e7799dc"},
+    {"name": "Tutorial/Products.xsd", "cab_member": "Products.xsd_684", "bytes": 633, "sha256": "aaceb86a93fc2cb254974ea57728ab2e9de67a4ec0c482de48afb303ad425b78"},
+    {"name": "Tutorial/ProductValuePairs.xsd", "cab_member": "ProductValuePairs.xsd_685", "bytes": 744, "sha256": "4c0e3a8b7595e10fe9a05a5a72fb2cb8d030ad3f15892f662bcc18320c488a75"}
+  ],
+  "comparison": "Each of the six selected installed/reference files was byte-identical to the corresponding member extracted from the downloaded package. This is not a complete installed-file manifest.",
+  "type_library": {
+    "name": "MapForceLib",
+    "version": "4.1",
+    "platform": "SYS_WIN64",
+    "type_info_records": 75,
+    "scope": "Read-only declaration metadata, not COM activation or Windows ABI evidence. The separate online COM catalog retains its own unestablished release binding."
+  },
+  "generated_source": {
+    "input": "Tutorial/ConvertProducts.mfd and its three matched schema/instance dependencies",
+    "generator": "The matched executable, in an isolated offline Wine environment",
+    "settings": "The loaded tutorial's inherited settings; File / Generate Code in selected C# and Java separately. No application-wide default is inferred.",
+    "input_guards": "All four input files remained byte-identical; the declared mapping output was not created.",
+    "csharp_files": 41,
+    "java_files": 98,
+    "documented_io_classes_matched": 24,
+    "csharp_project_target": ".NET Framework v4.8.1 in all four generated project files",
+    "public_declaration_observations": [
+      {"type": "Altova.IO.StreamOutput", "constructor_parameter_types": [["System.IO.Stream"], ["System.String", "System.IO.FileMode"]]},
+      {"type": "Altova.IO.StringOutput", "constructor_parameter_types": [["System.Text.StringBuilder"]]},
+      {"type": "com.altova.io.StreamOutput", "constructor_parameter_types": [["java.io.OutputStream"]], "getStream_return_type": "java.io.OutputStream"},
+      {"type": "com.altova.io.StringOutput", "constructor_parameter_types": [[]], "getString_return_type": "java.lang.StringBuffer"}
+    ],
+    "scope": "Candidate public declaration facts from these two source bundles only. No generated program was compiled or run. Lifetime, ownership, null/error behavior and undocumented overloads are not inferred."
+  },
+  "remaining": [
+    "Complete installed and generated supporting-artifact inventory",
+    "Generator templates and support dependencies beyond the six matched files",
+    "Schema-wrapper bundles for C++, C# and Java",
+    "Full public API, exception and execution contracts",
+    "Independent completeness review and exact backend applicability",
+    "Authenticode trust and native Windows ABI qualification where required"
+  ]
+}

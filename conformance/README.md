@@ -6,6 +6,11 @@ capability inventory, not a claim of full compatibility or a product-parity
 percentage. The release pin is
 intentional even when the vendor's release-history page changes.
 
+`mfd-2026r2-source-inventory/artifact-observations.json` records a bounded official
+installer/source binding and C#/Java public declaration observations. It is not
+runtime, ABI or complete-inventory evidence; the canonical ledger remains
+incomplete. Proprietary installers and generated implementation stay private.
+
 Run these commands from the workspace root:
 
 ```sh

@@ -450278,7 +450278,7 @@
       },
       {
         "scope": "Generated supporting classes, linked language documentation and installed samples outside retained page bounds",
-        "status": "Named public supporting classes and linked platform references are inventoried in the supplemental files. Release-bound generated libraries, installed samples, and the scope of undocumented support classes remain unresolved; see supporting.json installer_artifact_requests."
+        "status": "Named public supporting classes and linked platform references are inventoried in the supplemental files. Selected executable/type-library/tutorial members are bound to the official 2026r2 download, and C#/Java ConvertProducts source generation is observed; see artifact-observations.json. Complete supporting-library and installed-sample coverage, schema-wrapper bundles and undocumented support-class scope remain unresolved; see supporting.json installer_artifact_requests."
       }
     ],
     "constraints": [
