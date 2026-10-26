@@ -1,0 +1,41 @@
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static FerruleInstance FromJson(JsonNode? value) => value switch {
+    JsonObject fields => new FerruleGroup(fields.Select(pair => new FerruleField(pair.Key, FromJson(pair.Value))).ToArray()),
+    JsonArray items => new FerruleRepeated(items.Select(FromJson).ToArray()),
+    JsonValue scalar when scalar.TryGetValue<string>(out var text) => new FerruleScalar(FerruleValue.FromString(text)),
+    JsonValue scalar when scalar.TryGetValue<bool>(out var boolean) => new FerruleScalar(FerruleValue.FromBoolean(boolean)),
+    null => new FerruleScalar(FerruleValue.Null),
+    _ => throw new InvalidOperationException("Unexpected authored input kind"),
+};
+static JsonNode? ToJson(FerruleInstance value) => value switch {
+    FerruleGroup fields => new JsonObject(fields.Fields.Select(field => new KeyValuePair<string, JsonNode?>(field.Name, ToJson(field.Value)))),
+    FerruleRepeated items => new JsonArray(items.Items.Select(ToJson).ToArray()),
+    FerruleMappedSequence items => new JsonArray(items.Items.Select(ToJson).ToArray()),
+    FerruleScalar scalar when scalar.Value.Kind == FerruleValueKind.String => JsonValue.Create(scalar.Value.StringValue),
+    FerruleScalar scalar when scalar.Value.Kind == FerruleValueKind.Bool => JsonValue.Create(scalar.Value.BooleanValue),
+    FerruleScalar scalar when scalar.Value.Kind == FerruleValueKind.Null => null,
+    _ => throw new InvalidOperationException("Unexpected generated output kind"),
+};
+if (args.Length != 1) throw new InvalidOperationException("Need cases path");
+var cases = JsonNode.Parse(File.ReadAllText(args[0]))!.AsArray();
+var evidence = new JsonArray();
+foreach (var item in cases) {
+    var test = item!.AsObject();
+    JsonObject actual;
+    try {
+        var output = GeneratedMapping.ExecuteWithBasicOwnedSources(FromJson(test["input"]), Array.Empty<NamedInput>(), new FerruleOwnedSourceLimits(4, 32, 64, 1_048_576, 4096), null);
+        actual = new JsonObject { ["output"] = ToJson(output.Primary) };
+    } catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.MappingException && error.MappingExceptionMessage == "required source field is absent") {
+        actual = new JsonObject { ["error"] = "required" };
+    } catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.FunctionInvalidArgument && error.Function == "format_guid_string") {
+        actual = new JsonObject { ["error"] = "guid" };
+    }
+    var expected = test.ContainsKey("error") ? new JsonObject { ["error"] = test["error"]!.DeepClone() } : new JsonObject { ["output"] = test["expected"]!.DeepClone() };
+    evidence.Add(new JsonObject { ["label"] = test["label"]!.DeepClone(), ["actual"] = actual.DeepClone(), ["expected"] = expected.DeepClone() });
+    if (!JsonNode.DeepEquals(actual, expected)) throw new InvalidOperationException($"Mismatch: {evidence.Last()}");
+}
+File.WriteAllText(args[0] + ".csharp-results.json", evidence.ToJsonString());
+Console.WriteLine($"{evidence.Count} generated C# cases passed");

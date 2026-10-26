@@ -154,7 +154,8 @@ public sealed partial class ScopeContext
                 new ReadOnlyCollection<FerruleInstance>(frames),
                 new ReadOnlyCollection<CollectionIdentity>(collections),
                 _executionContext,
-                _dynamicSourceLoader, invocationCounters: _invocationCounters, documentFilenameClock: _documentFilenameClock);
+                _dynamicSourceLoader, invocationCounters: _invocationCounters, documentFilenameClock: _documentFilenameClock,
+                nativeFrameOrigins: AppendNativeFrameOrigins(frames.Count - _frames.Count));
         }
         return new ReadOnlyCollection<ScopeContext>(contexts);
     }

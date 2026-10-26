@@ -398,6 +398,53 @@ fn validate_program_with_owned_joins(
     owned_xml: owned_sources::OwnedXmlPolicy,
     join: owned_sources::JoinPolicy,
 ) -> Result<(), ProgramValidationError> {
+    validate_program_with_owned_joins_and_native_message(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        dynamic_field,
+        owned_xml,
+        join,
+        None,
+    )
+}
+
+/// Only the native preflight can construct this admission; it proves every
+/// admitted ID and its complete static-source scope inventory first.
+pub(crate) fn validate_native_x12_message_program(
+    program: &Program,
+    admission: &crate::mapforce_x12_source::NativeX12RootAdmission,
+) -> Result<(), ProgramValidationError> {
+    validate_program_with_owned_joins_and_native_message(
+        program,
+        owned_sources::BasicOwnedProfile::ControlFree,
+        owned_sources::FailurePolicy::from_primary_rows(false),
+        owned_sources::SequenceItemAtPolicy::Closed,
+        owned_sources::PathHierarchyPolicy::Closed,
+        owned_sources::AdjacencyTreePolicy::Closed,
+        owned_sources::DynamicFieldPolicy::Closed,
+        owned_sources::OwnedXmlPolicy::Closed,
+        owned_sources::JoinPolicy::Closed,
+        Some(admission),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_program_with_owned_joins_and_native_message(
+    program: &Program,
+    profile: owned_sources::BasicOwnedProfile,
+    failures: owned_sources::FailurePolicy,
+    sequence_item_at: owned_sources::SequenceItemAtPolicy,
+    path_hierarchy: owned_sources::PathHierarchyPolicy,
+    adjacency_tree: owned_sources::AdjacencyTreePolicy,
+    dynamic_field: owned_sources::DynamicFieldPolicy,
+    owned_xml: owned_sources::OwnedXmlPolicy,
+    join: owned_sources::JoinPolicy,
+    native_message: Option<&crate::mapforce_x12_source::NativeX12RootAdmission>,
+) -> Result<(), ProgramValidationError> {
     xml::validate_boundary(program)?;
     validate_schema_metadata("source", &program.source)?;
     for source in &program.extra_sources {
@@ -470,7 +517,7 @@ fn validate_program_with_owned_joins(
     // that no target/failure root reaches in a directly constructed Program.
     sequences::validate_retained_filter_map_inputs(&expressions, &sequence_items)?;
     owned_sources::validate_structure(program)?;
-    owned_sources::validate_closed_contexts_with_joins(
+    owned_sources::validate_closed_contexts_with_joins_and_native_message(
         program,
         profile,
         failures,
@@ -480,6 +527,7 @@ fn validate_program_with_owned_joins(
         dynamic_field,
         owned_xml,
         join,
+        native_message,
     )
 }
 

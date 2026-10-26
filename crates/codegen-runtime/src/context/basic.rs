@@ -484,7 +484,8 @@ impl<'src> BasicSourceRoots<'src> {
         };
         budget.slots(mul(5, self.roots.registry.limits.max_roots)?)?;
         budget.slots(4)?; // one legacy frame, one origin, context identity and context
-        let mut legacy = ScopeContext::with_named_inputs(self.roots.registry.primary, &self.inputs);
+        let mut legacy =
+            ScopeContext::with_basic_named_inputs(self.roots.registry.primary, &self.inputs);
         legacy.execution = execution;
         Ok(BasicScopeContext {
             legacy,
@@ -2305,6 +2306,7 @@ impl<'ctx> OwnedWalkObserver<'ctx> for BasicOwnedObserver<'_, 'ctx> {
             paired_capacity::<String>(path.len())?;
             let origin_path = path.iter().map(|s| (*s).to_string()).collect();
             legacy.frames.push(ScopeFrame {
+                origin: super::FrameOrigin::Synthetic,
                 instance: terminal,
                 collection: None,
                 document_path: None,

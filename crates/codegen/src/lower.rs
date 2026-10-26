@@ -18,6 +18,18 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     lower_with_validator(project, validate_program)
 }
 
+/// The native message contract is admitted before the ordinary closed-context
+/// gate. Graph lowering itself, engine validation and all unrelated gates stay
+/// unchanged; only its proved logical-root reads receive the native permission.
+pub(crate) fn lower_with_native_x12_nullable_scalars(
+    project: &Project,
+    source: &crate::NativeX12Source<'_>,
+) -> Result<Program, LowerError> {
+    lower_with_validator(project, |program| {
+        crate::mapforce_x12_source::validate_native_x12_program(program, source)
+    })
+}
+
 /// Lowers the explicit static Basic filter-only profile without changing controls.
 ///
 /// Default lowering and existing emitter entry points retain their closed policy.
@@ -255,14 +267,14 @@ enum OwnedJoinLowering {
 
 fn lower_with_validator(
     project: &Project,
-    validator: fn(&Program) -> Result<(), ProgramValidationError>,
+    validator: impl Fn(&Program) -> Result<(), ProgramValidationError>,
 ) -> Result<Program, LowerError> {
     lower_with_policy(project, validator, OwnedJoinLowering::Closed)
 }
 
 fn lower_with_policy(
     project: &Project,
-    validator: fn(&Program) -> Result<(), ProgramValidationError>,
+    validator: impl Fn(&Program) -> Result<(), ProgramValidationError>,
     owned_joins: OwnedJoinLowering,
 ) -> Result<Program, LowerError> {
     let validation = engine::validate(project);

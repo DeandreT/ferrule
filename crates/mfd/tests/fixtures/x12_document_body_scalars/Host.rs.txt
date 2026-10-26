@@ -1,0 +1,82 @@
+use codegen_runtime::{FunctionError, Instance, OwnedSourceLimits, RuntimeError, Value};
+use serde_json::{Value as Json, json};
+
+fn from_json(value: &Json) -> Instance {
+    match value {
+        Json::Object(fields) => Instance::Group(
+            fields
+                .iter()
+                .map(|(k, v)| (k.clone(), from_json(v)))
+                .collect::<Vec<_>>()
+                .into(),
+        ),
+        Json::Array(items) => Instance::Repeated(items.iter().map(from_json).collect()),
+        Json::String(value) => Instance::Scalar(Value::String(value.clone())),
+        Json::Bool(value) => Instance::Scalar(Value::Bool(*value)),
+        Json::Null => Instance::Scalar(Value::Null),
+        _ => panic!("unexpected authored input kind"),
+    }
+}
+fn to_json(value: &Instance) -> Json {
+    match value {
+        Instance::Group(fields) => Json::Object(
+            fields
+                .iter()
+                .map(|(k, v)| (k.clone(), to_json(v)))
+                .collect(),
+        ),
+        Instance::Repeated(items) | Instance::MappedSequence(items) => {
+            Json::Array(items.iter().map(to_json).collect())
+        }
+        Instance::Scalar(Value::String(value)) => json!(value),
+        Instance::Scalar(Value::Bool(value)) => json!(value),
+        Instance::Scalar(Value::Null) => Json::Null,
+        _ => panic!("unexpected generated output kind"),
+    }
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::args().nth(1).ok_or("need cases path")?;
+    let cases: Json = serde_json::from_slice(&std::fs::read(&path)?)?;
+    let mut evidence = Vec::new();
+    for case in cases.as_array().ok_or("need cases array")? {
+        let source = from_json(&case["input"]);
+        let limits = OwnedSourceLimits {
+            max_roots: 4,
+            max_active_frames: 32,
+            max_path_segments: 64,
+            max_metadata_bytes: 1_048_576,
+            max_walk_contexts: 4096,
+        };
+        let actual =
+            mfd051_scalar_candidate::execute_with_basic_owned_sources(&source, &[], None, limits);
+        let observed = match actual {
+            Ok(output) => json!({"output": to_json(&output.primary)}),
+            Err(RuntimeError::MappingException {
+                message: Some(message),
+                ..
+            }) if message == "required source field is absent" => json!({"error": "required"}),
+            Err(RuntimeError::Function(FunctionError::InvalidArgument {
+                function: "format_guid_string",
+                ..
+            })) => json!({"error": "guid"}),
+            Err(error) => {
+                return Err(format!("{}: unexpected error {error:?}", case["label"]).into());
+            }
+        };
+        let wanted = if case.get("error").is_some() {
+            json!({"error": case["error"]})
+        } else {
+            json!({"output": case["expected"]})
+        };
+        evidence.push(json!({"label":case["label"], "actual":observed, "expected":wanted}));
+        if observed != wanted {
+            return Err(format!("mismatch: {}", evidence.last().unwrap()).into());
+        }
+    }
+    std::fs::write(
+        format!("{path}.rust-results.json"),
+        serde_json::to_vec_pretty(&evidence)?,
+    )?;
+    println!("{} generated Rust cases passed", evidence.len());
+    Ok(())
+}

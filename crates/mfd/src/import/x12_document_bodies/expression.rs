@@ -167,7 +167,20 @@ impl Builder<'_> {
         }
         let frame = (!owner.is_empty()).then_some(owner.clone());
         let local = path[owner.len()..].to_vec();
-        let raw = self.alloc(Node::SourceField { path: local, frame });
+        let raw = if owner.is_empty() && self.nullable_input {
+            // Pin the immutable projected message, not the current row or a
+            // same-named nested group. The existing owned read preserves Null
+            // for missing fields; required fields still raise below.
+            self.alloc(Node::OwnedSourceField(mapping::OwnedSourceField {
+                source: mapping::OwnedSourceRef {
+                    owner: mapping::SourceOwner::Primary,
+                    path: local,
+                },
+                frame: Some(vec![]),
+            }))
+        } else {
+            self.alloc(Node::SourceField { path: local, frame })
+        };
         let present = self.call("exists", vec![raw]);
         if (owner.len() + 1..=path.len()).all(|end| self.required.contains(&path[..end])) {
             let message = self.constant(Value::String("required source field is absent".into()));
@@ -199,6 +212,18 @@ impl Builder<'_> {
     fn input(&mut self, f: &Function, index: usize, anchor: &[String]) -> Result<Expr, MfdError> {
         self.scalar(self.feed(f.inputs.get(index).copied().flatten())?, anchor)
     }
+    fn nullable_scalar(&mut self, feed: u32, anchor: &[String]) -> Result<Expr, MfdError> {
+        // Admission belongs to this consumer's input expression, not to a file
+        // or target containing some unrelated nullable scalar component.
+        let previous = self.nullable_input;
+        self.nullable_input = true;
+        let result = self.scalar(feed, anchor);
+        self.nullable_input = previous;
+        result
+    }
+    fn nullable_argument(&mut self, f: &Function, anchor: &[String]) -> Result<Expr, MfdError> {
+        self.nullable_scalar(self.feed(f.inputs.first().copied().flatten())?, anchor)
+    }
     fn all_present(&mut self, args: &[Expr]) -> (NodeId, bool) {
         if args.iter().all(|a| a.always) {
             return (self.yes(), true);
@@ -212,7 +237,7 @@ impl Builder<'_> {
         (present, false)
     }
     pub(super) fn scalar(&mut self, feed: u32, anchor: &[String]) -> Result<Expr, MfdError> {
-        let key = (feed, anchor.to_vec());
+        let key = (feed, anchor.to_vec(), self.nullable_input);
         if let Some(value) = self.cache.get(&key) {
             return Ok(*value);
         }
@@ -270,6 +295,32 @@ impl Builder<'_> {
             });
             return Ok(self.present_value(value));
         }
+        if f.parsed.kind == 23 {
+            let input_feed = self.feed(f.inputs[0])?;
+            // Presence evaluates the map result as well as its value. Until a
+            // single-evaluation binding is available, never duplicate volatility.
+            if self.volatile(input_feed, &mut BTreeSet::new())? {
+                return Err(refuse("volatile value-map input is not admitted"));
+            }
+            let input = self.nullable_scalar(input_feed, anchor)?;
+            let map = f
+                .parsed
+                .valuemap
+                .as_ref()
+                .ok_or_else(|| refuse("missing value-map data"))?;
+            let value = self.alloc(Node::ValueMap {
+                input: input.value,
+                input_type: map.input_type,
+                table: map.table.clone(),
+                default: None,
+            });
+            let present = self.call("exists", vec![value]);
+            return Ok(Expr {
+                value,
+                present,
+                always: false,
+            });
+        }
         if f.parsed.kind == 4 {
             if f.inputs.len() != 3 {
                 return Err(refuse("requires one conditional branch"));
@@ -320,6 +371,18 @@ impl Builder<'_> {
             }
             ("lang", "create-guid") if f.inputs.is_empty() => {
                 let value = self.call("create_guid", vec![]);
+                Ok(self.present_value(value))
+            }
+            ("lang", "format-guid-string") if f.inputs.len() == 1 => {
+                let input = self.nullable_argument(&f, anchor)?;
+                let value = self.call("format_guid_string", vec![input.value]);
+                Ok(self.guard(value, input.present, input.always))
+            }
+            ("db", "is-not-null") if f.inputs.len() == 1 => {
+                let input = self.nullable_argument(&f, anchor)?;
+                // Read the value, not only its presence flag: reached required
+                // fields must still raise, and missing values yield present false.
+                let value = self.call("exists", vec![input.value]);
                 Ok(self.present_value(value))
             }
             ("core", "auto-number") if f.inputs == [None, None, None, None] => {

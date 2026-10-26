@@ -83,6 +83,43 @@ public static partial class GeneratedMapping
     )
 }
 
+pub(crate) fn native_nullable_message_entry(
+    program: &Program,
+    plan: &codegen::EagerX12JsonMessage,
+    owner: &[String],
+) -> String {
+    let mut scopes = Vec::new();
+    let body = add_scope(&program.root, &mut scopes);
+    let filename = add_scope(&program.extra_targets[0].root, &mut scopes);
+    let owner = owner
+        .iter()
+        .map(|part| literal::string(part))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let driver = plan
+        .driver
+        .iter()
+        .map(|part| literal::string(part))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        r#"
+public static partial class GeneratedMapping {{
+    public static global::Ferrule.Runtime.FerruleDocument? PrepareNativeX12NullableMessage(global::Ferrule.Runtime.ScopeContext context, global::System.Func<string>? bodyClock = null, global::System.Func<string>? filenameClock = null) {{
+        global::System.ArgumentNullException.ThrowIfNull(context);
+        context.RequireNativeX12Message(new string[] {{ {owner} }});
+        if (context.ResolveSourceField(new string[] {{ {driver} }}).Kind == global::Ferrule.Runtime.FerruleValueKind.Null) return null;
+        var body = Scope_{body}(context.WithDocumentBodyClock(bodyClock));
+        var filename = (global::Ferrule.Runtime.FerruleGroup)Scope_{filename}(context.WithDocumentFilenameClock(filenameClock));
+        var path = (filename.Fields.FirstOrDefault(field => field.Name == "Path")?.Value as global::Ferrule.Runtime.FerruleScalar)?.Value ?? global::Ferrule.Runtime.FerruleValue.Null;
+        return global::Ferrule.Runtime.FerruleDynamicDocuments.Create({}U, path, body);
+    }}
+}}
+"#,
+        plan.filename_node
+    )
+}
+
 pub(crate) fn deferred_xml_message_entry(
     program: &Program,
     plan: &codegen::DeferredX12XmlMessage,
@@ -158,7 +195,25 @@ fn render_with_options(
     json_boundaries: bool,
     visitor: Option<(Option<usize>, bool, bool)>,
 ) -> Result<String, EmitError> {
-    codegen::validate_owned_emission(program)?;
+    render_with_message_binding(program, json_boundaries, visitor, None)
+}
+
+pub(crate) fn render_native_x12_message(
+    program: &Program,
+    owner: &[String],
+) -> Result<String, EmitError> {
+    render_with_message_binding(program, false, None, Some(owner))
+}
+
+fn render_with_message_binding(
+    program: &Program,
+    json_boundaries: bool,
+    visitor: Option<(Option<usize>, bool, bool)>,
+    message_owner: Option<&[String]>,
+) -> Result<String, EmitError> {
+    if message_owner.is_none() {
+        codegen::validate_owned_emission(program)?;
+    }
     let has_filter_map = !program.filter_map_v1_sequences().is_empty();
     let mut expressions = BTreeMap::new();
     for node in &program.expressions {
@@ -188,27 +243,47 @@ fn render_with_options(
     if json_boundaries {
         output.insert_str(type_position, selected_json_api::OUTPUT_TYPES);
     }
-    output.insert_str(type_position, xml_api::render_types(program)?);
+    if message_owner.is_none() {
+        output.insert_str(type_position, xml_api::render_types(program)?);
+    }
     render_entry_points(program, primary_scope, &extra_scopes, &mut output);
     if json_boundaries {
         render_json_entry_points(program, &mut output)?;
         selected_json_api::render(program, &mut output);
     }
-    xml_api::render(program, &mut output)?;
+    if message_owner.is_none() {
+        xml_api::render(program, &mut output)?;
+    }
     failures::render(&program.failure_rules, &mut output)?;
     for function in &program.user_functions {
         render_user_function(function, &functions, has_filter_map, &mut output)?;
     }
 
     for (node, expression) in expressions {
-        render_expression(
-            node,
-            expression,
-            &functions,
-            has_filter_map,
-            ExpressionContext::Legacy,
-            &mut output,
-        )?;
+        if let (Some(owner), Expression::OwnedSourceField(field)) = (message_owner, expression) {
+            let owner = owner
+                .iter()
+                .map(|part| literal::string(part))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let path = field
+                .source
+                .path
+                .iter()
+                .map(|part| literal::string(part))
+                .collect::<Vec<_>>()
+                .join(", ");
+            output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleValue Node_{node}(global::Ferrule.Runtime.ScopeContext context) => context.NativeX12MessageField({node}U, new string[] {{ {owner} }}, new string[] {{ {path} }});\n"));
+        } else {
+            render_expression(
+                node,
+                expression,
+                &functions,
+                has_filter_map,
+                ExpressionContext::Legacy,
+                &mut output,
+            )?;
+        }
     }
 
     for (scope_index, scope) in scopes.iter().enumerate() {

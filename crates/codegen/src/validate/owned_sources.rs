@@ -824,6 +824,7 @@ impl BasicOwnedProfile {
     }
 }
 struct Admission<'a> {
+    native_message: Option<&'a crate::mapforce_x12_source::NativeX12RootAdmission>,
     program: &'a Program,
     profile: BasicOwnedProfile,
     sequence_item_at: SequenceItemAtPolicy,
@@ -908,7 +909,21 @@ impl<'a> Admission<'a> {
                     }),
                 ));
             }
+            let native_root = visit.namespace == Namespace::Main
+                && self
+                    .native_message
+                    .is_some_and(|admission| admission.contains(visit.node))
+                && matches!(expression, Expression::OwnedSourceField(_))
+                && visit
+                    .ancestry
+                    .iter()
+                    .all(|ancestor| matches!(ancestor, Ancestor::Legacy { .. }))
+                && visit
+                    .closed
+                    .as_ref()
+                    .is_none_or(|closed| closed.reason == Capability::ScopeControl);
             if let Some(query) = request(expression)
+                && !native_root
                 && let Some(closed) = visit
                     .closed
                     .clone()
@@ -1522,10 +1537,38 @@ pub(super) fn validate_closed_contexts_with_joins(
     owned_xml: OwnedXmlPolicy,
     join: JoinPolicy,
 ) -> Result<(), ProgramValidationError> {
+    validate_closed_contexts_with_joins_and_native_message(
+        program,
+        profile,
+        failures,
+        sequence_item_at,
+        path_hierarchy,
+        adjacency_tree,
+        dynamic_field,
+        owned_xml,
+        join,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn validate_closed_contexts_with_joins_and_native_message(
+    program: &Program,
+    profile: BasicOwnedProfile,
+    failures: FailurePolicy,
+    sequence_item_at: SequenceItemAtPolicy,
+    path_hierarchy: PathHierarchyPolicy,
+    adjacency_tree: AdjacencyTreePolicy,
+    dynamic_field: DynamicFieldPolicy,
+    owned_xml: OwnedXmlPolicy,
+    join: JoinPolicy,
+    native_message: Option<&crate::mapforce_x12_source::NativeX12RootAdmission>,
+) -> Result<(), ProgramValidationError> {
     if !has_owned(program) {
         return Ok(());
     }
     let mut admission = Admission {
+        native_message,
         program,
         profile,
         sequence_item_at,

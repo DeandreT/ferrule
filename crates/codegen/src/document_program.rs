@@ -20,6 +20,7 @@ pub struct DocumentProgram {
     primary_filename: PrimaryFilenamePlan,
     source_options: mapping::FormatOptions,
     json_source_projection: Option<mapping::JsonSourceShape>,
+    native_x12_nullable_binding: Option<String>,
 }
 
 impl DocumentProgram {
@@ -37,6 +38,12 @@ impl DocumentProgram {
 
     pub fn json_source_projection(&self) -> Option<&mapping::JsonSourceShape> {
         self.json_source_projection.as_ref()
+    }
+
+    /// Exact source descriptor admitted by the explicit native lowering entry.
+    /// Ordinary document lowering never supplies this capability marker.
+    pub fn native_x12_nullable_binding(&self) -> Option<&str> {
+        self.native_x12_nullable_binding.as_deref()
     }
 }
 
@@ -67,6 +74,28 @@ impl std::error::Error for DocumentLowerError {
 /// Retain a classified filename and apply the unchanged ordinary mapping gates.
 /// Unsupported filename expressions fail before lowering the mapping body.
 pub fn lower_document(document: &DocumentProject) -> Result<DocumentProgram, DocumentLowerError> {
+    lower_document_using(document, crate::lower, None)
+}
+
+/// Explicit selected-message lowering, not an extension of ordinary or Basic
+/// ownership admission. The resulting document is bound to this exact native
+/// source descriptor for subsequent native-only emission.
+pub fn lower_native_x12_nullable_document(
+    document: &DocumentProject,
+    source: &crate::NativeX12Source<'_>,
+) -> Result<DocumentProgram, DocumentLowerError> {
+    lower_document_using(
+        document,
+        |project| crate::lower::lower_with_native_x12_nullable_scalars(project, source),
+        Some(source),
+    )
+}
+
+fn lower_document_using(
+    document: &DocumentProject,
+    lower: impl Fn(&mapping::Project) -> Result<Program, LowerError>,
+    native: Option<&crate::NativeX12Source<'_>>,
+) -> Result<DocumentProgram, DocumentLowerError> {
     let node = document.primary_source().filename;
     let primary_filename = match document
         .global_filename()
@@ -81,11 +110,21 @@ pub fn lower_document(document: &DocumentProject) -> Result<DocumentProgram, Doc
             name: name.into(),
         },
     };
-    let program = crate::lower(document.project()).map_err(DocumentLowerError::Mapping)?;
+    let program = lower(document.project()).map_err(DocumentLowerError::Mapping)?;
+    let native_x12_nullable_binding = native
+        .map(|source| crate::prepare_native_x12_source(&program, source))
+        .transpose()
+        .map_err(|error| {
+            DocumentLowerError::Mapping(LowerError::new(vec![crate::Diagnostic::Validation {
+                location: "native X12 selected-message profile".into(),
+                message: error.to_string(),
+            }]))
+        })?;
     Ok(DocumentProgram {
         program,
         primary_filename,
         source_options: document.project().source_options.clone(),
         json_source_projection: document.json_source_projection().cloned(),
+        native_x12_nullable_binding,
     })
 }

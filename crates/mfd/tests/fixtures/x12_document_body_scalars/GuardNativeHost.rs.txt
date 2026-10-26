@@ -1,0 +1,248 @@
+use codegen_runtime::{
+    BasicSourceRoots, DocumentMember, ExecutionContext, GroupedItems, Instance,
+    InvocationCounterLimits, NamedInput, OwnedSourceLimits, RuntimeError, ScopeContext, Value,
+};
+use std::{cell::Cell, path::Path};
+const OWNER: &[&str] = &["Interchange", "Group", "Message_850"];
+
+fn reject<'a>(
+    context: &ScopeContext<'a>,
+    body: &'a dyn codegen_runtime::DocumentBodyClock,
+    filename: &'a dyn codegen_runtime::DocumentFilenameClock,
+) {
+    let result = mfd051_native_guard_r7::prepare_native_x12_nullable_message(
+        context,
+        Some(body),
+        Some(filename),
+    );
+    assert!(
+        matches!(
+            &result,
+            Err(RuntimeError::Function(
+                codegen_runtime::FunctionError::InvalidArgument {
+                    function: "native_x12_message_binding",
+                    ..
+                }
+            ))
+        ),
+        "entry must refuse before any branch, clock or row: {result:?}"
+    );
+}
+
+fn counters(value: &Instance) -> Vec<String> {
+    value
+        .field("rows")
+        .unwrap()
+        .as_repeated()
+        .unwrap()
+        .iter()
+        .map(|row| {
+            assert_eq!(
+                row.field("mapped").unwrap().as_scalar(),
+                Some(&Value::String("safe".into()))
+            );
+            match row.field("counter").unwrap().as_scalar().unwrap() {
+                Value::String(value) => value.clone(),
+                other => panic!("counter was not serialized as text: {other:?}"),
+            }
+        })
+        .collect()
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::path::PathBuf::from(std::env::args().nth(1).ok_or("need input")?);
+    let physical = mfd051_native_guard_r7::parse_native_primary_x12_source(&std::fs::read(&path)?)?;
+    let execution = ExecutionContext::new(Path::new("neutral.mfd")).with_invocation_counter_limits(
+        InvocationCounterLimits {
+            max_counters: 4,
+            max_text_bytes: 1024,
+        },
+    );
+    let body_calls = Cell::new(0);
+    let filename_calls = Cell::new(0);
+    let body = || {
+        body_calls.set(body_calls.get() + 1);
+        Ok("2026-10-24T12:00:00".to_string())
+    };
+    let filename = || {
+        filename_calls.set(filename_calls.get() + 1);
+        Ok("2026-10-25T13:00:00".to_string())
+    };
+    let root = ScopeContext::with_execution_context(&physical, &execution);
+    let messages = root.walk_source(OWNER);
+    assert_eq!(messages.len(), 3);
+    reject(&root, &body, &filename);
+    for message in &messages {
+        let duplicates = message.walk_source(OWNER);
+        assert_eq!(duplicates.len(), 3);
+        for duplicate in &duplicates {
+            reject(duplicate, &body, &filename);
+        }
+        for row in message.walk_source(&["Rows"]) {
+            reject(&row, &body, &filename);
+        }
+    }
+    let groups = GroupedItems::by(vec![(messages[0].clone(), Value::String("g".into()))], None);
+    let grouped = groups.contexts();
+    assert!(!grouped.is_empty());
+    for group in &grouped {
+        reject(group, &body, &filename);
+        let members = group.walk_source(&[]);
+        assert!(!members.is_empty());
+        for member in &members {
+            assert_eq!(member.position(OWNER), 1);
+            assert_eq!(
+                member.resolve_source_field(&["BEG", "F1"])?,
+                Value::String("A".into())
+            );
+            reject(member, &body, &filename);
+            assert!(
+                member
+                    .native_x12_message_field(9999, OWNER, &["BEG", "F1"])
+                    .is_err()
+            );
+        }
+    }
+    let named_inputs = [NamedInput {
+        name: "Other",
+        instance: &physical,
+    }];
+    let named =
+        ScopeContext::with_named_inputs_and_execution_context(&physical, &named_inputs, &execution);
+    let named_messages = named.walk_source(&["Other", "Interchange", "Group", "Message_850"]);
+    assert_eq!(named_messages.len(), 3);
+    for message in &named_messages {
+        reject(message, &body, &filename);
+    }
+    let empty_primary = Instance::Group(Vec::new().into());
+    let alias_inputs = [NamedInput {
+        name: "Interchange",
+        instance: physical.field("Interchange").unwrap(),
+    }];
+    let alias_root = ScopeContext::with_named_inputs_and_execution_context(
+        &empty_primary,
+        &alias_inputs,
+        &execution,
+    );
+    let alias_messages = alias_root.walk_source(OWNER);
+    assert_eq!(alias_messages.len(), 3);
+    assert_eq!(alias_messages[0].position(OWNER), 1);
+    assert_eq!(
+        alias_messages[0].resolve_source_field(&["BEG", "F1"])?,
+        Value::String("A".into())
+    );
+    for message in &alias_messages {
+        reject(message, &body, &filename);
+        assert!(
+            message
+                .native_x12_message_field(9999, OWNER, &["BEG", "F1"])
+                .is_err()
+        );
+    }
+    let primary_with_alias =
+        ScopeContext::with_named_inputs_and_execution_context(&physical, &alias_inputs, &execution);
+    let primary_messages = primary_with_alias.walk_source(OWNER);
+    assert_eq!(primary_messages.len(), 3);
+    for message in &primary_messages {
+        message.require_native_x12_message(OWNER)?;
+    }
+    let ordinary = ScopeContext::with_named_inputs(&physical, &[]);
+    for message in ordinary.walk_source(OWNER) {
+        message.require_native_x12_message(OWNER)?;
+    }
+    // A Basic endpoint remains nonnative even though its owner is named
+    // Primary and its legacy projection contains the physical input value.
+    let basic_roots = BasicSourceRoots::try_new(
+        &physical,
+        &[],
+        OwnedSourceLimits {
+            max_roots: 4,
+            max_active_frames: 32,
+            max_path_segments: 64,
+            max_metadata_bytes: 1_048_576,
+            max_walk_contexts: 4096,
+        },
+    )?;
+    let basic = basic_roots.root_context()?;
+    let basic_with_execution = basic_roots.root_context_with_execution(&execution)?;
+    for legacy in [basic.legacy_view(), basic_with_execution.legacy_view()] {
+        assert!(
+            legacy.next_primary_source(&physical).is_none(),
+            "a Basic legacy root is not a physical-primary transition source"
+        );
+        let basic_messages = legacy.walk_source(OWNER);
+        assert_eq!(basic_messages.len(), 3);
+        assert_eq!(
+            basic_messages[0].resolve_source_field(&["BEG", "F1"])?,
+            Value::String("A".into())
+        );
+        for message in &basic_messages {
+            reject(message, &body, &filename);
+            assert!(
+                message
+                    .native_x12_message_field(9999, OWNER, &["BEG", "F1"])
+                    .is_err()
+            );
+        }
+    }
+    assert_eq!((body_calls.get(), filename_calls.get()), (0, 0));
+    let mut observed = Vec::new();
+    for message in &messages {
+        let document = mfd051_native_guard_r7::prepare_native_x12_nullable_message(
+            message,
+            Some(&body),
+            Some(&filename),
+        )?
+        .unwrap();
+        observed.extend(counters(document.value()));
+    }
+    assert_eq!(observed, ["1", "2", "3", "4"]);
+    assert_eq!((body_calls.get(), filename_calls.get()), (3, 3));
+
+    // A physical document-origin frame is not a second matching message owner.
+    body_calls.set(0);
+    filename_calls.set(0);
+    let documents = Instance::DocumentSet(vec![
+        DocumentMember::new_source("origin.x12", "resolved-origin.x12", physical.clone()).unwrap(),
+    ]);
+    let origin_root = ScopeContext::with_execution_context(&documents, &execution);
+    reject(&origin_root, &body, &filename);
+    let origin_messages = origin_root.walk_source(OWNER);
+    assert_eq!(origin_messages.len(), 3);
+    for message in &origin_messages {
+        assert_eq!(
+            message.source_document_path()?,
+            Value::String("resolved-origin.x12".into())
+        );
+        for duplicate in message.walk_source(OWNER) {
+            reject(&duplicate, &body, &filename);
+        }
+    }
+    assert_eq!((body_calls.get(), filename_calls.get()), (0, 0));
+    let mut origin_counters = Vec::new();
+    for message in &origin_messages {
+        let document = mfd051_native_guard_r7::prepare_native_x12_nullable_message(
+            message,
+            Some(&body),
+            Some(&filename),
+        )?
+        .unwrap();
+        origin_counters.extend(counters(document.value()));
+        assert_eq!(
+            message.source_document_path()?,
+            Value::String("resolved-origin.x12".into())
+        );
+    }
+    assert_eq!(origin_counters, ["1", "2", "3", "4"]);
+    assert_eq!((body_calls.get(), filename_calls.get()), (3, 3));
+    std::fs::write(
+        path.with_extension("rust-guard-results.json"),
+        serde_json::to_vec_pretty(
+            &serde_json::json!({"duplicate_unchosen_no_effects":true,"named_rejected":true,"named_interchange_alias_rejected":true,"grouped_rejected":true,"iterated_group_members_rejected":true,"basic_legacy_rejected":true,"origin_preserved":true,"counters":observed,"origin_counters":origin_counters}),
+        )?,
+    )?;
+    println!(
+        "entry preflight rejected duplicate/named/grouped frames before effects; origin and counters preserved"
+    );
+    Ok(())
+}

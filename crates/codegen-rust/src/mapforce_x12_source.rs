@@ -49,6 +49,100 @@ pub fn emit_with_mapforce_x12_json(
 }
 impl std::error::Error for MapForceSourceEmitError {}
 
+/// Explicit native-only nullable scalar capability. The caller passes a
+/// physical-envelope ScopeContext positioned on the descriptor's message.
+/// Logical body-root reads bind to that message frame; Primary is unchanged.
+pub fn emit_with_native_primary_eager_x12_nullable_scalars(
+    document: &codegen::DocumentProgram,
+    options: &Options,
+    source: &codegen::NativeX12Source<'_>,
+    filename_target: &str,
+    driver: &[String],
+) -> Result<ArtifactSet, MapForceSourceEmitError> {
+    let program = document.program();
+    let descriptor = codegen::prepare_native_x12_source(program, source)
+        .map_err(MapForceSourceEmitError::Boundary)?;
+    if document.native_x12_nullable_binding() != Some(descriptor.as_str()) {
+        return Err(MapForceSourceEmitError::Boundary(
+            MapForceX12SourceError::Binding(
+                "requires explicit native nullable document lowering with this source descriptor",
+            ),
+        ));
+    }
+    codegen::validate_native_x12_nullable_scalars(program, source)
+        .map_err(MapForceSourceEmitError::Boundary)?;
+    if !crate::valid_package_name(&options.package_name) {
+        return Err(MapForceSourceEmitError::Emit(
+            EmitError::InvalidPackageName(options.package_name.clone()),
+        ));
+    }
+    let writer =
+        codegen::prepare_mapforce_json_writer(program).map_err(MapForceSourceEmitError::Writer)?;
+    let plan = codegen::prepare_eager_x12_json_message(program, filename_target, driver)
+        .map_err(MapForceSourceEmitError::Writer)?;
+    let artifacts = (|| -> Result<ArtifactSet, EmitError> {
+        ArtifactSet::new([
+            codegen::GeneratedFile::new(
+                codegen::ArtifactPath::new("Cargo.toml")?,
+                crate::render_manifest(options),
+            ),
+            codegen::GeneratedFile::new(
+                codegen::ArtifactPath::new("src/lib.rs")?,
+                crate::render_native_x12_message(program, source.message)?,
+            ),
+        ])
+        .map_err(EmitError::from)
+    })()
+    .map_err(MapForceSourceEmitError::Emit)?;
+    let mut files = crate::primary_filename::append(artifacts, document)
+        .map_err(MapForceSourceEmitError::Emit)?
+        .into_files();
+    let mapping = files
+        .iter_mut()
+        .find(|file| file.path.as_str() == "src/lib.rs")
+        .ok_or(MapForceSourceEmitError::Artifact)?;
+    let owner = source
+        .message
+        .iter()
+        .map(|part| format!("{part:?}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let driver = plan
+        .driver
+        .iter()
+        .map(|part| format!("{part:?}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    mapping.contents.extend_from_slice(format!(r#"
+pub fn parse_native_primary_x12_source(bytes: &[u8]) -> Result<Instance, codegen_runtime::X12BoundaryError> {{
+    codegen_runtime::parse_mapforce_x12_source({descriptor:?}, bytes)
+}}
+pub fn parse_native_primary_x12_document(identity: &str, bytes: &[u8]) -> Result<codegen_runtime::ParsedX12Source, codegen_runtime::X12BoundaryError> {{
+    codegen_runtime::parse_mapforce_x12_source_document({descriptor:?}, identity, bytes)
+}}
+pub fn serialize_mapforce_json(value: &Instance) -> Result<String, codegen_runtime::MapForceJson5Error> {{
+    codegen_runtime::serialize_mapforce_json_ascii_keys({writer:?}, value)
+}}
+/// Explicit selected-message entry; a physical root or row context is refused.
+pub fn prepare_native_x12_nullable_message<'a>(context: &ScopeContext<'a>, body_clock: Option<&'a dyn codegen_runtime::DocumentBodyClock>, filename_clock: Option<&'a dyn codegen_runtime::DocumentFilenameClock>) -> Result<Option<codegen_runtime::DocumentMember>, RuntimeError> {{
+    context.require_native_x12_message(&[{owner}])?;
+    if matches!(context.resolve_source_field(&[{driver}])?, Value::Null) {{ return Ok(None); }}
+    let body_context = context.clone().with_document_body_clock(body_clock);
+    let body = scope_root(&body_context)?;
+    let filename = scope_extra_0(&context.clone().with_document_filename_clock(filename_clock))?;
+    let path = filename.field("Path").and_then(Instance::as_scalar).cloned().unwrap_or(Value::Null);
+    Ok(Some(codegen_runtime::dynamic_document({}, path, body)?))
+}}
+pub fn acquire_native_primary_x12<'a,E:'a,I:Iterator<Item=Result<String,E>>+'a>(execution:&ExecutionContext<'a>,select:impl FnOnce(&str)->Result<I,E>+'a,load:impl FnMut(&str)->Result<codegen_runtime::ParsedX12Source,E>+'a,maximum:usize)->Result<codegen_runtime::X12SourceAcquisition<'a,RuntimeError,E>,codegen_runtime::X12AcquisitionError<RuntimeError,E>> {{
+    let execution=*execution;
+    codegen_runtime::X12SourceAcquisition::new({descriptor:?},move||evaluate_primary_filename(&execution),select,load,maximum)
+}}
+"#, plan.filename_node).as_bytes());
+    ArtifactSet::new(files)
+        .map_err(EmitError::from)
+        .map_err(MapForceSourceEmitError::Emit)
+}
+
 pub fn emit_with_native_deferred_x12_xml(
     document: &codegen::DocumentProgram,
     options: &Options,
