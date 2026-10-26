@@ -248,7 +248,7 @@ impl Builder<'_> {
                     if format == X12DocumentBodyFormat::Xml {
                         if let Some(owner) = self.external_owner(feed, &current)? {
                             let expr = self.scalar(feed, &owner)?;
-                            let expr = self.cast(expr, *ty)?;
+                            let expr = self.cast_target(feed, expr, *ty)?;
                             Some(Scope {
                                 target_field: name.into(),
                                 iteration: ScopeIteration::Source(owner[current.len()..].to_vec()),
