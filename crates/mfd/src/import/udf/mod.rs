@@ -222,6 +222,13 @@ pub(super) struct Registry {
     sources: Vec<super::schema::SchemaComponent>,
 }
 
+#[derive(Clone)]
+pub(super) struct ScalarCallOutput {
+    /// Definition parameter identity to the caller's actual input connector.
+    pub(super) inputs: BTreeMap<u32, u32>,
+    pub(super) expression: ScalarExpr,
+}
+
 impl Registry {
     #[cfg(test)]
     pub(super) fn read(
@@ -445,6 +452,68 @@ impl Registry {
             .next()
             .is_none()
             .then(|| (definition.parameters.clone(), expression.clone()))
+    }
+
+    pub(super) fn string_call_outputs(
+        &self,
+        component: &roxmltree::Node<'_, '_>,
+    ) -> Result<BTreeMap<u32, ScalarCallOutput>, String> {
+        let library = component.attribute("library").unwrap_or_default();
+        let name = component.attribute("name").unwrap_or_default();
+        let index = self.supported(library, name).ok_or_else(|| {
+            self.unsupported_reason(library, name)
+                .unwrap_or("missing embedded scalar definition")
+                .to_string()
+        })?;
+        let definition = self.definition(index).ok_or("missing scalar definition")?;
+        let interface = definition
+            .scalar_interface
+            .as_ref()
+            .ok_or("definition has no scalar interface")?;
+        if !definition.structured_parameters.is_empty()
+            || interface
+                .parameters
+                .iter()
+                .any(|p| p.ty != Some(ScalarType::String))
+            || interface
+                .outputs
+                .iter()
+                .any(|p| p.ty != Some(ScalarType::String))
+        {
+            return Err("requires a String-only scalar definition".into());
+        }
+        let call = Call::read(component, index, definition)?;
+        let mut outputs = BTreeMap::new();
+        for (port, parameter) in call.outputs {
+            let Some(OutputExpr::Scalar(expression)) = definition.outputs.get(&parameter) else {
+                return Err("requires a scalar definition output".into());
+            };
+            if expression.requires_inlining() {
+                return Err(
+                    "sequence/defaulted scalar definitions require separate admission".into(),
+                );
+            }
+            let mut parameters = BTreeSet::new();
+            expression.collect_parameters(&mut parameters);
+            let inputs = parameters
+                .into_iter()
+                .map(|parameter| {
+                    call.inputs
+                        .get(&parameter)
+                        .copied()
+                        .map(|pin| (parameter, pin))
+                        .ok_or_else(|| "unconnected scalar definition parameter".to_string())
+                })
+                .collect::<Result<_, _>>()?;
+            outputs.insert(
+                port,
+                ScalarCallOutput {
+                    inputs,
+                    expression: expression.clone(),
+                },
+            );
+        }
+        Ok(outputs)
     }
 
     pub(super) fn take_sources(&mut self) -> Vec<super::schema::SchemaComponent> {
