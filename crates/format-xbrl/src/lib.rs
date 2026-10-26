@@ -11,9 +11,11 @@ use std::path::Path;
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_TEXT_FIELD};
 use mapping::XbrlFactType;
 
+pub use bounded::{XbrlLimit, XbrlLimitOptions, XbrlLimits, from_bytes_bounded, to_bytes_bounded};
 pub use error::XbrlFormatError;
 use render::{Prefixes, expanded_qname, is_structural_namespace, render_target};
 
+mod bounded;
 mod error;
 mod render;
 
@@ -44,6 +46,16 @@ pub fn to_string(
     instance: &Instance,
     options: &mapping::XbrlBoundaryOptions,
 ) -> Result<String, XbrlFormatError> {
+    let (rows, defaults, prefixes) = target_parts(schema, instance, options, None)?;
+    render_target(options.taxonomy(), &rows, &defaults.units, &prefixes)
+}
+
+fn target_parts(
+    schema: &SchemaNode,
+    instance: &Instance,
+    options: &mapping::XbrlBoundaryOptions,
+    limits: Option<&XbrlLimitOptions>,
+) -> Result<(Vec<TargetRow>, TargetDefaults, Prefixes), XbrlFormatError> {
     reject_decimal_values(schema, instance, &mut Vec::new(), 0)?;
     let namespaces = namespace_map(options);
     let fact_types = options
@@ -56,6 +68,7 @@ pub fn to_string(
         namespaces: &namespaces,
         fact_types: &fact_types,
         defaults: &defaults,
+        budget: limits.map(|limits| std::cell::RefCell::new(bounded::BuildBudget::new(limits))),
     };
     let mut rows = Vec::new();
     collect_target_rows(schema, instance, &mut Vec::new(), &context, &mut rows, 0)?;
@@ -83,7 +96,7 @@ pub fn to_string(
         }
     }
     let prefixes = Prefixes::new(prefix_uris);
-    render_target(options.taxonomy(), &rows, &defaults.units, &prefixes)
+    Ok((rows, defaults, prefixes))
 }
 
 fn reject_decimal_values(
@@ -176,6 +189,7 @@ struct TargetContext<'a> {
     namespaces: &'a BTreeMap<Vec<String>, String>,
     fact_types: &'a BTreeMap<Vec<String>, XbrlFactType>,
     defaults: &'a TargetDefaults,
+    budget: Option<std::cell::RefCell<bounded::BuildBudget<'a>>>,
 }
 
 #[derive(Clone)]
@@ -358,6 +372,9 @@ fn collect_target_rows(
                 dimensions: Vec::new(),
                 facts: Vec::new(),
             };
+            if let Some(budget) = &context.budget {
+                budget.borrow_mut().row(&row)?;
+            }
             collect_row_values(schema, item, path, context, &mut row, depth + 1)?;
             if row.facts.is_empty() {
                 continue;
@@ -438,13 +455,17 @@ fn collect_row_values(
                     } else {
                         (None, None)
                     };
-                row.facts.push(Fact {
+                let fact = Fact {
                     namespace: namespace.to_string(),
                     name: local_name(&schema.name).to_string(),
                     value,
                     unit_ref,
                     decimals,
-                });
+                };
+                if let Some(budget) = &context.budget {
+                    budget.borrow_mut().fact(&fact)?;
+                }
+                row.facts.push(fact);
             }
         }
         SchemaKind::ScalarUnion { .. } => {
@@ -471,11 +492,15 @@ fn collect_row_values(
             if let Some(member) = direct_scalar_child(schema, instance, "explicitMember")
                 && let Some(namespace) = namespace
             {
-                row.dimensions.push(Dimension {
+                let dimension = Dimension {
                     namespace: namespace.to_string(),
                     name: schema.name.clone(),
                     member,
-                });
+                };
+                if let Some(budget) = &context.budget {
+                    budget.borrow_mut().dimension(&dimension)?;
+                }
+                row.dimensions.push(dimension);
             }
             for (index, child) in children.iter().enumerate() {
                 let Some(child_instance) = instance_child(fields, children, index) else {
@@ -796,6 +821,15 @@ fn from_str_with_namespaces(
         });
     }
     let document = roxmltree::Document::parse(text)?;
+    project_document(&document, schema, namespaces, None)
+}
+
+fn project_document(
+    document: &roxmltree::Document<'_>,
+    schema: &SchemaNode,
+    namespaces: Option<&BTreeMap<Vec<String>, String>>,
+    mut budget: Option<&mut bounded::ModelBudget<'_>>,
+) -> Result<Instance, XbrlFormatError> {
     let root = document.root_element();
     if root.tag_name().name() != "xbrl" || root.tag_name().namespace() != Some(XBRLI) {
         let found = root.tag_name().namespace().map_or_else(
@@ -812,8 +846,22 @@ fn from_str_with_namespaces(
     let concepts = concrete_concepts(row_schema, &mut concept_path, namespaces, 0)?;
     let contexts = read_contexts(&root)?;
     let facts = read_facts(&root, &contexts, &concepts)?;
+    let projection = TableProjection {
+        contexts: &contexts,
+        facts: &facts,
+        namespaces,
+    };
+    // Preserve legacy recursion accounting, but bounded model depth starts at
+    // one and includes the Repeated container plus each row, just like writer
+    // input admission. A returned model must fit those same depth limits.
+    let root_depth = usize::from(budget.is_some());
     materialize(
-        schema, &row_path, &row_path, &contexts, &facts, namespaces, 0,
+        schema,
+        &row_path,
+        &row_path,
+        &projection,
+        root_depth,
+        &mut budget,
     )
 }
 
@@ -830,6 +878,12 @@ struct ConceptKey {
 }
 
 type FactMap<'a, 'input> = BTreeMap<(usize, ConceptKey), roxmltree::Node<'a, 'input>>;
+
+struct TableProjection<'a, 'input, 'options> {
+    contexts: &'a [Context<'a, 'input>],
+    facts: &'a FactMap<'a, 'input>,
+    namespaces: Option<&'options BTreeMap<Vec<String>, String>>,
+}
 
 struct RowBuildContext<'a, 'input, 'options> {
     context: Context<'a, 'input>,
@@ -1033,27 +1087,35 @@ fn materialize(
     schema: &SchemaNode,
     row_path: &[String],
     full_row_path: &[String],
-    contexts: &[Context<'_, '_>],
-    facts: &FactMap<'_, '_>,
-    namespaces: Option<&BTreeMap<Vec<String>, String>>,
+    projection: &TableProjection<'_, '_, '_>,
     depth: usize,
+    budget: &mut Option<&mut bounded::ModelBudget<'_>>,
 ) -> Result<Instance, XbrlFormatError> {
+    if let Some(budget) = budget.as_deref_mut() {
+        budget.node(depth)?;
+    }
     if depth > MAX_SCHEMA_DEPTH {
         return Err(XbrlFormatError::SchemaDepth {
             limit: MAX_SCHEMA_DEPTH,
         });
     }
     if row_path.is_empty() {
-        let rows = contexts
+        let rows = projection
+            .contexts
             .iter()
             .enumerate()
-            .filter(|(index, _)| facts.keys().any(|(fact_index, _)| fact_index == index))
+            .filter(|(index, _)| {
+                projection
+                    .facts
+                    .keys()
+                    .any(|(fact_index, _)| fact_index == index)
+            })
             .map(|(index, context)| {
                 let source = RowBuildContext {
                     context: *context,
                     context_index: index,
-                    facts,
-                    namespaces,
+                    facts: projection.facts,
+                    namespaces: projection.namespaces,
                 };
                 build_row(
                     schema,
@@ -1061,6 +1123,7 @@ fn materialize(
                     None,
                     &mut full_row_path.to_vec(),
                     depth + 1,
+                    budget,
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -1076,14 +1139,16 @@ fn materialize(
                 child,
                 &row_path[1..],
                 full_row_path,
-                contexts,
-                facts,
-                namespaces,
+                projection,
                 depth + 1,
+                budget,
             )?
         } else {
-            empty_instance(child, depth + 1)?
+            empty_instance(child, depth + 1, budget)?
         };
+        if let Some(budget) = budget.as_deref_mut() {
+            budget.text(&child.name)?;
+        }
         fields.push((child.name.clone(), value));
     }
     Ok(Instance::Group((fields).into()))
@@ -1095,7 +1160,11 @@ fn build_row(
     active: Option<roxmltree::Node<'_, '_>>,
     path: &mut Vec<String>,
     depth: usize,
+    budget: &mut Option<&mut bounded::ModelBudget<'_>>,
 ) -> Result<Instance, XbrlFormatError> {
+    if let Some(budget) = budget.as_deref_mut() {
+        budget.node(depth)?;
+    }
     if depth > MAX_SCHEMA_DEPTH {
         return Err(XbrlFormatError::SchemaDepth {
             limit: MAX_SCHEMA_DEPTH,
@@ -1112,6 +1181,9 @@ fn build_row(
                 path,
                 source.namespaces,
             );
+            if let (Some(budget), Some(text)) = (budget.as_deref_mut(), text) {
+                budget.text(text)?;
+            }
             Ok(Instance::Scalar(parse_scalar(&schema.name, *ty, text)?))
         }
         SchemaKind::ScalarUnion { .. } => Err(XbrlFormatError::UnsupportedScalarUnion {
@@ -1135,7 +1207,10 @@ fn build_row(
                 .iter()
                 .map(|child| {
                     path.push(child.name.clone());
-                    let value = build_row(child, source, active, path, depth + 1);
+                    if let Some(budget) = budget.as_deref_mut() {
+                        budget.text(&child.name)?;
+                    }
+                    let value = build_row(child, source, active, path, depth + 1, budget);
                     path.pop();
                     value.map(|value| (child.name.clone(), value))
                 })
@@ -1231,7 +1306,14 @@ fn parse_scalar(name: &str, ty: ScalarType, text: Option<&str>) -> Result<Value,
     }
 }
 
-fn empty_instance(schema: &SchemaNode, depth: usize) -> Result<Instance, XbrlFormatError> {
+fn empty_instance(
+    schema: &SchemaNode,
+    depth: usize,
+    budget: &mut Option<&mut bounded::ModelBudget<'_>>,
+) -> Result<Instance, XbrlFormatError> {
+    if let Some(budget) = budget.as_deref_mut() {
+        budget.node(depth)?;
+    }
     if depth > MAX_SCHEMA_DEPTH {
         return Err(XbrlFormatError::SchemaDepth {
             limit: MAX_SCHEMA_DEPTH,
@@ -1249,7 +1331,11 @@ fn empty_instance(schema: &SchemaNode, depth: usize) -> Result<Instance, XbrlFor
             (children
                 .iter()
                 .map(|child| {
-                    empty_instance(child, depth + 1).map(|value| (child.name.clone(), value))
+                    if let Some(budget) = budget.as_deref_mut() {
+                        budget.text(&child.name)?;
+                    }
+                    empty_instance(child, depth + 1, budget)
+                        .map(|value| (child.name.clone(), value))
                 })
                 .collect::<Result<Vec<_>, _>>()?)
             .into(),
