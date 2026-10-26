@@ -281,9 +281,14 @@ pub fn import_x12_document_bodies_with_options(
             .root_element()
             .children()
             .filter(|n| n.has_tag_name("component"))
+            // Library-qualified top-level components are UDF declarations, as
+            // in the ordinary importer's definition registry. They remain in
+            // the parsed document, outside the main graph's port/UID namespace.
+            // Calls inside the selected main still face all function gates.
+            .filter(|n| n.attribute("library").unwrap_or_default().is_empty())
             .collect();
         let [wrapper] = wrappers.as_slice() else {
-            return Err(refuse("requires one mapping wrapper"));
+            return Err(refuse("requires one unqualified main mapping wrapper"));
         };
         let structure = wrapper
             .children()
