@@ -25,7 +25,7 @@ fn import_design(resources: &Path, design: &str, label: &str) -> mfd::Imported {
 fn ordinary_literal_only_variable_records_refuse_controlled_parent_scopes() {
     let resources = fixtures();
     let compiled =
-        format_edi::config::import_config(&resources.join("Envelope.Config"), &["850".into()])
+        format_edi_config::import_config(&resources.join("Envelope.Config"), &["850".into()])
             .unwrap();
     let selected = ["Interchange", "Group", "Message_850", "Loop0100", "N1"]
         .iter()

@@ -162,10 +162,10 @@ fn exported_idoc_config_sibling_survives_relocation_and_keeps_native_blockers() 
     let rendered = assert_portable_config_reference(&bundle, &references[0]);
     let descriptor = project.source_options.idoc_native_config.as_ref().unwrap();
     assert_eq!(
-        format_edi::config::idoc::parse_native_config(&rendered).unwrap(),
+        format_edi_config::idoc::parse_native_config(&rendered).unwrap(),
         *descriptor
     );
-    let compiled = format_edi::config::idoc::import_config(&bundle.join(&references[0])).unwrap();
+    let compiled = format_edi_config::idoc::import_config(&bundle.join(&references[0])).unwrap();
     assert_eq!(compiled.native.as_ref(), Some(descriptor));
     assert_eq!(compiled.schema, project.source);
     assert_eq!(
@@ -213,7 +213,7 @@ fn multiple_idoc_boundaries_receive_distinct_config_siblings() {
     for reference in references {
         let rendered = assert_portable_config_reference(&bundle, &reference);
         assert_eq!(
-            format_edi::config::idoc::parse_native_config(&rendered).unwrap(),
+            format_edi_config::idoc::parse_native_config(&rendered).unwrap(),
             *project.source_options.idoc_native_config.as_ref().unwrap()
         );
     }

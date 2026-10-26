@@ -647,7 +647,7 @@ mod tests {
             std::process::id()
         ));
         std::fs::write(&path, rendered).unwrap();
-        let imported = crate::config::idoc::import_config(&path).unwrap();
+        let imported = crate::idoc::import_config(&path).unwrap();
         std::fs::remove_file(path).unwrap();
         assert_eq!((schema, layout), (imported.schema, imported.layout));
         assert_eq!(imported.native, Some(descriptor));
@@ -727,14 +727,14 @@ mod tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::write(&path, synthetic()).unwrap();
-        let certified = crate::config::idoc::import_config(&path).unwrap();
+        let certified = crate::idoc::import_config(&path).unwrap();
         assert!(certified.native.is_some());
         std::fs::write(
             &path,
             synthetic().replace("QUALIFIED", "UNSUPPORTED_DIRECTIVE x"),
         )
         .unwrap();
-        let legacy = crate::config::idoc::import_config(&path).unwrap();
+        let legacy = crate::idoc::import_config(&path).unwrap();
         std::fs::remove_file(path).unwrap();
         assert!(legacy.native.is_none());
         assert_eq!(legacy.schema, certified.schema);
@@ -756,7 +756,7 @@ mod tests {
         let descriptor = parse_native_config(&text).unwrap();
         let rendered = render_native_config(&descriptor).unwrap();
         assert_eq!(parse_native_config(&rendered).unwrap(), descriptor);
-        let compiled = crate::config::idoc::import_config(&path).unwrap();
+        let compiled = crate::idoc::import_config(&path).unwrap();
         assert_eq!(compiled.native.as_ref(), Some(&descriptor));
         assert_eq!(
             descriptor.project().unwrap(),

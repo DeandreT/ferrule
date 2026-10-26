@@ -1938,7 +1938,18 @@ version = "0.1.0"
 dependencies = [
  "ir",
  "mapping",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "format-edi-config"
+version = "0.1.0"
+dependencies = [
+ "format-edi",
+ "ir",
+ "mapping",
  "roxmltree",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 
@@ -3002,6 +3013,7 @@ dependencies = [
  "format-csv",
  "format-db",
  "format-edi",
+ "format-edi-config",
  "format-flextext",
  "format-json",
  "format-pdf",
