@@ -101,6 +101,7 @@ fn full(value: &Instance) -> Json {
             Value::Null => json!({"kind":"Null"}),
             Value::JsonNull(_) => json!({"kind":"JsonNull"}),
             Value::XmlNil(_) => json!({"kind":"XmlNil"}),
+            Value::Decimal(value) => json!({"kind":"Decimal","value":value.to_string()}),
         }}),
         Instance::Repeated(items) => {
             json!({"kind":"Repeated","items":items.iter().map(full).collect::<Vec<_>>()})

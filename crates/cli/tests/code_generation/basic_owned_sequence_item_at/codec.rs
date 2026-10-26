@@ -222,6 +222,7 @@ pub fn raw_tree(instance: &Instance) -> Json {
         Instance::Scalar(Value::XmlNil(_)) => json!(["XmlNil"]),
         Instance::Scalar(Value::Bool(value)) => json!(["Bool", value]),
         Instance::Scalar(Value::Int(value)) => json!(["Int", value]),
+        Instance::Scalar(Value::Decimal(value)) => json!(["Decimal", value.to_string()]),
         Instance::Scalar(Value::String(value)) => json!(["String", value]),
         Instance::Scalar(Value::Float(value)) => {
             json!(["Float", format!("{:016x}", value.to_bits())])

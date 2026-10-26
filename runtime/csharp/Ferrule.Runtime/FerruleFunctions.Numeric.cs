@@ -11,7 +11,7 @@ public static partial class FerruleFunctions
         RequireArity("is_numeric", arguments, 1);
         var numeric = arguments[0].Kind switch
         {
-            FerruleValueKind.Int64 => true,
+            FerruleValueKind.Int64 or FerruleValueKind.Decimal => true,
             FerruleValueKind.Double => double.IsFinite(arguments[0].DoubleValue),
             FerruleValueKind.String => TryFiniteDouble(arguments[0].StringValue, out _),
             _ => false,
@@ -23,6 +23,10 @@ public static partial class FerruleFunctions
     {
         RequireArity("to_number", arguments, 1);
         var value = arguments[0];
+        if (value.Kind == FerruleValueKind.Decimal)
+        {
+            throw Type("to_number", value);
+        }
         if (value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
         {
             return value;
@@ -69,6 +73,7 @@ public static partial class FerruleFunctions
             FerruleValueKind.Double => value.DoubleValue != 0.0 &&
                 !double.IsNaN(value.DoubleValue),
             FerruleValueKind.String => value.StringValue.Length != 0,
+            FerruleValueKind.Decimal => throw Type("boolean", value),
             _ => false,
         });
     }
@@ -182,6 +187,10 @@ public static partial class FerruleFunctions
     {
         const string function = "sqlite_multiply";
         RequireArity(function, arguments, 2);
+        if (arguments.Any(value => value.Kind == FerruleValueKind.Decimal))
+        {
+            throw Type(function, arguments.First(value => value.Kind == FerruleValueKind.Decimal));
+        }
         if (arguments.Any(value =>
                 value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull))
         {
@@ -227,6 +236,10 @@ public static partial class FerruleFunctions
         RequireArity(function, arguments, 2);
         var left = arguments[0];
         var right = arguments[1];
+        if (left.Kind == FerruleValueKind.Decimal || right.Kind == FerruleValueKind.Decimal)
+        {
+            throw Type(function, left.Kind == FerruleValueKind.Decimal ? left : right);
+        }
         if (left.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil ||
             right.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil)
         {
@@ -428,6 +441,7 @@ public static partial class FerruleFunctions
         FerruleValueKind.Int64 => value.Int64Value.ToString(CultureInfo.InvariantCulture),
         FerruleValueKind.Double => DoubleText(value.DoubleValue),
         FerruleValueKind.String => value.StringValue,
+        FerruleValueKind.Decimal => value.DecimalValue.ToString(),
         _ => string.Empty,
     };
 

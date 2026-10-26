@@ -44,6 +44,7 @@ pub fn to_string(
     instance: &Instance,
     options: &mapping::XbrlBoundaryOptions,
 ) -> Result<String, XbrlFormatError> {
+    reject_decimal_values(schema, instance, &mut Vec::new(), 0)?;
     let namespaces = namespace_map(options);
     let fact_types = options
         .fact_bindings()
@@ -83,6 +84,48 @@ pub fn to_string(
     }
     let prefixes = Prefixes::new(prefix_uris);
     render_target(options.taxonomy(), &rows, &defaults.units, &prefixes)
+}
+
+fn reject_decimal_values(
+    schema: &SchemaNode,
+    instance: &Instance,
+    path: &mut Vec<String>,
+    depth: usize,
+) -> Result<(), XbrlFormatError> {
+    check_depth(depth)?;
+    if schema.repeating
+        && let Instance::Repeated(items) = instance
+    {
+        for item in items {
+            reject_decimal_item(schema, item, path, depth + 1)?;
+        }
+        return Ok(());
+    }
+    reject_decimal_item(schema, instance, path, depth)
+}
+
+fn reject_decimal_item(
+    schema: &SchemaNode,
+    instance: &Instance,
+    path: &mut Vec<String>,
+    depth: usize,
+) -> Result<(), XbrlFormatError> {
+    check_depth(depth)?;
+    if matches!(instance, Instance::Scalar(Value::Decimal(_))) {
+        return Err(shape(path));
+    }
+    if let (SchemaKind::Group { children, .. }, Instance::Group(fields)) = (&schema.kind, instance)
+    {
+        for (index, child) in children.iter().enumerate() {
+            let Some(value) = instance_child(fields, children, index) else {
+                continue;
+            };
+            path.push(child.name.clone());
+            reject_decimal_values(child, value, path, depth + 1)?;
+            path.pop();
+        }
+    }
+    Ok(())
 }
 
 fn namespace_map(options: &mapping::XbrlBoundaryOptions) -> BTreeMap<Vec<String>, String> {
@@ -592,6 +635,7 @@ fn scalar_value(instance: &Instance) -> Option<String> {
         Value::Float(value) if value.is_finite() => Some(value.to_string()),
         Value::Float(_) => None,
         Value::Bool(value) => Some(value.to_string()),
+        Value::Decimal(_) => None,
     }
 }
 
