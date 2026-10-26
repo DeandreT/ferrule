@@ -16,7 +16,9 @@ These APIs are in-memory only. They use the same flat schema, one-based sheet
 coordinates, selected columns, header detection, explicit physical headers,
 null/empty-cell handling, and typed values as the existing flat APIs. Integer
 writes retain the exact f64 range check; numeric XML that could round before
-conversion to a selected integer field rejects as `Parse`. Float fields retain
+conversion to a selected integer field rejects as `Parse`. Integer projection
+checks the exact original decimal/scientific token, including fractional rounding
+and nonzero underflow to zero. Float fields retain
 the finite f64 domain, including large/small values. Formula computation, external
 resource fetching, update-existing writes, and non-flat layouts are not included.
 
@@ -32,6 +34,11 @@ Before calamine is constructed, the reader:
 - Scans every XML part under shared node/text budgets and a per-document depth
   cap. Text limits include decoded attributes; each attribute and concatenated
   cell/shared string also has a string-size cap. DTDs and custom entities reject.
+- Rejects entities, CDATA, comments and fragmented text inside scalar `<v>`
+  values rather than letting preflight and calamine interpret different values.
+  Rich/shared/inline `<t>` strings retain their decoded text behavior. Structural
+  attributes consumed raw by calamine cannot use entity escapes or normalized
+  whitespace; competing attribute local names also reject.
 - Bounds both declared shared-string reservation counts and actual strings.
 - Checks every worksheet's explicit row/cell coordinates, cell count and dense
   bounding rectangle, including empty cells and unselected sheets. A misleading
@@ -64,7 +71,9 @@ theme XML are scanned too; no embedded binaries, macros, links or images load.
 
 The writer checks row/group shape, field types, physical coordinates, counts,
 strings (including lexical numeric input), and conservative XML growth before
-constructing a workbook. It reuses the existing value conversion rules. A
+constructing a workbook. Numeric growth includes the pinned writer's actual
+decimal formatting, including long tiny-number and subnormal representations.
+It reuses the existing value conversion rules. A
 `Write` adapter refuses any write that would grow the returned ZIP buffer beyond
 `OutputBytes`; actual generated ZIP/XML is validated again before return. No
 partial buffer is returned on failure. Limits are per call, so a failed workbook

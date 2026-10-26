@@ -6,6 +6,8 @@ use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 use super::*;
 use crate::FlatTableWriteOptions;
 
+mod review_regressions;
+
 const NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
 fn schema() -> SchemaNode {

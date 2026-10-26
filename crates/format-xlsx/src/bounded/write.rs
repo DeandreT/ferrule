@@ -34,16 +34,17 @@ pub fn to_bytes_bounded(
     )
 }
 
-/// Creates a new flat workbook, retaining physical headers and sparse columns.
-/// Rows, cell values, string storage and a conservative XML growth charge are
-/// checked before constructing the workbook. The ZIP writer cannot grow the
-/// returned buffer beyond `max_output_bytes`.
-pub fn to_bytes_with_options_bounded(
-    schema: &SchemaNode,
+pub(super) struct PreparedFlat<'a> {
+    fields: Vec<(&'a str, ir::ScalarType)>,
+    columns: Vec<u32>,
+}
+
+pub(super) fn preflight<'a>(
+    schema: &'a SchemaNode,
     rows: &[Instance],
     options: FlatTableWriteOptions<'_>,
     limits: &XlsxLimits,
-) -> Result<Vec<u8>, XlsxFormatError> {
+) -> Result<PreparedFlat<'a>, XlsxFormatError> {
     let limits = limits.options();
     let fields = fields(schema, limits)?;
     let columns = column_indexes(fields.len(), options.columns)?;
@@ -92,45 +93,47 @@ pub fn to_bytes_with_options_bounded(
         limits.max_expanded_bytes,
     )?;
     let mut strings = 0;
-    let mut charge = |value: &str, is_string: bool| -> Result<(), XlsxFormatError> {
-        check(XlsxLimit::StringBytes, value.len(), limits.max_string_bytes)?;
-        add(
-            &mut text,
-            value.len(),
-            XlsxLimit::XmlTextBytes,
-            limits.max_xml_text_bytes,
-        )?;
-        check(
-            XlsxLimit::MaterializedTextBytes,
-            text,
-            limits.max_materialized_text_bytes,
-        )?;
-        // XML escaping and Excel's _xHHHH_ encoding expand each source byte
-        // by at most seven bytes. Count duplicates too, not just unique strings.
-        add(
-            &mut growth,
-            value.len().saturating_mul(7),
-            XlsxLimit::ExpandedBytes,
-            limits.max_expanded_bytes,
-        )?;
-        if is_string {
+    let mut charge =
+        |value: &str, is_string: bool, expansion: usize| -> Result<(), XlsxFormatError> {
+            check(XlsxLimit::StringBytes, value.len(), limits.max_string_bytes)?;
             add(
-                &mut strings,
-                1,
-                XlsxLimit::SharedStrings,
-                limits.max_shared_strings,
+                &mut text,
+                value.len(),
+                XlsxLimit::XmlTextBytes,
+                limits.max_xml_text_bytes,
             )?;
-        }
-        Ok(())
-    };
+            check(
+                XlsxLimit::MaterializedTextBytes,
+                text,
+                limits.max_materialized_text_bytes,
+            )?;
+            // XML escaping and Excel's _xHHHH_ encoding expand each source byte
+            // by at most seven bytes. Count duplicates too, not just unique strings.
+            add(
+                &mut growth,
+                value.len().saturating_mul(expansion),
+                XlsxLimit::ExpandedBytes,
+                limits.max_expanded_bytes,
+            )?;
+            if is_string {
+                add(
+                    &mut strings,
+                    1,
+                    XlsxLimit::SharedStrings,
+                    limits.max_shared_strings,
+                )?;
+            }
+            Ok(())
+        };
     if let Some(sheet) = options.sheet {
-        charge(sheet, false)?;
+        charge(sheet, false, 7)?;
     }
     if options.has_header {
         for (index, (name, _)) in fields.iter().enumerate() {
             charge(
                 options.headers.get(index).map_or(*name, String::as_str),
                 true,
+                7,
             )?;
         }
     }
@@ -139,16 +142,21 @@ pub fn to_bytes_with_options_bounded(
         if let Instance::Group(values) = row {
             check(XlsxLimit::Columns, values.len(), limits.max_columns)?;
             for (name, value) in values.iter() {
-                charge(name, false)?;
+                charge(name, false, 7)?;
                 if let Instance::Scalar(Value::String(value)) = value {
-                    charge(value, false)?;
+                    charge(value, false, 7)?;
                 }
             }
         }
         let values = validate_row(index, row, &fields)?;
         for ((name, ty), value) in fields.iter().zip(values) {
-            if let CellValue::String(value) = cell_value(name, *ty, value, index)? {
-                charge(&value, true)?;
+            match cell_value(name, *ty, value, index)? {
+                CellValue::String(value) => charge(&value, true, 7)?,
+                // Pinned rust_xlsxwriter's default write_number_cell uses
+                // Display, not a fixed-size scientific representation. Charge
+                // its actual decimal text in addition to structural overhead.
+                CellValue::Number(value) => charge(&value.to_string(), false, 1)?,
+                CellValue::Empty | CellValue::Bool(_) => {}
             }
         }
     }
@@ -162,7 +170,21 @@ pub fn to_bytes_with_options_bounded(
     )?;
     check(XlsxLimit::Entries, 10, limits.max_entries)?;
     check(XlsxLimit::XmlDepth, 32, limits.max_xml_depth)?;
+    Ok(PreparedFlat { fields, columns })
+}
 
+/// Creates a new flat workbook, retaining physical headers and sparse columns.
+/// Rows, cell values, string storage and a conservative XML growth charge are
+/// checked before constructing the workbook. The ZIP writer cannot grow the
+/// returned buffer beyond `max_output_bytes`.
+pub fn to_bytes_with_options_bounded(
+    schema: &SchemaNode,
+    rows: &[Instance],
+    options: FlatTableWriteOptions<'_>,
+    limits: &XlsxLimits,
+) -> Result<Vec<u8>, XlsxFormatError> {
+    let PreparedFlat { fields, columns } = preflight(schema, rows, options, limits)?;
+    let limits = limits.options();
     let mut workbook = Workbook::new();
     let worksheet = workbook.add_worksheet();
     if let Some(sheet) = options.sheet {

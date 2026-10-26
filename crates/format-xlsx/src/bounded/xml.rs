@@ -45,12 +45,47 @@ fn attributes(
     reader: &Reader<&[u8]>,
     budget: &mut Budget,
     limits: &XlsxLimitOptions,
+    operational: bool,
 ) -> Result<Attributes, XlsxFormatError> {
     let mut result = BTreeMap::new();
+    let mut local_names = BTreeSet::new();
     for a in e.attributes() {
         let a = a.map_err(|e| invalid(e.to_string()))?;
         let name =
             std::str::from_utf8(a.key.as_ref()).map_err(|_| invalid("invalid attribute name"))?;
+        // Calamine's sheet reader matches the local `id` name and takes the
+        // last occurrence. Never let its selection differ from this guard's.
+        if operational && name != "xmlns" && !name.starts_with("xmlns:") {
+            let local = name.rsplit(':').next().unwrap_or(name);
+            if !local_names.insert(local.to_string()) {
+                return Err(invalid("competing XML attributes with the same local name"));
+            }
+            // These attributes are consumed as raw bytes by calamine. XML
+            // unescaping must not change their meaning only in the preflight.
+            if matches!(
+                name,
+                "r:id"
+                    | "Id"
+                    | "Type"
+                    | "Target"
+                    | "TargetMode"
+                    | "r"
+                    | "s"
+                    | "t"
+                    | "ref"
+                    | "uniqueCount"
+                    | "date1904"
+                    | "state"
+                    | "numFmtId"
+                    | "xml:space"
+            ) && a
+                .value
+                .iter()
+                .any(|b| matches!(b, b'&' | b'\r' | b'\n' | b'\t'))
+            {
+                return Err(unsupported("escaped or normalized structural attribute"));
+            }
+        }
         // Check raw lengths before the XML unescaper can allocate.
         check(
             XlsxLimit::StringBytes,
@@ -198,7 +233,7 @@ fn scan(
                 let name = std::str::from_utf8(e.name().as_ref())
                     .map_err(|_| invalid("invalid element name"))?
                     .to_string();
-                let attrs = attributes(e, &reader, budget, limits)?;
+                let attrs = attributes(e, &reader, budget, limits, root.is_some())?;
                 if path.is_empty() {
                     roots += 1;
                     if roots != 1 {
@@ -247,6 +282,9 @@ fn scan(
                 path.pop().ok_or_else(|| invalid("unmatched XML end"))?;
             }
             Event::Text(e) => {
+                if scalar_value_path(root, &path) && e.contains(&b'\r') {
+                    return Err(unsupported("normalized scalar cell text"));
+                }
                 let text = e.xml10_content().map_err(|e| invalid(e.to_string()))?;
                 add(
                     &mut budget.text,
@@ -260,6 +298,9 @@ fn scan(
                 visitor.text(&path, &text)?;
             }
             Event::CData(e) => {
+                if scalar_value_path(root, &path) {
+                    return Err(unsupported("CDATA scalar cell value"));
+                }
                 let text = e.xml10_content().map_err(|e| invalid(e.to_string()))?;
                 add(
                     &mut budget.text,
@@ -273,6 +314,9 @@ fn scan(
                 visitor.text(&path, &text)?;
             }
             Event::GeneralRef(e) => {
+                if scalar_value_path(root, &path) {
+                    return Err(unsupported("entity in scalar cell value"));
+                }
                 let text =
                     if let Some(ch) = e.resolve_char_ref().map_err(|e| invalid(e.to_string()))? {
                         ch.to_string()
@@ -305,7 +349,11 @@ fn scan(
                     }
                 }
             }
-            Event::Comment(_) => {}
+            Event::Comment(_) => {
+                if scalar_value_path(root, &path) {
+                    return Err(unsupported("comment in scalar cell value"));
+                }
+            }
             Event::DocType(_) | Event::PI(_) => {
                 return Err(unsupported("DTD or processing instruction"));
             }
@@ -316,6 +364,10 @@ fn scan(
         return Err(invalid("incomplete XML document"));
     }
     Ok(())
+}
+
+fn scalar_value_path(root: Option<(&str, &str)>, path: &[String]) -> bool {
+    root.is_some_and(|(name, _)| name == "worksheet") && path.last().is_some_and(|name| name == "v")
 }
 
 struct Shared<'a> {
@@ -502,6 +554,7 @@ struct Worksheet<'a> {
     inline_bytes: usize,
     sheet_data: bool,
     cell_value: bool,
+    value_text_seen: bool,
     integer_risks: Vec<(usize, usize, String)>,
 }
 
@@ -581,6 +634,7 @@ impl Visitor for Worksheet<'_> {
                 self.value.clear();
                 self.inline_bytes = 0;
                 self.cell_value = false;
+                self.value_text_seen = false;
             }
             "v" | "is" => {
                 if path.len() != 5 || path[3] != "c" || self.cell_value {
@@ -597,6 +651,10 @@ impl Visitor for Worksheet<'_> {
     }
     fn text(&mut self, path: &[String], text: &str) -> Result<(), XlsxFormatError> {
         if path.last().is_some_and(|s| s == "v") {
+            if self.value_text_seen {
+                return Err(unsupported("fragmented scalar cell value"));
+            }
+            self.value_text_seen = true;
             check(
                 XlsxLimit::StringBytes,
                 self.value.len().saturating_add(text.len()),
@@ -615,7 +673,7 @@ impl Visitor for Worksheet<'_> {
     }
     fn end(&mut self, path: &[String]) -> Result<(), XlsxFormatError> {
         if path.last().is_some_and(|s| s == "c") {
-            let bytes = if self.kind == "s" && self.cell_value {
+            let bytes = if self.kind == "s" && !self.value.is_empty() {
                 *self
                     .strings
                     .get(number(&self.value)?)
@@ -631,14 +689,9 @@ impl Visitor for Worksheet<'_> {
                 if !n.is_finite() {
                     return Err(unsupported("non-finite numeric cell"));
                 }
-                // Calamine uses f64 for numeric XML. Refuse integer magnitudes
-                // that could silently round before the typed flat projection.
-                if n.abs() >= crate::MAX_EXACT_F64_INTEGER as f64
-                    && !self
-                        .value
-                        .parse::<i64>()
-                        .is_ok_and(|v| crate::exact_f64(v).is_some())
-                {
+                // Compare the exact original decimal, not its rounded float.
+                // Float columns still retain the full finite f64 domain.
+                if !super::numeric::exact_integer(&self.value).is_some_and(|v| n == v as f64) {
                     self.integer_risks
                         .push((self.row, self.col, self.value.clone()));
                 }
@@ -758,6 +811,7 @@ pub(super) fn validate(
                 inline_bytes: 0,
                 sheet_data: false,
                 cell_value: false,
+                value_text_seen: false,
                 integer_risks: Vec::new(),
             };
             scan(

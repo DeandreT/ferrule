@@ -5,6 +5,7 @@ use ir::{Instance, SchemaKind, SchemaNode};
 
 use crate::{XlsxFormatError, column_indexes, row_fields, rows_from_range};
 
+mod numeric;
 mod package;
 #[cfg(test)]
 mod tests;
@@ -200,6 +201,9 @@ pub fn from_bytes_bounded(
 ) -> Result<Vec<Instance>, XlsxFormatError> {
     let limits = limits.options();
     check(XlsxLimit::InputBytes, bytes.len(), limits.max_input_bytes)?;
+    if let Some(name) = sheet {
+        check(XlsxLimit::StringBytes, name.len(), limits.max_string_bytes)?;
+    }
     if start_row == 0 || start_row > crate::MAX_WORKSHEET_ROW {
         return Err(XlsxFormatError::InvalidCoordinate);
     }
