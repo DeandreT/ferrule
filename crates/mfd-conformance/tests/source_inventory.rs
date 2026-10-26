@@ -238,5 +238,22 @@ fn artifact_observations_do_not_promote_execution_or_completeness() {
         ])
     );
     assert!(!observation["remaining"].as_array().unwrap().is_empty());
+    let installed = observation["installed_declarations"].as_array().unwrap();
+    assert_eq!(installed.len(), 2);
+    unique_ids(installed, "cab_member");
+    assert_eq!(installed[0]["return_type"], "const std::exception*");
+    assert_eq!(
+        installed[0]["types"],
+        serde_json::json!(["altova::Error", "altova::Exception"])
+    );
+    assert_eq!(
+        installed[1]["public_type"],
+        "com.altova.SourceInstanceUnavailableException"
+    );
+    for declaration in installed {
+        let hash = declaration["sha256"].as_str().unwrap();
+        assert_eq!(hash.len(), 64);
+        assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    }
     source_only(&observation);
 }
