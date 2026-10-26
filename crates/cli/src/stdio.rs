@@ -133,6 +133,17 @@ impl<'a> PreparedStreamRun<'a> {
         if request.observers.debugging {
             return Err(RouteRefusal::StandardStreamsDebugging.into());
         }
+        // Stream acquisition happens before payload decoding. A retained MFD
+        // dependency must refuse here, not after stdin or named files are read.
+        for options in std::iter::once(&project.source_options)
+            .chain(std::iter::once(&project.target_options))
+            .chain(project.extra_sources.iter().map(|source| &source.options))
+            .chain(project.extra_targets.iter().map(|target| &target.options))
+        {
+            if let Some(dependency) = options.json5_interchange_blocker() {
+                return Err(dependency.clone().into());
+            }
+        }
         crate::sqlite_query::reject_query_inputs(project, HostRoute::StandardStreams)?;
         reject_dynamic_sources(project, request.target)?;
         let policy = request

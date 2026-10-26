@@ -82,7 +82,7 @@ fn json5_instance_path_is_visible_in_best_effort_and_rejected_by_executable_prof
             .imported
             .warnings
             .iter()
-            .any(|warning| warning.contains("JSON5 setting is unverified")),
+            .any(|warning| warning.contains("native JSON5 interchange is not executable")),
         "{:?}",
         best_effort.imported.warnings
     );
@@ -94,11 +94,13 @@ fn json5_instance_path_is_visible_in_best_effort_and_rejected_by_executable_prof
         ImportProfile::Executable,
     );
     let Err(MfdError::IncompatibleImport(report)) = strict else {
-        panic!("executable import should reject an unverified JSON5 boundary");
+        panic!("executable import should reject an incompatible JSON5 boundary");
     };
     assert!(report.issues.iter().any(|issue| {
         issue.kind == ImportIssueKind::ImportWarning
-            && issue.message.contains("JSON5 setting is unverified")
+            && issue
+                .message
+                .contains("native JSON5 interchange is not executable")
     }));
     std::fs::remove_dir_all(directory)?;
     Ok(())

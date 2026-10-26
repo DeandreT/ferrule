@@ -54,6 +54,8 @@ mod xml_serialize_owned;
 pub use adjacency::AdjacencyTreePlan;
 pub use adjacency_owned::OwnedAdjacencyTreePlan;
 pub use csv_repair::{CsvRuntimeDependency, CsvTextRepairCause, CsvTextRepairDependency};
+
+mod json5_interchange;
 pub use document_project::{
     DocumentProject, DocumentProjectFormat, EmptyFileSelection, GlobalFilename,
     PrimaryFileSelection, PrimaryFilenameError, PrimarySourcePlan,
@@ -103,6 +105,9 @@ pub use idoc_native_text::{
 pub use iteration::{
     JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, JoinSourceCardinality,
     ScopeIteration, ScopeSequence,
+};
+pub use json5_interchange::{
+    Json5InterchangeDependency, Json5StringComponentKind, Json5StringInterchangeDependency,
 };
 pub use model::{
     AggregateOp, Binding, DynamicBinding, DynamicChild, DynamicSourcePath, EdiConfigDependency,

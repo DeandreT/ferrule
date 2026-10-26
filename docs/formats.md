@@ -53,7 +53,7 @@ for a complete format standard or another product.
 | CSV | Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview) | Every CSV document a literal or runtime-parameter filename selects beneath an explicit local input root, mapped once into one CSV document | [conformance/primary-filename-documents/README.md](../conformance/primary-filename-documents/README.md) |
 | Fixed-width | Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview) | Ordered fixed-width documents using saved Unicode-scalar layouts, mapped once with bounded input and output | [conformance/primary-fixed-width-documents/README.md](../conformance/primary-fixed-width-documents/README.md) |
 | XLSX | Native editor flat-worksheet setup, save, and reopen | One flat-row XLSX source and target configuration on the Linux desktop | [docs/getting-started.md](getting-started.md) |
-| X12 / EDIFACT | Generated C# X12 companions (`generate --x12-adapters`) | Raw X12 text and bytes with single-transaction, grouped-transaction, or repeating-interchange envelopes around the ordinary typed mapping | [docs/design/generated-x12-csharp.md](design/generated-x12-csharp.md) |
+| X12 / EDIFACT | Generated C# X12 companions (`generate --x12-adapters`) | Raw X12 text and bytes with single-transaction, grouped-transaction, or repeating-interchange envelopes around the typed mapping | [docs/design/generated-x12-csharp.md](design/generated-x12-csharp.md) |
 | X12 / EDIFACT | Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview) | Explicit X12 or EDIFACT direct documents or wildcard document sets, parsed in order and mapped once into one same-family output | [conformance/primary-edi-documents/README.md](../conformance/primary-edi-documents/README.md) |
 | X12 / EDIFACT | Generated C# static EDIFACT document adapters | Primary and named static inputs and outputs, with strict interchange validation and syntax-v4 repetitions | [docs/design/static-edifact-documents.md](design/static-edifact-documents.md) |
 | HL7 v2 / TRADACOMS | Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview) | Explicit HL7 or TRADACOMS direct documents or wildcard document sets, parsed in order and mapped once into one same-family output | [conformance/primary-edi-documents/README.md](../conformance/primary-edi-documents/README.md) |
@@ -119,9 +119,10 @@ for a complete format standard or another product.
   exchange strict schema-shaped JSON with their hosts; the explicit
   `--json5-adapters` profile adds singular JSON5-input, strict-JSON-output
   companions for closed object schemas, as described in the
-  [generated JSON5 companion contract](generated-json5-contract.md). Native
-  `.mfd` export rejects JSON5 boundaries until the native component setting is
-  represented and verified.
+   [generated JSON5 companion contract](generated-json5-contract.md). MFD import
+   retains observed JSON5 metadata separately and refuses execution/export: the
+   vendor setting, filename selection and numeric behavior differ from these
+   codecs.
 - PDF targets are not supported.
 - XBRL taxonomy formula, presentation, calculation, and linkbase execution are
   outside the current runtime.

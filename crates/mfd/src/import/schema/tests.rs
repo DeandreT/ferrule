@@ -367,10 +367,19 @@ fn json5_instance_paths_warn_without_guessing_the_native_setting() {
         assert!(!component.options.json5);
         let json5_warnings: Vec<_> = warnings
             .iter()
-            .filter(|warning| warning.contains("JSON5 setting is unverified"))
+            .filter(|warning| warning.contains("native JSON5 interchange is not executable"))
             .collect();
         assert_eq!(json5_warnings.len(), 1, "{warnings:?}");
-        assert!(json5_warnings[0].contains(attribute), "{warnings:?}");
+        assert_eq!(
+            component.options.json5_interchange_dependency,
+            Some(mapping::Json5InterchangeDependency::InstanceExtension {})
+        );
+        let retained_path = if attribute == "inputinstance" {
+            component.input_instance.as_deref()
+        } else {
+            component.output_instance.as_deref()
+        };
+        assert_eq!(retained_path, Some(path));
     }
 }
 

@@ -115,9 +115,6 @@ survey design or backend.
 
 ### 4. Resolve JSON5 native metadata before widening export
 
-- [ ] Observe the external application's JSON5 setting and saved metadata in
-  isolated checkbox and filename controls.
-- [ ] Identify an exact import/export representation before changing admission.
 
 
 Generated companions and native metadata are independent contracts. The
@@ -130,7 +127,7 @@ Separate allocation attribution in
 production optimization included. Native token admission and original-byte
 accounting are now separately qualified in #130/#163; generated-host evidence
 does not establish native component metadata or desktop behavior. The JSON5
-metadata lane [#106](https://github.com/DeandreT/ferrule/issues/106) remains open.
+metadata lane [#106](https://github.com/DeandreT/ferrule/issues/106) records the observed settings and incompatible runtime boundary.
 
 Exit: a self-authored fixture demonstrates metadata, values, errors, and a saved
 round trip. A `.json5` filename is not enough to infer a native component flag.
