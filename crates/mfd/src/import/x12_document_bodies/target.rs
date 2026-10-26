@@ -62,6 +62,29 @@ impl Builder<'_> {
         if let Some(path) = self.ports.get(&feed).cloned() {
             let node = schema_at(self.message, &path)
                 .ok_or_else(|| refuse("unknown structured driver"))?;
+            if matches!(node.kind, SchemaKind::Scalar { .. }) && !node.repeating {
+                let owner = self.owner(&path)?;
+                let relative = owner
+                    .strip_prefix(anchor)
+                    .ok_or_else(|| refuse("scalar driver crosses source owner"))?
+                    .to_vec();
+                if (owner.len() + 1..path.len()).any(|end| !self.required.contains(&path[..end])) {
+                    return Err(refuse("scalar driver has an unqualified optional ancestor"));
+                }
+                // Presence gates construction before a required scalar's value
+                // can be demanded by its bindings. The raw read is immutable,
+                // so this adds neither a conversion nor a stateful evaluation.
+                let raw = self.alloc(Node::SourceField {
+                    path: path[owner.len()..].to_vec(),
+                    frame: (!owner.is_empty()).then_some(owner.clone()),
+                });
+                let filter = self.call("exists", vec![raw]);
+                return Ok(Driver {
+                    collection: relative,
+                    owner,
+                    filter: Some(filter),
+                });
+            }
             if !matches!(node.kind, SchemaKind::Group { .. }) {
                 return Err(refuse("scalar source requires a mapped driver expression"));
             }

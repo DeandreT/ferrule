@@ -91,8 +91,8 @@ pub use json_source_projection::{
 };
 pub use schema::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
 pub use x12_document_bodies::{
-    ImportedX12DocumentBodies, X12DocumentBody, X12DocumentBodyFormat,
-    import_x12_document_bodies_with_options,
+    ImportedX12DocumentBodies, ImportedX12FixedXmlBody, X12DocumentBody, X12DocumentBodyFormat,
+    import_x12_document_bodies_with_options, import_x12_fixed_xml_body_with_options,
 };
 
 use db_query::is_routine_catalog;

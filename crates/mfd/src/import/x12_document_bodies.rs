@@ -2,7 +2,7 @@
 //! physical publication are separate contracts; ordinary import is unchanged.
 use super::{ImportOptions, function, graph, schema};
 use crate::MfdError;
-use ir::{ScalarType, SchemaKind, SchemaNode, Value};
+use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::{Binding, Graph, Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -131,6 +131,39 @@ pub struct ImportedX12DocumentBodies {
     pub message_path: Vec<String>,
     pub targets: Vec<X12DocumentBody>,
     pub mapping_path: PathBuf,
+}
+
+/// One explicitly selected fixed XML body over the complete physical source.
+/// This does not acquire inputs, publish the saved filename, or choose when
+/// source documents and volatile expressions are evaluated by a file executor.
+pub struct ImportedX12FixedXmlBody {
+    pub source_schema: SchemaNode,
+    pub source_options: mapping::FormatOptions,
+    pub source_encoding: mapping::X12SourceEncoding,
+    pub source_structure: mapping::X12SourceStructure,
+    pub source_minimums: Vec<mapping::MapForceEdiMinimum>,
+    pub input_parameter: String,
+    pub input_preview: Option<String>,
+    pub body: Project,
+    pub output_filename: String,
+    pub mapping_path: PathBuf,
+}
+
+impl ImportedX12FixedXmlBody {
+    /// Bind already parsed physical envelopes beneath one invocation owner.
+    /// An empty input set still has that owner, so unconnected constructed
+    /// target groups are not implicitly repeated once per source document.
+    pub fn source_documents(&self, documents: Vec<Instance>) -> Result<Instance, MfdError> {
+        if documents
+            .iter()
+            .any(|document| !matches!(document, Instance::Group(_)))
+        {
+            return Err(refuse("fixed XML inputs must be complete envelope groups"));
+        }
+        Ok(Instance::Group(
+            vec![("Documents".into(), Instance::Repeated(documents))].into(),
+        ))
+    }
 }
 
 impl ImportedX12DocumentBodies {
@@ -270,6 +303,46 @@ pub fn import_x12_document_bodies_with_options(
     path: &Path,
     options: &ImportOptions,
 ) -> Result<ImportedX12DocumentBodies, MfdError> {
+    import_document_bodies(path, options, None)
+}
+
+/// Import a fixed XML target without projecting its input down to one message.
+/// Use `source_documents` to bind complete envelopes beneath one invocation
+/// owner. Dynamic per-message targets retain their separate import contract.
+pub fn import_x12_fixed_xml_body_with_options(
+    path: &Path,
+    options: &ImportOptions,
+    target_name: &str,
+) -> Result<ImportedX12FixedXmlBody, MfdError> {
+    if target_name.is_empty() {
+        return Err(refuse("fixed XML target name is required"));
+    }
+    let mut imported = import_document_bodies(path, options, Some(target_name))?;
+    if imported.targets.len() != 1 {
+        return Err(refuse("fixed XML target is absent or ambiguous"));
+    }
+    let target = imported.targets.remove(0);
+    Ok(ImportedX12FixedXmlBody {
+        source_schema: imported.source_schema,
+        source_options: imported.source_options,
+        source_encoding: imported.source_encoding,
+        source_structure: imported.source_structure,
+        source_minimums: imported.source_minimums,
+        input_parameter: imported.input_parameter,
+        input_preview: imported.input_preview,
+        body: target.body,
+        output_filename: target
+            .output_preview
+            .ok_or_else(|| refuse("missing fixed XML filename"))?,
+        mapping_path: imported.mapping_path,
+    })
+}
+
+fn import_document_bodies(
+    path: &Path,
+    options: &ImportOptions,
+    fixed_xml: Option<&str>,
+) -> Result<ImportedX12DocumentBodies, MfdError> {
     let resources = super::resolved_resources(path, options)?;
     let result = (|| {
         let text = resources.read_design()?;
@@ -318,7 +391,7 @@ pub fn import_x12_document_bodies_with_options(
         let [source] = sources.as_slice() else {
             return Err(refuse("requires one X12 source"));
         };
-        check_component_properties(*source, true)?;
+        check_component_properties(*source, true, false)?;
         if components
             .iter()
             .any(|c| c.attribute("library") == Some("text") && c.id() != source.id())
@@ -374,26 +447,45 @@ pub fn import_x12_document_bodies_with_options(
         let [message_path] = matches.as_slice() else {
             return Err(refuse("ambiguous message owner"));
         };
-        let mut message = schema_at(&source_schema.schema, message_path)
-            .ok_or_else(|| refuse("message schema unavailable"))?
-            .clone();
+        let mut message = if fixed_xml.is_some() {
+            let mut document = source_schema.schema.clone();
+            document.name = "Documents".into();
+            document.repeating = true;
+            SchemaNode::group("X12DocumentBatch", vec![document])
+        } else {
+            schema_at(&source_schema.schema, message_path)
+                .ok_or_else(|| refuse("message schema unavailable"))?
+                .clone()
+        };
         message.repeating = false;
         lexical_schema(&mut message);
         let ports = source_schema
             .ports
             .iter()
             .filter_map(|(key, path)| {
-                path.strip_prefix(message_path.as_slice())
-                    .map(|path| (*key, path.to_vec()))
+                if fixed_xml.is_some() {
+                    let mut document_path = vec!["Documents".into()];
+                    document_path.extend(path.iter().cloned());
+                    Some((*key, document_path))
+                } else {
+                    path.strip_prefix(message_path.as_slice())
+                        .map(|path| (*key, path.to_vec()))
+                }
             })
             .collect::<BTreeMap<_, _>>();
         let required = source_minimums
             .iter()
             .filter(|m| m.minimum > 0)
             .filter_map(|m| {
-                m.path
-                    .strip_prefix(message_path.as_slice())
-                    .map(<[String]>::to_vec)
+                if fixed_xml.is_some() {
+                    let mut document_path = vec!["Documents".into()];
+                    document_path.extend(m.path.iter().cloned());
+                    Some(document_path)
+                } else {
+                    m.path
+                        .strip_prefix(message_path.as_slice())
+                        .map(<[String]>::to_vec)
+                }
             })
             .collect::<BTreeSet<_>>();
         let mut functions = BTreeMap::new();
@@ -532,8 +624,9 @@ pub fn import_x12_document_bodies_with_options(
         for component in components
             .iter()
             .filter(|n| matches!(n.attribute("library"), Some("json" | "xml")))
+            .filter(|n| fixed_xml.is_none_or(|name| n.attribute("name") == Some(name)))
         {
-            check_component_properties(*component, false)?;
+            check_component_properties(*component, false, fixed_xml.is_some())?;
             let format = if component.attribute("library") == Some("json") {
                 X12DocumentBodyFormat::Json
             } else {
@@ -569,10 +662,22 @@ pub fn import_x12_document_bodies_with_options(
                 .descendants()
                 .find(|n| n.has_tag_name("entry") && n.attribute("name") == Some("FileInstance"))
                 .ok_or_else(|| refuse("missing target file wrapper"))?;
-            let filename_feed = *edges
-                .feeds
-                .get(&number(file.attribute("inpkey"))?)
-                .ok_or_else(|| refuse("missing output filename expression"))?;
+            let filename_feed = if fixed_xml.is_some() {
+                if format != X12DocumentBodyFormat::Xml || file.attribute("inpkey").is_some() {
+                    return Err(refuse("fixed XML target cannot have a filename connector"));
+                }
+                if target.output_instance.as_deref().is_none_or(str::is_empty) {
+                    return Err(refuse("missing fixed XML filename"));
+                }
+                None
+            } else {
+                Some(
+                    *edges
+                        .feeds
+                        .get(&number(file.attribute("inpkey"))?)
+                        .ok_or_else(|| refuse("missing output filename expression"))?,
+                )
+            };
             let root = file
                 .children()
                 .find(|n| n.has_tag_name("entry") && n.attribute("name") == Some("document"))
@@ -592,27 +697,32 @@ pub fn import_x12_document_bodies_with_options(
                 consumed_target_inputs: BTreeSet::new(),
                 nullable_input: false,
             };
-            let driver_ports = builder.dependencies(filename_feed, &mut BTreeSet::new())?;
-            let [driver] = driver_ports.iter().copied().collect::<Vec<_>>()[..] else {
-                return Err(refuse(
-                    "filename needs exactly one message-local driving field",
-                ));
+            let driver_path = if let Some(filename_feed) = filename_feed {
+                let driver_ports = builder.dependencies(filename_feed, &mut BTreeSet::new())?;
+                let [driver] = driver_ports.iter().copied().collect::<Vec<_>>()[..] else {
+                    return Err(refuse(
+                        "filename needs exactly one message-local driving field",
+                    ));
+                };
+                let path = ports
+                    .get(&driver)
+                    .ok_or_else(|| refuse("filename driver is outside message"))?
+                    .clone();
+                if !matches!(
+                    schema_at(&message, &path).map(|n| &n.kind),
+                    Some(SchemaKind::Scalar { .. })
+                ) {
+                    return Err(refuse("filename driver must be scalar"));
+                }
+                path
+            } else {
+                Vec::new()
             };
-            let driver_path = ports
-                .get(&driver)
-                .ok_or_else(|| refuse("filename driver is outside message"))?
-                .clone();
-            if !matches!(
-                schema_at(&message, &driver_path).map(|n| &n.kind),
-                Some(SchemaKind::Scalar { .. })
-            ) {
-                return Err(refuse("filename driver must be scalar"));
-            }
             let mut root_scope = builder.target_scope(root, &target.schema, &[], &[], format)?;
             root_scope.target_field.clear();
-            builder
-                .consumed_target_inputs
-                .insert(number(file.attribute("inpkey"))?);
+            if let Some(input) = file.attribute("inpkey") {
+                builder.consumed_target_inputs.insert(number(Some(input))?);
+            }
             for entry in component.descendants().filter(|n| n.has_tag_name("entry")) {
                 if let Some(input) = entry.attribute("inpkey") {
                     let input = number(Some(input))?;
@@ -626,7 +736,12 @@ pub fn import_x12_document_bodies_with_options(
                 }
             }
             let body_graph = builder.graph.clone();
-            let filename = builder.scalar(filename_feed, &[])?;
+            let filename = if let Some(filename_feed) = filename_feed {
+                builder.scalar(filename_feed, &[])?
+            } else {
+                let path = builder.constant(Value::String(target.output_instance.clone().unwrap()));
+                builder.present_value(path)
+            };
             let name_root = Scope {
                 bindings: vec![Binding {
                     target_field: "Path".into(),
@@ -691,12 +806,19 @@ pub fn import_x12_document_bodies_with_options(
 fn check_component_properties(
     component: roxmltree::Node<'_, '_>,
     source: bool,
+    fixed_xml: bool,
 ) -> Result<(), MfdError> {
     let properties = component
         .children()
         .find(|n| n.has_tag_name("properties"))
         .ok_or_else(|| refuse("missing file-component properties"))?;
-    if properties.attribute("DynamicFilenames") != Some("1")
+    let filename_mode = if fixed_xml {
+        component.attribute("library") == Some("xml")
+            && matches!(properties.attribute("DynamicFilenames"), None | Some("0"))
+    } else {
+        properties.attribute("DynamicFilenames") == Some("1")
+    };
+    if !filename_mode
         || properties
             .attribute("XSLTTargetEncoding")
             .is_some_and(|v| v != "UTF-8")
