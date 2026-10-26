@@ -5,12 +5,9 @@ use ir::{Instance, SchemaNode};
 use mapping::{EdiAutocomplete, EdiBoundaryKind, FormatOptions};
 
 use super::super as cli;
+use super::super::format_selection::{self, Direction, JsonMode, Origin, SelectedFormat};
 use super::super::{
-    extension_for_dispatch, extension_of, formatted_edi_output, has_legacy_xlsx_layout,
-    json5_selected, protobuf_layout, reject_edi_conflicts, reject_fixed_width_csv_options,
-    reject_flextext_conflicts, reject_idoc_conflicts, reject_json_conflicts, reject_pdf_conflicts,
-    reject_protobuf_conflicts, reject_swift_conflicts, reject_xbrl_conflicts, reject_xml_conflicts,
-    validate_tabular_fallback, x12_separators,
+    extension_of, formatted_edi_output, has_legacy_xlsx_layout, protobuf_layout, x12_separators,
 };
 use super::profile::{self, BoundaryProfile};
 use super::{
@@ -200,12 +197,8 @@ fn render_payload_with_limit(
     if options.local_xml_file_set {
         bail!("`local_xml_file_set` is input-only");
     }
-    if options.xbrl.is_some() {
-        reject_xbrl_conflicts(options, "output")?;
-        let xbrl = options
-            .xbrl
-            .as_ref()
-            .context("missing XBRL target options")?;
+    let selected = format_selection::select(path, options, Direction::Output, false)?;
+    if let SelectedFormat::Xbrl(xbrl) = selected {
         if profile.documents() {
             return bounded_codec_result(
                 format_xbrl::to_bytes_bounded(schema, instance, xbrl, &profile::XBRL_LIMITS),
@@ -217,23 +210,19 @@ fn render_payload_with_limit(
             .context("rendering XBRL output payload")?;
         return Ok(PayloadBytes::Ready(text.into_bytes(), 1));
     }
-    if let Some(layout) = &options.idoc {
-        reject_idoc_conflicts(options, "output")?;
+    if let SelectedFormat::Idoc(layout) = selected {
         let formatted = formatted_edi_output(instance, options)?;
         let bytes = format_edi::idoc::to_bytes(schema, &formatted, layout)
             .context("rendering SAP IDoc output payload")?;
         return Ok(PayloadBytes::Ready(bytes, 1));
     }
-    if options.swift_mt.is_some() {
-        reject_swift_conflicts(options, "output")?;
+    if let SelectedFormat::Swift(_) = selected {
         bail!("SWIFT MT output is not supported; `swift_mt` is input-only");
     }
-    if options.pdf.is_some() {
-        reject_pdf_conflicts(options, "output")?;
+    if let SelectedFormat::Pdf(_) = selected {
         bail!("PDF output is not supported; `pdf` is input-only");
     }
-    if let Some(layout) = &options.flextext {
-        reject_flextext_conflicts(options, "output")?;
+    if let SelectedFormat::FlexText(layout) = selected {
         if profile.documents() {
             return bounded_codec_result(
                 format_flextext::to_string(schema, instance, layout).map(String::into_bytes),
@@ -245,8 +234,7 @@ fn render_payload_with_limit(
             .context("rendering FlexText output payload")?;
         return Ok(PayloadBytes::Ready(text.into_bytes(), 1));
     }
-    if let Some(protobuf) = &options.protobuf {
-        reject_protobuf_conflicts(options, "output")?;
+    if let SelectedFormat::Protobuf(protobuf) = selected {
         let layout =
             protobuf_layout(protobuf).context("parsing embedded Protocol Buffers schema")?;
         if profile.documents() {
@@ -265,14 +253,12 @@ fn render_payload_with_limit(
             .context("rendering Protocol Buffers output payload")?;
         return Ok(PayloadBytes::Ready(bytes, 1));
     }
-    if let Some(kind) = options.edi_kind {
-        reject_edi_conflicts(options, "output")?;
+    if let SelectedFormat::Edi(Some(kind)) = selected {
         let formatted = formatted_edi_output(instance, options)?;
         let text = render_edi_payload(schema, &formatted, options, kind, current_datetime)?;
         return Ok(PayloadBytes::Ready(text.into_bytes(), 1));
     }
-    if options.xml_document {
-        reject_xml_conflicts(options, "output")?;
+    if let SelectedFormat::Xml(Origin::Explicit) = selected {
         return format_xml::to_string_with_options(
             schema,
             instance,
@@ -281,12 +267,10 @@ fn render_payload_with_limit(
         .map(|text| PayloadBytes::Ready(text.into_bytes(), 1))
         .context("rendering XML output payload");
     }
-    if options.json_document || options.json5 || options.json_lines {
-        reject_json_conflicts(options, "output")?;
-        let json5 = json5_selected(path, options)?;
-        let text = if options.json_lines {
+    if let SelectedFormat::Json(mode, Origin::Explicit) = selected {
+        let text = if mode == JsonMode::Lines {
             format_json::to_lines(schema, instance)
-        } else if json5 {
+        } else if mode == JsonMode::Json5 {
             format_json::to_json5_string(schema, instance)
         } else {
             format_json::to_string(schema, instance)
@@ -297,8 +281,7 @@ fn render_payload_with_limit(
             instance.as_repeated().map_or(1, <[Instance]>::len),
         ));
     }
-    if let Some(layout) = &options.fixed_width {
-        reject_fixed_width_csv_options(options, "output")?;
+    if let SelectedFormat::FixedWidth(layout) = selected {
         let rows = instance
             .as_repeated()
             .context("mapping did not produce a repeating row set for a fixed-width output")?;
@@ -325,9 +308,8 @@ fn render_payload_with_limit(
         return Ok(PayloadBytes::Ready(text.into_bytes(), rows.len()));
     }
 
-    validate_tabular_fallback(path, options, "output")?;
-    match extension_for_dispatch(path, options)?.as_str() {
-        "csv" | "txt" => {
+    match selected {
+        SelectedFormat::Csv => {
             let rows = instance
                 .as_repeated()
                 .context("mapping did not produce a repeating row set for a CSV output")?;
@@ -358,7 +340,7 @@ fn render_payload_with_limit(
             .context("rendering CSV output payload")?;
             Ok(PayloadBytes::Ready(text.into_bytes(), rows.len()))
         }
-        "xlsx" if profile.documents() => {
+        SelectedFormat::Xlsx if profile.documents() => {
             let rows = instance
                 .as_repeated()
                 .context("mapping did not produce a repeating row set for an XLSX output")?;
@@ -379,23 +361,17 @@ fn render_payload_with_limit(
                 "rendering XLSX output payload",
             )
         }
-        "xlsx" => render_xlsx_payload(schema, instance, options)
+        SelectedFormat::Xlsx => render_xlsx_payload(schema, instance, options)
             .map(|(bytes, records)| PayloadBytes::Ready(bytes, records)),
-        "xml" => {
+        SelectedFormat::Xml(Origin::Fallback) => {
             format_xml::to_string_with_options(schema, instance, &cli::xml_write_options(options))
                 .map(|text| PayloadBytes::Ready(text.into_bytes(), 1))
                 .context("rendering XML output payload")
         }
-        "json" | "json5" | "jsonl" | "ndjson" => {
-            let lines =
-                options.json_lines || matches!(extension_of(path)?.as_str(), "jsonl" | "ndjson");
-            let json5 = json5_selected(path, options)?;
-            if lines && json5 {
-                bail!("JSON5 cannot be combined with JSON Lines");
-            }
-            let text = if lines {
+        SelectedFormat::Json(mode, Origin::Fallback) => {
+            let text = if mode == JsonMode::Lines {
                 format_json::to_lines(schema, instance)
-            } else if json5 {
+            } else if mode == JsonMode::Json5 {
                 format_json::to_json5_string(schema, instance)
             } else {
                 format_json::to_string(schema, instance)
@@ -406,10 +382,10 @@ fn render_payload_with_limit(
                 instance.as_repeated().map_or(1, <[Instance]>::len),
             ))
         }
-        "db" | "sqlite" | "sqlite3" => {
+        SelectedFormat::Sqlite => {
             bail!("SQLite output requires a persistent database and is unavailable as a payload")
         }
-        "edi" | "x12" | "edifact" | "hl7" => {
+        SelectedFormat::Edi(None) => {
             let formatted = formatted_edi_output(instance, options)?;
             let text = match format_edi::dialect_of(schema)? {
                 format_edi::Dialect::X12 => render_edi_payload(
@@ -435,8 +411,16 @@ fn render_payload_with_limit(
             }?;
             Ok(PayloadBytes::Ready(text.into_bytes(), 1))
         }
-        "pdf" => bail!("PDF output is not supported; PDF is input-only"),
-        other => bail!("unsupported output payload extension: .{other}"),
+        SelectedFormat::MissingPdf => bail!("PDF output is not supported; PDF is input-only"),
+        SelectedFormat::MissingIdoc => bail!("unsupported output payload extension: .idoc"),
+        SelectedFormat::MissingSwift => bail!(
+            "unsupported output payload extension: .{}",
+            extension_of(path)?
+        ),
+        SelectedFormat::Unsupported(other) => {
+            bail!("unsupported output payload extension: .{other}")
+        }
+        _ => unreachable!("explicit formats returned above"),
     }
 }
 
