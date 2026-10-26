@@ -12,12 +12,18 @@ public sealed class FerruleDirectSourceReader : IDisposable
     private readonly System.Net.Http.HttpClient client;
     private readonly int maximum;
     private readonly TimeSpan timeout;
+    private readonly bool allowFtp;
     public FerruleDirectSourceReader(int maximumBytes, TimeSpan timeout)
+        : this(maximumBytes, timeout, allowFtp: false)
+    {
+    }
+    public FerruleDirectSourceReader(int maximumBytes, TimeSpan timeout, bool allowFtp)
     {
         if (maximumBytes is < 0 or > FerruleX12.MaximumDocumentBytes) throw new ArgumentOutOfRangeException(nameof(maximumBytes));
         if (timeout <= TimeSpan.Zero || timeout > TimeSpan.FromMinutes(5)) throw new ArgumentOutOfRangeException(nameof(timeout));
         maximum = maximumBytes;
         this.timeout = timeout;
+        this.allowFtp = allowFtp;
         client = new(new System.Net.Http.HttpClientHandler { UseProxy = false, UseCookies = false, AllowAutoRedirect = true, MaxAutomaticRedirections = 50, AutomaticDecompression = System.Net.DecompressionMethods.None }) { Timeout = timeout };
     }
     public FerruleSourceBytes Read(string selected)
@@ -30,6 +36,7 @@ public sealed class FerruleDirectSourceReader : IDisposable
             if (!Uri.TryCreate(identity, UriKind.Absolute, out var uri)) throw new IOException("Unsupported direct-source URI.");
             if (uri.UserInfo.Length != 0) throw new IOException("Source URI credentials require a separate host policy.");
             if (uri.IsFile) bytes = ReadFile(uri.LocalPath);
+            else if (uri.Scheme == "ftp" && allowFtp) return ReadFtpWith(uri, identity, (name, data) => new FerruleSourceBytes(name, data));
             else if (uri.Scheme is "http" or "https")
             {
                 try
@@ -61,6 +68,7 @@ public sealed class FerruleDirectSourceReader : IDisposable
         if (!Uri.TryCreate(identity, UriKind.Absolute, out var uri)) throw new IOException("Unsupported direct-source URI.");
         if (uri.UserInfo.Length != 0) throw new IOException("Source URI credentials require a separate host policy.");
         if (uri.IsFile) return FileWith(uri.LocalPath);
+        if (uri.Scheme == "ftp" && allowFtp) return ReadFtpWith(uri, identity, parse);
         if (uri.Scheme is not ("http" or "https")) throw new IOException("Unsupported direct-source URI.");
         using var cancellation = new System.Threading.CancellationTokenSource(timeout);
         System.Net.Http.HttpResponseMessage response;
@@ -88,6 +96,28 @@ public sealed class FerruleDirectSourceReader : IDisposable
     {
         public byte[] ReadAll() => read();
         public void Close() => stream.Dispose();
+    }
+    private T ReadFtpWith<T>(Uri uri, string identity, Func<string, byte[], T> parse)
+    {
+        if (Uri.UnescapeDataString(uri.AbsolutePath).IndexOfAny(['\r', '\n', '\0']) >= 0)
+            throw new IOException("Unsupported direct-source URI.");
+        // Preserve the default file/HTTP profile. FTP is an explicit legacy
+        // compatibility option and never uses caller or OS credentials.
+#pragma warning disable SYSLIB0014
+        var request = (System.Net.FtpWebRequest)System.Net.WebRequest.Create(uri);
+#pragma warning restore SYSLIB0014
+        request.Method = System.Net.WebRequestMethods.Ftp.DownloadFile;
+        request.Credentials = new System.Net.NetworkCredential("anonymous", "anonymous@");
+        request.Proxy = null;
+        request.UseBinary = true;
+        request.UsePassive = true;
+        request.KeepAlive = false;
+        request.Timeout = checked((int)timeout.TotalMilliseconds);
+        request.ReadWriteTimeout = checked((int)timeout.TotalMilliseconds);
+        using var cancellation = new System.Threading.CancellationTokenSource(timeout);
+        using var response = request.GetResponse();
+        using var stream = response.GetResponseStream();
+        return parse(identity, Bounded(stream, cancellation.Token));
     }
     private byte[] ReadFile(string path) { using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read); return Bounded(stream); }
     private byte[] Bounded(Stream stream, System.Threading.CancellationToken cancellation = default)
