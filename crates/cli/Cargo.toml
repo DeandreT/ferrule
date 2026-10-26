@@ -22,6 +22,7 @@ required-features = ["codegen-tests"]
 [dependencies]
 ir = { workspace = true }
 mapping = { workspace = true }
+document-source = { workspace = true }
 engine = { workspace = true }
 codegen = { workspace = true }
 codegen-schema = { workspace = true }

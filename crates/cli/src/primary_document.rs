@@ -12,10 +12,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context as _, bail};
-use format_csv::{
-    CsvByteDecodingPolicy, CsvSourceData, CsvSourceError, LocalFileError, LocalPrimaryFiles,
-    PrimarySourceHost,
+use document_source::{
+    DEFAULT_LOCAL_DOCUMENT_BYTES, LocalFileError, LocalPrimaryFiles, PrimarySourceHost, SourceData,
 };
+use format_csv::{CsvByteDecodingPolicy, CsvSourceError};
 use mapping::{
     DocumentProject, PrimaryDocumentFormat, PrimaryDocumentShape, PrimaryFileSelection,
     PrimaryRouteError,
@@ -41,7 +41,7 @@ impl PrimaryDocumentPolicy {
     pub fn new(input_root: impl Into<PathBuf>) -> Self {
         Self {
             input_root: input_root.into(),
-            max_document_bytes: format_csv::DEFAULT_LOCAL_DOCUMENT_BYTES,
+            max_document_bytes: DEFAULT_LOCAL_DOCUMENT_BYTES,
             max_documents: DEFAULT_MAX_PRIMARY_DOCUMENTS,
         }
     }
@@ -238,7 +238,7 @@ impl PrimarySourceHost for RecordingHost {
         self.files.select(filename, selection)
     }
 
-    fn load(&self, request: &str) -> Result<CsvSourceData, LocalFileError> {
+    fn load(&self, request: &str) -> Result<SourceData, LocalFileError> {
         let data = self.files.load(request)?;
         if let Some(location) = &data.resolved_path {
             self.documents
@@ -264,7 +264,7 @@ pub fn execute_primary_document(
         .map_err(PrimaryDocumentError::Route)?;
     document.global_filename().map_err(|error| {
         PrimaryDocumentError::Run(engine::PrimaryDocumentRunError::Acquisition(
-            format_csv::PrimaryAcquisitionError::Filename(error.into()),
+            document_source::PrimaryAcquisitionError::Filename(error.into()),
         ))
     })?;
     let issues = engine::validate_primary_document(document);

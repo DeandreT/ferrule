@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use format_csv::{LocalFileError, LocalPrimaryFiles, PrimarySourceHost};
+use document_source::{LocalFileError, LocalPrimaryFiles, PrimarySourceHost};
 use mapping::{EmptyFileSelection, PrimaryFileSelection};
 
 struct TempDir(PathBuf);
