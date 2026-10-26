@@ -7,8 +7,8 @@ use ir::{Instance, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode, Value};
 
 use crate::{
     JsonFormatError, MAX_JSON5_DOCUMENT_BYTES, PatternPrograms, PatternRuntime, RecursiveSchemas,
-    exact_f64_from_json_number, json_schema, json_type_name, json5_finite, json5_unique,
-    null_layers, reject_nullable_json_lines_container, validate_alternative_fields,
+    exact_f64_from_json_number, json_type_name, json5_finite, json5_unique, null_layers,
+    reject_nullable_json_lines_container, runtime_constraints, validate_alternative_fields,
     validate_required_fields,
 };
 
@@ -49,7 +49,7 @@ pub fn read_lines(path: &Path, schema: &SchemaNode) -> Result<Instance, JsonForm
 /// non-repeating group schema is read as flat rows, matching [`to_string`].
 pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
     let text = strip_utf8_bom(text);
-    json_schema::unique_items::validate_raw_json_unique_items(schema, text)?;
+    runtime_constraints::validate_raw_json_unique_items(schema, text)?;
     let value: serde_json::Value = serde_json::from_str(text)?;
     from_value(&value, schema)
 }
@@ -165,13 +165,13 @@ pub fn from_lines(text: &str, schema: &SchemaNode) -> Result<Instance, JsonForma
         .lines()
         .filter(|line| !line.trim().is_empty())
         .collect::<Vec<_>>();
-    json_schema::unique_items::validate_raw_json_lines_unique_items(schema, &lines)?;
+    runtime_constraints::unique_items::validate_raw_json_lines_unique_items(schema, &lines)?;
     let mut values = Vec::new();
     for line in lines {
         values.push(serde_json::from_str(line)?);
     }
     if schema.repeating {
-        json_schema::item_counts::validate_len(schema, values.len())?;
+        runtime_constraints::validate_item_count(schema, values.len())?;
     }
     let mut items = Vec::with_capacity(values.len());
     for value in &values {
@@ -184,7 +184,7 @@ pub fn from_lines(text: &str, schema: &SchemaNode) -> Result<Instance, JsonForma
         )?);
     }
     if schema.repeating {
-        json_schema::contains::validate_values(schema, &values, &mut patterns)?;
+        runtime_constraints::validate_contains(schema, &values, &mut patterns)?;
     }
     Ok(Instance::Repeated(items))
 }
@@ -218,7 +218,7 @@ pub(crate) fn read_repeated(
             got: json_type_name(value),
         });
     };
-    json_schema::item_counts::validate_len(schema, items.len())?;
+    runtime_constraints::validate_item_count(schema, items.len())?;
     let mut parsed = Vec::with_capacity(items.len());
     for item in items {
         parsed.push(read_node_with_patterns(
@@ -229,7 +229,7 @@ pub(crate) fn read_repeated(
             patterns,
         )?);
     }
-    json_schema::contains::validate_values(schema, items, patterns)?;
+    runtime_constraints::validate_contains(schema, items, patterns)?;
     let items = parsed;
     Ok(Instance::Repeated(items))
 }
@@ -276,20 +276,20 @@ pub(crate) fn read_node_with_patterns(
     match &schema.kind {
         SchemaKind::Scalar { ty } => {
             let parsed = read_scalar(value, *ty, null.value, &schema.name)?;
-            json_schema::constraints::validate_json(schema, value)?;
-            json_schema::allowed_values::validate_value(schema, &parsed)?;
-            json_schema::ranges::validate_json(schema, value)?;
-            json_schema::multiples::validate_json(schema, value)?;
-            json_schema::string_lengths::validate_json(schema, value)?;
+            runtime_constraints::validate_constant(schema, value)?;
+            runtime_constraints::validate_allowed_value(schema, &parsed)?;
+            runtime_constraints::validate_numeric_range(schema, value)?;
+            runtime_constraints::validate_multiple_of(schema, value)?;
+            runtime_constraints::validate_string_length(schema, value)?;
             patterns.validate_json(schema, value)?;
             Ok(Instance::Scalar(parsed))
         }
         SchemaKind::ScalarUnion { types } => {
             let parsed = read_scalar_union(value, *types, null.value, &schema.name)?;
-            json_schema::allowed_values::validate_value(schema, &parsed)?;
-            json_schema::ranges::validate_json(schema, value)?;
-            json_schema::multiples::validate_json(schema, value)?;
-            json_schema::string_lengths::validate_json(schema, value)?;
+            runtime_constraints::validate_allowed_value(schema, &parsed)?;
+            runtime_constraints::validate_numeric_range(schema, value)?;
+            runtime_constraints::validate_multiple_of(schema, value)?;
+            runtime_constraints::validate_string_length(schema, value)?;
             patterns.validate_json(schema, value)?;
             Ok(Instance::Scalar(parsed))
         }
@@ -307,16 +307,16 @@ pub(crate) fn read_node_with_patterns(
                     got: json_type_name(value),
                 });
             };
-            json_schema::property_counts::validate_len(schema, fields.len())?;
+            runtime_constraints::validate_property_count(schema, fields.len())?;
             for property in fields.keys() {
                 patterns.validate_property_name(schema, property)?;
             }
             validate_required_fields(schema, required, |name| fields.contains_key(name))?;
-            json_schema::property_dependencies::validate_properties(
+            runtime_constraints::validate_property_dependencies(
                 schema,
                 fields.keys().map(String::as_str),
             )?;
-            json_schema::dependent_schemas::validate_object(
+            runtime_constraints::validate_dependent_schemas(
                 schema,
                 value,
                 fields.keys(),

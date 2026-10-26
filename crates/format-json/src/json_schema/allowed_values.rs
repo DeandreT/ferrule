@@ -1,6 +1,6 @@
 use ir::{
     FiniteF64, JsonAllowedValue, JsonAllowedValues, MAX_JSON_ALLOWED_VALUES, ScalarType,
-    ScalarTypeSet, SchemaNode, Value,
+    ScalarTypeSet, SchemaNode,
 };
 
 use super::constraints::ScalarConstant;
@@ -224,24 +224,6 @@ pub(super) fn retained_by_constraints(
         .into_iter()
         .filter(|value| value_satisfies_constraints(node, value))
         .collect()
-}
-
-pub(crate) fn validate_value(schema: &SchemaNode, value: &Value) -> Result<(), JsonFormatError> {
-    let Some(values) = &schema.json_allowed_values else {
-        return Ok(());
-    };
-    if !schema.json_allowed_values_are_valid() {
-        return Err(JsonFormatError::InvalidAllowedValuesMetadata {
-            reason: format!("`{}` has incompatible allowed values", schema.name),
-        });
-    }
-    if values.matches(value) {
-        return Ok(());
-    }
-    Err(JsonFormatError::AllowedValueMismatch {
-        name: schema.name.clone(),
-        got: format!("{value:?}"),
-    })
 }
 
 pub(super) fn render(

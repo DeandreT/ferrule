@@ -63,20 +63,6 @@ pub(super) fn intersect(
     }
 }
 
-pub(crate) fn validate_len(schema: &SchemaNode, length: usize) -> Result<(), JsonFormatError> {
-    let Some(range) = schema.item_count_range else {
-        return Ok(());
-    };
-    if range.contains_len(length) {
-        return Ok(());
-    }
-    Err(JsonFormatError::ItemCountMismatch {
-        name: schema.name.clone(),
-        range: describe(range),
-        got: length,
-    })
-}
-
 pub(super) fn render(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json::Value>) {
     let Some(range) = node.item_count_range else {
         return;
@@ -128,15 +114,6 @@ fn exact_count(
             &format!("`{keyword}` must be an exact non-negative integer JSON token"),
         )
     })
-}
-
-fn describe(range: ItemCountRange) -> String {
-    match (range.minimum(), range.maximum()) {
-        (minimum, Some(maximum)) if minimum == maximum => format!("exactly {minimum}"),
-        (0, Some(maximum)) => format!("at most {maximum}"),
-        (minimum, None) => format!("at least {minimum}"),
-        (minimum, Some(maximum)) => format!("between {minimum} and {maximum}"),
-    }
 }
 
 fn unsupported(name: &str, reason: &str) -> JsonFormatError {

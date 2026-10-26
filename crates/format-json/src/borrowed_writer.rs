@@ -11,7 +11,8 @@ use serde::ser::{SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
 
 use crate::{
-    JsonFormatError, PatternPrograms, PatternRuntime, RecursiveSchemas, json_schema, null_layers,
+    JsonFormatError, PatternPrograms, PatternRuntime, RecursiveSchemas, null_layers,
+    runtime_constraints,
 };
 
 enum Output<'a> {
@@ -119,7 +120,7 @@ fn node<'a>(
                 ));
             }
         };
-        json_schema::item_counts::validate_len(schema, items.len())?;
+        runtime_constraints::validate_item_count(schema, items.len())?;
         let mut values = Vec::with_capacity(items.len());
         for item in items {
             values.push(single(schema, item, recursive, recursion_depth, patterns)?);
@@ -129,8 +130,8 @@ fn node<'a>(
                 .iter()
                 .map(Output::validation_value)
                 .collect::<Vec<_>>();
-            json_schema::contains::validate_values(schema, &validation, patterns)?;
-            json_schema::unique_items::validate(schema, &validation)?;
+            runtime_constraints::validate_contains(schema, &validation, patterns)?;
+            runtime_constraints::unique_items::validate(schema, &validation)?;
         }
         return Ok(Output::Array(values));
     }
@@ -284,7 +285,7 @@ fn single<'a>(
                 patterns.validate_property_name(schema, property)?;
             }
             crate::validate_required_fields(schema, required, |name| positions.contains_key(name))?;
-            json_schema::property_dependencies::validate_properties(
+            runtime_constraints::validate_property_dependencies(
                 schema,
                 out.iter().map(|(name, _)| *name),
             )?;
@@ -300,9 +301,9 @@ fn single<'a>(
                     value.as_object().expect("object validation snapshot"),
                 )?;
             }
-            json_schema::property_counts::validate_len(schema, positions.len())?;
+            runtime_constraints::validate_property_count(schema, positions.len())?;
             if let Some(value) = &validation {
-                json_schema::dependent_schemas::validate_object(
+                runtime_constraints::validate_dependent_schemas(
                     schema,
                     value,
                     value
@@ -374,7 +375,7 @@ fn validate_scalar(
     let value_null = null_layers::instance_null(schema)?.value;
     let normalized = match schema.kind {
         SchemaKind::Scalar { ty } => {
-            json_schema::constraints::validate_json(schema, output)?;
+            runtime_constraints::validate_constant(schema, output)?;
             crate::read_scalar(output, ty, value_null, &schema.name)?
         }
         SchemaKind::ScalarUnion { types } => {
@@ -382,10 +383,10 @@ fn validate_scalar(
         }
         SchemaKind::Group { .. } => unreachable!("validated only scalar output"),
     };
-    json_schema::allowed_values::validate_value(schema, &normalized)?;
-    json_schema::ranges::validate_json(schema, output)?;
-    json_schema::multiples::validate_json(schema, output)?;
-    json_schema::string_lengths::validate_json(schema, output)?;
+    runtime_constraints::validate_allowed_value(schema, &normalized)?;
+    runtime_constraints::validate_numeric_range(schema, output)?;
+    runtime_constraints::validate_multiple_of(schema, output)?;
+    runtime_constraints::validate_string_length(schema, output)?;
     patterns.validate_json(schema, output)
 }
 

@@ -90,42 +90,6 @@ pub(super) fn validate_ignored(
     Ok(())
 }
 
-pub(crate) fn validate_json(
-    schema: &SchemaNode,
-    value: &serde_json::Value,
-) -> Result<(), JsonFormatError> {
-    let Some(range) = schema.numeric_range else {
-        return Ok(());
-    };
-    // Explicit null is admitted by the scalar value layer, not by the range.
-    if value.is_null() && crate::null_layers::layers(schema)?.value_null {
-        return Ok(());
-    }
-    if value.is_string()
-        && ((matches!(range, NumericRange::Integer(_)) && schema.is_string_int_union())
-            || (matches!(range, NumericRange::Number(_)) && schema.is_string_float_union()))
-    {
-        return Ok(());
-    }
-    let matches = match (range, value) {
-        (NumericRange::Integer(range), serde_json::Value::Number(value)) => {
-            value.as_i64().is_some_and(|value| range.contains(value))
-        }
-        (NumericRange::Number(range), serde_json::Value::Number(value)) => {
-            crate::exact_f64_from_json_number(value).is_some_and(|value| range.contains(value))
-        }
-        _ => false,
-    };
-    if matches {
-        return Ok(());
-    }
-    Err(JsonFormatError::RangeMismatch {
-        name: schema.name.clone(),
-        range: display(range),
-        got: value.to_string(),
-    })
-}
-
 pub(crate) fn render(
     node: &SchemaNode,
     out: &mut serde_json::Map<String, serde_json::Value>,
@@ -787,31 +751,6 @@ fn exact_json_number(value: f64) -> Result<serde_json::Value, JsonFormatError> {
         .ok_or_else(|| JsonFormatError::InvalidNumericRangeMetadata {
             reason: format!("number bound `{value}` is not finite"),
         })
-}
-
-fn display(range: NumericRange) -> String {
-    match range {
-        NumericRange::Integer(range) => format!(
-            "[{}, {}]",
-            range
-                .minimum()
-                .map_or_else(|| "-inf".into(), |value| value.to_string()),
-            range
-                .maximum()
-                .map_or_else(|| "inf".into(), |value| value.to_string())
-        ),
-        NumericRange::Number(range) => {
-            let minimum = range.minimum();
-            let maximum = range.maximum();
-            format!(
-                "{}{}, {}{}",
-                minimum.map_or('(', |bound| if bound.is_exclusive() { '(' } else { '[' }),
-                minimum.map_or_else(|| "-inf".into(), |bound| bound.value().get().to_string()),
-                maximum.map_or_else(|| "inf".into(), |bound| bound.value().get().to_string()),
-                maximum.map_or(')', |bound| if bound.is_exclusive() { ')' } else { ']' }),
-            )
-        }
-    }
 }
 
 fn unsupported(name: &str, reason: &str) -> JsonFormatError {

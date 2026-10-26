@@ -17,9 +17,10 @@ mod json5_finite;
 mod json5_unique;
 pub mod json_schema;
 mod null_layers;
-mod pattern_runtime;
 mod prepared;
 mod reader;
+#[doc(hidden)]
+pub mod runtime_constraints;
 pub mod source_document;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -31,7 +32,6 @@ use ir::{
 };
 use thiserror::Error;
 
-use pattern_runtime::{PatternPrograms, PatternRuntime};
 pub use prepared::PreparedSchema;
 #[cfg(test)]
 use reader::read_node;
@@ -40,6 +40,7 @@ use reader::{
     from_value_with, read_node_with_patterns, read_repeated, read_scalar, read_scalar_union,
     strip_utf8_bom,
 };
+use runtime_constraints::{PatternPrograms, PatternRuntime};
 
 pub(crate) const MAX_JSON5_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_JSON_RECURSION_DEPTH: usize = 64;
@@ -474,7 +475,7 @@ pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, Json
     let values = match instance {
         Instance::Repeated(items) => {
             if schema.repeating {
-                json_schema::item_counts::validate_len(schema, items.len())?;
+                runtime_constraints::validate_item_count(schema, items.len())?;
             }
             let mut values = Vec::with_capacity(items.len());
             for item in items {
@@ -490,7 +491,7 @@ pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, Json
         }
         item => {
             if schema.repeating {
-                json_schema::item_counts::validate_len(schema, 1)?;
+                runtime_constraints::validate_item_count(schema, 1)?;
             }
             vec![write_single_node_with_patterns(
                 schema,
@@ -502,8 +503,8 @@ pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, Json
         }
     };
     if schema.repeating {
-        json_schema::contains::validate_values(schema, &values, &mut patterns)?;
-        json_schema::unique_items::validate(schema, &values)?;
+        runtime_constraints::validate_contains(schema, &values, &mut patterns)?;
+        runtime_constraints::unique_items::validate(schema, &values)?;
     }
     let mut text = String::new();
     for value in values {
@@ -564,7 +565,7 @@ fn write_node_with_patterns(
                 ));
             }
         };
-        json_schema::item_counts::validate_len(schema, items.len())?;
+        runtime_constraints::validate_item_count(schema, items.len())?;
         let mut values = Vec::with_capacity(items.len());
         for item in items {
             values.push(write_single_node_with_patterns(
@@ -575,8 +576,8 @@ fn write_node_with_patterns(
                 patterns,
             )?);
         }
-        json_schema::contains::validate_values(schema, &values, patterns)?;
-        json_schema::unique_items::validate(schema, &values)?;
+        runtime_constraints::validate_contains(schema, &values, patterns)?;
+        runtime_constraints::unique_items::validate(schema, &values)?;
         return Ok(serde_json::Value::Array(values));
     }
     write_single_node_with_patterns(schema, instance, recursive, recursion_depth, patterns)
@@ -644,22 +645,22 @@ fn write_single_node_with_patterns(
     match (&schema.kind, instance) {
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
             let value = write_scalar(value, *ty, null.value, &schema.name)?;
-            json_schema::constraints::validate_json(schema, &value)?;
+            runtime_constraints::validate_constant(schema, &value)?;
             let normalized = read_scalar(&value, *ty, null.value, &schema.name)?;
-            json_schema::allowed_values::validate_value(schema, &normalized)?;
-            json_schema::ranges::validate_json(schema, &value)?;
-            json_schema::multiples::validate_json(schema, &value)?;
-            json_schema::string_lengths::validate_json(schema, &value)?;
+            runtime_constraints::validate_allowed_value(schema, &normalized)?;
+            runtime_constraints::validate_numeric_range(schema, &value)?;
+            runtime_constraints::validate_multiple_of(schema, &value)?;
+            runtime_constraints::validate_string_length(schema, &value)?;
             patterns.validate_json(schema, &value)?;
             Ok(value)
         }
         (SchemaKind::ScalarUnion { types }, Instance::Scalar(value)) => {
             let value = write_scalar_union(value, *types, null.value, &schema.name)?;
             let normalized = read_scalar_union(&value, *types, null.value, &schema.name)?;
-            json_schema::allowed_values::validate_value(schema, &normalized)?;
-            json_schema::ranges::validate_json(schema, &value)?;
-            json_schema::multiples::validate_json(schema, &value)?;
-            json_schema::string_lengths::validate_json(schema, &value)?;
+            runtime_constraints::validate_allowed_value(schema, &normalized)?;
+            runtime_constraints::validate_numeric_range(schema, &value)?;
+            runtime_constraints::validate_multiple_of(schema, &value)?;
+            runtime_constraints::validate_string_length(schema, &value)?;
             patterns.validate_json(schema, &value)?;
             Ok(value)
         }
@@ -714,13 +715,13 @@ fn write_single_node_with_patterns(
                     patterns.validate_property_name(schema, property)?;
                 }
                 validate_required_fields(schema, required, |name| out.contains_key(name))?;
-                json_schema::property_dependencies::validate_properties(
+                runtime_constraints::validate_property_dependencies(
                     schema,
                     out.keys().map(String::as_str),
                 )?;
-                json_schema::property_counts::validate_len(schema, out.len())?;
+                runtime_constraints::validate_property_count(schema, out.len())?;
                 let value = serde_json::Value::Object(out);
-                json_schema::dependent_schemas::validate_object(
+                runtime_constraints::validate_dependent_schemas(
                     schema,
                     &value,
                     value
@@ -756,14 +757,14 @@ fn write_single_node_with_patterns(
                 patterns.validate_property_name(schema, property)?;
             }
             validate_required_fields(schema, required, |name| out.contains_key(name))?;
-            json_schema::property_dependencies::validate_properties(
+            runtime_constraints::validate_property_dependencies(
                 schema,
                 out.keys().map(String::as_str),
             )?;
             validate_alternative_fields(schema, alternatives, &out)?;
-            json_schema::property_counts::validate_len(schema, out.len())?;
+            runtime_constraints::validate_property_count(schema, out.len())?;
             let value = serde_json::Value::Object(out);
-            json_schema::dependent_schemas::validate_object(
+            runtime_constraints::validate_dependent_schemas(
                 schema,
                 &value,
                 value

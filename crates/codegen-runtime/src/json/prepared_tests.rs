@@ -35,12 +35,10 @@ mod unprepared {
         check_input_size(document.len())?;
         let schema = schema(descriptor)?;
         if unique_items::schema_contains_assertion(&schema) {
-            format_json::json_schema::unique_items::validate_raw_json_unique_items(
-                &schema, document,
-            )
-            .map_err(|error| JsonBoundaryError::InvalidInput {
-                message: error.to_string(),
-            })?;
+            format_json::runtime_constraints::validate_raw_json_unique_items(&schema, document)
+                .map_err(|error| JsonBoundaryError::InvalidInput {
+                    message: error.to_string(),
+                })?;
         }
         let formatter = without_boundary_constraints(schema.clone());
         let instance = format_json::from_str(document, &formatter).map_err(|error| {

@@ -1,6 +1,4 @@
-use format_json::json_schema::unique_items::{
-    UniqueItemsValidationError, validate_unique_json_items,
-};
+use format_json::runtime_constraints::{UniqueItemsValidationError, validate_unique_json_items};
 use ir::{SchemaKind, SchemaNode};
 
 use super::JsonBoundaryError;

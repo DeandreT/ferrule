@@ -8,10 +8,10 @@ pub(crate) fn validate_private_unique_items(schema: &SchemaNode) -> Result<(), J
 
 fn validate_schema(schema: &SchemaNode, private: bool) -> Result<(), JsonFormatError> {
     if private && schema.json_unique_items && item_shape_can_lose_number_precision(schema) {
-        return Err(super::unsupported_union(
-            &schema.name,
-            "`uniqueItems` inside `contains` or `dependentSchemas` cannot preserve exact arbitrary-precision JSON numbers when its item schema admits `number` or arbitrary JSON",
-        ));
+        return Err(JsonFormatError::UnsupportedSchemaUnion {
+            name: schema.name.clone(),
+            reason: "`uniqueItems` inside `contains` or `dependentSchemas` cannot preserve exact arbitrary-precision JSON numbers when its item schema admits `number` or arbitrary JSON".to_string(),
+        });
     }
     if let Some(constraints) = &schema.json_contains {
         for constraint in constraints.as_slice() {

@@ -34,28 +34,27 @@ use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode
 use crate::JsonFormatError;
 
 mod all_of;
-pub(crate) mod allowed_values;
+mod allowed_values;
 mod alternatives;
 mod conditionals;
-pub(crate) mod constraints;
-pub(crate) mod contains;
-pub(crate) mod dependent_schemas;
+mod constraints;
+mod contains;
+mod dependent_schemas;
 mod files;
 mod formats;
 mod import_budget;
-pub(crate) mod item_counts;
-pub(crate) mod multiples;
+mod item_counts;
+mod multiples;
 mod pattern_properties;
 mod patterns;
 mod positional_items;
-pub(crate) mod predicate;
-pub(crate) mod property_counts;
-pub(crate) mod property_dependencies;
-pub(crate) mod property_names;
-pub(crate) mod ranges;
+mod property_counts;
+mod property_dependencies;
+mod property_names;
+mod ranges;
 mod ref_required;
 mod render;
-pub(crate) mod string_lengths;
+mod string_lengths;
 pub mod unique_items;
 
 use all_of::parse_all_of;
@@ -129,7 +128,7 @@ pub fn import_str(text: &str) -> Result<SchemaNode, JsonFormatError> {
 fn import_value(value: &files::LoadedSchema) -> Result<SchemaNode, JsonFormatError> {
     let name = schema_title(value, value)?.unwrap_or("root");
     let schema = parse(name, value, value, &mut Vec::new())?;
-    predicate::validate_private_unique_items(&schema)?;
+    crate::runtime_constraints::validate_private_unique_items(&schema)?;
     if !schema.json_pattern_budget_is_valid() {
         return Err(unsupported_union(
             name,
