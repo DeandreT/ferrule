@@ -285,8 +285,23 @@ def action(directory, arguments):
         # Preflight the whole set so a bad later destination cannot partially overwrite it.
         paths = {suffix: destination(directory, name, suffix)
                  for suffix in (".json", ".layout.json", ".png")}
+        sources = {suffix: directory / ("saved" + suffix)
+                   for suffix in (".json", ".layout.json")}
+        source_identities = set()
+        for source in sources.values():
+            metadata = source.stat()
+            source_identities.add((metadata.st_dev, metadata.st_ino))
+        # Check every destination against both originals before opening any output.
+        # This also catches hard links, cross-file aliases and a PNG alias to a source.
+        for path in paths.values():
+            try:
+                metadata = path.stat()
+            except FileNotFoundError:
+                continue
+            if (metadata.st_dev, metadata.st_ino) in source_identities:
+                raise shutil.SameFileError("Snapshot destination aliases a saved original")
         for suffix in (".json", ".layout.json"):
-            with (directory / ("saved" + suffix)).open("rb") as source:
+            with sources[suffix].open("rb") as source:
                 with output_file(paths[suffix]) as target:
                     shutil.copyfileobj(source, target)
         capture(paths[".png"], env)

@@ -86,6 +86,9 @@ readable by `verify`, but cannot be used to control a new desktop. Snapshot,
 capture and clipboard names must be plain basenames within the run directory.
 Symlinks, absolute paths and traversal paths are refused; writes use no-follow
 file descriptors, including screenshot output.
+Snapshot destinations are also checked against both saved originals before any
+output opens; using `saved` as the snapshot name or a hard-link alias is refused
+without changing either original.
 
 Run the helper's standard-library guard tests independently of any desktop:
 

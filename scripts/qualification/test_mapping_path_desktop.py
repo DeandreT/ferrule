@@ -2,7 +2,9 @@
 
 import importlib.util
 import json
+import os
 from pathlib import Path
+import shutil
 import socket
 import tempfile
 import unittest
@@ -179,6 +181,47 @@ class GuardTests(unittest.TestCase):
             desktop.output_file(path)
         self.assertEqual(outside.read_bytes(), b"unchanged")
 
+    def test_snapshot_saved_preserves_both_originals(self):
+        originals = {"saved.json": b"original project", "saved.layout.json": b"original layout"}
+        for name, data in originals.items():
+            (self.run / name).write_bytes(data)
+        with mock.patch.object(desktop.subprocess, "run") as run:
+            with self.assertRaises(shutil.SameFileError):
+                self.action(["snapshot", "saved"])
+            run.assert_not_called()
+        for name, data in originals.items():
+            self.assertEqual((self.run / name).read_bytes(), data)
+        self.assertFalse((self.run / "saved.png").exists())
+
+    def test_snapshot_hardlinks_preserve_both_originals_and_earlier_outputs(self):
+        originals = {"saved.json": b"original project", "saved.layout.json": b"original layout"}
+        for name, data in originals.items():
+            (self.run / name).write_bytes(data)
+        # Include a late layout alias: JSON must not have been overwritten first.
+        for output, source in (("shot.json", "saved.json"),
+                               ("shot.layout.json", "saved.layout.json"),
+                               ("shot.json", "saved.layout.json"),
+                               ("shot.layout.json", "saved.json"),
+                               ("shot.png", "saved.json"),
+                               ("shot.png", "saved.layout.json")):
+            with self.subTest(output=output, source=source):
+                outputs = {name: b"previous snapshot " + name.encode()
+                           for name in ("shot.json", "shot.layout.json", "shot.png")}
+                for name, data in outputs.items():
+                    (self.run / name).write_bytes(data)
+                (self.run / output).unlink()
+                os.link(self.run / source, self.run / output)
+                outputs[output] = originals[source]
+                with mock.patch.object(desktop.subprocess, "run") as run:
+                    with self.assertRaises(shutil.SameFileError):
+                        self.action(["snapshot", "shot"])
+                    run.assert_not_called()
+                for name, data in originals.items():
+                    self.assertEqual((self.run / name).read_bytes(), data)
+                for name, data in outputs.items():
+                    self.assertEqual((self.run / name).read_bytes(), data)
+                    (self.run / name).unlink()
+
     def test_valid_private_paths_and_artifact_actions(self):
         def screenshot(*_args, **kwargs):
             kwargs["stdout"].write(b"png screenshot")
@@ -198,6 +241,8 @@ class GuardTests(unittest.TestCase):
             self.assertEqual((self.run / name).read_bytes(), content)
         self.assertEqual(desktop.destination(self.run, "main-preview.json"),
                          self.run / "main-preview.json")
+        self.assertEqual((self.run / "saved.json").read_bytes(), b"project")
+        self.assertEqual((self.run / "saved.layout.json").read_bytes(), b"layout")
         self.assertEqual(len((self.run / "actions.jsonl").read_text().splitlines()), 3)
 
 
