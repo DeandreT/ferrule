@@ -13,9 +13,9 @@ use ir::{
     ScalarType, ScalarTypeSet, SchemaKind, SchemaNode,
 };
 
-use super::super::{multiples, ranges, unique_items};
 use super::effective_layers::{walk, workspace_fixture_schemas};
 use crate::null_layers::layers;
+use crate::runtime_constraints::{unique_items, validate_multiple_of, validate_numeric_range};
 use crate::{JsonFormatError, RecursiveSchemas};
 
 /// The range validator's previous null admission.
@@ -98,7 +98,7 @@ fn combinations(shape: &SchemaNode) -> impl Iterator<Item = SchemaNode> + '_ {
 /// A null reaches the range check after the scalar decode; returns whether the
 /// node has an effective value layer.
 fn compare_range(node: &SchemaNode) -> bool {
-    let result = ranges::validate_json(node, &serde_json::Value::Null);
+    let result = validate_numeric_range(node, &serde_json::Value::Null);
     match layers(node) {
         Ok(layers) => {
             assert_eq!(
@@ -150,7 +150,7 @@ fn every_role_flag_combination_matches_or_refuses_contradictions() {
         for node in combinations(&shape) {
             // The previous null fast path admitted null before any divisor
             // check; null is not a number, so it is admitted without one.
-            assert!(multiples::validate_json(&node, &serde_json::Value::Null).is_ok());
+            assert!(validate_multiple_of(&node, &serde_json::Value::Null).is_ok());
             if node.numeric_range.is_some() {
                 if compare_range(&node) {
                     ranged += 1;
@@ -214,7 +214,7 @@ fn independently_authored_null_branch_and_validator_controls() {
         Err(JsonFormatError::RangeMismatch { .. })
     ));
     assert!(matches!(
-        ranges::validate_json(&range().nillable(), &serde_json::Value::Null),
+        validate_numeric_range(&range().nillable(), &serde_json::Value::Null),
         Err(JsonFormatError::RangeMismatch { .. })
     ));
 
@@ -255,7 +255,7 @@ fn every_workspace_json_schema_fixture_matches_before_and_after_migration() {
         walk(&schema, &mut |node| {
             nodes += 1;
             assert!(
-                multiples::validate_json(node, &serde_json::Value::Null).is_ok(),
+                validate_multiple_of(node, &serde_json::Value::Null).is_ok(),
                 "{}",
                 path.display()
             );

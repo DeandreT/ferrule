@@ -135,30 +135,6 @@ pub(super) fn ensure_feasible(name: &str, node: &SchemaNode) -> Result<(), JsonF
     ))
 }
 
-pub(crate) fn validate_properties<'a>(
-    schema: &SchemaNode,
-    properties: impl IntoIterator<Item = &'a str>,
-) -> Result<(), JsonFormatError> {
-    let Some(dependencies) = &schema.json_property_dependencies else {
-        return Ok(());
-    };
-    let present = properties.into_iter().collect::<BTreeSet<_>>();
-    for (trigger, requirements) in dependencies.rules() {
-        if present.contains(trigger.as_str())
-            && let Some(property) = requirements
-                .iter()
-                .find(|property| !present.contains(property.as_str()))
-        {
-            return Err(JsonFormatError::MissingDependentProperty {
-                object: schema.name.clone(),
-                trigger: trigger.clone(),
-                property: property.clone(),
-            });
-        }
-    }
-    Ok(())
-}
-
 pub(super) fn render(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json::Value>) {
     if let Some(dependencies) = &node.json_property_dependencies {
         let rendered = dependencies

@@ -73,7 +73,7 @@ impl PreparedJsonSchema {
     ) -> Result<Instance, JsonBoundaryError> {
         check_input_size(document.len())?;
         if self.unique_items {
-            format_json::json_schema::unique_items::validate_raw_json_unique_items(
+            format_json::runtime_constraints::validate_raw_json_unique_items(
                 &self.schema,
                 document,
             )

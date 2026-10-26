@@ -117,41 +117,6 @@ pub(super) fn union(
     Ok(Some(merged))
 }
 
-pub(crate) fn validate_json(
-    schema: &SchemaNode,
-    value: &serde_json::Value,
-) -> Result<(), JsonFormatError> {
-    let Some(constraints) = &schema.json_multiple_of else {
-        return Ok(());
-    };
-    // `multipleOf` constrains numbers only; whether null is admitted is
-    // decided by the scalar decode.
-    let matches = match value {
-        serde_json::Value::Number(number)
-            if schema.accepts_scalar_type(ScalarType::Int)
-                && number
-                    .as_i64()
-                    .is_some_and(|value| constraints.matches_i64(value)) =>
-        {
-            true
-        }
-        serde_json::Value::Number(number) if schema.accepts_scalar_type(ScalarType::Float) => {
-            crate::exact_f64_from_json_number(number)
-                .is_some_and(|value| constraints.matches_f64(value))
-        }
-        serde_json::Value::Number(_) => false,
-        _ => true,
-    };
-    if matches {
-        return Ok(());
-    }
-    Err(JsonFormatError::MultipleOfMismatch {
-        name: schema.name.clone(),
-        divisors: display(constraints),
-        got: value.to_string(),
-    })
-}
-
 /// Writes the `multipleOf` constraints; `value_null` is the scalar null layer
 /// derived from the effective JSON view.
 pub(super) fn render(
@@ -306,21 +271,6 @@ fn scalar_type_name(ty: ScalarType) -> &'static str {
         ScalarType::Float => "number",
         ScalarType::Bool => "boolean",
     }
-}
-
-fn display(constraints: &JsonMultipleOfConstraints) -> String {
-    constraints
-        .any_of()
-        .iter()
-        .map(|alternative| {
-            alternative
-                .iter()
-                .map(|divisor| divisor.to_decimal_lexical())
-                .collect::<Vec<_>>()
-                .join(" and ")
-        })
-        .collect::<Vec<_>>()
-        .join(" or ")
 }
 
 fn constraint_error(name: &str, error: JsonMultipleOfConstraintsError) -> JsonFormatError {

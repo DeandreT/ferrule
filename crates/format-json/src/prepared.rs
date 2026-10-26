@@ -1,7 +1,7 @@
 use ir::{Instance, SchemaNode};
 
-use crate::pattern_runtime::PatternPrograms;
-use crate::{JsonFormatError, RecursiveSchemas, json_schema};
+use crate::runtime_constraints::{self, PatternPrograms};
+use crate::{JsonFormatError, RecursiveSchemas};
 
 /// A schema whose pattern programs are compiled once and shared by every
 /// document read or written with it.
@@ -36,7 +36,7 @@ impl PreparedSchema {
             return crate::from_str(text, &self.schema);
         };
         let text = crate::strip_utf8_bom(text);
-        json_schema::unique_items::validate_raw_json_unique_items(&self.schema, text)?;
+        runtime_constraints::validate_raw_json_unique_items(&self.schema, text)?;
         let value: serde_json::Value = serde_json::from_str(text)?;
         // The anchor view borrows the schema, so it is rebuilt per call; its
         // validation already succeeded during preparation.

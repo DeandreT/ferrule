@@ -6,13 +6,13 @@ use json_pattern::{DEFAULT_MATCH_WORK_LIMIT, PortableJsonPattern};
 use crate::JsonFormatError;
 
 /// Immutable compiled pattern programs for one validated schema.
-pub(super) struct PatternPrograms {
+pub(crate) struct PatternPrograms {
     programs: BTreeMap<String, PortableJsonPattern>,
 }
 
 impl PatternPrograms {
-    pub(super) fn new(schema: &SchemaNode) -> Result<Self, JsonFormatError> {
-        crate::json_schema::predicate::validate_private_unique_items(schema)?;
+    pub(crate) fn new(schema: &SchemaNode) -> Result<Self, JsonFormatError> {
+        super::validate_private_unique_items(schema)?;
         if !schema.json_pattern_budget_is_valid() {
             return Err(JsonFormatError::InvalidPatternMetadata {
                 reason:
@@ -26,7 +26,7 @@ impl PatternPrograms {
     }
 
     /// Starts one document's matching with a fresh work budget.
-    pub(super) fn runtime(&self) -> PatternRuntime<'_> {
+    pub(crate) fn runtime(&self) -> PatternRuntime<'_> {
         PatternRuntime {
             programs: &self.programs,
             remaining_work: DEFAULT_MATCH_WORK_LIMIT,
@@ -36,13 +36,13 @@ impl PatternPrograms {
 
 /// Per-document pattern matching: shared programs plus this document's
 /// remaining work.
-pub(super) struct PatternRuntime<'p> {
+pub(crate) struct PatternRuntime<'p> {
     programs: &'p BTreeMap<String, PortableJsonPattern>,
     remaining_work: u64,
 }
 
 impl PatternRuntime<'_> {
-    pub(super) fn validate_json(
+    pub(crate) fn validate_json(
         &mut self,
         schema: &SchemaNode,
         value: &serde_json::Value,
@@ -81,7 +81,7 @@ impl PatternRuntime<'_> {
         })
     }
 
-    pub(super) fn validate_property_name(
+    pub(crate) fn validate_property_name(
         &mut self,
         schema: &SchemaNode,
         property: &str,
@@ -158,7 +158,7 @@ impl PatternRuntime<'_> {
         Ok(false)
     }
 
-    pub(super) fn validate_dynamic_property_name(
+    pub(crate) fn validate_dynamic_property_name(
         &mut self,
         schema: &SchemaNode,
         property: &str,
