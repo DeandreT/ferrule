@@ -603,6 +603,7 @@ fn render_selected_target_entry_points(
     output.push_str(
         "\n    public static SelectedTargetOutput ExecuteSelectedTarget(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleTargetSelection selection)\n    {\n        return ExecuteSelectedTargetWithHost(source, selection, global::System.Array.Empty<NamedInput>());\n    }\n\n    public static SelectedTargetOutput ExecuteSelectedTargetWithHost(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleTargetSelection selection,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext? executionContext = null,\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader? dynamicSourceLoader = null)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(selection);\n        var selected = ResolveTarget(selection);\n        var context = CreateContext(source, extraSources, executionContext, dynamicSourceLoader);\n",
     );
+    output.push_str("        return ExecuteSelectedTargetFromContext(context, selected);\n    }\n\n    private static SelectedTargetOutput ExecuteSelectedTargetFromContext(global::Ferrule.Runtime.ScopeContext context, int selected)\n    {\n");
     if !program.failure_rules.is_empty() {
         output.push_str("        EvaluateFailureRules(context);\n");
     }

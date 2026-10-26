@@ -65,9 +65,16 @@ pub struct XmlEmissionPlan<'a> {
     inputs: XmlDocumentInputs,
     named_outputs: Vec<XmlDocumentCardinality>,
     policy: &'a XmlBoundaryProgram,
+    selected_inputs: Option<crate::NamedInputAdmissionPlan<'a>>,
 }
 
 impl<'a> XmlEmissionPlan<'a> {
+    /// Static source requirements for isolated physical byte output. This route
+    /// is only proved for ordinary Structured inputs and single-document outputs.
+    pub fn selected_inputs(&self) -> Option<&crate::NamedInputAdmissionPlan<'a>> {
+        self.selected_inputs.as_ref()
+    }
+
     pub const fn mode(&self) -> XmlOutputMode {
         self.mode
     }
@@ -150,6 +157,13 @@ pub fn prepare_boundary_emission(
     let proved = crate::validate::validate_program_proving_xml_boundary(program)?;
     let xml = match (companions, proved, &program.xml_boundary) {
         (CompanionSelection::Complete, Some(proved), Some(policy)) => Some(XmlEmissionPlan {
+            selected_inputs: (proved.mode == XmlOutputMode::SingleDocument
+                && proved.inputs == XmlDocumentInputs::Structured
+                && program
+                    .extra_sources
+                    .iter()
+                    .all(|source| source.dynamic.is_none()))
+            .then(|| crate::owned_admission::admission_plan(program)),
             mode: proved.mode,
             inputs: proved.inputs,
             named_outputs: proved.named_outputs,
@@ -215,6 +229,16 @@ mod tests {
             let Some(xml) = plan.xml() else {
                 continue;
             };
+            assert_eq!(
+                xml.selected_inputs().is_some(),
+                xml.mode() == XmlOutputMode::SingleDocument
+                    && xml.inputs() == XmlDocumentInputs::Structured
+                    && program
+                        .extra_sources
+                        .iter()
+                        .all(|source| source.dynamic.is_none()),
+                "{name}"
+            );
             assert!(std::ptr::eq(
                 xml.policy(),
                 program.xml_boundary.as_ref().unwrap()

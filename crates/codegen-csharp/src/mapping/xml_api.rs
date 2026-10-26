@@ -7,6 +7,7 @@ mod mixed_named_outputs;
 mod named_document_outputs;
 mod named_inputs;
 mod owned_document_sets;
+mod selected_bytes;
 pub(crate) use owned_document_sets::render as render_owned_document_sets;
 
 use crate::{EmitError, literal};
@@ -17,6 +18,9 @@ pub(super) fn types(plan: Option<&XmlEmissionPlan<'_>>) -> &'static str {
     let Some(plan) = plan else {
         return "";
     };
+    if plan.selected_inputs().is_some() {
+        return selected_bytes::TYPES;
+    }
     match plan.mode() {
         XmlOutputMode::StaticPrimaryMixedNamedXmlOutputs => mixed_named_outputs::TYPES,
         XmlOutputMode::DynamicNamedInputStaticPrimaryDynamicNamedDocuments => {
@@ -143,6 +147,9 @@ fn render_single_document(
     }
     if plan.inputs() == XmlDocumentInputs::Structured {
         dynamic_inputs::render(program, output);
+    }
+    if plan.selected_inputs().is_some() {
+        selected_bytes::render(program, plan, output)?;
     }
     for bytes in [false, true] {
         let name = if bytes {
