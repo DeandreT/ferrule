@@ -269,7 +269,9 @@ fn render_payload_with_limit(
         if profile.bounded()
             && let Some(maximum) = csv_maximum
         {
-            return match format_csv::to_bytes_fixed_width_bounded(schema, rows, layout, maximum) {
+            return match format_csv::to_bytes_fixed_width_validated_bounded(
+                schema, rows, layout, maximum,
+            ) {
                 Ok(bytes) => Ok(PayloadBytes::Ready(bytes, rows.len())),
                 Err(format_csv::CsvBoundedError::Format(error)) => {
                     Err(anyhow::Error::new(error)).context("rendering fixed-width output payload")

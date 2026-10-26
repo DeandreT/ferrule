@@ -229,7 +229,9 @@ CSV (including tab-delimited CSV) and fixed-width admission: 8 MiB per input,
 CSV headers count toward the record limit; fixed-width fill counts toward the
 cell-byte limit while widths still count Unicode scalars. Fixed-width output is
 measured before its buffer is allocated. Empty documents remain valid. This
-profile uses declared endpoint paths/options for format identity, independently
+profile validates every fixed-width output row before returning a byte-budget
+refusal, so later native format errors retain their original row and field.
+The profile uses declared endpoint paths/options for format identity, independently
 of uploaded names or output overrides; missing format identity rejects rather
 than guessing. Native non-tabular codecs retain their behavior, as do the outer
 64 MiB/document and 256 MiB/run budgets. Target selection still parses the entire

@@ -2,7 +2,7 @@ use format_csv::{
     CsvBoundedError, CsvFormatError, FixedWidthReadError, FixedWidthReadLimit, MAX_CSV_INPUT_BYTES,
     MAX_CSV_INPUT_CELL_BYTES, MAX_CSV_INPUT_COLUMNS, MAX_CSV_INPUT_NODES, MAX_CSV_INPUT_RECORDS,
     from_bytes_fixed_width_bounded, from_str_fixed_width, from_str_fixed_width_bounded,
-    to_bytes_fixed_width_bounded, to_string_fixed_width,
+    to_bytes_fixed_width_bounded, to_bytes_fixed_width_validated_bounded, to_string_fixed_width,
 };
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{FixedFieldWidth, FixedWidthLayout};
@@ -50,8 +50,22 @@ fn unicode_scalars_fill_bom_and_empty_policies_match_native() {
                 to_bytes_fixed_width_bounded(&schema(2), &actual, &layout, bytes.len()).unwrap(),
                 bytes
             );
+            assert_eq!(
+                to_bytes_fixed_width_validated_bounded(&schema(2), &actual, &layout, bytes.len())
+                    .unwrap(),
+                bytes
+            );
             assert!(matches!(
                 to_bytes_fixed_width_bounded(&schema(2), &actual, &layout, bytes.len() - 1),
+                Err(CsvBoundedError::OutputTooLarge { .. })
+            ));
+            assert!(matches!(
+                to_bytes_fixed_width_validated_bounded(
+                    &schema(2),
+                    &actual,
+                    &layout,
+                    bytes.len() - 1
+                ),
                 Err(CsvBoundedError::OutputTooLarge { .. })
             ));
             for empty in ["", "\u{feff}"] {
@@ -201,4 +215,100 @@ fn huge_output_is_measured_and_native_errors_keep_their_cause() {
             3
         );
     }
+}
+
+fn text_row(values: &[&str]) -> Instance {
+    Instance::Group(
+        values
+            .iter()
+            .enumerate()
+            .map(|(i, value)| {
+                (
+                    format!("c{i}"),
+                    Instance::Scalar(Value::String((*value).into())),
+                )
+            })
+            .collect::<Vec<_>>()
+            .into(),
+    )
+}
+
+#[test]
+fn complete_validation_preserves_late_field_and_row_causes_after_oversize() {
+    let schema = schema(2);
+    let layout = layout(&[1024, 1], '🦀', true, false);
+    // The first field already exceeds the limit. A later field in that same
+    // row must still report its native error, not the resource refusal.
+    let same_row = vec![text_row(&["x", "xx"])];
+    assert!(matches!(
+        to_bytes_fixed_width_validated_bounded(&schema, &same_row, &layout, 1),
+        Err(CsvBoundedError::Format(CsvFormatError::FixedWidthFieldOverflow { row: 0, field, width: 1, got: 2 })) if field == "c1"
+    ));
+    assert!(matches!(
+        to_bytes_fixed_width_bounded(&schema, &same_row, &layout, 1),
+        Err(CsvBoundedError::OutputTooLarge { .. })
+    ));
+    let valid = text_row(&["x", "y"]);
+    for bad in [text_row(&["x", "xx"]), Instance::Scalar(Value::Null)] {
+        let rows = vec![valid.clone(), bad];
+        let error = to_bytes_fixed_width_validated_bounded(&schema, &rows, &layout, 1).unwrap_err();
+        assert!(matches!(
+            error,
+            CsvBoundedError::Format(
+                CsvFormatError::FixedWidthFieldOverflow { row: 1, .. }
+                    | CsvFormatError::RowShape { row: 1, .. }
+            )
+        ));
+        assert!(matches!(
+            to_bytes_fixed_width_bounded(&schema, &rows, &layout, 1),
+            Err(CsvBoundedError::OutputTooLarge { .. })
+        ));
+    }
+    assert!(matches!(
+        to_bytes_fixed_width_validated_bounded(&schema, std::slice::from_ref(&valid), &layout, 1),
+        Err(CsvBoundedError::OutputTooLarge { maximum: 1 })
+    ));
+    // Correcting both errors and using an adequate budget produces the exact
+    // native bytes, without carrying any failed-run state forward.
+    let expected = to_string_fixed_width(&schema, std::slice::from_ref(&valid), &layout)
+        .unwrap()
+        .into_bytes();
+    assert_eq!(
+        to_bytes_fixed_width_validated_bounded(&schema, &[valid], &layout, expected.len()).unwrap(),
+        expected
+    );
+}
+
+#[test]
+fn complete_validation_zero_budget_huge_width_and_corrected_retry() {
+    let schema = schema(1);
+    let huge = layout(&[u32::MAX], '🦀', false, false);
+    assert_eq!(
+        to_bytes_fixed_width_validated_bounded(&schema, &[], &huge, 0).unwrap(),
+        b""
+    );
+    let rows = vec![text_row(&["😀"])];
+    assert!(matches!(
+        to_bytes_fixed_width_validated_bounded(&schema, &rows, &huge, 0),
+        Err(CsvBoundedError::OutputTooLarge { maximum: 0 })
+    ));
+    let small = layout(&[2], '🦀', true, false);
+    assert!(matches!(
+        to_bytes_fixed_width_validated_bounded(&schema, &rows, &small, 8),
+        Err(CsvBoundedError::OutputTooLarge { maximum: 8 })
+    ));
+    assert_eq!(
+        to_bytes_fixed_width_validated_bounded(&schema, &rows, &small, 9).unwrap(),
+        "😀🦀\n".as_bytes()
+    );
+    assert!(matches!(
+        to_bytes_fixed_width_validated_bounded(&schema, &[text_row(&["123"])], &small, 0),
+        Err(CsvBoundedError::Format(
+            CsvFormatError::FixedWidthFieldOverflow { row: 0, .. }
+        ))
+    ));
+    assert_eq!(
+        to_bytes_fixed_width_validated_bounded(&schema, &rows, &small, 9).unwrap(),
+        "😀🦀\n".as_bytes()
+    );
 }

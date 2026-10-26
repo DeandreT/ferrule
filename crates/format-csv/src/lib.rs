@@ -52,8 +52,8 @@ pub use read::{
 };
 
 pub use fixed_width::{
-    from_str_fixed_width, read_fixed_width, to_bytes_fixed_width_bounded, to_string_fixed_width,
-    write_fixed_width,
+    from_str_fixed_width, read_fixed_width, to_bytes_fixed_width_bounded,
+    to_bytes_fixed_width_validated_bounded, to_string_fixed_width, write_fixed_width,
 };
 pub use fixed_width_bounded::{
     FixedWidthReadError, FixedWidthReadLimit, from_bytes_fixed_width_bounded,

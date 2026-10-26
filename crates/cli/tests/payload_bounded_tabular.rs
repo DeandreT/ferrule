@@ -564,3 +564,63 @@ fn unused_engine_failure_is_not_evaluated_and_edi_input_stays_native() -> anyhow
     assert_eq!(output.artifacts[0].bytes, b"one|1\ntwo|1\n");
     Ok(())
 }
+
+#[test]
+fn fixed_width_late_native_error_precedes_production_limit_and_retry_is_clean() -> anyhow::Result<()>
+{
+    let mut project = project();
+    project.target =
+        SchemaNode::group("Row", vec![SchemaNode::scalar("Value", ScalarType::String)]);
+    project.root.bindings.truncate(1);
+    project.target_options = FormatOptions {
+        fixed_width: Some(FixedWidthLayout::new(
+            vec![FixedFieldWidth::new(1024).unwrap()],
+            ' ',
+            true,
+            false,
+        )?),
+        ..Default::default()
+    };
+    let valid = "h;h\n".to_owned() + &"x;1\n".repeat(65_537);
+    let invalid = "h;h\n".to_owned() + &"x;1\n".repeat(65_536) + &"x".repeat(1025) + ";1\n";
+    let error = run(
+        &project,
+        invalid.as_bytes(),
+        b"malformed-unused",
+        Some(TargetSelection::Primary),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(error.downcast_ref::<format_csv::CsvFormatError>(), Some(format_csv::CsvFormatError::FixedWidthFieldOverflow { row: 65_536, field, width: 1024, got: 1025 }) if field == "Value"),
+        "{error:#}"
+    );
+    assert!(format!("{error:#}").contains("rendering primary target"));
+    // Once the late row is valid, the complete document is genuinely oversized.
+    let error = run(
+        &project,
+        valid.as_bytes(),
+        b"malformed-unused",
+        Some(TargetSelection::Primary),
+    )
+    .unwrap_err();
+    assert!(
+        error.to_string().contains("64 MiB per-document limit"),
+        "{error:#}"
+    );
+    project.target_options.fixed_width = Some(FixedWidthLayout::new(
+        vec![FixedFieldWidth::new(1).unwrap()],
+        ' ',
+        true,
+        false,
+    )?);
+    let output = run(
+        &project,
+        valid.as_bytes(),
+        b"malformed-unused",
+        Some(TargetSelection::Primary),
+    )?;
+    assert_eq!(output.artifacts.len(), 1);
+    assert_eq!(output.artifacts[0].records_written, 65_537);
+    assert_eq!(output.artifacts[0].bytes, "x\n".repeat(65_537).as_bytes());
+    Ok(())
+}

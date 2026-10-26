@@ -101,15 +101,40 @@ fn format_records(
     Ok(output)
 }
 
-/// Measures the complete UTF-8 output before allocating its text buffer.
+/// Measures UTF-8 output before allocating its text buffer, stopping at the
+/// first format or byte-limit error. For full native validation before a
+/// resource refusal, use [`to_bytes_fixed_width_validated_bounded`].
 pub fn to_bytes_fixed_width_bounded(
     schema: &SchemaNode,
     rows: &[Instance],
     layout: &FixedWidthLayout,
     maximum: usize,
 ) -> Result<Vec<u8>, crate::CsvBoundedError> {
+    bounded_records(schema, rows, layout, maximum, false)
+}
+
+/// Validates every row and field before returning an output byte-limit error.
+/// After exceeding the limit, measurement stops but native format validation
+/// continues without allocating any padding or output. On success the exact
+/// measured UTF-8 size is used to allocate the output buffer.
+pub fn to_bytes_fixed_width_validated_bounded(
+    schema: &SchemaNode,
+    rows: &[Instance],
+    layout: &FixedWidthLayout,
+    maximum: usize,
+) -> Result<Vec<u8>, crate::CsvBoundedError> {
+    bounded_records(schema, rows, layout, maximum, true)
+}
+
+fn bounded_records(
+    schema: &SchemaNode,
+    rows: &[Instance],
+    layout: &FixedWidthLayout,
+    maximum: usize,
+    validate_complete: bool,
+) -> Result<Vec<u8>, crate::CsvBoundedError> {
     let fields = checked_fields(schema, layout)?;
-    let mut bytes = 0usize;
+    let mut size = BoundedSize::new(maximum);
     for (row, instance) in rows.iter().enumerate() {
         let values = format_row(row, instance, &fields)?;
         for (((field, _), value), width) in fields.iter().zip(values).zip(layout.field_widths()) {
@@ -124,19 +149,55 @@ pub fn to_bytes_fixed_width_bounded(
                 }
                 .into());
             }
-            bytes = (width - got)
-                .checked_mul(layout.fill_char().len_utf8())
-                .and_then(|padding| padding.checked_add(value.len()))
-                .and_then(|field| bytes.checked_add(field))
-                .filter(|bytes| *bytes <= maximum)
-                .ok_or(crate::CsvBoundedError::OutputTooLarge { maximum })?;
+            size.add(value.len());
+            size.add_padding(width - got, layout.fill_char());
+            if !validate_complete {
+                size.finish()?;
+            }
         }
-        bytes = bytes
-            .checked_add(usize::from(layout.record_delimiters()))
-            .filter(|bytes| *bytes <= maximum)
-            .ok_or(crate::CsvBoundedError::OutputTooLarge { maximum })?;
+        size.add(usize::from(layout.record_delimiters()));
+        if !validate_complete {
+            size.finish()?;
+        }
     }
+    let bytes = size.finish()?;
     Ok(format_records(&fields, rows, layout, bytes)?.into_bytes())
+}
+
+/// None is a sticky resource refusal, including arithmetic overflow. Keeping
+/// only the bounded count lets complete validation continue after that refusal.
+struct BoundedSize {
+    bytes: Option<usize>,
+    maximum: usize,
+}
+
+impl BoundedSize {
+    fn new(maximum: usize) -> Self {
+        Self {
+            bytes: Some(0),
+            maximum,
+        }
+    }
+
+    fn add(&mut self, bytes: usize) {
+        self.bytes = self
+            .bytes
+            .and_then(|total| total.checked_add(bytes))
+            .filter(|total| *total <= self.maximum);
+    }
+
+    fn add_padding(&mut self, count: usize, fill: char) {
+        self.bytes = self
+            .bytes
+            .and_then(|total| count.checked_mul(fill.len_utf8())?.checked_add(total))
+            .filter(|total| *total <= self.maximum);
+    }
+
+    fn finish(&self) -> Result<usize, crate::CsvBoundedError> {
+        self.bytes.ok_or(crate::CsvBoundedError::OutputTooLarge {
+            maximum: self.maximum,
+        })
+    }
 }
 
 pub(super) fn checked_fields<'a>(
@@ -245,6 +306,31 @@ mod tests {
     use mapping::FixedFieldWidth;
 
     use super::*;
+
+    #[test]
+    fn bounded_measurement_overflow_and_limit_refusal_are_sticky() {
+        let mut size = BoundedSize::new(usize::MAX);
+        size.add(usize::MAX);
+        assert_eq!(size.finish().unwrap(), usize::MAX);
+        size.add(1);
+        size.add(0);
+        assert!(matches!(
+            size.finish(),
+            Err(crate::CsvBoundedError::OutputTooLarge {
+                maximum: usize::MAX
+            })
+        ));
+
+        let mut size = BoundedSize::new(usize::MAX);
+        size.add_padding(usize::MAX, '🦀');
+        size.add_padding(0, ' ');
+        assert!(size.finish().is_err());
+
+        let mut size = BoundedSize::new(0);
+        size.add(1);
+        size.add(0);
+        assert!(size.finish().is_err());
+    }
 
     fn schema() -> SchemaNode {
         SchemaNode::group(
