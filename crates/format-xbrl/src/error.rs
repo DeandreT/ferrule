@@ -4,6 +4,24 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum XbrlFormatError {
+    #[error("invalid XBRL limit: {0:?}")]
+    InvalidLimit(crate::XbrlLimit),
+    #[error("XBRL {limit:?} limit exceeded: {actual} > {maximum}")]
+    LimitExceeded {
+        limit: crate::XbrlLimit,
+        maximum: usize,
+        actual: usize,
+    },
+    #[error("unsupported bounded XBRL profile: {0}")]
+    UnsupportedBoundedProfile(&'static str),
+    #[error("invalid bounded XBRL instance: {0}")]
+    InvalidBoundedInstance(&'static str),
+    #[error("XBRL fact references missing context `{id}`")]
+    MissingContextReference { id: String },
+    #[error("XBRL fact references missing unit `{id}`")]
+    MissingUnitReference { id: String },
+    #[error("bounded XBRL XML preflight failed: {0}")]
+    XmlPreflight(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("XBRL parse error: {0}")]

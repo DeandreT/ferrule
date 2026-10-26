@@ -1,9 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::Write;
 
 use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 
 use super::{Fact, LINK, TargetRow, Unit, XBRLDI, XBRLI, XbrlFormatError};
+use crate::bounded::{XbrlLimit, XbrlLimitOptions, XmlBudget, check};
 
 const XLINK: &str = "http://www.w3.org/1999/xlink";
 pub(super) struct Prefixes {
@@ -67,7 +69,62 @@ pub(super) fn render_target(
     units: &[Unit],
     prefixes: &Prefixes,
 ) -> Result<String, XbrlFormatError> {
-    let mut writer = Writer::new_with_indent(Vec::new(), b' ', 2);
+    let bytes = render_into(Vec::new(), taxonomy, rows, units, prefixes, None)?;
+    String::from_utf8(bytes).map_err(|error| {
+        XbrlFormatError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    })
+}
+
+pub(super) fn render_bounded<W: Write>(
+    sink: W,
+    taxonomy: &str,
+    rows: &[TargetRow],
+    units: &[Unit],
+    prefixes: &Prefixes,
+    limits: &XbrlLimitOptions,
+) -> Result<(W, usize), XbrlFormatError> {
+    let sink = LimitedWriter {
+        inner: sink,
+        count: 0,
+        maximum: limits.max_output_bytes,
+    };
+    let result = render_into(sink, taxonomy, rows, units, prefixes, Some(limits));
+    match result {
+        Ok(sink) => Ok((sink.inner, sink.count)),
+        Err(XbrlFormatError::Io(error)) => {
+            if let Some(limit) = error
+                .get_ref()
+                .and_then(|e| e.downcast_ref::<OutputLimit>())
+            {
+                return Err(XbrlFormatError::LimitExceeded {
+                    limit: XbrlLimit::OutputBytes,
+                    maximum: limit.maximum,
+                    actual: limit.actual,
+                });
+            }
+            Err(XbrlFormatError::Io(error))
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn render_into<W: Write>(
+    sink: W,
+    taxonomy: &str,
+    rows: &[TargetRow],
+    units: &[Unit],
+    prefixes: &Prefixes,
+    limits: Option<&XbrlLimitOptions>,
+) -> Result<W, XbrlFormatError> {
+    if let Some(limits) = limits {
+        check(XbrlLimit::Units, units.len(), limits.max_units)?;
+    }
+    let mut writer = TargetWriter {
+        inner: Writer::new_with_indent(sink, b' ', 2),
+        budget: limits.map(XmlBudget::new).transpose()?,
+        depth: 0,
+        line_break: false,
+    };
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
     let mut root = BytesStart::new("xbrli:xbrl");
     root.push_attribute(("xmlns:xbrli", XBRLI));
@@ -105,13 +162,11 @@ pub(super) fn render_target(
         }
     }
     writer.write_event(Event::End(BytesEnd::new("xbrli:xbrl")))?;
-    String::from_utf8(writer.into_inner()).map_err(|error| {
-        XbrlFormatError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, error))
-    })
+    Ok(writer.inner.into_inner())
 }
 
-fn write_unit(
-    writer: &mut Writer<Vec<u8>>,
+fn write_unit<W: Write>(
+    writer: &mut TargetWriter<'_, W>,
     unit: &Unit,
     prefixes: &Prefixes,
 ) -> Result<(), XbrlFormatError> {
@@ -138,8 +193,8 @@ fn write_unit(
     Ok(())
 }
 
-fn write_context(
-    writer: &mut Writer<Vec<u8>>,
+fn write_context<W: Write>(
+    writer: &mut TargetWriter<'_, W>,
     id: &str,
     row: &TargetRow,
     prefixes: &Prefixes,
@@ -151,7 +206,7 @@ fn write_context(
     let mut identifier = BytesStart::new("xbrli:identifier");
     identifier.push_attribute(("scheme", row.identifier.scheme.as_str()));
     writer.write_event(Event::Start(identifier))?;
-    writer.write_event(Event::Text(BytesText::new(&row.identifier.value)))?;
+    write_text(writer, &row.identifier.value)?;
     writer.write_event(Event::End(BytesEnd::new("xbrli:identifier")))?;
     if !row.dimensions.is_empty() {
         writer.write_event(Event::Start(BytesStart::new("xbrli:segment")))?;
@@ -160,9 +215,7 @@ fn write_context(
             let dimension_name = prefixes.qname(&dimension.namespace, &dimension.name);
             member.push_attribute(("dimension", dimension_name.as_str()));
             writer.write_event(Event::Start(member))?;
-            writer.write_event(Event::Text(BytesText::new(
-                &prefixes.lexical_qname(&dimension.member),
-            )))?;
+            write_text(writer, &prefixes.lexical_qname(&dimension.member))?;
             writer.write_event(Event::End(BytesEnd::new("xbrldi:explicitMember")))?;
         }
         writer.write_event(Event::End(BytesEnd::new("xbrli:segment")))?;
@@ -182,8 +235,8 @@ fn write_context(
     Ok(())
 }
 
-fn write_fact(
-    writer: &mut Writer<Vec<u8>>,
+fn write_fact<W: Write>(
+    writer: &mut TargetWriter<'_, W>,
     context_id: &str,
     fact: &Fact,
     prefixes: &Prefixes,
@@ -198,18 +251,177 @@ fn write_fact(
         start.push_attribute(("decimals", decimals.as_str()));
     }
     writer.write_event(Event::Start(start))?;
-    writer.write_event(Event::Text(BytesText::new(&fact.value)))?;
+    write_text(writer, &fact.value)?;
     writer.write_event(Event::End(BytesEnd::new(&name)))?;
     Ok(())
 }
 
-fn write_text_element(
-    writer: &mut Writer<Vec<u8>>,
+fn write_text_element<W: Write>(
+    writer: &mut TargetWriter<'_, W>,
     name: &str,
     value: &str,
 ) -> Result<(), XbrlFormatError> {
     writer.write_event(Event::Start(BytesStart::new(name)))?;
-    writer.write_event(Event::Text(BytesText::new(value)))?;
+    write_text(writer, value)?;
     writer.write_event(Event::End(BytesEnd::new(name)))?;
     Ok(())
+}
+
+// Stream the same five escapes as BytesText::new without retaining an escaped
+// copy of an arbitrarily large value in the counting pass.
+fn write_text<W: Write>(
+    writer: &mut TargetWriter<'_, W>,
+    text: &str,
+) -> Result<(), XbrlFormatError> {
+    let mut start = 0;
+    for (index, byte) in text.bytes().enumerate() {
+        let reference = match byte {
+            b'&' => "amp",
+            b'<' => "lt",
+            b'>' => "gt",
+            b'\'' => "apos",
+            b'\"' => "quot",
+            _ => continue,
+        };
+        if start < index {
+            writer.write_event(Event::Text(BytesText::from_escaped(&text[start..index])))?;
+        }
+        writer.write_event(Event::GeneralRef(quick_xml::events::BytesRef::new(
+            reference,
+        )))?;
+        start = index + 1;
+    }
+    // An empty Text event preserves the legacy writer's no-newline behavior for
+    // present empty values; the budget does not count it as an XML node.
+    writer.write_event(Event::Text(BytesText::from_escaped(&text[start..])))
+}
+
+struct TargetWriter<'a, W> {
+    inner: Writer<W>,
+    budget: Option<XmlBudget<'a>>,
+    depth: usize,
+    line_break: bool,
+}
+
+impl<W: Write> TargetWriter<'_, W> {
+    fn write_event(&mut self, event: Event<'_>) -> Result<(), XbrlFormatError> {
+        let text = matches!(event, Event::Text(_) | Event::GeneralRef(_));
+        if matches!(event, Event::End(_)) {
+            self.depth = self.depth.saturating_sub(1);
+        }
+        if let Some(budget) = &mut self.budget {
+            if self.line_break && !text {
+                budget.whitespace(1 + 2 * self.depth)?;
+            }
+            let namespace = match &event {
+                Event::Start(start) | Event::Empty(start) => {
+                    if start.name().as_ref().starts_with(b"xbrli:") {
+                        Some(XBRLI.as_bytes())
+                    } else if start.name().as_ref().starts_with(b"xbrldi:") {
+                        Some(XBRLDI.as_bytes())
+                    } else if start.name().as_ref().starts_with(b"link:") {
+                        Some(LINK.as_bytes())
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            budget.event(&event, namespace)?;
+        }
+        if matches!(event, Event::Start(_)) {
+            self.depth += 1;
+        }
+        self.line_break = !text;
+        if let Event::GeneralRef(reference) = event {
+            // quick-xml indents GeneralRef as markup; encode it as text pieces
+            // to keep the legacy BytesText byte stream and indentation exactly.
+            self.inner
+                .write_event(Event::Text(BytesText::from_escaped("&")))?;
+            let name = std::str::from_utf8(reference.as_ref())
+                .map_err(|_| std::io::Error::other("invalid reference"))?;
+            self.inner
+                .write_event(Event::Text(BytesText::from_escaped(name)))?;
+            self.inner
+                .write_event(Event::Text(BytesText::from_escaped(";")))?;
+        } else {
+            self.inner.write_event(event)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct OutputLimit {
+    maximum: usize,
+    actual: usize,
+}
+impl std::fmt::Display for OutputLimit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "XBRL output exceeds {} bytes", self.maximum)
+    }
+}
+impl std::error::Error for OutputLimit {}
+
+struct LimitedWriter<W> {
+    inner: W,
+    count: usize,
+    maximum: usize,
+}
+impl<W: Write> Write for LimitedWriter<W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let actual = self.count.saturating_add(bytes.len());
+        if actual > self.maximum {
+            return Err(std::io::Error::other(OutputLimit {
+                maximum: self.maximum,
+                actual,
+            }));
+        }
+        let written = self.inner.write(bytes)?;
+        self.count += written;
+        Ok(written)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn streaming_text_matches_original_quick_xml_bytes() {
+        for text in [
+            "",
+            "ordinary",
+            "&<>'\"",
+            "a&b<c>d'e\"f",
+            "é\n\r\t中",
+            "&&a&&",
+        ] {
+            let mut old = Writer::new_with_indent(Vec::new(), b' ', 2);
+            old.write_event(Event::Start(BytesStart::new("root")))
+                .unwrap();
+            old.write_event(Event::Start(BytesStart::new("value")))
+                .unwrap();
+            old.write_event(Event::Text(BytesText::new(text))).unwrap();
+            old.write_event(Event::End(BytesEnd::new("value"))).unwrap();
+            old.write_event(Event::End(BytesEnd::new("root"))).unwrap();
+            let mut new = TargetWriter {
+                inner: Writer::new_with_indent(Vec::new(), b' ', 2),
+                budget: None,
+                depth: 0,
+                line_break: false,
+            };
+            new.write_event(Event::Start(BytesStart::new("root")))
+                .unwrap();
+            new.write_event(Event::Start(BytesStart::new("value")))
+                .unwrap();
+            write_text(&mut new, text).unwrap();
+            new.write_event(Event::End(BytesEnd::new("value"))).unwrap();
+            new.write_event(Event::End(BytesEnd::new("root"))).unwrap();
+            assert_eq!(new.inner.into_inner(), old.into_inner(), "{text:?}");
+        }
+    }
 }
