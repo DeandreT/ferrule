@@ -29,6 +29,27 @@ pub fn emit_with_mapforce_x12_writer(
     let descriptor =
         codegen::prepare_mapforce_x12_writer(document.program(), target_options, minimums)
             .map_err(PrimaryJsonEmitError::Writer)?;
+    emit_with_writer(document, shape, descriptor)
+}
+
+/// Emit a grouped document-set mapping plus a writer for its individual members.
+pub fn emit_grouped_with_mapforce_x12_writer(
+    document: &DocumentProgram,
+    shape: &JsonSourceShape,
+    target_options: &mapping::FormatOptions,
+    minimums: &[mapping::MapForceEdiMinimum],
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let descriptor =
+        codegen::prepare_mapforce_x12_document_writer(document, target_options, minimums)
+            .map_err(PrimaryJsonEmitError::Writer)?;
+    emit_with_writer(document, shape, descriptor)
+}
+
+fn emit_with_writer(
+    document: &DocumentProgram,
+    shape: &JsonSourceShape,
+    descriptor: String,
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
     let mut files = emit_with_primary_json_projection(document, shape)?.into_files();
     for (path, contents) in crate::x12_output::X12_SOURCES {
         if !files.iter().any(|file| file.path.as_str() == path) {

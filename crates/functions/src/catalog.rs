@@ -169,6 +169,7 @@ pub(crate) enum BuiltinId {
     Contains,
     Matches,
     Replace,
+    ReplaceLiteral,
     SqlLike,
     PadStringLeft,
     PadStringRight,
@@ -508,6 +509,23 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Authoring,
         "Performs bounded regular-expression replacement."
+    ),
+    builtin!(
+        ReplaceLiteral,
+        "replace_literal",
+        "Literal Replace",
+        String,
+        &[
+            parameter("value", String),
+            parameter("search", String),
+            parameter("replacement", Any)
+        ],
+        BuiltinArity::fixed(3),
+        String,
+        true,
+        true,
+        Authoring,
+        "Replaces ordinal literal substrings; an empty search is invalid."
     ),
     builtin!(
         SqlLike,

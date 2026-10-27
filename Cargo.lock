@@ -2985,6 +2985,7 @@ version = "0.1.0"
 dependencies = [
  "codegen",
  "codegen-csharp",
+ "codegen-runtime",
  "codegen-rust",
  "engine",
  "format-csv",

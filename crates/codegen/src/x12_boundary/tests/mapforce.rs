@@ -33,6 +33,66 @@ fn mapforce_schema() -> SchemaNode {
     serde_json::from_str(SCHEMAS[1].2).unwrap()
 }
 
+#[test]
+fn document_member_writer_preserves_the_validated_dynamic_root() {
+    let project = mapping::Project {
+        source: SchemaNode::group(
+            "Source",
+            vec![SchemaNode::group("Rows", vec![]).repeating()],
+        ),
+        target: serde_json::from_str(SCHEMAS[0].2).unwrap(),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: FormatOptions {
+            edi_kind: Some(EdiBoundaryKind::X12),
+            x12_interchange_version: Some("00401".into()),
+            ..Default::default()
+        },
+        extra_sources: vec![],
+        extra_targets: vec![],
+        failure_rules: vec![],
+        user_functions: Default::default(),
+        graph: mapping::Graph {
+            nodes: [
+                (
+                    0,
+                    mapping::Node::Const {
+                        value: Value::String("input.json".into()),
+                    },
+                ),
+                (
+                    1,
+                    mapping::Node::Const {
+                        value: Value::String("output.edi".into()),
+                    },
+                ),
+            ]
+            .into(),
+        },
+        root: mapping::Scope {
+            iteration: mapping::ScopeIteration::DynamicDocuments {
+                source: vec!["Rows".into()],
+                output_path: 1,
+            },
+            ..Default::default()
+        },
+    };
+    let options = project.target_options.clone();
+    let document =
+        mapping::DocumentProject::new(project, mapping::PrimarySourcePlan { filename: 0 });
+    let program = crate::lower_document(&document).unwrap();
+    let before = format!("{:?}", program.program());
+    assert!(crate::prepare_mapforce_x12_writer(program.program(), &options, &[]).is_err());
+    assert!(crate::prepare_mapforce_x12_document_writer(&program, &options, &[]).is_ok());
+    assert_eq!(format!("{:?}", program.program()), before);
+    let invalid = mapping::MapForceEdiMinimum {
+        path: vec!["Unknown".into()],
+        minimum: 1,
+    };
+    assert!(crate::prepare_mapforce_x12_document_writer(&program, &options, &[invalid]).is_err());
+}
+
 fn mapforce(version: &str) -> X12BoundaryOptions {
     X12BoundaryOptions {
         envelope_profile: X12EnvelopeProfile::MapForceInterchanges,

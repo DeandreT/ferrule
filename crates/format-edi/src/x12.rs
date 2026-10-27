@@ -206,6 +206,14 @@ fn tokenize_with_component_separator(
     text: &str,
     configured: Option<Separators>,
 ) -> Result<(Vec<Segment>, char), EdiFormatError> {
+    tokenize_for_completion(text, configured, false)
+}
+
+fn tokenize_for_completion(
+    text: &str,
+    configured: Option<Separators>,
+    native: bool,
+) -> Result<(Vec<Segment>, char), EdiFormatError> {
     if text.len() > MAX_RUNTIME_INPUT_BYTES {
         return Err(EdiFormatError::NotX12("input exceeds the 64 MiB limit"));
     }
@@ -239,7 +247,16 @@ fn tokenize_with_component_separator(
         &text[separator_positions[10] + element_separator.len_utf8()..separator_positions[11]];
     let isa12 =
         &text[separator_positions[11] + element_separator.len_utf8()..separator_positions[12]];
-    let repetition_separator = repetition_separator(isa11, isa12)?;
+    let repetition_separator = if native
+        && matches!(isa11, "" | " ")
+        && isa12.len() == 5
+        && isa12.bytes().all(|byte| byte.is_ascii_digit())
+        && isa12 < "00501"
+    {
+        None
+    } else {
+        repetition_separator(isa11, isa12)?
+    };
 
     let isa16_start = separator_positions[15] + element_separator.len_utf8();
     let mut rest = text[isa16_start..].chars();
@@ -621,7 +638,7 @@ fn to_string_with_syntax_inner(
         .transpose()?;
     let options = if document_root {
         match find_document_instance(SchemaCursor::root(schema), instance, "ISA") {
-            Some((isa, value)) => write_options_for_isa(isa, value, options)?,
+            Some((isa, value)) => write_options_for_isa_profile(isa, value, options, mapforce)?,
             None => options,
         }
     } else {
@@ -648,7 +665,7 @@ fn to_string_with_syntax_inner(
         write_segments_with_encoding(schema, instance, &options, Some(encode))?
     };
     if let Some(autocomplete) = autocomplete {
-        let (segments, _) = tokenize_with_component_separator(&out, Some(separators))?;
+        let (segments, _) = tokenize_for_completion(&out, Some(separators), mapforce)?;
         let completed = if mapforce {
             envelope::x12_mapforce(
                 segments,
@@ -695,6 +712,9 @@ fn encode_mapforce_controls(
     _syntax: &WriteOptions,
 ) -> Result<(), EdiFormatError> {
     if segment == "ISA" && elements.len() == 16 {
+        if elements[10].is_empty() {
+            elements[10] = " ".into();
+        }
         for index in [1, 3, 5, 7] {
             let width = if index == 1 || index == 3 {
                 10usize
@@ -838,7 +858,16 @@ fn write_options(
 fn write_options_for_isa(
     isa_schema: &SchemaNode,
     isa_instance: &Instance,
+    options: WriteOptions,
+) -> Result<WriteOptions, EdiFormatError> {
+    write_options_for_isa_profile(isa_schema, isa_instance, options, false)
+}
+
+fn write_options_for_isa_profile(
+    isa_schema: &SchemaNode,
+    isa_instance: &Instance,
     mut options: WriteOptions,
+    native: bool,
 ) -> Result<WriteOptions, EdiFormatError> {
     let isa11_schema = isa_element(isa_schema, 10);
     let isa12_schema = isa_element(isa_schema, 11);
@@ -876,7 +905,9 @@ fn write_options_for_isa(
     }
 
     if isa12 < "00501" {
-        if isa11.is_empty() || !isa11.chars().all(char::is_alphanumeric) {
+        if !(native && matches!(isa11, "" | " "))
+            && (isa11.is_empty() || !isa11.chars().all(char::is_alphanumeric))
+        {
             return Err(EdiFormatError::InvalidEnvelopeElement {
                 element: isa11_schema
                     .map_or_else(|| "ISA11".into(), |element| element.name.clone()),

@@ -1140,6 +1140,9 @@ pub(super) fn produces_scalar(component: &FnComponent) -> bool {
 }
 
 pub(super) fn map_component_name(component: &FnComponent) -> Option<&str> {
+    if component.name == "replace" && component.library == "lang" {
+        return (component.kind == 5).then_some("replace_literal");
+    }
     if component.name == "format-guid-string" {
         return (component.library == "lang" && component.kind == 5)
             .then_some("format_guid_string");
@@ -1413,6 +1416,20 @@ mod tests {
         read_isbn_converter_component, unsupported_value_map_input_mode,
         value_map_input_mode_warning, warn_unsupported_value_map_input_modes,
     };
+
+    #[test]
+    fn literal_replace_is_selected_only_by_the_native_library() {
+        for (library, kind, expected) in [
+            ("lang", "5", Some("replace_literal")),
+            ("lang", "4", None),
+            ("core", "5", Some("replace")),
+            ("xpath2", "5", Some("replace")),
+        ] {
+            let xml = format!(r#"<component name="replace" library="{library}" kind="{kind}"/>"#);
+            let parsed = roxmltree::Document::parse(&xml).unwrap();
+            assert_eq!(map_component_name(&read(&parsed.root_element())), expected);
+        }
+    }
 
     #[test]
     fn scalar_names_use_canonical_ir_spelling() {

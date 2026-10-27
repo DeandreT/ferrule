@@ -129,6 +129,40 @@ fn change(instance: &mut Instance, segment: &str, element: &str, value: &str) {
 }
 
 #[test]
+fn native_legacy_blank_isa11_does_not_relax_strict_x12() {
+    let (schema, mut value) = example();
+    change(&mut value, "GS", "05", "103000");
+    for blank in ["", " "] {
+        change(&mut value, "ISA", "11", blank);
+        let completion = Some(Autocomplete {
+            current_datetime: "2026-10-09T10:30:00",
+            request_acknowledgement: false,
+            transaction_set: Some("940"),
+        });
+        assert!(
+            to_document_string_with_syntax(
+                &schema,
+                &value,
+                Separators::default(),
+                Some("00401"),
+                completion
+            )
+            .is_err()
+        );
+        let wire = to_mapforce_document_string_with_syntax(
+            &schema,
+            &value,
+            Separators::default(),
+            Some("00401"),
+            completion,
+        )
+        .unwrap();
+        assert!(wire.contains("* *00401*"), "{wire}");
+        assert!(tokenize(&wire).is_err());
+    }
+}
+
+#[test]
 fn explicit_mapforce_completion_does_not_inherit_strict_control_width_rejections() {
     for control in ["-1", "1000000000", "9223372036854775807"] {
         let (schema, mut value) = example();

@@ -98,6 +98,7 @@ public static partial class FerruleFunctions
                 left.Contains(right, StringComparison.Ordinal)),
             "matches" => Matches(arguments),
             "replace" => Replace(arguments),
+            "replace_literal" => ReplaceLiteral(arguments),
             "add" => Numeric(function, arguments, NumericOperation.Add),
             "subtract" => Numeric(function, arguments, NumericOperation.Subtract),
             "multiply" => Numeric(function, arguments, NumericOperation.Multiply),

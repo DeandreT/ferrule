@@ -277,6 +277,39 @@ pub fn prepare_x12_boundary(
     program: &Program,
     policy: &X12BoundaryPolicy,
 ) -> Result<X12BoundaryProfile, X12BoundaryPolicyError> {
+    prepare_boundary(program, policy, false)
+}
+
+pub(crate) fn prepare_x12_document_target(
+    document: &crate::DocumentProgram,
+    target: X12BoundaryOptions,
+) -> Result<X12BoundaryProfile, X12BoundaryPolicyError> {
+    let program = document.program();
+    if !program.root.iteration.as_ref().is_some_and(|iteration| {
+        matches!(
+            iteration.input(),
+            crate::IterationSource::DynamicDocuments(_)
+        )
+    }) {
+        return Err(X12BoundaryPolicyError::ProgramField {
+            field: "document_set_iteration",
+        });
+    }
+    prepare_boundary(
+        program,
+        &X12BoundaryPolicy {
+            source: None,
+            target: Some(target),
+        },
+        true,
+    )
+}
+
+fn prepare_boundary(
+    program: &Program,
+    policy: &X12BoundaryPolicy,
+    document_members: bool,
+) -> Result<X12BoundaryProfile, X12BoundaryPolicyError> {
     if policy.source.is_none() && policy.target.is_none() {
         return Err(X12BoundaryPolicyError::NoX12Side);
     }
@@ -295,7 +328,7 @@ pub fn prepare_x12_boundary(
             field: "extra_targets",
         });
     }
-    if program.root.repeating || program.root.iteration.is_some() {
+    if !document_members && (program.root.repeating || program.root.iteration.is_some()) {
         return Err(X12BoundaryPolicyError::ProgramField {
             field: "primary_document_iteration",
         });
