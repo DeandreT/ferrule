@@ -2881,7 +2881,7 @@ fn render_iteration_scope(
     iteration: &IterationPlan,
     child_names: &[String],
 ) -> Result<String, EmitError> {
-    render_iteration_scope_delivery(program, scope, iteration, child_names, false)
+    render_iteration_scope_delivery(program, scope, iteration, child_names, false, false)
 }
 
 fn render_iteration_scope_delivery(
@@ -2890,6 +2890,7 @@ fn render_iteration_scope_delivery(
     iteration: &IterationPlan,
     child_names: &[String],
     visitor: bool,
+    filename_first: bool,
 ) -> Result<String, EmitError> {
     let mut output = String::new();
     let sort = iteration.sort();
@@ -2983,6 +2984,15 @@ fn render_iteration_scope_delivery(
         "&item_context"
     };
     output.push_str(&format!("        let _ = {item_context};\n"));
+    if visitor && filename_first {
+        let dynamic = iteration
+            .dynamic_document_iteration()
+            .expect("validated document visitor");
+        output.push_str(&format!(
+            "        let filename_context = ScopeContext::clone({item_context}).with_document_filename_clock(filename_clock);\n        let output_path = expression_{}(&filename_context)?;\n        if let Value::String(path) = &output_path {{ if !_prepare_document(path) {{ return Ok(()); }} }}\n",
+            dynamic.output_path(),
+        ));
+    }
     output.push_str(&render_scope_item(
         scope,
         child_names,
@@ -2991,9 +3001,15 @@ fn render_iteration_scope_delivery(
     ));
     if let Some(dynamic) = iteration.dynamic_document_iteration() {
         if visitor {
+            if !filename_first {
+                output.push_str(&format!(
+                    "        let filename_context = ScopeContext::clone({item_context}).with_document_filename_clock(filename_clock);\n        let output_path = expression_{}(&filename_context)?;\n",
+                    dynamic.output_path(),
+                ));
+            }
             output.push_str(&format!(
-                "        let filename_context = ScopeContext::clone({item_context}).with_document_filename_clock(filename_clock);\n        let output_path = expression_{}(&filename_context)?;\n        let document = dynamic_document({}, output_path, output)?;\n        if !offer_document(document) {{ return Ok(()); }}\n        delivered += 1;\n",
-                dynamic.output_path(), dynamic.output_path(),
+                "        let document = dynamic_document({}, output_path, output)?;\n        if !offer_document(document) {{ return Ok(()); }}\n        delivered += 1;\n",
+                dynamic.output_path(),
             ));
         } else {
             output.push_str(&format!(

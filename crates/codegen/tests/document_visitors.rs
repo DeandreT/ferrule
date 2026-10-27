@@ -135,6 +135,49 @@ fn body_clock_admission_is_explicit_and_rejects_unqualified_graphs() {
 }
 
 #[test]
+fn static_error_clock_composition_does_not_widen_the_original_clock_profile() {
+    let mut project = body_clocks::project(clocks::project());
+    project
+        .graph
+        .nodes
+        .insert(2, mapping::Node::Raise { message: None });
+    let program = codegen::lower(&project).unwrap();
+    assert!(codegen::validate_document_clocks(&program, None).is_err());
+    codegen::validate_document_clocks_with_static_errors(&program, None).unwrap();
+
+    project.graph.nodes.insert(
+        50,
+        mapping::Node::Const {
+            value: ir::Value::String("missing required parameter".into()),
+        },
+    );
+    project
+        .graph
+        .nodes
+        .insert(2, mapping::Node::Raise { message: Some(50) });
+    let program = codegen::lower(&project).unwrap();
+    assert!(codegen::validate_document_clocks(&program, None).is_err());
+    codegen::validate_document_clocks_with_static_errors(&program, None).unwrap();
+
+    project.graph.nodes.insert(
+        50,
+        mapping::Node::RuntimeValue {
+            value: mapping::RuntimeValue::CurrentDateTime,
+        },
+    );
+    let program = codegen::lower(&project).unwrap();
+    assert!(codegen::validate_document_clocks_with_static_errors(&program, None).is_err());
+
+    let mut filename = clocks::project();
+    filename
+        .graph
+        .nodes
+        .insert(20, mapping::Node::Raise { message: None });
+    let program = codegen::lower(&filename).unwrap();
+    assert!(codegen::validate_document_clocks_with_static_errors(&program, None).is_err());
+}
+
+#[test]
 fn body_clock_udf_routes_remain_closed_even_when_the_filename_is_ordinary() {
     let mut project = body_clocks::project(clocks::project());
     let id = mapping::FunctionId::new(1);
@@ -173,4 +216,5 @@ fn body_clock_udf_routes_remain_closed_even_when_the_filename_is_ordinary() {
         codegen::validate_document_clocks(&program, None),
         Err(DocumentVisitorBoundaryError::Unsupported(_))
     ));
+    assert!(codegen::validate_document_clocks_with_static_errors(&program, None).is_err());
 }

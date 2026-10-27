@@ -38,6 +38,7 @@ mod embedded_schema;
 mod extra_sources;
 mod extra_targets;
 mod failure_rules;
+mod grouped_document_clocks;
 mod grouping;
 mod host_target;
 mod legacy_sequence_aggregate;

@@ -43,6 +43,9 @@ mod csv_output_tests;
 #[path = "../../codegen/tests/fixtures/generated_artifact_evidence.rs"]
 mod generated_artifact_evidence;
 #[cfg(test)]
+#[path = "tests/grouped_document_clocks.rs"]
+mod grouped_document_clock_tests;
+#[cfg(test)]
 mod json5_output_tests;
 #[cfg(test)]
 mod x12_output_tests;
@@ -483,6 +486,16 @@ pub fn emit_with_document_clocks(
     let index = codegen::validate_document_clocks(program, target)
         .map_err(codegen::DocumentVisitorEmitError::Boundary)?;
     let generated = mapping::render_with_document_clocks(program, index)
+        .map_err(codegen::DocumentVisitorEmitError::Emit)?;
+    emit_mapping_artifacts(program, generated).map_err(codegen::DocumentVisitorEmitError::Emit)
+}
+
+pub(crate) fn emit_with_static_error_document_clocks(
+    program: &Program,
+) -> Result<ArtifactSet, codegen::DocumentVisitorEmitError<EmitError>> {
+    let index = codegen::validate_document_clocks_with_static_errors(program, None)
+        .map_err(codegen::DocumentVisitorEmitError::Boundary)?;
+    let generated = mapping::render_with_early_document_clocks(program, index)
         .map_err(codegen::DocumentVisitorEmitError::Emit)?;
     emit_mapping_artifacts(program, generated).map_err(codegen::DocumentVisitorEmitError::Emit)
 }

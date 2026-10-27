@@ -59,7 +59,8 @@ pub use document_program::{
 };
 pub use document_visitor::{
     DocumentVisitorBoundaryError, DocumentVisitorEmitError, validate_document_clocks,
-    validate_document_filename_clock, validate_document_visitor,
+    validate_document_clocks_with_static_errors, validate_document_filename_clock,
+    validate_document_visitor,
 };
 pub use embedded_schema::{
     EmbeddedSchemaError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_EMBEDDED_XML_SCHEMA_BYTES,
