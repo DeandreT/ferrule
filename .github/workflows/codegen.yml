@@ -36,7 +36,8 @@ jobs:
   generated-backends:
     name: generated-backends (${{ matrix.suite }})
     runs-on: ${{ fromJSON(vars.OVH_RUNNER_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ((inputs.runner || vars.CI_RUNNER || 'auto') == 'cleo' && '["self-hosted", "Linux", "X64", "ferrule-cleo"]' || (inputs.runner || vars.CI_RUNNER || 'auto') == 'over' && '["self-hosted", "Linux", "X64", "ferrule-over"]' || (inputs.runner || vars.CI_RUNNER || 'auto') == 'auto' && '["self-hosted", "Linux", "X64", "ferrule-primary"]') || '["ubuntu-latest"]') }}
-    timeout-minutes: 120
+    # The mappings suite builds generated consumers serially for each case.
+    timeout-minutes: ${{ matrix.suite == 'mappings' && 240 || 120 }}
     strategy:
       fail-fast: false
       matrix:
