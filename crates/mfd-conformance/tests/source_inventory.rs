@@ -242,8 +242,8 @@ fn artifact_observations_do_not_promote_execution_or_completeness() {
     );
     assert!(!observation["remaining"].as_array().unwrap().is_empty());
     let installed = observation["installed_declarations"].as_array().unwrap();
-    assert_eq!(installed.len(), 3);
-    unique_ids(installed, "cab_member");
+    assert_eq!(installed.len(), 4);
+    unique_ids(installed, "id");
     assert_eq!(installed[0]["return_type"], "const std::exception*");
     assert_eq!(
         installed[0]["types"],
@@ -280,6 +280,41 @@ fn artifact_observations_do_not_promote_execution_or_completeness() {
     assert_eq!(documented_parameter["direction"], "out");
     assert_eq!(
         parameter["catalog_comparison"]["release_binding"],
+        "unestablished"
+    );
+    let enumeration = &installed[3];
+    assert_eq!(enumeration["public_type"], "ENUMProjectType");
+    assert_eq!(enumeration["type_info_index"], 4);
+    assert_eq!(enumeration["sha256"], parameter["sha256"]);
+    assert_eq!(
+        enumeration["members"],
+        serde_json::json!([
+            {"name":"eVisualStudio2026Project","value":16,"encoded_value":"8c000010"},
+            {"name":"eDotNet10_0","value":17,"encoded_value":"8c000011"},
+            {"name":"eProjectTypeCount","value":18,"encoded_value":"8c000012"}
+        ])
+    );
+    let documented_enum = catalog["enumerations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["name"] == "ENUMProjectType")
+        .unwrap();
+    let documented_members = documented_enum["members"].as_array().unwrap();
+    let count = documented_members
+        .iter()
+        .find(|member| member["name"] == "eProjectTypeCount")
+        .unwrap();
+    assert_eq!(count["value_literal"], "16");
+    for name in ["eVisualStudio2026Project", "eDotNet10_0"] {
+        assert!(
+            !documented_members
+                .iter()
+                .any(|member| member["name"] == name)
+        );
+    }
+    assert_eq!(
+        enumeration["catalog_comparison"]["release_binding"],
         "unestablished"
     );
     for declaration in installed {
