@@ -173,27 +173,34 @@ pub(crate) fn render_with_document_visitor(
     program: &Program,
     target: Option<usize>,
 ) -> Result<String, EmitError> {
-    render_with_options(program, true, Some((target, false, false)))
+    render_with_options(program, true, Some((target, false, false, false)))
 }
 
 pub(crate) fn render_with_document_filename_clock(
     program: &Program,
     target: Option<usize>,
 ) -> Result<String, EmitError> {
-    render_with_options(program, true, Some((target, true, false)))
+    render_with_options(program, true, Some((target, true, false, false)))
 }
 
 pub(crate) fn render_with_document_clocks(
     program: &Program,
     target: Option<usize>,
 ) -> Result<String, EmitError> {
-    render_with_options(program, true, Some((target, true, true)))
+    render_with_options(program, true, Some((target, true, true, false)))
+}
+
+pub(crate) fn render_with_early_document_clocks(
+    program: &Program,
+    target: Option<usize>,
+) -> Result<String, EmitError> {
+    render_with_options(program, true, Some((target, true, true, true)))
 }
 
 fn render_with_options(
     program: &Program,
     json_boundaries: bool,
-    visitor: Option<(Option<usize>, bool, bool)>,
+    visitor: Option<(Option<usize>, bool, bool, bool)>,
 ) -> Result<String, EmitError> {
     render_with_message_binding(program, json_boundaries, visitor, None)
 }
@@ -208,7 +215,7 @@ pub(crate) fn render_native_x12_message(
 fn render_with_message_binding(
     program: &Program,
     json_boundaries: bool,
-    visitor: Option<(Option<usize>, bool, bool)>,
+    visitor: Option<(Option<usize>, bool, bool, bool)>,
     message_owner: Option<&[String]>,
 ) -> Result<String, EmitError> {
     if message_owner.is_none() {
@@ -423,7 +430,7 @@ fn render_with_message_binding(
         render_bound_group(scope_index, scope, &mut output);
     }
     filter_map::add_scoped_node_wrappers(program, &mut output);
-    if let Some((target, clock, body_clock)) = visitor {
+    if let Some((target, clock, body_clock, filename_first)) = visitor {
         let scope = target.map_or(primary_scope, |index| extra_scopes[index].1);
         document_visitor::render(
             program,
@@ -431,6 +438,7 @@ fn render_with_message_binding(
             &scopes[scope],
             clock,
             body_clock,
+            filename_first,
             &mut output,
         )?;
     }
@@ -1278,6 +1286,7 @@ fn render_iteration_scope(
         iteration,
         merge_dynamic_fields,
         false,
+        false,
         output,
     )
 }
@@ -1288,6 +1297,7 @@ fn render_iteration_scope_delivery(
     iteration: &IterationPlan,
     merge_dynamic_fields: bool,
     visitor: bool,
+    filename_first: bool,
     output: &mut String,
 ) -> Result<(), EmitError> {
     render_iteration_candidates(program, scope, iteration.input(), output)?;
@@ -1379,13 +1389,24 @@ fn render_iteration_scope_delivery(
         format!("item_context_{scope}")
     };
     if let Some(dynamic) = dynamic {
+        if visitor && filename_first {
+            output.push_str(&format!(
+                "            var filename_context_{scope} = {item_context}.WithDocumentFilenameClock(filenameClock);\n            var output_path_{scope} = Node_{}(filename_context_{scope});\n            if (output_path_{scope}.Kind == global::Ferrule.Runtime.FerruleValueKind.String && !prepareDocument(output_path_{scope}.StringValue)) return;\n",
+                dynamic.output_path(),
+            ));
+        }
         output.push_str(&format!(
             "            var output_{scope} = ScopeItem_{scope}({item_context});\n"
         ));
         if visitor {
+            if !filename_first {
+                output.push_str(&format!(
+                    "            var filename_context_{scope} = {item_context}.WithDocumentFilenameClock(filenameClock);\n            var output_path_{scope} = Node_{}(filename_context_{scope});\n",
+                    dynamic.output_path(),
+                ));
+            }
             output.push_str(&format!(
-                "            var filename_context_{scope} = {item_context}.WithDocumentFilenameClock(filenameClock);\n            var output_path_{scope} = Node_{}(filename_context_{scope});\n            var document_{scope} = global::Ferrule.Runtime.FerruleDynamicDocuments.Create({}U, output_path_{scope}, output_{scope});\n            if (!offerDocument(document_{scope})) return;\n            delivered_{scope}++;\n",
-                dynamic.output_path(),
+                "            var document_{scope} = global::Ferrule.Runtime.FerruleDynamicDocuments.Create({}U, output_path_{scope}, output_{scope});\n            if (!offerDocument(document_{scope})) return;\n            delivered_{scope}++;\n",
                 dynamic.output_path(),
             ));
         } else {
