@@ -10,21 +10,10 @@ public sealed partial class FerruleEdi
         string text = Utf8.GetString(bytes);
         if (_kind == "Hl7") return Hl7Segments(text);
         if (_kind == "X12") return X12Segments(text.TrimStart());
+        if (_kind == "Edifact") return EdifactSegments(text.TrimStart());
         var syntax = new Syntax('+', ':', '\'', '?', null);
-        Rune repeatAdvice = new('*');
-        Rune? element = null, component = null, terminator = null, release = null;
-        text = _kind == "Tradacoms" ? text.TrimStart('\ufeff') : text.TrimStart();
-        if (_kind == "Edifact" && text.StartsWith("UNA", StringComparison.Ordinal))
-        {
-            Rune[] advice = text[3..].EnumerateRunes().Take(6).ToArray();
-            if (advice.Length < 6) throw Fail(FerruleEdiError.Format, "Truncated UNA service string.");
-            component = advice[0]; element = advice[1]; release = advice[3]; terminator = advice[5];
-            repeatAdvice = advice[4];
-            syntax = syntax with { ReadComponent = component.Value.ToString() };
-            int consumed = 3 + advice.Sum(rune => rune.Utf16SequenceLength);
-            text = text[consumed..].TrimStart();
-        }
-        List<Segment> segments = Delimited(text, syntax, _kind == "Tradacoms", _kind == "Edifact", repeatAdvice, element, component, terminator, release);
+        text = text.TrimStart('\ufeff');
+        List<Segment> segments = Delimited(text, syntax, true);
         if (segments.Count == 0 || (_kind == "Tradacoms" ? segments[0].Id != "STX" : segments[0].Id is not ("UNB" or "UNH")))
             throw Fail(FerruleEdiError.Format, "Invalid EDI opening segment.");
         return (segments, syntax);
@@ -75,14 +64,14 @@ public sealed partial class FerruleEdi
         }
         return output.ToString();
     }
-    private static List<Segment> Delimited(string text, Syntax syntax, bool assigned, bool edifact = false, Rune? repeatAdvice = null, Rune? elementOverride = null, Rune? componentOverride = null, Rune? terminatorOverride = null, Rune? releaseOverride = null)
+    private static List<Segment> Delimited(string text, Syntax syntax, bool assigned, bool edifact = false, Rune? repeatAdvice = null, Rune? elementOverride = null, Rune? componentOverride = null, Rune? terminatorOverride = null, Rune? releaseOverride = null, Rune? repetitionOverride = null)
     {
         var segments = new List<Segment>();
         Rune elementSeparator = elementOverride ?? new Rune(syntax.Element);
         Rune componentSeparator = componentOverride ?? new Rune(syntax.Component);
         Rune terminator = terminatorOverride ?? new Rune(syntax.Terminator);
         Rune? release = releaseOverride ?? (syntax.Release is { } escaped ? new Rune(escaped) : null);
-        Rune? repetition = syntax.Repetition is { } repeated ? new Rune(repeated) : null;
+        Rune? repetition = repetitionOverride ?? (syntax.Repetition is { } repeated ? new Rune(repeated) : null);
         Rune advice = repeatAdvice ?? new Rune('*');
         foreach (string raw in Split(text, terminator, release))
         {
@@ -121,6 +110,81 @@ public sealed partial class FerruleEdi
 
     private static bool IsEdifactV4(string? version, bool fallback = false) =>
         uint.TryParse(version, System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out uint number) ? number >= 4 : fallback;
+
+    private static (List<Segment>, Syntax) EdifactSegments(string text)
+    {
+        var canonical = new Syntax('+', ':', '\'', '?', null);
+        var syntax = canonical;
+        Rune element = new('+'), component = new(':'), terminator = new('\''), release = new('?'), advice = new('*');
+        Rune? repetition = null;
+        bool boundary = true, interchange = false, group = false, message = false;
+        var segments = new List<Segment>();
+        int at = 0;
+        while (at < text.Length)
+        {
+            while (at < text.Length && Rune.IsWhiteSpace(Rune.GetRuneAt(text, at))) at += Rune.GetRuneAt(text, at).Utf16SequenceLength;
+            if (at == text.Length) break;
+            if (boundary)
+            {
+                element = new('+'); component = new(':'); terminator = new('\''); release = new('?'); advice = new('*');
+                repetition = null;
+                bool hasAdvice = text.AsSpan(at).StartsWith("UNA", StringComparison.Ordinal);
+                if (hasAdvice)
+                {
+                    Rune[] service = new Rune[6];
+                    int count = 0;
+                    foreach (Rune rune in text.AsSpan(at + 3).EnumerateRunes())
+                    {
+                        service[count++] = rune;
+                        if (count == service.Length) break;
+                    }
+                    if (count < service.Length) throw Fail(FerruleEdiError.Format, "Truncated UNA service string.");
+                    component = service[0]; element = service[1]; release = service[3]; advice = service[4]; terminator = service[5];
+                    Rune[] active = [component, element, release, terminator];
+                    if (active.Any(Rune.IsWhiteSpace) || active.Distinct().Count() != active.Length)
+                        throw Fail(FerruleEdiError.Format, "UNA requires distinct visible service characters.");
+                    at += 3 + service.Sum(rune => rune.Utf16SequenceLength);
+                    while (at < text.Length && Rune.IsWhiteSpace(Rune.GetRuneAt(text, at))) at += Rune.GetRuneAt(text, at).Utf16SequenceLength;
+                }
+                bool Starts(string id) => text.AsSpan(at).StartsWith(id, StringComparison.Ordinal)
+                    && at + id.Length < text.Length && (Rune.GetRuneAt(text, at + id.Length) == element || Rune.GetRuneAt(text, at + id.Length) == terminator);
+                if ((segments.Count == 0 || hasAdvice) && !Starts("UNB") && !Starts("UNH")) throw Fail(FerruleEdiError.Format, "Invalid EDI opening segment.");
+                syntax = canonical with { ReadComponent = component.ToString() };
+                boundary = false;
+            }
+            int start = at;
+            while (at < text.Length)
+            {
+                Rune rune = Rune.GetRuneAt(text, at);
+                if (rune == terminator) break;
+                at += rune.Utf16SequenceLength;
+                if (rune == release)
+                {
+                    if (at == text.Length) throw Fail(FerruleEdiError.Format, "Dangling EDI release character.");
+                    at += Rune.GetRuneAt(text, at).Utf16SequenceLength;
+                }
+            }
+            string raw = text[start..at];
+            if (at < text.Length) at += terminator.Utf16SequenceLength;
+            foreach (var parsed in Delimited(raw, syntax, false, true, advice, element, component, terminator, release, repetition))
+            {
+                segments.Add(parsed with { ReadSyntax = syntax });
+                // Framing owns syntax only; strict envelope validation still owns
+                // control values, counts, references and invalid nesting.
+                switch (parsed.Id)
+                {
+                    case "UNB": interchange = true; repetition = IsEdifactV4(parsed.Elements.FirstOrDefault()?.FirstOrDefault()?.ElementAtOrDefault(1)) ? advice : null; break;
+                    case "UNG": group = true; break;
+                    case "UNH": message = true; break;
+                    case "UNT": message = false; boundary = !interchange && !group; break;
+                    case "UNE": group = false; break;
+                    case "UNZ": interchange = false; boundary = !message && !group; break;
+                }
+            }
+        }
+        if (segments.Count == 0) throw Fail(FerruleEdiError.Format, "Invalid EDI opening segment.");
+        return (segments, canonical);
+    }
 
     private (List<Segment>, Syntax) X12Segments(string text)
     {

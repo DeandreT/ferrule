@@ -467,6 +467,31 @@ pub(crate) fn read_segments(
     )
 }
 
+/// EDIFACT can declare a different component separator in each interchange.
+pub(crate) fn read_edifact_segments(
+    schema: &SchemaNode,
+    segments: &[Segment],
+    component_joins: &[char],
+    lenient: bool,
+) -> Result<Instance, EdiFormatError> {
+    if component_joins.len() != segments.len() {
+        return Err(EdiFormatError::NotEdifact(
+            "incomplete segment syntax metadata",
+        ));
+    }
+    read_segments_with_syntax(
+        schema,
+        segments,
+        ReadSyntax {
+            component_join: ':',
+            subcomponent: None,
+            subcomponent_escape: None,
+        },
+        lenient,
+        Some(component_joins),
+    )
+}
+
 /// X12 can declare a different component separator in each interchange. Keep
 /// scalar reconstruction tied to the segment that supplied those components.
 pub(crate) fn read_x12_segments(
