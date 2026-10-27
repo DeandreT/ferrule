@@ -69,11 +69,64 @@ Ferrule's best-effort import produced the same complete output, but executable
 import refused the unused physical source. This is not a clean executable
 round-trip or `filter_map_v1` reconstruction.
 
+## Complex variable: original and dense positions
+
+A separately authored candidate passes the filtered mapper result into an XML
+variable with the shape `Bucket/Row*/Value`, then reads that variable's rows into
+the final target. The physical input root drives the variable's `compute-when`
+input. A new Position reads the variable's Row output; the original Generate
+Position remains connected to the predicate and mapper arguments.
+
+For Generate `3..5`, predicate `item > 3`, and mapper
+`item * 10 + source_position`, the re-saved design produces the complete rows
+`(42,1), (53,2)`, valid against the independent target XSD. The mapped values
+retain original source positions `2,3`; the target positions are dense `1,2`.
+This establishes that finite distinction, not reconstruction of the complete
+scalar `filter_map_v1` descriptor.
+
+The first re-save changes coordinate-only views and adds
+`XSLTTargetEncoding="UTF-8"` to the variable. All other non-layout XML matches.
+The encoding addition is retained as a real metadata difference, not removed
+under formatting normalization. Ferrule's executable import refuses this
+generated repeated variable child because it is not one supported source
+collection. The repair-oriented import does not create an executable substitute.
+
+## Complex variable: late error versus ItemAt
+
+The next independently frozen control keeps the predicate and uses mapper
+`(item * 10 + source_position) / (5 + item * -1)`. Item `4` maps to `42`; the
+later retained item `5` reaches a zero denominator. The full-output and ItemAt
+designs retain the same mapper body and parameter identities. The ItemAt
+variant removes the full-row target and dense Position consumer, and feeds only
+the variable's Value sequence through ItemAt at index `1` to one integer field.
+
+| Source range | Consumer | Complete native outcome |
+| --- | --- | --- |
+| `3..4` | Full rows | One row `(42,1)` |
+| `3..5` | Full rows | Execution fails: `Numeric overflow.` |
+| `3..4` | ItemAt `1` | `FirstValue=42` |
+| `3..5` | ItemAt `1` | `FirstValue=42`; execution succeeds |
+
+Each design was saved, reopened, re-saved and executed separately. Complete
+messages, outputs and original-resource checks were retained before comparison.
+The reference's `Numeric overflow.` and the frozen Ferrule model's
+`division by zero` are distinct reported errors; no exception-type equivalence
+is asserted.
+
+The `3..5` ItemAt result contradicts the frozen expectation that the late native
+failure would survive the change of consumer. **This complex-variable candidate
+does not preserve the eager-error contract of `filter_map_v1`.** Its successful
+position control is not sufficient for general interchange admission. The
+observation concerns the visible result/error boundary, not proof of the
+reference's internal evaluation or caching strategy.
+
 ## Remaining boundary
 
-The successful variant is not a substitute for dense output positions: its
-predicate keeps every item, so original and filtered positions happen to agree.
-It also does not establish two private sequence owners, ordered captures,
+The original identity variant is not a substitute for dense output positions:
+its predicate keeps every item, so original and filtered positions happen to
+agree. The complex-variable variant distinguishes the positions but fails the
+late-error/ItemAt control. Neither establishes the full two-private-owner
+descriptor, ordered captures,
 strict stage adaptation, late-error precedence, eager completion before a
 consumer, or shared work/cancellation limits. No importer or exporter admission
 follows from these observations. The distinguishing frozen controls and the
