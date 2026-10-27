@@ -578,6 +578,114 @@ fn invoked_nested_fixture() -> Fixture {
     fixture
 }
 
+fn invoked_qualifier_fixture() -> Fixture {
+    let fixture = invoked_sibling_fixture();
+    fixture.change(
+        r#"<vertex vertexkey="20"><edges><edge vertexkey="101"/></edges></vertex>"#,
+        r#"<vertex vertexkey="20"><edges><edge vertexkey="101"/><edge vertexkey="83"/></edges></vertex>"#,
+    );
+    fixture.change(
+        r#"<vertex vertexkey="188"><edges><edge vertexkey="83"/><edge vertexkey="85"/></edges></vertex>"#,
+        r#"<vertex vertexkey="188"><edges><edge vertexkey="602"/></edges></vertex>"#,
+    );
+    fixture.change("</children>", r#"<component name="NullableQualifier" library="Sample" uid="410" kind="19"><data><root><entry name="inQualifier" inpkey="601" componentid="401"/><entry name="inValue" inpkey="602" componentid="402"/></root><root><entry name="outQualifier" outkey="603" componentid="405"/><entry name="outValue" outkey="604" componentid="406"/></root></data></component>
+<component name="constant" library="core" uid="411" kind="2"><targets><datapoint pos="0" key="605"/></targets><data><constant value="QUAL" datatype="string"/></data></component></children>"#);
+    fixture.change("</vertices>", r#"<vertex vertexkey="605"><edges><edge vertexkey="601"/></edges></vertex><vertex vertexkey="603"><edges><edge vertexkey="85"/></edges></vertex></vertices>"#);
+    fixture.change("</mapping>", r#"<component name="NullableQualifier" library="Sample" uid="400" inline="1"><structure><children>
+<component name="inQualifier" library="core" uid="401" kind="6"><sources><datapoint/></sources><targets><datapoint pos="0" key="501"/></targets><data><input datatype="string"/><parameter usageKind="input" name="inQualifier"/></data></component>
+<component name="inValue" library="core" uid="402" kind="6"><sources><datapoint/></sources><targets><datapoint pos="0" key="502"/></targets><data><input datatype="string"/><parameter usageKind="input" name="inValue"/></data></component>
+<component name="is-null" library="db" uid="403" kind="5"><sources><datapoint pos="0" key="503"/></sources><targets><datapoint pos="0" key="504"/></targets></component>
+<component name="if-else" library="core" uid="404" kind="4"><sources><datapoint pos="0" key="505"/><datapoint/><datapoint pos="2" key="507"/></sources><targets><datapoint pos="0" key="508"/></targets></component>
+<component name="outQualifier" library="core" uid="405" kind="7"><sources><datapoint pos="0" key="509"/></sources><data><output datatype="string"/><parameter usageKind="output" name="outQualifier"/></data></component>
+<component name="outValue" library="core" uid="406" kind="7"><sources><datapoint pos="0" key="510"/></sources><data><output datatype="string"/><parameter usageKind="output" name="outValue"/></data></component>
+</children></structure><connections><edge from="502" to="503"/><edge from="504" to="505"/><edge from="501" to="507"/><edge from="508" to="509"/><edge from="502" to="510"/></connections></component></mapping>"#);
+    fixture
+}
+
+#[test]
+fn sibling_udf_qualifier_tests_presence_without_discarding_an_empty_string() {
+    let fixture = invoked_qualifier_fixture();
+    let imported = mfd::import_invoked_grouped_json_edi_document_with_options(
+        &fixture.0.join("mapping.mfd"),
+        &mfd::ImportOptions::default().with_package_root(&fixture.0),
+    )
+    .unwrap();
+    let mut parameters = engine::RuntimeParameters::new();
+    parameters
+        .insert(
+            &imported.invocation.key_parameter,
+            Value::String("P".into()),
+        )
+        .unwrap();
+    let context = engine::ExecutionContext::new(&fixture.0).with_parameters(&parameters);
+    let grouped = mfd::ImportedGroupedJsonEdiDocument {
+        document: imported.document,
+        source: imported.source,
+        writer_minimums: imported.writer_minimums,
+    };
+    for (text, expected) in [
+        (r#"{"rows":[{"name":"a","qty":"A"}]}"#, Some("QUAL")),
+        (r#"{"rows":[{"name":"a","qty":""}]}"#, Some("QUAL")),
+        (r#"{"rows":[{"name":"a","qty":null}]}"#, None),
+        (r#"{"rows":[{"name":"a"}]}"#, None),
+        (
+            r#"{"rows":[{"name":"b","name":"a","qty":""}]}"#,
+            Some("QUAL"),
+        ),
+        (r#"{"rows":[{"name":"b","qty":"A"}]}"#, None),
+    ] {
+        let source = input(&grouped, &[text]);
+        let ir::Instance::DocumentSet(documents) =
+            engine::run_with_context(grouped.document.project(), &source, &context).unwrap()
+        else {
+            panic!("documents");
+        };
+        assert!(!documents.is_empty());
+        for document in documents {
+            let interchange = &document
+                .value()
+                .field("Interchange")
+                .unwrap()
+                .as_repeated()
+                .unwrap()[0];
+            let group = &interchange.field("Group").unwrap().as_repeated().unwrap()[0];
+            let message = group.field("Message_850").unwrap();
+            let message = message.as_repeated().map_or(message, |items| &items[0]);
+            let line = &message.field("Lines").unwrap().as_repeated().unwrap()[0];
+            let field = line.field("LIN").unwrap().field("F1");
+            assert_eq!(
+                field.and_then(Instance::as_scalar),
+                Some(&Value::String(expected.unwrap_or("").into())),
+                "{text}"
+            );
+        }
+    }
+}
+
+#[test]
+fn sibling_udf_qualifier_refuses_a_different_condition_or_nonstring_literal() {
+    for (from, to) in [
+        (
+            r#"name="is-null" library="db" uid="403""#,
+            r#"name="is-not-null" library="db" uid="403""#,
+        ),
+        (
+            r#"value="QUAL" datatype="string""#,
+            r#"value="1" datatype="decimal""#,
+        ),
+    ] {
+        let fixture = invoked_qualifier_fixture();
+        fixture.change(from, to);
+        assert!(
+            mfd::import_invoked_grouped_json_edi_document_with_options(
+                &fixture.0.join("mapping.mfd"),
+                &mfd::ImportOptions::default().with_package_root(&fixture.0),
+            )
+            .is_err()
+        );
+    }
+}
+
 #[test]
 fn invoked_same_branch_gate_keeps_typed_occurrences_and_nested_empty_fallback() {
     let fixture = invoked_nested_fixture();
