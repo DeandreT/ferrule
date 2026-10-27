@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Ferrule
+GenericName=Data Mapping Editor
+Comment=Create and run visual data mappings
+Exec=ferrule-gui
+TryExec=ferrule-gui
+Icon=io.github.DeandreT.Ferrule
+Terminal=false
+StartupNotify=true
+Categories=Development;Utility;
+Keywords=Data;Mapping;ETL;
