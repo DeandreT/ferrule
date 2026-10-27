@@ -227,6 +227,36 @@ fn invoked_import_does_not_drop_additional_document_targets() {
 }
 
 #[test]
+fn invoked_empty_string_literal_may_omit_value_but_not_type_or_metadata() {
+    let import = |literal: &str| {
+        let fixture = invoked_fixture();
+        fixture.change("</children>", &format!(r#"<component name="constant" library="core" kind="2" uid="90"><targets><datapoint pos="0" key="190"/></targets><data>{literal}</data></component></children>"#));
+        fixture.change(
+            r#"<vertex vertexkey="21"><edges><edge vertexkey="85"/></edges></vertex>"#,
+            r#"<vertex vertexkey="190"><edges><edge vertexkey="85"/></edges></vertex>"#,
+        );
+        mfd::import_invoked_grouped_json_edi_document_with_options(
+            &fixture.0.join("mapping.mfd"),
+            &mfd::ImportOptions::default().with_package_root(&fixture.0),
+        )
+    };
+    let omitted = import(r#"<constant datatype="string"/>"#).unwrap();
+    let explicit = import(r#"<constant datatype="string" value=""/>"#).unwrap();
+    assert_eq!(
+        serde_json::to_value(omitted.document.project()).unwrap(),
+        serde_json::to_value(explicit.document.project()).unwrap()
+    );
+    for literal in [
+        r#"<constant datatype="decimal"/>"#,
+        r#"<constant/>"#,
+        r#"<constant datatype="string" extra="1"/>"#,
+        r#"<constant datatype="string"><unexpected/></constant>"#,
+    ] {
+        assert!(import(literal).is_err(), "accepted {literal}");
+    }
+}
+
+#[test]
 fn disconnected_embedded_palette_instances_do_not_admit_connected_calls() {
     let fixture = invoked_fixture();
     fixture.change("</children>", r#"<component name="dormant" library="unknown" uid="99" kind="19"><data><root><entry name="argument" componentid="1"/></root><root><entry name="result" componentid="2"/></root></data></component></children>"#);
