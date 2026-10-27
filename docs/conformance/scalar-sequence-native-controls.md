@@ -120,13 +120,46 @@ position control is not sufficient for general interchange admission. The
 observation concerns the visible result/error boundary, not proof of the
 reference's internal evaluation or caching strategy.
 
+## Count guard before ItemAt
+
+A further native-authored candidate retains the same variable, predicate,
+mapper and ItemAt index. Its sole target value comes from an If-Else:
+`if count(variable/Row/Value) > -1 then ItemAt(variable/Row/Value, 1) else 0`.
+The count has no connected parent-context input. Its value input is the same
+variable Value output used by ItemAt; there is no separate full-row target.
+The condition and both branch connections remain explicit in the saved graph.
+
+The two outcomes were fixed before authoring, then each complete design was
+saved, reopened, re-saved and executed:
+
+| Source range | Complete count-guarded native outcome |
+| --- | --- |
+| `3..4` | `FirstValue=42`; execution succeeds |
+| `3..5` | Execution fails: `Numeric overflow.` |
+
+All non-layout XML matched between each original save and its re-save after
+removing only checked coordinate-only views and empty descriptions. The mapper
+body matched the unguarded ItemAt control. Original designs and resources stayed
+unchanged; complete messages, the successful output and process closure were
+retained before comparison.
+
+The guard therefore preserves the late native error in this finite control,
+unlike the unguarded complex-variable candidate. It does not establish a faithful
+`filter_map_v1` representation: descriptor reconstruction, strict scalar
+adaptation, captures on empty ranges, stage invocation count, other error
+precedence, multiple consumers, shared limits and cancellation remain
+unqualified. In particular, the observation does not prove whether the value
+sequence is cached or evaluated again by ItemAt. The native and Ferrule error
+categories remain distinct, and every existing export refusal remains in place.
+
 ## Remaining boundary
 
 The original identity variant is not a substitute for dense output positions:
 its predicate keeps every item, so original and filtered positions happen to
-agree. The complex-variable variant distinguishes the positions but fails the
-late-error/ItemAt control. Neither establishes the full two-private-owner
-descriptor, ordered captures,
+agree. The unguarded complex-variable variant distinguishes the positions but
+fails the late-error/ItemAt control; the count-guarded variant matches that one
+late-error control. None establishes the full two-private-owner descriptor,
+ordered captures,
 strict stage adaptation, late-error precedence, eager completion before a
 consumer, or shared work/cancellation limits. No importer or exporter admission
 follows from these observations. The distinguishing frozen controls and the
