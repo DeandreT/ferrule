@@ -458,6 +458,7 @@ fn lower_scope(
             }
         }
         ScopeConstruction::Constructed => crate::TargetConstruction::Group,
+        ScopeConstruction::CollectDocuments => crate::TargetConstruction::CollectDocuments,
     };
 
     let bindings = scope
@@ -509,7 +510,13 @@ fn lower_scope(
         .iter()
         .filter_map(|child| {
             target_path.push(child.target_field.clone());
-            let Some(child_target) = target.child(&child.target_field) else {
+            let child_target = if matches!(scope.construction, ScopeConstruction::CollectDocuments)
+            {
+                Some(target)
+            } else {
+                target.child(&child.target_field)
+            };
+            let Some(child_target) = child_target else {
                 diagnostics.push(Diagnostic::Validation {
                     location: display_target_scope(target_path),
                     message: "validated child scope is absent from its target schema".into(),

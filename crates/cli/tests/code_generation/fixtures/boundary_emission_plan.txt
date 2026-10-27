@@ -173,8 +173,8 @@ rust_typed   ok:0647e9365cdb04ba
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:a50b6463055bdea4
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:92a0a36876024dcb 
-csharp_csv   err:92a0a36876024dcb 
+rust_csv     err:92a0a36876024dcb
+csharp_csv   err:92a0a36876024dcb
 rust_json5   err:936448bb992a986e JSON5_Source_schema:_JSON5_schema_metadata
 csharp_json5 err:936448bb992a986e JSON5_boundary:_JSON5_Source_schema:_JSON5
 
@@ -191,8 +191,8 @@ rust_typed   ok:f75c1153123fd9c8
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:2951fae44b36d370
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:92a0a36876024dcb 
-csharp_csv   err:92a0a36876024dcb 
+rust_csv     err:92a0a36876024dcb
+csharp_csv   err:92a0a36876024dcb
 rust_json5   err:936448bb992a986e JSON5_Source_schema:_JSON5_schema_metadata
 csharp_json5 err:936448bb992a986e JSON5_boundary:_JSON5_Source_schema:_JSON5
 
@@ -209,8 +209,8 @@ rust_typed   ok:ba993bcb376242ec
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:0f0f37558b4cdc1c
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:92a0a36876024dcb 
-csharp_csv   err:92a0a36876024dcb 
+rust_csv     err:92a0a36876024dcb
+csharp_csv   err:92a0a36876024dcb
 rust_json5   err:936448bb992a986e JSON5_Source_schema:_JSON5_schema_metadata
 csharp_json5 err:936448bb992a986e JSON5_boundary:_JSON5_Source_schema:_JSON5
 
@@ -227,8 +227,8 @@ rust_typed   ok:f75c1153123fd9c8
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:2951fae44b36d370
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:92a0a36876024dcb 
-csharp_csv   err:92a0a36876024dcb 
+rust_csv     err:92a0a36876024dcb
+csharp_csv   err:92a0a36876024dcb
 rust_json5   err:936448bb992a986e JSON5_Source_schema:_JSON5_schema_metadata
 csharp_json5 err:936448bb992a986e JSON5_boundary:_JSON5_Source_schema:_JSON5
 
@@ -485,8 +485,8 @@ rust_typed   err:c58ead59563d5b1c UnsupportedBasicContext
 rust_t_api   err:c58ead59563d5b1c UnsupportedBasicContext
 csharp_typed err:4c099ab24b2a4a4c UnsupportedBasicContext
 csharp_t_api err:4c099ab24b2a4a4c UnsupportedBasicContext
-rust_csv     err:bfa3204065f6e738 
-csharp_csv   err:bfa3204065f6e738 
+rust_csv     err:bfa3204065f6e738
+csharp_csv   err:bfa3204065f6e738
 rust_json5   err:e04e5d783176b511 JSON5_Source_schema:_JSON5_companions_require
 csharp_json5 err:e04e5d783176b511 JSON5_boundary:_JSON5_Source_schema:_JSON5
 
@@ -2102,8 +2102,8 @@ rust_typed   ok:29ecab241c71f102
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:23926fef1a9855b3
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:b714713826e4f27b 
-csharp_csv   err:b714713826e4f27b 
+rust_csv     err:b714713826e4f27b
+csharp_csv   err:b714713826e4f27b
 rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
@@ -2174,8 +2174,8 @@ rust_typed   err:e5c783ef01e607a2 UnsupportedBasicContext
 rust_t_api   err:e5c783ef01e607a2 UnsupportedBasicContext
 csharp_typed err:c3c46d8cecd3ebb2 UnsupportedBasicContext
 csharp_t_api err:c3c46d8cecd3ebb2 UnsupportedBasicContext
-rust_csv     err:92a0a36876024dcb 
-csharp_csv   err:92a0a36876024dcb 
+rust_csv     err:92a0a36876024dcb
+csharp_csv   err:92a0a36876024dcb
 rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
@@ -4235,8 +4235,8 @@ rust_typed   ok:79cc32c0f8b9db23
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:5f2d502b35951c2b
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:b7d3e821e420eced 
-csharp_csv   err:b7d3e821e420eced 
+rust_csv     err:b7d3e821e420eced
+csharp_csv   err:b7d3e821e420eced
 rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
@@ -4373,8 +4373,8 @@ rust_typed   ok:380d0ff6f38ccf7d
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:420b6b0048ccd14b
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:191e077152937cf4 
-csharp_csv   err:191e077152937cf4 
+rust_csv     err:191e077152937cf4
+csharp_csv   err:191e077152937cf4
 rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
@@ -6092,8 +6092,8 @@ rust_typed   ok:d89bc392f2aebf5a
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:36be5ac29205eec7
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:f96aa88cec2d16d1 
-csharp_csv   err:f96aa88cec2d16d1 
+rust_csv     err:f96aa88cec2d16d1
+csharp_csv   err:f96aa88cec2d16d1
 rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
@@ -6119,8 +6119,8 @@ rust_typed   err:5f066e9a420f1144 UnsupportedBasicContext
 rust_t_api   err:5f066e9a420f1144 UnsupportedBasicContext
 csharp_typed err:b06b1ecb933177d4 UnsupportedBasicContext
 csharp_t_api err:b06b1ecb933177d4 UnsupportedBasicContext
-rust_csv     err:8d8034d2b81e2244 
-csharp_csv   err:8d8034d2b81e2244 
+rust_csv     err:8d8034d2b81e2244
+csharp_csv   err:8d8034d2b81e2244
 rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
@@ -6137,8 +6137,8 @@ rust_typed   err:5f066e9a420f1144 UnsupportedBasicContext
 rust_t_api   err:5f066e9a420f1144 UnsupportedBasicContext
 csharp_typed err:b06b1ecb933177d4 UnsupportedBasicContext
 csharp_t_api err:b06b1ecb933177d4 UnsupportedBasicContext
-rust_csv     err:40d8ade7718fdde7 
-csharp_csv   err:40d8ade7718fdde7 
+rust_csv     err:40d8ade7718fdde7
+csharp_csv   err:40d8ade7718fdde7
 rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
@@ -6236,8 +6236,8 @@ rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:13ed6f6c473ab1e7
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:91d642036b1a5463 
-csharp_csv   err:91d642036b1a5463 
+rust_csv     err:91d642036b1a5463
+csharp_csv   err:91d642036b1a5463
 rust_json5   ok:c56fc6abcdb1ed5e
 csharp_json5 ok:3a24542750fbf213
 
@@ -6290,8 +6290,8 @@ rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:13ed6f6c473ab1e7
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:91d642036b1a5463 
-csharp_csv   err:91d642036b1a5463 
+rust_csv     err:91d642036b1a5463
+csharp_csv   err:91d642036b1a5463
 rust_json5   ok:c56fc6abcdb1ed5e
 csharp_json5 ok:3a24542750fbf213
 
@@ -6326,8 +6326,8 @@ rust_typed   ok:1894777ef714d4c7
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:e65d841f227113c8
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:3bfec37f64f83f6a 
-csharp_csv   err:3bfec37f64f83f6a 
+rust_csv     err:3bfec37f64f83f6a
+csharp_csv   err:3bfec37f64f83f6a
 rust_json5   err:f3543d2f60b363d6 JSON5_Source_schema:_JSON5_schema_metadata
 csharp_json5 err:f3543d2f60b363d6 JSON5_boundary:_JSON5_Source_schema:_JSON5
 
@@ -6587,8 +6587,8 @@ rust_typed   ok:4c7cc5475e5b7361
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:d8db7cb3d36d7712
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:82b6789ffc0019e9 
-csharp_csv   err:82b6789ffc0019e9 
+rust_csv     err:82b6789ffc0019e9
+csharp_csv   err:82b6789ffc0019e9
 rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
@@ -6605,8 +6605,8 @@ rust_typed   ok:4c7cc5475e5b7361
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:d8db7cb3d36d7712
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:82b6789ffc0019e9 
-csharp_csv   err:82b6789ffc0019e9 
+rust_csv     err:82b6789ffc0019e9
+csharp_csv   err:82b6789ffc0019e9
 rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
@@ -6775,6 +6775,27 @@ csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sour
 ## xml-requests/multiple_dynamic_named_xml_input_mixed/flipped-input-profile (project)
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 
+## xml-requests/nested_document_collection/target-json (project)
+lower        ok:25002b3c496f0990
+validate     ok
+xml_mode     ok:None
+plan         ok:None
+rust         ok:6d98a48034d732d0
+rust_api     ok:0be616e87bc356ab n=54
+csharp       ok:aba0abfeb396fbe6
+csharp_api   ok:b5c6e28b22c59bc6 n=46
+rust_typed   ok:a11fea98595c07c2
+rust_t_api   ok:b8799a3099ea6da7 n=22
+csharp_typed ok:908f8da288f819fa
+csharp_t_api ok:3261d4b6cde0b5db n=20
+rust_csv     err:7901c9c85d6be946
+csharp_csv   err:7901c9c85d6be946
+rust_json5   err:f3543d2f60b363d6 JSON5_Source_schema:_JSON5_schema_metadata
+csharp_json5 err:f3543d2f60b363d6 JSON5_boundary:_JSON5_Source_schema:_JSON5
+
+## xml-requests/nested_document_collection/flipped-input-profile (project)
+lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
+
 ## xml-requests/one_dynamic_named_input_dynamic_primary_xml_documents/named-root-view (project)
 lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 
@@ -6794,8 +6815,8 @@ rust_typed   ok:db989ea47a0f131b
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:5b08344e8a6ba6d6
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:82b6789ffc0019e9 
-csharp_csv   err:82b6789ffc0019e9 
+rust_csv     err:82b6789ffc0019e9
+csharp_csv   err:82b6789ffc0019e9
 rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
@@ -6812,8 +6833,8 @@ rust_typed   ok:db989ea47a0f131b
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:5b08344e8a6ba6d6
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:82b6789ffc0019e9 
-csharp_csv   err:82b6789ffc0019e9 
+rust_csv     err:82b6789ffc0019e9
+csharp_csv   err:82b6789ffc0019e9
 rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
@@ -7717,104 +7738,104 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-programs/dynamic_named_xml_input/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/dynamic_named_xml_input/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/dynamic_named_xml_input/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/dynamic_named_xml_input/dropped-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/dynamic_named_xml_input/dropped-input-policy (program)
-validate     err:1b482110579a86dc 
-xml_mode     err:1b482110579a86dc 
-plan         err:1b482110579a86dc 
-rust         err:f79240aca292bab4 
-rust_api     err:f79240aca292bab4 
-csharp       err:c079ae7fee5edb84 
-csharp_api   err:c079ae7fee5edb84 
-rust_typed   err:f79240aca292bab4 
-rust_t_api   err:f79240aca292bab4 
-csharp_typed err:c079ae7fee5edb84 
-csharp_t_api err:c079ae7fee5edb84 
-rust_csv     err:95f114d88702c25e 
-csharp_csv   err:95f114d88702c25e 
+validate     err:1b482110579a86dc
+xml_mode     err:1b482110579a86dc
+plan         err:1b482110579a86dc
+rust         err:f79240aca292bab4
+rust_api     err:f79240aca292bab4
+csharp       err:c079ae7fee5edb84
+csharp_api   err:c079ae7fee5edb84
+rust_typed   err:f79240aca292bab4
+rust_t_api   err:f79240aca292bab4
+csharp_typed err:c079ae7fee5edb84
+csharp_t_api err:c079ae7fee5edb84
+rust_csv     err:95f114d88702c25e
+csharp_csv   err:95f114d88702c25e
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/dynamic_named_xml_input/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -7836,104 +7857,104 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-programs/dynamic_named_xml_input_mixed/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/dynamic_named_xml_input_mixed/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/dynamic_named_xml_input_mixed/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/dynamic_named_xml_input_mixed/dropped-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/dynamic_named_xml_input_mixed/dropped-input-policy (program)
-validate     err:1b482110579a86dc 
-xml_mode     err:1b482110579a86dc 
-plan         err:1b482110579a86dc 
-rust         err:f79240aca292bab4 
-rust_api     err:f79240aca292bab4 
-csharp       err:c079ae7fee5edb84 
-csharp_api   err:c079ae7fee5edb84 
-rust_typed   err:f79240aca292bab4 
-rust_t_api   err:f79240aca292bab4 
-csharp_typed err:c079ae7fee5edb84 
-csharp_t_api err:c079ae7fee5edb84 
-rust_csv     err:95f114d88702c25e 
-csharp_csv   err:95f114d88702c25e 
+validate     err:1b482110579a86dc
+xml_mode     err:1b482110579a86dc
+plan         err:1b482110579a86dc
+rust         err:f79240aca292bab4
+rust_api     err:f79240aca292bab4
+csharp       err:c079ae7fee5edb84
+csharp_api   err:c079ae7fee5edb84
+rust_typed   err:f79240aca292bab4
+rust_t_api   err:f79240aca292bab4
+csharp_typed err:c079ae7fee5edb84
+csharp_t_api err:c079ae7fee5edb84
+rust_csv     err:95f114d88702c25e
+csharp_csv   err:95f114d88702c25e
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/dynamic_named_xml_input_mixed/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -7955,53 +7976,53 @@ rust_json5   err:d4577c04ae099a32 JSON5_Source_schema:_JSON5_schema_metadata
 csharp_json5 err:d4577c04ae099a32 JSON5_boundary:_JSON5_Source_schema:_JSON5
 
 ## xml-programs/dynamic_primary_xml_documents/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/dynamic_primary_xml_documents/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/dynamic_primary_xml_documents/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -8017,76 +8038,76 @@ rust_typed   ok:4c7cc5475e5b7361
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:d8db7cb3d36d7712
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:82b6789ffc0019e9 
-csharp_csv   err:82b6789ffc0019e9 
+rust_csv     err:82b6789ffc0019e9
+csharp_csv   err:82b6789ffc0019e9
 rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-programs/multiple_dynamic_named_inputs_dynamic_primary_xml_documents/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/multiple_dynamic_named_inputs_dynamic_primary_xml_documents/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/multiple_dynamic_named_inputs_dynamic_primary_xml_documents/dropped-input-policy (program)
-validate     err:1b482110579a86dc 
-xml_mode     err:1b482110579a86dc 
-plan         err:1b482110579a86dc 
-rust         err:f79240aca292bab4 
-rust_api     err:f79240aca292bab4 
-csharp       err:c079ae7fee5edb84 
-csharp_api   err:c079ae7fee5edb84 
-rust_typed   err:f79240aca292bab4 
-rust_t_api   err:f79240aca292bab4 
-csharp_typed err:c079ae7fee5edb84 
-csharp_t_api err:c079ae7fee5edb84 
-rust_csv     err:95f114d88702c25e 
-csharp_csv   err:95f114d88702c25e 
+validate     err:1b482110579a86dc
+xml_mode     err:1b482110579a86dc
+plan         err:1b482110579a86dc
+rust         err:f79240aca292bab4
+rust_api     err:f79240aca292bab4
+csharp       err:c079ae7fee5edb84
+csharp_api   err:c079ae7fee5edb84
+rust_typed   err:f79240aca292bab4
+rust_t_api   err:f79240aca292bab4
+csharp_typed err:c079ae7fee5edb84
+csharp_t_api err:c079ae7fee5edb84
+rust_csv     err:95f114d88702c25e
+csharp_csv   err:95f114d88702c25e
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/multiple_dynamic_named_inputs_dynamic_primary_xml_documents/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -8108,104 +8129,104 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-programs/multiple_dynamic_named_inputs_static_primary_dynamic_named_xml_documents/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/multiple_dynamic_named_inputs_static_primary_dynamic_named_xml_documents/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/multiple_dynamic_named_inputs_static_primary_dynamic_named_xml_documents/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/multiple_dynamic_named_inputs_static_primary_dynamic_named_xml_documents/dropped-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/multiple_dynamic_named_inputs_static_primary_dynamic_named_xml_documents/dropped-input-policy (program)
-validate     err:1b482110579a86dc 
-xml_mode     err:1b482110579a86dc 
-plan         err:1b482110579a86dc 
-rust         err:f79240aca292bab4 
-rust_api     err:f79240aca292bab4 
-csharp       err:c079ae7fee5edb84 
-csharp_api   err:c079ae7fee5edb84 
-rust_typed   err:f79240aca292bab4 
-rust_t_api   err:f79240aca292bab4 
-csharp_typed err:c079ae7fee5edb84 
-csharp_t_api err:c079ae7fee5edb84 
-rust_csv     err:95f114d88702c25e 
-csharp_csv   err:95f114d88702c25e 
+validate     err:1b482110579a86dc
+xml_mode     err:1b482110579a86dc
+plan         err:1b482110579a86dc
+rust         err:f79240aca292bab4
+rust_api     err:f79240aca292bab4
+csharp       err:c079ae7fee5edb84
+csharp_api   err:c079ae7fee5edb84
+rust_typed   err:f79240aca292bab4
+rust_t_api   err:f79240aca292bab4
+csharp_typed err:c079ae7fee5edb84
+csharp_t_api err:c079ae7fee5edb84
+rust_csv     err:95f114d88702c25e
+csharp_csv   err:95f114d88702c25e
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/multiple_dynamic_named_inputs_static_primary_dynamic_named_xml_documents/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -8227,104 +8248,172 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-programs/multiple_dynamic_named_xml_input_mixed/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/multiple_dynamic_named_xml_input_mixed/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/multiple_dynamic_named_xml_input_mixed/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/multiple_dynamic_named_xml_input_mixed/dropped-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/multiple_dynamic_named_xml_input_mixed/dropped-input-policy (program)
-validate     err:1b482110579a86dc 
-xml_mode     err:1b482110579a86dc 
-plan         err:1b482110579a86dc 
-rust         err:f79240aca292bab4 
-rust_api     err:f79240aca292bab4 
-csharp       err:c079ae7fee5edb84 
-csharp_api   err:c079ae7fee5edb84 
-rust_typed   err:f79240aca292bab4 
-rust_t_api   err:f79240aca292bab4 
-csharp_typed err:c079ae7fee5edb84 
-csharp_t_api err:c079ae7fee5edb84 
-rust_csv     err:95f114d88702c25e 
-csharp_csv   err:95f114d88702c25e 
+validate     err:1b482110579a86dc
+xml_mode     err:1b482110579a86dc
+plan         err:1b482110579a86dc
+rust         err:f79240aca292bab4
+rust_api     err:f79240aca292bab4
+csharp       err:c079ae7fee5edb84
+csharp_api   err:c079ae7fee5edb84
+rust_typed   err:f79240aca292bab4
+rust_t_api   err:f79240aca292bab4
+csharp_typed err:c079ae7fee5edb84
+csharp_t_api err:c079ae7fee5edb84
+rust_csv     err:95f114d88702c25e
+csharp_csv   err:95f114d88702c25e
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/multiple_dynamic_named_xml_input_mixed/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
+rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
+csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
+
+## xml-programs/nested_document_collection/no-boundary (program)
+validate     ok
+xml_mode     ok:None
+plan         ok:None
+rust         ok:6d98a48034d732d0
+rust_api     ok:0be616e87bc356ab n=54
+csharp       ok:aba0abfeb396fbe6
+csharp_api   ok:b5c6e28b22c59bc6 n=46
+rust_typed   ok:a11fea98595c07c2
+rust_t_api   ok:b8799a3099ea6da7 n=22
+csharp_typed ok:908f8da288f819fa
+csharp_t_api ok:3261d4b6cde0b5db n=20
+rust_csv     err:7901c9c85d6be946
+csharp_csv   err:7901c9c85d6be946
+rust_json5   err:f3543d2f60b363d6 JSON5_Source_schema:_JSON5_schema_metadata
+csharp_json5 err:f3543d2f60b363d6 JSON5_boundary:_JSON5_Source_schema:_JSON5
+
+## xml-programs/nested_document_collection/mixed-input-flags (program)
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
+rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
+csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
+
+## xml-programs/nested_document_collection/swapped-input-profile (program)
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
+rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
+csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
+
+## xml-programs/nested_document_collection/undeclared-output-policy (program)
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -8340,76 +8429,76 @@ rust_typed   ok:db989ea47a0f131b
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:5b08344e8a6ba6d6
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:82b6789ffc0019e9 
-csharp_csv   err:82b6789ffc0019e9 
+rust_csv     err:82b6789ffc0019e9
+csharp_csv   err:82b6789ffc0019e9
 rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-programs/one_dynamic_named_input_dynamic_primary_xml_documents/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/one_dynamic_named_input_dynamic_primary_xml_documents/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/one_dynamic_named_input_dynamic_primary_xml_documents/dropped-input-policy (program)
-validate     err:1b482110579a86dc 
-xml_mode     err:1b482110579a86dc 
-plan         err:1b482110579a86dc 
-rust         err:f79240aca292bab4 
-rust_api     err:f79240aca292bab4 
-csharp       err:c079ae7fee5edb84 
-csharp_api   err:c079ae7fee5edb84 
-rust_typed   err:f79240aca292bab4 
-rust_t_api   err:f79240aca292bab4 
-csharp_typed err:c079ae7fee5edb84 
-csharp_t_api err:c079ae7fee5edb84 
-rust_csv     err:95f114d88702c25e 
-csharp_csv   err:95f114d88702c25e 
+validate     err:1b482110579a86dc
+xml_mode     err:1b482110579a86dc
+plan         err:1b482110579a86dc
+rust         err:f79240aca292bab4
+rust_api     err:f79240aca292bab4
+csharp       err:c079ae7fee5edb84
+csharp_api   err:c079ae7fee5edb84
+rust_typed   err:f79240aca292bab4
+rust_t_api   err:f79240aca292bab4
+csharp_typed err:c079ae7fee5edb84
+csharp_t_api err:c079ae7fee5edb84
+rust_csv     err:95f114d88702c25e
+csharp_csv   err:95f114d88702c25e
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/one_dynamic_named_input_dynamic_primary_xml_documents/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -8431,104 +8520,104 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-programs/one_dynamic_named_input_static_primary_dynamic_named_xml_documents/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/one_dynamic_named_input_static_primary_dynamic_named_xml_documents/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/one_dynamic_named_input_static_primary_dynamic_named_xml_documents/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/one_dynamic_named_input_static_primary_dynamic_named_xml_documents/dropped-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/one_dynamic_named_input_static_primary_dynamic_named_xml_documents/dropped-input-policy (program)
-validate     err:1b482110579a86dc 
-xml_mode     err:1b482110579a86dc 
-plan         err:1b482110579a86dc 
-rust         err:f79240aca292bab4 
-rust_api     err:f79240aca292bab4 
-csharp       err:c079ae7fee5edb84 
-csharp_api   err:c079ae7fee5edb84 
-rust_typed   err:f79240aca292bab4 
-rust_t_api   err:f79240aca292bab4 
-csharp_typed err:c079ae7fee5edb84 
-csharp_t_api err:c079ae7fee5edb84 
-rust_csv     err:95f114d88702c25e 
-csharp_csv   err:95f114d88702c25e 
+validate     err:1b482110579a86dc
+xml_mode     err:1b482110579a86dc
+plan         err:1b482110579a86dc
+rust         err:f79240aca292bab4
+rust_api     err:f79240aca292bab4
+csharp       err:c079ae7fee5edb84
+csharp_api   err:c079ae7fee5edb84
+rust_typed   err:f79240aca292bab4
+rust_t_api   err:f79240aca292bab4
+csharp_typed err:c079ae7fee5edb84
+csharp_t_api err:c079ae7fee5edb84
+rust_csv     err:95f114d88702c25e
+csharp_csv   err:95f114d88702c25e
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/one_dynamic_named_input_static_primary_dynamic_named_xml_documents/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -8550,87 +8639,87 @@ rust_json5   err:23a6a4690295f07b JSON5_program_field_extra_targets_is_outside
 csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targets
 
 ## xml-programs/root_view_primary_static_named_xml_output/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_primary_static_named_xml_output/swapped-input-profile (program)
-validate     err:99382b2bb5968694 
-xml_mode     err:99382b2bb5968694 
-plan         err:99382b2bb5968694 
-rust         err:67ed940fc38102ae 
-rust_api     err:67ed940fc38102ae 
-csharp       err:14e8a05fab63483e 
-csharp_api   err:14e8a05fab63483e 
-rust_typed   err:67ed940fc38102ae 
-rust_t_api   err:67ed940fc38102ae 
-csharp_typed err:14e8a05fab63483e 
-csharp_t_api err:14e8a05fab63483e 
-rust_csv     err:2d79cbc6f3067326 
-csharp_csv   err:2d79cbc6f3067326 
+validate     err:99382b2bb5968694
+xml_mode     err:99382b2bb5968694
+plan         err:99382b2bb5968694
+rust         err:67ed940fc38102ae
+rust_api     err:67ed940fc38102ae
+csharp       err:14e8a05fab63483e
+csharp_api   err:14e8a05fab63483e
+rust_typed   err:67ed940fc38102ae
+rust_t_api   err:67ed940fc38102ae
+csharp_typed err:14e8a05fab63483e
+csharp_t_api err:14e8a05fab63483e
+rust_csv     err:2d79cbc6f3067326
+csharp_csv   err:2d79cbc6f3067326
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_primary_static_named_xml_output/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_primary_static_named_xml_output/dropped-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_primary_static_named_xml_output/undeclared-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -8652,70 +8741,70 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-programs/root_view_static_named_xml_inputs/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_static_named_xml_inputs/swapped-input-profile (program)
-validate     err:99382b2bb5968694 
-xml_mode     err:99382b2bb5968694 
-plan         err:99382b2bb5968694 
-rust         err:67ed940fc38102ae 
-rust_api     err:67ed940fc38102ae 
-csharp       err:14e8a05fab63483e 
-csharp_api   err:14e8a05fab63483e 
-rust_typed   err:67ed940fc38102ae 
-rust_t_api   err:67ed940fc38102ae 
-csharp_typed err:14e8a05fab63483e 
-csharp_t_api err:14e8a05fab63483e 
-rust_csv     err:2d79cbc6f3067326 
-csharp_csv   err:2d79cbc6f3067326 
+validate     err:99382b2bb5968694
+xml_mode     err:99382b2bb5968694
+plan         err:99382b2bb5968694
+rust         err:67ed940fc38102ae
+rust_api     err:67ed940fc38102ae
+csharp       err:14e8a05fab63483e
+csharp_api   err:14e8a05fab63483e
+rust_typed   err:67ed940fc38102ae
+rust_t_api   err:67ed940fc38102ae
+csharp_typed err:14e8a05fab63483e
+csharp_t_api err:14e8a05fab63483e
+rust_csv     err:2d79cbc6f3067326
+csharp_csv   err:2d79cbc6f3067326
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_static_named_xml_inputs/dropped-input-policy (program)
-validate     err:1b482110579a86dc 
-xml_mode     err:1b482110579a86dc 
-plan         err:1b482110579a86dc 
-rust         err:f79240aca292bab4 
-rust_api     err:f79240aca292bab4 
-csharp       err:c079ae7fee5edb84 
-csharp_api   err:c079ae7fee5edb84 
-rust_typed   err:f79240aca292bab4 
-rust_t_api   err:f79240aca292bab4 
-csharp_typed err:c079ae7fee5edb84 
-csharp_t_api err:c079ae7fee5edb84 
-rust_csv     err:95f114d88702c25e 
-csharp_csv   err:95f114d88702c25e 
+validate     err:1b482110579a86dc
+xml_mode     err:1b482110579a86dc
+plan         err:1b482110579a86dc
+rust         err:f79240aca292bab4
+rust_api     err:f79240aca292bab4
+csharp       err:c079ae7fee5edb84
+csharp_api   err:c079ae7fee5edb84
+rust_typed   err:f79240aca292bab4
+rust_t_api   err:f79240aca292bab4
+csharp_typed err:c079ae7fee5edb84
+csharp_t_api err:c079ae7fee5edb84
+rust_csv     err:95f114d88702c25e
+csharp_csv   err:95f114d88702c25e
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_static_named_xml_inputs/undeclared-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -8737,87 +8826,87 @@ rust_json5   err:23a6a4690295f07b JSON5_program_field_extra_targets_is_outside
 csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targets
 
 ## xml-programs/root_view_three_static_named_xml_outputs/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_three_static_named_xml_outputs/swapped-input-profile (program)
-validate     err:99382b2bb5968694 
-xml_mode     err:99382b2bb5968694 
-plan         err:99382b2bb5968694 
-rust         err:67ed940fc38102ae 
-rust_api     err:67ed940fc38102ae 
-csharp       err:14e8a05fab63483e 
-csharp_api   err:14e8a05fab63483e 
-rust_typed   err:67ed940fc38102ae 
-rust_t_api   err:67ed940fc38102ae 
-csharp_typed err:14e8a05fab63483e 
-csharp_t_api err:14e8a05fab63483e 
-rust_csv     err:2d79cbc6f3067326 
-csharp_csv   err:2d79cbc6f3067326 
+validate     err:99382b2bb5968694
+xml_mode     err:99382b2bb5968694
+plan         err:99382b2bb5968694
+rust         err:67ed940fc38102ae
+rust_api     err:67ed940fc38102ae
+csharp       err:14e8a05fab63483e
+csharp_api   err:14e8a05fab63483e
+rust_typed   err:67ed940fc38102ae
+rust_t_api   err:67ed940fc38102ae
+csharp_typed err:14e8a05fab63483e
+csharp_t_api err:14e8a05fab63483e
+rust_csv     err:2d79cbc6f3067326
+csharp_csv   err:2d79cbc6f3067326
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_three_static_named_xml_outputs/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_three_static_named_xml_outputs/dropped-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_three_static_named_xml_outputs/undeclared-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -8839,87 +8928,87 @@ rust_json5   err:23a6a4690295f07b JSON5_program_field_extra_targets_is_outside
 csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targets
 
 ## xml-programs/root_view_two_static_named_xml_outputs/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_named_xml_outputs/swapped-input-profile (program)
-validate     err:99382b2bb5968694 
-xml_mode     err:99382b2bb5968694 
-plan         err:99382b2bb5968694 
-rust         err:67ed940fc38102ae 
-rust_api     err:67ed940fc38102ae 
-csharp       err:14e8a05fab63483e 
-csharp_api   err:14e8a05fab63483e 
-rust_typed   err:67ed940fc38102ae 
-rust_t_api   err:67ed940fc38102ae 
-csharp_typed err:14e8a05fab63483e 
-csharp_t_api err:14e8a05fab63483e 
-rust_csv     err:2d79cbc6f3067326 
-csharp_csv   err:2d79cbc6f3067326 
+validate     err:99382b2bb5968694
+xml_mode     err:99382b2bb5968694
+plan         err:99382b2bb5968694
+rust         err:67ed940fc38102ae
+rust_api     err:67ed940fc38102ae
+csharp       err:14e8a05fab63483e
+csharp_api   err:14e8a05fab63483e
+rust_typed   err:67ed940fc38102ae
+rust_t_api   err:67ed940fc38102ae
+csharp_typed err:14e8a05fab63483e
+csharp_t_api err:14e8a05fab63483e
+rust_csv     err:2d79cbc6f3067326
+csharp_csv   err:2d79cbc6f3067326
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_named_xml_outputs/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_named_xml_outputs/dropped-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_named_xml_outputs/undeclared-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -8941,87 +9030,87 @@ rust_json5   err:23a6a4690295f07b JSON5_program_field_extra_targets_is_outside
 csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targets
 
 ## xml-programs/root_view_two_static_named_xml_outputs_reversed/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_named_xml_outputs_reversed/swapped-input-profile (program)
-validate     err:99382b2bb5968694 
-xml_mode     err:99382b2bb5968694 
-plan         err:99382b2bb5968694 
-rust         err:67ed940fc38102ae 
-rust_api     err:67ed940fc38102ae 
-csharp       err:14e8a05fab63483e 
-csharp_api   err:14e8a05fab63483e 
-rust_typed   err:67ed940fc38102ae 
-rust_t_api   err:67ed940fc38102ae 
-csharp_typed err:14e8a05fab63483e 
-csharp_t_api err:14e8a05fab63483e 
-rust_csv     err:2d79cbc6f3067326 
-csharp_csv   err:2d79cbc6f3067326 
+validate     err:99382b2bb5968694
+xml_mode     err:99382b2bb5968694
+plan         err:99382b2bb5968694
+rust         err:67ed940fc38102ae
+rust_api     err:67ed940fc38102ae
+csharp       err:14e8a05fab63483e
+csharp_api   err:14e8a05fab63483e
+rust_typed   err:67ed940fc38102ae
+rust_t_api   err:67ed940fc38102ae
+csharp_typed err:14e8a05fab63483e
+csharp_t_api err:14e8a05fab63483e
+rust_csv     err:2d79cbc6f3067326
+csharp_csv   err:2d79cbc6f3067326
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_named_xml_outputs_reversed/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_named_xml_outputs_reversed/dropped-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_named_xml_outputs_reversed/undeclared-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -9043,104 +9132,104 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-programs/root_view_two_static_structured_inputs_1_static_named_outputs/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_structured_inputs_1_static_named_outputs/swapped-input-profile (program)
-validate     err:99382b2bb5968694 
-xml_mode     err:99382b2bb5968694 
-plan         err:99382b2bb5968694 
-rust         err:67ed940fc38102ae 
-rust_api     err:67ed940fc38102ae 
-csharp       err:14e8a05fab63483e 
-csharp_api   err:14e8a05fab63483e 
-rust_typed   err:67ed940fc38102ae 
-rust_t_api   err:67ed940fc38102ae 
-csharp_typed err:14e8a05fab63483e 
-csharp_t_api err:14e8a05fab63483e 
-rust_csv     err:2d79cbc6f3067326 
-csharp_csv   err:2d79cbc6f3067326 
+validate     err:99382b2bb5968694
+xml_mode     err:99382b2bb5968694
+plan         err:99382b2bb5968694
+rust         err:67ed940fc38102ae
+rust_api     err:67ed940fc38102ae
+csharp       err:14e8a05fab63483e
+csharp_api   err:14e8a05fab63483e
+rust_typed   err:67ed940fc38102ae
+rust_t_api   err:67ed940fc38102ae
+csharp_typed err:14e8a05fab63483e
+csharp_t_api err:14e8a05fab63483e
+rust_csv     err:2d79cbc6f3067326
+csharp_csv   err:2d79cbc6f3067326
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_structured_inputs_1_static_named_outputs/renamed-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_structured_inputs_1_static_named_outputs/dropped-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_structured_inputs_1_static_named_outputs/dropped-input-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_structured_inputs_1_static_named_outputs/undeclared-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -9162,104 +9251,104 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-programs/root_view_two_static_structured_inputs_2_static_named_outputs/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_structured_inputs_2_static_named_outputs/swapped-input-profile (program)
-validate     err:99382b2bb5968694 
-xml_mode     err:99382b2bb5968694 
-plan         err:99382b2bb5968694 
-rust         err:67ed940fc38102ae 
-rust_api     err:67ed940fc38102ae 
-csharp       err:14e8a05fab63483e 
-csharp_api   err:14e8a05fab63483e 
-rust_typed   err:67ed940fc38102ae 
-rust_t_api   err:67ed940fc38102ae 
-csharp_typed err:14e8a05fab63483e 
-csharp_t_api err:14e8a05fab63483e 
-rust_csv     err:2d79cbc6f3067326 
-csharp_csv   err:2d79cbc6f3067326 
+validate     err:99382b2bb5968694
+xml_mode     err:99382b2bb5968694
+plan         err:99382b2bb5968694
+rust         err:67ed940fc38102ae
+rust_api     err:67ed940fc38102ae
+csharp       err:14e8a05fab63483e
+csharp_api   err:14e8a05fab63483e
+rust_typed   err:67ed940fc38102ae
+rust_t_api   err:67ed940fc38102ae
+csharp_typed err:14e8a05fab63483e
+csharp_t_api err:14e8a05fab63483e
+rust_csv     err:2d79cbc6f3067326
+csharp_csv   err:2d79cbc6f3067326
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_structured_inputs_2_static_named_outputs/renamed-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_structured_inputs_2_static_named_outputs/dropped-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_structured_inputs_2_static_named_outputs/dropped-input-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/root_view_two_static_structured_inputs_2_static_named_outputs/undeclared-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -9281,70 +9370,70 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-programs/static_named_inputs_dynamic_primary_xml_documents/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_named_inputs_dynamic_primary_xml_documents/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_named_inputs_dynamic_primary_xml_documents/dropped-input-policy (program)
-validate     err:1b482110579a86dc 
-xml_mode     err:1b482110579a86dc 
-plan         err:1b482110579a86dc 
-rust         err:f79240aca292bab4 
-rust_api     err:f79240aca292bab4 
-csharp       err:c079ae7fee5edb84 
-csharp_api   err:c079ae7fee5edb84 
-rust_typed   err:f79240aca292bab4 
-rust_t_api   err:f79240aca292bab4 
-csharp_typed err:c079ae7fee5edb84 
-csharp_t_api err:c079ae7fee5edb84 
-rust_csv     err:95f114d88702c25e 
-csharp_csv   err:95f114d88702c25e 
+validate     err:1b482110579a86dc
+xml_mode     err:1b482110579a86dc
+plan         err:1b482110579a86dc
+rust         err:f79240aca292bab4
+rust_api     err:f79240aca292bab4
+csharp       err:c079ae7fee5edb84
+csharp_api   err:c079ae7fee5edb84
+rust_typed   err:f79240aca292bab4
+rust_t_api   err:f79240aca292bab4
+csharp_typed err:c079ae7fee5edb84
+csharp_t_api err:c079ae7fee5edb84
+rust_csv     err:95f114d88702c25e
+csharp_csv   err:95f114d88702c25e
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_named_inputs_dynamic_primary_xml_documents/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -9366,104 +9455,104 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-programs/static_named_inputs_static_primary_dynamic_named_xml_documents/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_named_inputs_static_primary_dynamic_named_xml_documents/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_named_inputs_static_primary_dynamic_named_xml_documents/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_named_inputs_static_primary_dynamic_named_xml_documents/dropped-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_named_inputs_static_primary_dynamic_named_xml_documents/dropped-input-policy (program)
-validate     err:1b482110579a86dc 
-xml_mode     err:1b482110579a86dc 
-plan         err:1b482110579a86dc 
-rust         err:f79240aca292bab4 
-rust_api     err:f79240aca292bab4 
-csharp       err:c079ae7fee5edb84 
-csharp_api   err:c079ae7fee5edb84 
-rust_typed   err:f79240aca292bab4 
-rust_t_api   err:f79240aca292bab4 
-csharp_typed err:c079ae7fee5edb84 
-csharp_t_api err:c079ae7fee5edb84 
-rust_csv     err:95f114d88702c25e 
-csharp_csv   err:95f114d88702c25e 
+validate     err:1b482110579a86dc
+xml_mode     err:1b482110579a86dc
+plan         err:1b482110579a86dc
+rust         err:f79240aca292bab4
+rust_api     err:f79240aca292bab4
+csharp       err:c079ae7fee5edb84
+csharp_api   err:c079ae7fee5edb84
+rust_typed   err:f79240aca292bab4
+rust_t_api   err:f79240aca292bab4
+csharp_typed err:c079ae7fee5edb84
+csharp_t_api err:c079ae7fee5edb84
+rust_csv     err:95f114d88702c25e
+csharp_csv   err:95f114d88702c25e
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_named_inputs_static_primary_dynamic_named_xml_documents/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -9485,104 +9574,104 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-programs/static_named_xml_inputs/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_named_xml_inputs/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_named_xml_inputs/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_named_xml_inputs/dropped-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_named_xml_inputs/dropped-input-policy (program)
-validate     err:1b482110579a86dc 
-xml_mode     err:1b482110579a86dc 
-plan         err:1b482110579a86dc 
-rust         err:f79240aca292bab4 
-rust_api     err:f79240aca292bab4 
-csharp       err:c079ae7fee5edb84 
-csharp_api   err:c079ae7fee5edb84 
-rust_typed   err:f79240aca292bab4 
-rust_t_api   err:f79240aca292bab4 
-csharp_typed err:c079ae7fee5edb84 
-csharp_t_api err:c079ae7fee5edb84 
-rust_csv     err:95f114d88702c25e 
-csharp_csv   err:95f114d88702c25e 
+validate     err:1b482110579a86dc
+xml_mode     err:1b482110579a86dc
+plan         err:1b482110579a86dc
+rust         err:f79240aca292bab4
+rust_api     err:f79240aca292bab4
+csharp       err:c079ae7fee5edb84
+csharp_api   err:c079ae7fee5edb84
+rust_typed   err:f79240aca292bab4
+rust_t_api   err:f79240aca292bab4
+csharp_typed err:c079ae7fee5edb84
+csharp_t_api err:c079ae7fee5edb84
+rust_csv     err:95f114d88702c25e
+csharp_csv   err:95f114d88702c25e
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_named_xml_inputs/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -9604,53 +9693,53 @@ rust_json5   err:d4577c04ae099a32 JSON5_Source_schema:_JSON5_schema_metadata
 csharp_json5 err:d4577c04ae099a32 JSON5_boundary:_JSON5_Source_schema:_JSON5
 
 ## xml-programs/static_named_xml_rootview/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_named_xml_rootview/swapped-input-profile (program)
-validate     err:99382b2bb5968694 
-xml_mode     err:99382b2bb5968694 
-plan         err:99382b2bb5968694 
-rust         err:67ed940fc38102ae 
-rust_api     err:67ed940fc38102ae 
-csharp       err:14e8a05fab63483e 
-csharp_api   err:14e8a05fab63483e 
-rust_typed   err:67ed940fc38102ae 
-rust_t_api   err:67ed940fc38102ae 
-csharp_typed err:14e8a05fab63483e 
-csharp_t_api err:14e8a05fab63483e 
-rust_csv     err:2d79cbc6f3067326 
-csharp_csv   err:2d79cbc6f3067326 
+validate     err:99382b2bb5968694
+xml_mode     err:99382b2bb5968694
+plan         err:99382b2bb5968694
+rust         err:67ed940fc38102ae
+rust_api     err:67ed940fc38102ae
+csharp       err:14e8a05fab63483e
+csharp_api   err:14e8a05fab63483e
+rust_typed   err:67ed940fc38102ae
+rust_t_api   err:67ed940fc38102ae
+csharp_typed err:14e8a05fab63483e
+csharp_t_api err:14e8a05fab63483e
+rust_csv     err:2d79cbc6f3067326
+csharp_csv   err:2d79cbc6f3067326
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_named_xml_rootview/undeclared-output-policy (program)
-validate     err:d86d1efb55b517d2 
-xml_mode     err:d86d1efb55b517d2 
-plan         err:d86d1efb55b517d2 
-rust         err:f45af884e480820e 
-rust_api     err:f45af884e480820e 
-csharp       err:a16d812bc24aadbe 
-csharp_api   err:a16d812bc24aadbe 
-rust_typed   err:f45af884e480820e 
-rust_t_api   err:f45af884e480820e 
-csharp_typed err:a16d812bc24aadbe 
-csharp_t_api err:a16d812bc24aadbe 
-rust_csv     err:4a54a66442deef4c 
-csharp_csv   err:4a54a66442deef4c 
+validate     err:d86d1efb55b517d2
+xml_mode     err:d86d1efb55b517d2
+plan         err:d86d1efb55b517d2
+rust         err:f45af884e480820e
+rust_api     err:f45af884e480820e
+csharp       err:a16d812bc24aadbe
+csharp_api   err:a16d812bc24aadbe
+rust_typed   err:f45af884e480820e
+rust_t_api   err:f45af884e480820e
+csharp_typed err:a16d812bc24aadbe
+csharp_t_api err:a16d812bc24aadbe
+rust_csv     err:4a54a66442deef4c
+csharp_csv   err:4a54a66442deef4c
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -9672,87 +9761,87 @@ rust_json5   err:23a6a4690295f07b JSON5_program_field_extra_targets_is_outside
 csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targets
 
 ## xml-programs/static_primary_dynamic_named_xml_documents/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_dynamic_named_xml_documents/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_dynamic_named_xml_documents/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_dynamic_named_xml_documents/dropped-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_dynamic_named_xml_documents/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -9774,87 +9863,87 @@ rust_json5   err:23a6a4690295f07b JSON5_program_field_extra_targets_is_outside
 csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targets
 
 ## xml-programs/static_primary_mixed_multiple_named_xml_documents/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_mixed_multiple_named_xml_documents/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_mixed_multiple_named_xml_documents/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_mixed_multiple_named_xml_documents/dropped-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_mixed_multiple_named_xml_documents/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -9876,87 +9965,87 @@ rust_json5   err:23a6a4690295f07b JSON5_program_field_extra_targets_is_outside
 csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targets
 
 ## xml-programs/static_primary_mixed_named_xml_documents/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_mixed_named_xml_documents/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_mixed_named_xml_documents/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_mixed_named_xml_documents/dropped-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_mixed_named_xml_documents/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -9978,87 +10067,87 @@ rust_json5   err:23a6a4690295f07b JSON5_program_field_extra_targets_is_outside
 csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targets
 
 ## xml-programs/static_primary_multiple_dynamic_named_xml_documents/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_multiple_dynamic_named_xml_documents/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_multiple_dynamic_named_xml_documents/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_multiple_dynamic_named_xml_documents/dropped-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/static_primary_multiple_dynamic_named_xml_documents/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -10080,104 +10169,104 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-programs/unused_dynamic_named_xml_input/mixed-input-flags (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/unused_dynamic_named_xml_input/swapped-input-profile (program)
-validate     err:be074f5e2e1f7311 
-xml_mode     err:be074f5e2e1f7311 
-plan         err:be074f5e2e1f7311 
-rust         err:2b6f4247cbf020bd 
-rust_api     err:2b6f4247cbf020bd 
-csharp       err:bdfc0a58ae5b36ed 
-csharp_api   err:bdfc0a58ae5b36ed 
-rust_typed   err:2b6f4247cbf020bd 
-rust_t_api   err:2b6f4247cbf020bd 
-csharp_typed err:bdfc0a58ae5b36ed 
-csharp_t_api err:bdfc0a58ae5b36ed 
-rust_csv     err:15a28dd765b3a59f 
-csharp_csv   err:15a28dd765b3a59f 
+validate     err:be074f5e2e1f7311
+xml_mode     err:be074f5e2e1f7311
+plan         err:be074f5e2e1f7311
+rust         err:2b6f4247cbf020bd
+rust_api     err:2b6f4247cbf020bd
+csharp       err:bdfc0a58ae5b36ed
+csharp_api   err:bdfc0a58ae5b36ed
+rust_typed   err:2b6f4247cbf020bd
+rust_t_api   err:2b6f4247cbf020bd
+csharp_typed err:bdfc0a58ae5b36ed
+csharp_t_api err:bdfc0a58ae5b36ed
+rust_csv     err:15a28dd765b3a59f
+csharp_csv   err:15a28dd765b3a59f
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/unused_dynamic_named_xml_input/renamed-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/unused_dynamic_named_xml_input/dropped-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/unused_dynamic_named_xml_input/dropped-input-policy (program)
-validate     err:1b482110579a86dc 
-xml_mode     err:1b482110579a86dc 
-plan         err:1b482110579a86dc 
-rust         err:f79240aca292bab4 
-rust_api     err:f79240aca292bab4 
-csharp       err:c079ae7fee5edb84 
-csharp_api   err:c079ae7fee5edb84 
-rust_typed   err:f79240aca292bab4 
-rust_t_api   err:f79240aca292bab4 
-csharp_typed err:c079ae7fee5edb84 
-csharp_t_api err:c079ae7fee5edb84 
-rust_csv     err:95f114d88702c25e 
-csharp_csv   err:95f114d88702c25e 
+validate     err:1b482110579a86dc
+xml_mode     err:1b482110579a86dc
+plan         err:1b482110579a86dc
+rust         err:f79240aca292bab4
+rust_api     err:f79240aca292bab4
+csharp       err:c079ae7fee5edb84
+csharp_api   err:c079ae7fee5edb84
+rust_typed   err:f79240aca292bab4
+rust_t_api   err:f79240aca292bab4
+csharp_typed err:c079ae7fee5edb84
+csharp_t_api err:c079ae7fee5edb84
+rust_csv     err:95f114d88702c25e
+csharp_csv   err:95f114d88702c25e
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-programs/unused_dynamic_named_xml_input/undeclared-output-policy (program)
-validate     err:ca5bf9c9126ddd2b 
-xml_mode     err:ca5bf9c9126ddd2b 
-plan         err:ca5bf9c9126ddd2b 
-rust         err:259c88bd77bc38bb 
-rust_api     err:259c88bd77bc38bb 
-csharp       err:777ec32188d27d2b 
-csharp_api   err:777ec32188d27d2b 
-rust_typed   err:259c88bd77bc38bb 
-rust_t_api   err:259c88bd77bc38bb 
-csharp_typed err:777ec32188d27d2b 
-csharp_t_api err:777ec32188d27d2b 
-rust_csv     err:d1ebd6af57290e29 
-csharp_csv   err:d1ebd6af57290e29 
+validate     err:ca5bf9c9126ddd2b
+xml_mode     err:ca5bf9c9126ddd2b
+plan         err:ca5bf9c9126ddd2b
+rust         err:259c88bd77bc38bb
+rust_api     err:259c88bd77bc38bb
+csharp       err:777ec32188d27d2b
+csharp_api   err:777ec32188d27d2b
+rust_typed   err:259c88bd77bc38bb
+rust_t_api   err:259c88bd77bc38bb
+csharp_typed err:777ec32188d27d2b
+csharp_t_api err:777ec32188d27d2b
+rust_csv     err:d1ebd6af57290e29
+csharp_csv   err:d1ebd6af57290e29
 rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
@@ -10194,8 +10283,8 @@ rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:13ed6f6c473ab1e7
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:91d642036b1a5463 
-csharp_csv   err:91d642036b1a5463 
+rust_csv     err:91d642036b1a5463
+csharp_csv   err:91d642036b1a5463
 rust_json5   ok:c56fc6abcdb1ed5e
 csharp_json5 ok:3a24542750fbf213
 
@@ -10212,8 +10301,8 @@ rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:13ed6f6c473ab1e7
 csharp_t_api ok:3261d4b6cde0b5db n=20
-rust_csv     err:91d642036b1a5463 
-csharp_csv   err:91d642036b1a5463 
+rust_csv     err:91d642036b1a5463
+csharp_csv   err:91d642036b1a5463
 rust_json5   err:f3eabe9cbf534630 JSON5_Source_schema:_JSON5_schema_SchemaNodes
 csharp_json5 err:f3eabe9cbf534630 JSON5_boundary:_JSON5_Source_schema:_JSON5
 
@@ -10319,6 +10408,24 @@ csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:8f01ffb3ccb9b3be
 rust_t_api   ok:b8799a3099ea6da7 n=22
 csharp_typed ok:63871fe4d1b380c3
+csharp_t_api ok:3261d4b6cde0b5db n=20
+rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
+csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
+rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
+csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
+
+## xml-fixtures/nested_document_collection (project)
+lower        ok:babd4bb4a216c6cc
+validate     ok
+xml_mode     ok:Some(DynamicPrimaryDocuments)
+plan         ok:DynamicPrimaryDocuments/Structured/[]
+rust         ok:1246783f9d1afb98
+rust_api     ok:ba80083215ff1212 n=60
+csharp       ok:6419798b74bb681c
+csharp_api   ok:9812803d50615171 n=52
+rust_typed   ok:a11fea98595c07c2
+rust_t_api   ok:b8799a3099ea6da7 n=22
+csharp_typed ok:908f8da288f819fa
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined

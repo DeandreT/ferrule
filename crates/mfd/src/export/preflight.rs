@@ -905,6 +905,19 @@ fn validate_target(
     root: &Scope,
     additional: bool,
 ) -> Result<(), MfdError> {
+    if matches!(
+        root.construction,
+        mapping::ScopeConstruction::CollectDocuments
+    ) || nested_scopes(root).any(|scope| {
+        matches!(
+            scope.construction,
+            mapping::ScopeConstruction::CollectDocuments
+        )
+    }) {
+        return Err(MfdError::Unsupported(
+            "nested document collections do not have a qualified native export".into(),
+        ));
+    }
     if root.output_path().is_some()
         && (path.is_some() || side_format(path, options) != SideFormat::Xml)
     {

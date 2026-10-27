@@ -508,6 +508,8 @@ pub enum EngineError {
     CopyCurrentSourceRequiresGroup { found: &'static str },
     #[error("concatenated scope segment produced {found} instead of a group or repeated groups")]
     InvalidConcatenatedScopeItem { found: &'static str },
+    #[error("document collection requires document sets, found {found}")]
+    InvalidDocumentCollectionItem { found: &'static str },
     #[error("generate-sequence requested {requested} items; maximum is {max}")]
     GeneratedSequenceTooLarge { requested: u128, max: u128 },
     #[error("node {node}: generated position requires active sequence item {item}")]
@@ -1085,6 +1087,10 @@ mod debug_tests;
 #[cfg(test)]
 #[path = "tests/dynamic_document_output.rs"]
 mod dynamic_document_output_tests;
+
+#[cfg(test)]
+#[path = "tests/document_collections.rs"]
+mod document_collection_tests;
 #[cfg(test)]
 #[path = "tests/dynamic_source_fault.rs"]
 mod dynamic_source_fault_tests;

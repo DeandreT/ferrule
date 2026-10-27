@@ -353,6 +353,45 @@ fn source_and_graph_connections_reject_primary_and_named_copy_ancestors_atomical
 }
 
 #[test]
+fn document_collectors_reject_canvas_wiring_before_creating_fields_or_scopes() {
+    for target in [None, Some(0)] {
+        for from_source in [false, true] {
+            let mut project = project(false);
+            let root = Scope {
+                construction: ScopeConstruction::CollectDocuments,
+                children: vec![Scope {
+                    iteration: ScopeIteration::DynamicDocuments {
+                        source: vec!["Rows".into()],
+                        output_path: 0,
+                    },
+                    bindings: vec![Binding {
+                        target_field: "Name".into(),
+                        node: 1,
+                    }],
+                    ..Scope::default()
+                }],
+                ..Scope::default()
+            };
+            project.root = root.clone();
+            project.extra_targets[0].root = root;
+            let before = mapping::project_file::encode_pretty(&project).unwrap();
+            let (error, before_wires, after_wires) =
+                connect_target(&mut project, target, &["Editable", "Name"], from_source);
+            assert!(
+                error
+                    .as_deref()
+                    .is_some_and(|error| error.contains("document collection"))
+            );
+            assert_eq!(before_wires, after_wires);
+            assert_eq!(
+                mapping::project_file::encode_pretty(&project).unwrap(),
+                before
+            );
+        }
+    }
+}
+
+#[test]
 fn source_and_graph_connections_to_constructed_siblings_still_execute() {
     for target in [None, Some(0)] {
         for from_source in [true, false] {

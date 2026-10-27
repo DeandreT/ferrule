@@ -395,6 +395,7 @@ impl<'a> Admission<'a> {
             // and creates no frame, so every Basic profile admits it.
             TargetConstruction::Scalar { .. } => None,
             TargetConstruction::CopyCurrentSource => Some(Capability::SpecialConstruction),
+            TargetConstruction::CollectDocuments => Some(Capability::Document),
         };
         if closed.is_none() {
             closed = construction_reason.map(|reason| Closed {

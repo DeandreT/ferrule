@@ -44,6 +44,11 @@ pub(crate) fn check_static_binding(
     chain: &[String],
     field: &str,
 ) -> Result<(), String> {
+    if matches!(root.construction, ScopeConstruction::CollectDocuments) {
+        return Err(format!(
+            "target field `{field}` belongs to a read-only document collection"
+        ));
+    }
     let Some(owner) = copied_ancestor(root, chain) else {
         return Ok(());
     };

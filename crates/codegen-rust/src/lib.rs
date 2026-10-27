@@ -735,6 +735,7 @@ fn expression_usage_with_roots(
             TargetConstruction::AdjacencyTree { root, .. }
             | TargetConstruction::OwnedAdjacencyTree { root, .. } => pending.extend(*root),
             TargetConstruction::Group
+            | TargetConstruction::CollectDocuments
             | TargetConstruction::CopyCurrentSource
             | TargetConstruction::XmlMixedContent { .. }
             | TargetConstruction::PathHierarchy { .. }
@@ -1960,6 +1961,10 @@ fn render_iteration_scope(
         output.push_str("    Ok(Instance::DocumentSet(outputs))\n");
         return Ok(output);
     }
+    if matches!(scope.construction, TargetConstruction::CollectDocuments) {
+        output.push_str("    codegen_runtime::collect_documents(outputs)\n");
+        return Ok(output);
+    }
     if matches!(
         &scope.construction,
         TargetConstruction::DynamicGroup { merge: true, .. }
@@ -2384,6 +2389,14 @@ fn render_scope_item(
     indent: &str,
     context: &str,
 ) -> String {
+    if matches!(scope.construction, TargetConstruction::CollectDocuments) {
+        let mut output = format!("{indent}let output = codegen_runtime::collect_documents([\n");
+        for child in child_names {
+            output.push_str(&format!("{indent}    {child}({context})?,\n"));
+        }
+        output.push_str(&format!("{indent}])?;\n"));
+        return output;
+    }
     let mut output = String::new();
     if let TargetConstruction::Scalar {
         expression,

@@ -486,7 +486,7 @@ fn render_all_targets(
         project_path,
         output_path,
         project.target_path.as_deref(),
-        project.root.output_path().is_some(),
+        project.root.produces_documents(),
         "primary target",
     )?;
     let mut artifacts = render_target(
@@ -511,7 +511,7 @@ fn render_all_targets(
             project_path,
             None,
             target.path.as_deref(),
-            target.root.output_path().is_some(),
+            target.root.produces_documents(),
             &format!("extra target `{}`", target.name),
         )?;
         let rendered = render_target(
@@ -568,7 +568,7 @@ fn render_selected_target(
             )
         }
     };
-    let count = target_artifact_count(instance, scope.output_path().is_some())?;
+    let count = target_artifact_count(instance, scope.produces_documents())?;
     if count > MAX_PAYLOAD_ARTIFACTS {
         bail!("payload run exceeds the limit of {MAX_PAYLOAD_ARTIFACTS} output artifacts");
     }
@@ -576,7 +576,7 @@ fn render_selected_target(
         project_path,
         output_path,
         stored,
-        scope.output_path().is_some(),
+        scope.produces_documents(),
         &label,
     )?;
     let artifacts = render_target(
@@ -841,12 +841,12 @@ fn validate_artifact_count(
     project: &mapping::Project,
     output: &engine::ExecutionOutputs,
 ) -> anyhow::Result<()> {
-    let mut count = target_artifact_count(&output.primary, project.root.output_path().is_some())?;
+    let mut count = target_artifact_count(&output.primary, project.root.produces_documents())?;
     for (target, output) in project.extra_targets.iter().zip(&output.extras) {
         count = count
             .checked_add(target_artifact_count(
                 &output.instance,
-                target.root.output_path().is_some(),
+                target.root.produces_documents(),
             )?)
             .context("payload artifact count overflowed")?;
     }

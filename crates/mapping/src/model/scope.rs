@@ -27,6 +27,10 @@ pub enum ScopeConstruction {
     /// Build a new group from the scope's bindings and child scopes.
     #[default]
     Constructed,
+    /// Collect ordered document sets from explicitly untargeted child scopes.
+    /// Each selected context remains one iteration item even when its children
+    /// produce no documents or several documents.
+    CollectDocuments,
     /// Clone the current source item as one complete group.
     CopyCurrentSource,
     /// Evaluate one scalar expression as the scope's complete output item.
@@ -317,6 +321,12 @@ impl Scope {
             ScopeIteration::OwnedSource { output_path, .. } => output_path,
             _ => None,
         }
+    }
+
+    /// Whether this scope returns a document set rather than a target value.
+    pub fn produces_documents(&self) -> bool {
+        self.output_path().is_some()
+            || matches!(self.construction, ScopeConstruction::CollectDocuments)
     }
 
     /// Adds or removes per-item output path ownership. Adding it requires an

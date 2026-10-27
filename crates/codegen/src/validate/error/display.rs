@@ -790,6 +790,14 @@ impl fmt::Display for ProgramValidationError {
                 "target scope {} has an invalid computed-property construction: {reason}",
                 display_path(target_path)
             ),
+            Self::InvalidDocumentCollection {
+                target_path,
+                reason,
+            } => write!(
+                formatter,
+                "target scope {} has an invalid document collection: {reason}",
+                display_path(target_path)
+            ),
             Self::MissingDynamicPropertyExpression {
                 target_path,
                 property,

@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use mapping::NodeId;
 
-use crate::{Expression, Program, TargetScope};
+use crate::{Expression, Program, TargetConstruction, TargetScope};
 
 use super::sequences;
 use super::sources::SourceCatalog;
@@ -79,8 +79,14 @@ fn collect_scope_sequence_items(
             collect_scope_sequence_items(expressions, segment, target_path, target_owner, owners)?;
         }
     }
-    for child in &scope.children {
-        target_path.push(child.target_field.clone());
+    for (index, child) in scope.children.iter().enumerate() {
+        target_path.push(
+            if matches!(scope.construction, TargetConstruction::CollectDocuments) {
+                format!("<documents {}>", index + 1)
+            } else {
+                child.target_field.clone()
+            },
+        );
         let result =
             collect_scope_sequence_items(expressions, child, target_path, target_owner, owners);
         target_path.pop();
@@ -117,7 +123,9 @@ pub(super) fn validate(
             current_source: Some(sources.primary()),
             active_source: None,
             target_root: &program.target,
+            target_node: &program.target,
             target_owner: TargetOwner::Primary,
+            document_root: true,
         },
         &mut Vec::new(),
         sequence_items,
@@ -134,7 +142,9 @@ pub(super) fn validate(
                 current_source: Some(sources.primary()),
                 active_source: None,
                 target_root: &target.target,
+                target_node: &target.target,
                 target_owner: TargetOwner::Named(&target.name),
+                document_root: true,
             },
             &mut Vec::new(),
             sequence_items,

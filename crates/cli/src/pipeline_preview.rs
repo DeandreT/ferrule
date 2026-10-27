@@ -453,14 +453,14 @@ fn prepare_preview<'a, 'b>(
         for (target, stored, dynamic, format) in std::iter::once((
             None,
             stage.project.target_path.as_deref(),
-            stage.project.root.output_path().is_some(),
+            stage.project.root.produces_documents(),
             &stage.project.target_options,
         ))
         .chain(stage.project.extra_targets.iter().map(|target| {
             (
                 Some(target.name.as_str()),
                 target.path.as_deref(),
-                target.root.output_path().is_some(),
+                target.root.produces_documents(),
                 &target.options,
             )
         })) {
@@ -684,7 +684,7 @@ fn target_values<'a>(
         &project.target,
         &output.primary,
         &project.target_options,
-        project.root.output_path().is_some(),
+        project.root.produces_documents(),
     ))
     .chain(
         project
@@ -697,7 +697,7 @@ fn target_values<'a>(
                     &target.schema,
                     &output.instance,
                     &target.options,
-                    target.root.output_path().is_some(),
+                    target.root.produces_documents(),
                 )
             }),
     )

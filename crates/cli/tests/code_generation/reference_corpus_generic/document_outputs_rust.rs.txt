@@ -1,0 +1,36 @@
+use codegen_runtime::{ExecutionContext, Instance};
+use ferrule_generated_mapping as generated;
+use serde_json::{Value as Json, json};
+use std::{path::{Path, PathBuf}, io::Write};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let root=PathBuf::from(std::env::args_os().nth(1).ok_or("case directory")?);
+    let input=std::fs::read_to_string(root.join("source.xml"))?;
+    let schema=std::fs::read_to_string(root.join("source-schema.json"))?;
+    let target=std::fs::read_to_string(root.join("target-schema.json"))?;
+    let source=codegen_runtime::parse_structured_xml_bytes(&schema,input.as_bytes())?;
+    let execution=ExecutionContext::new(Path::new("corpus.mapping"));
+    let value=generated::execute_outputs_with_context(&source,&execution)?;
+    assert!(value.extras.is_empty());
+    let Instance::DocumentSet(members)=value.primary else {panic!("document set required")};
+    let normalize=|path:String,value:&Instance| -> Result<Json,Box<dyn std::error::Error>> {
+        let json=codegen_runtime::serialize_json(&target,value)?;
+        Ok(json!({"path":path,"value":serde_json::from_str::<Json>(&json)?}))
+    };
+    let expected=members.iter().map(|d|normalize(d.path().into(),d.value())).collect::<Result<Vec<_>,_>>()?;
+    assert_eq!(expected.len(),members.len());
+    for api in 0..4 {
+        let documents=match api {
+            0=>generated::execute_xml_documents(&input).map(|v|v.into_iter().map(|d|(d.path,d.document)).collect::<Vec<_>>()),
+            1=>generated::execute_xml_documents_with_context(&input,&execution).map(|v|v.into_iter().map(|d|(d.path,d.document)).collect()),
+            2=>generated::execute_xml_bytes_documents(input.as_bytes()).map(|v|v.into_iter().map(|d|(d.path,String::from_utf8(d.document).unwrap())).collect()),
+            _=>generated::execute_xml_bytes_documents_with_context(input.as_bytes(),&execution).map(|v|v.into_iter().map(|d|(d.path,String::from_utf8(d.document).unwrap())).collect()),
+        }?;
+        let actual=documents.into_iter().map(|(path,xml)| {
+            normalize(path,&codegen_runtime::parse_structured_xml_bytes(&target,xml.as_bytes())?)
+        }).collect::<Result<Vec<_>,Box<dyn std::error::Error>>>()?;
+        assert_eq!(actual,expected,"document paths and values API {api}");
+    }
+    std::io::stdout().lock().write_all(&serde_json::to_vec(&expected)?)?;
+    Ok(())
+}

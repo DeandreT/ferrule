@@ -25,6 +25,7 @@ use crate::{DynamicSourceLoader, EngineError};
 
 #[path = "eval_scope/construction.rs"]
 mod construction;
+mod document_collection;
 #[path = "eval_scope/owned_document_set.rs"]
 mod owned_document_set;
 #[path = "eval_scope/owned_dynamic_loading.rs"]
@@ -757,6 +758,12 @@ pub(crate) fn eval_scope(
                     .ok_or(EngineError::EmptyDynamicTargetPath { node })
             })
             .collect::<Result<Vec<_>, _>>()?;
+        Instance::DocumentSet(documents)
+    } else if matches!(scope.construction, ScopeConstruction::CollectDocuments) {
+        let mut documents = Vec::new();
+        for item in produced {
+            document_collection::extend(&mut documents, item.instance)?;
+        }
         Instance::DocumentSet(documents)
     } else {
         finalize_scope_output(
