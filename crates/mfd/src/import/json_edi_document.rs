@@ -826,6 +826,98 @@ impl Builder {
         Ok(Some(node))
     }
 
+    fn sibling_udf_value(
+        &mut self,
+        feed: u32,
+        active_leaf: Option<u32>,
+        anchor: &[String],
+    ) -> Result<Option<NodeId>, MfdError> {
+        use super::udf::ScalarExpr;
+        let Some(call) = self.udf_outputs.get(&feed).cloned() else {
+            return Ok(None);
+        };
+        if let ScalarExpr::Parameter(parameter) = call.expression {
+            let Some(input) = call.inputs.get(&parameter) else {
+                return Ok(None);
+            };
+            let source = self.feed(*input)?;
+            return self.sibling_conditional_value(source, active_leaf, anchor);
+        }
+        let ScalarExpr::If {
+            condition,
+            then,
+            else_,
+        } = &call.expression
+        else {
+            return Ok(None);
+        };
+        let ScalarExpr::Call { function, args } = &**condition else {
+            return Ok(None);
+        };
+        if function != "not" || !matches!(&**then, ScalarExpr::Const(Value::Null)) {
+            return Ok(None);
+        }
+        let [ScalarExpr::Call { function, args }] = args.as_slice() else {
+            return Ok(None);
+        };
+        if function != "exists" {
+            return Ok(None);
+        }
+        let [ScalarExpr::Parameter(value_parameter)] = args.as_slice() else {
+            return Ok(None);
+        };
+        let ScalarExpr::Parameter(qualifier_parameter) = &**else_ else {
+            return Ok(None);
+        };
+        let Some(input) = call.inputs.get(value_parameter) else {
+            return Ok(None);
+        };
+        let source = self.feed(*input)?;
+        let Some((guard, _, _)) = self.sibling_string_conditional(source) else {
+            return Ok(None);
+        };
+        let Some(input) = call.inputs.get(qualifier_parameter) else {
+            return Ok(None);
+        };
+        let qualifier = self.feed(*input)?;
+        if !self.functions.get(&qualifier).is_some_and(|function| {
+            function.parsed.library == "core"
+                && function.parsed.kind == 2
+                && function.literal_valid
+                && function
+                    .parsed
+                    .constant
+                    .as_ref()
+                    .is_some_and(|(_, ty)| ty == "string")
+        }) {
+            return Ok(None);
+        }
+        // Presence is independent of the writer's first-nonempty reduction:
+        // a selected empty String still admits the constant qualifier.
+        let guard_path = self.ports[&guard].clone();
+        let selected = self
+            .sibling_conditional_value(source, Some(guard), &guard_path)?
+            .unwrap();
+        let predicate = self.call("exists", vec![selected])?;
+        let value = self.compile(qualifier, None, anchor)?;
+        if active_leaf == Some(guard) {
+            let absent = self.constant(Value::Null)?;
+            return self
+                .alloc(Node::If {
+                    condition: predicate,
+                    then: value,
+                    else_: absent,
+                })
+                .map(Some);
+        }
+        self.alloc(Node::CollectionFind {
+            collection: self.relative_source(&guard_path, anchor)?,
+            predicate,
+            value,
+        })
+        .map(Some)
+    }
+
     fn bind_parameter_group(
         &mut self,
         filename: u32,
@@ -1582,6 +1674,9 @@ impl Builder {
     ) -> Result<NodeId, MfdError> {
         let dependencies = self.dependencies(feed, &mut BTreeSet::new())?;
         if dependencies.len() > 1 {
+            if let Some(node) = self.sibling_udf_value(feed, active_leaf, anchor)? {
+                return Ok(node);
+            }
             if let Some(node) = self.sibling_conditional_value(feed, active_leaf, anchor)? {
                 return Ok(node);
             }

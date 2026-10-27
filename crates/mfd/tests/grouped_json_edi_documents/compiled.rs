@@ -148,6 +148,31 @@ fn nested_sibling_fallbacks_execute_in_generated_rust_and_csharp() {
     );
 }
 
+#[test]
+#[ignore = "compiles generated Rust and C# consumers; requires Cargo, .NET 10 and a coordinated host target"]
+fn sibling_qualifier_presence_executes_in_generated_rust_and_csharp() {
+    compile_conditional_consumers(
+        invoked_qualifier_fixture(),
+        r#"{"rows":[{"name":"a","qty":""},{"name":"a","qty":"value"},{"name":"a","qty":null}]}"#,
+        &["QUAL", "QUAL", ""],
+    );
+}
+
+#[test]
+#[ignore = "compiles generated Rust and C# consumers; requires Cargo, .NET 10 and a coordinated host target"]
+fn sibling_value_alias_executes_in_generated_rust_and_csharp() {
+    let fixture = invoked_qualifier_fixture();
+    fixture.change(
+        r#"<vertex vertexkey="603"><edges><edge vertexkey="85"/></edges></vertex>"#,
+        r#"<vertex vertexkey="604"><edges><edge vertexkey="85"/></edges></vertex>"#,
+    );
+    compile_conditional_consumers(
+        fixture,
+        r#"{"rows":[{"name":"a","qty":"first","qty":"last"},{"name":"a","qty":""},{"name":"a","qty":null}]}"#,
+        &["last", "", ""],
+    );
+}
+
 fn compile_conditional_consumers(fixture: Fixture, new: &str, expected: &[&str]) {
     let old = r#"{"rows":[{"name":"a","qty":1},{"name":"b","qty":2}]}"#;
     let rust_expected = expected
