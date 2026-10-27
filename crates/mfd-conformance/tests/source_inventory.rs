@@ -242,7 +242,7 @@ fn artifact_observations_do_not_promote_execution_or_completeness() {
     );
     assert!(!observation["remaining"].as_array().unwrap().is_empty());
     let installed = observation["installed_declarations"].as_array().unwrap();
-    assert_eq!(installed.len(), 2);
+    assert_eq!(installed.len(), 3);
     unique_ids(installed, "cab_member");
     assert_eq!(installed[0]["return_type"], "const std::exception*");
     assert_eq!(
@@ -252,6 +252,35 @@ fn artifact_observations_do_not_promote_execution_or_completeness() {
     assert_eq!(
         installed[1]["public_type"],
         "com.altova.SourceInstanceUnavailableException"
+    );
+    let parameter = &installed[2];
+    assert_eq!(parameter["public_member"], "IComponent.GenerateOutput");
+    assert_eq!(parameter["cab_member"], "MapForce.tlb_1193");
+    assert_eq!(parameter["sha256"], members[1]["sha256"]);
+    assert_eq!(parameter["type_info_index"], 11);
+    assert_eq!(parameter["member_record_index"], 10);
+    assert_eq!(parameter["dispatch_member_id"], 9);
+    assert_eq!(
+        parameter["parameter"],
+        serde_json::json!({
+            "index":0, "name":"pbError", "type":"VARIANT*",
+            "parameter_flags":3, "direction":["in","out"]
+        })
+    );
+    let catalog = load("com-api.json");
+    let documented = catalog["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|member| member["id"] == parameter["catalog_comparison"]["member"])
+        .unwrap();
+    let documented_parameter = &documented["contract"]["parameters"][0];
+    assert_eq!(documented_parameter["name"], "pbError");
+    assert_eq!(documented_parameter["declared_type"], "Boolean");
+    assert_eq!(documented_parameter["direction"], "out");
+    assert_eq!(
+        parameter["catalog_comparison"]["release_binding"],
+        "unestablished"
     );
     for declaration in installed {
         let hash = declaration["sha256"].as_str().unwrap();
