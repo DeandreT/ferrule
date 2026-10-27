@@ -60,16 +60,27 @@ cargo clippy --workspace --all-targets -- -D warnings
 Start with the affected package or integration target. For example:
 
 ```sh
-cargo test -p format-csv
-cargo test -p cli --test csv_row_release
+cargo nextest run --locked -p format-csv
+cargo nextest run --locked -p cli --test csv_row_release
 ```
+
+Use cargo-nextest 0.9.150 or newer for ordinary tests. The repository profile
+runs one test process at a time so generated consumers do not start competing
+builds. Doctests still use `cargo test --doc`; nextest does not replace them.
+The x86_64 Linux GNU target uses `cc` with mold. Install mold before building.
+Windows/MSVC uses Rust's bundled LLVM lld; WebAssembly keeps its existing linker. See
+[Toolchain baselines](toolchains.md) for setup and verification.
 
 For a local alternate-display run, use the CI workspace test subset with both
 ambient Wayland handles removed:
 
 ```sh
 xvfb-run -a env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET LIBGL_ALWAYS_SOFTWARE=1 \
-  cargo test --workspace \
+  cargo nextest run --workspace --locked \
+  --exclude codegen --exclude codegen-runtime \
+  --exclude codegen-rust --exclude codegen-csharp
+
+cargo test --workspace --doc --locked \
   --exclude codegen --exclude codegen-runtime \
   --exclude codegen-rust --exclude codegen-csharp
 ```
@@ -85,7 +96,7 @@ C# checks and actual compiled-host calls as applicable. See
 [Code generation verification](code-generation.md) for prerequisites and
 opt-in suites; source generation alone does not test an emitted library.
 The CLI generated integration target is explicitly enabled with
-`cargo test -p cli --features codegen-tests --test code_generation`;
+`cargo nextest run -p cli --features codegen-tests --test code_generation --locked`;
 read that suite's backend prerequisites before running it.
 
 Format capability tables and workspace component lists in the guides and site
@@ -98,7 +109,8 @@ their TOML source and run `cargo run -p reference-docs`;
 The `extra_targets`, `failure_rules` and `static_sources` regressions honor
 `FERRULE_CODEGEN_HOST_TARGET_DIR` as a dedicated host cache. Use a compatible
 cache outside the outer Cargo target and temporary test directories, one build
-job, and `--test-threads=1`; coordinate other processes using the same cache.
+job, and nextest's serial repository profile; coordinate other processes using
+the same cache. Do not override `--test-threads` for these shared-cache runs.
 An empty explicit path, overlap with `CARGO_TARGET_DIR`, or active-test-executable
 ancestor is refused before temporary test files or a host build are created.
 Without the setting, these regressions keep their isolated `cargo-target` path.

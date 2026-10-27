@@ -87,3 +87,60 @@ fn site_build_uses_a_pinned_trunk_and_the_committed_lockfile() -> anyhow::Result
     assert!(site.contains("git diff --exit-code -- Cargo.lock"));
     Ok(())
 }
+
+#[test]
+fn test_workflows_use_the_required_nextest_and_keep_doctests() -> anyhow::Result<()> {
+    let config: toml::Value = toml::from_str(&read(".config/nextest.toml")?)?;
+    let version = config["nextest-version"].as_str().unwrap();
+    assert_eq!(
+        config["profile"]["default"]["test-threads"].as_integer(),
+        Some(1)
+    );
+    assert_eq!(
+        config["profile"]["default"]["retries"].as_integer(),
+        Some(0)
+    );
+    for path in [".github/workflows/ci.yml", ".github/workflows/codegen.yml"] {
+        let workflow = read(path)?;
+        assert!(
+            workflow.contains(&format!("tool: nextest@{version}")),
+            "{path}"
+        );
+        assert!(
+            workflow.contains("cargo nextest run --profile ci"),
+            "{path}"
+        );
+        assert!(workflow.contains("cargo test --doc"), "{path}");
+    }
+    Ok(())
+}
+
+#[test]
+fn fast_linkers_are_scoped_to_their_native_targets() -> anyhow::Result<()> {
+    let config: toml::Value = toml::from_str(&read(".cargo/config.toml")?)?;
+    assert!(
+        config.get("build").is_none(),
+        "do not change the default target"
+    );
+    let targets = config["target"].as_table().unwrap();
+    assert_eq!(targets.len(), 2);
+    let linux = &targets["x86_64-unknown-linux-gnu"];
+    assert_eq!(linux["linker"].as_str(), Some("cc"));
+    assert!(
+        linux["rustflags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|flag| flag.as_str() == Some("link-arg=-fuse-ld=mold"))
+    );
+    let windows = &targets["x86_64-pc-windows-msvc"];
+    assert_eq!(windows["linker"].as_str(), Some("rust-lld.exe"));
+    assert!(
+        windows["rustflags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|flag| flag.as_str() == Some("linker-flavor=lld-link"))
+    );
+    Ok(())
+}
