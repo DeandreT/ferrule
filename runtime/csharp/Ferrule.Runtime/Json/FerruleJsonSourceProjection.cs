@@ -123,11 +123,13 @@ public sealed class FerruleJsonSourceProjection
     /// </summary>
     public IEnumerable<FerruleInstance> Acquire(Func<string> filename,
         Func<string, IEnumerable<string>> select, Func<string, FerruleJsonSourceDocument> load,
-        int maximum = FerruleJsonSources.MaxDocuments, FerruleJsonProjectionLimits? limits = null)
+        int maximum = FerruleJsonSources.MaxDocuments, FerruleJsonProjectionLimits? limits = null,
+        FerruleJsonGroupingPreparation? grouping = null)
     {
         ArgumentNullException.ThrowIfNull(filename);
         ArgumentNullException.ThrowIfNull(select);
         ArgumentNullException.ThrowIfNull(load);
+        if (grouping is not null) ValidateGrouping(grouping);
         if (maximum is < 0 or > FerruleJsonSources.MaxDocuments)
             throw new ArgumentOutOfRangeException(nameof(maximum));
         limits ??= new();
@@ -142,10 +144,32 @@ public sealed class FerruleJsonSourceProjection
             {
                 if (count == maximum) throw new FerruleJsonSourceLoadException(maximum);
                 var result = ProjectDocument(load(request), limits);
+                if (grouping is not null) result = grouping.Prepare(result, limits);
                 count++;
                 yield return result;
             }
         }
+    }
+
+    private void ValidateGrouping(FerruleJsonGroupingPreparation grouping)
+    {
+        static Shape Select(Shape shape, IEnumerable<string> path)
+        {
+            foreach (var name in path)
+            {
+                shape = shape.Kind switch
+                {
+                    FerruleJsonSourceKind.Object => shape.Properties.FirstOrDefault(property => property.Name == name)?.Value
+                        ?? throw new FerruleJsonGroupingException("Plan"),
+                    FerruleJsonSourceKind.Array when name == "Items" => shape.Item!,
+                    _ => throw new FerruleJsonGroupingException("Plan"),
+                };
+            }
+            return shape;
+        }
+        var member = Select(root, grouping.CollectionPath.Skip(1));
+        if (member.Kind != FerruleJsonSourceKind.Object || Select(member, grouping.KeyPath).Kind != FerruleJsonSourceKind.String)
+            throw new FerruleJsonGroupingException("Plan");
     }
 
     private sealed class Budget(int values, int names)

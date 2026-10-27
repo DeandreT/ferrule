@@ -35,6 +35,8 @@ pub struct DocumentProject {
     primary_source: PrimarySourcePlan,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     json_source_projection: Option<crate::JsonSourceShape>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    json_grouping_preparation: Option<crate::JsonGroupingPreparation>,
 }
 
 /// A source-independent filename. The parameter's retained preview is not a
@@ -83,6 +85,7 @@ impl DocumentProject {
             project,
             primary_source,
             json_source_projection: None,
+            json_grouping_preparation: None,
         }
     }
 
@@ -104,7 +107,25 @@ impl DocumentProject {
             return Err(crate::JsonProjectionPlanError::SourceView);
         }
         self.json_source_projection = Some(shape);
+        self.json_grouping_preparation = None;
         Ok(self)
+    }
+
+    pub fn with_json_grouping_preparation(
+        mut self,
+        shape: crate::JsonSourceShape,
+        preparation: crate::JsonGroupingPreparation,
+    ) -> Result<Self, crate::JsonProjectionPlanError> {
+        if self.project.source != preparation.document_set_schema(&shape)? {
+            return Err(crate::JsonProjectionPlanError::SourceView);
+        }
+        self.json_source_projection = Some(shape);
+        self.json_grouping_preparation = Some(preparation);
+        Ok(self)
+    }
+
+    pub fn json_grouping_preparation(&self) -> Option<&crate::JsonGroupingPreparation> {
+        self.json_grouping_preparation.as_ref()
     }
 
     pub fn json_source_projection(&self) -> Option<&crate::JsonSourceShape> {

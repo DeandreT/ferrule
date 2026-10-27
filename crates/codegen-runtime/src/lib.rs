@@ -38,6 +38,7 @@ pub use source_filenames::{
 };
 #[cfg(feature = "native-source-io")]
 pub use source_loader::{DirectSourceReader, InputParseError, SourceBytes, SourceReadError};
+mod json_grouping;
 mod json_native;
 mod json_projection;
 pub use json_native::{NativeJsonSourceError, parse_native_json_source};
@@ -45,11 +46,15 @@ mod mapforce_edi_scalar;
 pub use mapforce_edi_scalar::{MapForceEdiScalarError, format_mapforce_edi_scalar};
 pub use mapping::{MapForceEdiScalar, MapForceEdiScalarKind};
 mod json_source;
+pub use json_grouping::{
+    JsonGroupingError, MAX_JSON_GROUPED_TEXT_BYTES, parse_json_grouping_preparation,
+    prepare_json_grouping_document,
+};
 pub use json_projection::{
     JsonProjectionError, JsonProjectionLimits, MAX_JSON_PROJECTED_NAME_BYTES,
     MAX_JSON_PROJECTED_VALUES, parse_json_projection_shape, project_json_source_document,
 };
-pub use mapping::JsonSourceShape;
+pub use mapping::{JsonGroupingPreparation, JsonSourceShape};
 mod mapforce_string_components;
 mod mapforce_xml;
 mod path_hierarchy;
