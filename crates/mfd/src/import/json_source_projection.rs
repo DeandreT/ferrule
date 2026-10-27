@@ -27,6 +27,18 @@ pub struct ImportedJsonSourceProjection {
     pub mapping_path: PathBuf,
 }
 
+/// Typed selection from an explicit JSON String parameter, never a file source.
+/// This source-only artifact does not admit an outer invocation or a mapping body.
+pub struct ImportedJsonParameterProjection {
+    pub shape: JsonSourceShape,
+    pub source_schema: SchemaNode,
+    pub parameter_name: String,
+    pub parameter_preview: Option<String>,
+    pub input_port: u32,
+    pub ports: BTreeMap<u32, Vec<String>>,
+    pub mapping_path: PathBuf,
+}
+
 fn refuse(message: &str) -> MfdError {
     MfdError::UnsupportedImport(format!("ordered JSON source: {message}"))
 }
@@ -34,6 +46,30 @@ fn refuse(message: &str) -> MfdError {
 pub fn import_json_source_projection_with_options(
     path: &Path,
     options: &ImportOptions,
+) -> Result<ImportedJsonSourceProjection, MfdError> {
+    import_projection(path, options, false)
+}
+
+pub fn import_json_parameter_projection_with_options(
+    path: &Path,
+    options: &ImportOptions,
+) -> Result<ImportedJsonParameterProjection, MfdError> {
+    let projection = import_projection(path, options, true)?;
+    Ok(ImportedJsonParameterProjection {
+        shape: projection.shape,
+        source_schema: projection.source_schema,
+        parameter_name: projection.filename_parameter,
+        parameter_preview: projection.filename_preview,
+        input_port: projection.filename_input_port,
+        ports: projection.ports,
+        mapping_path: projection.mapping_path,
+    })
+}
+
+fn import_projection(
+    path: &Path,
+    options: &ImportOptions,
+    string_parameter: bool,
 ) -> Result<ImportedJsonSourceProjection, MfdError> {
     let resources = super::resolved_resources(path, options)?;
     let result = (|| {
@@ -61,6 +97,15 @@ pub fn import_json_source_projection_with_options(
             .filter(|n| {
                 n.has_tag_name("component")
                     && n.attribute("library") == Some("json")
+                    && (!string_parameter
+                        || n.children()
+                            .filter(|child| child.has_tag_name("data"))
+                            .any(|data| {
+                                data.children().any(|parameter| {
+                                    parameter.has_tag_name("parameter")
+                                        && parameter.attribute("usageKind") == Some("stringparse")
+                                })
+                            }))
                     && n.descendants().any(|entry| {
                         entry.has_tag_name("entry")
                             && entry.attribute("name") == Some("FileInstance")
@@ -72,16 +117,32 @@ pub fn import_json_source_projection_with_options(
             })
             .collect();
         let [component] = sources.as_slice() else {
-            return Err(refuse("requires one filename-bearing JSON source"));
+            return Err(refuse(if string_parameter {
+                "requires one explicit String-parsed JSON source"
+            } else {
+                "requires one filename-bearing JSON source"
+            }));
         };
         if component.attribute("kind") != Some("31") {
             return Err(refuse("unsupported source kind"));
+        }
+        if string_parameter
+            && ["data", "properties"].iter().any(|name| {
+                component
+                    .children()
+                    .filter(|node| node.has_tag_name(*name))
+                    .count()
+                    != 1
+            })
+        {
+            return Err(refuse("ambiguous JSON String parameter metadata"));
         }
         let properties = component
             .children()
             .find(|n| n.has_tag_name("properties"))
             .ok_or_else(|| refuse("missing source properties"))?;
-        if properties.attribute("DynamicFilenames") != Some("1")
+        if (!string_parameter && properties.attribute("DynamicFilenames") != Some("1"))
+            || (string_parameter && properties.attribute("DynamicFilenames").is_some())
             || properties
                 .attributes()
                 .any(|a| !matches!(a.name(), "DynamicFilenames" | "XSLTTargetEncoding"))
@@ -95,6 +156,34 @@ pub fn import_json_source_projection_with_options(
             .children()
             .find(|n| n.has_tag_name("data"))
             .ok_or_else(|| refuse("missing source data"))?;
+        if string_parameter {
+            if data.attributes().len() != 0
+                || data
+                    .children()
+                    .filter(|node| node.is_element())
+                    .any(|node| !matches!(node.tag_name().name(), "root" | "parameter" | "json"))
+                || ["root", "json"].iter().any(|name| {
+                    data.children()
+                        .filter(|node| node.has_tag_name(*name))
+                        .count()
+                        != 1
+                })
+                || properties.children().any(|node| node.is_element())
+            {
+                return Err(refuse("unqualified JSON String parameter metadata"));
+            }
+            let parameters: Vec<_> = data
+                .children()
+                .filter(|node| node.has_tag_name("parameter"))
+                .collect();
+            if !matches!(parameters.as_slice(), [parameter]
+                if parameter.attribute("usageKind") == Some("stringparse")
+                    && parameter.attributes().len() == 1
+                    && !parameter.children().any(|child| child.is_element()))
+            {
+                return Err(refuse("unqualified JSON String parameter declaration"));
+            }
+        }
         let json = data
             .children()
             .find(|n| n.has_tag_name("json"))
@@ -132,6 +221,11 @@ pub fn import_json_source_projection_with_options(
                     .map_err(|_| refuse("invalid filename port"))
             })
             .transpose()?;
+        if string_parameter && filename_output_port.is_some() {
+            return Err(refuse(
+                "a JSON String parameter has no physical filename output",
+            ));
+        }
         let parameter_port = edges
             .feeds
             .get(&filename_input_port)
