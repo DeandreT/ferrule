@@ -79,6 +79,9 @@ fn validate_root(
             continue;
         };
         match value {
+            // This selector has its own exact-origin validation, not legacy
+            // innermost-value dependency semantics.
+            Node::GeneratedPosition { .. } => {}
             Node::SequenceExists {
                 sequence,
                 predicate,

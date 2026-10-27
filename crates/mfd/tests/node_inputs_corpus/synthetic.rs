@@ -59,9 +59,10 @@ pub(crate) fn kind(node: &Node) -> usize {
         Node::JoinAggregate { .. } => 39,
         Node::OwnedSourceDocumentPath(_) => 40,
         Node::InvocationCounter { .. } => 41,
+        Node::GeneratedPosition { .. } => 42,
     }
 }
-pub(crate) const KINDS: usize = 42;
+pub(crate) const KINDS: usize = 43;
 
 pub(crate) fn sequence_kind(sequence: &SequenceExpr) -> usize {
     match sequence {
@@ -294,6 +295,7 @@ fn nodes(ids: &mut Ids, present: bool) -> Vec<Node> {
         Node::Position {
             collection: Vec::new(),
         },
+        Node::GeneratedPosition { item: ids.id() },
         Node::JoinField {
             join: JoinId::new(1),
             collection: path(&["A"]),

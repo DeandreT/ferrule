@@ -41,7 +41,7 @@ fn render_rule(index: usize, rule: &FailureRule, output: &mut String) -> Result<
             let identifier = format!("failure_{index}");
             super::render_generated_values(&identifier, sequence, output)?;
             output.push_str(&format!(
-                "        var candidates_failure_{index} = context.IterateGenerated(sequence_values_{identifier});\n"
+                "        var candidates_failure_{index} = context.IterateGenerated(sequence_values_{identifier}, {}U);\n", sequence.item()
             ));
         }
         // Validation closes owned walks before the ordinary renderer.

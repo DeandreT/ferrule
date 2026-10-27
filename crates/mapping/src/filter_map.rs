@@ -619,6 +619,7 @@ fn unsupported_kind(node: &Node) -> &'static str {
         Node::OwnedRowDocumentPath(_) => "owned_row_document_path",
         Node::OwnedSourceDocumentPath(_) => "owned_source_document_path",
         Node::Position { .. } => "position",
+        Node::GeneratedPosition { .. } => "generated_position",
         Node::SourceField { .. } => "source_field",
         Node::RuntimeValue { .. } => "runtime_value",
         Node::RuntimeParameter { .. } => "runtime_parameter",

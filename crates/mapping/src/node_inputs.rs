@@ -30,6 +30,9 @@ pub enum NodeInputRole {
     /// The private item identity of a generated sequence. It is readable only
     /// in that sequence's item context and is never evaluated outside it.
     ItemIdentity,
+    /// A reference to an already owned generated item. It neither declares a
+    /// new owner nor evaluates the item's scalar value.
+    ItemReference,
     /// Once per matching XML mixed-content occurrence, with that occurrence
     /// as the latest frame.
     Occurrence,
@@ -114,6 +117,9 @@ impl Node {
             | Self::RuntimeValue { .. }
             | Self::RuntimeParameter { .. }
             | Self::XmlSerialize { .. } => {}
+            Self::GeneratedPosition { item } => {
+                input(*item, Slot::SequenceItem, NodeInputRole::ItemReference);
+            }
             Self::RuntimeParameterDefault { default, .. } => input(*default, Slot::Default, Lazy),
             Self::InvocationCounter {
                 start,
@@ -258,10 +264,15 @@ impl Node {
     }
 
     /// The inputs this node evaluates, in [`Node::visit_inputs`] order: every
-    /// input except a generated sequence's item identities, which the node
-    /// declares rather than evaluates.
+    /// input except generated item identities and references, which are not
+    /// scalar evaluations.
     pub fn evaluated_inputs(&self) -> Vec<NodeId> {
-        self.inputs_where(|input| input.role != NodeInputRole::ItemIdentity)
+        self.inputs_where(|input| {
+            !matches!(
+                input.role,
+                NodeInputRole::ItemIdentity | NodeInputRole::ItemReference
+            )
+        })
     }
 
     /// The inputs admitted by `admit`, in [`Node::visit_inputs`] order.

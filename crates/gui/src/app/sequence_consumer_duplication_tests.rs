@@ -9,6 +9,249 @@ use mapping::{
 use serde_json::{Value as Json, json};
 use std::io::Write;
 
+fn ancestor_position_project() -> Project {
+    let item = || Node::SourceField {
+        path: vec![],
+        frame: None,
+    };
+    let sequence = |item| SequenceExpr::Generate {
+        from: None,
+        to: 1,
+        item,
+    };
+    Project {
+        source: SchemaNode::group("Input", vec![]),
+        target: SchemaNode::group(
+            "Output",
+            vec![SchemaNode::scalar("Found", ScalarType::Bool)],
+        ),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: vec![],
+        extra_targets: vec![],
+        failure_rules: vec![],
+        user_functions: Default::default(),
+        graph: Graph {
+            nodes: [
+                (
+                    1,
+                    Node::Const {
+                        value: Value::Int(2),
+                    },
+                ),
+                (
+                    2,
+                    Node::Const {
+                        value: Value::Int(0),
+                    },
+                ),
+                (10, item()),
+                (20, item()),
+                (21, Node::GeneratedPosition { item: 10 }),
+                (
+                    22,
+                    Node::Call {
+                        function: "greater_than".into(),
+                        args: vec![21, 2],
+                    },
+                ),
+                (
+                    30,
+                    Node::SequenceExists {
+                        sequence: sequence(10),
+                        predicate: 31,
+                    },
+                ),
+                (
+                    31,
+                    Node::SequenceExists {
+                        sequence: sequence(20),
+                        predicate: 22,
+                    },
+                ),
+            ]
+            .into(),
+        },
+        root: Scope {
+            bindings: vec![Binding {
+                target_field: "Found".into(),
+                node: 30,
+            }],
+            ..Scope::default()
+        },
+    }
+}
+
+#[test]
+fn nested_reducer_duplication_remaps_an_exact_ancestor_position() {
+    let mut project = ancestor_position_project();
+    assert!(
+        engine::validate(&project).is_empty(),
+        "{:?}",
+        engine::validate(&project)
+    );
+    let copy = plan(&project, 30).unwrap();
+    assert!(
+        matches!(copy.nodes.get(&copy.ids[&21]), Some(Node::GeneratedPosition { item }) if *item == copy.ids[&10])
+    );
+    assert!(canvas_inputs(&copy.nodes[&copy.ids[&21]]).is_empty());
+    project.root.bindings[0].node = copy.duplicate;
+    project.graph.nodes.extend(copy.nodes);
+    assert!(
+        engine::validate(&project).is_empty(),
+        "{:?}",
+        engine::validate(&project)
+    );
+    let output = engine::run(&project, &Instance::Group(vec![].into())).unwrap();
+    assert_eq!(
+        output.field("Found"),
+        Some(&Instance::Scalar(Value::Bool(true)))
+    );
+}
+
+#[test]
+fn shared_reducer_bound_is_copied_when_it_reads_a_copied_ancestor_position() {
+    for expression in [21, 45, 46] {
+        let mut project = ancestor_position_project();
+        project.graph.nodes.extend([
+            (
+                40,
+                Node::SequenceAggregate {
+                    function: mapping::AggregateOp::Sum,
+                    sequence: SequenceExpr::Generate {
+                        from: None,
+                        to: 1,
+                        item: 41,
+                    },
+                    predicate: None,
+                    expression: Some(expression),
+                    arg: None,
+                },
+            ),
+            (
+                41,
+                Node::SourceField {
+                    path: vec![],
+                    frame: None,
+                },
+            ),
+            (
+                42,
+                Node::Const {
+                    value: Value::Bool(true),
+                },
+            ),
+            (
+                45,
+                Node::Call {
+                    function: "add".into(),
+                    args: vec![21, 1],
+                },
+            ),
+            (
+                46,
+                Node::If {
+                    condition: 42,
+                    then: 45,
+                    else_: 2,
+                },
+            ),
+            (
+                31,
+                Node::SequenceExists {
+                    sequence: SequenceExpr::Generate {
+                        from: None,
+                        to: 40,
+                        item: 20,
+                    },
+                    predicate: 42,
+                },
+            ),
+        ]);
+        assert!(
+            engine::validate(&project).is_empty(),
+            "{:?}",
+            engine::validate(&project)
+        );
+        let copy = plan(&project, 30).unwrap();
+        assert!(
+            copy.ids.contains_key(&40),
+            "the bound's whole reducer must be copied"
+        );
+        assert!(
+            matches!(copy.nodes.get(&copy.ids[&21]), Some(Node::GeneratedPosition { item }) if *item == copy.ids[&10])
+        );
+        project.root.bindings[0].node = copy.duplicate;
+        project.graph.nodes.extend(copy.nodes);
+        assert!(
+            engine::validate(&project).is_empty(),
+            "{:?}",
+            engine::validate(&project)
+        );
+        assert_eq!(
+            engine::run(&project, &Instance::Group(vec![].into()))
+                .unwrap()
+                .field("Found"),
+            Some(&Instance::Scalar(Value::Bool(true)))
+        );
+    }
+}
+
+#[test]
+fn duplicate_retains_an_uncopied_enclosing_position_and_refuses_foreign_owners() {
+    let mut project = ancestor_position_project();
+    let copy = plan(&project, 31).unwrap();
+    assert!(matches!(
+        copy.nodes.get(&copy.ids[&21]),
+        Some(Node::GeneratedPosition { item: 10 })
+    ));
+    if let Some(Node::SequenceExists { predicate, .. }) = project.graph.nodes.get_mut(&30) {
+        *predicate = copy.duplicate;
+    }
+    project.graph.nodes.extend(copy.nodes);
+    assert!(
+        engine::validate(&project).is_empty(),
+        "{:?}",
+        engine::validate(&project)
+    );
+    assert_eq!(
+        engine::run(&project, &Instance::Group(vec![].into()))
+            .unwrap()
+            .field("Found"),
+        Some(&Instance::Scalar(Value::Bool(true)))
+    );
+    for owner in [50, 999] {
+        let mut project = ancestor_position_project();
+        project.graph.nodes.extend([
+            (
+                50,
+                Node::SourceField {
+                    path: vec![],
+                    frame: None,
+                },
+            ),
+            (
+                60,
+                Node::SequenceExists {
+                    sequence: SequenceExpr::Generate {
+                        from: None,
+                        to: 1,
+                        item: 50,
+                    },
+                    predicate: 22,
+                },
+            ),
+            (21, Node::GeneratedPosition { item: owner }),
+        ]);
+        assert!(
+            plan(&project, 31).is_err(),
+            "foreign owner {owner} must not be substituted"
+        );
+    }
+}
+
 struct Originals(std::path::PathBuf);
 
 impl Originals {

@@ -13,6 +13,11 @@ behavior in another authoring application.
 
 ## Evidence and statuses
 
+[Generated source positions](generated-source-position.md) preserve a directly
+selected producer's original ordinal independently of compact scope positions.
+They do not by themselves establish a dense mapped consumer position or qualify
+the two-owner `filter_map_v1` interchange contract below.
+
 The original inventory and frozen literals come from repository source only.
 Later isolated native observations are recorded separately; they do not rewrite
 the frozen recipes. The source snapshot includes the current declared-ancestor

@@ -40,7 +40,7 @@ fn items_append_a_lexical_frame_without_changing_exact_owned_reads() {
         .walk_owned_source(SourceOwnerRef::Primary, &["Rows"])
         .unwrap();
     let row = rows[1].context();
-    let items = GeneratedItems::new(vec![Value::Int(10), Value::String("x".into())]);
+    let items = GeneratedItems::with_owner(vec![Value::Int(10), Value::String("x".into())], 77);
     let contexts = row
         .generated_item_contexts(&items)
         .collect::<Result<Vec<_>, _>>()
@@ -53,6 +53,10 @@ fn items_append_a_lexical_frame_without_changing_exact_owned_reads() {
     {
         assert_eq!(context.legacy_field(&[], None).unwrap(), item);
         assert_eq!(context.legacy_position(&[]), index + 1);
+        assert_eq!(
+            context.generated_position(9, 77).unwrap(),
+            Value::Int((index + 1) as i64)
+        );
         assert_eq!(
             context
                 .owned_field(SourceOwnerRef::Primary, &["Rows", "Code"], Some(&["Rows"]))
@@ -91,6 +95,10 @@ fn items_append_a_lexical_frame_without_changing_exact_owned_reads() {
     }
     // The parent view is unchanged and still has its row position.
     assert_eq!(row.legacy_position(&[]), 2);
+    assert!(matches!(
+        row.generated_position(9, 77),
+        Err(RuntimeError::GeneratedPositionUnavailable { .. })
+    ));
     assert_eq!(
         row.legacy_field(&["Code"], None).unwrap(),
         Value::String("r2".into())

@@ -185,7 +185,7 @@ public sealed partial class ScopeContext
         IReadOnlyList<string> sourcePath)
     {
         if (candidate._frames.Count <= _frames.Count ||
-            candidate._collections.Count <= _collections.Count)
+            candidate._collections.Count < _collections.Count)
         {
             throw new ArgumentException(
                 "Grouped candidates must extend their parent scope context.",
@@ -194,6 +194,12 @@ public sealed partial class ScopeContext
 
         var frames = candidate._frames.Skip(_frames.Count).ToArray();
         var collections = candidate._collections.Skip(_collections.Count).ToArray();
+        // A singleton source group adds an instance but no repetition frame.
+        // Its enclosing generated origin remains part of the parent context.
+        if (collections.Length == 0 && sourcePath.Count != 0)
+            return new GroupMember(frames[^1], frames[..^1], collections, sourcePath.ToArray(), null);
+        if (collections.Length == 0)
+            throw new ArgumentException("Grouped candidates must identify a source collection.", nameof(candidate));
         var terminal = collections[^1];
         if (sourcePath.Count != 0 && !SamePath(terminal.Path, sourcePath))
         {

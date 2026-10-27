@@ -53,11 +53,28 @@ impl GraphBuilder<'_> {
             return id;
         }
         if name == "position" && self.fn_components[idx].kind == 5 {
-            let node = self
-                .join_position_node(idx)
-                .unwrap_or_else(|| Node::Position {
+            let generator = self.input_feed(idx, 0).and_then(|feed| {
+                let owner = *self.fn_by_output.get(&feed)?;
+                let component = &self.fn_components[owner];
+                (component.library == "core"
+                    && component.kind == 5
+                    && matches!(
+                        component.name.as_str(),
+                        "generate-sequence" | "tokenize" | "tokenize-by-length" | "tokenize-regexp"
+                    ))
+                .then_some(owner)
+            });
+            let node = if let Some(node) = self.join_position_node(idx) {
+                node
+            } else if let Some(generator) = generator {
+                Node::GeneratedPosition {
+                    item: self.sequence_item(generator),
+                }
+            } else {
+                Node::Position {
                     collection: self.position_collection(idx),
-                });
+                }
+            };
             self.graph.nodes.insert(id, node);
             return id;
         }

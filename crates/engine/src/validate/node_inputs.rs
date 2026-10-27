@@ -64,7 +64,9 @@ pub(super) fn context_node_inputs(node: &Node) -> Vec<NodeId> {
     node.visit_inputs(&mut |input| {
         if !matches!(
             input.role,
-            NodeInputRole::ItemIdentity | NodeInputRole::GeneratedItem
+            NodeInputRole::ItemIdentity
+                | NodeInputRole::ItemReference
+                | NodeInputRole::GeneratedItem
         ) {
             inputs.push(input.node);
         }

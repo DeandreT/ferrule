@@ -83,6 +83,7 @@ pub(super) fn validate_graph(
         );
     }
     let sequence_items: BTreeSet<_> = sequence_item_scopes.keys().copied().collect();
+    super::generated_positions::validate(project, &sequence_items, issues);
     super::sequences::validate_project(project, &sequence_items, issues);
     super::sequence_contexts::validate_sequence_exists_contexts(project, &sequence_items, issues);
     super::sequence_contexts::validate_sequence_item_at_contexts(project, &sequence_items, issues);
@@ -827,6 +828,7 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
             }
         }
         Node::SourceDocumentPath
+        | Node::GeneratedPosition { .. }
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }
         | Node::JoinPosition { .. }

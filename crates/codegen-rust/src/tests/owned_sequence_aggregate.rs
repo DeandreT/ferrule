@@ -128,7 +128,7 @@ fn basic_item_phases_admit_each_item_copy_and_the_argument_runs_once_afterwards(
         "use codegen_runtime::{AggregateFunction, GeneratedItems, aggregate, tokenize};"
     ));
     assert!(source.contains(
-        "        let generated_items = GeneratedItems::new(sequence_values);\n        let mut aggregate_values = Vec::new();\n        for item_context in context.generated_item_contexts(&generated_items) {\n            let item_context = item_context?;\n            let selected = expression_31(&item_context)?;\n            if !require_bool(31, selected)? {\n                continue;\n            }\n            aggregate_values.push(expression_90(&item_context)?);\n        }\n        let arg = Some(expression_32(context)?);\n        aggregate(AggregateFunction::Join, &aggregate_values, arg)"
+        "        let generated_items = GeneratedItems::with_owner(sequence_values, 90);\n        let mut aggregate_values = Vec::new();\n        for item_context in context.generated_item_contexts(&generated_items) {\n            let item_context = item_context?;\n            let selected = expression_31(&item_context)?;\n            if !require_bool(31, selected)? {\n                continue;\n            }\n            aggregate_values.push(expression_90(&item_context)?);\n        }\n        let arg = Some(expression_32(context)?);\n        aggregate(AggregateFunction::Join, &aggregate_values, arg)"
     ));
     assert_eq!(source.matches("expression_32(context)?").count(), 1);
     assert!(source.contains("fn expression_90(context: &BasicScopeContext<'_>)"));

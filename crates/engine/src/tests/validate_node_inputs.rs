@@ -21,6 +21,7 @@ use crate::validate::join::item_context_inputs;
 /// `Node::dependencies` as it was written by hand.
 fn legacy_dependencies(node: &Node) -> Vec<NodeId> {
     match node {
+        Node::GeneratedPosition { item } => vec![*item],
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
@@ -117,6 +118,7 @@ fn legacy_dependencies(node: &Node) -> Vec<NodeId> {
 /// `context_node_inputs` as it was written by hand.
 fn legacy_context_node_inputs(node: &Node) -> Vec<NodeId> {
     match node {
+        Node::GeneratedPosition { .. } => Vec::new(),
         Node::SequenceExists { sequence, .. } => sequence.inputs(),
         Node::SequenceAggregate { sequence, arg, .. } => {
             sequence.inputs().into_iter().chain(*arg).collect()
@@ -131,6 +133,7 @@ fn legacy_context_node_inputs(node: &Node) -> Vec<NodeId> {
 /// `node_inputs` as it was written by hand.
 fn legacy_node_inputs(node: &Node) -> Vec<(String, NodeId)> {
     match node {
+        Node::GeneratedPosition { item } => vec![("sequence item".into(), *item)],
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
@@ -395,9 +398,10 @@ fn kind(node: &Node) -> usize {
         Node::JoinAggregate { .. } => 39,
         Node::OwnedSourceDocumentPath(_) => 40,
         Node::InvocationCounter { .. } => 41,
+        Node::GeneratedPosition { .. } => 42,
     }
 }
-const KINDS: usize = 42;
+const KINDS: usize = 43;
 
 fn sequence_kind(sequence: &SequenceExpr) -> usize {
     match sequence {
@@ -630,6 +634,7 @@ fn nodes(ids: &mut Ids, present: bool) -> Vec<Node> {
         Node::Position {
             collection: Vec::new(),
         },
+        Node::GeneratedPosition { item: ids.id() },
         Node::JoinField {
             join: JoinId::new(1),
             collection: path(&["A"]),

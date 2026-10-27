@@ -34,9 +34,9 @@ fn render_rule(index: usize, rule: &FailureRule) -> Result<String, EmitError> {
         }
         FailureIteration::Generated(sequence) => {
             render_generated_values(sequence, "    ", &mut output)?;
-            output.push_str(
-                "    let generated_items = GeneratedItems::new(sequence_values);\n    let candidates = context.generated_items(&generated_items);\n",
-            );
+            output.push_str(&format!(
+                "    let generated_items = GeneratedItems::with_owner(sequence_values, {});\n    let candidates = context.generated_items(&generated_items);\n", sequence.item()
+            ));
         }
         // Validation closes owned walks before the ordinary renderer.
         FailureIteration::OwnedSource(_) => {

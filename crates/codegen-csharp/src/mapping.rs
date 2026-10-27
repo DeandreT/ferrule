@@ -1420,7 +1420,7 @@ fn render_iteration_candidates(
             let identifier = format!("scope_{scope}");
             render_generated_values(&identifier, sequence, output)?;
             output.push_str(&format!(
-                "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.IterateGenerated(sequence_values_{identifier}));\n"
+                "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.IterateGenerated(sequence_values_{identifier}, {}U));\n", sequence.item()
             ));
         }
         IterationSource::InnerJoin(join) => render_inner_join(scope, join, output),
@@ -2105,6 +2105,11 @@ fn render_expression(
             render_path(collection, output);
             output.push_str("));\n");
         }
+        Expression::GeneratedPosition { item } => {
+            output.push_str(&format!(
+                " =>\n        context.GeneratedPosition({node}U, {item}U);\n"
+            ));
+        }
         Expression::JoinField {
             join,
             collection,
@@ -2395,7 +2400,7 @@ fn render_expression(
             let identifier = format!("node_{node}");
             render_generated_values(&identifier, sequence, output)?;
             output.push_str(&format!(
-                "        foreach (var sequence_context_{identifier} in context.EnumerateGenerated(sequence_values_{identifier}))\n        {{\n            var sequence_predicate_{identifier} = Node_{predicate}(sequence_context_{identifier});\n            if (global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(sequence_predicate_{identifier}, {predicate}U))\n            {{\n                return global::Ferrule.Runtime.FerruleValue.FromBoolean(true);\n            }}\n        }}\n        return global::Ferrule.Runtime.FerruleValue.FromBoolean(false);\n    }}\n"
+                "        foreach (var sequence_context_{identifier} in context.EnumerateGenerated(sequence_values_{identifier}, {}U))\n        {{\n            var sequence_predicate_{identifier} = Node_{predicate}(sequence_context_{identifier});\n            if (global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(sequence_predicate_{identifier}, {predicate}U))\n            {{\n                return global::Ferrule.Runtime.FerruleValue.FromBoolean(true);\n            }}\n        }}\n        return global::Ferrule.Runtime.FerruleValue.FromBoolean(false);\n    }}\n", sequence.item()
             ));
         }
         Expression::SequenceItemAt { sequence, index } => {
@@ -2427,7 +2432,7 @@ fn render_expression(
             let collect =
                 aggregate_collect_prefix(*function, &format!("aggregate_values_{identifier}"));
             output.push_str(&format!(
-                "        var aggregate_values_{identifier} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleValue>();\n        foreach (var sequence_context_{identifier} in context.EnumerateGenerated(sequence_values_{identifier}))\n        {{\n"
+                "        var aggregate_values_{identifier} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleValue>();\n        foreach (var sequence_context_{identifier} in context.EnumerateGenerated(sequence_values_{identifier}, {}U))\n        {{\n", sequence.item()
             ));
             if let Some(predicate) = predicate {
                 output.push_str(&format!(

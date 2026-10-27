@@ -111,7 +111,7 @@ fn basic_aggregate_enumerates_paired_item_views_before_the_parent_argument() {
     let mapping = text("GeneratedMapping.cs");
     let loop_start = mapping
         .find(
-            "foreach (var sequence_context_node_40 in context.EnumerateGenerated(sequence_values_node_40))",
+            "foreach (var sequence_context_node_40 in context.EnumerateGenerated(sequence_values_node_40, 90U))",
         )
         .unwrap();
     let argument = mapping

@@ -308,6 +308,7 @@ fn check_inventory(program: &Program, filter_only: bool) -> Result<(), EmitError
                     &node.expression,
                     Expression::SourceField { .. }
                         | Expression::Position { .. }
+                        | Expression::GeneratedPosition { .. }
                         | Expression::Const { .. }
                         | Expression::Call { .. }
                         | Expression::If { .. }
@@ -365,6 +366,7 @@ fn check_inventory(program: &Program, filter_only: bool) -> Result<(), EmitError
                 | Expression::OwnedSourceDocumentPath(_)
                 | Expression::SourceField { .. }
                 | Expression::Position { .. }
+                | Expression::GeneratedPosition { .. }
                 | Expression::Const { .. }
                 | Expression::RuntimeValue { .. }
                 | Expression::RuntimeParameter { .. }
@@ -1164,6 +1166,7 @@ fn check_sort_inventory(program: &Program) -> Result<(), EmitError> {
                     &node.expression,
                     Expression::SourceField { .. }
                         | Expression::Position { .. }
+                        | Expression::GeneratedPosition { .. }
                         | Expression::Const { .. }
                         | Expression::Call { .. }
                         | Expression::If { .. }
@@ -1221,6 +1224,7 @@ fn check_sort_inventory(program: &Program) -> Result<(), EmitError> {
                 | Expression::OwnedSourceDocumentPath(_)
                 | Expression::SourceField { .. }
                 | Expression::Position { .. }
+                | Expression::GeneratedPosition { .. }
                 | Expression::Const { .. }
                 | Expression::RuntimeValue { .. }
                 | Expression::RuntimeParameter { .. }

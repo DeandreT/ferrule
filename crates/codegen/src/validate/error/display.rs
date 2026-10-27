@@ -474,6 +474,10 @@ impl fmt::Display for ProgramValidationError {
                 display_owner(owner),
                 display_owner(first_owner)
             ),
+            Self::GeneratedPositionOutOfContext { node, item } => write!(
+                formatter,
+                "generated position node {node} requires active ungrouped sequence item {item}"
+            ),
             Self::SequenceItemOutOfContext {
                 owner,
                 expression,

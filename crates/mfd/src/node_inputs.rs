@@ -39,7 +39,9 @@ pub(crate) fn port_inputs(node: &Node) -> Vec<NodeId> {
         let wired = !matches!(input.slot, NodeInputSlot::SequenceInput(_))
             && !matches!(
                 input.role,
-                NodeInputRole::ItemIdentity | NodeInputRole::GeneratedItem
+                NodeInputRole::ItemIdentity
+                    | NodeInputRole::ItemReference
+                    | NodeInputRole::GeneratedItem
             );
         if wired {
             inputs.push(input);

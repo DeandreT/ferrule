@@ -3,6 +3,8 @@ use mapping::JoinId;
 
 #[derive(Clone)]
 pub(super) struct PositionFrame {
+    /// Immutable ordinal of the exact generated sequence, before selection.
+    pub(super) generated_origin: Option<(mapping::NodeId, usize)>,
     pub(super) collection: Vec<String>,
     pub(super) index: usize,
     /// The matching context instance has a synthetic named collection
@@ -46,6 +48,7 @@ pub(super) fn walk<'a>(
                 next_instances.push(item);
                 let mut next_positions = positions.to_vec();
                 next_positions.push(PositionFrame {
+                    generated_origin: None,
                     collection: prefix.to_vec(),
                     index: index + 1,
                     grouped: false,
@@ -67,6 +70,7 @@ pub(super) fn walk<'a>(
                     next_instances.push(document.value());
                     let mut next_positions = positions.to_vec();
                     next_positions.push(PositionFrame {
+                        generated_origin: None,
                         collection: prefix.to_vec(),
                         index: index + 1,
                         grouped: false,
@@ -88,6 +92,7 @@ pub(super) fn walk<'a>(
                     next_instances.push(item);
                     let mut next_positions = positions.to_vec();
                     next_positions.push(PositionFrame {
+                        generated_origin: None,
                         collection: prefix.to_vec(),
                         index: index + 1,
                         grouped: false,
@@ -129,6 +134,7 @@ pub(super) fn walk<'a>(
                         next_instances.push(document.value());
                         let mut next_positions = positions.to_vec();
                         next_positions.push(PositionFrame {
+                            generated_origin: None,
                             collection: prefix.to_vec(),
                             index: index + 1,
                             grouped: false,
@@ -158,6 +164,7 @@ pub(super) fn walk<'a>(
                         next_instances.push(item);
                         let mut next_positions = positions.to_vec();
                         next_positions.push(PositionFrame {
+                            generated_origin: None,
                             collection: collection_path.clone(),
                             index: index + 1,
                             grouped: false,
@@ -489,6 +496,7 @@ fn observe_walk<'a>(
             next_instances.push(item);
             let mut next_positions = positions.to_vec();
             next_positions.push(PositionFrame {
+                generated_origin: None,
                 collection: raw_prefix.to_vec(),
                 index: position,
                 grouped: false,

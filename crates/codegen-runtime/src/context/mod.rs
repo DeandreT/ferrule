@@ -16,6 +16,8 @@ mod collection_find_tests;
 #[cfg(test)]
 mod dynamic_tests;
 #[cfg(test)]
+mod generated_position_tests;
+#[cfg(test)]
 mod grouping_tests;
 #[cfg(test)]
 mod join_tests;
@@ -57,12 +59,22 @@ pub struct NamedInput<'a> {
 /// borrowed candidate contexts are evaluated.
 pub struct GeneratedItems {
     items: Vec<Instance>,
+    owner: Option<u32>,
 }
 
 impl GeneratedItems {
     pub fn new(values: Vec<Value>) -> Self {
         Self {
             items: values.into_iter().map(Instance::Scalar).collect(),
+            owner: None,
+        }
+    }
+
+    /// Binds the materialized sequence to its statically declared item identity.
+    pub fn with_owner(values: Vec<Value>, item: u32) -> Self {
+        Self {
+            owner: Some(item),
+            ..Self::new(values)
         }
     }
 }
@@ -95,14 +107,29 @@ struct ScopeFrame<'a> {
 
 #[derive(Clone)]
 enum CollectionIdentity {
-    Repeated { path: Vec<String>, index: usize },
-    Document { path: Vec<String>, index: usize },
-    Grouped { path: Vec<String>, index: usize },
+    Generated {
+        item: u32,
+        original_index: usize,
+        index: usize,
+    },
+    Repeated {
+        path: Vec<String>,
+        index: usize,
+    },
+    Document {
+        path: Vec<String>,
+        index: usize,
+    },
+    Grouped {
+        path: Vec<String>,
+        index: usize,
+    },
 }
 
 impl CollectionIdentity {
     fn path(&self) -> &[String] {
         match self {
+            Self::Generated { .. } => &[],
             Self::Repeated { path, .. }
             | Self::Document { path, .. }
             | Self::Grouped { path, .. } => path,
@@ -111,6 +138,7 @@ impl CollectionIdentity {
 
     const fn index(&self) -> usize {
         match self {
+            Self::Generated { index, .. } => *index,
             Self::Repeated { index, .. }
             | Self::Document { index, .. }
             | Self::Grouped { index, .. } => *index,
@@ -119,6 +147,7 @@ impl CollectionIdentity {
 
     const fn set_index(&mut self, compact_index: usize) {
         match self {
+            Self::Generated { index, .. } => *index = compact_index,
             Self::Repeated { index, .. }
             | Self::Document { index, .. }
             | Self::Grouped { index, .. } => {
@@ -399,6 +428,21 @@ impl<'a> ScopeContext<'a> {
             .unwrap_or(1)
     }
 
+    pub fn generated_position(&self, node: u32, item: u32) -> Result<Value, RuntimeError> {
+        self.frames
+            .iter()
+            .rev()
+            .find_map(|frame| match frame.collection {
+                Some(CollectionIdentity::Generated {
+                    item: owner,
+                    original_index,
+                    ..
+                }) if owner == item => Some(Value::Int(original_index as i64)),
+                _ => None,
+            })
+            .ok_or(RuntimeError::GeneratedPositionUnavailable { node, item })
+    }
+
     /// Clones this context and replaces only its innermost collection's
     /// position. Source instances remain borrowed and unchanged.
     ///
@@ -449,10 +493,17 @@ impl<'a> ScopeContext<'a> {
                 .collect::<Vec<_>>();
             frames.push(collection_frame(
                 item,
-                CollectionIdentity::Repeated {
-                    path: Vec::new(),
-                    index: index + 1,
-                },
+                items.owner.map_or_else(
+                    || CollectionIdentity::Repeated {
+                        path: Vec::new(),
+                        index: index + 1,
+                    },
+                    |item| CollectionIdentity::Generated {
+                        item,
+                        original_index: index + 1,
+                        index: index + 1,
+                    },
+                ),
             ));
             ScopeContext {
                 primary_source: self.primary_source,

@@ -54,7 +54,13 @@ pub(super) fn evaluate(
                 let values = eval_sequence(program, sequence, context, &[])?;
                 sequence_items =
                     Instance::Repeated(values.into_iter().map(Instance::Scalar).collect());
-                walk(&sequence_items, &[], &[], &[], &[])
+                let mut extensions = walk(&sequence_items, &[], &[], &[], &[]);
+                for extension in &mut extensions {
+                    if let Some(frame) = extension.positions.last_mut() {
+                        frame.generated_origin = Some((sequence.item(), frame.index));
+                    }
+                }
+                extensions
             }
         };
         for extension in extensions {

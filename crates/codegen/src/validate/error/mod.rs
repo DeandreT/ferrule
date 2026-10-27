@@ -499,6 +499,10 @@ pub enum ProgramValidationError {
         expression: NodeId,
         item: NodeId,
     },
+    GeneratedPositionOutOfContext {
+        node: NodeId,
+        item: NodeId,
+    },
     MissingBindingExpression {
         target_path: Vec<String>,
         target_field: String,

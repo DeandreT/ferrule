@@ -14,6 +14,7 @@ mod context;
 mod error;
 mod failures;
 mod filter_map;
+mod generated_positions;
 mod graph_dependencies;
 mod grouping;
 mod joins;
@@ -111,6 +112,7 @@ fn validate_program_proving_xml(
     targets::collect_sequence_items(program, &expressions, &mut sequence_items)?;
     failures::collect_sequence_items(program, &expressions, &mut sequence_items)?;
     let sequence_items = sequence_items.keys().copied().collect::<BTreeSet<_>>();
+    generated_positions::validate(program, &expressions, &sequence_items)?;
     filter_map::validate(program, &expressions, &sequence_items)?;
     // Path/driver validation above keeps its existing diagnostic precedence.
     // Generated-item permissions require the complete expression/scope/failure

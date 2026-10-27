@@ -16,6 +16,7 @@ use synthetic::{KINDS, SEQUENCE_KINDS, kind, sequence_kind, synthetic_nodes};
 /// `Node::dependencies` as it was written by hand.
 fn legacy_dependencies(node: &Node) -> Vec<NodeId> {
     match node {
+        Node::GeneratedPosition { item } => vec![*item],
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
@@ -112,6 +113,7 @@ fn legacy_dependencies(node: &Node) -> Vec<NodeId> {
 /// The `.mfd` export auto-number pass's input list as it was written by hand.
 fn legacy_auto_number(node: &Node) -> Vec<NodeId> {
     match node {
+        Node::GeneratedPosition { item } => vec![*item],
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
@@ -209,6 +211,7 @@ fn legacy_auto_number(node: &Node) -> Vec<NodeId> {
 /// The `.mfd` export recursive pass's input list as it was written by hand.
 fn legacy_recursive(node: &Node) -> Vec<NodeId> {
     match node {
+        Node::GeneratedPosition { item } => vec![*item],
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
         Node::InvocationCounter {
@@ -306,6 +309,7 @@ fn legacy_recursive(node: &Node) -> Vec<NodeId> {
 /// The `.mfd` export join pass's input list as it was written by hand.
 fn legacy_join(node: &Node) -> Vec<NodeId> {
     match node {
+        Node::GeneratedPosition { .. } => Vec::new(),
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
@@ -395,6 +399,7 @@ fn legacy_join(node: &Node) -> Vec<NodeId> {
 /// The GUI graph references' input list as it was written by hand.
 fn legacy_graph_references(node: &Node) -> Vec<NodeId> {
     match node {
+        Node::GeneratedPosition { .. } => Vec::new(),
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
@@ -480,6 +485,7 @@ fn legacy_graph_references(node: &Node) -> Vec<NodeId> {
 /// The GUI canvas's input list as it was written by hand.
 fn legacy_canvas(node: &Node) -> Vec<NodeId> {
     match node {
+        Node::GeneratedPosition { .. } => Vec::new(),
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
@@ -564,6 +570,7 @@ fn legacy_canvas(node: &Node) -> Vec<NodeId> {
 /// The `.mfd` export dynamic-JSON pass's input list as it was written by hand.
 fn legacy_dynamic_json(node: &Node) -> Vec<NodeId> {
     match node {
+        Node::GeneratedPosition { item } => vec![*item],
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],
         Node::InvocationCounter {
@@ -661,6 +668,7 @@ fn legacy_dynamic_json(node: &Node) -> Vec<NodeId> {
 /// The `.mfd` export position pass's input list as it was written by hand.
 fn legacy_position(node: &Node) -> Vec<NodeId> {
     match node {
+        Node::GeneratedPosition { item } => vec![*item],
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::Raise { message } => message.iter().copied().collect(),
         Node::RuntimeParameterDefault { default, .. } => vec![*default],

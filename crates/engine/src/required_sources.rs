@@ -219,6 +219,7 @@ impl<'a> Analysis<'a> {
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }
             | Node::JoinPosition { .. }
+            | Node::GeneratedPosition { .. }
             | Node::Unconnected
             | Node::Const { .. }
             | Node::FunctionParameter { .. }

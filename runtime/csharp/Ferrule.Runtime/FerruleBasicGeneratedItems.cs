@@ -14,28 +14,30 @@ public sealed partial class FerruleBasicScopeContext
     /// caller's policy only when reached, so an existential consumer can stop
     /// before later items allocate any view metadata.
     /// </summary>
-    public IEnumerable<FerruleBasicScopeContext> EnumerateGenerated(IReadOnlyList<FerruleValue> values)
+    public IEnumerable<FerruleBasicScopeContext> EnumerateGenerated(IReadOnlyList<FerruleValue> values, uint? owner = null)
     {
         ArgumentNullException.ThrowIfNull(values);
-        return EnumerateGeneratedCore(values);
+        return EnumerateGeneratedCore(values, owner);
     }
 
-    private IEnumerable<FerruleBasicScopeContext> EnumerateGeneratedCore(IReadOnlyList<FerruleValue> values)
+    private IEnumerable<FerruleBasicScopeContext> EnumerateGeneratedCore(IReadOnlyList<FerruleValue> values, uint? owner)
     {
         for (var index = 0; index < values.Count; index++)
         {
-            yield return GeneratedItemContext(values[index], index + 1);
+            yield return GeneratedItemContext(values[index], index + 1, owner);
         }
     }
 
-    private FerruleBasicScopeContext GeneratedItemContext(FerruleValue value, int position)
+    public FerruleValue GeneratedPosition(uint node, uint item) => LegacyView.GeneratedPosition(node, item);
+
+    private FerruleBasicScopeContext GeneratedItemContext(FerruleValue value, int position, uint? owner)
     {
         try
         {
             var budget = Begin();
             var copy = CloneBudgeted(budget);
             budget.Charge(2); // the appended generated frame and its collection identity
-            return new FerruleBasicScopeContext(copy.Roots, copy.LegacyView.BasicGeneratedItem(value, position),
+            return new FerruleBasicScopeContext(copy.Roots, copy.LegacyView.BasicGeneratedItem(value, position, owner),
                 copy._owned, copy._origins, copy._legacyContainers);
         }
         catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
@@ -45,9 +47,9 @@ public sealed partial class FerruleBasicScopeContext
 
 public sealed partial class ScopeContext
 {
-    internal ScopeContext BasicGeneratedItem(FerruleValue value, int position)
+    internal ScopeContext BasicGeneratedItem(FerruleValue value, int position, uint? owner = null)
     {
         RequireBasicContext();
-        return GeneratedContext(value, position);
+        return GeneratedContext(value, position, owner);
     }
 }

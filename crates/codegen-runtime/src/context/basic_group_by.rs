@@ -649,7 +649,10 @@ fn prepare_with_metadata<'m, 'p, 'src>(
             if let Some(path) = &frame.collection {
                 let (CollectionIdentity::Repeated { path, .. }
                 | CollectionIdentity::Grouped { path, .. }
-                | CollectionIdentity::Document { path, .. }) = path;
+                | CollectionIdentity::Document { path, .. }) = path
+                else {
+                    continue;
+                };
                 spare = sum(spare, path.capacity() - path.len())?;
             }
         }

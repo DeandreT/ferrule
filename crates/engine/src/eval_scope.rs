@@ -246,7 +246,15 @@ pub(crate) fn eval_scope(
     let mut extensions = if let Some(rows) = &join_rows {
         join_extensions(rows)
     } else if let Some(items) = &sequence_items {
-        walk(items, &[], &[], &[], &[])
+        let mut generated = walk(items, &[], &[], &[], &[]);
+        if let Some(sequence) = scope.sequence() {
+            for extension in &mut generated {
+                if let Some(frame) = extension.positions.last_mut() {
+                    frame.generated_origin = Some((sequence.item(), frame.index));
+                }
+            }
+        }
+        generated
     } else if let Some(source) = dynamic_source {
         let path = scope
             .source()
@@ -654,6 +662,15 @@ pub(crate) fn eval_scope(
             if let Some(position) = output_positions.last_mut() {
                 position.index = produced.len() + 1;
                 position.grouped = wrapper.is_some();
+                // A group has no single original generated item. Its members
+                // retain their own origins when traversed separately.
+                if scope.sequence().is_some_and(|sequence| {
+                    position
+                        .generated_origin
+                        .is_some_and(|(item, _)| item == sequence.item())
+                }) {
+                    position.generated_origin = None;
+                }
             }
             if let Some(instance) =
                 item_evaluator.produce(&next_context, &group.positions, &output_positions, false)?

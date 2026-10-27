@@ -652,6 +652,10 @@ impl<'ctx> BasicScopeContext<'ctx> {
         self.legacy.position(collection)
     }
 
+    pub fn generated_position(&self, node: u32, item: u32) -> Result<Value, crate::RuntimeError> {
+        self.legacy.generated_position(node, item)
+    }
+
     fn budget(
         &self,
         owner: SourceOwnerRef<'_>,

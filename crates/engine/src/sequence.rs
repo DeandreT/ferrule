@@ -458,6 +458,7 @@ pub(super) fn eval_sequence_exists(
         item_context.push(&item);
         let mut item_positions = positions.to_vec();
         item_positions.push(PositionFrame {
+            generated_origin: Some((sequence.item(), index + 1)),
             collection: Vec::new(),
             index: index + 1,
             grouped: false,
@@ -553,6 +554,7 @@ pub(super) fn eval_sequence_aggregate(
         item_context.push(&item);
         let mut item_positions = positions.to_vec();
         item_positions.push(PositionFrame {
+            generated_origin: Some((sequence.item(), index + 1)),
             collection: Vec::new(),
             index: index + 1,
             grouped: false,

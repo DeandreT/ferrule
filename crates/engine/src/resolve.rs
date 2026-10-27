@@ -372,6 +372,7 @@ mod tests {
             .and_then(|items| items.get(1))
             .expect("the self-authored fixture has a second item");
         let positions = [PositionFrame {
+            generated_origin: None,
             collection: vec!["items".into()],
             index: 2,
             grouped: false,
@@ -418,6 +419,7 @@ mod tests {
         let absolute = ["Order".into(), "Details".into(), "Counter".into()];
         for (index, row) in rows.iter().enumerate() {
             let positions = [PositionFrame {
+                generated_origin: None,
                 collection: vec!["Order".into()],
                 index: index + 1,
                 grouped: false,
@@ -443,6 +445,7 @@ mod tests {
             scalar_in_frame(
                 &[&root, &rows[1]],
                 &[PositionFrame {
+                    generated_origin: None,
                     collection: vec!["Order".into()],
                     index: 2,
                     grouped: false,

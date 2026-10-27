@@ -96,6 +96,7 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
         | Node::RuntimeValue { .. }
         | Node::RuntimeParameter { .. }
         | Node::Position { .. }
+        | Node::GeneratedPosition { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
         | Node::XmlSerialize { .. } => vec![],
@@ -242,6 +243,7 @@ fn node_title(node: &Node) -> String {
             format!("{title} · {}", path.join("/"))
         }
         Node::Position { collection } => format!("position · {}", collection.join("/")),
+        Node::GeneratedPosition { item } => format!("source position · generated item {item}"),
         Node::JoinField {
             join,
             collection,

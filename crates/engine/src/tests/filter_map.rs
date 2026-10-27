@@ -444,6 +444,7 @@ fn all_37_literal_adapters_retain_full_original_outcomes_before_comparison() {
         .with_filter_map_run_state(&state);
         let parent = Instance::Scalar(Value::Int(7));
         let positions = [PositionFrame {
+            generated_origin: None,
             collection: vec!["Parents".into()],
             index: 7,
             grouped: false,
