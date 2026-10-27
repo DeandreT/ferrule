@@ -602,6 +602,56 @@ fn invoked_qualifier_fixture() -> Fixture {
     fixture
 }
 
+fn invoked_date_fixture() -> Fixture {
+    let fixture = invoked_fixture();
+    let schema = fixture.0.join("source.json");
+    let text = std::fs::read_to_string(&schema)
+        .unwrap()
+        .replace("\"number\"", "\"string\"");
+    std::fs::write(schema, text).unwrap();
+    fixture.change(
+        r#"<entry name="number" outkey="22"/>"#,
+        r#"<entry name="string" outkey="22"/>"#,
+    );
+    fixture.change(r#"<entry name="F2" inpkey="86"/>"#, r#"<entry name="F2"/>"#);
+    fixture.change(
+        r#"<vertex vertexkey="21"><edges><edge vertexkey="85"/></edges></vertex>"#,
+        "",
+    );
+    fixture.change(
+        r#"<vertex vertexkey="22"><edges><edge vertexkey="86"/></edges></vertex>"#,
+        r#"<vertex vertexkey="22"><edges><edge vertexkey="601"/></edges></vertex>"#,
+    );
+    fixture.change("</children>", r#"<component name="constant" library="core" uid="600" kind="2"><targets><datapoint pos="0" key="600"/></targets><data><constant value="[Y,4-4][M,2-2][D,2-2]" datatype="string"/></data></component>
+<component name="format-date" library="core" uid="601" kind="5"><sources><datapoint pos="0" key="601"/><datapoint pos="1" key="602"/><datapoint/></sources><targets><datapoint pos="0" key="603"/></targets></component></children>"#);
+    fixture.change("</vertices>", r#"<vertex vertexkey="600"><edges><edge vertexkey="602"/></edges></vertex><vertex vertexkey="603"><edges><edge vertexkey="85"/></edges></vertex></vertices>"#);
+    fixture
+}
+
+#[test]
+fn invoked_date_format_reuses_the_typed_runtime_and_rejects_extra_arguments() {
+    let fixture = invoked_date_fixture();
+    let import = || {
+        mfd::import_invoked_grouped_json_edi_document_with_options(
+            &fixture.0.join("mapping.mfd"),
+            &mfd::ImportOptions::default().with_package_root(&fixture.0),
+        )
+    };
+    let imported = import().unwrap();
+    assert!(imported.document.project().graph.nodes.values().any(
+        |node| matches!(node, mapping::Node::Call { function, .. } if function == "format_date")
+    ));
+    fixture.change(
+        r#"<datapoint pos="1" key="602"/><datapoint/>"#,
+        r#"<datapoint pos="1" key="602"/><datapoint pos="2" key="604"/>"#,
+    );
+    fixture.change(
+        r#"<edge vertexkey="602"/>"#,
+        r#"<edge vertexkey="602"/><edge vertexkey="604"/>"#,
+    );
+    assert!(import().is_err());
+}
+
 #[test]
 fn sibling_udf_qualifier_tests_presence_without_discarding_an_empty_string() {
     let fixture = invoked_qualifier_fixture();
