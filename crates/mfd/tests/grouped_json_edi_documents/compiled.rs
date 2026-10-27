@@ -173,6 +173,16 @@ fn sibling_value_alias_executes_in_generated_rust_and_csharp() {
     );
 }
 
+#[test]
+#[ignore = "compiles generated Rust and C# consumers; requires Cargo, .NET 10 and a coordinated host target"]
+fn date_format_executes_in_generated_rust_and_csharp() {
+    compile_conditional_consumers(
+        invoked_date_fixture(),
+        r#"{"rows":[{"name":"a","qty":"2026-10-27"},{"name":"a","qty":"2020-01-02"}]}"#,
+        &["20261027", "20200102"],
+    );
+}
+
 fn compile_conditional_consumers(fixture: Fixture, new: &str, expected: &[&str]) {
     let old = r#"{"rows":[{"name":"a","qty":1},{"name":"b","qty":2}]}"#;
     let rust_expected = expected
