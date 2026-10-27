@@ -29,6 +29,7 @@ mod idoc_native_config;
 mod idoc_native_text;
 mod iteration;
 mod json_grouping_preparation;
+mod json_parameter_invocation;
 mod json_source_projection;
 mod mapforce_edi;
 mod model;
@@ -107,6 +108,9 @@ pub use iteration::{
     ScopeIteration, ScopeSequence,
 };
 pub use json_grouping_preparation::JsonGroupingPreparation;
+pub use json_parameter_invocation::{
+    JsonParameterInvocationPlan, JsonParameterIteration, JsonParameterPlanError,
+};
 pub use json_source_projection::{
     JsonProjectionPlanError, JsonSourceProperty, JsonSourceShape, MAX_JSON_PROJECTION_DEPTH,
     MAX_JSON_PROJECTION_NAME_BYTES, MAX_JSON_PROJECTION_NODES,

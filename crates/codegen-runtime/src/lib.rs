@@ -40,8 +40,15 @@ pub use source_filenames::{
 pub use source_loader::{DirectSourceReader, InputParseError, SourceBytes, SourceReadError};
 mod json_grouping;
 mod json_native;
+mod json_parameter_invocation;
 mod json_projection;
 pub use json_native::{NativeJsonSourceError, parse_native_json_source};
+pub use json_parameter_invocation::{
+    JsonParameterInvocation, JsonParameterInvocationError, JsonParameterInvocationLimits,
+    MAX_JSON_PARAMETER_INVOCATIONS, MAX_JSON_PARAMETER_KEY_BYTES, PreparedJsonParameterInvocations,
+    parse_json_parameter_invocation_plan,
+};
+pub use mapping::{JsonParameterInvocationPlan, JsonParameterIteration, JsonParameterPlanError};
 mod mapforce_edi_scalar;
 pub use mapforce_edi_scalar::{MapForceEdiScalarError, format_mapforce_edi_scalar};
 pub use mapping::{MapForceEdiScalar, MapForceEdiScalarKind};
