@@ -141,7 +141,7 @@ public static partial class FerruleX12
                 char? allowed = id == "ISA" ? i == 10 ? profile.OutputSyntax.Repetition : i == 15 ? profile.OutputSyntax.Component : null : null;
                 values[i] = MapForceElement(child, value, profile.OutputSyntax, budget, depth + 1, allowed, raw: raw);
                 if (id == "ISA" && values[i].Length == 0)
-                    values[i] = i switch { 10 => profile.OutputSyntax.Repetition?.ToString() ?? "", 11 => profile.SelectedVersion.Interchange, 15 => profile.OutputSyntax.Component.ToString(), _ => "" };
+                    values[i] = i switch { 10 => profile.OutputSyntax.Repetition?.ToString() ?? " ", 11 => profile.SelectedVersion.Interchange, 15 => profile.OutputSyntax.Component.ToString(), _ => "" };
             }
             segments.Add(new(id, values)); return;
         }

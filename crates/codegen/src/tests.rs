@@ -591,6 +591,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "contains",
         "matches",
         "replace",
+        "replace_literal",
         "concat",
         "upper",
         "lower",

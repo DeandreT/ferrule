@@ -10,6 +10,7 @@ use super::{
 mod guid;
 mod isbn;
 mod regex_match;
+mod replace_literal;
 
 const MAX_GENERATED_PADDING_CHARS: i64 = 1_000_000;
 // Match the bundled SQLite LIKE pattern cap, measured before NUL truncation.
@@ -55,6 +56,7 @@ pub(super) fn call_builtin(
         BuiltinId::Contains => binary_scalar_string(args, "contains", |a, b| a.contains(b)),
         BuiltinId::Matches => regex_match::matches(args),
         BuiltinId::Replace => regex_match::replace(args),
+        BuiltinId::ReplaceLiteral => replace_literal::replace(args),
         BuiltinId::SqlLike => binary_string(args, "sql_like", sql_like),
         BuiltinId::PadStringLeft => pad_string(args, "pad_string_left", true),
         BuiltinId::PadStringRight => pad_string(args, "pad_string_right", false),

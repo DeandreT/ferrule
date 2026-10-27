@@ -75,6 +75,7 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "pad_string_left" => "pad-string-left",
         "pad_string_right" => "pad-string-right",
         "format_guid_string" => "format-guid-string",
+        "replace_literal" => "replace",
         "substring_before" => "substring-before",
         "substring_after" => "substring-after",
         "normalize_space" => "normalize-space",
@@ -119,7 +120,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
         return "ferrule";
     }
     match name {
-        "left" | "right" => "lang",
+        "left" | "right" | "replace_literal" => "lang",
         "left_trim"
         | "right_trim"
         | "pad_string_left"
@@ -157,6 +158,9 @@ mod tests {
         assert_eq!(unmap_function_name("ends_with"), "ends-with");
         assert_eq!(unmap_function_name("matches"), "matches");
         assert_eq!(unmap_function_name("replace"), "replace");
+        assert_eq!(function_library("replace"), "core");
+        assert_eq!(unmap_function_name("replace_literal"), "replace");
+        assert_eq!(function_library("replace_literal"), "lang");
         assert_eq!(function_library("normalize_space"), "core");
         assert_eq!(unmap_function_name("is_numeric"), "numeric");
         assert_eq!(function_library("is_numeric"), "lang");

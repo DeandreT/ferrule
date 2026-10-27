@@ -30,6 +30,29 @@ pub fn emit_with_mapforce_x12_writer(
     let descriptor =
         codegen::prepare_mapforce_x12_writer(document.program(), target_options, minimums)
             .map_err(PrimaryJsonEmitError::Writer)?;
+    emit_with_writer(document, options, shape, descriptor)
+}
+
+/// Emit a grouped document-set mapping plus a writer for its individual members.
+pub fn emit_grouped_with_mapforce_x12_writer(
+    document: &DocumentProgram,
+    options: &Options,
+    shape: &JsonSourceShape,
+    target_options: &mapping::FormatOptions,
+    minimums: &[mapping::MapForceEdiMinimum],
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let descriptor =
+        codegen::prepare_mapforce_x12_document_writer(document, target_options, minimums)
+            .map_err(PrimaryJsonEmitError::Writer)?;
+    emit_with_writer(document, options, shape, descriptor)
+}
+
+fn emit_with_writer(
+    document: &DocumentProgram,
+    options: &Options,
+    shape: &JsonSourceShape,
+    descriptor: String,
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
     let mut files = emit_with_primary_json_projection(document, options, shape)?.into_files();
     let mut source = format!(
         "\npub fn serialize_mapforce_x12_document(value: &Instance, execution: &ExecutionContext<'_>) -> Result<Vec<u8>, codegen_runtime::X12BoundaryError> {{\n    codegen_runtime::serialize_mapforce_x12_document({0}, value, execution)\n}}\npub fn write_mapforce_x12_document(value: &Instance, execution: &ExecutionContext<'_>, output: &mut dyn std::io::Write) -> Result<(), codegen_runtime::MapForceX12WriteError> {{\n    codegen_runtime::write_mapforce_x12_document({0}, value, execution, output)\n}}\n",

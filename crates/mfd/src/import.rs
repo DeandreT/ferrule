@@ -85,7 +85,10 @@ pub use csv_document::{
     import_csv_document_with_options, import_csv_json_document_with_options,
     import_grouped_csv_document, import_grouped_csv_document_with_options,
 };
-pub use json_edi_document::{ImportedJsonEdiDocument, import_json_edi_document_with_options};
+pub use json_edi_document::{
+    ImportedGroupedJsonEdiDocument, ImportedJsonEdiDocument,
+    import_grouped_json_edi_document_with_options, import_json_edi_document_with_options,
+};
 pub use json_source_projection::{
     ImportedJsonSourceProjection, import_json_source_projection_with_options,
 };
