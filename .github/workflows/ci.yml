@@ -48,6 +48,7 @@ jobs:
           python3 -B scripts/ci/test-reclaim-build-cache.py
           python3 scripts/ci/test-job-evidence.py
           python3 -B scripts/ci/test-compact-job-evidence.py
+          python3 -B scripts/ci/test-setup-mold.py
       - name: OVH build resources
         if: runner.environment == 'self-hosted'
         run: bash scripts/ci/prepare-ovh-build.sh
@@ -55,6 +56,11 @@ jobs:
         with:
           toolchain: 1.98.1
           components: rustfmt, clippy
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.150
+      - name: job-local linker
+        run: python3 -B scripts/ci/setup-mold.py
       - uses: Swatinem/rust-cache@v2
         if: runner.environment == 'github-hosted'
         with:
@@ -64,6 +70,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb
+      - name: linker
+        run: mold --version
       - name: fmt
         run: cargo fmt --all --check
       - name: clippy
@@ -73,7 +81,14 @@ jobs:
           RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
         run: >-
           xvfb-run -a env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET LIBGL_ALWAYS_SOFTWARE=1
-          cargo test --workspace --locked
+          cargo nextest run --profile ci --workspace --locked
+          --exclude codegen
+          --exclude codegen-runtime
+          --exclude codegen-rust
+          --exclude codegen-csharp
+      - name: doctests
+        run: >-
+          cargo test --doc --workspace --locked
           --exclude codegen
           --exclude codegen-runtime
           --exclude codegen-rust
