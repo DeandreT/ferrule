@@ -21,10 +21,21 @@
     "release_binding": "unestablished",
     "sha256": "d9a2fd8a4f8935598fdd2590f837fd6205931ba43c6218dc6b32a29fbe35c16a"
   },
+  "raw_table_readback": {
+    "source": "type_library_source",
+    "type_info_table_offset": 624,
+    "type_info_record_bytes": 100,
+    "name_table_offset": 10804,
+    "type_info_records": 75,
+    "known_nonempty_tables_cross_checked": 42,
+    "additional_name_tables_resolved": 4,
+    "method": "Read name/ID tables directly at each declared type-info member offset. Check record sizes, indexes, bounds and contiguous coverage; resolve names within the declared name segment. Every previously decoded nonempty table matched exactly.",
+    "scope": "Read-only name/ID metadata, not signature decoding, COM activation or ABI qualification."
+  },
   "method": [
     "Match each of the 22 catalog interface owners to its explicitly listed I-prefixed type-library dispatch declaration.",
     "Compare exact case-sensitive names from each complete function table; count property accessors separately as records but collapse equal names only for this name comparison.",
-    "Exclude all eight documented events from the interface comparison. Event source interfaces are not interchangeable with their owning dispatch interface.",
+    "Exclude all eight documented events from the interface comparison and compare their names separately against the explicit event-source interfaces. Event source interfaces are not interchangeable with their owning dispatch interface.",
     "Compare enum member names only where every declared variable record has a resolved name; do not infer enum values.",
     "Preserve all catalog-only and type-library-only names, including apparent spelling differences and internal/test-looking declarations; infer no aliases or executable capabilities.",
     "Leave the online catalog release binding unestablished. Matching names do not bind its signatures, descriptions, defaults or error contracts to this release."
@@ -37,11 +48,15 @@
     "matched_interface_names": 252,
     "catalog_only_interface_names": 1,
     "type_library_only_interface_names": 14,
-    "enum_name_tables_compared": 19,
-    "enum_names_compared": 127,
+    "enum_name_tables_compared": 20,
+    "enum_names_compared": 130,
     "type_library_only_enum_names": 5,
     "catalog_only_enum_names": 0,
-    "excluded_catalog_events": 8
+    "excluded_catalog_events": 8,
+    "event_names_compared": 8,
+    "matched_event_names": 8,
+    "catalog_only_event_names": 0,
+    "type_library_only_event_names": 0
   },
   "interfaces": [
     {"catalog_name": "AppOutputLine", "type_library_name": "IAppOutputLine", "type_info_index": 15, "record_count": 16, "catalog_name_count": 16, "type_library_name_count": 16, "matched_name_count": 16, "catalog_only": [], "type_library_only": []},
@@ -86,16 +101,22 @@
     {"catalog_name": "ENUMProjectItemType", "type_library_name": "ENUMProjectItemType", "type_info_index": 36, "record_count": 13, "catalog_name_count": 12, "type_library_name_count": 13, "matched_name_count": 12, "catalog_only": [], "type_library_only": ["eProjectItemType_Count"]},
     {"catalog_name": "ENUMProjectType", "type_library_name": "ENUMProjectType", "type_info_index": 4, "record_count": 12, "catalog_name_count": 10, "type_library_name_count": 12, "matched_name_count": 10, "catalog_only": [], "type_library_only": ["eDotNet10_0", "eVisualStudio2026Project"]},
     {"catalog_name": "ENUMSearchDatapointFlags", "type_library_name": "ENUMSearchDatapointFlags", "type_info_index": 20, "record_count": 2, "catalog_name_count": 2, "type_library_name_count": 2, "matched_name_count": 2, "catalog_only": [], "type_library_only": []},
+    {"catalog_name": "ENUMViewMode", "type_library_name": "ENUMViewMode", "type_info_index": 47, "record_count": 3, "catalog_name_count": 3, "type_library_name_count": 3, "matched_name_count": 3, "catalog_only": [], "type_library_only": []},
     {"catalog_name": "ENUMWrapperClassesVersion", "type_library_name": "ENUMWrapperClassesVersion", "type_info_index": 5, "record_count": 3, "catalog_name_count": 1, "type_library_name_count": 3, "matched_name_count": 1, "catalog_only": [], "type_library_only": ["eWrapperClassesVersion_2005r3", "eWrapperClassesVersion_2006"]}
   ],
-  "unresolved_dump_tables": [
+  "events": [
+    {"catalog_name": "Application", "type_library_name": "_IApplicationEvents", "type_info_index": 48, "record_count": 3, "catalog_name_count": 3, "type_library_name_count": 3, "matched_name_count": 3, "catalog_only": [], "type_library_only": []},
+    {"catalog_name": "Document", "type_library_name": "_IDocumentEvents", "type_info_index": 52, "record_count": 2, "catalog_name_count": 2, "type_library_name_count": 2, "matched_name_count": 2, "catalog_only": [], "type_library_only": []},
+    {"catalog_name": "Project", "type_library_name": "_IProjectEvents", "type_info_index": 55, "record_count": 1, "catalog_name_count": 1, "type_library_name_count": 1, "matched_name_count": 1, "catalog_only": [], "type_library_only": []},
+    {"catalog_name": "ProjectItem", "type_library_name": "_IProjectItemEvents", "type_info_index": 57, "record_count": 2, "catalog_name_count": 2, "type_library_name_count": 2, "matched_name_count": 2, "catalog_only": [], "type_library_only": []}
+  ],
+  "dump_rendering_gaps": [
     {"type_library_name": "ENUMViewMode", "type_info_index": 47, "function_records": 0, "variable_records": 3},
     {"type_library_name": "_IDocumentEvents", "type_info_index": 52, "function_records": 2, "variable_records": 0},
     {"type_library_name": "_IProjectEvents", "type_info_index": 55, "function_records": 1, "variable_records": 0},
     {"type_library_name": "_IProjectItemEvents", "type_info_index": 57, "function_records": 2, "variable_records": 0}
   ],
   "remaining": [
-    "Resolve incomplete ENUMViewMode and event-interface tables without guessing from adjacent dump data.",
     "Compare complete method/property/event signatures, types, parameter order, defaults and enum values.",
     "Resolve the documented HighlightMyConnectionsRecursively versus declared HighlightMyConnectionsRecursivly spelling without assuming an alias.",
     "Assess the extra declaration names independently; presence in a type library is not a supported user contract.",
