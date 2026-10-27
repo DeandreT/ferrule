@@ -349,7 +349,10 @@ fn import_document_from_source(
                             Function {
                                 parsed: f.clone(),
                                 inputs: inputs.clone(),
-                                literal_valid: literal_data(component),
+                                literal_valid: literal_data_with_default(
+                                    component,
+                                    parameter.is_some(),
+                                ),
                                 metadata_valid: function_metadata(component),
                             },
                         )
@@ -535,6 +538,10 @@ fn relative(path: &[String], anchor: &[String]) -> Result<Vec<String>, MfdError>
         .ok_or_else(|| refuse("source expression crosses its document/row owner"))
 }
 pub(super) fn literal_data(component: roxmltree::Node<'_, '_>) -> bool {
+    literal_data_with_default(component, false)
+}
+
+fn literal_data_with_default(component: roxmltree::Node<'_, '_>, empty_string: bool) -> bool {
     let data: Vec<_> = component
         .children()
         .filter(|n| n.has_tag_name("data"))
@@ -546,7 +553,7 @@ pub(super) fn literal_data(component: roxmltree::Node<'_, '_>) -> bool {
         .children()
         .filter(|n| n.has_tag_name("constant"))
         .collect();
-    matches!(literals.as_slice(),[value] if value.attribute("value").is_some() && matches!(value.attribute("datatype"),Some("string"|"decimal")) && value.attributes().all(|a|matches!(a.name(),"value"|"datatype")) && !value.children().any(|n|n.is_element()))
+    matches!(literals.as_slice(),[value] if (value.attribute("value").is_some() || empty_string && value.attribute("datatype") == Some("string")) && matches!(value.attribute("datatype"),Some("string"|"decimal")) && value.attributes().all(|a|matches!(a.name(),"value"|"datatype")) && !value.children().any(|n|n.is_element()))
         && data.attributes().len() == 0
         && data.children().filter(|n| n.is_element()).all(|n| {
             n.has_tag_name("constant")
