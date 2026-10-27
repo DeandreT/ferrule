@@ -131,34 +131,68 @@ pub fn validate_document_clocks(
     program: &Program,
     target: Option<&str>,
 ) -> Result<Option<usize>, DocumentVisitorBoundaryError> {
+    validate_body_clocks(program, target, false)
+}
+
+/// Separate composition for document bodies with ordinary static-message errors.
+/// Error messages containing source reads, clocks or calls remain outside it.
+pub fn validate_document_clocks_with_static_errors(
+    program: &Program,
+    target: Option<&str>,
+) -> Result<Option<usize>, DocumentVisitorBoundaryError> {
+    validate_body_clocks(program, target, true)
+}
+
+fn validate_body_clocks(
+    program: &Program,
+    target: Option<&str>,
+    static_errors: bool,
+) -> Result<Option<usize>, DocumentVisitorBoundaryError> {
     let index = validate_document_filename_clock(program, target)?;
     if !program.user_functions.is_empty() || !program.failure_rules.is_empty() {
         return Err(DocumentVisitorBoundaryError::Unsupported(
             "body clocks require a separate profile for user functions and failure rules",
         ));
     }
-    for node in &program.expressions {
-        if !matches!(
-            node.expression,
-            Expression::Const { .. }
-                | Expression::RuntimeValue { .. }
-                | Expression::RuntimeParameter { .. }
-                | Expression::RuntimeParameterDefault { .. }
-                | Expression::SourceField { .. }
-                | Expression::SourceDocumentPath
-                | Expression::SourceRowDocumentPath { .. }
-                | Expression::Position { .. }
-                | Expression::Call { .. }
-                | Expression::If { .. }
-                | Expression::Aggregate { .. }
-                | Expression::CollectionFind { .. }
-                | Expression::SequenceItemAt {
-                    sequence: crate::GeneratedSequence::TokenizeRegex { .. },
-                    ..
+    let static_messages = program
+        .expressions
+        .iter()
+        .filter_map(|node| {
+            matches!(
+                node.expression,
+                Expression::Const {
+                    value: ir::Value::String(_)
                 }
-                | Expression::InvocationCounter { .. }
-                | Expression::DistinctTextMapLast { .. }
-        ) {
+            )
+            .then_some(node.id)
+        })
+        .collect::<BTreeSet<_>>();
+    for node in &program.expressions {
+        let static_error = static_errors
+            && matches!(node.expression, Expression::Raise { message } if message.is_none_or(|id| static_messages.contains(&id)));
+        if !static_error
+            && !matches!(
+                node.expression,
+                Expression::Const { .. }
+                    | Expression::RuntimeValue { .. }
+                    | Expression::RuntimeParameter { .. }
+                    | Expression::RuntimeParameterDefault { .. }
+                    | Expression::SourceField { .. }
+                    | Expression::SourceDocumentPath
+                    | Expression::SourceRowDocumentPath { .. }
+                    | Expression::Position { .. }
+                    | Expression::Call { .. }
+                    | Expression::If { .. }
+                    | Expression::Aggregate { .. }
+                    | Expression::CollectionFind { .. }
+                    | Expression::SequenceItemAt {
+                        sequence: crate::GeneratedSequence::TokenizeRegex { .. },
+                        ..
+                    }
+                    | Expression::InvocationCounter { .. }
+                    | Expression::DistinctTextMapLast { .. }
+            )
+        {
             return Err(DocumentVisitorBoundaryError::Unsupported(
                 "body clock sampling is limited to ordinary scalar graph expressions",
             ));

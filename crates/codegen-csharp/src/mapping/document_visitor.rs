@@ -6,6 +6,7 @@ pub(super) fn render(
     plan: &ScopePlan<'_>,
     clock: bool,
     body_clock: bool,
+    filename_first: bool,
     output: &mut String,
 ) -> Result<(), EmitError> {
     output.push_str(API);
@@ -18,14 +19,32 @@ pub(super) fn render(
         plan.iteration.expect("validated document iteration"),
         false,
         true,
+        filename_first,
         output,
     )?;
     output.push_str("    }\n");
     if clock {
-        output.push_str(CLOCK_API);
+        output.push_str(&CLOCK_API.replace(
+            "after the complete body",
+            if filename_first {
+                "before the body"
+            } else {
+                "after the complete body"
+            },
+        ));
     }
     if body_clock {
-        output.push_str(BODY_CLOCK_API);
+        output.push_str(&BODY_CLOCK_API.replace(
+            "after complete bodies",
+            if filename_first {
+                "before bodies"
+            } else {
+                "after complete bodies"
+            },
+        ));
+    }
+    if filename_first {
+        output.push_str(PREPARATION_API);
     }
     Ok(())
 }
@@ -57,7 +76,7 @@ const API: &str = r#"
         global::Ferrule.Runtime.FerruleExecutionContext? executionContext,
         global::Ferrule.Runtime.IFerruleDynamicSourceLoader? loader,
         global::System.Func<global::Ferrule.Runtime.FerruleDocument, DocumentDecision<B>> consumer)
-        => VisitDocuments(source, inputs, executionContext, loader, null, null, consumer);
+        => VisitDocuments(source, inputs, executionContext, loader, null, null, null, consumer);
 
     private static DocumentVisit<B> VisitDocuments<B>(
         global::Ferrule.Runtime.FerruleInstance source,
@@ -66,6 +85,7 @@ const API: &str = r#"
         global::Ferrule.Runtime.IFerruleDynamicSourceLoader? loader,
         global::System.Func<string>? filenameClock,
         global::System.Func<string>? bodyClock,
+        global::System.Func<string, DocumentDecision<B>>? preparation,
         global::System.Func<global::Ferrule.Runtime.FerruleDocument, DocumentDecision<B>> consumer)
     {
         global::System.ArgumentNullException.ThrowIfNull(consumer);
@@ -76,7 +96,15 @@ const API: &str = r#"
         try
         {
             var context = CreateContext(source, inputs, executionContext, loader).WithDocumentBodyClock(bodyClock);
-            VisitDocumentScope(context, filenameClock, document =>
+            VisitDocumentScope(context, filenameClock, path =>
+            {
+                if (preparation is null) return true;
+                DocumentDecision<B> decision;
+                try { decision = preparation(path); }
+                catch (global::System.Exception error) { consumerError = error; throw; }
+                if (decision.Stopped) { stopped = true; reason = decision.Reason; return false; }
+                return true;
+            }, document =>
             {
                 DocumentDecision<B> decision;
                 try { decision = consumer(document); }
@@ -96,6 +124,7 @@ const API: &str = r#"
     private static void VisitDocumentScope(
         global::Ferrule.Runtime.ScopeContext context,
         global::System.Func<string>? filenameClock,
+        global::System.Func<string, bool> prepareDocument,
         global::System.Func<global::Ferrule.Runtime.FerruleDocument, bool> offerDocument)
     {
 "#;
@@ -111,7 +140,7 @@ const CLOCK_API: &str = r#"
         global::System.Func<global::Ferrule.Runtime.FerruleDocument, DocumentDecision<B>> consumer)
     {
         global::System.ArgumentNullException.ThrowIfNull(clock);
-        return VisitDocuments(source, inputs, executionContext, loader, clock, null, consumer);
+        return VisitDocuments(source, inputs, executionContext, loader, clock, null, null, consumer);
     }
 "#;
 
@@ -128,6 +157,25 @@ const BODY_CLOCK_API: &str = r#"
     {
         global::System.ArgumentNullException.ThrowIfNull(bodyClock);
         global::System.ArgumentNullException.ThrowIfNull(filenameClock);
-        return VisitDocuments(source, inputs, executionContext, loader, filenameClock, bodyClock, consumer);
+        return VisitDocuments(source, inputs, executionContext, loader, filenameClock, bodyClock, null, consumer);
+}
+"#;
+
+const PREPARATION_API: &str = r#"
+    /// <summary>Offers each filename before evaluating its body. The host owns preparation cleanup on every failure.</summary>
+    public static DocumentVisit<B> VisitTargetDocumentsWithPreparation<B>(
+        global::Ferrule.Runtime.FerruleInstance source,
+        global::System.Collections.Generic.IReadOnlyList<NamedInput> inputs,
+        global::Ferrule.Runtime.FerruleExecutionContext? executionContext,
+        global::Ferrule.Runtime.IFerruleDynamicSourceLoader? loader,
+        global::System.Func<string> bodyClock,
+        global::System.Func<string> filenameClock,
+        global::System.Func<string, DocumentDecision<B>> preparation,
+        global::System.Func<global::Ferrule.Runtime.FerruleDocument, DocumentDecision<B>> consumer)
+    {
+        global::System.ArgumentNullException.ThrowIfNull(bodyClock);
+        global::System.ArgumentNullException.ThrowIfNull(filenameClock);
+        global::System.ArgumentNullException.ThrowIfNull(preparation);
+        return VisitDocuments(source, inputs, executionContext, loader, filenameClock, bodyClock, preparation, consumer);
     }
 "#;

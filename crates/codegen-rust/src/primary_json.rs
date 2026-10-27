@@ -8,6 +8,7 @@ pub enum PrimaryJsonEmitError {
     Boundary(JsonProjectionBoundaryError),
     Emit(EmitError),
     Writer(codegen::MapForceX12WriterError),
+    Visitor(codegen::DocumentVisitorEmitError<EmitError>),
 }
 impl std::fmt::Display for PrimaryJsonEmitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -15,6 +16,7 @@ impl std::fmt::Display for PrimaryJsonEmitError {
             Self::Boundary(error) => error.fmt(f),
             Self::Emit(error) => error.fmt(f),
             Self::Writer(error) => error.fmt(f),
+            Self::Visitor(error) => error.fmt(f),
         }
     }
 }
@@ -33,7 +35,8 @@ pub fn emit_with_mapforce_x12_writer(
     emit_with_writer(document, options, shape, descriptor)
 }
 
-/// Emit a grouped document-set mapping plus a writer for its individual members.
+/// Emit grouped documents with incremental delivery and an individual X12 writer.
+/// Filename clocks precede each body; writer clocks remain separate host calls.
 pub fn emit_grouped_with_mapforce_x12_writer(
     document: &DocumentProgram,
     options: &Options,
@@ -44,7 +47,17 @@ pub fn emit_grouped_with_mapforce_x12_writer(
     let descriptor =
         codegen::prepare_mapforce_x12_document_writer(document, target_options, minimums)
             .map_err(PrimaryJsonEmitError::Writer)?;
-    emit_with_writer(document, options, shape, descriptor)
+    let projection = codegen::prepare_json_source_projection(document, shape)
+        .map_err(PrimaryJsonEmitError::Boundary)?;
+    let base = crate::document_visitor::emit_with_static_error_document_clocks(
+        document.program(),
+        options,
+    )
+    .map_err(PrimaryJsonEmitError::Visitor)?;
+    let base =
+        crate::primary_filename::append(base, document).map_err(PrimaryJsonEmitError::Emit)?;
+    let projected = append_projection(base, projection)?;
+    append_writer(projected, descriptor)
 }
 
 fn emit_with_writer(
@@ -53,7 +66,15 @@ fn emit_with_writer(
     shape: &JsonSourceShape,
     descriptor: String,
 ) -> Result<ArtifactSet, PrimaryJsonEmitError> {
-    let mut files = emit_with_primary_json_projection(document, options, shape)?.into_files();
+    let projected = emit_with_primary_json_projection(document, options, shape)?;
+    append_writer(projected, descriptor)
+}
+
+fn append_writer(
+    artifacts: ArtifactSet,
+    descriptor: String,
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let mut files = artifacts.into_files();
     let mut source = format!(
         "\npub fn serialize_mapforce_x12_document(value: &Instance, execution: &ExecutionContext<'_>) -> Result<Vec<u8>, codegen_runtime::X12BoundaryError> {{\n    codegen_runtime::serialize_mapforce_x12_document({0}, value, execution)\n}}\npub fn write_mapforce_x12_document(value: &Instance, execution: &ExecutionContext<'_>, output: &mut dyn std::io::Write) -> Result<(), codegen_runtime::MapForceX12WriteError> {{\n    codegen_runtime::write_mapforce_x12_document({0}, value, execution, output)\n}}\n",
         rust_string(&descriptor)
@@ -79,9 +100,16 @@ pub fn emit_with_primary_json_projection(
 ) -> Result<ArtifactSet, PrimaryJsonEmitError> {
     let descriptor = codegen::prepare_json_source_projection(document, shape)
         .map_err(PrimaryJsonEmitError::Boundary)?;
-    let mut files = crate::emit_with_primary_filename(document, options)
-        .map_err(PrimaryJsonEmitError::Emit)?
-        .into_files();
+    let base =
+        crate::emit_with_primary_filename(document, options).map_err(PrimaryJsonEmitError::Emit)?;
+    append_projection(base, descriptor)
+}
+
+fn append_projection(
+    base: ArtifactSet,
+    descriptor: String,
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let mut files = base.into_files();
     let mut code = format!(
         "\nfn primary_json_projection() -> &'static codegen_runtime::JsonSourceShape {{\n    static SHAPE: std::sync::OnceLock<codegen_runtime::JsonSourceShape> = std::sync::OnceLock::new();\n    SHAPE.get_or_init(|| codegen_runtime::parse_json_projection_shape({}).expect(\"generation-validated JSON projection\"))\n}}\n\n/// Lazily acquire one typed document at a time. Host callbacks own I/O and parsing.\npub fn acquire_primary_json<'a, E: 'a, I: Iterator<Item = Result<String, E>> + 'a>(\n    execution: &'a ExecutionContext<'a>,\n    select: impl FnOnce(&str) -> Result<I, E> + 'a,\n    load: impl FnMut(&str) -> Result<codegen_runtime::JsonSourceDocument, E> + 'a,\n    limits: codegen_runtime::JsonProjectionLimits, maximum: usize,\n) -> Result<codegen_runtime::JsonSourceAcquisition<'a, codegen_runtime::RuntimeError, E>, codegen_runtime::JsonAcquisitionError<codegen_runtime::RuntimeError, E>> {{\n    codegen_runtime::JsonSourceAcquisition::new(move || evaluate_primary_filename(execution), select, load, primary_json_projection(), limits, maximum)\n}}\n",
         rust_string(&descriptor)

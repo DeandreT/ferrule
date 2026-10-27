@@ -11,7 +11,7 @@ pub fn emit_with_document_visitor(
 ) -> Result<ArtifactSet, DocumentVisitorEmitError<EmitError>> {
     let index = codegen::validate_document_visitor(program, target)
         .map_err(DocumentVisitorEmitError::Boundary)?;
-    emit_admitted(program, options, index, false, false)
+    emit_admitted(program, options, index, false, false, false)
 }
 
 /// Add an explicit filename-only clock; body clocks retain the execution value.
@@ -22,7 +22,7 @@ pub fn emit_with_document_filename_clock(
 ) -> Result<ArtifactSet, DocumentVisitorEmitError<EmitError>> {
     let index = codegen::validate_document_filename_clock(program, target)
         .map_err(DocumentVisitorEmitError::Boundary)?;
-    emit_admitted(program, options, index, true, false)
+    emit_admitted(program, options, index, true, false, false)
 }
 
 /// Add independently supplied reached body and filename clocks.
@@ -33,7 +33,16 @@ pub fn emit_with_document_clocks(
 ) -> Result<ArtifactSet, DocumentVisitorEmitError<EmitError>> {
     let index = codegen::validate_document_clocks(program, target)
         .map_err(DocumentVisitorEmitError::Boundary)?;
-    emit_admitted(program, options, index, true, true)
+    emit_admitted(program, options, index, true, true, false)
+}
+
+pub(crate) fn emit_with_static_error_document_clocks(
+    program: &Program,
+    options: &Options,
+) -> Result<ArtifactSet, DocumentVisitorEmitError<EmitError>> {
+    let index = codegen::validate_document_clocks_with_static_errors(program, None)
+        .map_err(DocumentVisitorEmitError::Boundary)?;
+    emit_admitted(program, options, index, true, true, true)
 }
 
 fn emit_admitted(
@@ -42,12 +51,13 @@ fn emit_admitted(
     index: Option<usize>,
     clock: bool,
     body_clock: bool,
+    filename_first: bool,
 ) -> Result<ArtifactSet, DocumentVisitorEmitError<EmitError>> {
     let mut files = crate::emit(program, options)
         .map_err(DocumentVisitorEmitError::Emit)?
         .into_files();
-    let source =
-        render(program, index, clock, body_clock).map_err(DocumentVisitorEmitError::Emit)?;
+    let source = render(program, index, clock, body_clock, filename_first)
+        .map_err(DocumentVisitorEmitError::Emit)?;
     for file in &mut files {
         if file.path.as_str() == "src/lib.rs" {
             file.contents.extend_from_slice(source.as_bytes());
@@ -61,6 +71,7 @@ fn render(
     index: Option<usize>,
     clock: bool,
     body_clock: bool,
+    filename_first: bool,
 ) -> Result<String, EmitError> {
     let (name, root) = index.map_or_else(
         || ("scope_root".to_owned(), &program.root),
@@ -87,13 +98,31 @@ fn render(
             .expect("validated visitor iteration"),
         children,
         true,
+        filename_first,
     )?);
     output.push_str("}\n");
     if clock {
-        output.push_str(CLOCK_API);
+        output.push_str(&CLOCK_API.replace(
+            "after each body",
+            if filename_first {
+                "before each body"
+            } else {
+                "after each body"
+            },
+        ));
     }
     if body_clock {
-        output.push_str(BODY_CLOCK_API);
+        output.push_str(&BODY_CLOCK_API.replace(
+            "filenames only after complete bodies",
+            if filename_first {
+                "filenames before bodies"
+            } else {
+                "filenames only after complete bodies"
+            },
+        ));
+    }
+    if filename_first {
+        output.push_str(PREPARATION_API);
     }
     Ok(output)
 }
@@ -130,7 +159,7 @@ pub fn visit_target_documents<'a, B>(
     loader: Option<&'a dyn DynamicSourceLoader>,
     consumer: impl FnMut(codegen_runtime::DocumentMember) -> std::ops::ControlFlow<B>,
 ) -> Result<DocumentVisit<B>, DocumentVisitError> {
-    visit_documents(source, inputs, execution, loader, None, None, consumer)
+    visit_documents(source, inputs, execution, loader, None, None, None, consumer)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -141,6 +170,7 @@ fn visit_documents<'a, B>(
     loader: Option<&'a dyn DynamicSourceLoader>,
     filename_clock: Option<&'a dyn codegen_runtime::DocumentFilenameClock>,
     body_clock: Option<&'a dyn codegen_runtime::DocumentBodyClock>,
+    mut preparation: Option<&mut dyn FnMut(&str) -> std::ops::ControlFlow<B>>,
     mut consumer: impl FnMut(codegen_runtime::DocumentMember) -> std::ops::ControlFlow<B>,
 ) -> Result<DocumentVisit<B>, DocumentVisitError> {
     let inputs = validate_named_inputs(inputs).map_err(|source| DocumentVisitError { accepted: 0, source })?;
@@ -151,16 +181,20 @@ fn visit_documents<'a, B>(
     let context = match loader { Some(loader) => context.with_dynamic_source_loader(loader), None => context };
     let context = context.with_document_body_clock(body_clock);
     let mut accepted = 0;
-    let mut stopped = None;
+    let stopped = std::cell::RefCell::new(None);
     let outcome = {
         let mut offer = |document| match consumer(document) {
             std::ops::ControlFlow::Continue(()) => { accepted += 1; true }
-            std::ops::ControlFlow::Break(reason) => { stopped = Some(reason); false }
+            std::ops::ControlFlow::Break(reason) => { *stopped.borrow_mut() = Some(reason); false }
         };
-        visit_document_scope(&context, filename_clock, &mut offer)
+        let mut prepare = |path: &str| match preparation.as_mut().map(|prepare| prepare(path)) {
+            Some(std::ops::ControlFlow::Break(reason)) => { *stopped.borrow_mut() = Some(reason); false }
+            _ => true,
+        };
+        visit_document_scope(&context, filename_clock, &mut prepare, &mut offer)
     };
     outcome.map_err(|source| DocumentVisitError { accepted, source })?;
-    Ok(match stopped {
+    Ok(match stopped.into_inner() {
         Some(reason) => DocumentVisit::Stopped { accepted, reason },
         None => DocumentVisit::Complete { accepted },
     })
@@ -169,6 +203,7 @@ fn visit_documents<'a, B>(
 fn visit_document_scope<'a>(
     context: &ScopeContext<'a>,
     filename_clock: Option<&'a dyn codegen_runtime::DocumentFilenameClock>,
+    _prepare_document: &mut dyn FnMut(&str) -> bool,
     offer_document: &mut dyn FnMut(codegen_runtime::DocumentMember) -> bool,
 ) -> Result<(), RuntimeError> {
 "#;
@@ -183,7 +218,7 @@ pub fn visit_target_documents_with_filename_clock<'a, B>(
     clock: &'a dyn codegen_runtime::DocumentFilenameClock,
     consumer: impl FnMut(codegen_runtime::DocumentMember) -> std::ops::ControlFlow<B>,
 ) -> Result<DocumentVisit<B>, DocumentVisitError> {
-    visit_documents(source, inputs, execution, loader, Some(clock), None, consumer)
+    visit_documents(source, inputs, execution, loader, Some(clock), None, None, consumer)
 }
 "#;
 
@@ -199,6 +234,24 @@ pub fn visit_target_documents_with_clocks<'a, B>(
     filename_clock: &'a dyn codegen_runtime::DocumentFilenameClock,
     consumer: impl FnMut(codegen_runtime::DocumentMember) -> std::ops::ControlFlow<B>,
 ) -> Result<DocumentVisit<B>, DocumentVisitError> {
-    visit_documents(source, inputs, execution, loader, Some(filename_clock), Some(body_clock), consumer)
+    visit_documents(source, inputs, execution, loader, Some(filename_clock), Some(body_clock), None, consumer)
+}
+"#;
+
+const PREPARATION_API: &str = r#"
+/// Observe each complete filename before evaluating its body. The host owns
+/// preparation cleanup even when body evaluation or publication fails.
+#[allow(clippy::too_many_arguments)]
+pub fn visit_target_documents_with_preparation<'a, B>(
+    source: &'a Instance,
+    inputs: &[NamedInput<'a>],
+    execution: Option<&ExecutionContext<'a>>,
+    loader: Option<&'a dyn DynamicSourceLoader>,
+    body_clock: &'a dyn codegen_runtime::DocumentBodyClock,
+    filename_clock: &'a dyn codegen_runtime::DocumentFilenameClock,
+    mut preparation: impl FnMut(&str) -> std::ops::ControlFlow<B>,
+    consumer: impl FnMut(codegen_runtime::DocumentMember) -> std::ops::ControlFlow<B>,
+) -> Result<DocumentVisit<B>, DocumentVisitError> {
+    visit_documents(source, inputs, execution, loader, Some(filename_clock), Some(body_clock), Some(&mut preparation), consumer)
 }
 "#;
