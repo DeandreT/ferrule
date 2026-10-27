@@ -23,6 +23,7 @@ pub struct ImportedJsonEdiDocument {
 
 /// Grouped JSON input with one independently named EDI document per group.
 /// Acquisition and physical publication remain explicit host operations.
+/// Each source object must expose at most one selected String key occurrence.
 pub struct ImportedGroupedJsonEdiDocument {
     pub document: DocumentProject,
     pub source: ImportedJsonSourceProjection,
@@ -592,12 +593,31 @@ impl Builder {
             frame: None,
         })?;
         let first = self.constant(Value::Int(1))?;
-        let key_node = self.alloc(Node::Aggregate {
+        let selected_key = self.alloc(Node::Aggregate {
             function: AggregateOp::ItemAt,
             collection: key_path.clone(),
             value: vec![],
             expression: Some(value),
             arg: Some(first),
+        })?;
+        let key_count = self.alloc(Node::Aggregate {
+            function: AggregateOp::Count,
+            collection: key_path.clone(),
+            value: vec![],
+            expression: None,
+            arg: None,
+        })?;
+        let multiple = self.call("greater_than", vec![key_count, first])?;
+        let message = self.constant(Value::String(
+            "multiple group keys per source object require separate admission".into(),
+        ))?;
+        let unsupported = self.alloc(Node::Raise {
+            message: Some(message),
+        })?;
+        let key_node = self.alloc(Node::If {
+            condition: multiple,
+            then: unsupported,
+            else_: selected_key,
         })?;
         self.grouped = Some(GroupedSource {
             collection,
