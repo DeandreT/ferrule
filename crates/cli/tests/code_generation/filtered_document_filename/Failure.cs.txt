@@ -1,0 +1,28 @@
+using System.Text;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var root=args[0];
+var input="<Input><Branch><Label>first.xml</Label><Person><First>A</First><Last>B</Last></Person></Branch><Branch><Label></Label><Person><First>C</First><Last>D</Last></Person></Branch></Input>";
+var source=FerruleXml.ParseStructuredEmbeddedBytes(File.ReadAllText(Path.Combine(root,"source-schema.json")),Encoding.UTF8.GetBytes(input));
+try {GeneratedMapping.Execute(source);throw new Exception("missing typed failure");}
+catch(FerruleRuntimeException e) {Check(e);File.WriteAllText(Path.Combine(root,"csharp-typed-failure.txt"),e.ToString());}
+var context=new FerruleExecutionContext("fixture","fixture","2026-01-01T00:00:00Z",null);
+for(var api=0;api<4;api++) {
+    try {
+        switch(api) {
+            case 0: GeneratedMapping.ExecuteXmlDocuments(input);break;
+            case 1: GeneratedMapping.ExecuteXmlDocuments(input,context);break;
+            case 2: GeneratedMapping.ExecuteXmlBytesDocuments(Encoding.UTF8.GetBytes(input));break;
+            default: GeneratedMapping.ExecuteXmlBytesDocuments(Encoding.UTF8.GetBytes(input),context);break;
+        }
+        throw new Exception("a partial result escaped the late filename failure");
+    } catch(FerruleXmlDocumentExecutionException e) {
+        File.WriteAllText(Path.Combine(root,$"csharp-xml-failure-{api}.txt"),e.ToString());
+        if(e.Member is not null || e.Boundary.Kind!=FerruleXmlBoundaryErrorKind.Mapping || e.Boundary.InnerException is not FerruleRuntimeException cause)throw new Exception("wrong boundary failure",e);
+        Check(cause);
+    }
+}
+static void Check(FerruleRuntimeException e) {
+    if(e.Error!=FerruleRuntimeError.EmptyDynamicTargetPath || e.Node!=EXPECTED_NODE || e.Message!="Node EXPECTED_NODE: dynamic target path must not be empty.")throw new Exception("wrong original filename failure",e);
+}
