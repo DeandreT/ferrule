@@ -1580,6 +1580,7 @@ impl Builder {
                 ("left_utf16_lossy", 2)
             }
             ("core", "parse-date") => ("parse_date", 2),
+            ("core", "format-date") => ("format_date", 2),
             ("core", "format-dateTime") => ("format_datetime_milliseconds", 2),
             _ => {
                 return Err(refuse(format!(
@@ -1588,7 +1589,7 @@ impl Builder {
                 )));
             }
         };
-        let valid_arity = if f.parsed.name == "format-dateTime" {
+        let valid_arity = if matches!(f.parsed.name.as_str(), "format-dateTime" | "format-date") {
             (2..=3).contains(&f.inputs.len()) && f.inputs[2..].iter().all(Option::is_none)
         } else if f.parsed.name == "concat" {
             (2..=16).contains(&f.inputs.len())
