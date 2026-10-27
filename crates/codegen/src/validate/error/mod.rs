@@ -676,6 +676,10 @@ pub enum ProgramValidationError {
         target_path: Vec<String>,
         reason: &'static str,
     },
+    InvalidDocumentCollection {
+        target_path: Vec<String>,
+        reason: &'static str,
+    },
     MissingDynamicPropertyExpression {
         target_path: Vec<String>,
         property: usize,

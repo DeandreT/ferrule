@@ -29,6 +29,7 @@ mod constructed_variable_driver;
 mod csv_document;
 mod db_query;
 mod db_where;
+mod document_collections;
 mod document_paths;
 mod dynamic_json;
 mod dynamic_xml_variable;
@@ -2545,7 +2546,7 @@ fn import_resolved(
             &mut builder,
         );
         restore_scope_source_hints(&mut extra_root, extra, &scope_source_hints);
-        let extra_path = if extra_root.output_path().is_some() {
+        let extra_path = if extra_root.produces_documents() {
             None
         } else {
             extra
@@ -2626,7 +2627,7 @@ fn import_resolved(
             }
         })
         .map(|stored| resources.static_input(&stored));
-    let target_path = if root.output_path().is_some() {
+    let target_path = if root.produces_documents() {
         None
     } else if matches!(
         selection,
@@ -2845,10 +2846,58 @@ fn build_target_scope(
     eager_functions: Option<&BTreeSet<usize>>,
     builder: &mut GraphBuilder<'_>,
 ) -> Scope {
+    if let Some(recipe) = document_collections::recognize(target, structure, resources, builder) {
+        let mut candidate = builder.clone();
+        let warnings = candidate.warnings.len();
+        if let Some(plan) = recipe.materialize(&mut candidate) {
+            let root = build_target_scope_inner(
+                mapping,
+                target,
+                structure,
+                resources,
+                copy_all_targets,
+                eager_functions,
+                Some(&plan),
+                &mut candidate,
+            );
+            if candidate.warnings.len() == warnings
+                && let Some(root) = plan.wrap(root)
+            {
+                *builder = candidate;
+                return root;
+            }
+        }
+    }
+    build_target_scope_inner(
+        mapping,
+        target,
+        structure,
+        resources,
+        copy_all_targets,
+        eager_functions,
+        None,
+        builder,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_target_scope_inner(
+    mapping: &roxmltree::Node<'_, '_>,
+    target: &SchemaComponent,
+    structure: &roxmltree::Node<'_, '_>,
+    resources: &ResourceResolver,
+    copy_all_targets: &BTreeSet<u32>,
+    eager_functions: Option<&BTreeSet<usize>>,
+    document_plan: Option<&document_collections::Plan>,
+    builder: &mut GraphBuilder<'_>,
+) -> Scope {
     let edge_from = builder.edge_from;
     builder.rejected_join_paths.clear();
     let mut scopes = ScopeBuilder::new(BTreeMap::new());
-    let dynamic_document = target
+    if let Some(plan) = document_plan {
+        plan.initialize(&mut scopes);
+    }
+    let dynamic_document = document_plan.is_none().then(|| target
         .ports
         .iter()
         .find(|(_, path)| path.as_slice() == [schema::TARGET_DOCUMENT_PATH_PORT])
@@ -2878,7 +2927,7 @@ fn build_target_scope(
                     None
                 }
             }
-        });
+        })).flatten();
     let dynamic_target = dynamic_json::prepare_target(target, builder);
     let mut iterations = Vec::new();
     let mut bindings = Vec::new();
@@ -3006,8 +3055,10 @@ fn build_target_scope(
     }
     materialize::eager_functions(builder, eager_functions);
     scalar_root::install(target, structure, resources, builder, &mut scopes);
-    if let Some(feed) = dynamic_document
-        && let Some(node) = builder.binding_node_at_anchor(feed, &[], &[])
+    let document_path = document_plan.map(|plan| plan.filename).or_else(|| {
+        dynamic_document.and_then(|feed| builder.binding_node_at_anchor(feed, &[], &[]))
+    });
+    if let Some(node) = document_path
         && !scopes.root.set_output_path(Some(node))
     {
         builder.warnings.push(

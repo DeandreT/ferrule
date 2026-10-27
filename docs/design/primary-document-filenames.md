@@ -1,5 +1,8 @@
 # Primary document filename plans
 
+Nested mapping-produced outputs use [document collections](document-collections.md).
+Those output scopes are separate from the primary input filename plan below.
+
 `mapping::DocumentProject` is a distinct, versioned artifact containing a
 mapping project and its primary filename graph root. It retains acquisition
 metadata without changing the legacy `Project` format or its saved preview

@@ -162,6 +162,7 @@ impl Scope {
                 }
             }
             ScopeConstruction::Constructed
+            | ScopeConstruction::CollectDocuments
             | ScopeConstruction::CopyCurrentSource
             | ScopeConstruction::XmlMixedContent { .. }
             | ScopeConstruction::PathHierarchy { .. }

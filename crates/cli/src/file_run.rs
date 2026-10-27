@@ -930,7 +930,7 @@ fn plan_primary_target<'a>(
     project_path: &Path,
     output_path: Option<&Path>,
 ) -> anyhow::Result<PlannedProjectTarget<'a>> {
-    let destination = if project.root.output_path().is_some() {
+    let destination = if project.root.produces_documents() {
         OutputDestination::DynamicBase(output_path.map(Path::to_path_buf).unwrap_or_else(|| {
             project_path
                 .parent()
@@ -961,7 +961,7 @@ fn plan_named_target<'a>(
     project_path: &Path,
     output_path: Option<&Path>,
 ) -> anyhow::Result<PlannedProjectTarget<'a>> {
-    let destination = if target.root.output_path().is_some() {
+    let destination = if target.root.produces_documents() {
         OutputDestination::DynamicBase(output_path.map(Path::to_path_buf).unwrap_or_else(|| {
             project_path
                 .parent()

@@ -1,0 +1,59 @@
+using System.Text;
+using System.Text.Json.Nodes;
+using System.Xml.Linq;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var root=args[0];
+var cases=JsonNode.Parse(File.ReadAllText(Path.Combine(root,"cases.json")))!.AsArray();
+var schema=File.ReadAllText(Path.Combine(root,"source-schema.json"));
+var context=new FerruleExecutionContext("collection-fixture","collection-fixture","2026-01-01T00:00:00Z",null);
+foreach(var item in cases) {
+    var test=item!.AsObject();var id=test["id"]!.GetValue<string>();var input=test["input"]!.GetValue<string>();
+    var source=FerruleXml.ParseStructuredEmbeddedBytes(schema,Encoding.UTF8.GetBytes(input));
+    try {
+        var actual=GeneratedMapping.Execute(source);
+        File.WriteAllText(Path.Combine(root,$"csharp-{id}-typed.txt"),Tree(actual).ToJsonString());
+        Require(test["error"] is null,"expected typed failure");
+        var documents=actual as FerruleDocumentSet ?? throw new Exception("document set required");
+        var expected=test["documents"]!.AsArray();Require(documents.Documents.Count==expected.Count,"typed count");
+        for(var i=0;i<expected.Count;i++) {
+            var d=expected[i]!;Require(documents.Documents[i].Path==d["path"]!.GetValue<string>(),"typed path");
+            var names=d["names"]!.AsArray().Select(n=>n!.GetValue<string>()).ToArray();
+            var value=new FerruleGroup(new[]{new FerruleField("Person",new FerruleRepeated(names.Select(n=>(FerruleInstance)new FerruleGroup(new[]{new FerruleField("Name",new FerruleScalar(FerruleValue.FromString(n)))}))))});
+            Require(JsonNode.DeepEquals(Tree(documents.Documents[i].Value),Tree(value)),"complete typed value");
+        }
+    } catch(FerruleRuntimeException error) {
+        File.WriteAllText(Path.Combine(root,$"csharp-{id}-typed.txt"),error.ToString());
+        Require(test["error"] is not null && error.Error==FerruleRuntimeError.MappingException && error.Node==12 && error.MappingExceptionMessage=="late document failure","typed original error");
+    }
+    for(var api=0;api<4;api++) {
+        try {
+            var actual=api switch {
+                0=>GeneratedMapping.ExecuteXmlDocuments(input).Select(d=>(d.Path,d.Document)).ToArray(),
+                1=>GeneratedMapping.ExecuteXmlDocuments(input,context).Select(d=>(d.Path,d.Document)).ToArray(),
+                2=>GeneratedMapping.ExecuteXmlBytesDocuments(Encoding.UTF8.GetBytes(input)).Select(d=>(d.Path,Encoding.UTF8.GetString(d.Document))).ToArray(),
+                _=>GeneratedMapping.ExecuteXmlBytesDocuments(Encoding.UTF8.GetBytes(input),context).Select(d=>(d.Path,Encoding.UTF8.GetString(d.Document))).ToArray(),
+            };
+            File.WriteAllText(Path.Combine(root,$"csharp-{id}-{api}.txt"),System.Text.Json.JsonSerializer.Serialize(actual));
+            Require(test["error"] is null,"expected document failure");var expected=test["documents"]!.AsArray();Require(actual.Length==expected.Count,"document count");
+            for(var i=0;i<actual.Length;i++) {
+                var d=expected[i]!;Require(actual[i].Path==d["path"]!.GetValue<string>(),"document path");
+                var wanted=new XElement("Output",d["names"]!.AsArray().Select(n=>new XElement("Person",new XElement("Name",n!.GetValue<string>()))));
+                Require(XNode.DeepEquals(XElement.Parse(actual[i].Item2),wanted),"complete physical XML");
+            }
+        } catch(FerruleXmlDocumentExecutionException error) {
+            File.WriteAllText(Path.Combine(root,$"csharp-{id}-{api}.txt"),error.ToString());
+            Require(test["error"] is not null && error.Member is null && error.Boundary.Kind==FerruleXmlBoundaryErrorKind.Mapping,"mapping precedes document publication");
+            Require(error.Boundary.InnerException is FerruleRuntimeException cause && cause.Error==FerruleRuntimeError.MappingException && cause.Node==12 && cause.MappingExceptionMessage=="late document failure","original mapping error");
+        }
+    }
+}
+static void Require(bool value,string message) {if(!value)throw new Exception(message);}
+static JsonNode Tree(FerruleInstance value)=>value switch {
+    FerruleDocumentSet documents=>new JsonArray(documents.Documents.Select(d=>(JsonNode)new JsonObject {["path"]=d.Path,["value"]=Tree(d.Value)}).ToArray()),
+    FerruleGroup group=>new JsonObject { ["fields"]=new JsonArray(group.Fields.Select(f=>(JsonNode)new JsonObject {["name"]=f.Name,["value"]=Tree(f.Value)}).ToArray()),["origin"]=group.XmlTypeOrigin.Kind.ToString() },
+    FerruleRepeated repeated=>new JsonArray(repeated.Items.Select(Tree).ToArray()),
+    FerruleScalar scalar when scalar.Value.Kind==FerruleValueKind.String=>JsonValue.Create(scalar.Value.StringValue)!,
+    _=>throw new Exception("unexpected typed value"),
+};

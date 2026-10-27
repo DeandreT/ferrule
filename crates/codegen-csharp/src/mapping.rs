@@ -196,6 +196,7 @@ fn render_mapping(
                         scope.construction,
                         TargetConstruction::DynamicGroup { merge: true, .. }
                     ),
+                    matches!(scope.construction, TargetConstruction::CollectDocuments),
                     &mut output,
                 )?;
             }
@@ -1153,6 +1154,7 @@ fn render_iteration_scope(
     scope: usize,
     iteration: &IterationPlan,
     merge_dynamic_fields: bool,
+    collect_documents: bool,
     output: &mut String,
 ) -> Result<(), EmitError> {
     render_iteration_candidates(program, scope, iteration.input(), output)?;
@@ -1252,6 +1254,12 @@ fn render_iteration_scope(
     if dynamic.is_some() {
         output.push_str(&format!(
             "        return new global::Ferrule.Runtime.FerruleDocumentSet(documents_{scope});\n"
+        ));
+        return Ok(());
+    }
+    if collect_documents {
+        output.push_str(&format!(
+            "        return global::Ferrule.Runtime.FerruleDynamicDocuments.Collect(items_{scope});\n"
         ));
         return Ok(());
     }
@@ -2461,6 +2469,14 @@ fn render_expression(
 }
 
 fn render_bound_group(scope_index: usize, scope: &ScopePlan<'_>, output: &mut String) {
+    if matches!(scope.construction, TargetConstruction::CollectDocuments) {
+        output.push_str("        return global::Ferrule.Runtime.FerruleDynamicDocuments.Collect(new global::Ferrule.Runtime.FerruleInstance[]\n        {\n");
+        for (_, child) in &scope.children {
+            output.push_str(&format!("            Scope_{child}(context),\n"));
+        }
+        output.push_str("        });\n    }\n");
+        return;
+    }
     for (binding_index, expression) in scope.evaluations.iter().enumerate() {
         output.push_str(&format!(
             "        var value_{scope_index}_{binding_index} = Node_{expression}(context);\n"
@@ -2903,7 +2919,14 @@ fn render_basic_window_legacy_scope(
 ) -> Result<(), EmitError> {
     output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleInstance Scope_{index}(global::Ferrule.Runtime.ScopeContext context)\n    {{\n"));
     if let Some(iteration) = scope.iteration {
-        render_iteration_scope(program, index, iteration, false, output)?;
+        render_iteration_scope(
+            program,
+            index,
+            iteration,
+            false,
+            matches!(scope.construction, TargetConstruction::CollectDocuments),
+            output,
+        )?;
     } else if scope.repeating {
         output.push_str(&format!("        return new global::Ferrule.Runtime.FerruleRepeated(new global::Ferrule.Runtime.FerruleInstance[] {{ ScopeItem_{index}(context) }});\n"));
     } else {

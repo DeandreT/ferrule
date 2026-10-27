@@ -110,6 +110,8 @@ mod csv_x12_adapters;
 mod decimal_mapping;
 #[path = "code_generation/disconnected_inputs.rs"]
 mod disconnected_inputs;
+#[path = "code_generation/document_collections.rs"]
+mod document_collections;
 #[path = "code_generation/dynamic_properties.rs"]
 mod dynamic_properties;
 #[path = "code_generation/dynamic_source_fault_projection.rs"]

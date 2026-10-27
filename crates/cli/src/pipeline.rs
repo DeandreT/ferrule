@@ -811,7 +811,7 @@ fn select_outputs<'a>(
                 stage.project.target.name.as_str(),
                 &stage.project.target,
                 &stage.project.target_options,
-                stage.project.root.output_path().is_some(),
+                stage.project.root.produces_documents(),
             ),
             Some(name) => {
                 let target = stage
@@ -826,7 +826,7 @@ fn select_outputs<'a>(
                     target.name.as_str(),
                     &target.schema,
                     &target.options,
-                    target.root.output_path().is_some(),
+                    target.root.produces_documents(),
                 )
             }
         };

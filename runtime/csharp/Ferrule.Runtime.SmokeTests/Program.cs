@@ -91,6 +91,7 @@ internal static partial class Program
             ("dynamic source JSON adapter faults and causes", DynamicSourceJsonAdapterFailures),
             ("dynamic source diagnostic projection tokens", DynamicSourceProjectionTokens),
             ("dynamic target construction", DynamicTargetConstruction),
+            ("ordered document collections", DocumentCollections),
             ("collection-find contexts", CollectionFindContexts),
             ("inner join contexts", InnerJoinContexts),
             ("owned inner join tuples", OwnedInnerJoinContexts),

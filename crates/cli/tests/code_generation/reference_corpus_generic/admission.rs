@@ -85,25 +85,39 @@ pub(super) fn check_warnings(count: usize) -> Result<(), AdmissionError> {
     }
 }
 
-fn scopes_supported(scope: &TargetScope) -> bool {
+fn scopes_supported(scope: &TargetScope, document_sets: bool) -> bool {
     !matches!(
         scope.construction,
         TargetConstruction::XmlMixedContent { .. }
-    ) && scope.children.iter().all(scopes_supported)
+    ) && (!matches!(scope.construction, TargetConstruction::CollectDocuments) || document_sets)
+        && scope
+            .children
+            .iter()
+            .all(|child| scopes_supported(child, document_sets))
         && match &scope.construction {
-            TargetConstruction::DynamicGroup { children, .. } => {
-                children.iter().all(|child| scopes_supported(&child.scope))
-            }
+            TargetConstruction::DynamicGroup { children, .. } => children
+                .iter()
+                .all(|child| scopes_supported(&child.scope, document_sets)),
             _ => true,
         }
         && match scope.iteration.as_ref().map(|iteration| iteration.input()) {
-            Some(IterationSource::DynamicDocuments(_)) => false,
-            Some(IterationSource::Concatenate(sequence)) => sequence.iter().all(scopes_supported),
+            Some(IterationSource::DynamicDocuments(_)) => document_sets,
+            Some(IterationSource::Concatenate(sequence)) => sequence
+                .iter()
+                .all(|child| scopes_supported(child, document_sets)),
             _ => true,
         }
 }
 
 pub(super) fn check_program(program: &Program) -> Result<(), AdmissionError> {
+    check_program_transport(program, false)
+}
+
+pub(super) fn check_document_program(program: &Program) -> Result<(), AdmissionError> {
+    check_program_transport(program, true)
+}
+
+fn check_program_transport(program: &Program, document_sets: bool) -> Result<(), AdmissionError> {
     if program
         .extra_sources
         .iter()
@@ -114,13 +128,30 @@ pub(super) fn check_program(program: &Program) -> Result<(), AdmissionError> {
     if !program.failure_rules.is_empty() {
         return Err(AdmissionError::Unsupported("failure rules"));
     }
-    for expression in program.expressions.iter().chain(
-        program
-            .user_functions
-            .iter()
-            .flat_map(|function| &function.expressions),
-    ) {
+    for (expression, main) in program
+        .expressions
+        .iter()
+        .map(|expression| (expression, true))
+        .chain(
+            program
+                .user_functions
+                .iter()
+                .flat_map(|function| &function.expressions)
+                .map(|expression| (expression, false)),
+        )
+    {
         match &expression.expression {
+            Expression::RuntimeParameterDefault { default, .. }
+                if document_sets
+                    && main
+                    && program.expressions.iter().any(|expression| {
+                        expression.id == *default
+                            && matches!(expression.expression, Expression::Const { .. })
+                    }) =>
+            {
+                // The document host supplies no runtime parameters; this
+                // closed literal default is deterministic in every call.
+            }
             Expression::RuntimeValue { .. }
             | Expression::RuntimeParameter { .. }
             | Expression::RuntimeParameterDefault { .. } => {
@@ -139,11 +170,11 @@ pub(super) fn check_program(program: &Program) -> Result<(), AdmissionError> {
             _ => {}
         }
     }
-    if !scopes_supported(&program.root)
+    if !scopes_supported(&program.root, document_sets)
         || program
             .extra_targets
             .iter()
-            .any(|target| !scopes_supported(&target.root))
+            .any(|target| !scopes_supported(&target.root, document_sets))
     {
         return Err(AdmissionError::Unsupported(
             "document or mixed XML construction",

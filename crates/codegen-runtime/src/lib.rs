@@ -92,7 +92,7 @@ pub use document_source::{
     MAX_SOURCE_PATH_BYTES, PrimaryAcquisitionError, PrimaryAssemblyError, PrimaryDocument,
     PrimarySourceHost, SourceData, acquire_primary_documents, assemble_primary_documents,
 };
-pub use dynamic_document::dynamic_document;
+pub use dynamic_document::{collect_documents, dynamic_document};
 pub use dynamic_source::{
     DynamicJsonSourceLoader, DynamicSourceCategory, DynamicSourceCause, DynamicSourceCodecKind,
     DynamicSourceDiagnostic, DynamicSourceFault, DynamicSourceItems, DynamicSourceLoadFailure,
@@ -470,6 +470,9 @@ pub enum RuntimeError {
     },
     DuplicateDynamicProperty(String),
     InvalidDynamicPropertyFragment,
+    InvalidDocumentCollectionItem {
+        found: &'static str,
+    },
     UserFunctionType {
         function: u64,
         parameter: Option<u64>,
@@ -784,6 +787,12 @@ impl fmt::Display for RuntimeError {
             ),
             Self::InvalidDynamicPropertyFragment => formatter
                 .write_str("a dynamic object merge can contain only object property fragments"),
+            Self::InvalidDocumentCollectionItem { found } => {
+                write!(
+                    formatter,
+                    "document collection requires document sets, found {found}"
+                )
+            }
             Self::UserFunctionType {
                 function,
                 parameter,
@@ -883,6 +892,7 @@ impl std::error::Error for RuntimeError {
             | Self::DynamicPropertyName { .. }
             | Self::DuplicateDynamicProperty(_)
             | Self::InvalidDynamicPropertyFragment
+            | Self::InvalidDocumentCollectionItem { .. }
             | Self::UserFunctionType { .. }
             | Self::XmlSerialization { .. } => None,
         }

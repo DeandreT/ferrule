@@ -282,6 +282,11 @@ fn validate_scope(
                 )?;
             }
         },
+        ScopeConstruction::CollectDocuments => {
+            return Err(unsupported(
+                "nested document collections do not have a qualified native export",
+            ));
+        }
         ScopeConstruction::RecursiveFilter { plan } => {
             require_root_only(chain, scope, "recursive-filter")?;
             if !project.graph.nodes.contains_key(&plan.predicate()) {

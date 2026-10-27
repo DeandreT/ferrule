@@ -110,6 +110,7 @@ impl<'a> Analysis<'a> {
                 self.inspect_owner(&plan.collection().owner)
             }
             ScopeConstruction::Constructed
+            | ScopeConstruction::CollectDocuments
             | ScopeConstruction::CopyCurrentSource
             | ScopeConstruction::XmlMixedContent { .. }
             | ScopeConstruction::Scalar { .. }

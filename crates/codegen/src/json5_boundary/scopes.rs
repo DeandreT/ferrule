@@ -81,7 +81,8 @@ pub(super) fn validate(
                 target_key: _,
                 target_children: _,
                 root: _,
-            } => return Err(refusal("construction")),
+            }
+            | TargetConstruction::CollectDocuments => return Err(refusal("construction")),
         }
         let SchemaKind::Group {
             children: declared,

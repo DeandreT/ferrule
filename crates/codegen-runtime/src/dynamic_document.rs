@@ -24,11 +24,40 @@ pub fn dynamic_document(
     DocumentMember::new(path, value).ok_or(RuntimeError::EmptyDynamicTargetPath { node })
 }
 
+/// Flattens completed document sets without changing their member order.
+pub fn collect_documents(
+    collections: impl IntoIterator<Item = Instance>,
+) -> Result<Instance, RuntimeError> {
+    let mut documents = Vec::new();
+    for collection in collections {
+        match collection {
+            Instance::DocumentSet(items) => documents.extend(items),
+            Instance::Scalar(_) => {
+                return Err(RuntimeError::InvalidDocumentCollectionItem { found: "a scalar" });
+            }
+            Instance::Group(_) => {
+                return Err(RuntimeError::InvalidDocumentCollectionItem { found: "a group" });
+            }
+            Instance::Repeated(_) => {
+                return Err(RuntimeError::InvalidDocumentCollectionItem {
+                    found: "a repeated value",
+                });
+            }
+            Instance::MappedSequence(_) => {
+                return Err(RuntimeError::InvalidDocumentCollectionItem {
+                    found: "a mapped sequence",
+                });
+            }
+        }
+    }
+    Ok(Instance::DocumentSet(documents))
+}
+
 #[cfg(test)]
 mod tests {
     use ir::{Instance, Value};
 
-    use super::dynamic_document;
+    use super::{collect_documents, dynamic_document};
     use crate::RuntimeError;
 
     #[test]
@@ -72,6 +101,47 @@ mod tests {
                 Instance::DocumentSet(Vec::new()),
             ),
             Err(RuntimeError::EmptyDynamicTargetPath { node: 10 })
+        );
+    }
+
+    #[test]
+    fn collects_empty_and_nonempty_sets_in_order() {
+        let first = dynamic_document(
+            1,
+            Value::String("first.xml".into()),
+            Instance::Scalar(Value::Int(1)),
+        )
+        .unwrap();
+        let last = dynamic_document(
+            1,
+            Value::String("last.xml".into()),
+            Instance::Scalar(Value::Int(2)),
+        )
+        .unwrap();
+        assert_eq!(
+            collect_documents([
+                Instance::DocumentSet(vec![first.clone()]),
+                Instance::DocumentSet(Vec::new()),
+                Instance::DocumentSet(vec![last.clone()]),
+            ])
+            .unwrap(),
+            Instance::DocumentSet(vec![first, last])
+        );
+        assert_eq!(
+            collect_documents([]).unwrap(),
+            Instance::DocumentSet(Vec::new())
+        );
+    }
+
+    #[test]
+    fn rejects_ordinary_values_in_document_collections() {
+        assert_eq!(
+            collect_documents([Instance::Scalar(Value::Int(3))]),
+            Err(RuntimeError::InvalidDocumentCollectionItem { found: "a scalar" })
+        );
+        assert_eq!(
+            collect_documents([Instance::Group(Vec::new().into())]),
+            Err(RuntimeError::InvalidDocumentCollectionItem { found: "a group" })
         );
     }
 }

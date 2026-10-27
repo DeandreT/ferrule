@@ -379,6 +379,19 @@ impl FerruleApp {
             return;
         }
         self.pending_scope_scroll = false;
+        let collector = match active_target {
+            Some(index) => self.project.extra_targets.get(index).is_some_and(|target| {
+                crate::scope_editor::has_document_collector(&target.root, &self.selected_scope)
+            }),
+            None => crate::scope_editor::has_document_collector(
+                &self.project.root,
+                &self.selected_scope,
+            ),
+        };
+        let editing_enabled = editing_enabled && !collector;
+        if collector {
+            ui.weak("Document collection scopes retain their saved structure and are read-only.");
+        }
         self.show_scope_controls(ui, editing_enabled);
 
         ui.separator();

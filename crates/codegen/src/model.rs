@@ -1540,6 +1540,7 @@ impl From<mapping::SequenceWindow> for SequenceWindow {
 pub enum TargetConstruction {
     #[default]
     Group,
+    CollectDocuments,
     DynamicGroup {
         /// Every statically declared property in the open target schema.
         ///
@@ -1649,7 +1650,7 @@ pub struct XmlMixedContentElement {
 /// One statically named constructed target value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TargetScope {
-    /// Empty only for the primary target's root scope.
+    /// Empty for a document root or an untargeted document-collector child.
     pub target_field: String,
     /// Non-iterating scopes targeting a repeating group still produce one
     /// repeated item, matching the engine's target-boundary cardinality.
@@ -1662,6 +1663,16 @@ pub struct TargetScope {
     /// Declaration order is semantically significant and is preserved.
     pub bindings: Vec<Binding>,
     pub children: Vec<TargetScope>,
+}
+
+impl TargetScope {
+    pub fn produces_documents(&self) -> bool {
+        matches!(self.construction, TargetConstruction::CollectDocuments)
+            || self
+                .iteration
+                .as_ref()
+                .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
+    }
 }
 
 /// One candidate pipeline. Controls live inside the iteration, so a filter,

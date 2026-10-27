@@ -1322,6 +1322,7 @@ pub(crate) fn scope_context(scope: &Scope) -> OwnedCapabilityContext {
         | ScopeConstruction::PathHierarchy { .. }
         | ScopeConstruction::AdjacencyTree { .. } => OwnedCapabilityContext::TreeOperator,
         ScopeConstruction::CopyCurrentSource => OwnedCapabilityContext::SpecialConstruction,
+        ScopeConstruction::CollectDocuments => OwnedCapabilityContext::Document,
     }
 }
 

@@ -24,6 +24,8 @@ pub(super) struct ScopeSchemas<'a> {
     pub(super) owner: &'a ValidationScopeLocation,
     /// Owned dynamic sources an enclosing iteration already roots.
     pub(super) rooted: &'a [&'a str],
+    /// A project root or an explicit child of a document collector.
+    pub(super) document_root: bool,
 }
 
 pub(super) fn validate_scope(
@@ -44,10 +46,10 @@ pub(super) fn validate_scope(
     };
 
     if let Some(node) = scope.output_path() {
-        if !path.is_empty() {
+        if !schemas.document_root {
             issues.push(ValidationIssue::new(
                 &location,
-                "dynamic target paths are valid only on a project root scope",
+                "dynamic target paths are valid only on a project root scope or an explicit document collector child",
             ));
         }
         if !project.graph.nodes.contains_key(&node) {
@@ -142,6 +144,7 @@ pub(super) fn validate_scope(
                         .owner
                         .descendant(ValidationScopeStep::Segment(index)),
                     rooted: schemas.rooted,
+                    document_root: false,
                 },
                 path,
                 active_joins,
@@ -158,6 +161,62 @@ pub(super) fn validate_scope(
     }
     let current_source = current_source_schema(project, schemas.parent_source, &scope.iteration);
     super::presence::validate(project, scope, target, &location, issues);
+
+    let collects_documents = matches!(scope.construction, ScopeConstruction::CollectDocuments);
+    if collects_documents {
+        if target
+            .is_none_or(|node| node.repeating || !matches!(node.kind, SchemaKind::Group { .. }))
+        {
+            issues.push(ValidationIssue::new(
+                &location,
+                "document collectors require a nonrepeating group document schema",
+            ));
+        }
+        if !schemas.document_root {
+            issues.push(ValidationIssue::new(
+                &location,
+                "document collectors require an explicit document-root context",
+            ));
+        }
+        if !matches!(
+            scope.iteration,
+            ScopeIteration::None | ScopeIteration::Source(_)
+        ) {
+            issues.push(ValidationIssue::new(
+                &location,
+                "document collectors support only ordinary source iteration",
+            ));
+        }
+        if scope.iteration_output != IterationOutput::Repeated {
+            issues.push(ValidationIssue::new(
+                &location,
+                "document collectors require repeated context output",
+            ));
+        }
+        if scope.output_path().is_some()
+            || !scope.bindings.is_empty()
+            || !scope.dynamic_bindings.is_empty()
+            || !scope.dynamic_children.is_empty()
+            || scope.merge_dynamic_fields
+            || scope.children.is_empty()
+        {
+            issues.push(ValidationIssue::new(
+                &location,
+                "document collectors require document children and cannot contain a path or target fields",
+            ));
+        }
+        for child in &scope.children {
+            if !child.target_field.is_empty()
+                || !(matches!(child.construction, ScopeConstruction::CollectDocuments)
+                    || matches!(child.iteration, ScopeIteration::DynamicDocuments { .. }))
+            {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    "document collector children must be untargeted ordinary document producers",
+                ));
+            }
+        }
+    }
 
     if matches!(&scope.construction, ScopeConstruction::Constructed)
         && target.is_some_and(|node| !matches!(node.kind, SchemaKind::Group { .. }))
@@ -867,7 +926,7 @@ pub(super) fn validate_scope(
 
     let mut child_fields = BTreeSet::new();
     for (index, child) in scope.children.iter().enumerate() {
-        if !child_fields.insert(&child.target_field) {
+        if !collects_documents && !child_fields.insert(&child.target_field) {
             issues.push(ValidationIssue::new(
                 &location,
                 format!(
@@ -876,15 +935,26 @@ pub(super) fn validate_scope(
                 ),
             ));
         }
-        path.push(child.target_field.clone());
+        path.push(if collects_documents {
+            format!("<documents {}>", index + 1)
+        } else {
+            child.target_field.clone()
+        });
         let child_owner = schemas.owner.descendant(ValidationScopeStep::Child(index));
         let child_start = issues.len();
-        let child_target = target.and_then(|target| target.child(&child.target_field));
+        let child_target = if collects_documents {
+            target
+        } else {
+            target.and_then(|target| target.child(&child.target_field))
+        };
         match child_target {
             Some(node)
                 if matches!(node.kind, SchemaKind::Group { .. })
                     || node.is_scalar()
-                        && matches!(&child.construction, ScopeConstruction::Scalar { .. }) => {}
+                        && matches!(
+                            &child.construction,
+                            ScopeConstruction::Scalar { .. } | ScopeConstruction::CollectDocuments
+                        ) => {}
             Some(_) => issues.push(ValidationIssue::new(
                 format!("scope `{}`", path.join("/")),
                 "target scope is not a group",
@@ -902,6 +972,7 @@ pub(super) fn validate_scope(
                 parent_source: current_source,
                 owner: &child_owner,
                 rooted: &rooted,
+                document_root: collects_documents,
             },
             path,
             &active_joins,
@@ -976,6 +1047,7 @@ pub(super) fn validate_scope(
                     .owner
                     .descendant(ValidationScopeStep::DynamicChild(index)),
                 rooted: &rooted,
+                document_root: false,
             },
             path,
             &active_joins,

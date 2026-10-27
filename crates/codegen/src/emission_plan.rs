@@ -249,18 +249,10 @@ mod tests {
                 "{name}"
             );
             for (target, documents) in xml.named_targets(program) {
-                let dynamic = target
-                    .root
-                    .iteration
-                    .as_ref()
-                    .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some());
+                let dynamic = target.root.produces_documents();
                 assert_eq!(documents == XmlDocumentCardinality::List, dynamic, "{name}");
             }
-            let dynamic_primary = program
-                .root
-                .iteration
-                .as_ref()
-                .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some());
+            let dynamic_primary = program.root.produces_documents();
             assert_eq!(
                 xml.primary_output() == XmlDocumentCardinality::List,
                 dynamic_primary,

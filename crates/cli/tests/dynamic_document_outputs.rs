@@ -132,6 +132,173 @@ fn writes_every_dynamic_document_beneath_the_explicit_base() -> Result<(), Box<d
 }
 
 #[test]
+fn nested_collectors_publish_all_paths_and_payloads_without_partial_failures()
+-> Result<(), Box<dyn Error>> {
+    let project: Project = serde_json::from_str(include_str!(
+        "../../codegen/src/tests/fixtures/nested_document_collection.json"
+    ))?;
+    let cases: serde_json::Value = serde_json::from_str(include_str!(
+        "code_generation/document_collections/cases.json"
+    ))?;
+    let directory = TempDir::new()?;
+    let project_path = directory.0.join("mapping.json");
+    std::fs::write(
+        &project_path,
+        mapping::project_file::encode_pretty(&project)?,
+    )?;
+    for case in cases.as_array().unwrap() {
+        let id = case["id"].as_str().unwrap();
+        let input = directory.0.join(format!("{id}.xml"));
+        let output = directory.0.join(id);
+        let xml = case["input"].as_str().unwrap();
+        std::fs::write(&input, xml)?;
+        let source = cli::PayloadDocument::new(std::path::Path::new("input.xml"), xml.as_bytes())?;
+        let payload = cli::run_project_value_payloads(
+            &project,
+            &project_path,
+            &cli::PayloadRunOptions::new(source),
+        );
+        let files = cli::run_project_with_paths(&project_path, Some(&input), Some(&output));
+        if case.get("error").is_some() {
+            assert!(
+                payload
+                    .unwrap_err()
+                    .to_string()
+                    .contains("late document failure")
+            );
+            assert!(
+                files
+                    .unwrap_err()
+                    .to_string()
+                    .contains("late document failure")
+            );
+            assert!(
+                !output.exists(),
+                "a late failure cannot publish earlier documents"
+            );
+            continue;
+        }
+        let payload = payload?;
+        let files = files?;
+        let expected = case["documents"].as_array().unwrap();
+        assert_eq!(payload.artifacts.len(), expected.len());
+        assert_eq!(files.artifacts.len(), expected.len());
+        for ((payload, file), expected) in
+            payload.artifacts.iter().zip(&files.artifacts).zip(expected)
+        {
+            let path = expected["path"].as_str().unwrap();
+            assert_eq!(
+                payload.path.file_name().and_then(|n| n.to_str()),
+                Some(path)
+            );
+            assert_eq!(file.path, output.join(path));
+            assert_eq!(std::fs::read(&file.path)?, payload.bytes);
+            let parsed =
+                format_xml::from_str(std::str::from_utf8(&payload.bytes)?, &project.target)?;
+            let ir::Instance::Repeated(people) = parsed.field("Person").unwrap() else {
+                panic!("ordered people")
+            };
+            let names: Vec<_> = people
+                .iter()
+                .map(|person| {
+                    person
+                        .field("Name")
+                        .and_then(ir::Instance::as_scalar)
+                        .unwrap()
+                })
+                .collect();
+            assert_eq!(
+                names,
+                expected["names"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|name| Value::String(name.as_str().unwrap().into()))
+                    .collect::<Vec<_>>()
+                    .iter()
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn selected_primary_and_named_collectors_keep_document_destinations() -> Result<(), Box<dyn Error>>
+{
+    let mut project: Project = serde_json::from_str(include_str!(
+        "../../codegen/src/tests/fixtures/nested_document_collection.json"
+    ))?;
+    let cases: serde_json::Value = serde_json::from_str(include_str!(
+        "code_generation/document_collections/cases.json"
+    ))?;
+    let xml = cases[0]["input"].as_str().unwrap();
+    let input = cli::PayloadDocument::new(std::path::Path::new("input.xml"), xml.as_bytes())?;
+    let directory = TempDir::new()?;
+    let path = directory.0.join("mapping.json");
+    let primary = cli::run_project_value_payloads(
+        &project,
+        &path,
+        &cli::PayloadRunOptions::new(input).with_target(cli::TargetSelection::Primary),
+    )?;
+    assert_eq!(primary.artifacts.len(), 4);
+    project.extra_targets.push(NamedTarget {
+        name: "grouped".into(),
+        path: None,
+        schema: project.target.clone(),
+        options: project.target_options.clone(),
+        root: project.root.clone(),
+    });
+    project.root = Scope::default();
+    let named = cli::run_project_value_payloads(
+        &project,
+        &path,
+        &cli::PayloadRunOptions::new(input).with_target(cli::TargetSelection::Named("grouped")),
+    )?;
+    assert_eq!(named.artifacts.len(), primary.artifacts.len());
+    for (left, right) in primary.artifacts.iter().zip(named.artifacts) {
+        assert_eq!(left.path, right.path);
+        assert_eq!(left.bytes, right.bytes);
+    }
+    Ok(())
+}
+
+#[test]
+fn collector_payload_limit_counts_documents_across_parent_contexts() -> Result<(), Box<dyn Error>> {
+    let mut project: Project = serde_json::from_str(include_str!(
+        "../../codegen/src/tests/fixtures/nested_document_collection.json"
+    ))?;
+    project.graph.nodes.insert(
+        2,
+        Node::Const {
+            value: Value::Int(1),
+        },
+    );
+    let directory = TempDir::new()?;
+    let path = directory.0.join("mapping.json");
+    for count in [4096, 4097] {
+        let mut xml = String::from("<Input>");
+        // Every parent produces one document. The final count must not reset
+        // at each collector item or nested document-producing child.
+        for index in 0..count {
+            xml.push_str(&format!(
+                "<Dept><Name>D{index}</Name><Person><Name>P</Name></Person></Dept>"
+            ));
+        }
+        xml.push_str("</Input>");
+        let input = cli::PayloadDocument::new(std::path::Path::new("input.xml"), xml.as_bytes())?;
+        let result =
+            cli::run_project_value_payloads(&project, &path, &cli::PayloadRunOptions::new(input));
+        if count == 4096 {
+            assert_eq!(result?.artifacts.len(), count);
+        } else {
+            assert!(result.unwrap_err().to_string().contains("4096"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn protected_dynamic_output_base_fails_before_publication() -> Result<(), Box<dyn Error>> {
     let (directory, project_path) = prepare(&project(3))?;
     let output = directory.0.join("trace.jsonl");

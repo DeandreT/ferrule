@@ -209,7 +209,7 @@ pub fn validate_primary_document(document: &mapping::DocumentProject) -> Vec<Val
 
 fn validate_in_document_context(project: &Project, document_set: bool) -> Vec<ValidationIssue> {
     let mut issues = Vec::new();
-    if project.root.output_path().is_some() && project.target_path.is_some() {
+    if project.root.produces_documents() && project.target_path.is_some() {
         issues.push(
             ValidationIssue::new(
                 "target path",
@@ -413,7 +413,7 @@ fn validate_in_document_context(project: &Project, document_set: bool) -> Vec<Va
             &mut Vec::new(),
             &mut issues,
         );
-        if target.root.output_path().is_some() && target.path.is_some() {
+        if target.root.produces_documents() && target.path.is_some() {
             issues.push(ValidationIssue::new(
                 format!("extra target `{name}` path"),
                 "a dynamic target path cannot be combined with a stored target path",
@@ -543,6 +543,7 @@ fn validate_in_document_context(project: &Project, document_set: bool) -> Vec<Va
             parent_source: Some(&project.source),
             owner: &ValidationScopeLocation::root(ValidationEndpoint::Target),
             rooted: &[],
+            document_root: true,
         },
         &mut Vec::new(),
         &[],
@@ -561,6 +562,7 @@ fn validate_in_document_context(project: &Project, document_set: bool) -> Vec<Va
                     name: target.name.clone(),
                 }),
                 rooted: &[],
+                document_root: true,
             },
             &mut Vec::new(),
             &[],
