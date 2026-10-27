@@ -24,8 +24,12 @@ pub fn prepare_json_source_projection(
     document: &DocumentProgram,
     shape: &JsonSourceShape,
 ) -> Result<String, JsonProjectionBoundaryError> {
-    let source = shape
-        .document_set_schema()
+    let source = document
+        .json_grouping_preparation()
+        .map_or_else(
+            || shape.document_set_schema(),
+            |plan| plan.document_set_schema(shape),
+        )
         .map_err(JsonProjectionBoundaryError::Shape)?;
     if document.json_source_projection() != Some(shape)
         || document.program().source != source

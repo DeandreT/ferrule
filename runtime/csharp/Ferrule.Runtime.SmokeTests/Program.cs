@@ -38,6 +38,7 @@ internal static partial class Program
             ("JSON source exact selection and bounded admission", JsonSourceSelectionAndLimits),
             ("JSON source explicit decimal selection", JsonSourceDecimalNumbers),
             ("JSON source typed occurrence projection", JsonSourceProjection),
+            ("JSON multi-key preparation preservation and limits", JsonGroupingPreparation),
             ("EDI scalar formatting", EdiScalarFormatting),
             ("Exact native Decimal integer picture", DecimalIntegerFormat),
             ("UTF-16 interchange stream boundaries", InterchangeStream),

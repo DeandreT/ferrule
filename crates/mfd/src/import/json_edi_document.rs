@@ -23,7 +23,7 @@ pub struct ImportedJsonEdiDocument {
 
 /// Grouped JSON input with one independently named EDI document per group.
 /// Acquisition and physical publication remain explicit host operations.
-/// Each source object must expose at most one selected String key occurrence.
+/// A prepared candidate retains the complete source object for each String key.
 pub struct ImportedGroupedJsonEdiDocument {
     pub document: DocumentProject,
     pub source: ImportedJsonSourceProjection,
@@ -65,6 +65,7 @@ struct Builder {
     grouped: Option<GroupedSource>,
     source_schema: SchemaNode,
     in_group_member: bool,
+    grouping_preparation: Option<mapping::JsonGroupingPreparation>,
     feeds: BTreeMap<u32, u32>,
     ports: BTreeMap<u32, Vec<String>>,
     port_kinds: BTreeMap<u32, String>,
@@ -255,6 +256,7 @@ fn import_document(
                 .document_set_schema()
                 .map_err(|_| refuse("invalid source shape"))?,
             in_group_member: false,
+            grouping_preparation: None,
             feeds: edges.feeds,
             ports: source.ports.clone(),
             port_kinds,
@@ -286,7 +288,7 @@ fn import_document(
         })?;
         let output_feed = builder.feed(filename_input)?;
         if grouped {
-            builder.bind_grouped_source(output_feed)?;
+            builder.bind_grouped_source(output_feed, &source.shape)?;
         }
         if !builder
             .dependencies(output_feed, &mut BTreeSet::new())?
@@ -334,11 +336,9 @@ fn import_document(
             let key = group.key_node;
             body.filter = Some(builder.call("exists", vec![key])?);
         }
+        let preparation = builder.grouping_preparation.clone();
         let mut project = empty_project(
-            source
-                .shape
-                .document_set_schema()
-                .map_err(|_| refuse("invalid source shape"))?,
+            builder.source_schema.clone(),
             target_schema.schema,
             builder.graph,
             body,
@@ -349,8 +349,13 @@ fn import_document(
             PrimarySourcePlan {
                 filename: input_node,
             },
-        )
-        .with_json_source_projection(source.shape.clone())
+        );
+        let document = match preparation {
+            Some(preparation) => {
+                document.with_json_grouping_preparation(source.shape.clone(), preparation)
+            }
+            None => document.with_json_source_projection(source.shape.clone()),
+        }
         .map_err(|_| refuse("invalid source projection binding"))?;
         for (label, project) in std::iter::once(("body", document.project()))
             .chain(filename.as_ref().map(|project| ("filename", project)))
@@ -514,7 +519,11 @@ impl Builder {
                 self.port_kinds.get(&feed).map(String::as_str) == Some("number")
             })
     }
-    fn bind_grouped_source(&mut self, filename: u32) -> Result<(), MfdError> {
+    fn bind_grouped_source(
+        &mut self,
+        filename: u32,
+        shape: &mapping::JsonSourceShape,
+    ) -> Result<(), MfdError> {
         fn visit(
             builder: &Builder,
             feed: u32,
@@ -588,42 +597,34 @@ impl Builder {
         }
         let (key_output, (collection, key)) = found.pop_first().unwrap();
         let key_path = relative(&self.ports[&key], &collection)?;
-        let value = self.alloc(Node::SourceField {
-            path: vec!["Value".into()],
+        let physical = collection
+            .strip_prefix(&["Documents".to_string()])
+            .ok_or_else(|| refuse("grouping requires a physical JSON document"))?;
+        let preparation = mapping::JsonGroupingPreparation {
+            collection: physical.to_vec(),
+            keys: key_path,
+        };
+        self.source_schema = preparation
+            .document_set_schema(shape)
+            .map_err(|_| refuse("invalid grouping preparation"))?;
+        for path in self.ports.values_mut() {
+            if let Some(relative) = path.strip_prefix(collection.as_slice()) {
+                let mut prepared = collection.clone();
+                prepared.push(mapping::JsonGroupingPreparation::MEMBER.into());
+                prepared.extend_from_slice(relative);
+                *path = prepared;
+            }
+        }
+        self.grouping_preparation = Some(preparation);
+        let key_node = self.alloc(Node::SourceField {
+            path: vec![mapping::JsonGroupingPreparation::KEY.into()],
             frame: None,
-        })?;
-        let first = self.constant(Value::Int(1))?;
-        let selected_key = self.alloc(Node::Aggregate {
-            function: AggregateOp::ItemAt,
-            collection: key_path.clone(),
-            value: vec![],
-            expression: Some(value),
-            arg: Some(first),
-        })?;
-        let key_count = self.alloc(Node::Aggregate {
-            function: AggregateOp::Count,
-            collection: key_path.clone(),
-            value: vec![],
-            expression: None,
-            arg: None,
-        })?;
-        let multiple = self.call("greater_than", vec![key_count, first])?;
-        let message = self.constant(Value::String(
-            "multiple group keys per source object require separate admission".into(),
-        ))?;
-        let unsupported = self.alloc(Node::Raise {
-            message: Some(message),
-        })?;
-        let key_node = self.alloc(Node::If {
-            condition: multiple,
-            then: unsupported,
-            else_: selected_key,
         })?;
         self.grouped = Some(GroupedSource {
             collection,
             key_output,
             key_node,
-            key_path,
+            key_path: vec![mapping::JsonGroupingPreparation::KEY.into()],
             filename_feed: filename,
         });
         Ok(())
@@ -825,16 +826,16 @@ impl Builder {
             if anchor != group.collection {
                 return Err(refuse("group key used outside its filename owner"));
             }
-            let mut collection = vec![
+            let collection = vec![
                 group
                     .collection
                     .last()
                     .ok_or_else(|| refuse("empty grouped source"))?
                     .clone(),
             ];
-            collection.extend(group.key_path.clone());
+            let key_path = group.key_path.clone();
             let value = self.alloc(Node::SourceField {
-                path: vec!["Value".into()],
+                path: key_path,
                 frame: None,
             })?;
             let first = self.constant(Value::Int(1))?;
@@ -1449,6 +1450,7 @@ mod grouped_owner_tests {
             }),
             source_schema,
             in_group_member: true,
+            grouping_preparation: None,
             feeds: BTreeMap::new(),
             ports: BTreeMap::new(),
             port_kinds: BTreeMap::new(),

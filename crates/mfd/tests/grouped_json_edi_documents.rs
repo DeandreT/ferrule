@@ -69,12 +69,22 @@ fn input(imported: &mfd::ImportedGroupedJsonEdiDocument, texts: &[&str]) -> Inst
                 text.as_bytes(),
             )
             .unwrap();
-            codegen_runtime::project_json_source_document(
+            let projected = codegen_runtime::project_json_source_document(
                 &imported.source.shape,
                 &document,
                 Default::default(),
             )
-            .unwrap()
+            .unwrap();
+            match imported.document.json_grouping_preparation() {
+                Some(preparation) => codegen_runtime::prepare_json_grouping_document(
+                    preparation,
+                    &imported.source.shape,
+                    projected,
+                    Default::default(),
+                )
+                .unwrap(),
+                None => projected,
+            }
         })
         .collect();
     Instance::Group(vec![("Documents".into(), Instance::Repeated(docs))].into())
@@ -171,17 +181,26 @@ fn grouped_keys_keep_empty_values_and_merge_physical_files_without_crossing_owne
 }
 
 #[test]
-fn repeated_keys_are_refused_instead_of_silently_losing_group_memberships() {
+fn repeated_keys_keep_separate_group_memberships_and_original_member_fields() {
     let fixture = Fixture::new();
     let imported = fixture.import().unwrap();
-    for text in [
-        r#"{"rows":[{"name":"a","name":"b","qty":1}]}"#,
-        r#"{"rows":[{"name":"a","name":"a","qty":1}]}"#,
-    ] {
-        let source = input(&imported, &[text]);
-        let error = engine::run(imported.document.project(), &source).unwrap_err();
-        assert!(error.to_string().contains("multiple group keys"), "{error}");
-    }
+    let source = input(
+        &imported,
+        &[r#"{"rows":[{"name":"a","name":"b","qty":1}]}"#],
+    );
+    let Instance::DocumentSet(documents) =
+        engine::run(imported.document.project(), &source).unwrap()
+    else {
+        panic!("documents");
+    };
+    assert_eq!(
+        documents
+            .iter()
+            .map(|document| document.path())
+            .collect::<Vec<_>>(),
+        ["out.edia", "out.edib"]
+    );
+    assert_eq!(documents[0].value(), documents[1].value());
 }
 
 #[test]
