@@ -18,6 +18,7 @@ mod document_visitor;
 mod embedded_schema;
 mod join;
 mod json5_boundary;
+mod json_parameter_invocation;
 mod json_projection;
 mod lower;
 mod mapforce_json5_documents;
@@ -69,6 +70,9 @@ pub use embedded_schema::{
 pub use join::{
     InnerJoin, JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource,
     JoinSourceCardinality, OwnedInnerJoin,
+};
+pub use json_parameter_invocation::{
+    JsonParameterBoundaryError, prepare_json_parameter_invocation,
 };
 pub use json_projection::{JsonProjectionBoundaryError, prepare_json_source_projection};
 pub use json5_boundary::{

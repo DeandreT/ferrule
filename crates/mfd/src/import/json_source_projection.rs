@@ -47,14 +47,14 @@ pub fn import_json_source_projection_with_options(
     path: &Path,
     options: &ImportOptions,
 ) -> Result<ImportedJsonSourceProjection, MfdError> {
-    import_projection(path, options, false)
+    import_projection(path, options, false, None)
 }
 
 pub fn import_json_parameter_projection_with_options(
     path: &Path,
     options: &ImportOptions,
 ) -> Result<ImportedJsonParameterProjection, MfdError> {
-    let projection = import_projection(path, options, true)?;
+    let projection = import_projection(path, options, true, None)?;
     Ok(ImportedJsonParameterProjection {
         shape: projection.shape,
         source_schema: projection.source_schema,
@@ -66,10 +66,19 @@ pub fn import_json_parameter_projection_with_options(
     })
 }
 
+pub(super) fn import_physical_json_after_parameter(
+    path: &Path,
+    options: &ImportOptions,
+    parameter: &ImportedJsonParameterProjection,
+) -> Result<ImportedJsonSourceProjection, MfdError> {
+    import_projection(path, options, false, Some(parameter.input_port))
+}
+
 fn import_projection(
     path: &Path,
     options: &ImportOptions,
     string_parameter: bool,
+    excluded_parameter: Option<u32>,
 ) -> Result<ImportedJsonSourceProjection, MfdError> {
     let resources = super::resolved_resources(path, options)?;
     let result = (|| {
@@ -92,10 +101,40 @@ fn import_projection(
         if !edges.complete || !edges.conflicts.is_empty() {
             return Err(refuse("incomplete or conflicting connections"));
         }
+        let excluded = if let Some(input) = excluded_parameter {
+            let matches: Vec<_> = children
+                .children()
+                .filter(|node| {
+                    node.has_tag_name("component")
+                        && node.attribute("library") == Some("json")
+                        && node.descendants().any(|entry| {
+                            entry.has_tag_name("entry")
+                                && entry.attribute("name") == Some("FileInstance")
+                                && entry
+                                    .attribute("inpkey")
+                                    .and_then(|key| key.parse::<u32>().ok())
+                                    == Some(input)
+                        })
+                })
+                .collect();
+            let [node] = matches.as_slice() else {
+                return Err(refuse("ambiguous parameter source identity"));
+            };
+            if !node.descendants().any(|child| {
+                child.has_tag_name("parameter")
+                    && child.attribute("usageKind") == Some("stringparse")
+            }) {
+                return Err(refuse("excluded source is not a String parameter"));
+            }
+            Some(*node)
+        } else {
+            None
+        };
         let sources: Vec<_> = children
             .children()
             .filter(|n| {
                 n.has_tag_name("component")
+                    && Some(*n) != excluded
                     && n.attribute("library") == Some("json")
                     && (!string_parameter
                         || n.children()

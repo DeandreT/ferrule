@@ -9,6 +9,7 @@ pub enum PrimaryJsonEmitError {
     Emit(EmitError),
     Writer(codegen::MapForceX12WriterError),
     Visitor(codegen::DocumentVisitorEmitError<EmitError>),
+    Parameter(codegen::JsonParameterBoundaryError),
 }
 impl std::fmt::Display for PrimaryJsonEmitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -17,6 +18,7 @@ impl std::fmt::Display for PrimaryJsonEmitError {
             Self::Emit(error) => error.fmt(f),
             Self::Writer(error) => error.fmt(f),
             Self::Visitor(error) => error.fmt(f),
+            Self::Parameter(error) => error.fmt(f),
         }
     }
 }
@@ -53,6 +55,69 @@ pub fn emit_grouped_with_mapforce_x12_writer(
         crate::primary_filename::append(base, document).map_err(PrimaryJsonEmitError::Emit)?;
     let projected = append_projection(base, projection, document.json_grouping_preparation())?;
     append_writer(projected, descriptor)
+}
+
+/// Explicit outer parameter admission; acquisition and publication stay host-owned.
+pub fn emit_invoked_grouped_with_mapforce_x12_writer(
+    document: &DocumentProgram,
+    invocation: &mapping::JsonParameterInvocationPlan,
+    shape: &JsonSourceShape,
+    target_options: &mapping::FormatOptions,
+    minimums: &[mapping::MapForceEdiMinimum],
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let descriptor = codegen::prepare_json_parameter_invocation(document, invocation)
+        .map_err(PrimaryJsonEmitError::Parameter)?;
+    let base = emit_grouped_with_mapforce_x12_writer(document, shape, target_options, minimums)?;
+    append_parameter_invocation(base, descriptor, invocation)
+}
+
+pub fn emit_invoked_with_primary_json_projection(
+    document: &DocumentProgram,
+    invocation: &mapping::JsonParameterInvocationPlan,
+    shape: &JsonSourceShape,
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let descriptor = codegen::prepare_json_parameter_invocation(document, invocation)
+        .map_err(PrimaryJsonEmitError::Parameter)?;
+    let projection = codegen::prepare_json_source_projection(document, shape)
+        .map_err(PrimaryJsonEmitError::Boundary)?;
+    let base = crate::emit_with_static_error_document_clocks(document.program())
+        .map_err(PrimaryJsonEmitError::Visitor)?;
+    let base =
+        crate::primary_filename::append(base, document).map_err(PrimaryJsonEmitError::Emit)?;
+    let base = append_projection(base, projection, document.json_grouping_preparation())?;
+    append_parameter_invocation(base, descriptor, invocation)
+}
+
+fn append_parameter_invocation(
+    base: ArtifactSet,
+    descriptor: String,
+    invocation: &mapping::JsonParameterInvocationPlan,
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let mut files = base.into_files();
+    files.push(
+        crate::file(
+            "Runtime/Json/FerruleJsonParameterInvocations.cs",
+            include_str!(
+                "../../../runtime/csharp/Ferrule.Runtime/Json/FerruleJsonParameterInvocations.cs"
+            )
+            .to_string(),
+        )
+        .map_err(PrimaryJsonEmitError::Emit)?,
+    );
+    let source = format!(
+        "\npublic static partial class GeneratedMapping\n{{\n    private static readonly global::Ferrule.Runtime.FerruleJsonParameterInvocationPlan ParameterInvocationPlan = global::Ferrule.Runtime.FerruleJsonParameterInvocationPlan.Parse({});\n    public static string ParameterInputName => {};\n    public static global::Ferrule.Runtime.FerrulePreparedJsonParameterInvocations PrepareParameterInvocations(global::Ferrule.Runtime.FerruleValue input, global::Ferrule.Runtime.FerruleJsonSourceLimits? jsonLimits = null, global::Ferrule.Runtime.FerruleJsonParameterInvocationLimits? limits = null) => global::Ferrule.Runtime.FerrulePreparedJsonParameterInvocations.Prepare(ParameterInvocationPlan, input, jsonLimits, limits);\n}}\n",
+        literal::string(&descriptor),
+        literal::string(&invocation.parameter),
+    );
+    files
+        .iter_mut()
+        .find(|file| file.path.as_str() == "GeneratedMapping.cs")
+        .expect("ordinary C# artifact")
+        .contents
+        .extend_from_slice(source.as_bytes());
+    ArtifactSet::new(files)
+        .map_err(EmitError::from)
+        .map_err(PrimaryJsonEmitError::Emit)
 }
 
 fn emit_with_writer(
