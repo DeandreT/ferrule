@@ -208,6 +208,10 @@ impl GraphViewer<'_> {
                         });
                     }
                 }
+                Node::GeneratedPosition { item } => {
+                    ui.label(format!("Original position of generated item {item}"));
+                    ui.small("Retains the producer's ordinal through filtering and sorting.");
+                }
                 Node::JoinField {
                     join,
                     collection,

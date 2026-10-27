@@ -295,13 +295,13 @@ public sealed partial class ScopeContext
     /// Appends generated scalar items as an empty-path collection while
     /// retaining every parent frame and collection identity.
     /// </summary>
-    public IReadOnlyList<ScopeContext> IterateGenerated(IReadOnlyList<FerruleValue> values)
+    public IReadOnlyList<ScopeContext> IterateGenerated(IReadOnlyList<FerruleValue> values, uint? owner = null)
     {
         ArgumentNullException.ThrowIfNull(values);
         var output = new ScopeContext[values.Count];
         for (var index = 0; index < values.Count; index++)
         {
-            output[index] = GeneratedContext(values[index], index + 1);
+            output[index] = GeneratedContext(values[index], index + 1, owner);
         }
         return new ReadOnlyCollection<ScopeContext>(output);
     }
@@ -310,17 +310,17 @@ public sealed partial class ScopeContext
     /// Lazily appends generated scalar items, allowing existential reducers to
     /// stop without constructing contexts for later values.
     /// </summary>
-    public IEnumerable<ScopeContext> EnumerateGenerated(IReadOnlyList<FerruleValue> values)
+    public IEnumerable<ScopeContext> EnumerateGenerated(IReadOnlyList<FerruleValue> values, uint? owner = null)
     {
         ArgumentNullException.ThrowIfNull(values);
-        return EnumerateGeneratedCore(values);
+        return EnumerateGeneratedCore(values, owner);
     }
 
-    private IEnumerable<ScopeContext> EnumerateGeneratedCore(IReadOnlyList<FerruleValue> values)
+    private IEnumerable<ScopeContext> EnumerateGeneratedCore(IReadOnlyList<FerruleValue> values, uint? owner)
     {
         for (var index = 0; index < values.Count; index++)
         {
-            yield return GeneratedContext(values[index], index + 1);
+            yield return GeneratedContext(values[index], index + 1, owner);
         }
     }
 
@@ -761,7 +761,16 @@ public sealed partial class ScopeContext
         return _frames[^1];
     }
 
-    private ScopeContext GeneratedContext(FerruleValue value, int index)
+    public FerruleValue GeneratedPosition(uint node, uint item)
+    {
+        for (var index = _collections.Count - 1; index >= 0; index--)
+            if (_collections[index].GeneratedOwner == item && _collections[index].GeneratedIndex is { } ordinal)
+                return FerruleValue.FromInt64(ordinal);
+        throw new FerruleRuntimeException(FerruleRuntimeError.GeneratedPositionUnavailable,
+            $"generated position requires active sequence item {item}", node: node, generatedItem: item);
+    }
+
+    private ScopeContext GeneratedContext(FerruleValue value, int index, uint? owner = null)
     {
         var item = new FerruleScalar(value);
         var frames = new List<FerruleInstance>(_frames.Count + 1);
@@ -769,7 +778,7 @@ public sealed partial class ScopeContext
         frames.Add(item);
         var collections = new List<CollectionIdentity>(_collections.Count + 1);
         collections.AddRange(_collections);
-        collections.Add(new CollectionIdentity(Array.Empty<string>(), item, index));
+        collections.Add(new CollectionIdentity(Array.Empty<string>(), item, index, GeneratedOwner: owner, GeneratedIndex: owner.HasValue ? index : null));
         return new ScopeContext(
             _primarySource,
             new ReadOnlyCollection<FerruleInstance>(frames),
@@ -1213,7 +1222,9 @@ public sealed partial class ScopeContext
         int? JoinPosition = null,
         bool Grouped = false,
         string? DocumentPath = null,
-        bool BasicGroupMembers = false)
+        bool BasicGroupMembers = false,
+        uint? GeneratedOwner = null,
+        int? GeneratedIndex = null)
     {
         private int _index = Index;
         public int Index { get => _index; init => _index = value; }

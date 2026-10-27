@@ -24,13 +24,14 @@ impl<'ctx> BasicScopeContext<'ctx> {
             .items
             .iter()
             .enumerate()
-            .map(move |(index, item)| self.generated_item_context(item, index + 1))
+            .map(move |(index, item)| self.generated_item_context(item, index + 1, items.owner))
     }
 
     fn generated_item_context<'b>(
         &'b self,
         item: &'b Instance,
         position: usize,
+        owner: Option<u32>,
     ) -> Result<BasicScopeContext<'b>, RuntimeError>
     where
         'ctx: 'b,
@@ -40,10 +41,17 @@ impl<'ctx> BasicScopeContext<'ctx> {
         budget.slots(1)?; // the appended generated frame
         view.legacy.frames.push(collection_frame(
             item,
-            CollectionIdentity::Repeated {
-                path: Vec::new(),
-                index: position,
-            },
+            owner.map_or_else(
+                || CollectionIdentity::Repeated {
+                    path: Vec::new(),
+                    index: position,
+                },
+                |item| CollectionIdentity::Generated {
+                    item,
+                    original_index: position,
+                    index: position,
+                },
+            ),
         ));
         Ok(view)
     }

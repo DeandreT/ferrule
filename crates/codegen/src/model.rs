@@ -928,6 +928,10 @@ pub enum Expression {
     Position {
         collection: Vec<String>,
     },
+    /// Immutable source ordinal, selected by the generated item's identity.
+    GeneratedPosition {
+        item: NodeId,
+    },
     /// Reads one exact scalar from a source tuple owned by `join`.
     JoinField {
         join: JoinId,

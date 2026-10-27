@@ -848,6 +848,7 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
         | Expression::XmlSerialize { .. }
         | Expression::SourceDocumentPath
         | Expression::Position { .. }
+        | Expression::GeneratedPosition { .. }
         | Expression::JoinField { .. }
         | Expression::JoinPosition { .. }
         | Expression::Const { .. }
@@ -1150,6 +1151,9 @@ fn render_expression_in_context_with_scalar_item_at(
             }
             Expression::SourceDocumentPath => {
                 "context.source_document_path().map_err(RuntimeError::from)".into()
+            }
+            Expression::GeneratedPosition { item } => {
+                format!("context.generated_position({id}, {item})")
             }
             Expression::Position { collection } if basic => {
                 // Only actual control-free Vec-backed walks or legacy fallback1
@@ -1490,7 +1494,7 @@ fn render_expression_in_context_with_scalar_item_at(
                 };
                 let predicate_call = call_expression(*predicate, "&item_context");
                 body.push_str(&format!(
-                "        let generated_items = GeneratedItems::new(sequence_values);\n        for item_context in context.generated_item_contexts(&generated_items) {{\n{reached}            let predicate = {predicate_call}?;\n            if require_bool({predicate}, predicate)? {{\n                return Ok(Value::Bool(true));\n            }}\n        }}\n        Ok(Value::Bool(false))\n    }}"
+                 "        let generated_items = GeneratedItems::with_owner(sequence_values, {});\n        for item_context in context.generated_item_contexts(&generated_items) {{\n{reached}            let predicate = {predicate_call}?;\n            if require_bool({predicate}, predicate)? {{\n                return Ok(Value::Bool(true));\n            }}\n        }}\n        Ok(Value::Bool(false))\n    }}", sequence.item()
             ));
                 body
             }
@@ -1509,7 +1513,7 @@ fn render_expression_in_context_with_scalar_item_at(
                 let mut body = String::from("{\n");
                 render_generated_values(sequence, "        ", &mut body)?;
                 body.push_str(&format!(
-                "        let generated_items = GeneratedItems::new(sequence_values);\n        for item_context in context.generated_item_contexts(&generated_items) {{\n            let predicate = expression_{predicate}(&item_context)?;\n            if require_bool({predicate}, predicate)? {{\n                return Ok(Value::Bool(true));\n            }}\n        }}\n        Ok(Value::Bool(false))\n    }}"
+                 "        let generated_items = GeneratedItems::with_owner(sequence_values, {});\n        for item_context in context.generated_item_contexts(&generated_items) {{\n            let predicate = expression_{predicate}(&item_context)?;\n            if require_bool({predicate}, predicate)? {{\n                return Ok(Value::Bool(true));\n            }}\n        }}\n        Ok(Value::Bool(false))\n    }}", sequence.item()
             ));
                 body
             }
@@ -1580,7 +1584,7 @@ fn render_expression_in_context_with_scalar_item_at(
                     ""
                 };
                 body.push_str(&format!(
-                    "        let generated_items = GeneratedItems::new(sequence_values);\n        let mut aggregate_values = Vec::new();\n        for item_context in context.generated_item_contexts(&generated_items) {{\n{reached}"
+                    "        let generated_items = GeneratedItems::with_owner(sequence_values, {});\n        let mut aggregate_values = Vec::new();\n        for item_context in context.generated_item_contexts(&generated_items) {{\n{reached}", sequence.item()
                 ));
                 if let Some(predicate) = predicate {
                     let predicate_call = call_expression(*predicate, "&item_context");
@@ -1622,9 +1626,9 @@ fn render_expression_in_context_with_scalar_item_at(
                 }
                 let mut body = String::from("{\n");
                 render_generated_values(sequence, "        ", &mut body)?;
-                body.push_str(
-                "        let generated_items = GeneratedItems::new(sequence_values);\n        let mut aggregate_values = Vec::new();\n",
-            );
+                body.push_str(&format!(
+                "        let generated_items = GeneratedItems::with_owner(sequence_values, {});\n        let mut aggregate_values = Vec::new();\n", sequence.item()
+            ));
                 body.push_str(
                 "        for item_context in context.generated_item_contexts(&generated_items) {\n",
             );
@@ -2188,7 +2192,7 @@ fn render_iteration_candidates(
             render_generated_values(sequence, "    ", output)?;
             output.push_str(
                 &format!(
-                    "    let generated_items = GeneratedItems::new(sequence_values);\n    {binding} = context.generated_items(&generated_items);\n"
+                    "    let generated_items = GeneratedItems::with_owner(sequence_values, {});\n    {binding} = context.generated_items(&generated_items);\n", sequence.item()
                 ),
             );
         }

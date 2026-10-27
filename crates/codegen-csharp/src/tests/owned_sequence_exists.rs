@@ -106,7 +106,7 @@ fn basic_exists_enumerates_paired_item_views_and_vendors_their_runtime() {
     };
     let mapping = text("GeneratedMapping.cs");
     assert!(mapping.contains(
-        "foreach (var sequence_context_node_40 in context.EnumerateGenerated(sequence_values_node_40))"
+        "foreach (var sequence_context_node_40 in context.EnumerateGenerated(sequence_values_node_40, 90U))"
     ));
     assert!(mapping.contains("global::Ferrule.Runtime.FerruleBasicScopeContext context)"));
     assert!(

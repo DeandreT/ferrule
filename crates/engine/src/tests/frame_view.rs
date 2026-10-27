@@ -154,6 +154,7 @@ fn context_for_position<'a>(
 
 fn position(collection: &[&str], index: usize, grouped: bool) -> PositionFrame {
     PositionFrame {
+        generated_origin: None,
         collection: path(collection),
         index,
         grouped,

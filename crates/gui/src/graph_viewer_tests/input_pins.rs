@@ -91,6 +91,7 @@ fn legacy_input_at(node: &Node, idx: usize) -> Option<NodeId> {
         | Node::SourceRootXmlTypeEquals { .. }
         | Node::SourceRootField { .. }
         | Node::Position { .. }
+        | Node::GeneratedPosition { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
         | Node::Unconnected

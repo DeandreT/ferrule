@@ -5,6 +5,7 @@ use mapping::{Project, XbrlBoundaryMode};
 
 mod adjacency_tree;
 pub(crate) mod dynamic_loading;
+mod generated_positions;
 mod graph;
 mod join;
 mod mixed_content;

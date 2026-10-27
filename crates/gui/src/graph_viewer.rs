@@ -1405,6 +1405,7 @@ impl GraphViewer<'_> {
             | Node::SourceRootXmlTypeEquals { .. }
             | Node::SourceRootField { .. }
             | Node::Position { .. }
+            | Node::GeneratedPosition { .. }
             | Node::JoinField { .. }
             | Node::JoinPosition { .. }
             | Node::Unconnected
@@ -1663,6 +1664,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     }
                     Some(Node::Position { collection }) => {
                         format!("Position: {}", collection.join("/"))
+                    }
+                    Some(Node::GeneratedPosition { item }) => {
+                        format!("Source position: item {item}")
                     }
                     Some(Node::JoinField {
                         join,

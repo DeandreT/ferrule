@@ -18,6 +18,23 @@ use NodeInputRole::{
 use NodeInputSlot as Slot;
 
 #[test]
+fn generated_position_references_but_never_evaluates_its_owner() {
+    let node = Node::GeneratedPosition { item: 7 };
+    assert_eq!(
+        inputs(&node),
+        [(7, Slot::SequenceItem, NodeInputRole::ItemReference)]
+    );
+    assert_eq!(node.dependencies(), [7]);
+    assert!(node.evaluated_inputs().is_empty());
+    let encoded = serde_json::to_string(&node).unwrap();
+    assert_eq!(encoded, r#"{"kind":"generated_position","item":7}"#);
+    assert!(matches!(
+        serde_json::from_str::<Node>(&encoded).unwrap(),
+        Node::GeneratedPosition { item: 7 }
+    ));
+}
+
+#[test]
 fn aggregate_arguments_per_item_expressions_and_lazy_branches_stay_distinct() {
     let aggregate = Node::Aggregate {
         function: AggregateOp::Join,

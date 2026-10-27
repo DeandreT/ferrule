@@ -1028,6 +1028,7 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
         Node::Position { collection } => Expression::Position {
             collection: collection.clone(),
         },
+        Node::GeneratedPosition { item } => Expression::GeneratedPosition { item: *item },
         Node::JoinField {
             join,
             collection,

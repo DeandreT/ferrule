@@ -419,6 +419,10 @@ pub enum Node {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         collection: Vec<String>,
     },
+    /// The immutable one-based source ordinal of the generated sequence whose
+    /// private item has this identity. Filtering, sorting and output compaction
+    /// do not change it. The owning sequence must be active at the use site.
+    GeneratedPosition { item: NodeId },
     /// Reads a scalar from one source frame owned by an inner-join scope.
     /// Unlike `SourceField`, this node cannot fall back to an unrelated
     /// context when the owning join is not active.
