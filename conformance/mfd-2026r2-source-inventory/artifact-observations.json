@@ -90,6 +90,19 @@
       "public_type": "com.altova.SourceInstanceUnavailableException",
       "declared_base": "RuntimeException",
       "scope": "Declaration spelling only. The different literal spelling in the manual remains preserved; no throw-site, compatibility-alias or runtime claim follows."
+    },
+    {
+      "cab_member": "MapForce.tlb_1193",
+      "sha256": "785c484fbaa882cae724a3568b04650300eb18941084ac23eb2d041dfb4a2789",
+      "language": "COM",
+      "public_member": "IComponent.GenerateOutput",
+      "type_info_index": 11,
+      "member_record_index": 10,
+      "dispatch_member_id": 9,
+      "parameter": {"index": 0, "name": "pbError", "type": "VARIANT*", "parameter_flags": 3, "direction": ["in", "out"]},
+      "parameter_flag_reference": "https://learn.microsoft.com/en-us/dotnet/api/system.runtime.interopservices.comtypes.paramflag?view=net-10.0",
+      "catalog_comparison": {"file": "com-api.json", "member": "provisional.com.Component.GenerateOutput", "parameter": "pbError", "declared_type": "Boolean", "direction": "out", "release_binding": "unestablished"},
+      "scope": "Declaration discrepancy only. The type library declares a VARIANT pointer with both input and output flags, while the online catalog describes an output Boolean. Initial-value requirements, accepted variant types, coercion, mutation, errors and ownership remain unqualified; no alias or compatible runtime behavior is inferred."
     }
   ],
   "remaining": [
