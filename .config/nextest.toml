@@ -1,0 +1,11 @@
+nextest-version = "0.9.150"
+
+[profile.default]
+# Generated consumers share a bounded build lane. A process-local mutex is not
+# sufficient with nextest's process-per-test model.
+test-threads = 1
+fail-fast = false
+retries = 0
+
+[profile.ci]
+fail-fast = false

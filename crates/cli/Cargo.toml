@@ -58,6 +58,7 @@ flate2 = "1.1"
 roxmltree = { workspace = true }
 rusqlite = { workspace = true }
 rust_xlsxwriter = { workspace = true }
+toml = { workspace = true }
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
 libc = "=0.2.186"

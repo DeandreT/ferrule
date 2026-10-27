@@ -36,7 +36,8 @@ jobs:
   generated-backends:
     name: generated-backends (${{ matrix.suite }})
     runs-on: ${{ fromJSON(vars.OVH_RUNNER_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ((inputs.runner || vars.CI_RUNNER || 'auto') == 'cleo' && '["self-hosted", "Linux", "X64", "ferrule-cleo"]' || (inputs.runner || vars.CI_RUNNER || 'auto') == 'over' && '["self-hosted", "Linux", "X64", "ferrule-over"]' || (inputs.runner || vars.CI_RUNNER || 'auto') == 'auto' && '["self-hosted", "Linux", "X64", "ferrule-primary"]') || '["ubuntu-latest"]') }}
-    timeout-minutes: 120
+    # The mappings suite builds generated consumers serially for each case.
+    timeout-minutes: ${{ matrix.suite == 'mappings' && 240 || 120 }}
     strategy:
       fail-fast: false
       matrix:
@@ -53,6 +54,7 @@ jobs:
           python3 -B scripts/ci/test-reclaim-build-cache.py
           python3 -B scripts/ci/test-compact-job-evidence.py
           python3 -B scripts/ci/test-prepare-hosted-temp.py
+          python3 -B scripts/ci/test-setup-mold.py
       - name: Hosted disk-backed test temp
         if: runner.environment == 'github-hosted'
         run: python3 -B scripts/ci/prepare-hosted-temp.py
@@ -66,6 +68,13 @@ jobs:
         with:
           toolchain: 1.98.1
           components: clippy
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.150
+      - name: job-local linker
+        run: python3 -B scripts/ci/setup-mold.py
+      - name: linker
+        run: mold --version
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
@@ -82,12 +91,16 @@ jobs:
         env:
           RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
         run: >-
-          cargo test --locked
+          cargo nextest run --profile ci --locked
           -p codegen
           -p codegen-runtime
           -p codegen-rust
           -p codegen-csharp
-          -- --test-threads=${{ runner.environment == 'self-hosted' && '1' || '2' }}
+      - name: codegen doctests
+        if: matrix.suite == 'crates'
+        run: >-
+          cargo test --doc --locked
+          -p codegen -p codegen-runtime -p codegen-rust -p codegen-csharp
       - name: C# runtime smoke tests
         if: matrix.suite == 'crates'
         run: |
@@ -111,8 +124,8 @@ jobs:
         env:
           RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
         run: >-
-          cargo test -p cli --test code_generation
-          --features codegen-tests --locked -- --test-threads=${{ runner.environment == 'self-hosted' && '1' || '2' }}
+          cargo nextest run --profile ci -p cli --test code_generation
+          --features codegen-tests --locked
       - name: compiled string and integral boundary regressions
         id: compiled_boundaries
         if: matrix.suite == 'mappings'
@@ -159,16 +172,16 @@ jobs:
             string_int_range_boundaries::exact_integral_schema_bounds_compiled_rust_and_csharp_complete_text_and_bytes; do
             test_label="${test_name##*::}"
             check_storage "$test_label.before"
-            printf '%s\n' "cargo test -p cli --test code_generation --features codegen-tests --locked $test_name -- --ignored --exact --nocapture --test-threads=1" > "$evidence_dir/$test_label.command.original"
+            printf '%s\n' "cargo nextest run --color never --profile ci --success-output immediate -p cli --test code_generation --features codegen-tests --locked --run-ignored only -E test(=$test_name)" > "$evidence_dir/$test_label.command.original"
             set +e
-            cargo test -p cli --test code_generation --features codegen-tests --locked "$test_name" \
-              -- --ignored --exact --nocapture --test-threads=1 \
+            cargo nextest run --color never --profile ci --success-output immediate -p cli --test code_generation --features codegen-tests --locked \
+              --run-ignored only -E "test(=$test_name)" \
               > "$evidence_dir/$test_label.stdout.original" 2> "$evidence_dir/$test_label.stderr.original"
             status=$?
             set -e
             printf '%s\n' "$status" > "$evidence_dir/$test_label.exit-status.original"
             cat "$evidence_dir/$test_label.stdout.original" "$evidence_dir/$test_label.stderr.original"
-            if (( status != 0 )) || ! grep -Fxq 'running 1 test' "$evidence_dir/$test_label.stdout.original"; then
+            if (( status != 0 )) || ! grep -Eq '1 test run: 1 passed' "$evidence_dir/$test_label.stderr.original"; then
               result=1
             fi
             check_storage "$test_label.after"
@@ -207,13 +220,13 @@ jobs:
             basic_owned_sequence_aggregate::basic_aggregate474_generated_rust_and_csharp_match_expected; do
             log="$logs/${test_name##*::}.log"
             set +e
-            cargo test -p cli --test code_generation --features codegen-tests --locked "$test_name" \
-              -- --ignored --exact --test-threads=1 > "$log" 2>&1
+            cargo nextest run --color never --profile ci -p cli --test code_generation --features codegen-tests --locked \
+              --run-ignored only -E "test(=$test_name)" > "$log" 2>&1
             status=$?
             set -e
             # Host failures already quote bounded excerpts; keep the job log bounded too.
             tail -c 65536 "$log"
-            if (( status != 0 )) || ! grep -Fxq 'running 1 test' "$log"; then
+            if (( status != 0 )) || ! grep -Eq '1 test run: 1 passed' "$log"; then
               result=1
             fi
           done
