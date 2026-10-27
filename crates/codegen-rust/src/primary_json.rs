@@ -9,6 +9,7 @@ pub enum PrimaryJsonEmitError {
     Emit(EmitError),
     Writer(codegen::MapForceX12WriterError),
     Visitor(codegen::DocumentVisitorEmitError<EmitError>),
+    Parameter(codegen::JsonParameterBoundaryError),
 }
 impl std::fmt::Display for PrimaryJsonEmitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -17,6 +18,7 @@ impl std::fmt::Display for PrimaryJsonEmitError {
             Self::Emit(error) => error.fmt(f),
             Self::Writer(error) => error.fmt(f),
             Self::Visitor(error) => error.fmt(f),
+            Self::Parameter(error) => error.fmt(f),
         }
     }
 }
@@ -58,6 +60,66 @@ pub fn emit_grouped_with_mapforce_x12_writer(
         crate::primary_filename::append(base, document).map_err(PrimaryJsonEmitError::Emit)?;
     let projected = append_projection(base, projection, document.json_grouping_preparation())?;
     append_writer(projected, descriptor)
+}
+
+/// Add explicit parameter admission around a stateless physical grouped body.
+/// The host visits prepared invocations and binds each key before acquisition.
+pub fn emit_invoked_grouped_with_mapforce_x12_writer(
+    document: &DocumentProgram,
+    options: &Options,
+    invocation: &mapping::JsonParameterInvocationPlan,
+    shape: &JsonSourceShape,
+    target_options: &mapping::FormatOptions,
+    minimums: &[mapping::MapForceEdiMinimum],
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let descriptor = codegen::prepare_json_parameter_invocation(document, invocation)
+        .map_err(PrimaryJsonEmitError::Parameter)?;
+    let base =
+        emit_grouped_with_mapforce_x12_writer(document, options, shape, target_options, minimums)?;
+    append_parameter_invocation(base, descriptor, invocation)
+}
+
+pub fn emit_invoked_with_primary_json_projection(
+    document: &DocumentProgram,
+    options: &Options,
+    invocation: &mapping::JsonParameterInvocationPlan,
+    shape: &JsonSourceShape,
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let descriptor = codegen::prepare_json_parameter_invocation(document, invocation)
+        .map_err(PrimaryJsonEmitError::Parameter)?;
+    let projection = codegen::prepare_json_source_projection(document, shape)
+        .map_err(PrimaryJsonEmitError::Boundary)?;
+    let base = crate::document_visitor::emit_with_static_error_document_clocks(
+        document.program(),
+        options,
+    )
+    .map_err(PrimaryJsonEmitError::Visitor)?;
+    let base =
+        crate::primary_filename::append(base, document).map_err(PrimaryJsonEmitError::Emit)?;
+    let base = append_projection(base, projection, document.json_grouping_preparation())?;
+    append_parameter_invocation(base, descriptor, invocation)
+}
+
+fn append_parameter_invocation(
+    base: ArtifactSet,
+    descriptor: String,
+    invocation: &mapping::JsonParameterInvocationPlan,
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let mut files = base.into_files();
+    let source = format!(
+        "\npub fn prepare_parameter_invocations(input: &codegen_runtime::Value, json_limits: codegen_runtime::JsonSourceLimits, limits: codegen_runtime::JsonParameterInvocationLimits) -> Result<codegen_runtime::PreparedJsonParameterInvocations, codegen_runtime::JsonParameterInvocationError> {{\n    static PLAN: std::sync::OnceLock<codegen_runtime::JsonParameterInvocationPlan> = std::sync::OnceLock::new();\n    let plan = PLAN.get_or_init(|| codegen_runtime::parse_json_parameter_invocation_plan({}).expect(\"generation-validated parameter plan\"));\n    codegen_runtime::PreparedJsonParameterInvocations::prepare(plan, input, json_limits, limits)\n}}\npub fn parameter_input_name() -> &'static str {{ {} }}\n",
+        rust_string(&descriptor),
+        rust_string(&invocation.parameter),
+    );
+    files
+        .iter_mut()
+        .find(|file| file.path.as_str() == "src/lib.rs")
+        .expect("ordinary Rust artifact")
+        .contents
+        .extend_from_slice(source.as_bytes());
+    ArtifactSet::new(files)
+        .map_err(EmitError::from)
+        .map_err(PrimaryJsonEmitError::Emit)
 }
 
 fn emit_with_writer(
