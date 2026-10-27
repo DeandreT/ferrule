@@ -143,7 +143,9 @@ fn subject_block(corpus: &str, id: &str, subject: &Subject) -> String {
     };
     let mut output = format!("\n## {corpus}/{id} ({kind})\n");
     for (family, result) in families {
-        let _ = writeln!(output, "{family:<12} {result}");
+        // A refusal can have an empty display summary after its full error
+        // hash. Keep the record free of meaningless trailing padding.
+        let _ = writeln!(output, "{family:<12} {}", result.trim_end());
     }
     output
 }
