@@ -95,10 +95,9 @@ fn check_alignment(alignment: &Value) {
         .collect();
     let compared = alignment["enumerations"].as_array().unwrap();
     unique_ids(compared, "catalog_name");
-    assert_eq!(compared.len(), enums.len() - 1);
+    assert_eq!(compared.len(), enums.len());
     for row in compared {
         let name = row["catalog_name"].as_str().unwrap();
-        assert_ne!(name, "ENUMViewMode");
         assert_eq!(row["type_library_name"], name);
         assert!(type_indexes.insert(row["type_info_index"].as_u64().unwrap()));
         let documented = enums[name]["members"]
@@ -110,6 +109,30 @@ fn check_alignment(alignment: &Value) {
         check_row(row, &documented);
         assert_eq!(row["record_count"], row["type_library_name_count"]);
     }
+    let events = alignment["events"].as_array().unwrap();
+    unique_ids(events, "catalog_name");
+    let event_owners: BTreeSet<_> = members
+        .iter()
+        .filter(|member| member["member_identity"]["kind"] == "event")
+        .map(|member| member["member_identity"]["owner"].as_str().unwrap())
+        .collect();
+    assert_eq!(events.len(), event_owners.len());
+    for row in events {
+        let owner = row["catalog_name"].as_str().unwrap();
+        assert!(event_owners.contains(owner));
+        assert_eq!(row["type_library_name"], format!("_I{owner}Events"));
+        assert!(type_indexes.insert(row["type_info_index"].as_u64().unwrap()));
+        let documented = members
+            .iter()
+            .filter(|member| {
+                member["member_identity"]["owner"] == owner
+                    && member["member_identity"]["kind"] == "event"
+            })
+            .map(|member| member["member_identity"]["name"].as_str().unwrap())
+            .collect();
+        check_row(row, &documented);
+        assert_eq!(row["record_count"], row["type_library_name_count"]);
+    }
     let counts = &alignment["counts"];
     assert_eq!(
         counts,
@@ -117,9 +140,11 @@ fn check_alignment(alignment: &Value) {
             "interfaces": 22, "interface_function_records": 317,
             "catalog_non_event_names": 253, "type_library_interface_names": 266,
             "matched_interface_names": 252, "catalog_only_interface_names": 1,
-            "type_library_only_interface_names": 14, "enum_name_tables_compared": 19,
-            "enum_names_compared": 127, "type_library_only_enum_names": 5,
-            "catalog_only_enum_names": 0, "excluded_catalog_events": 8
+            "type_library_only_interface_names": 14, "enum_name_tables_compared": 20,
+            "enum_names_compared": 130, "type_library_only_enum_names": 5,
+            "catalog_only_enum_names": 0, "excluded_catalog_events": 8,
+            "event_names_compared": 8, "matched_event_names": 8,
+            "catalog_only_event_names": 0, "type_library_only_event_names": 0
         })
     );
     for (count, field) in [
@@ -131,6 +156,24 @@ fn check_alignment(alignment: &Value) {
         assert_eq!(counts[count], sum(interfaces, field));
     }
     assert_eq!(counts["enum_names_compared"], sum(compared, "record_count"));
+    assert_eq!(counts["event_names_compared"], sum(events, "record_count"));
+    assert_eq!(
+        counts["matched_event_names"],
+        sum(events, "matched_name_count")
+    );
+    let readback = &alignment["raw_table_readback"];
+    assert_eq!(readback["source"], "type_library_source");
+    for (field, value) in [
+        ("type_info_table_offset", 624),
+        ("type_info_record_bytes", 100),
+        ("name_table_offset", 10804),
+        ("type_info_records", 75),
+        ("known_nonempty_tables_cross_checked", 42),
+        ("additional_name_tables_resolved", 4),
+    ] {
+        assert_eq!(readback[field], value);
+    }
+    assert_eq!(interfaces.len() + compared.len() + events.len(), 42 + 4);
     assert_eq!(
         members
             .iter()
@@ -139,7 +182,7 @@ fn check_alignment(alignment: &Value) {
         8
     );
     assert_eq!(
-        alignment["unresolved_dump_tables"],
+        alignment["dump_rendering_gaps"],
         json!([
             {"type_library_name":"ENUMViewMode","type_info_index":47,"function_records":0,"variable_records":3},
             {"type_library_name":"_IDocumentEvents","type_info_index":52,"function_records":2,"variable_records":0},
@@ -147,7 +190,7 @@ fn check_alignment(alignment: &Value) {
             {"type_library_name":"_IProjectItemEvents","type_info_index":57,"function_records":2,"variable_records":0}
         ])
     );
-    assert!(alignment["remaining"].as_array().unwrap().len() >= 5);
+    assert!(alignment["remaining"].as_array().unwrap().len() >= 4);
     source_only(alignment);
 }
 
@@ -171,7 +214,12 @@ fn com_name_alignment_rejects_coverage_and_evidence_promotions() {
             "/interfaces/15/type_library_only",
             json!(["HighlightMyConnectionsRecursively"]),
         ),
-        ("/unresolved_dump_tables", json!([])),
+        ("/dump_rendering_gaps", json!([])),
+        ("/events/0/type_library_name", json!("IApplication")),
+        (
+            "/raw_table_readback/additional_name_tables_resolved",
+            json!(3),
+        ),
         (
             "/execution_evidence",
             json!(["name matching is not execution"]),
@@ -184,4 +232,7 @@ fn com_name_alignment_rejects_coverage_and_evidence_promotions() {
     let mut missing = original;
     missing["interfaces"].as_array_mut().unwrap().pop();
     assert!(std::panic::catch_unwind(|| check_alignment(&missing)).is_err());
+    let mut missing_enum = load("com-name-alignment.json");
+    missing_enum["enumerations"].as_array_mut().unwrap().pop();
+    assert!(std::panic::catch_unwind(|| check_alignment(&missing_enum)).is_err());
 }
