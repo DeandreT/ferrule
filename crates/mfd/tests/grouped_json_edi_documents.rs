@@ -171,6 +171,20 @@ fn grouped_keys_keep_empty_values_and_merge_physical_files_without_crossing_owne
 }
 
 #[test]
+fn repeated_keys_are_refused_instead_of_silently_losing_group_memberships() {
+    let fixture = Fixture::new();
+    let imported = fixture.import().unwrap();
+    for text in [
+        r#"{"rows":[{"name":"a","name":"b","qty":1}]}"#,
+        r#"{"rows":[{"name":"a","name":"a","qty":1}]}"#,
+    ] {
+        let source = input(&imported, &[text]);
+        let error = engine::run(imported.document.project(), &source).unwrap_err();
+        assert!(error.to_string().contains("multiple group keys"), "{error}");
+    }
+}
+
+#[test]
 fn grouped_filename_admission_keeps_its_raw_pins_and_source_guards() {
     for (from, to) in [
         (
