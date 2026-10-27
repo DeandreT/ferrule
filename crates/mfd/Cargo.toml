@@ -27,6 +27,7 @@ sha2 = { workspace = true }
 rustix = { workspace = true }
 
 [dev-dependencies]
+codegen-runtime = { workspace = true }
 codegen = { workspace = true }
 codegen-csharp = { workspace = true }
 codegen-rust = { workspace = true }

@@ -23,6 +23,25 @@ pub fn prepare_mapforce_x12_writer(
     options: &FormatOptions,
     minimums: &[MapForceEdiMinimum],
 ) -> Result<String, MapForceX12WriterError> {
+    prepare_writer(program, options, minimums, None)
+}
+
+/// A writer for each member of an explicitly lowered dynamic document set.
+/// Validates the complete program without changing or evaluating its root.
+pub fn prepare_mapforce_x12_document_writer(
+    document: &crate::DocumentProgram,
+    options: &FormatOptions,
+    minimums: &[MapForceEdiMinimum],
+) -> Result<String, MapForceX12WriterError> {
+    prepare_writer(document.program(), options, minimums, Some(document))
+}
+
+fn prepare_writer(
+    program: &Program,
+    options: &FormatOptions,
+    minimums: &[MapForceEdiMinimum],
+    document: Option<&crate::DocumentProgram>,
+) -> Result<String, MapForceX12WriterError> {
     if minimums.len() > 10000 {
         return Err(MapForceX12WriterError::Minimum);
     }
@@ -43,13 +62,16 @@ pub fn prepare_mapforce_x12_writer(
     let mut target = X12BoundaryOptions::from_format_options(options)
         .map_err(MapForceX12WriterError::Boundary)?;
     target.envelope_profile = X12EnvelopeProfile::MapForceInterchanges;
-    let profile = crate::prepare_x12_boundary(
-        program,
-        &X12BoundaryPolicy {
-            source: None,
-            target: Some(target),
-        },
-    )
+    let profile = match document {
+        Some(document) => crate::x12_boundary::prepare_x12_document_target(document, target),
+        None => crate::prepare_x12_boundary(
+            program,
+            &X12BoundaryPolicy {
+                source: None,
+                target: Some(target),
+            },
+        ),
+    }
     .map_err(MapForceX12WriterError::Boundary)?;
     serde_json::to_string(
         &serde_json::json!({"boundary":profile.target_descriptor,"minimums":minimums}),

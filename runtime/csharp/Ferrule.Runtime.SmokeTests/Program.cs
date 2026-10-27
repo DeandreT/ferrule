@@ -24,6 +24,7 @@ internal static partial class Program
             ("String component general parser limits", StringComponentParserLimits),
             ("String component general fallback contract", StringComponentFallbackContract),
             ("String component general fallback limits", StringComponentFallbackLimits),
+            ("literal replacement", LiteralReplacement),
             ("JSON5 writer complete byte corpus", Json5TextWriter),
             ("Direct source input ownership and limits", DirectSourceInputs),
             ("Owned input primary and secondary failures", OwnedInputContract),

@@ -21,6 +21,30 @@ pub struct ImportedJsonEdiDocument {
     pub writer_minimums: Vec<mapping::MapForceEdiMinimum>,
 }
 
+/// Grouped JSON input with one independently named EDI document per group.
+/// Acquisition and physical publication remain explicit host operations.
+pub struct ImportedGroupedJsonEdiDocument {
+    pub document: DocumentProject,
+    pub source: ImportedJsonSourceProjection,
+    pub writer_minimums: Vec<mapping::MapForceEdiMinimum>,
+}
+
+struct ImportedParts {
+    document: DocumentProject,
+    output_filename: Option<Project>,
+    source: ImportedJsonSourceProjection,
+    writer_minimums: Vec<mapping::MapForceEdiMinimum>,
+}
+
+#[derive(Clone)]
+struct GroupedSource {
+    collection: Vec<String>,
+    key_output: u32,
+    key_node: NodeId,
+    key_path: Vec<String>,
+    filename_feed: u32,
+}
+
 fn refuse(reason: impl AsRef<str>) -> MfdError {
     MfdError::UnsupportedImport(format!("JSON/EDI document body: {}", reason.as_ref()))
 }
@@ -37,19 +61,50 @@ struct Builder {
     next: NodeId,
     functions: BTreeMap<u32, Function>,
     udf_outputs: BTreeMap<u32, super::udf::ScalarCallOutput>,
+    grouped: Option<GroupedSource>,
+    source_schema: SchemaNode,
+    in_group_member: bool,
     feeds: BTreeMap<u32, u32>,
     ports: BTreeMap<u32, Vec<String>>,
     port_kinds: BTreeMap<u32, String>,
     filename_port: Option<u32>,
     string_targets: BTreeSet<u32>,
-    cache: BTreeMap<(u32, Option<u32>, Vec<String>), NodeId>,
-    active: BTreeSet<(u32, Option<u32>, Vec<String>)>,
+    cache: BTreeMap<(u32, Option<u32>, Vec<String>, bool), NodeId>,
+    active: BTreeSet<(u32, Option<u32>, Vec<String>, bool)>,
 }
 
 pub fn import_json_edi_document_with_options(
     path: &Path,
     options: &ImportOptions,
 ) -> Result<ImportedJsonEdiDocument, MfdError> {
+    let imported = import_document(path, options, false)?;
+    Ok(ImportedJsonEdiDocument {
+        document: imported.document,
+        output_filename: imported
+            .output_filename
+            .ok_or_else(|| refuse("missing static output filename"))?,
+        source: imported.source,
+        writer_minimums: imported.writer_minimums,
+    })
+}
+
+pub fn import_grouped_json_edi_document_with_options(
+    path: &Path,
+    options: &ImportOptions,
+) -> Result<ImportedGroupedJsonEdiDocument, MfdError> {
+    let imported = import_document(path, options, true)?;
+    Ok(ImportedGroupedJsonEdiDocument {
+        document: imported.document,
+        source: imported.source,
+        writer_minimums: imported.writer_minimums,
+    })
+}
+
+fn import_document(
+    path: &Path,
+    options: &ImportOptions,
+    grouped: bool,
+) -> Result<ImportedParts, MfdError> {
     let source = super::import_json_source_projection_with_options(path, options)?;
     let resources = super::resolved_resources(path, options)?;
     let result = (|| {
@@ -193,6 +248,12 @@ pub fn import_json_edi_document_with_options(
             next: 0,
             functions,
             udf_outputs,
+            grouped: None,
+            source_schema: source
+                .shape
+                .document_set_schema()
+                .map_err(|_| refuse("invalid source shape"))?,
+            in_group_member: false,
             feeds: edges.feeds,
             ports: source.ports.clone(),
             port_kinds,
@@ -223,36 +284,55 @@ pub fn import_json_edi_document_with_options(
             preview: source.filename_preview.clone(),
         })?;
         let output_feed = builder.feed(filename_input)?;
+        if grouped {
+            builder.bind_grouped_source(output_feed)?;
+        }
         if !builder
             .dependencies(output_feed, &mut BTreeSet::new())?
             .is_empty()
         {
             return Err(refuse("output filename is not source-free"));
         }
-        let output_node = builder.compile(output_feed, None, &[])?;
-        let filename = empty_project(
-            SchemaNode::group("FilenameInput", vec![]),
-            SchemaNode::group(
-                "Filename",
-                vec![SchemaNode::scalar("Path", ScalarType::String)],
-            ),
-            builder.graph.clone(),
-            Scope {
-                bindings: vec![Binding {
-                    target_field: "Path".into(),
-                    node: output_node,
-                }],
-                ..Default::default()
-            },
-        );
-        let body = builder.scope(
+        let anchor = builder
+            .grouped
+            .as_ref()
+            .map(|group| group.collection.clone())
+            .unwrap_or_default();
+        let output_node = builder.compile(output_feed, None, &anchor)?;
+        let filename = (!grouped).then(|| {
+            empty_project(
+                SchemaNode::group("FilenameInput", vec![]),
+                SchemaNode::group(
+                    "Filename",
+                    vec![SchemaNode::scalar("Path", ScalarType::String)],
+                ),
+                builder.graph.clone(),
+                Scope {
+                    bindings: vec![Binding {
+                        target_field: "Path".into(),
+                        node: output_node,
+                    }],
+                    ..Default::default()
+                },
+            )
+        });
+        let mut body = builder.scope(
             root,
             &target_schema.schema,
             &[],
-            &[],
+            &anchor,
             None,
             &target_schema.options,
         )?;
+        if let Some(group) = &builder.grouped {
+            body.iteration = ScopeIteration::DynamicDocuments {
+                source: group.collection.clone(),
+                output_path: output_node,
+            };
+            body.group_by = Some(group.key_node);
+            let key = group.key_node;
+            body.filter = Some(builder.call("exists", vec![key])?);
+        }
         let mut project = empty_project(
             source
                 .shape
@@ -271,13 +351,15 @@ pub fn import_json_edi_document_with_options(
         )
         .with_json_source_projection(source.shape.clone())
         .map_err(|_| refuse("invalid source projection binding"))?;
-        for (label, project) in [("body", document.project()), ("filename", &filename)] {
+        for (label, project) in std::iter::once(("body", document.project()))
+            .chain(filename.as_ref().map(|project| ("filename", project)))
+        {
             let issues = engine::validate(project);
             if !issues.is_empty() {
                 return Err(refuse(format!("{label} validation: {issues:?}")));
             }
         }
-        Ok(ImportedJsonEdiDocument {
+        Ok(ImportedParts {
             document,
             output_filename: filename,
             source,
@@ -400,6 +482,175 @@ pub(super) fn pins(
 }
 
 impl Builder {
+    fn grouped_substitution(&self, function: &Function) -> bool {
+        self.grouped.is_some()
+            && function.parsed.library == "db"
+            && function.parsed.name == "substitute-null"
+            && function.inputs.len() == 2
+            && self.input(function, 0).ok().is_some_and(|feed| {
+                matches!(
+                    self.port_kinds.get(&feed).map(String::as_str),
+                    Some("string" | "number")
+                )
+            })
+            && self.input(function, 1).ok().is_some_and(|feed| {
+                matches!(
+                    self.port_kinds.get(&feed).map(String::as_str),
+                    Some("string" | "number")
+                ) || self
+                    .functions
+                    .get(&feed)
+                    .is_some_and(|f| f.parsed.kind == 2)
+            })
+    }
+    fn grouped_sum(&self, function: &Function) -> bool {
+        self.grouped.is_some()
+            && function.parsed.library == "core"
+            && function.parsed.name == "sum"
+            && function.inputs.len() == 2
+            && function.inputs[0].is_none()
+            && self.input(function, 1).ok().is_some_and(|feed| {
+                self.port_kinds.get(&feed).map(String::as_str) == Some("number")
+            })
+    }
+    fn bind_grouped_source(&mut self, filename: u32) -> Result<(), MfdError> {
+        fn visit(
+            builder: &Builder,
+            feed: u32,
+            active: &mut BTreeSet<u32>,
+            found: &mut BTreeMap<u32, (Vec<String>, u32)>,
+        ) -> Result<(), MfdError> {
+            if builder.ports.contains_key(&feed) || builder.filename_port == Some(feed) {
+                return Ok(());
+            }
+            if !active.insert(feed) {
+                return Err(refuse("cyclic grouped filename"));
+            }
+            if let Some(call) = builder.udf_outputs.get(&feed) {
+                for input in call.inputs.values() {
+                    visit(builder, builder.feed(*input)?, active, found)?;
+                }
+            } else {
+                let function = builder
+                    .functions
+                    .get(&feed)
+                    .ok_or_else(|| refuse("unknown grouped filename feed"))?;
+                if function.parsed.library == "core" && function.parsed.name == "group-by" {
+                    if function.parsed.kind != 5
+                        || !function.metadata_valid
+                        || !matches!(function.parsed.output_pins.as_slice(),[None,Some(port)] if *port==feed)
+                        || function.inputs.len() != 2
+                    {
+                        return Err(refuse(
+                            "grouped filename requires the declared group key output",
+                        ));
+                    }
+                    let source = builder.input(function, 0)?;
+                    let key = builder.input(function, 1)?;
+                    let collection = builder
+                        .ports
+                        .get(&source)
+                        .filter(|_| {
+                            builder.port_kinds.get(&source).map(String::as_str) == Some("object")
+                        })
+                        .ok_or_else(|| refuse("grouped filename requires source objects"))?
+                        .clone();
+                    let key_path = builder
+                        .ports
+                        .get(&key)
+                        .filter(|_| {
+                            builder.port_kinds.get(&key).map(String::as_str) == Some("string")
+                        })
+                        .ok_or_else(|| refuse("grouped filename requires a String key"))?;
+                    if key_path
+                        .strip_prefix(collection.as_slice())
+                        .is_none_or(|path| path.is_empty())
+                    {
+                        return Err(refuse("group key crosses its source object owner"));
+                    }
+                    found.insert(feed, (collection, key));
+                } else if function.parsed.kind != 6 {
+                    for input in function.inputs.iter().flatten() {
+                        visit(builder, builder.feed(*input)?, active, found)?;
+                    }
+                }
+            }
+            active.remove(&feed);
+            Ok(())
+        }
+        let mut found = BTreeMap::new();
+        visit(self, filename, &mut BTreeSet::new(), &mut found)?;
+        if found.len() != 1 {
+            return Err(refuse(
+                "requires one source grouping in the output filename",
+            ));
+        }
+        let (key_output, (collection, key)) = found.pop_first().unwrap();
+        let key_path = relative(&self.ports[&key], &collection)?;
+        let value = self.alloc(Node::SourceField {
+            path: vec!["Value".into()],
+            frame: None,
+        })?;
+        let first = self.constant(Value::Int(1))?;
+        let key_node = self.alloc(Node::Aggregate {
+            function: AggregateOp::ItemAt,
+            collection: key_path.clone(),
+            value: vec![],
+            expression: Some(value),
+            arg: Some(first),
+        })?;
+        self.grouped = Some(GroupedSource {
+            collection,
+            key_output,
+            key_node,
+            key_path,
+            filename_feed: filename,
+        });
+        Ok(())
+    }
+
+    fn relative_source(&self, path: &[String], anchor: &[String]) -> Result<Vec<String>, MfdError> {
+        if path.starts_with(anchor) {
+            let mut result = relative(path, anchor)?;
+            if let Some(group) = &self.grouped
+                && anchor == group.collection
+                && !self.in_group_member
+            {
+                result.insert(
+                    0,
+                    group
+                        .collection
+                        .last()
+                        .ok_or_else(|| refuse("empty grouped source"))?
+                        .clone(),
+                );
+            }
+            return Ok(result);
+        }
+        let Some(group) = &self.grouped else {
+            return relative(path, anchor);
+        };
+        let common = path
+            .iter()
+            .zip(anchor)
+            .take_while(|(left, right)| left == right)
+            .count();
+        if common < group.collection.len() || common == path.len() {
+            return Err(refuse("source collection escapes its grouped owner"));
+        }
+        let head = &path[common];
+        for end in common + 1..=anchor.len() {
+            let node = anchor[..end]
+                .iter()
+                .try_fold(&self.source_schema, |node, name| node.child(name))
+                .ok_or_else(|| refuse("unknown grouped source frame"))?;
+            if node.child(head).is_some() {
+                return Err(refuse("ambiguous inherited grouped source field"));
+            }
+        }
+        Ok(path[common..].to_vec())
+    }
+
     // The IR keeps well-formed Unicode. A split surrogate may be replaced only
     // where it goes directly to the Latin-1 wire or an ASCII equality test.
     fn require_wire_left(&self, feed: u32) -> Result<(), MfdError> {
@@ -474,11 +725,24 @@ impl Builder {
             .ok_or_else(|| refuse("missing input feed"))
     }
     fn dependencies(&self, feed: u32, seen: &mut BTreeSet<u32>) -> Result<BTreeSet<u32>, MfdError> {
+        if self
+            .grouped
+            .as_ref()
+            .is_some_and(|group| group.key_output == feed)
+        {
+            return Ok(BTreeSet::new());
+        }
         if self.ports.contains_key(&feed) || self.filename_port == Some(feed) {
             return Ok(BTreeSet::from([feed]));
         }
         if !seen.insert(feed) {
             return Err(refuse("cyclic dependency"));
+        }
+        if self.functions.get(&feed).is_some_and(|function| {
+            self.grouped_substitution(function) || self.grouped_sum(function)
+        }) {
+            seen.remove(&feed);
+            return Ok(BTreeSet::new());
         }
         if let Some(call) = self.udf_outputs.get(&feed) {
             let mut result = BTreeSet::new();
@@ -507,7 +771,7 @@ impl Builder {
         leaf: Option<u32>,
         anchor: &[String],
     ) -> Result<NodeId, MfdError> {
-        let key = (feed, leaf, anchor.to_vec());
+        let key = (feed, leaf, anchor.to_vec(), self.in_group_member);
         if let Some(node) = self.cache.get(&key) {
             return Ok(*node);
         }
@@ -535,6 +799,33 @@ impl Builder {
         leaf: Option<u32>,
         anchor: &[String],
     ) -> Result<NodeId, MfdError> {
+        if let Some(group) = &self.grouped
+            && group.key_output == feed
+        {
+            if anchor != group.collection {
+                return Err(refuse("group key used outside its filename owner"));
+            }
+            let mut collection = vec![
+                group
+                    .collection
+                    .last()
+                    .ok_or_else(|| refuse("empty grouped source"))?
+                    .clone(),
+            ];
+            collection.extend(group.key_path.clone());
+            let value = self.alloc(Node::SourceField {
+                path: vec!["Value".into()],
+                frame: None,
+            })?;
+            let first = self.constant(Value::Int(1))?;
+            return self.alloc(Node::Aggregate {
+                function: AggregateOp::ItemAt,
+                collection,
+                value: vec![],
+                expression: Some(value),
+                arg: Some(first),
+            });
+        }
         if let Some(path) = self.ports.get(&feed).cloned() {
             if leaf != Some(feed) || !matches!(self.port_kinds[&feed].as_str(), "string" | "number")
             {
@@ -562,6 +853,28 @@ impl Builder {
             .clone();
         if !f.parsed.raw_single_output_valid || !f.metadata_valid {
             return Err(refuse("unqualified function output"));
+        }
+        if self.grouped_substitution(&f) {
+            let left = self.reduced_value(self.input(&f, 0)?, None, anchor, true)?;
+            let right = self.reduced_value(self.input(&f, 1)?, None, anchor, true)?;
+            let condition = self.call("exists", vec![left])?;
+            return self.alloc(Node::If {
+                condition,
+                then: left,
+                else_: right,
+            });
+        }
+        if self.grouped_sum(&f) {
+            let input = self.input(&f, 1)?;
+            let value = self.compile(input, Some(input), anchor)?;
+            let value = self.call("decimal_from_nullable_text", vec![value])?;
+            return self.alloc(Node::Aggregate {
+                function: AggregateOp::DecimalSum,
+                collection: self.relative_source(&self.ports[&input], anchor)?,
+                value: vec![],
+                expression: Some(value),
+                arg: None,
+            });
         }
         if f.parsed.kind == 2 {
             if f.parsed.library != "core" || !f.inputs.is_empty() {
@@ -622,7 +935,7 @@ impl Builder {
                 .filter(|_| self.port_kinds[&key] == "object")
                 .cloned()
                 .ok_or_else(|| refuse("count must select source objects"))?;
-            let collection = relative(&collection, anchor)?;
+            let collection = self.relative_source(&collection, anchor)?;
             return self.alloc(Node::Aggregate {
                 function: AggregateOp::Count,
                 collection,
@@ -739,21 +1052,19 @@ impl Builder {
             _ => Err(refuse("unsupported embedded scalar expression")),
         }
     }
-    fn binding(
+    fn reduced_value(
         &mut self,
         feed: u32,
         active_leaf: Option<u32>,
-        target: &SchemaNode,
-        path: &[String],
         anchor: &[String],
-        options: &mapping::FormatOptions,
+        retain_empty: bool,
     ) -> Result<NodeId, MfdError> {
         let dependencies = self.dependencies(feed, &mut BTreeSet::new())?;
         if dependencies.len() > 1 {
             return Err(refuse("scalar combines distinct source occurrences"));
         }
         let dependency = dependencies.first().copied();
-        let mut node = if let Some(leaf) = dependency {
+        let node = if let Some(leaf) = dependency {
             if !matches!(
                 self.port_kinds.get(&leaf).map(String::as_str),
                 Some("string" | "number")
@@ -765,17 +1076,38 @@ impl Builder {
                 value
             } else {
                 let value = self.call("string", vec![value])?;
+                let arg = if retain_empty {
+                    Some(self.constant(Value::Int(1))?)
+                } else {
+                    None
+                };
                 self.alloc(Node::Aggregate {
-                    function: AggregateOp::FirstNonemptyText,
-                    collection: relative(&self.ports[&leaf], anchor)?,
+                    function: if retain_empty {
+                        AggregateOp::ItemAt
+                    } else {
+                        AggregateOp::FirstNonemptyText
+                    },
+                    collection: self.relative_source(&self.ports[&leaf], anchor)?,
                     value: vec![],
                     expression: Some(value),
-                    arg: None,
+                    arg,
                 })?
             }
         } else {
             self.compile(feed, None, anchor)?
         };
+        Ok(node)
+    }
+    fn binding(
+        &mut self,
+        feed: u32,
+        active_leaf: Option<u32>,
+        target: &SchemaNode,
+        path: &[String],
+        anchor: &[String],
+        options: &mapping::FormatOptions,
+    ) -> Result<NodeId, MfdError> {
+        let mut node = self.reduced_value(feed, active_leaf, anchor, false)?;
         if self.functions.get(&feed).is_some_and(|function| {
             function.parsed.kind == 6 && function.parsed.input_type == Some(ScalarType::String)
         }) {
@@ -861,23 +1193,50 @@ impl Builder {
             ..Default::default()
         };
         let mut current = anchor.to_vec();
+        let parent_group_member = self.in_group_member;
         let mut leaf = active_leaf;
         if let Some(key) = entry.attribute("inpkey") {
             let feed = self.feed(number(Some(key))?)?;
-            if self.filename_port == Some(feed) {
+            if self
+                .grouped
+                .as_ref()
+                .is_some_and(|group| group.filename_feed == feed)
+            {
+                // This connector selects the already constructed document,
+                // not another evaluation of its volatile filename expression.
+            } else if self.filename_port == Some(feed) {
                 current = vec!["Documents".into()];
                 if current != anchor {
-                    scope.iteration = ScopeIteration::Source(relative(&current, anchor)?);
+                    scope.iteration =
+                        ScopeIteration::Source(self.relative_source(&current, anchor)?);
                 }
             } else if let Some(source) = self.ports.get(&feed) {
-                if self.port_kinds[&feed] != "object" {
+                if self.port_kinds[&feed] != "object" && self.grouped.is_none() {
                     return Err(refuse("group needs source object driver"));
                 }
                 current = source.clone();
+                if self.grouped.is_some()
+                    && matches!(self.port_kinds[&feed].as_str(), "string" | "number")
+                {
+                    leaf = Some(feed);
+                }
                 if current == anchor {
-                    scope.iteration = ScopeIteration::None;
+                    if !self.in_group_member
+                        && self
+                            .grouped
+                            .as_ref()
+                            .is_some_and(|group| group.collection == current)
+                    {
+                        scope.iteration =
+                            ScopeIteration::Source(self.relative_source(&current, anchor)?);
+                        self.in_group_member = true;
+                    } else {
+                        scope.iteration = ScopeIteration::None;
+                    }
                 } else if schema.repeating {
-                    scope.iteration = ScopeIteration::Source(relative(&current, anchor)?);
+                    scope.iteration =
+                        ScopeIteration::Source(self.relative_source(&current, anchor)?);
+                    self.in_group_member |= self.grouped.is_some();
                 } else {
                     return Err(refuse("non-repeating group crosses a source owner"));
                 }
@@ -887,21 +1246,51 @@ impl Builder {
                     if dependencies.len() != 1 {
                         return Err(refuse("mixed group drivers"));
                     }
-                    let f = self
-                        .functions
-                        .get(&feed)
-                        .ok_or_else(|| refuse("unknown group driver"))?
-                        .clone();
-                    if f.parsed.name != "if-else" || f.inputs.len() != 3 || f.inputs[2].is_some() {
-                        return Err(refuse("group conditional requires absent else"));
+                    if self.grouped.is_some()
+                        && matches!(
+                            self.port_kinds.get(&key).map(String::as_str),
+                            Some("string" | "number")
+                        )
+                    {
+                        current = self.ports[&key].clone();
+                        leaf = Some(key);
+                        scope.iteration =
+                            ScopeIteration::Source(self.relative_source(&current, anchor)?);
+                        self.in_group_member = true;
+                        let value = self.compile(feed, leaf, &current)?;
+                        scope.filter = Some(self.call("exists", vec![value])?);
+                    } else {
+                        let f = self
+                            .functions
+                            .get(&feed)
+                            .ok_or_else(|| refuse("unknown group driver"))?
+                            .clone();
+                        if f.parsed.name != "if-else"
+                            || f.inputs.len() != 3
+                            || f.inputs[2].is_some()
+                        {
+                            return Err(refuse("group conditional requires absent else"));
+                        }
+                        current = self.ports[&key].clone();
+                        leaf = Some(key);
+                        scope.iteration =
+                            ScopeIteration::Source(self.relative_source(&current, anchor)?);
+                        scope.filter = Some(self.compile(self.input(&f, 0)?, leaf, &current)?);
                     }
-                    current = self.ports[&key].clone();
-                    leaf = Some(key);
-                    scope.iteration = ScopeIteration::Source(relative(&current, anchor)?);
-                    scope.filter = Some(self.compile(self.input(&f, 0)?, leaf, &current)?);
                 } else {
-                    self.compile(feed, None, anchor)?;
-                    scope.iteration = ScopeIteration::None;
+                    let value = self.compile(feed, None, anchor)?;
+                    scope.iteration = if self.grouped.is_some()
+                        && !self
+                            .functions
+                            .get(&feed)
+                            .is_some_and(|f| f.parsed.kind == 2)
+                    {
+                        ScopeIteration::OptionalPresence {
+                            condition: self.call("exists", vec![value])?,
+                        }
+                    } else {
+                        ScopeIteration::None
+                    };
                 }
             }
         }
@@ -938,6 +1327,12 @@ impl Builder {
                 }
             } else {
                 let mut next = self.scope(child, target, &child_path, &current, leaf, options)?;
+                if self.grouped.is_some()
+                    && child.attribute("inpkey").is_none()
+                    && !has_bindings(&next)
+                {
+                    continue;
+                }
                 if let Some(&index) = child_positions.get(name) {
                     let prior = &mut scope.children[index];
                     next.target_field.clear();
@@ -970,6 +1365,7 @@ impl Builder {
                 }
             }
         }
+        self.in_group_member = parent_group_member;
         if schema.repeating && matches!(scope.iteration, ScopeIteration::None) {
             scope.target_field.clear();
             Ok(Scope {
@@ -980,5 +1376,90 @@ impl Builder {
         } else {
             Ok(scope)
         }
+    }
+}
+
+fn has_bindings(scope: &Scope) -> bool {
+    !scope.bindings.is_empty()
+        || scope.children.iter().any(has_bindings)
+        || matches!(
+            scope.iteration,
+            ScopeIteration::Source(_) | ScopeIteration::OptionalPresence { .. }
+        )
+        || matches!(&scope.iteration, ScopeIteration::Concatenate(sequence) if sequence.iter().any(has_bindings))
+}
+
+#[cfg(test)]
+mod grouped_owner_tests {
+    use super::*;
+
+    fn builder(shadow: bool) -> Builder {
+        let fields = if shadow {
+            vec![SchemaNode::scalar("header", ScalarType::String)]
+        } else {
+            vec![SchemaNode::scalar("value", ScalarType::String)]
+        };
+        let source_schema = SchemaNode::group(
+            "Source",
+            vec![
+                SchemaNode::group(
+                    "Rows",
+                    vec![
+                        SchemaNode::scalar("header", ScalarType::String),
+                        SchemaNode::group(
+                            "Children",
+                            vec![SchemaNode::group("Items", fields).repeating()],
+                        ),
+                    ],
+                )
+                .repeating(),
+            ],
+        );
+        Builder {
+            graph: Graph::default(),
+            next: 0,
+            functions: BTreeMap::new(),
+            udf_outputs: BTreeMap::new(),
+            grouped: Some(GroupedSource {
+                collection: vec!["Rows".into()],
+                key_output: 1,
+                key_node: 2,
+                key_path: vec!["header".into()],
+                filename_feed: 3,
+            }),
+            source_schema,
+            in_group_member: true,
+            feeds: BTreeMap::new(),
+            ports: BTreeMap::new(),
+            port_kinds: BTreeMap::new(),
+            filename_port: None,
+            string_targets: BTreeSet::new(),
+            cache: BTreeMap::new(),
+            active: BTreeSet::new(),
+        }
+    }
+
+    #[test]
+    fn inherited_reads_cannot_escape_or_rewind_the_group() {
+        let path = |parts: &[&str]| parts.iter().map(|part| (*part).into()).collect::<Vec<_>>();
+        let owner = path(&["Rows", "Children", "Items", "value"]);
+        let builder = builder(false);
+        assert_eq!(
+            builder
+                .relative_source(&path(&["Rows", "header"]), &owner)
+                .unwrap(),
+            ["header"]
+        );
+        assert!(builder.relative_source(&path(&["Rows"]), &owner).is_err());
+        assert!(
+            builder
+                .relative_source(&path(&["Other", "header"]), &owner)
+                .is_err()
+        );
+        assert!(
+            self::builder(true)
+                .relative_source(&path(&["Rows", "header"]), &owner)
+                .is_err()
+        );
     }
 }

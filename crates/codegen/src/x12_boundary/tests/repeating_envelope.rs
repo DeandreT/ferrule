@@ -1,4 +1,4 @@
-//! Repeating-interchange admission: explicit selection, the retained version
+//! X12 interchange admission: explicit selection, the retained version
 //! and exact typed refusals for every ownership, width and type rule.
 use super::*;
 
@@ -33,9 +33,69 @@ fn repeating_envelope_schema() -> SchemaNode {
     serde_json::from_str(SCHEMAS[1].2).unwrap()
 }
 
-fn repeating_envelope(version: &str) -> X12BoundaryOptions {
+#[test]
+fn document_member_writer_preserves_the_validated_dynamic_root() {
+    let project = mapping::Project {
+        source: SchemaNode::group(
+            "Source",
+            vec![SchemaNode::group("Rows", vec![]).repeating()],
+        ),
+        target: serde_json::from_str(SCHEMAS[0].2).unwrap(),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: FormatOptions {
+            edi_kind: Some(EdiBoundaryKind::X12),
+            x12_interchange_version: Some("00401".into()),
+            ..Default::default()
+        },
+        extra_sources: vec![],
+        extra_targets: vec![],
+        failure_rules: vec![],
+        user_functions: Default::default(),
+        graph: mapping::Graph {
+            nodes: [
+                (
+                    0,
+                    mapping::Node::Const {
+                        value: Value::String("input.json".into()),
+                    },
+                ),
+                (
+                    1,
+                    mapping::Node::Const {
+                        value: Value::String("output.edi".into()),
+                    },
+                ),
+            ]
+            .into(),
+        },
+        root: mapping::Scope {
+            iteration: mapping::ScopeIteration::DynamicDocuments {
+                source: vec!["Rows".into()],
+                output_path: 1,
+            },
+            ..Default::default()
+        },
+    };
+    let options = project.target_options.clone();
+    let document =
+        mapping::DocumentProject::new(project, mapping::PrimarySourcePlan { filename: 0 });
+    let program = crate::lower_document(&document).unwrap();
+    let before = format!("{:?}", program.program());
+    assert!(crate::prepare_mapforce_x12_writer(program.program(), &options, &[]).is_err());
+    assert!(crate::prepare_mapforce_x12_document_writer(&program, &options, &[]).is_ok());
+    assert_eq!(format!("{:?}", program.program()), before);
+    let invalid = mapping::MapForceEdiMinimum {
+        path: vec!["Unknown".into()],
+        minimum: 1,
+    };
+    assert!(crate::prepare_mapforce_x12_document_writer(&program, &options, &[invalid]).is_err());
+}
+
+fn repeating_options(version: &str) -> X12BoundaryOptions {
     X12BoundaryOptions {
-        envelope_profile: X12EnvelopeProfile::REPEATING_INTERCHANGES,
+        envelope_profile: X12EnvelopeProfile::MapForceInterchanges,
         interchange_version: Some(version.into()),
         ..Default::default()
     }
@@ -51,7 +111,7 @@ fn node_mut<'a>(schema: &'a mut SchemaNode, path: &[&str]) -> &'a mut SchemaNode
 
 fn children_mut<'a>(schema: &'a mut SchemaNode, path: &[&str]) -> &'a mut Vec<SchemaNode> {
     let SchemaKind::Group { children, .. } = &mut node_mut(schema, path).kind else {
-        panic!("RepeatingEnvelope test owner must be a group");
+        panic!("repeating-interchange test owner must be a group");
     };
     children
 }
@@ -61,13 +121,8 @@ fn repeating_envelope_admission_is_explicit_and_uses_the_retained_version() {
     for (isa, version, literal) in SCHEMAS {
         let candidate: SchemaNode = serde_json::from_str(literal).unwrap();
         for side in [X12BoundarySide::Source, X12BoundarySide::Target] {
-            let encoded = retained_profile(
-                "repeating-envelope-version",
-                &candidate,
-                &repeating_envelope(isa),
-                side,
-            )
-            .unwrap();
+            let encoded =
+                retained_profile("repeating-envelope-version", &candidate, &repeating_options(isa), side).unwrap();
             let descriptor: serde_json::Value = serde_json::from_str(&encoded).unwrap();
             assert_eq!(descriptor["envelope_profile"], "mapforce_interchanges");
             assert_eq!(descriptor["version"], version);
@@ -85,7 +140,7 @@ fn repeating_envelope_admission_is_explicit_and_uses_the_retained_version() {
         retained_profile(
             "repeating-envelope-fixed-version",
             &fixed,
-            &repeating_envelope(isa),
+            &repeating_options(isa),
             X12BoundarySide::Target,
         )
         .unwrap();
@@ -99,7 +154,7 @@ fn repeating_envelope_admission_is_explicit_and_uses_the_retained_version() {
         retained_profile(
             "repeating-envelope-optional-se",
             &optional_se,
-            &repeating_envelope(isa),
+            &repeating_options(isa),
             X12BoundarySide::Target,
         )
         .unwrap();
@@ -129,7 +184,7 @@ fn repeating_envelope_admission_is_explicit_and_uses_the_retained_version() {
         ..program()
     };
     let policy = X12BoundaryPolicy {
-        source: Some(repeating_envelope("00501")),
+        source: Some(repeating_options("00501")),
         target: None,
     };
     let profile = prepare_x12_boundary(&program, &policy).unwrap();
@@ -380,7 +435,7 @@ fn repeating_envelope_refusals_name_their_exact_owner_and_reason() {
         mutate(&mut candidate);
         let options = X12BoundaryOptions {
             interchange_version: version.map(Into::into),
-            ..repeating_envelope("00501")
+            ..repeating_options("00501")
         };
         for side in [X12BoundarySide::Source, X12BoundarySide::Target] {
             let result = retained_profile(label, &candidate, &options, side);
@@ -394,7 +449,7 @@ fn repeating_envelope_refusals_name_their_exact_owner_and_reason() {
 }
 
 #[test]
-fn repeating_envelope_elements_refuse_implied_decimals_and_release_syntax() {
+fn repeating_envelope_envelope_elements_refuse_implied_decimals_and_release_syntax() {
     let path = vec![
         "Interchange".to_owned(),
         "ISA".to_owned(),
@@ -403,14 +458,9 @@ fn repeating_envelope_elements_refuse_implied_decimals_and_release_syntax() {
     for side in [X12BoundarySide::Source, X12BoundarySide::Target] {
         let options = X12BoundaryOptions {
             implied_decimals: vec![EdiImpliedDecimal::new(path.clone(), 2).unwrap()],
-            ..repeating_envelope("00501")
+            ..repeating_options("00501")
         };
-        let result = retained_profile(
-            "repeating-envelope-implied",
-            &repeating_envelope_schema(),
-            &options,
-            side,
-        );
+        let result = retained_profile("repeating-envelope-implied", &repeating_envelope_schema(), &options, side);
         assert!(
             matches!(&result, Err(X12BoundaryPolicyError::Schema { path: found, reason, .. })
                 if *found == path && *reason == "implied decimals cannot apply to repeating-interchange envelope elements"),
@@ -430,7 +480,7 @@ fn repeating_envelope_elements_refuse_implied_decimals_and_release_syntax() {
         &repeating_envelope_schema(),
         &X12BoundaryOptions {
             implied_decimals: vec![EdiImpliedDecimal::new(body, 2).unwrap()],
-            ..repeating_envelope("00501")
+            ..repeating_options("00501")
         },
         X12BoundarySide::Source,
     )
@@ -443,7 +493,7 @@ fn repeating_envelope_elements_refuse_implied_decimals_and_release_syntax() {
             repetition: Some('^'),
             release: Some('?'),
         }),
-        ..repeating_envelope("00501")
+        ..repeating_options("00501")
     };
     assert!(matches!(
         retained_profile(
@@ -456,10 +506,8 @@ fn repeating_envelope_elements_refuse_implied_decimals_and_release_syntax() {
     ));
 }
 
-const MISPLACED: &str =
-    "an acknowledgment branch must be the last member of its functional group or message";
-const SOURCE_ONLY: &str =
-    "acknowledgment branches are source-only; X12 output never writes parser acknowledgments";
+const MISPLACED: &str = "an acknowledgment branch must be the last member of its functional group or message";
+const SOURCE_ONLY: &str = "acknowledgment branches are source-only; X12 output never writes parser acknowledgments";
 
 fn acknowledgment_schema() -> SchemaNode {
     serde_json::from_str(include_str!(concat!(
@@ -490,7 +538,7 @@ fn assert_refused(
     path: &[&str],
     reason: &str,
 ) {
-    let result = retained_profile(label, candidate, &repeating_envelope("00501"), side);
+    let result = retained_profile(label, candidate, &repeating_options("00501"), side);
     assert!(
         matches!(&result, Err(X12BoundaryPolicyError::Schema { side: actual, path: found, reason: found_reason })
             if *actual == side && *found == path && *found_reason == reason),
@@ -504,7 +552,7 @@ fn repeating_envelope_source_admits_trailing_acknowledgment_branches() {
     let encoded = retained_profile(
         "repeating-envelope-acknowledgments",
         &candidate,
-        &repeating_envelope("00501"),
+        &repeating_options("00501"),
         X12BoundarySide::Source,
     )
     .unwrap();
@@ -582,13 +630,8 @@ fn repeating_envelope_source_admits_trailing_acknowledgment_branches() {
                 ],
             ),
         ] {
-            retained_profile(
-                label,
-                schema,
-                &repeating_envelope(isa),
-                X12BoundarySide::Source,
-            )
-            .unwrap_or_else(|error| panic!("{isa} {label}: {error:?}"));
+            retained_profile(label, schema, &repeating_options(isa), X12BoundarySide::Source)
+                .unwrap_or_else(|error| panic!("{isa} {label}: {error:?}"));
             assert_refused(
                 label,
                 schema,
