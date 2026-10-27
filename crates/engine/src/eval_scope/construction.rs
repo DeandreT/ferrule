@@ -120,6 +120,24 @@ impl ItemEvaluator<'_> {
             return Ok(None);
         }
 
+        if matches!(scope.construction, ScopeConstruction::CollectDocuments) {
+            let mut documents = Vec::new();
+            for (index, child) in scope.children.iter().enumerate() {
+                let value = eval_scope(
+                    program,
+                    child,
+                    target,
+                    context,
+                    output_positions,
+                    extra_sources,
+                    source_loader,
+                    &trace_scope.child(&child.target_field, index),
+                )?;
+                super::document_collection::extend(&mut documents, value)?;
+            }
+            return Ok(Some(Instance::DocumentSet(documents)));
+        }
+
         if let ScopeConstruction::Scalar { value } = &scope.construction {
             let mut in_progress = HashSet::new();
             let value = eval_expr(program, *value, context, output_positions, &mut in_progress)?;

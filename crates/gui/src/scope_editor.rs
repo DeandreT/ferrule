@@ -60,6 +60,7 @@ pub enum ScopeTreeError {
     WholeGroupCopyContent(Vec<String>),
     ExpansionLimitExceeded(usize),
     CannotRemoveRoot,
+    DocumentCollectionContent,
 }
 
 impl std::fmt::Display for ScopeTreeError {
@@ -125,6 +126,9 @@ impl std::fmt::Display for ScopeTreeError {
                 "target subtree exceeds the {limit}-group expansion limit; select a smaller subtree"
             ),
             Self::CannotRemoveRoot => formatter.write_str("the root scope cannot be removed"),
+            Self::DocumentCollectionContent => {
+                formatter.write_str("document collection scopes are read-only")
+            }
         }
     }
 }
@@ -252,6 +256,20 @@ fn scope_at<'a>(root: &'a Scope, path: &[usize]) -> Option<&'a Scope> {
     Some(scope)
 }
 
+pub(crate) fn has_document_collector(root: &Scope, path: &[usize]) -> bool {
+    let mut scope = root;
+    for index in path.iter().copied().map(Some).chain(std::iter::once(None)) {
+        if matches!(scope.construction, ScopeConstruction::CollectDocuments) {
+            return true;
+        }
+        let Some(child) = index.and_then(|i| scope.children.get(i)) else {
+            break;
+        };
+        scope = child;
+    }
+    false
+}
+
 fn scope_at_checked_mut<'a>(root: &'a mut Scope, path: &[usize]) -> Option<&'a mut Scope> {
     let Some((index, rest)) = path.split_first() else {
         return Some(root);
@@ -292,6 +310,9 @@ pub fn available_static_child_scopes(
     target: &SchemaNode,
     parent_path: &[usize],
 ) -> Result<Vec<StaticChildScopeCandidate>, ScopeTreeError> {
+    if has_document_collector(root, parent_path) {
+        return Err(ScopeTreeError::DocumentCollectionContent);
+    }
     let parent = scope_at(root, parent_path)
         .ok_or_else(|| ScopeTreeError::InvalidScopePath(parent_path.to_vec()))?;
     let (target_parent, target_chain) = target_scope_for_path(root, target, parent_path)?;
@@ -323,6 +344,9 @@ pub fn create_static_child_scope(
     parent_path: &[usize],
     target_field: &str,
 ) -> Result<ScopePath, ScopeTreeError> {
+    if has_document_collector(root, parent_path) {
+        return Err(ScopeTreeError::DocumentCollectionContent);
+    }
     let parent = scope_at(root, parent_path)
         .ok_or_else(|| ScopeTreeError::InvalidScopePath(parent_path.to_vec()))?;
     let (target_parent, target_chain) = target_scope_for_path(root, target, parent_path)?;
@@ -374,6 +398,9 @@ pub fn expand_static_target_subtree(
     target: &SchemaNode,
     parent_path: &[usize],
 ) -> Result<ScopeExpansion, ScopeTreeError> {
+    if has_document_collector(root, parent_path) {
+        return Err(ScopeTreeError::DocumentCollectionContent);
+    }
     let selected = scope_at(root, parent_path)
         .ok_or_else(|| ScopeTreeError::InvalidScopePath(parent_path.to_vec()))?;
     let (target_parent, target_chain) = target_scope_for_path(root, target, parent_path)?;
@@ -454,6 +481,9 @@ pub fn remove_child_scope(
     root: &mut Scope,
     selected_path: &[usize],
 ) -> Result<ScopePath, ScopeTreeError> {
+    if has_document_collector(root, selected_path) {
+        return Err(ScopeTreeError::DocumentCollectionContent);
+    }
     let Some((&child_index, parent_path)) = selected_path.split_last() else {
         return Err(ScopeTreeError::CannotRemoveRoot);
     };
@@ -631,6 +661,13 @@ pub(crate) fn show_scope_editor(
     } else {
         format!("Scope · {}", scope.target_field)
     });
+
+    if matches!(scope.construction, ScopeConstruction::CollectDocuments) {
+        ui.label(
+            "This scope collects ordered documents; its saved grouping and children are read-only.",
+        );
+        return None;
+    }
 
     if let ScopeIteration::OwnedSource { source, .. } = &scope.iteration
         && let Some(dynamic) = source_paths.ownership().owned_dynamic_driver(&source.owner)
@@ -1078,6 +1115,28 @@ mod tests {
                 ),
             ],
         )
+    }
+
+    #[test]
+    fn document_collector_cannot_be_expanded_into_ordinary_fields() {
+        let target = scope_management_target();
+        let mut root = Scope {
+            construction: ScopeConstruction::CollectDocuments,
+            ..Scope::default()
+        };
+        let before = root.clone();
+        assert!(available_static_child_scopes(&root, &target, &[]).is_err());
+        assert!(create_static_child_scope(&mut root, &target, &[], "Orders").is_err());
+        assert!(expand_static_target_subtree(&mut root, &target, &[]).is_err());
+        root.children.push(Scope::default());
+        assert!(has_document_collector(&root, &[0]));
+        assert_eq!(
+            remove_child_scope(&mut root, &[0]),
+            Err(ScopeTreeError::DocumentCollectionContent)
+        );
+        assert!(check_static_binding(&root, &["Orders".into()], "Number").is_err());
+        root.children.clear();
+        assert_eq!(root, before);
     }
 
     #[test]

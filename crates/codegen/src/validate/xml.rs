@@ -11,6 +11,8 @@ use mapping::NodeId;
 use super::{ProgramValidationError, SourceCatalog};
 use crate::{Expression, XmlDocumentCardinality, XmlDocumentInputs, XmlOutputMode};
 
+mod document_collections;
+
 /// The XML adapter classification established by [`validate_boundary`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProvedXmlBoundary {
@@ -621,14 +623,9 @@ fn validate_mixed_named_output(program: &crate::Program) -> Result<bool, Program
 fn validate_dynamic_primary_output(
     program: &crate::Program,
 ) -> Result<bool, ProgramValidationError> {
-    let Some(dynamic) = program
-        .root
-        .iteration
-        .as_ref()
-        .and_then(|iteration| iteration.dynamic_document_iteration())
-    else {
+    if !program.root.produces_documents() {
         return Ok(false);
-    };
+    }
     let reject = |reason: &str| ProgramValidationError::InvalidXmlBoundary {
         reason: reason.to_owned(),
     };
@@ -654,28 +651,44 @@ fn validate_dynamic_primary_output(
             "dynamic primary XML members require a closed nonrepeating group target",
         ));
     }
-    let path = dynamic.source().path();
-    let driver = SourceCatalog::new(&program.source, &[]).root_schema_at(path);
-    if path.is_empty()
-        || !driver.is_some_and(|driver| {
-            driver.node().repeating && matches!(driver.node().kind, SchemaKind::Group { .. })
-        })
-    {
-        return Err(reject(
-            "dynamic primary XML output driver must end in a repeating Group",
-        ));
+    let sources = SourceCatalog::new(&program.source, &[]);
+    if matches!(
+        program.root.construction,
+        crate::TargetConstruction::CollectDocuments
+    ) {
+        document_collections::validate_drivers(
+            &program.root,
+            sources,
+            Some(sources.primary()),
+            false,
+        )?;
+    } else {
+        let dynamic = program
+            .root
+            .iteration
+            .as_ref()
+            .and_then(|iteration| iteration.dynamic_document_iteration())
+            .ok_or_else(|| reject("dynamic primary XML output requires a document iteration"))?;
+        let path = dynamic.source().path();
+        let driver = sources.root_schema_at(path);
+        if path.is_empty()
+            || !driver.is_some_and(|driver| {
+                driver.node().repeating && matches!(driver.node().kind, SchemaKind::Group { .. })
+            })
+        {
+            return Err(reject(
+                "dynamic primary XML output driver must end in a repeating Group",
+            ));
+        }
     }
     Ok(true)
 }
 
 fn validate_dynamic_named_output(program: &crate::Program) -> Result<bool, ProgramValidationError> {
-    let has_dynamic_named = program.extra_targets.iter().any(|target| {
-        target
-            .root
-            .iteration
-            .as_ref()
-            .is_some_and(|iteration| iteration.dynamic_document_iteration().is_some())
-    });
+    let has_dynamic_named = program
+        .extra_targets
+        .iter()
+        .any(|target| target.root.produces_documents());
     if !has_dynamic_named {
         return Ok(false);
     }
@@ -717,6 +730,19 @@ fn validate_dynamic_named_output(program: &crate::Program) -> Result<bool, Progr
             return Err(reject_target(
                 "dynamic named XML members require a closed nonrepeating group target",
             ));
+        }
+        if matches!(
+            target.root.construction,
+            crate::TargetConstruction::CollectDocuments
+        ) {
+            let sources = SourceCatalog::new(&program.source, &[]);
+            document_collections::validate_drivers(
+                &target.root,
+                sources,
+                Some(sources.primary()),
+                false,
+            )?;
+            continue;
         }
         let dynamic = target
             .root

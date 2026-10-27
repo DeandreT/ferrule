@@ -1,0 +1,18 @@
+[
+  {
+    "id": "grouped",
+    "input": "<Input><Dept><Name>Alpha</Name><Person><Name>Aster</Name></Person><Person><Name>Birch</Name></Person><Person><Name>Cedar</Name></Person></Dept><Dept><Name>Empty</Name></Dept><Dept><Name>Beta</Name><Person><Name>Elm</Name></Person></Dept><Dept><Name>Alpha</Name><Person><Name>Fir</Name></Person><Person><Name>Grove</Name></Person></Dept></Input>",
+    "documents": [
+      {"path": "Alpha-1.xml", "names": ["Aster", "Birch"]},
+      {"path": "Alpha-2.xml", "names": ["Cedar", "Fir"]},
+      {"path": "Alpha-3.xml", "names": ["Grove"]},
+      {"path": "Beta-1.xml", "names": ["Elm"]}
+    ]
+  },
+  {"id": "empty", "input": "<Input/>", "documents": []},
+  {
+    "id": "late-error",
+    "input": "<Input><Dept><Name>Alpha</Name><Person><Name>Aster</Name></Person></Dept><Dept><Name>Failure</Name><Person><Name>Willow</Name></Person></Dept></Input>",
+    "error": {"node": 12, "message": "late document failure"}
+  }
+]

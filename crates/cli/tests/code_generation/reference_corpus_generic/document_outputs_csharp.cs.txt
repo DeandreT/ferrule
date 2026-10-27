@@ -1,0 +1,26 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+using System.Text;
+using System.Text.Json.Nodes;
+
+var root=args[0];var utf8=new UTF8Encoding(false,true);
+var input=File.ReadAllText(Path.Combine(root,"source.xml"));
+var schema=File.ReadAllText(Path.Combine(root,"source-schema.json"));
+var target=File.ReadAllText(Path.Combine(root,"target-schema.json"));
+var source=FerruleXml.ParseStructuredEmbeddedBytes(schema,utf8.GetBytes(input));
+var execution=new FerruleExecutionContext("corpus.mapping","corpus.mapping","2026-01-01T00:00:00Z",null);
+var output=GeneratedMapping.ExecuteOutputs(source,execution);
+if(output.Extras.Count!=0 || output.Primary is not FerruleDocumentSet members)throw new Exception("document set required");
+JsonNode Normalize(string path,FerruleInstance value)=>new JsonObject { ["path"]=path,["value"]=JsonNode.Parse(FerruleJson.SerializeEmbedded(target,value)) };
+var expected=new JsonArray(members.Documents.Select(d=>Normalize(d.Path,d.Value)).ToArray());
+for(var api=0;api<4;api++) {
+    var documents=api switch {
+        0=>GeneratedMapping.ExecuteXmlDocuments(input).Select(d=>(d.Path,d.Document)).ToArray(),
+        1=>GeneratedMapping.ExecuteXmlDocuments(input,execution).Select(d=>(d.Path,d.Document)).ToArray(),
+        2=>GeneratedMapping.ExecuteXmlBytesDocuments(utf8.GetBytes(input)).Select(d=>(d.Path,utf8.GetString(d.Document))).ToArray(),
+        _=>GeneratedMapping.ExecuteXmlBytesDocuments(utf8.GetBytes(input),execution).Select(d=>(d.Path,utf8.GetString(d.Document))).ToArray(),
+    };
+    var actual=new JsonArray(documents.Select(d=>Normalize(d.Path,FerruleXml.ParseStructuredEmbeddedBytes(target,utf8.GetBytes(d.Item2)))).ToArray());
+    if(!JsonNode.DeepEquals(actual,expected))throw new Exception($"document paths and values API {api}");
+}
+using var stdout=Console.OpenStandardOutput();stdout.Write(utf8.GetBytes(expected.ToJsonString()));

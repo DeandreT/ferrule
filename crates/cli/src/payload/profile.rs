@@ -83,13 +83,13 @@ pub(super) fn validate_static_route(
         );
     }
     let primary = !matches!(selection, Some(engine::TargetSelection::Named(_)));
-    if primary && project.root.output_path().is_some() {
+    if primary && project.root.produces_documents() {
         bail!("bounded document profile does not support dynamic primary output");
     }
     for target in &project.extra_targets {
         if selection.is_none_or(|selected| {
             matches!(selected, engine::TargetSelection::Named(name) if name == target.name)
-        }) && target.root.output_path().is_some() {
+        }) && target.root.produces_documents() {
             bail!("bounded document profile does not support dynamic output `{}`", target.name);
         }
     }

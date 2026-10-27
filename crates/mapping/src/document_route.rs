@@ -287,7 +287,7 @@ impl DocumentProject {
         );
         let shape = match format {
             PrimaryDocumentFormat::Edi(_) => {
-                if project.root.output_path().is_some() {
+                if project.root.produces_documents() {
                     return Err(PrimaryRouteError::NotAdmitted {
                         side: PrimaryRouteSide::Target,
                         format: "dynamic EDI output documents",
@@ -335,7 +335,7 @@ impl DocumentProject {
                         });
                     }
                 }
-                if project.root.output_path().is_some() {
+                if project.root.produces_documents() {
                     return Err(PrimaryRouteError::NotAdmitted {
                         side: PrimaryRouteSide::Target,
                         format: "dynamic fixed-width output documents",
@@ -345,7 +345,7 @@ impl DocumentProject {
             }
             PrimaryDocumentFormat::Csv => PrimaryDocumentShape::Rows,
             PrimaryDocumentFormat::Json => {
-                if project.root.output_path().is_some() {
+                if project.root.produces_documents() {
                     return Err(PrimaryRouteError::NotAdmitted {
                         side: PrimaryRouteSide::Target,
                         format: "dynamic JSON output documents",

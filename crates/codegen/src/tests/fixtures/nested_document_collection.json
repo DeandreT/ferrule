@@ -1,0 +1,50 @@
+{
+  "source": {
+    "name": "Input", "repeating": false,
+    "kind": {"kind": "group", "children": [{
+      "name": "Dept", "repeating": true,
+      "kind": {"kind": "group", "children": [
+        {"name": "Name", "repeating": false, "kind": {"kind": "scalar", "ty": "string"}},
+        {"name": "Person", "repeating": true, "kind": {"kind": "group", "children": [
+          {"name": "Name", "repeating": false, "kind": {"kind": "scalar", "ty": "string"}}
+        ]}}
+      ]}
+    }]}
+  },
+  "target": {
+    "name": "Output", "repeating": false,
+    "kind": {"kind": "group", "children": [{
+      "name": "Person", "repeating": true, "kind": {"kind": "group", "children": [
+        {"name": "Name", "repeating": false, "kind": {"kind": "scalar", "ty": "string"}}
+      ]}
+    }]}
+  },
+  "source_options": {"xml_document": true},
+  "target_options": {"xml_document": true},
+  "graph": {"nodes": {
+    "1": {"kind": "source_field", "path": ["Name"], "frame": ["Dept"]},
+    "2": {"kind": "const", "value": 2},
+    "3": {"kind": "const", "value": "-"},
+    "4": {"kind": "source_field", "path": ["Name"]},
+    "5": {"kind": "position", "collection": ["Person"]},
+    "6": {"kind": "const", "value": ".xml"},
+    "8": {"kind": "call", "function": "concat", "args": [1, 3, 5, 6]},
+    "9": {"kind": "const", "value": "Failure"},
+    "10": {"kind": "call", "function": "equal", "args": [1, 9]},
+    "11": {"kind": "const", "value": "late document failure"},
+    "12": {"kind": "raise", "message": 11},
+    "13": {"kind": "if", "condition": 10, "then": 12, "else": 8}
+  }},
+  "root": {
+    "target_field": "", "source": ["Dept"], "group_by": 1,
+    "construction": "collect_documents", "bindings": [],
+    "children": [{
+      "target_field": "", "source": ["Person"], "output_path": 13,
+      "group_into_blocks": 2, "bindings": [],
+      "children": [{
+        "target_field": "Person", "source": ["Person"],
+        "bindings": [{"target_field": "Name", "node": 4}], "children": []
+      }]
+    }]
+  }
+}

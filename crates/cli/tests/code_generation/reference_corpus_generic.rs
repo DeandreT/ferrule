@@ -1,11 +1,14 @@
 //! Opt-in shared JSON host execution of sixty additional local ignored designs.
 //! Source transport is exact; output coverage is schema-normalized ordered JSON.
+//! Grouped document outputs use a separate path-preserving XML/typed host route.
 //! Private inputs, expected outputs, and constants are derived at runtime.
 
 use super::*;
 
 #[path = "reference_corpus_generic/admission.rs"]
 mod admission;
+#[path = "reference_corpus_generic/document_outputs.rs"]
+mod document_outputs;
 #[path = "reference_corpus_generic/envelope.rs"]
 mod envelope;
 #[allow(dead_code)]
@@ -118,7 +121,7 @@ fn generic_generated_hosts_execute_sixty_additional_local_designs() -> TestResul
         run_case(&package.root, sample, &case, &target)?;
         package.verify()?;
         executed.push(*sample);
-        eprintln!("generic JSON corpus: {sample}: Rust/C# string and UTF-8 outputs passed");
+        eprintln!("generic corpus: {sample}: Rust/C# complete outputs passed");
     }
     if let Some(filter) = filter {
         assert_eq!(executed, vec![filter.as_str()]);
@@ -305,7 +308,11 @@ fn run_case(root: &Path, sample: &str, case: &Path, rust_target: &Path) -> TestR
     admission::check_warnings(imported.warnings.len())?;
     let project = imported.project;
     let lowered = codegen::lower(&project)?;
-    admission::check_program(&lowered)?;
+    if lowered.root.produces_documents() {
+        admission::check_document_program(&lowered)?;
+    } else {
+        admission::check_program(&lowered)?;
+    }
     let base = mapping_path
         .parent()
         .ok_or_else(|| io::Error::other("mapping has no parent"))?;
@@ -324,6 +331,16 @@ fn run_case(root: &Path, sample: &str, case: &Path, rust_target: &Path) -> TestR
             ))
         })
         .collect::<TestResult<Vec<_>>>()?;
+    if lowered.root.produces_documents() {
+        return document_outputs::run_case(
+            &project,
+            &source,
+            &extras,
+            &mapping_path,
+            case,
+            rust_target,
+        );
+    }
     let admitted = admission::admit(&project, &source, &extras, &mapping_path)?;
     let project_path = case.join("project.json");
     std::fs::write(
@@ -373,6 +390,26 @@ fn run_rust(
     case: &Path,
     target: &Path,
 ) -> TestResult<()> {
+    let output = run_rust_host(
+        project,
+        inputs,
+        case,
+        target,
+        include_str!("fixtures/reference_corpus_generic_rust_harness.rs.txt"),
+        false,
+    )?;
+    envelope::compare(&output.stdout, expected)?;
+    Ok(())
+}
+
+fn run_rust_host(
+    project: &Path,
+    inputs: &[(String, PathBuf)],
+    case: &Path,
+    target: &Path,
+    harness: &str,
+    json_values: bool,
+) -> TestResult<Output> {
     let output = case.join("rust");
     generate_project(
         project,
@@ -381,13 +418,30 @@ fn run_rust(
             runtime_path: Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime"),
         },
     )?;
-    std::fs::write(
-        output.join("src/main.rs"),
-        include_str!("fixtures/reference_corpus_generic_rust_harness.rs.txt"),
-    )?;
+    // A JSON-value consumer owns its extra dependencies outside the emitted
+    // library. Do not rewrite a generated package to add harness dependencies.
+    let host = if json_values {
+        let host = case.join("rust-host");
+        std::fs::create_dir_all(host.join("src"))?;
+        let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../codegen-runtime")
+            .canonicalize()?;
+        std::fs::write(
+            host.join("Cargo.toml"),
+            format!(
+                "[package]\nname=\"corpus-document-host\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n[dependencies]\nferrule-generated-mapping={{path={}}}\ncodegen-runtime={{path={}}}\nserde_json={{version=\"1\",features=[\"preserve_order\"]}}\n",
+                serde_json::to_string(&output.to_string_lossy())?,
+                serde_json::to_string(&runtime.to_string_lossy())?
+            ),
+        )?;
+        host
+    } else {
+        output
+    };
+    std::fs::write(host.join("src/main.rs"), harness)?;
     let build = Command::new("cargo")
         .args(["build", "--quiet"])
-        .current_dir(&output)
+        .current_dir(&host)
         .env("CARGO_BUILD_BUILD_DIR", target)
         .env("CARGO_TARGET_DIR", target)
         .env("RUSTFLAGS", "-D warnings")
@@ -396,15 +450,14 @@ fn run_rust(
     let mut command = Command::new("cargo");
     command
         .args(["run", "--quiet", "--"])
-        .current_dir(&output)
+        .current_dir(&host)
         .env("CARGO_BUILD_BUILD_DIR", target)
         .env("CARGO_TARGET_DIR", target)
         .env("RUSTFLAGS", "-D warnings");
     input_arguments(&mut command, inputs);
     let output = command.isolated_output()?;
     command_success(&output, "generated Rust execution")?;
-    envelope::compare(&output.stdout, expected)?;
-    Ok(())
+    Ok(output)
 }
 
 fn run_csharp(
@@ -413,6 +466,22 @@ fn run_csharp(
     expected: &[envelope::Document],
     case: &Path,
 ) -> TestResult<()> {
+    let output = run_csharp_host(
+        project,
+        inputs,
+        case,
+        include_str!("fixtures/reference_corpus_generic_csharp_harness.cs.txt"),
+    )?;
+    envelope::compare(&output.stdout, expected)?;
+    Ok(())
+}
+
+fn run_csharp_host(
+    project: &Path,
+    inputs: &[(String, PathBuf)],
+    case: &Path,
+    host: &str,
+) -> TestResult<Output> {
     let output = case.join("csharp");
     generate_project(project, &output, GenerateTarget::CSharp)?;
     let harness = output.join("Harness");
@@ -425,10 +494,7 @@ fn run_csharp(
 </Project>
 "#,
     )?;
-    std::fs::write(
-        harness.join("Program.cs"),
-        include_str!("fixtures/reference_corpus_generic_csharp_harness.cs.txt"),
-    )?;
+    std::fs::write(harness.join("Program.cs"), host)?;
     let build = dotnet_command(&output)
         .args([
             "build",
@@ -458,6 +524,5 @@ fn run_csharp(
     input_arguments(&mut command, inputs);
     let output = command.isolated_output()?;
     command_success(&output, "generated C# execution")?;
-    envelope::compare(&output.stdout, expected)?;
-    Ok(())
+    Ok(output)
 }

@@ -396,7 +396,9 @@ struct ScopeSchemas<'a> {
     current_source: Option<SchemaCursor<'a>>,
     active_source: Option<SchemaCursor<'a>>,
     target_root: &'a SchemaNode,
+    target_node: &'a SchemaNode,
     target_owner: TargetOwner<'a>,
+    document_root: bool,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -449,13 +451,7 @@ fn validate_scope(
             .is_none_or(|iteration| iteration.presence().is_some());
     let mut scope_source = schemas.current_source;
     let mut active_source = schemas.active_source;
-    let Some(target_node) =
-        follow_schema_from(schemas.target_root, schemas.target_root, target_path)
-    else {
-        return Err(ProgramValidationError::MissingTargetScope {
-            target_path: target_path.clone(),
-        });
-    };
+    let target_node = schemas.target_node;
     if scope.repeating != target_node.repeating {
         return Err(ProgramValidationError::TargetCardinalityMismatch {
             target_path: target_path.clone(),
@@ -501,7 +497,10 @@ fn validate_scope(
             validate_scope(
                 segment,
                 expressions,
-                schemas,
+                ScopeSchemas {
+                    document_root: false,
+                    ..schemas
+                },
                 target_path,
                 sequence_items,
                 active_sequence_items,
@@ -536,7 +535,7 @@ fn validate_scope(
                 active_source = scope_source;
             }
             IterationSource::DynamicDocuments(dynamic) => {
-                if !target_path.is_empty() {
+                if !schemas.document_root {
                     return Err(ProgramValidationError::DynamicDocumentsRequireRoot {
                         target_path: target_path.clone(),
                     });
@@ -799,6 +798,47 @@ fn validate_scope(
     }
 
     match &scope.construction {
+        TargetConstruction::CollectDocuments => {
+            let reject = |reason| ProgramValidationError::InvalidDocumentCollection {
+                target_path: target_path.clone(),
+                reason,
+            };
+            if !schemas.document_root {
+                return Err(reject(
+                    "collector requires an explicit document-root context",
+                ));
+            }
+            if target_node.repeating || !matches!(target_node.kind, SchemaKind::Group { .. }) {
+                return Err(reject(
+                    "collector requires a nonrepeating group document schema",
+                ));
+            }
+            if scope.iteration.as_ref().is_some_and(|iteration| {
+                !matches!(iteration.input(), IterationSource::Source(_))
+                    || iteration.output() != IterationOutput::Repeated
+            }) {
+                return Err(reject(
+                    "collector requires repeated ordinary-source context output",
+                ));
+            }
+            if !scope.bindings.is_empty() || scope.children.is_empty() {
+                return Err(reject(
+                    "collector requires document children and no target bindings",
+                ));
+            }
+            for child in &scope.children {
+                if !child.target_field.is_empty()
+                    || !(matches!(child.construction, TargetConstruction::CollectDocuments)
+                        || child.iteration.as_ref().is_some_and(|iteration| {
+                            iteration.dynamic_document_iteration().is_some()
+                        }))
+                {
+                    return Err(reject(
+                        "collector children must be untargeted document producers",
+                    ));
+                }
+            }
+        }
         TargetConstruction::Group | TargetConstruction::DynamicGroup { .. } => {
             if !matches!(target_node.kind, SchemaKind::Group { .. }) {
                 return Err(
@@ -1324,6 +1364,8 @@ fn validate_scope(
                     current_source: scope_source,
                     active_source,
                     target_root: dynamic_target,
+                    target_node: dynamic_target,
+                    document_root: false,
                     ..schemas
                 },
                 &mut dynamic_path,
@@ -1409,7 +1451,11 @@ fn validate_scope(
     }
 
     let mut children = BTreeMap::<&str, usize>::new();
+    let collects_documents = matches!(scope.construction, TargetConstruction::CollectDocuments);
     for (child_index, child) in scope.children.iter().enumerate() {
+        if collects_documents {
+            continue;
+        }
         if let Some(&first_child) = children.get(child.target_field.as_str()) {
             return Err(ProgramValidationError::DuplicateChildTarget {
                 target_path: target_path.clone(),
@@ -1430,14 +1476,32 @@ fn validate_scope(
     }
 
     let child_root_context = root_context && scope.iteration.is_none();
-    for child in &scope.children {
-        target_path.push(child.target_field.clone());
+    for (index, child) in scope.children.iter().enumerate() {
+        target_path.push(if collects_documents {
+            format!("<documents {}>", index + 1)
+        } else {
+            child.target_field.clone()
+        });
+        let child_target = if collects_documents {
+            target_node
+        } else {
+            follow_schema_from(
+                schemas.target_root,
+                target_node,
+                std::slice::from_ref(&child.target_field),
+            )
+            .ok_or_else(|| ProgramValidationError::MissingTargetScope {
+                target_path: target_path.clone(),
+            })?
+        };
         let result = validate_scope(
             child,
             expressions,
             ScopeSchemas {
                 current_source: scope_source,
                 active_source,
+                target_node: child_target,
+                document_root: collects_documents,
                 ..schemas
             },
             target_path,
