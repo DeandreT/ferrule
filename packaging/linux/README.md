@@ -10,7 +10,9 @@ install, or package the application.
   the GUI executable does not define a file-opening CLI contract.
 - The SVG application mark is based on the Lucide Workflow icon design from
   [lucide-icons](https://github.com/lucide-icons/lucide), distributed under
-  the ISC license. Lucide license: <https://github.com/lucide-icons/lucide/blob/main/LICENSE>.
+  the ISC license. Its copyright and full ISC notice are embedded in the SVG,
+  so installing the icon also installs the notice. Preserve this notice when
+  redistributing the icon. Lucide license: <https://github.com/lucide-icons/lucide/blob/main/LICENSE>.
 
 The icon is installed under the same application ID used by the desktop entry
 and AppStream component.
