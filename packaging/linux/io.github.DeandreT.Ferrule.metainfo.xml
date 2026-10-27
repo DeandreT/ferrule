@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.DeandreT.Ferrule</id>
+  <name>Ferrule</name>
+  <summary>Visual data mapping editor</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <developer_name>DeandreT</developer_name>
+  <description>
+    <p>Ferrule is a native graphical data mapper for connecting source and target schemas with functions, filters, aggregates, lookups, and joins.</p>
+    <p>Mappings can be edited in the visual desktop editor and run with Ferrule's separate command-line interface.</p>
+  </description>
+  <launchable type="desktop-id">io.github.DeandreT.Ferrule.desktop</launchable>
+  <icon type="stock">io.github.DeandreT.Ferrule</icon>
+  <categories>
+    <category>Development</category>
+    <category>Utility</category>
+  </categories>
+  <url type="homepage">https://github.com/DeandreT/ferrule</url>
+  <url type="bugtracker">https://github.com/DeandreT/ferrule/issues</url>
+  <url type="vcs-browser">https://github.com/DeandreT/ferrule</url>
+</component>
