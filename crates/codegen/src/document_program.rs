@@ -20,6 +20,7 @@ pub struct DocumentProgram {
     primary_filename: PrimaryFilenamePlan,
     source_options: mapping::FormatOptions,
     json_source_projection: Option<mapping::JsonSourceShape>,
+    json_grouping_preparation: Option<mapping::JsonGroupingPreparation>,
     native_x12_nullable_binding: Option<String>,
 }
 
@@ -38,6 +39,10 @@ impl DocumentProgram {
 
     pub fn json_source_projection(&self) -> Option<&mapping::JsonSourceShape> {
         self.json_source_projection.as_ref()
+    }
+
+    pub fn json_grouping_preparation(&self) -> Option<&mapping::JsonGroupingPreparation> {
+        self.json_grouping_preparation.as_ref()
     }
 
     /// Exact source descriptor admitted by the explicit native lowering entry.
@@ -125,6 +130,7 @@ fn lower_document_using(
         primary_filename,
         source_options: document.project().source_options.clone(),
         json_source_projection: document.json_source_projection().cloned(),
+        json_grouping_preparation: document.json_grouping_preparation().cloned(),
         native_x12_nullable_binding,
     })
 }

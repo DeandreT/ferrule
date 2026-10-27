@@ -541,6 +541,7 @@ fn grouped_profiles_compiled_public_boundaries_match_complete_oracles() {
         "Runtime/FerruleFunctions.Decimal.cs",
         "Runtime/FerruleFunctions.Regex.cs",
         "Runtime/FerruleFunctions.LiteralReplace.cs",
+        "Runtime/Json/FerruleJsonGroupingPreparation.cs",
         "Runtime/FerruleFunctions.Strings.cs",
         "Runtime/FerruleFunctions.cs",
         "Runtime/FerruleGrouping.cs",

@@ -51,7 +51,7 @@ pub fn emit_grouped_with_mapforce_x12_writer(
         .map_err(PrimaryJsonEmitError::Visitor)?;
     let base =
         crate::primary_filename::append(base, document).map_err(PrimaryJsonEmitError::Emit)?;
-    let projected = append_projection(base, projection)?;
+    let projected = append_projection(base, projection, document.json_grouping_preparation())?;
     append_writer(projected, descriptor)
 }
 
@@ -113,18 +113,30 @@ pub fn emit_with_primary_json_projection(
     let descriptor = codegen::prepare_json_source_projection(document, shape)
         .map_err(PrimaryJsonEmitError::Boundary)?;
     let base = crate::emit_with_primary_filename(document).map_err(PrimaryJsonEmitError::Emit)?;
-    append_projection(base, descriptor)
+    append_projection(base, descriptor, document.json_grouping_preparation())
 }
 
 fn append_projection(
     base: ArtifactSet,
     descriptor: String,
+    preparation: Option<&mapping::JsonGroupingPreparation>,
 ) -> Result<ArtifactSet, PrimaryJsonEmitError> {
     let mut files = base.into_files();
     let mut code = format!(
         "\npublic static partial class GeneratedMapping\n{{\n    private static readonly global::Ferrule.Runtime.FerruleJsonSourceProjection PrimaryJsonProjection = global::Ferrule.Runtime.FerruleJsonSourceProjection.Parse({});\n\n    /// <summary>Lazy typed document acquisition. Callbacks own transport, parsing and cleanup.</summary>\n    public static global::System.Collections.Generic.IEnumerable<global::Ferrule.Runtime.FerruleInstance> AcquirePrimaryJson(\n        global::Ferrule.Runtime.FerruleExecutionContext execution,\n        global::System.Func<string, global::System.Collections.Generic.IEnumerable<string>> select,\n        global::System.Func<string, global::Ferrule.Runtime.FerruleJsonSourceDocument> load,\n        global::Ferrule.Runtime.FerruleJsonProjectionLimits limits, int maximum)\n    {{\n        global::System.ArgumentNullException.ThrowIfNull(execution);\n        return PrimaryJsonProjection.Acquire(() => EvaluatePrimaryFilename(execution), select, load, maximum, limits);\n    }}\n}}\n",
         literal::string(&descriptor)
     );
+    if let Some(preparation) = preparation {
+        let encoded = serde_json::to_string(preparation)
+            .map_err(JsonProjectionBoundaryError::Descriptor)
+            .map_err(PrimaryJsonEmitError::Boundary)?;
+        code = code.replacen(
+            "load, maximum, limits);\n",
+            "load, maximum, limits, PrimaryJsonGrouping);\n",
+            1,
+        );
+        code.push_str(&format!("\npublic static partial class GeneratedMapping\n{{\n    private static readonly global::Ferrule.Runtime.FerruleJsonGroupingPreparation PrimaryJsonGrouping = global::Ferrule.Runtime.FerruleJsonGroupingPreparation.Parse({});\n    public static global::Ferrule.Runtime.FerruleInstance PreparePrimaryJsonDocument(global::Ferrule.Runtime.FerruleInstance document, global::Ferrule.Runtime.FerruleJsonProjectionLimits? limits = null) => PrimaryJsonGrouping.Prepare(document, limits);\n}}\n",literal::string(&encoded)));
+    }
     code.push_str(&format!("\npublic static partial class GeneratedMapping\n{{\n    public static global::Ferrule.Runtime.FerruleJsonSourceDocument ParsePrimaryJsonSource(string identity, byte[] bytes) => global::Ferrule.Runtime.FerruleNativeJsonSource.Parse(identity, bytes, {});\n}}\n",literal::string(&descriptor)));
     code.push_str("\npublic static partial class GeneratedMapping\n{\n    /// <summary>Sample only reached body current-dateTime nodes; source acquisition and filename clocks remain separate.</summary>\n    public static global::Ferrule.Runtime.FerruleInstance ExecutePrimaryJsonWithBodyClock(global::Ferrule.Runtime.FerruleInstance source, global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.Func<string> clock)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(clock);\n        return ExecuteOutputs(global::Ferrule.Runtime.ScopeContext.FromSource(source, execution).WithDocumentBodyClock(clock)).Primary;\n    }\n}\n");
     files

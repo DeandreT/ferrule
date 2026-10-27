@@ -13,6 +13,7 @@ use crate::{
 #[derive(Debug)]
 pub enum JsonAcquisitionError<F, E> {
     Projection(JsonProjectionError),
+    Grouping(crate::JsonGroupingError),
     InvalidLimit,
     Filename(F),
     Selection(E),
@@ -25,6 +26,7 @@ impl<F: fmt::Display, E: fmt::Display> fmt::Display for JsonAcquisitionError<F, 
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Projection(error) => error.fmt(f),
+            Self::Grouping(error) => error.fmt(f),
             Self::InvalidLimit => f.write_str("invalid JSON acquisition document limit"),
             Self::Filename(error) => write!(f, "JSON acquisition filename: {error}"),
             Self::Selection(error) => write!(f, "JSON acquisition selection: {error}"),
@@ -39,6 +41,7 @@ impl<F: Error + 'static, E: Error + 'static> Error for JsonAcquisitionError<F, E
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Projection(error) => Some(error),
+            Self::Grouping(error) => Some(error),
             Self::Filename(error) => Some(error),
             Self::Selection(error) | Self::Request(error) | Self::Load { source: error, .. } => {
                 Some(error)
@@ -61,6 +64,7 @@ pub struct JsonSourceAcquisition<'a, F, E> {
     requests: Option<Requests<'a, E>>,
     load: Loader<'a, E>,
     shape: &'a JsonSourceShape,
+    grouping: Option<&'a mapping::JsonGroupingPreparation>,
     limits: JsonProjectionLimits,
     maximum: usize,
     count: usize,
@@ -97,11 +101,23 @@ impl<'a, F: 'a, E: 'a> JsonSourceAcquisition<'a, F, E> {
             requests: None,
             load: Box::new(load),
             shape,
+            grouping: None,
             limits,
             maximum,
             count: 0,
             finished: false,
         })
+    }
+
+    pub fn with_grouping_preparation(
+        mut self,
+        grouping: &'a mapping::JsonGroupingPreparation,
+    ) -> Result<Self, JsonAcquisitionError<F, E>> {
+        grouping.validate(self.shape).map_err(|error| {
+            JsonAcquisitionError::Grouping(crate::JsonGroupingError::Plan(error))
+        })?;
+        self.grouping = Some(grouping);
+        Ok(self)
     }
 }
 
@@ -143,6 +159,19 @@ impl<F, E> Iterator for JsonSourceAcquisition<'_, F, E> {
         let projected = match project_json_source_document(self.shape, &document, self.limits) {
             Ok(value) => value,
             Err(error) => return Some(Err(JsonAcquisitionError::Projection(error))),
+        };
+        let projected = if let Some(grouping) = self.grouping {
+            match crate::prepare_json_grouping_document(
+                grouping,
+                self.shape,
+                projected,
+                self.limits,
+            ) {
+                Ok(value) => value,
+                Err(error) => return Some(Err(JsonAcquisitionError::Grouping(error))),
+            }
+        } else {
+            projected
         };
         self.count += 1;
         self.finished = false;
