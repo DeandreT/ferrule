@@ -847,13 +847,13 @@ mod tests {
             .find("FerruleSequences.TokenizeRegex")
             .expect("regex materialization");
         let iterate = source
-            .find("context.IterateGenerated(sequence_values_failure_1)")
+            .find("context.IterateGenerated(sequence_values_failure_1, 11U)")
             .expect("generated failure iteration");
         assert!(sequence_input < sequence_pattern);
         assert!(sequence_pattern < sequence_flags);
         assert!(sequence_flags < materialize);
         assert!(materialize < iterate);
-        assert!(source.contains("context.IterateGenerated(sequence_values_failure_1)"));
+        assert!(source.contains("context.IterateGenerated(sequence_values_failure_1, 11U)"));
         assert!(source.contains("FerruleFailures.MappingFailure(1, message_failure_0)"));
         assert!(source.contains("FerruleFailures.MappingFailure(2, message_failure_1)"));
     }
@@ -1385,7 +1385,7 @@ mod tests {
             .find("FerruleSequences.TokenizeRegex")
             .expect("regex materialization");
         let exists_iteration = exists
-            .find("context.EnumerateGenerated(sequence_values_node_15)")
+            .find("context.EnumerateGenerated(sequence_values_node_15, 10U)")
             .expect("exists item contexts");
         let exists_predicate = exists
             .find("Node_14(sequence_context_node_15)")
@@ -1426,7 +1426,7 @@ mod tests {
 
         assert!(source.contains("sequence_values_scope_1"));
         assert!(source.contains("FerruleSequences.TokenizeRegex"));
-        assert!(source.contains("context.IterateGenerated(sequence_values_scope_1)"));
+        assert!(source.contains("context.IterateGenerated(sequence_values_scope_1, 30U)"));
         assert!(!source.contains("context.EnumerateGenerated(sequence_values_scope_1)"));
     }
 
@@ -1517,7 +1517,7 @@ mod tests {
             .split("private static global::Ferrule.Runtime.FerruleValue Node_16")
             .nth(1)
             .expect("aggregate method");
-        assert!(aggregate.contains("context.EnumerateGenerated(sequence_values_node_16)"));
+        assert!(aggregate.contains("context.EnumerateGenerated(sequence_values_node_16, 12U)"));
         assert!(aggregate.contains("Node_15(sequence_context_node_16)"));
         assert!(aggregate.contains("Node_17(sequence_context_node_16)"));
         assert!(aggregate.contains("FerruleAggregateOperation.Sum"));

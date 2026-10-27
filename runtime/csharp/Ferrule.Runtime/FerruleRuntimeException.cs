@@ -77,6 +77,7 @@ public enum FerruleRuntimeError
     MissingInvocationCounters,
     InvocationCounterOperand,
     InvocationCounter,
+    GeneratedPositionUnavailable,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>
@@ -106,10 +107,12 @@ public sealed class FerruleRuntimeException : Exception
         string? sourceField = null,
         string? foundInstance = null,
         FerrulePrimaryRootFailure? primaryRoot = null,
-        string? mappingExceptionMessage = null)
+        string? mappingExceptionMessage = null,
+        uint? generatedItem = null)
         : base(message)
     {
         Error = error;
+        GeneratedItem = generatedItem;
         Node = node;
         Function = function;
         ExpectedArity = expectedArity;
@@ -232,6 +235,7 @@ public sealed class FerruleRuntimeException : Exception
     public FerruleBasicSourceBridgeException? BasicSourceBridgeFailure { get; }
 
     public FerruleRuntimeError Error { get; }
+    public uint? GeneratedItem { get; }
 
     public uint? Node { get; private set; }
 

@@ -508,6 +508,7 @@ pub(super) fn eval_basic_owned_groups<'a>(
         output_positions.extend_from_slice(&first.extension.positions);
         if terminal.is_none() {
             output_positions.push(PositionFrame {
+                generated_origin: None,
                 collection: raw_collection.to_vec(),
                 index: ordinal + 1,
                 grouped: wrapper.is_some(),

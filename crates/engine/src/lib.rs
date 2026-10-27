@@ -510,6 +510,8 @@ pub enum EngineError {
     InvalidConcatenatedScopeItem { found: &'static str },
     #[error("generate-sequence requested {requested} items; maximum is {max}")]
     GeneratedSequenceTooLarge { requested: u128, max: u128 },
+    #[error("node {node}: generated position requires active sequence item {item}")]
+    GeneratedPositionUnavailable { node: NodeId, item: NodeId },
     #[error(transparent)]
     FilterMapAdmission(#[from] Box<mapping::FilterMapAdmissionError>),
     #[error("filter/map private item context admission failed: {issues:?}")]

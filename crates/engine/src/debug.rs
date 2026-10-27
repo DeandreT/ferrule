@@ -816,6 +816,7 @@ mod tests {
         let context = frames.iter().collect::<Vec<_>>();
         let positions = (0..20)
             .map(|index| PositionFrame {
+                generated_origin: None,
                 collection: vec!["é".repeat(300); 20],
                 index: index + 1,
                 grouped: false,

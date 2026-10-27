@@ -426,6 +426,15 @@ fn eval_expr_inner(
             .map(|path| Value::String(path.to_string()))
             .ok_or_else(|| EngineError::MissingSourceField("<document-path>".into())),
         Node::Position { collection } => Ok(Value::Int(position(positions, collection) as i64)),
+        Node::GeneratedPosition { item } => positions
+            .iter()
+            .rev()
+            .filter_map(|frame| frame.generated_origin)
+            .find_map(|(owner, index)| (owner == *item).then_some(Value::Int(index as i64)))
+            .ok_or(EngineError::GeneratedPositionUnavailable {
+                node: node_id,
+                item: *item,
+            }),
         Node::JoinField {
             join,
             collection,
@@ -1074,6 +1083,7 @@ fn eval_xml_mixed_content(
             *index += 1;
             item_context.push(value);
             item_positions.push(PositionFrame {
+                generated_origin: None,
                 collection: replacement.collection.clone(),
                 index: *index,
                 grouped: false,
@@ -1186,6 +1196,7 @@ fn visit_collection_find<'a>(
         for (item_index, item) in items.iter().enumerate() {
             context.push(item);
             positions.push(PositionFrame {
+                generated_origin: None,
                 collection: collection[..consumed].to_vec(),
                 index: item_index + 1,
                 grouped: false,

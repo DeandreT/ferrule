@@ -371,6 +371,14 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 node_out_key.insert(id, out);
                 position_inputs.insert(id, input);
             }
+            Node::GeneratedPosition { item } => {
+                let from = node_out_key.get(item).copied().ok_or_else(|| MfdError::Unsupported(format!(
+                    "generated position node {id} has no exported producer for item {item}"
+                )))?;
+                let (input, out) = render_component(keys, uid, components);
+                node_out_key.insert(id, out);
+                edges.push((from, input));
+            }
             Node::JoinPosition { join } if joins.supports(*join) => {
                 let (input, out) = render_component(keys, uid, components);
                 node_out_key.insert(id, out);

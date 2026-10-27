@@ -64,7 +64,9 @@ impl NodeProperty {
             Node::RuntimeParameter { .. } | Node::RuntimeParameterDefault { .. } => {
                 Self::RuntimeParameter
             }
-            Node::Position { .. } | Node::OwnedPosition(_) => Self::Position,
+            Node::Position { .. } | Node::GeneratedPosition { .. } | Node::OwnedPosition(_) => {
+                Self::Position
+            }
             Node::Call { .. } => Self::FunctionCall,
             Node::Aggregate { .. } => Self::Aggregate,
             Node::SourceField { .. } | Node::SourceRootField { .. } => Self::SourceField,

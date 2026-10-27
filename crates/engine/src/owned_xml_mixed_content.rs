@@ -180,6 +180,7 @@ pub(crate) fn eval_owned_xml_mixed_content(
                 item_context.push(occurrence);
                 let mut item_positions = positions.to_vec();
                 item_positions.push(PositionFrame {
+                    generated_origin: None,
                     collection,
                     index: *index,
                     grouped: false,

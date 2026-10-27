@@ -496,6 +496,7 @@ fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
         | Expression::XmlSerialize { .. }
         | Expression::SourceDocumentPath
         | Expression::Position { .. }
+        | Expression::GeneratedPosition { .. }
         | Expression::JoinField { .. }
         | Expression::JoinPosition { .. }
         | Expression::Const { .. }
@@ -610,6 +611,7 @@ fn validate_private_inventory(
             | Expression::OwnedRowDocumentPath(_)
             | Expression::SourceField { .. }
             | Expression::Position { .. }
+            | Expression::GeneratedPosition { .. }
             | Expression::Const { .. }
             | Expression::Call { .. }
             | Expression::If { .. }
@@ -920,6 +922,7 @@ fn validate_basic_failures(program: &Program) -> Result<(), EmitError> {
                     &node.expression,
                     Expression::SourceField { .. }
                         | Expression::Position { .. }
+                        | Expression::GeneratedPosition { .. }
                         | Expression::Const { .. }
                         | Expression::Call { .. }
                         | Expression::If { .. }

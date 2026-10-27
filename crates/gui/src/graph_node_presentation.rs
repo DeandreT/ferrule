@@ -72,6 +72,7 @@ pub(crate) fn node_label(node: &Node) -> String {
         Node::UserFunctionCall { .. } => "Function call".into(),
         Node::FunctionParameter { .. } => "Function input".into(),
         Node::Position { .. } => "Position".into(),
+        Node::GeneratedPosition { .. } => "Generated source position".into(),
         Node::JoinPosition { .. } => "Join position".into(),
         Node::OwnedLookup(lookup) => format!(
             "{}: Lookup",
@@ -505,6 +506,7 @@ pub(super) fn header(node: &Node, full_title: &str, is_output: bool) -> Option<H
         Node::If { .. } => (Icon::GitBranch, "If / else".into()),
         Node::Raise { .. } => (Icon::CircleX, "Raise error".into()),
         Node::Position { .. } => (Icon::ListOrdered, "Position".into()),
+        Node::GeneratedPosition { .. } => (Icon::ListOrdered, "Generated source position".into()),
         Node::JoinPosition { .. } => (Icon::ListOrdered, "Join position".into()),
         Node::SourceField { path, .. } => {
             if matches!(title, "Stage input" | "Mapped output") {
@@ -863,6 +865,7 @@ pub(super) fn has_properties(node: &Node) -> bool {
             | Node::JoinField { .. }
             | Node::Lookup { .. }
             | Node::Position { .. }
+            | Node::GeneratedPosition { .. }
             | Node::RuntimeParameter { .. }
             | Node::RuntimeParameterDefault { .. }
             | Node::InvocationCounter { .. }
@@ -915,6 +918,9 @@ pub(super) fn hint(node: &Node, full_title: &str) -> String {
             if args.len() == 1 { "" } else { "s" }
         ),
         Node::Position { .. } => format!("{full_title}\nOne-based collection position."),
+        Node::GeneratedPosition { item } => format!(
+            "{full_title}\nOriginal one-based ordinal of generated item {item}, before filtering or sorting."
+        ),
         Node::JoinPosition { .. } => format!("{full_title}\nFlattened inner-join position."),
         Node::SequenceExists { .. } => {
             format!("{full_title}\nTests whether any sequence item matches the predicate.")

@@ -359,6 +359,7 @@ fn filter_children<'a>(
 
 fn position(collection: &str, index: usize) -> PositionFrame {
     PositionFrame {
+        generated_origin: None,
         collection: vec![collection.to_owned()],
         index: index + 1,
         grouped: false,

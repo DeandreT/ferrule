@@ -210,6 +210,7 @@ fn source_rows<'a>(
                     let mut positions = extension.positions;
                     let origin = if positions.is_empty() {
                         positions.push(PositionFrame {
+                            generated_origin: None,
                             collection: collection.to_vec(),
                             index: index + 1,
                             grouped: false,

@@ -373,6 +373,7 @@ fn evaluate(index: usize, id: &str) {
     });
     let positions = if index == 8 {
         vec![PositionFrame {
+            generated_origin: None,
             collection: vec!["Parents".into()],
             index: 7,
             grouped: false,

@@ -53,7 +53,7 @@ fn failure_project() -> Project {
                     },
                 },
                 selection: FailureSelection::WhenTrue { predicate: 16 },
-                message: Some(12),
+                message: Some(17),
             },
             FailureRule {
                 iteration: FailureIteration::Source {
@@ -150,7 +150,7 @@ fn failure_project() -> Project {
                     15,
                     Node::Call {
                         function: "equal".into(),
-                        args: vec![12, 14],
+                        args: vec![17, 14],
                     },
                 ),
                 (
@@ -167,6 +167,7 @@ fn failure_project() -> Project {
                         frame: Some(vec!["rules".into(), "Flag".into()]),
                     },
                 ),
+                (17, Node::GeneratedPosition { item: 12 }),
                 (
                     21,
                     Node::SourceField {

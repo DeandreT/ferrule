@@ -17,6 +17,7 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
         | Expression::XmlSerialize { .. }
         | Expression::SourceDocumentPath
         | Expression::Position { .. }
+        | Expression::GeneratedPosition { .. }
         | Expression::JoinField { .. }
         | Expression::JoinPosition { .. }
         | Expression::Const { .. }

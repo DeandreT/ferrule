@@ -54,6 +54,7 @@ internal static partial class Program
             ("decimal mapping operations", DecimalMappingOperations),
             ("ordered text selection", OrderedTextSelection),
             ("value maps", ValueMaps),
+            ("generated source positions", GeneratedSourcePositions),
             ("CSV native scalar lexicals", CsvScalarLexicals),
             ("CSV native scalar refusals", CsvScalarRefusals),
             ("CSV quotes and Unicode", CsvQuotesAndUnicode),

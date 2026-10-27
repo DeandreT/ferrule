@@ -358,6 +358,10 @@ pub enum RuntimeError {
         requested: u128,
         max: u128,
     },
+    GeneratedPositionUnavailable {
+        node: u32,
+        item: u32,
+    },
     RecursiveSequenceDepth {
         limit: usize,
     },
@@ -616,6 +620,10 @@ impl fmt::Display for RuntimeError {
                 formatter,
                 "adjacency-tree {role} field {path:?} requires a string or absent value, got {found}"
             ),
+            Self::GeneratedPositionUnavailable { node, item } => write!(
+                formatter,
+                "node {node}: generated position requires active sequence item {item}"
+            ),
             Self::GeneratedSequenceTooLarge { requested, max } => write!(
                 formatter,
                 "generate-sequence requested {requested} items; maximum is {max}"
@@ -842,6 +850,7 @@ impl std::error::Error for RuntimeError {
             | Self::AdjacencyCycle { .. }
             | Self::InvalidAdjacencyField { .. }
             | Self::GeneratedSequenceTooLarge { .. }
+            | Self::GeneratedPositionUnavailable { .. }
             | Self::RecursiveSequenceDepth { .. }
             | Self::RecursiveSequenceTooLarge { .. }
             | Self::TokenizeRegexPatternTooLarge { .. }

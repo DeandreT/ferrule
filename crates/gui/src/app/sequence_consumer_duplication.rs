@@ -145,6 +145,7 @@ struct Context {
     allowed: Option<NodeId>,
     private_frame: Option<NodeId>,
     empty_rule: bool,
+    position_context: usize,
 }
 
 impl Context {
@@ -152,12 +153,14 @@ impl Context {
         allowed: None,
         private_frame: None,
         empty_rule: false,
+        position_context: 0,
     };
     fn private(item: NodeId) -> Self {
         Self {
             allowed: Some(item),
             private_frame: Some(item),
             empty_rule: false,
+            position_context: 0,
         }
     }
     fn empty(self) -> Self {
@@ -188,6 +191,36 @@ struct Planner<'a> {
     specs: BTreeMap<NodeId, Spec>,
     functions: BTreeSet<FunctionId>,
     sensitive_parents: BTreeSet<NodeId>,
+    position_contexts: std::cell::RefCell<PositionContexts>,
+    external_positions: BTreeMap<NodeId, NodeId>,
+}
+
+#[derive(Default)]
+struct PositionContexts {
+    edges: BTreeMap<(usize, NodeId), usize>,
+    parents: Vec<(usize, NodeId)>,
+}
+
+impl PositionContexts {
+    fn push(&mut self, parent: usize, item: NodeId) -> usize {
+        if let Some(&context) = self.edges.get(&(parent, item)) {
+            return context;
+        }
+        self.parents.push((parent, item));
+        let context = self.parents.len();
+        self.edges.insert((parent, item), context);
+        context
+    }
+    fn contains(&self, mut context: usize, item: NodeId) -> bool {
+        while context != 0 {
+            let (parent, owner) = self.parents[context - 1];
+            if owner == item {
+                return true;
+            }
+            context = parent;
+        }
+        false
+    }
 }
 
 impl Planner<'_> {
@@ -237,17 +270,26 @@ impl Planner<'_> {
         let boundary = |node| input(node, visit.context, false);
         let copying = visit.clone;
         let private = |item| {
-            if copying {
+            let mut context = if copying {
                 Context::private(item)
             } else {
                 Context {
                     allowed: Some(item),
                     private_frame: None,
                     empty_rule: false,
+                    position_context: 0,
                 }
-            }
+            };
+            context.position_context = self
+                .position_contexts
+                .borrow_mut()
+                .push(visit.context.position_context, item);
+            context
         };
         match value {
+            // A selector references an origin, not the scalar value resolved
+            // by that owner's empty-path field in this innermost context.
+            Node::GeneratedPosition { .. } => Vec::new(),
             Node::SequenceExists {
                 sequence,
                 predicate,
@@ -325,23 +367,13 @@ impl Planner<'_> {
                     .iter()
                     .map(|child| complete[child])
                     .collect::<Vec<_>>();
-                if let Some(sequence) = consumer_sequence(value)
-                    && !visit.clone
-                {
-                    let parent_flags = match value {
-                        Node::SequenceItemAt { .. } => flags.iter().chain(None),
-                        Node::SequenceAggregate { arg: Some(_), .. } => {
-                            flags[..sequence.inputs().len()].iter().chain(flags.last())
-                        }
-                        _ => flags[..sequence.inputs().len()].iter().chain(None),
-                    };
-                    let dependent = visit.context.private_frame.is_some()
-                        && parent_flags.into_iter().any(|flag| *flag);
+                if consumer_sequence(value).is_some() && !visit.clone {
+                    let dependent = flags.iter().any(|flag| *flag);
                     active.pop();
                     if dependent {
                         // Inspecting a shared reducer is not copying it. Only a
-                        // parent path dependent on the enclosing private frame
-                        // requests a second, complete copy of that reducer.
+                        // path dependent on the enclosing private frame or its
+                        // explicit origin requests a complete reducer copy.
                         pending.push((visit, 2));
                         pending.push((
                             Visit {
@@ -355,17 +387,23 @@ impl Planner<'_> {
                     }
                     continue;
                 }
-                let frame_read =
-                    matches!(value, Node::Position { collection } if collection.is_empty());
+                let frame_read = matches!(value, Node::Position { collection } if collection.is_empty())
+                    || matches!(value, Node::GeneratedPosition { item } if self.specs.contains_key(item));
                 let own_read = self.owners.contains_key(&visit.node);
+                let copied_position = matches!(value, Node::GeneratedPosition { item } if self.specs.contains_key(item));
                 let clone = visit.clone
-                    || (visit.context.private_frame.is_some()
-                        && (own_read || frame_read || flags.iter().any(|flag| *flag)));
-                if clone {
+                    || copied_position
+                    || flags.iter().any(|flag| *flag)
+                    || (visit.context.private_frame.is_some() && (own_read || frame_read));
+                // A shared reducer first propagates dependency flags from its
+                // original item context. Plan its private copies only after
+                // the reducer itself has been selected for copying.
+                if clone && (visit.clone || visit.context.private_frame.is_some()) {
                     if let Some(previous) = self.specs.get(&visit.node)
                         && (previous.context.private_frame != visit.context.private_frame
                             || previous.remap_inputs != flags)
                         && !own_read
+                        && !matches!(value, Node::GeneratedPosition { .. } | Node::Const { .. })
                     {
                         let owners = [previous.context.private_frame, visit.context.private_frame]
                             .into_iter()
@@ -383,6 +421,7 @@ impl Planner<'_> {
                         Node::Const { .. }
                             | Node::SourceField { .. }
                             | Node::Position { .. }
+                            | Node::GeneratedPosition { .. }
                             | Node::Call { .. }
                             | Node::UserFunctionCall { .. }
                             | Node::If { .. }
@@ -424,6 +463,35 @@ impl Planner<'_> {
                     consumer: self.selected,
                     context,
                 });
+            }
+            if let Node::GeneratedPosition { item } = value
+                && self.specs.contains_key(item)
+                && !self
+                    .position_contexts
+                    .borrow()
+                    .contains(visit.context.position_context, *item)
+            {
+                return Err(DuplicationError::PrivateOwnerOutsideContext {
+                    expression: visit.node,
+                    item: *item,
+                    consumer: self.selected,
+                    context: "generated position origin".into(),
+                });
+            }
+            if let Node::GeneratedPosition { item } = value {
+                if self.owners.get(item) != Some(&1) {
+                    return Err(DuplicationError::DuplicatePrivateOwner {
+                        item: *item,
+                        count: self.owners.get(item).copied().unwrap_or_default(),
+                    });
+                }
+                if !self
+                    .position_contexts
+                    .borrow()
+                    .contains(visit.context.position_context, *item)
+                {
+                    self.external_positions.insert(visit.node, *item);
+                }
             }
             if let Some(index) = active.iter().position(|&node| node == visit.node) {
                 return Err(DuplicationError::ExpressionCycle {
@@ -531,6 +599,11 @@ fn remap_node(mut value: Node, spec: &Spec, ids: &BTreeMap<NodeId, NodeId>) -> N
         _ => unreachable!("admitted sequence"),
     };
     match &mut value {
+        Node::GeneratedPosition { item } => {
+            if let Some(&copied) = ids.get(item) {
+                *item = copied;
+            }
+        }
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => {
             for arg in args {
                 input(arg);
@@ -606,6 +679,8 @@ fn plan(project: &Project, selected: NodeId) -> Result<DuplicationPlan, Duplicat
         specs: BTreeMap::new(),
         functions: BTreeSet::new(),
         sensitive_parents: BTreeSet::new(),
+        position_contexts: Default::default(),
+        external_positions: BTreeMap::new(),
     };
     planner.sequence(source)?;
     project
@@ -613,7 +688,12 @@ fn plan(project: &Project, selected: NodeId) -> Result<DuplicationPlan, Duplicat
         .map_err(DuplicationError::FilterMapAdmission)?;
     planner.walk()?;
     validate_functions(project, &planner.functions)?;
-    validate_parent_contexts(project, selected, &planner.sensitive_parents)?;
+    validate_parent_contexts(
+        project,
+        selected,
+        &planner.sensitive_parents,
+        &planner.external_positions,
+    )?;
     let fresh = crate::graph_viewer::reserve_project_node_ids(project, planner.specs.len())
         .map_err(|message| DuplicationError::IdExhaustion {
             message,
@@ -793,6 +873,7 @@ struct SourceContext {
     document: usize,
     introducing_scopes: Vec<Vec<usize>>,
     paths: Vec<Vec<String>>,
+    generated: BTreeSet<NodeId>,
 }
 
 fn scope_inputs(scope: &Scope) -> Vec<NodeId> {
@@ -850,6 +931,7 @@ fn reached_contexts(
                     .map(|input| (input, context.clone(), path.clone())),
             );
             let mut private = context.clone();
+            private.generated.insert(sequence.item());
             private.introducing_scopes.push(vec![
                 usize::MAX,
                 node as usize,
@@ -904,8 +986,9 @@ fn validate_parent_contexts(
     project: &Project,
     selected: NodeId,
     sensitive: &BTreeSet<NodeId>,
+    positions: &BTreeMap<NodeId, NodeId>,
 ) -> Result<(), DuplicationError> {
-    if sensitive.is_empty() {
+    if sensitive.is_empty() && positions.is_empty() {
         return Ok(());
     }
     let mut contexts = BTreeSet::new();
@@ -920,6 +1003,7 @@ fn validate_parent_contexts(
                     document,
                     introducing_scopes: Vec::new(),
                     paths: Vec::new(),
+                    generated: BTreeSet::new(),
                 },
             )
         })
@@ -957,6 +1041,9 @@ fn validate_parent_contexts(
                     .to_vec(),
             );
         }
+        if let Some(sequence) = scope.sequence() {
+            context.generated.insert(sequence.item());
+        }
         // Raw candidates, sorted candidates, grouped members and compacted
         // output positions are distinct contexts even within one scope/path.
         let iterating = !matches!(
@@ -982,6 +1069,11 @@ fn validate_parent_contexts(
         };
         let phase_context = |phase| {
             let mut context = context.clone();
+            if phase == 3
+                && let Some(sequence) = scope.sequence()
+            {
+                context.generated.remove(&sequence.item());
+            }
             if iterating {
                 context.introducing_scopes.push(vec![usize::MAX - 2, phase]);
             }
@@ -1047,6 +1139,7 @@ fn validate_parent_contexts(
             document: usize::MAX,
             introducing_scopes: vec![vec![index]],
             paths: Vec::new(),
+            generated: BTreeSet::new(),
         };
         if let FailureIteration::Sequence { sequence } = &rule.iteration {
             for root in sequence.inputs() {
@@ -1059,6 +1152,9 @@ fn validate_parent_contexts(
             }
         }
         let mut item = parent;
+        if let FailureIteration::Sequence { sequence } = &rule.iteration {
+            item.generated.insert(sequence.item());
+        }
         item.introducing_scopes.push(vec![index, 0]);
         if let FailureIteration::Source { collection } = &rule.iteration {
             item.paths.push(collection.clone());
@@ -1085,6 +1181,7 @@ fn validate_parent_contexts(
                         })?
                         .to_vec(),
                 ],
+                generated: BTreeSet::new(),
             };
             contexts.extend(reached_contexts(
                 &project.graph,
@@ -1094,7 +1191,21 @@ fn validate_parent_contexts(
             ));
         }
     }
-    if contexts.len() != 1 {
+    for (&expression, &item) in positions {
+        if contexts.is_empty()
+            || contexts
+                .iter()
+                .any(|context| !context.generated.contains(&item))
+        {
+            return Err(DuplicationError::PrivateOwnerOutsideContext {
+                expression,
+                item,
+                consumer: selected,
+                context: "receiving generated position origin".into(),
+            });
+        }
+    }
+    if !sensitive.is_empty() && contexts.len() != 1 {
         let source_frames = contexts
             .iter()
             .flat_map(|context| context.paths.iter().cloned())
@@ -1112,6 +1223,7 @@ fn validate_parent_contexts(
 
 fn canvas_inputs(value: &Node) -> Vec<NodeId> {
     match value {
+        Node::GeneratedPosition { .. } => Vec::new(),
         Node::SequenceExists {
             sequence,
             predicate,
