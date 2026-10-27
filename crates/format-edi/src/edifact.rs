@@ -3,8 +3,8 @@
 //!
 //! Default separators are `+` (element), `:` (component), `'` (segment
 //! terminator), and `?` (release/escape character, which makes any
-//! following character literal). An optional leading UNA service string
-//! advises different separators and is honored on read. Both complete UNB
+//! following character literal). An optional UNA service string advises
+//! different separators for each interchange and is honored on read. Both complete UNB
 //! interchanges and standalone UNH messages are accepted. Writing uses the
 //! defaults with one segment per line, escaping separators in values with
 //! the release character.
@@ -15,12 +15,14 @@ use ir::{Instance, SchemaNode};
 
 use crate::autocomplete as envelope;
 use crate::segments::{
-    Segment, WriteOptions, WriteStyle, read_segments, serialize_segments, write_segments,
+    Segment, WriteOptions, WriteStyle, read_edifact_segments, serialize_segments, write_segments,
 };
 use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
 
 mod envelope_validation;
 pub use envelope_validation::validate_envelope;
+#[cfg(test)]
+mod interchange_tests;
 
 // Repetition is enabled only by a version-4 UNB declaration or an explicit
 // version-4 completion policy. A bare `*` remains ordinary v3 data.
@@ -60,7 +62,7 @@ const DEFAULT_SEPARATORS: Separators = Separators {
 };
 
 /// Splits raw EDIFACT text into segments (elements split into components),
-/// honoring a leading UNA service string advice if present.
+/// honoring each interchange's UNA service string advice if present.
 ///
 /// Segments, elements, and components are split in a single pass so the
 /// release character is interpreted exactly once -- a two-pass split would
@@ -72,61 +74,39 @@ pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
 fn tokenize_with_separators(
     text: &str,
     default_v4: bool,
-) -> Result<(Vec<Segment>, Separators), EdiFormatError> {
+) -> Result<(Vec<Segment>, Vec<char>), EdiFormatError> {
     if text.len() > MAX_RUNTIME_INPUT_BYTES {
         return Err(EdiFormatError::NotEdifact("input exceeds the 64 MiB limit"));
     }
-    let text = text.trim_start();
-    let (separators, body, repeat_advice) = if let Some(rest) = text.strip_prefix("UNA") {
-        let advice: Vec<char> = rest.chars().take(6).collect();
-        if advice.len() < 6 {
-            return Err(EdiFormatError::NotEdifact("truncated UNA service string"));
-        }
-        let separators = Separators {
-            component: advice[0],
-            element: advice[1],
-            // advice[2] is the decimal notation, advice[4] is reserved.
-            release: advice[3],
-            terminator: advice[5],
-        };
-        let consumed = 3 + advice.iter().map(|c| c.len_utf8()).sum::<usize>();
-        (separators, text[consumed..].trim_start(), advice[4])
-    } else {
-        (DEFAULT_SEPARATORS, text, '*')
-    };
-    let starts_with = |id: &str| {
-        body.strip_prefix(id).is_some_and(|rest| {
-            rest.starts_with(separators.element) || rest.starts_with(separators.terminator)
-        })
-    };
-    if !starts_with("UNB") && !starts_with("UNH") {
+    let mut remaining = text.trim_start();
+    if remaining.is_empty() {
         return Err(EdiFormatError::NotEdifact(
             "interchange or standalone message must start with UNA, UNB, or UNH",
         ));
     }
-
+    let mut separators = DEFAULT_SEPARATORS;
+    let mut repeat_advice = '*';
+    let mut repetition = None;
+    let mut boundary = true;
+    let (mut interchange, mut group, mut message) = (false, false, false);
     let mut segments = Vec::new();
+    let mut component_joins = Vec::new();
     let mut current: Vec<Vec<Vec<String>>> = vec![vec![vec![String::new()]]];
-    let repeat = |enabled: bool| -> Result<Option<char>, EdiFormatError> {
-        if enabled
-            && (repeat_advice.is_whitespace()
-                || [
-                    separators.component,
-                    separators.element,
-                    separators.release,
-                    separators.terminator,
-                ]
-                .contains(&repeat_advice))
-        {
-            return Err(EdiFormatError::NotEdifact(
-                "syntax v4 requires a distinct visible repetition separator",
-            ));
+    while !remaining.is_empty() {
+        if at_segment_start(&current) {
+            remaining = remaining.trim_start();
+            if remaining.is_empty() {
+                break;
+            }
+            if boundary {
+                (separators, remaining, repeat_advice) =
+                    read_advice(remaining, segments.is_empty())?;
+                repetition = repetition_separator(separators, repeat_advice, default_v4)?;
+                boundary = false;
+            }
         }
-        Ok(enabled.then_some(repeat_advice))
-    };
-    let mut repetition = repeat(default_v4)?;
-    let mut chars = body.chars();
-    while let Some(c) = chars.next() {
+        let mut chars = remaining.chars();
+        let Some(c) = chars.next() else { break };
         if c == separators.release {
             let Some(escaped) = chars.next() else {
                 return Err(EdiFormatError::NotEdifact(
@@ -135,14 +115,35 @@ fn tokenize_with_separators(
             };
             push_char(&mut current, escaped)?;
         } else if c == separators.terminator {
-            if current[0][0][0] == "UNB" {
-                let version = current
-                    .get(1)
-                    .and_then(|repeats| repeats.first())
-                    .and_then(|parts| parts.get(1));
-                repetition = repeat(
-                    crate::segments::edifact_v4(version.map(String::as_str)).unwrap_or(default_v4),
-                )?;
+            match current[0][0][0].as_str() {
+                "UNB" => {
+                    interchange = true;
+                    let version = current
+                        .get(1)
+                        .and_then(|repeats| repeats.first())
+                        .and_then(|parts| parts.get(1));
+                    repetition = repetition_separator(
+                        separators,
+                        repeat_advice,
+                        crate::segments::edifact_v4(version.map(String::as_str))
+                            .unwrap_or(default_v4),
+                    )?;
+                }
+                "UNG" => group = true,
+                "UNH" => message = true,
+                "UNT" => {
+                    message = false;
+                    boundary = !interchange && !group;
+                }
+                "UNE" => group = false,
+                "UNZ" => {
+                    interchange = false;
+                    boundary = !message && !group;
+                }
+                _ => {}
+            }
+            if !at_segment_start(&current) {
+                component_joins.push(separators.component);
             }
             finish_segment(
                 &mut segments,
@@ -162,15 +163,90 @@ fn tokenize_with_separators(
                 .last_mut()
                 .ok_or(EdiFormatError::NotEdifact("invalid tokenizer state"))?;
             components.push(String::new());
-        } else if c.is_whitespace() && at_segment_start(&current) {
-            // Skip formatting whitespace between segments (e.g. newlines).
         } else {
             push_char(&mut current, c)?;
         }
+        remaining = chars.as_str();
     }
-    // Tolerate a missing terminator on the final segment.
+    // Tolerate a missing terminator on the final segment, as before.
+    if !at_segment_start(&current) {
+        component_joins.push(separators.component);
+    }
     finish_segment(&mut segments, current);
-    Ok((segments, separators))
+    Ok((segments, component_joins))
+}
+
+// Only called at a closed envelope boundary, never on advice-looking field data.
+// This tracks syntax ownership, not counts or references; the opt-in envelope
+// validator remains responsible for complete structural validation.
+fn read_advice(text: &str, opening: bool) -> Result<(Separators, &str, char), EdiFormatError> {
+    let has_advice = text.starts_with("UNA");
+    let (separators, body, repeat_advice) = if let Some(rest) = text.strip_prefix("UNA") {
+        let advice: Vec<char> = rest.chars().take(6).collect();
+        if advice.len() < 6 {
+            return Err(EdiFormatError::NotEdifact("truncated UNA service string"));
+        }
+        let separators = Separators {
+            component: advice[0],
+            element: advice[1],
+            // advice[2] is the decimal notation, advice[4] is reserved.
+            release: advice[3],
+            terminator: advice[5],
+        };
+        let service = [
+            separators.component,
+            separators.element,
+            separators.release,
+            separators.terminator,
+        ];
+        if service.iter().enumerate().any(|(index, character)| {
+            character.is_whitespace() || service[..index].contains(character)
+        }) {
+            return Err(EdiFormatError::NotEdifact(
+                "UNA requires distinct visible service characters",
+            ));
+        }
+        let consumed = 3 + advice.iter().map(|c| c.len_utf8()).sum::<usize>();
+        (separators, text[consumed..].trim_start(), advice[4])
+    } else {
+        (DEFAULT_SEPARATORS, text, '*')
+    };
+    let starts_with = |id: &str| {
+        body.strip_prefix(id).is_some_and(|rest| {
+            rest.starts_with(separators.element) || rest.starts_with(separators.terminator)
+        })
+    };
+    // Without new advice, trailing segments keep the existing schema/leniency
+    // policy; the strict envelope validator rejects segments outside a message.
+    if (opening || has_advice) && !starts_with("UNB") && !starts_with("UNH") {
+        return Err(EdiFormatError::NotEdifact(
+            "interchange or standalone message must start with UNA, UNB, or UNH",
+        ));
+    }
+
+    Ok((separators, body, repeat_advice))
+}
+
+fn repetition_separator(
+    separators: Separators,
+    advice: char,
+    enabled: bool,
+) -> Result<Option<char>, EdiFormatError> {
+    if enabled
+        && (advice.is_whitespace()
+            || [
+                separators.component,
+                separators.element,
+                separators.release,
+                separators.terminator,
+            ]
+            .contains(&advice))
+    {
+        return Err(EdiFormatError::NotEdifact(
+            "syntax v4 requires a distinct visible repetition separator",
+        ));
+    }
+    Ok(enabled.then_some(advice))
 }
 
 fn at_segment_start(current: &[Vec<Vec<String>>]) -> bool {
@@ -222,8 +298,8 @@ pub fn from_str(
     schema: &SchemaNode,
     lenient: bool,
 ) -> Result<Instance, EdiFormatError> {
-    let (segments, separators) = tokenize_with_separators(text, false)?;
-    read_segments(schema, &segments, separators.component, None, lenient)
+    let (segments, component_joins) = tokenize_with_separators(text, false)?;
+    read_edifact_segments(schema, &segments, &component_joins, lenient)
 }
 
 /// Writes an [`Instance`] tree shaped by `schema` as EDIFACT.

@@ -11,8 +11,13 @@ The static adapter uses the same `FerruleEdi` runtime as primary document plans,
 with strict envelope validation enabled for input and output. Complete UNB/UNZ
 interchanges may contain direct UNH/UNT messages or UNG/UNE groups. Counts,
 references and ownership are checked before parsing and after serialization.
-UNA declares input service characters; output uses the native codec's canonical
-syntax. Syntax versions before 4 preserve literal `*`; version 4 uses the
+UNA declares input service characters for one interchange. Concatenated complete
+interchanges may each supply UNA; after UNZ, an interchange without UNA uses the
+default service characters, not the previous interchange's advice. Formatting
+whitespace may separate interchanges. Advice-looking text inside a field never
+changes syntax, and scalar projections of composites retain their interchange's
+component separator. Output uses the native codec's canonical syntax rather than
+reproducing UNA. Syntax versions before 4 preserve literal `*`; version 4 uses the
 declared repetition character and typed repeating fields.
 
 `ExecuteDocumentOutputsWithHost` and its byte variant parse inputs once, execute

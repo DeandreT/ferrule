@@ -32,7 +32,7 @@ var customBody = text.Replace("?+", "\u0001").Replace("?*", "\u0002").Replace("|
     .Replace('?', '!').Replace(':', ';').Replace('+', '|').Replace('\'', '$');
 if (v4) customBody = customBody.Replace('*', '^');
 customBody = customBody.Replace("\u0001", "+").Replace("\u0002", "*").Replace("\u0003", "!|").Replace("\u0004", v4 ? "!^" : "^");
-var custom = (v4 ? "UNA;|.!^$" : "UNA;|.! $") + customBody;
+var custom = customBody.Replace("UNB|", (v4 ? "UNA;|.!^$" : "UNA;|.! $") + "UNB|");
 Check(GeneratedMapping.ExecuteDocumentOutputsWithHost(custom, named, context).Primary == expected, "UNA custom syntax");
 var unicodeCustom = custom.Replace("!|", "\u0005").Replace("|", "😀").Replace("\u0005", "|");
 Check(GeneratedMapping.ExecuteDocumentOutputsWithHost(unicodeCustom, named, context).Primary == expected, "UNA Unicode scalar syntax");

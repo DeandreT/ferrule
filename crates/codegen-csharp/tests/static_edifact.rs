@@ -2,6 +2,8 @@
 //! EDI codec; no tokenizer or envelope implementation belongs in this adapter.
 #[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
 mod dotnet_temp;
+#[path = "../../format-edi/tests/fixtures/interchanges.rs"]
+mod interchange_fixtures;
 #[allow(dead_code)]
 #[path = "static_document_outputs/fixture.rs"]
 mod x12_fixture;
@@ -442,4 +444,79 @@ fn generated_static_edifact_matches_native_and_refuses_malformed_envelopes() {
         );
     }
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[ignore = "requires .NET 10 SDK; package-free generated EDIFACT interchange parity"]
+fn generated_edifact_interchanges_preserve_syntax_and_output() {
+    let directory = std::env::temp_dir().join(format!(
+        "ferrule-edifact-interchanges-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&directory).unwrap();
+    let project = project(false);
+    let artifacts = codegen_csharp::emit_with_static_document_adapters(
+        &codegen::lower(&project).unwrap(),
+        &policy(&project),
+    )
+    .unwrap();
+    for file in artifacts.files() {
+        let path = directory.join(file.path.as_str());
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, &file.contents).unwrap();
+    }
+    let cases: Vec<_> = interchange_fixtures::cases()
+        .into_iter()
+        .map(|case| {
+            format_edi::edifact::validate_envelope(&case.wire).unwrap();
+            let instance =
+                format_edi::edifact::from_str(&case.wire, &project.source, false).unwrap();
+            serde_json::json!({
+                "name": case.name, "wire": case.wire, "codes": case.codes, "values": case.values,
+                "output": format_edi::edifact::to_string(&project.target, &instance).unwrap(),
+                "json": format_json::to_string(&project.target, &instance).unwrap(),
+            })
+        })
+        .collect();
+    fs::write(
+        directory.join("cases.json"),
+        serde_json::to_vec(&cases).unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        directory.join("legacy.x12"),
+        include_str!("static_document_outputs/reference.x12"),
+    )
+    .unwrap();
+    fs::create_dir_all(directory.join("Host")).unwrap();
+    fs::write(directory.join("Host/Host.csproj"), r#"<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup><ItemGroup><ProjectReference Include="../Ferrule.Generated.csproj" /></ItemGroup></Project>"#).unwrap();
+    fs::write(
+        directory.join("Host/Program.cs"),
+        include_str!("static_edifact/Interchanges.cs"),
+    )
+    .unwrap();
+    let result = Command::new("dotnet")
+        .dotnet_temp(&directory)
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .env("DOTNET_CLI_HOME", directory.join("home"))
+        .env("MSBUILDDISABLENODEREUSE", "1")
+        .env("DOTNET_CLI_USE_MSBUILD_SERVER", "0")
+        .current_dir(&directory)
+        .args([
+            "run",
+            "--project",
+            "Host/Host.csproj",
+            "-p:UseSharedCompilation=false",
+            "-p:BuildInParallel=false",
+            "-p:NuGetAudit=false",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    fs::remove_dir_all(directory).unwrap();
 }

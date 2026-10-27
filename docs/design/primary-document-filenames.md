@@ -212,6 +212,12 @@ using UNA's repetition character when supplied and `*` otherwise. Writers
 normalize to the default separators and preserve repeated scalar/composite
 instances. Standalone UNH input without a UNB version retains legacy syntax;
 UNA's reserved/repetition slot alone does not choose version 4.
+Service characters belong to each interchange: a UNA at the next closed
+interchange boundary replaces the previous advice, while no UNA restores the
+defaults. The same reset applies after a standalone UNT. A UNA-looking field
+value never changes syntax. Schemas still decide which segments and repeating
+interchange containers are admitted; parsing concatenated interchanges does not
+turn a singular schema into a repeating one.
 
 The shared C# codec is `FerruleEdi(schemaJson, optionsJson, kind, input: false,
 strictEnvelope: false)`, with `Parse(byte[])` and
