@@ -10,6 +10,7 @@ They do not change the canonical capability ledger or establish execution suppor
 | `functions.json` | 319 named function leaves, parameter tables, language declarations and unresolved contract facets |
 | `constructors.json` | 43 `xs:` constructor leaves and their shared lexical/type statements |
 | `com-api.json` | Separate public COM API catalog; release binding remains unestablished |
+| `com-name-alignment.json` | Name-only comparison against the release-bound type library, preserving discrepancies and incomplete dump tables |
 | `supporting.json` | Public I/O classes, wrapper-library exceptions and the named installation-artifact requests |
 | `external-references.json` | Linked historical DOM algorithm and redirected .NET interface contract, kept separate from vendor claims |
 
@@ -31,6 +32,12 @@ vendor environment. Its scoped catalog-completeness flag does not establish
 Enterprise 2026r2 inventory completeness. The canonical `inventory_complete` flag
 remains false while release provenance, supporting classes and remaining source
 contracts are unresolved.
+
+The type-library name comparison does not bind the online catalog's signatures
+or behavior to the installed release. It retains the different spellings of
+`HighlightMyConnectionsRecursively` and `HighlightMyConnectionsRecursivly`,
+additional declaration names, and unresolved enum/event tables. Name matches,
+accessor-record counts and enum names are not additive capabilities or ABI proof.
 
 The public supporting declarations are inventoried, but complete generated
 libraries and installed examples require release-bound artifacts. The requested

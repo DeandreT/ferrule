@@ -5,6 +5,9 @@ use std::path::Path;
 
 use serde_json::Value;
 
+#[path = "source_inventory/com_names.rs"]
+mod com_names;
+
 fn load(name: &str) -> Value {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../conformance/mfd-2026r2-source-inventory")
