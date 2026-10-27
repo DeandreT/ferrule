@@ -1,0 +1,15 @@
+[target.x86_64-unknown-linux-gnu]
+linker = "cc"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
+rustflags = ["-C", "linker-flavor=lld-link"]
+
+[env]
+# Nested generated consumers run outside the checkout, so carry the same target
+# policy into those Cargo processes without replacing caller-supplied settings.
+CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER = { value = "cc", force = false }
+CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS = { value = "-C link-arg=-fuse-ld=mold", force = false }
+CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS = { value = "-C linker-flavor=lld-link", force = false }
+CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER = { value = "rust-lld.exe", force = false }
