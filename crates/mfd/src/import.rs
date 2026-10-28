@@ -92,7 +92,8 @@ pub use json_edi_document::{
 };
 pub use json_source_projection::{
     ImportedJsonParameterProjection, ImportedJsonSourceProjection,
-    import_json_parameter_projection_with_options, import_json_source_projection_with_options,
+    ImportedParameterFileJsonSources, import_json_parameter_projection_with_options,
+    import_json_source_projection_with_options, import_parameter_file_json_sources_with_options,
 };
 pub use schema::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
 pub use x12_document_bodies::{

@@ -39,6 +39,15 @@ pub struct ImportedJsonParameterProjection {
     pub mapping_path: PathBuf,
 }
 
+/// Source-only admission for a physical JSON source driven by one typed
+/// parameter-object member. The physical filename binding is private host
+/// plumbing, not a claim that the original declared a global filename input.
+pub struct ImportedParameterFileJsonSources {
+    pub parameter: ImportedJsonParameterProjection,
+    pub physical: ImportedJsonSourceProjection,
+    pub filename_member: String,
+}
+
 fn refuse(message: &str) -> MfdError {
     MfdError::UnsupportedImport(format!("ordered JSON source: {message}"))
 }
@@ -47,14 +56,14 @@ pub fn import_json_source_projection_with_options(
     path: &Path,
     options: &ImportOptions,
 ) -> Result<ImportedJsonSourceProjection, MfdError> {
-    import_projection(path, options, false, None)
+    import_projection(path, options, false, None, None).map(|(source, _)| source)
 }
 
 pub fn import_json_parameter_projection_with_options(
     path: &Path,
     options: &ImportOptions,
 ) -> Result<ImportedJsonParameterProjection, MfdError> {
-    let projection = import_projection(path, options, true, None)?;
+    let (projection, _) = import_projection(path, options, true, None, None)?;
     Ok(ImportedJsonParameterProjection {
         shape: projection.shape,
         source_schema: projection.source_schema,
@@ -71,7 +80,37 @@ pub(super) fn import_physical_json_after_parameter(
     options: &ImportOptions,
     parameter: &ImportedJsonParameterProjection,
 ) -> Result<ImportedJsonSourceProjection, MfdError> {
-    import_projection(path, options, false, Some(parameter.input_port))
+    import_projection(path, options, false, Some(parameter.input_port), None)
+        .map(|(source, _)| source)
+}
+
+pub fn import_parameter_file_json_sources_with_options(
+    path: &Path,
+    options: &ImportOptions,
+) -> Result<ImportedParameterFileJsonSources, MfdError> {
+    let parameter = import_json_parameter_projection_with_options(path, options)?;
+    let (physical, member) = import_projection(
+        path,
+        options,
+        false,
+        Some(parameter.input_port),
+        Some(&parameter),
+    )?;
+    let parameter_ports = std::iter::once(parameter.input_port)
+        .chain(parameter.ports.keys().copied())
+        .collect::<std::collections::BTreeSet<_>>();
+    if std::iter::once(physical.filename_input_port)
+        .chain(physical.filename_output_port)
+        .chain(physical.ports.keys().copied())
+        .any(|port| parameter_ports.contains(&port))
+    {
+        return Err(refuse("parameter and physical source identities overlap"));
+    }
+    Ok(ImportedParameterFileJsonSources {
+        parameter,
+        physical,
+        filename_member: member.ok_or_else(|| refuse("missing parameter filename member"))?,
+    })
 }
 
 fn import_projection(
@@ -79,7 +118,8 @@ fn import_projection(
     options: &ImportOptions,
     string_parameter: bool,
     excluded_parameter: Option<u32>,
-) -> Result<ImportedJsonSourceProjection, MfdError> {
+    parameter_filename: Option<&ImportedJsonParameterProjection>,
+) -> Result<(ImportedJsonSourceProjection, Option<String>), MfdError> {
     let resources = super::resolved_resources(path, options)?;
     let result = (|| {
         let text = resources.read_design()?;
@@ -269,40 +309,79 @@ fn import_projection(
             .feeds
             .get(&filename_input_port)
             .ok_or_else(|| refuse("unconnected input filename"))?;
-        let parameters: Vec<_> = children
-            .children()
-            .filter(|n| n.has_tag_name("component"))
-            .map(|node| (node, function::read(&node)))
-            .filter(|(_, f)| f.output_pins.contains(&Some(*parameter_port)))
-            .collect();
-        let [(parameter_node, parameter)] = parameters.as_slice() else {
-            return Err(refuse("ambiguous input filename expression"));
-        };
-        let filename_parameter = parameter
-            .input_parameter_name
-            .as_ref()
-            .filter(|p| !p.optional)
-            .ok_or_else(|| refuse("filename must be a required global parameter"))?;
-        if parameter.kind != 6
-            || parameter.library != "core"
-            || parameter.inputs != [None]
-            || parameter.input_type != Some(ScalarType::String)
-            || !parameter.raw_single_output_valid
-        {
-            return Err(refuse("filename must be a direct String parameter"));
-        }
-        let input_pins: Vec<_> = parameter_node
-            .children()
-            .filter(|n| n.has_tag_name("sources"))
-            .flat_map(|n| n.children().filter(|n| n.has_tag_name("datapoint")))
-            .collect();
-        if !matches!(input_pins.as_slice(), [pin] if pin.attributes().len() == 0)
-            || filename_parameter.name.is_empty()
-            || filename_parameter.name.contains('\0')
-            || filename_parameter.name.len() > mapping::MAX_RUNTIME_PARAMETER_NAME_BYTES
-        {
-            return Err(refuse("unqualified filename parameter declaration"));
-        }
+        let (filename_name, filename_preview, filename_member) =
+            if let Some(parameter) = parameter_filename {
+                let path = parameter
+                    .ports
+                    .get(parameter_port)
+                    .filter(|path| path.len() == 3 && path[..2] == ["Documents", "Root"])
+                    .ok_or_else(|| refuse("filename must select a direct parameter root String"))?;
+                let JsonSourceShape::Object { properties } = &parameter.shape else {
+                    return Err(refuse("filename parameter must be an object"));
+                };
+                if !properties.iter().any(|property| {
+                    property.name == path[2] && property.shape == JsonSourceShape::String
+                }) {
+                    return Err(refuse("filename member must have a typed String output"));
+                }
+                let binding = format!("__ferrule_json_filename_{filename_input_port}");
+                if children
+                    .children()
+                    .filter(|node| node.has_tag_name("component"))
+                    .map(|node| function::read(&node))
+                    .any(|function| {
+                        function
+                            .input_parameter_name
+                            .as_ref()
+                            .is_some_and(|input| input.name == binding)
+                    })
+                {
+                    return Err(refuse(
+                        "private filename binding collides with a declared input",
+                    ));
+                }
+                (binding, None, Some(path[2].clone()))
+            } else {
+                let parameters: Vec<_> = children
+                    .children()
+                    .filter(|n| n.has_tag_name("component"))
+                    .map(|node| (node, function::read(&node)))
+                    .filter(|(_, f)| f.output_pins.contains(&Some(*parameter_port)))
+                    .collect();
+                let [(parameter_node, parameter)] = parameters.as_slice() else {
+                    return Err(refuse("ambiguous input filename expression"));
+                };
+                let filename_parameter = parameter
+                    .input_parameter_name
+                    .as_ref()
+                    .filter(|p| !p.optional)
+                    .ok_or_else(|| refuse("filename must be a required global parameter"))?;
+                if parameter.kind != 6
+                    || parameter.library != "core"
+                    || parameter.inputs != [None]
+                    || parameter.input_type != Some(ScalarType::String)
+                    || !parameter.raw_single_output_valid
+                {
+                    return Err(refuse("filename must be a direct String parameter"));
+                }
+                let input_pins: Vec<_> = parameter_node
+                    .children()
+                    .filter(|n| n.has_tag_name("sources"))
+                    .flat_map(|n| n.children().filter(|n| n.has_tag_name("datapoint")))
+                    .collect();
+                if !matches!(input_pins.as_slice(), [pin] if pin.attributes().len() == 0)
+                    || filename_parameter.name.is_empty()
+                    || filename_parameter.name.contains('\0')
+                    || filename_parameter.name.len() > mapping::MAX_RUNTIME_PARAMETER_NAME_BYTES
+                {
+                    return Err(refuse("unqualified filename parameter declaration"));
+                }
+                (
+                    filename_parameter.name.clone(),
+                    parameter.input_preview.clone(),
+                    None,
+                )
+            };
         let mut warnings = Vec::new();
         let source = schema::read_json_component_in_package(component, &resources, &mut warnings)
             .ok_or_else(|| refuse("JSON schema did not load"))?;
@@ -355,16 +434,19 @@ fn import_projection(
         shape
             .validate()
             .map_err(|_| refuse("projection shape exceeds limits"))?;
-        Ok(ImportedJsonSourceProjection {
-            shape,
-            source_schema: source.schema,
-            filename_parameter: filename_parameter.name.clone(),
-            filename_preview: parameter.input_preview.clone(),
-            filename_input_port,
-            filename_output_port,
-            ports,
-            mapping_path: resources.mapping_path().to_path_buf(),
-        })
+        Ok((
+            ImportedJsonSourceProjection {
+                shape,
+                source_schema: source.schema,
+                filename_parameter: filename_name,
+                filename_preview,
+                filename_input_port,
+                filename_output_port,
+                ports,
+                mapping_path: resources.mapping_path().to_path_buf(),
+            },
+            filename_member,
+        ))
     })();
     resources.finish_bindings()?;
     result
