@@ -1,0 +1,31 @@
+use codegen_runtime::{Instance, Value, field, group, repeated, scalar};
+use std::fs;
+
+fn instance(value: &serde_json::Value) -> Instance {
+    match value {
+        serde_json::Value::Object(fields) => group(fields.iter().map(|(name, value)| field(name.clone(), instance(value)))),
+        serde_json::Value::Array(items) => repeated(items.iter().map(instance)),
+        serde_json::Value::String(value) => scalar(Value::String(value.clone())),
+        serde_json::Value::Number(value) => scalar(Value::Int(value.as_i64().expect("authored integer"))),
+        _ => panic!("unexpected authored scalar"),
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cases: Vec<serde_json::Value> = serde_json::from_slice(&fs::read("cases.json")?)?;
+    let mut outcomes = Vec::new();
+    for case in &cases {
+        let source = instance(&case["input_json"]);
+        let expected = instance(&case["expected_json"]);
+        let actual = ferrule_generated_mapping::execute(&source);
+        let json = ferrule_generated_mapping::execute_json(&case["input_json"].to_string());
+        outcomes.push((case["name"].clone(), actual, expected, json, case["expected_json"].clone()));
+    }
+    fs::write("complete-outcomes.txt", format!("{outcomes:#?}\n"))?;
+    assert_eq!(outcomes.len(), 4);
+    for (name, actual, expected, json, expected_json) in outcomes {
+        assert_eq!(actual?, expected, "{name}");
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&json?)?, expected_json, "{name}");
+    }
+    Ok(())
+}

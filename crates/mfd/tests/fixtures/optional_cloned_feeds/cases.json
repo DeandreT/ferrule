@@ -1,0 +1,26 @@
+[
+  {
+    "name": "both",
+    "input_xml": "<Envelope><First>17</First><Second>29</Second><Label>safe</Label></Envelope>",
+    "input_json": {"First":17,"Second":29,"Label":"safe"},
+    "expected_json": {"Amount":[17,29],"Label":"safe"}
+  },
+  {
+    "name": "first-only",
+    "input_xml": "<Envelope><First>17</First><Label>safe</Label></Envelope>",
+    "input_json": {"First":17,"Label":"safe"},
+    "expected_json": {"Amount":[17],"Label":"safe"}
+  },
+  {
+    "name": "second-only",
+    "input_xml": "<Envelope><Second>29</Second><Label>safe</Label></Envelope>",
+    "input_json": {"Second":29,"Label":"safe"},
+    "expected_json": {"Amount":[29],"Label":"safe"}
+  },
+  {
+    "name": "neither",
+    "input_xml": "<Envelope><Label>safe</Label></Envelope>",
+    "input_json": {"Label":"safe"},
+    "expected_json": {"Amount":[],"Label":"safe"}
+  }
+]
