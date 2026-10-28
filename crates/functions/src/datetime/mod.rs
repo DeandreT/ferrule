@@ -139,16 +139,77 @@ pub(super) fn format_datetime_milliseconds(args: &[Value]) -> Result<Value, Func
         });
     }
     let (value, picture) = format_arguments(args, FUNCTION)?;
-    let Some((date, time)) = value.split_once('T') else {
-        return invalid(FUNCTION);
-    };
-    validate_iso_date(date, FUNCTION)?;
-    validate_iso_time(time, FUNCTION)?;
-    let mut fields = Formattable::from_date(date, FUNCTION)?;
-    fields.set_time(time, FUNCTION)?;
+    let mut fields = native_millisecond_fields(value, FUNCTION)?;
     let fraction = fields.fraction.as_deref().unwrap_or("");
     fields.fraction = Some(format!("{:0<3}", &fraction[..fraction.len().min(3)]));
     Ok(Value::String(format_picture(&fields, picture, FUNCTION)?))
+}
+
+fn native_millisecond_fields(
+    value: &str,
+    function: &'static str,
+) -> Result<Formattable, FunctionError> {
+    let Some((date, time)) = value.trim().split_once('T') else {
+        return invalid(function);
+    };
+    validate_iso_date(date, function)?;
+    let mut fields = Formattable::from_date(date, function)?;
+    let mut year: u32 = fields
+        .year
+        .parse()
+        .map_err(|_| FunctionError::InvalidArgument {
+            function,
+            message: INVALID_PICTURE,
+        })?;
+    if !(1..=9999).contains(&year) {
+        return invalid(function);
+    }
+    let (time, zone) = if let Some(time) = time.strip_suffix('Z') {
+        (time, Some("Z"))
+    } else if let Some(index) = time.find(['+', '-']) {
+        let (time, zone) = time.split_at(index);
+        // Altova's native DateTime parser allows two-digit offset hours,
+        // rather than applying the ordinary ISO +/-14:00 bound.
+        if zone.len() != 6
+            || !zone.is_ascii()
+            || zone.as_bytes()[3] != b':'
+            || !zone.as_bytes()[1..3].iter().all(u8::is_ascii_digit)
+            || !zone.as_bytes()[4..].iter().all(u8::is_ascii_digit)
+            || number(&zone[4..], function)? > 59
+        {
+            return invalid(function);
+        }
+        (time, Some(zone))
+    } else {
+        (time, None)
+    };
+    let midnight = time.starts_with("24:00:00");
+    let normalized;
+    let time = if midnight {
+        normalized = format!("00:00:00{}", &time[8..]);
+        normalized.as_str()
+    } else {
+        time
+    };
+    validate_iso_time(time, function)?;
+    fields.set_time(time, function)?;
+    if midnight {
+        fields.day += 1;
+        if fields.day > days_in_month(year, fields.month) {
+            fields.day = 1;
+            fields.month += 1;
+            if fields.month == 13 {
+                fields.month = 1;
+                year += 1;
+            }
+        }
+        if year > 9999 {
+            return invalid(function);
+        }
+    }
+    fields.year = year.to_string();
+    fields.timezone = zone.map(str::to_string);
+    Ok(fields)
 }
 
 pub(super) fn format_time(args: &[Value]) -> Result<Value, FunctionError> {
