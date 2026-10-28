@@ -40,6 +40,12 @@ internal static partial class Program
         ProjectionRefuses(FerruleJsonProjectionError.Names, () => number.ProjectDocument(huge, new() { Values = 5, NameBytes = 12 }));
         ProjectionRefuses(FerruleJsonProjectionError.InvalidLimits, () => number.ProjectDocument(huge, new() { Values = 1_000_001 }));
         Equal("1e999", huge.Root.NumberText);
+        var parameterProjection = number.ProjectValue(huge.Root, new() { Values = 2, NameBytes = 5 });
+        Equal(true, parameterProjection is FerruleGroup { Fields.Count: 1 });
+        Equal("Value", ((FerruleGroup)parameterProjection!).Fields[0].Name);
+        Equal("1e999", ((FerruleScalar)((FerruleGroup)parameterProjection).Fields[0].Value).Value.StringValue);
+        ProjectionRefuses(FerruleJsonProjectionError.Values, () => number.ProjectValue(huge.Root, new() { Values = 1 }));
+        Equal(true, number.ProjectValue(FerruleJsonSourceDocument.Parse("parameter-only", "{}"u8).Root) is null);
         foreach (var descriptor in new[] {
             """{"kind":"number","coerce":true}""",
             """{"kind":"number","kind":"string"}""",
@@ -73,6 +79,37 @@ internal static partial class Program
             _ => throw new Exception("limit must precede load"), maximum: 0).GetEnumerator();
         Throws<FerruleJsonSourceLoadException>(() => zero.MoveNext());
         Equal(false, zero.MoveNext());
+        var requestCalls = new List<string>();
+        IEnumerable<string> OrderedRequests()
+        {
+            try
+            {
+                requestCalls.Add("request"); yield return "same";
+                requestCalls.Add("request"); yield return "same";
+                requestCalls.Add("request"); throw new InvalidOperationException("request");
+            }
+            finally { requestCalls.Add("dispose"); }
+        }
+        var ordered = number.AcquireRequests(OrderedRequests(), path =>
+        {
+            Equal("same", path); requestCalls.Add("load");
+            return FerruleJsonSourceDocument.Parse(path, "1e999"u8);
+        });
+        Equal(0, requestCalls.Count);
+        using var orderedIterator = ordered.GetEnumerator();
+        Equal(true, orderedIterator.MoveNext());
+        Equal(true, orderedIterator.MoveNext());
+        Throws<InvalidOperationException>(() => orderedIterator.MoveNext());
+        Equal(false, orderedIterator.MoveNext());
+        Equal("request,load,request,load,request,dispose", string.Join(',', requestCalls));
+        int orderedLoads = 0;
+        using var limited = number.AcquireRequests(new[] { "same", "same", "later" }, path =>
+        {
+            orderedLoads++; return FerruleJsonSourceDocument.Parse(path, "1"u8);
+        }, maximum: 2).GetEnumerator();
+        Equal(true, limited.MoveNext()); Equal(true, limited.MoveNext());
+        Throws<FerruleJsonSourceLoadException>(() => limited.MoveNext());
+        Equal(false, limited.MoveNext()); Equal(2, orderedLoads);
     }
 
     private static void ProjectionRefuses(FerruleJsonProjectionError expected, Action action)

@@ -1,6 +1,6 @@
 use codegen_runtime::{
     JsonAcquisitionError, JsonProjectionError, JsonProjectionLimits, JsonSourceAcquisition,
-    JsonSourceDocument, project_json_source_document,
+    JsonSourceDocument, project_json_source_document, project_json_source_value,
 };
 use ir::{Instance, Value};
 use mapping::{JsonProjectionPlanError, JsonSourceProperty, JsonSourceShape};
@@ -197,4 +197,127 @@ fn acquisition_limits_and_panics_do_not_reenter_the_loader() {
     .unwrap();
     assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| panic.next())).is_err());
     assert!(panic.next().is_none());
+}
+
+#[test]
+fn ordered_request_acquisition_keeps_duplicates_and_stops_after_error() {
+    use std::{cell::Cell, rc::Rc};
+    let selected = Rc::new(Cell::new(0));
+    let loaded = Rc::new(Cell::new(0));
+    let requests = vec![
+        Ok("same".into()),
+        Ok("same".into()),
+        Err("request"),
+        Ok("unreached".into()),
+    ]
+    .into_iter()
+    .inspect({
+        let selected = selected.clone();
+        move |_| selected.set(selected.get() + 1)
+    });
+    let shape = JsonSourceShape::Number;
+    let mut source = JsonSourceAcquisition::from_requests(
+        requests,
+        {
+            let loaded = loaded.clone();
+            move |name| {
+                assert_eq!(name, "same");
+                loaded.set(loaded.get() + 1);
+                Ok(JsonSourceDocument::parse(name, b"1e999").unwrap())
+            }
+        },
+        &shape,
+        Default::default(),
+        4,
+    )
+    .unwrap();
+    assert_eq!((selected.get(), loaded.get()), (0, 0));
+    assert_eq!(
+        source.next().unwrap().unwrap(),
+        source.next().unwrap().unwrap()
+    );
+    assert_eq!((selected.get(), loaded.get()), (2, 2));
+    assert!(matches!(
+        source.next(),
+        Some(Err(JsonAcquisitionError::Request("request")))
+    ));
+    assert!(source.next().is_none());
+    assert_eq!((selected.get(), loaded.get()), (3, 2));
+}
+
+#[test]
+fn ordered_requests_share_one_document_limit() {
+    use std::cell::Cell;
+    let loaded = Cell::new(0);
+    let shape = JsonSourceShape::Null;
+    let mut source = JsonSourceAcquisition::from_requests(
+        [Ok::<_, &str>("a".into()), Ok("a".into()), Ok("b".into())].into_iter(),
+        |name| {
+            loaded.set(loaded.get() + 1);
+            Ok(JsonSourceDocument::parse(name, b"null").unwrap())
+        },
+        &shape,
+        Default::default(),
+        2,
+    )
+    .unwrap();
+    assert!(source.next().unwrap().is_ok());
+    assert!(source.next().unwrap().is_ok());
+    assert!(matches!(
+        source.next(),
+        Some(Err(JsonAcquisitionError::Documents))
+    ));
+    assert!(source.next().is_none());
+    assert_eq!(loaded.get(), 2);
+}
+
+#[test]
+fn parsed_parameter_projection_has_no_invented_file_identity() {
+    let document = JsonSourceDocument::parse(
+        "parameter-only",
+        br#"{"key":"a","key":2,"key":"b","n":1e999}"#,
+    )
+    .unwrap();
+    let shape = JsonSourceShape::Object {
+        properties: vec![
+            JsonSourceProperty {
+                name: "key".into(),
+                shape: JsonSourceShape::String,
+            },
+            JsonSourceProperty {
+                name: "n".into(),
+                shape: JsonSourceShape::Number,
+            },
+        ],
+    };
+    let value = project_json_source_value(&shape, document.root(), Default::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        view(&value),
+        json!({"key":[{"Value":"a"},{"Value":"b"}],"n":[{"Value":"1e999"}]})
+    );
+    assert!(value.field("Path").is_none());
+    assert!(value.field("Root").is_none());
+    assert_eq!(document.root().members_named("key").count(), 3);
+    assert!(
+        project_json_source_value(
+            &JsonSourceShape::Number,
+            document.root(),
+            Default::default()
+        )
+        .unwrap()
+        .is_none()
+    );
+    assert_eq!(
+        project_json_source_value(
+            &shape,
+            document.root(),
+            JsonProjectionLimits {
+                values: 0,
+                name_bytes: 0
+            }
+        ),
+        Err(JsonProjectionError::Values)
+    );
 }

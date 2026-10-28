@@ -116,6 +116,17 @@ public sealed class FerruleJsonSourceProjection
         ]);
     }
 
+    /// <summary>Project a parsed value without assigning a physical file path.
+    /// Parameter roots retain typed occurrences and unconverted number text.</summary>
+    public FerruleInstance? ProjectValue(FerruleJsonSourceValue value, FerruleJsonProjectionLimits? limits = null)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        limits ??= new();
+        if (limits.Values is < 0 or > 1_000_000 || limits.NameBytes is < 0 or > 64 * 1024 * 1024)
+            throw new FerruleJsonProjectionException(FerruleJsonProjectionError.InvalidLimits);
+        return Project(root, value, new Budget(limits.Values, limits.NameBytes));
+    }
+
     /// <summary>
     /// Lazily evaluate the filename, select requests and load each complete
     /// document before projecting it. Host exceptions and enumerator cleanup
@@ -128,6 +139,22 @@ public sealed class FerruleJsonSourceProjection
     {
         ArgumentNullException.ThrowIfNull(filename);
         ArgumentNullException.ThrowIfNull(select);
+        return AcquireRequests(SelectRequests(), load, maximum, limits, grouping);
+
+        IEnumerable<string> SelectRequests()
+        {
+            foreach (var request in select(filename())) yield return request;
+        }
+    }
+
+    /// <summary>Consume ordered requests lazily without deduplicating names.
+    /// One document budget covers the entire request stream.</summary>
+    public IEnumerable<FerruleInstance> AcquireRequests(IEnumerable<string> requests,
+        Func<string, FerruleJsonSourceDocument> load,
+        int maximum = FerruleJsonSources.MaxDocuments, FerruleJsonProjectionLimits? limits = null,
+        FerruleJsonGroupingPreparation? grouping = null)
+    {
+        ArgumentNullException.ThrowIfNull(requests);
         ArgumentNullException.ThrowIfNull(load);
         if (grouping is not null) ValidateGrouping(grouping);
         if (maximum is < 0 or > FerruleJsonSources.MaxDocuments)
@@ -140,7 +167,7 @@ public sealed class FerruleJsonSourceProjection
         IEnumerable<FerruleInstance> Enumerate()
         {
             var count = 0;
-            foreach (var request in select(filename()))
+            foreach (var request in requests)
             {
                 if (count == maximum) throw new FerruleJsonSourceLoadException(maximum);
                 var result = ProjectDocument(load(request), limits);
