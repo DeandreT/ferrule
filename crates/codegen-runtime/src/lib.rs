@@ -60,6 +60,7 @@ pub use json_grouping::{
 pub use json_projection::{
     JsonProjectionError, JsonProjectionLimits, MAX_JSON_PROJECTED_NAME_BYTES,
     MAX_JSON_PROJECTED_VALUES, parse_json_projection_shape, project_json_source_document,
+    project_json_source_value,
 };
 pub use mapping::{JsonGroupingPreparation, JsonSourceShape};
 mod mapforce_string_components;

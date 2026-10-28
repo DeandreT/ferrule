@@ -58,12 +58,7 @@ pub fn project_json_source_document(
     document: &JsonSourceDocument,
     limits: JsonProjectionLimits,
 ) -> Result<Instance, JsonProjectionError> {
-    shape.validate().map_err(JsonProjectionError::Plan)?;
-    if limits.values > MAX_JSON_PROJECTED_VALUES
-        || limits.name_bytes > MAX_JSON_PROJECTED_NAME_BYTES
-    {
-        return Err(JsonProjectionError::InvalidLimits);
-    }
+    validate(shape, limits)?;
     let mut budget = Budget(limits);
     budget.value()?; // document
     budget.value()?; // path
@@ -84,6 +79,30 @@ pub fn project_json_source_document(
         ]
         .into(),
     ))
+}
+
+/// Project an already parsed value without inventing a physical file identity.
+/// This preserves typed occurrences and numeric lexicals for parameter roots.
+pub fn project_json_source_value(
+    shape: &JsonSourceShape,
+    value: &JsonSourceValue,
+    limits: JsonProjectionLimits,
+) -> Result<Option<Instance>, JsonProjectionError> {
+    validate(shape, limits)?;
+    project(shape, value, &mut Budget(limits))
+}
+
+fn validate(
+    shape: &JsonSourceShape,
+    limits: JsonProjectionLimits,
+) -> Result<(), JsonProjectionError> {
+    shape.validate().map_err(JsonProjectionError::Plan)?;
+    if limits.values > MAX_JSON_PROJECTED_VALUES
+        || limits.name_bytes > MAX_JSON_PROJECTED_NAME_BYTES
+    {
+        return Err(JsonProjectionError::InvalidLimits);
+    }
+    Ok(())
 }
 
 struct Budget(JsonProjectionLimits);
