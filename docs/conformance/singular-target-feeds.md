@@ -121,6 +121,8 @@ do not establish other nil lexical forms, nested nil, coercion or error ordering
 
 [#241](https://github.com/DeandreT/ferrule/issues/241) remains open. These finite
 non-null constants, optional-element and explicit-nil controls do not establish general null
-handling, fallible-expression precedence or a new singular multiple-feed representation. No such shape is
+handling or a new singular multiple-feed representation. The separate
+[XML target-casting controls](xml-target-casting.md) qualify one conversion-versus-arithmetic
+failure selection; other fallible-expression precedence remains unqualified. No such singular shape is
 admitted by this observation. Distinct declared branch ownership belongs to
 [#239](https://github.com/DeandreT/ferrule/issues/239), not an inferred winner.
