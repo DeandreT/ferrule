@@ -24,9 +24,10 @@ const UPDATE: &str = "FERRULE_UPDATE_CSHARP_COMPOSITION";
 /// generated node declarations that emitted C# is composed from.
 const MARKERS: &str = "public static class GeneratedMapping\n{\n    <Compile Include=\"GeneratedMapping.cs\" />\n\n    private static global::Ferrule.Runtime.FerruleValue Node_1(\n    private static global::Ferrule.Runtime.FerruleValue UserFunction_1_Node_\n}\n";
 
-pub(super) const PROFILES: [(&str, GenerateProfile); 9] = [
+pub(super) const PROFILES: [(&str, GenerateProfile); 10] = [
     ("ordinary", GenerateProfile::Ordinary),
     ("csv_output", GenerateProfile::CsvOutput),
+    ("csv_documents", GenerateProfile::CsvDocumentOutput),
     ("csv_document", GenerateProfile::CsvDocument),
     ("raw_delimited", GenerateProfile::RawDelimitedDocument),
     ("json5", GenerateProfile::Json5),
@@ -191,6 +192,9 @@ fn emitted(presets: &[Preset], subject: &Subject) -> Vec<(&'static str, String)>
         || Ok(codegen::CsvDocumentBoundaryPolicy::default()),
         codegen::CsvDocumentBoundaryPolicy::from_project,
     );
+    let csv_documents = codegen::CsvOutputPolicy::from_format_options(
+        target_options.unwrap_or(&FormatOptions::default()),
+    );
     // Every owned preset's C# library, combined into one line.
     let mut owned = Fnv::new();
     for preset in presets {
@@ -223,6 +227,15 @@ fn emitted(presets: &[Preset], subject: &Subject) -> Vec<(&'static str, String)>
             "csv_document",
             match csv_document {
                 Ok(policy) => artifacts(codegen_csharp::emit_with_csv_document_adapters(
+                    &program, &policy,
+                )),
+                Err(error) => artifacts::<codegen::ArtifactSet, _>(Err(error)),
+            },
+        ),
+        (
+            "csv_documents",
+            match csv_documents {
+                Ok(policy) => artifacts(codegen_csharp::emit_with_csv_document_output(
                     &program, &policy,
                 )),
                 Err(error) => artifacts::<codegen::ArtifactSet, _>(Err(error)),
@@ -423,6 +436,10 @@ pub(super) fn saved_subjects() -> TestResult<Vec<(String, Project)>> {
         subjects.push((format!("markers/{mode}"), marker_project(options.clone())));
     }
     subjects.push(("markers/json".into(), json_marker_project()));
+    subjects.push((
+        "csv_documents/grouped".into(),
+        super::csv_document_output::project()?,
+    ));
     for (source, target) in [
         ("input.x12", "output.x12"),
         ("input.json", "output.x12"),
@@ -556,6 +573,18 @@ fn render() -> TestResult<String> {
     for (title, lines) in document_subjects() {
         output.push_str(&block(&title, lines));
     }
+    let csv_documents = super::csv_document_output::project()?;
+    let program = codegen::lower(&csv_documents)?;
+    let policy = codegen::CsvOutputPolicy::from_format_options(&csv_documents.target_options)?;
+    output.push_str(&block(
+        "csv_documents/grouped",
+        vec![(
+            "csv_documents",
+            artifacts(codegen_csharp::emit_with_csv_document_output(
+                &program, &policy,
+            )),
+        )],
+    ));
     let directory = TempDir::new("csharp_composition")?;
     let saved = saved_subjects()?;
     let blocks = parallel(&saved, |index, (title, project)| {

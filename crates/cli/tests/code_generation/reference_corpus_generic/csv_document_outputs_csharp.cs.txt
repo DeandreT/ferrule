@@ -1,0 +1,33 @@
+using System.Text;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var root=args[0];
+var schema=File.ReadAllText(Path.Combine(root,"source-schema.json"));
+var source=FerruleJson.Parse(schema,File.ReadAllText(Path.Combine(root,"source.json")));
+var target=File.ReadAllText(Path.Combine(root,"target-schema.json"));
+var execution=new FerruleExecutionContext("corpus.mapping","corpus.mapping",null,null);
+var members=(GeneratedMapping.Execute(source,execution) as FerruleDocumentSet ?? throw new Exception("document set")).Documents;
+var text=GeneratedMapping.ExecuteCsvDocuments(source);
+Require(text.Count==members.Count,"typed/text count");
+var expected=new JsonArray();
+for(var i=0;i<members.Count;i++) {
+    Require(members[i].Path==text[i].Path,"typed/text path");
+    expected.Add(new JsonObject { ["path"]=members[i].Path,["value"]=JsonNode.Parse(FerruleJson.Serialize(target,members[i].Value)),["text"]=text[i].Text });
+}
+for(var api=0;api<4;api++) {
+    var actual=api switch {
+        0=>GeneratedMapping.ExecuteCsvDocuments(source).Select(d=>(d.Path,d.Text)).ToArray(),
+        1=>GeneratedMapping.ExecuteCsvDocuments(source,execution).Select(d=>(d.Path,d.Text)).ToArray(),
+        2=>GeneratedMapping.ExecuteCsvDocumentsBytes(source).Select(d=>(d.Path,Encoding.UTF8.GetString(d.Bytes))).ToArray(),
+        _=>GeneratedMapping.ExecuteCsvDocumentsBytes(source,execution).Select(d=>(d.Path,Encoding.UTF8.GetString(d.Bytes))).ToArray(),
+    };
+    Require(actual.Length==expected.Count,"document count");
+    for(var i=0;i<actual.Length;i++) {
+        Require(actual[i].Path==expected[i]!["path"]!.GetValue<string>(),"path");
+        Require(actual[i].Item2==expected[i]!["text"]!.GetValue<string>(),"bytes");
+    }
+}
+Console.Write(expected.ToJsonString());
+static void Require(bool condition,string message) { if(!condition)throw new Exception(message); }

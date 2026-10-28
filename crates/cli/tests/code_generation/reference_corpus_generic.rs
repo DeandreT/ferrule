@@ -1,12 +1,15 @@
 //! Opt-in shared JSON host execution of sixty additional local ignored designs.
 //! Source transport is exact; output coverage is schema-normalized ordered JSON.
-//! Grouped document outputs use a separate path-preserving XML/typed host route.
+//! Structured document outputs use a path-preserving XML/typed host route;
+//! flat row documents use the separate bounded CSV/typed host route.
 //! Private inputs, expected outputs, and constants are derived at runtime.
 
 use super::*;
 
 #[path = "reference_corpus_generic/admission.rs"]
 mod admission;
+#[path = "reference_corpus_generic/csv_document_outputs.rs"]
+mod csv_document_outputs;
 #[path = "reference_corpus_generic/document_outputs.rs"]
 pub(super) mod document_outputs;
 #[path = "reference_corpus_generic/envelope.rs"]
@@ -332,6 +335,19 @@ fn run_case(root: &Path, sample: &str, case: &Path, rust_target: &Path) -> TestR
         })
         .collect::<TestResult<Vec<_>>>()?;
     if lowered.root.produces_documents() {
+        if matches!(
+            lowered.root.construction,
+            codegen::TargetConstruction::CopyCurrentRows
+        ) {
+            return csv_document_outputs::run_case(
+                &project,
+                &source,
+                &extras,
+                &mapping_path,
+                case,
+                rust_target,
+            );
+        }
         return document_outputs::run_case(
             &project,
             &source,
@@ -410,13 +426,34 @@ fn run_rust_host(
     harness: &str,
     json_values: bool,
 ) -> TestResult<Output> {
+    run_rust_host_with_profile(
+        project,
+        inputs,
+        case,
+        target,
+        harness,
+        json_values,
+        cli::GenerateProfile::Ordinary,
+    )
+}
+
+fn run_rust_host_with_profile(
+    project: &Path,
+    inputs: &[(String, PathBuf)],
+    case: &Path,
+    target: &Path,
+    harness: &str,
+    json_values: bool,
+    profile: cli::GenerateProfile,
+) -> TestResult<Output> {
     let output = case.join("rust");
-    generate_project(
+    cli::generate_project_with_profile(
         project,
         &output,
         GenerateTarget::Rust {
             runtime_path: Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime"),
         },
+        profile,
     )?;
     // A JSON-value consumer owns its extra dependencies outside the emitted
     // library. Do not rewrite a generated package to add harness dependencies.
@@ -482,8 +519,18 @@ fn run_csharp_host(
     case: &Path,
     host: &str,
 ) -> TestResult<Output> {
+    run_csharp_host_with_profile(project, inputs, case, host, cli::GenerateProfile::Ordinary)
+}
+
+fn run_csharp_host_with_profile(
+    project: &Path,
+    inputs: &[(String, PathBuf)],
+    case: &Path,
+    host: &str,
+    profile: cli::GenerateProfile,
+) -> TestResult<Output> {
     let output = case.join("csharp");
-    generate_project(project, &output, GenerateTarget::CSharp)?;
+    cli::generate_project_with_profile(project, &output, GenerateTarget::CSharp, profile)?;
     let harness = output.join("Harness");
     std::fs::create_dir(&harness)?;
     std::fs::write(

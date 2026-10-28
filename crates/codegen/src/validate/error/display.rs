@@ -360,6 +360,11 @@ impl fmt::Display for ProgramValidationError {
                 "target scope {} dynamic document iteration is valid only at a target root",
                 display_path(target_path)
             ),
+            Self::InvalidCopyCurrentRows { target_path } => write!(
+                formatter,
+                "target scope {} copy-current-rows requires a primary fixed-block document producer with matching flat row schemas and no mapped content",
+                display_path(target_path)
+            ),
             Self::MissingDynamicTargetPathExpression {
                 target_path,
                 expression,

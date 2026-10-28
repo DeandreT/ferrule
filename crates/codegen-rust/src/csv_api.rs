@@ -3,7 +3,7 @@ use ir::SchemaKind;
 
 use super::{EmitError, rust_string};
 
-pub(super) fn render(program: &Program, policy: &CsvOutputPolicy) -> Result<String, EmitError> {
+fn render_settings(program: &Program, policy: &CsvOutputPolicy) -> Result<String, EmitError> {
     let SchemaKind::Group { children, .. } = &program.target.kind else {
         return Err(CsvOutputError::TargetSchema {
             field: None,
@@ -51,6 +51,11 @@ pub(super) fn render(program: &Program, policy: &CsvOutputPolicy) -> Result<Stri
         policy.raw_delimited_crlf
     ));
     source.push_str("        repair_dependency: None,\n    }\n}\n\n");
+    Ok(source)
+}
+
+pub(super) fn render(program: &Program, policy: &CsvOutputPolicy) -> Result<String, EmitError> {
+    let mut source = render_settings(program, policy)?;
     source.push_str(ADAPTERS);
     if program
         .extra_sources
@@ -68,6 +73,38 @@ pub(super) fn render(program: &Program, policy: &CsvOutputPolicy) -> Result<Stri
     }
     Ok(source)
 }
+
+pub(super) fn render_documents(
+    program: &Program,
+    policy: &CsvOutputPolicy,
+) -> Result<String, EmitError> {
+    let mut source = render_settings(program, policy)?;
+    source.push_str(DOCUMENT_ADAPTERS);
+    Ok(source)
+}
+
+const DOCUMENT_ADAPTERS: &str = r#"
+/// Map once, then serialize every CSV document with one aggregate output budget.
+pub fn execute_csv_documents(source: &Instance) -> Result<Vec<codegen_runtime::CsvTextDocument>, codegen_runtime::CsvDocumentOutputError> {
+    let output = execute(source)?;
+    codegen_runtime::serialize_csv_documents(&csv_output_schema(), &output, &csv_output_options())
+}
+
+pub fn execute_csv_documents_with_context(source: &Instance, execution: &ExecutionContext<'_>) -> Result<Vec<codegen_runtime::CsvTextDocument>, codegen_runtime::CsvDocumentOutputError> {
+    let output = execute_with_context(source, execution)?;
+    codegen_runtime::serialize_csv_documents(&csv_output_schema(), &output, &csv_output_options())
+}
+
+pub fn execute_csv_documents_bytes(source: &Instance) -> Result<Vec<codegen_runtime::CsvBytesDocument>, codegen_runtime::CsvDocumentOutputError> {
+    let output = execute(source)?;
+    codegen_runtime::serialize_csv_documents_bytes(&csv_output_schema(), &output, &csv_output_options())
+}
+
+pub fn execute_csv_documents_bytes_with_context(source: &Instance, execution: &ExecutionContext<'_>) -> Result<Vec<codegen_runtime::CsvBytesDocument>, codegen_runtime::CsvDocumentOutputError> {
+    let output = execute_with_context(source, execution)?;
+    codegen_runtime::serialize_csv_documents_bytes(&csv_output_schema(), &output, &csv_output_options())
+}
+"#;
 
 fn character_option(character: Option<char>) -> String {
     match character {

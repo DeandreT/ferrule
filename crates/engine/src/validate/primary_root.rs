@@ -240,6 +240,7 @@ fn validate_scope(
         ScopeConstruction::Constructed
         | ScopeConstruction::CollectDocuments
         | ScopeConstruction::CopyCurrentSource
+        | ScopeConstruction::CopyCurrentRows
         | ScopeConstruction::XmlMixedContent { .. }
         | ScopeConstruction::PathHierarchy { .. }
         | ScopeConstruction::OwnedPathHierarchy { .. } => {}

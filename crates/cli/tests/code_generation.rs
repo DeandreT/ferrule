@@ -98,6 +98,8 @@ mod csharp_composition;
 mod csv_byte_decoding;
 #[path = "code_generation/csv_document_adapters.rs"]
 mod csv_document_adapters;
+#[path = "code_generation/csv_document_output.rs"]
+mod csv_document_output;
 #[path = "code_generation/csv_json_adapters.rs"]
 mod csv_json_adapters;
 #[path = "code_generation/csv_output.rs"]

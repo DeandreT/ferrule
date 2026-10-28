@@ -4,6 +4,7 @@ use std::fmt;
 use mapping::{Project, XbrlBoundaryMode};
 
 mod adjacency_tree;
+mod copy_rows;
 pub(crate) mod dynamic_loading;
 mod generated_positions;
 mod graph;

@@ -697,6 +697,28 @@ public sealed partial class ScopeContext
             _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
     }
 
+    /// <summary>Copies exactly the innermost flat row block, without outward fallback.</summary>
+    public void ValidateFlatRowsSource()
+    {
+        if (_primarySource is not FerruleRepeated rows || rows.Items.Any(row => row is not FerruleGroup group ||
+            group.Fields.Any(field => field.Value is not FerruleScalar)))
+            throw new FerruleRuntimeException(FerruleRuntimeError.InvalidCurrentRows,
+                "copy-current-rows construction requires a repeated collection of flat rows");
+    }
+
+    /// <summary>Copies exactly the innermost flat row block, without outward fallback.</summary>
+    public FerruleRepeated CopyCurrentRows()
+    {
+        if (_frames.Count == 0 || _frames[^1] is not FerruleRepeated rows ||
+            rows.Items.Any(row => row is not FerruleGroup group ||
+                group.Fields.Any(field => field.Value is not FerruleScalar)))
+        {
+            throw new FerruleRuntimeException(FerruleRuntimeError.InvalidCurrentRows,
+                "copy-current-rows construction requires a repeated collection of flat rows");
+        }
+        return (FerruleRepeated)CloneInstance(rows);
+    }
+
     /// <summary>Clones the innermost source group for independent target ownership.</summary>
     public FerruleGroup CopyCurrentGroup()
     {

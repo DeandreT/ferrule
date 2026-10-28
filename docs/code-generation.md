@@ -1507,6 +1507,11 @@ materialized, so the CSV output limit is not a total memory limit.
 
 ## Complete CSV Documents
 
+For multiple path-bearing CSV outputs, use the separate
+`--csv-document-output` profile. It accepts typed primary rows and returns an
+ordered list of filenames and complete CSV documents, under one aggregate
+output budget. See [CSV document output](design/csv-document-output.md).
+
 Use `--csv-document-adapters` with either backend to accept a complete CSV input
 and return one complete CSV output. Both endpoints need explicit CSV identities
 (`tabular_kind: "csv"`, or a `.csv` path when no tabular identity is stored).

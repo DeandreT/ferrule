@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<mapping version="22"><component name="Split authored rows"><structure><children>
+  <component name="Input" library="text" kind="16"><data>
+    <root><entry name="FileInstance"><entry name="document"><entry name="Row" outkey="100"/></entry></entry></root>
+    <text type="csv" inputinstance="input.csv"><settings separator="," firstrownames="true"><names root="Input" block="Row"><field0 name="Code" type="string"/><field1 name="Note" type="string"/></names></settings></text>
+  </data></component>
+  <component name="Output" library="text" kind="16"><properties XSLTDefaultOutput="1"/><data>
+    <root><entry name="FileInstance" inpkey="201"><entry name="document"><entry name="Row" inpkey="200"/></entry></entry></root>
+    <text type="csv"><settings separator=";" firstrownames="true"><names root="Output" block="Row"><field0 name="Code" type="string"/><field1 name="Note" type="string"/></names></settings></text>
+  </data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="302"/></targets><data><constant value="2" datatype="string"/><wsdl/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="304"/></targets><data><constant value="batch-" datatype="string"/><wsdl/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="306"/></targets><data><constant value=".csv" datatype="string"/><wsdl/></data></component>
+  <component name="group-into-blocks" library="core" kind="5"><sources><datapoint pos="0" key="401"/><datapoint pos="1" key="402"/></sources><targets><datapoint pos="0" key="403"/></targets></component>
+  <component name="position" library="core" kind="5"><sources><datapoint pos="0" key="404"/></sources><targets><datapoint pos="0" key="405"/></targets></component>
+  <component name="concat" library="core" kind="5"><sources><datapoint pos="0" key="407"/><datapoint pos="1" key="408"/><datapoint pos="2" key="409"/></sources><targets><datapoint pos="0" key="410"/></targets></component>
+</children><graph directed="1"><edges><edge edgekey="900"><data><dataconnection type="2"/></data></edge></edges><vertices>
+  <vertex vertexkey="100"><edges><edge vertexkey="200" edgekey="900"/><edge vertexkey="401"/></edges></vertex>
+  <vertex vertexkey="302"><edges><edge vertexkey="402"/></edges></vertex>
+  <vertex vertexkey="304"><edges><edge vertexkey="407"/></edges></vertex>
+  <vertex vertexkey="306"><edges><edge vertexkey="409"/></edges></vertex>
+  <vertex vertexkey="403"><edges><edge vertexkey="404"/></edges></vertex>
+  <vertex vertexkey="405"><edges><edge vertexkey="408"/></edges></vertex>
+  <vertex vertexkey="410"><edges><edge vertexkey="201"/></edges></vertex>
+</vertices></graph></structure></component></mapping>

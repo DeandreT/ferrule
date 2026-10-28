@@ -76,6 +76,16 @@ impl<'a> Generator<'a> {
     }
 
     /// [`crate::emit_with_csv_document_adapters`].
+    pub fn emit_with_csv_document_output(
+        &self,
+        program: &Program,
+        policy: &CsvOutputPolicy,
+    ) -> Result<ArtifactSet, EmitError> {
+        let artifacts = crate::emit_with_csv_document_output(program, self.options, policy)?;
+        self.finish(artifacts, GenerationProfile::CsvDocumentOutput)
+    }
+
+    /// [`crate::emit_with_csv_document_adapters`].
     pub fn emit_with_csv_document_adapters(
         &self,
         program: &Program,

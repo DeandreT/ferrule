@@ -79,6 +79,7 @@ public enum FerruleRuntimeError
     InvocationCounter,
     GeneratedPositionUnavailable,
     InvalidDocumentCollectionItem,
+    InvalidCurrentRows,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>

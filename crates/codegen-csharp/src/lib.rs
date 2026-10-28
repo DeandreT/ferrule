@@ -6,6 +6,7 @@ mod composition;
 mod csv_document;
 mod csv_json;
 pub use csv_document::{CsvDocumentEmitError, emit_with_csv_document_adapters};
+mod csv_document_output;
 mod csv_output;
 mod csv_x12;
 mod document_output_types;
@@ -246,6 +247,14 @@ pub fn emit_with_csv_output(
     policy: &codegen::CsvOutputPolicy,
 ) -> Result<ArtifactSet, EmitError> {
     csv_output::emit(program, policy, &Options::default())
+}
+
+/// Emit typed inputs and bounded, ordered CSV document-list outputs.
+pub fn emit_with_csv_document_output(
+    program: &Program,
+    policy: &codegen::CsvOutputPolicy,
+) -> Result<ArtifactSet, EmitError> {
+    csv_document_output::emit(program, policy, &Options::default())
 }
 
 /// Emit explicit singular closed-object JSON5 input companions.

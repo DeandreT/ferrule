@@ -462,6 +462,7 @@ impl<'a> Analysis<'a> {
             TargetConstruction::Group
             | TargetConstruction::CollectDocuments
             | TargetConstruction::CopyCurrentSource
+            | TargetConstruction::CopyCurrentRows
             | TargetConstruction::XmlMixedContent { .. }
             | TargetConstruction::OwnedPathHierarchy { .. } => {}
         }
