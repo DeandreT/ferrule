@@ -1,7 +1,6 @@
 use super::*;
 
-#[test]
-fn csv_document_lists_execute_all_rust_and_csharp_apis() -> TestResult<()> {
+pub(super) fn project() -> TestResult<Project> {
     let directory = TempDir::new("csv-document-output")?;
     let root = &directory.0;
     std::fs::write(
@@ -12,6 +11,14 @@ fn csv_document_lists_execute_all_rust_and_csharp_apis() -> TestResult<()> {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let mut project = imported.project;
     project.target_options.csv_utf8_bom = true;
+    Ok(project)
+}
+
+#[test]
+fn csv_document_lists_execute_all_rust_and_csharp_apis() -> TestResult<()> {
+    let directory = TempDir::new("csv-document-output-hosts")?;
+    let root = &directory.0;
+    let project = project()?;
     let path = root.join("project.json");
     std::fs::write(&path, mapping::project_file::encode_pretty(&project)?)?;
     let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
