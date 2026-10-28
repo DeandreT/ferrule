@@ -27,6 +27,7 @@ mod edi;
 mod exception;
 mod exception_ordering;
 mod external_source;
+mod filtered_document_filename;
 mod first_presence;
 mod flextext;
 mod flextext_parser;
@@ -560,6 +561,17 @@ fn prepare_export_mode(
             MfdError::Unsupported(format!(
                 "dynamic target path references unexported node {node}"
             ))
+        })?;
+        let from = filtered_document_filename::append(filtered_document_filename::RenderArgs {
+            project,
+            root: target.root,
+            schema: target.schema,
+            from,
+            keys: &mut keys,
+            uid: &mut uid,
+            components: &mut components,
+            edges: &mut edges,
+            sources: &sources,
         })?;
         edges.push((from, to));
     }

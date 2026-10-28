@@ -8,7 +8,7 @@ use super::*;
 #[path = "reference_corpus_generic/admission.rs"]
 mod admission;
 #[path = "reference_corpus_generic/document_outputs.rs"]
-mod document_outputs;
+pub(super) mod document_outputs;
 #[path = "reference_corpus_generic/envelope.rs"]
 mod envelope;
 #[allow(dead_code)]

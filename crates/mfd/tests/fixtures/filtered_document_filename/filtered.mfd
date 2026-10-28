@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping><component name="defaultmap"><structure><children>
+  <component name="source" library="xml" kind="14"><data>
+    <document schema="source.xsd" instanceroot="{}Input"/>
+    <root><entry name="document"><entry name="Input" outkey="1"><entry name="Branch" outkey="2">
+      <entry name="Label" outkey="3"/><entry name="Person" outkey="4"><entry name="First" outkey="5"/><entry name="Last" outkey="6"/></entry>
+    </entry></entry></entry></root>
+  </data></component>
+  <component name="concat" library="core" kind="5"><sources><datapoint pos="0" key="10"/><datapoint pos="1" key="11"/></sources><targets><datapoint pos="0" key="12"/></targets></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="15"/></targets><data><constant value="" datatype="string"/></data></component>
+  <component name="exists" library="core" kind="5"><sources><datapoint pos="0" key="20"/></sources><targets><datapoint pos="0" key="21"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="30"/><datapoint pos="1" key="31"/></sources><targets><datapoint pos="0" key="32"/><datapoint/></targets></component>
+  <component name="target" library="xml" kind="14"><data>
+    <document schema="target.xsd" instanceroot="{}Output"/>
+    <root><entry name="FileInstance" inpkey="100"><entry name="document"><entry name="Output"><entry name="Person" inpkey="101"><entry name="First" inpkey="102"/><entry name="Last" inpkey="103"/></entry></entry></entry></entry></root>
+  </data></component>
+</children><graph directed="1"><edges/><vertices>
+  <vertex vertexkey="3"><edges><edge vertexkey="10"/></edges></vertex>
+  <vertex vertexkey="15"><edges><edge vertexkey="11"/></edges></vertex>
+  <vertex vertexkey="12"><edges><edge vertexkey="30"/></edges></vertex>
+  <vertex vertexkey="4"><edges><edge vertexkey="20"/><edge vertexkey="101"/></edges></vertex>
+  <vertex vertexkey="21"><edges><edge vertexkey="31"/></edges></vertex>
+  <vertex vertexkey="32"><edges><edge vertexkey="100"/></edges></vertex>
+  <vertex vertexkey="5"><edges><edge vertexkey="102"/></edges></vertex>
+  <vertex vertexkey="6"><edges><edge vertexkey="103"/></edges></vertex>
+</vertices></graph></structure></component></mapping>
