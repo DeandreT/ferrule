@@ -425,6 +425,9 @@ pub enum ProgramValidationError {
     DynamicDocumentsRequireRoot {
         target_path: Vec<String>,
     },
+    InvalidCopyCurrentRows {
+        target_path: Vec<String>,
+    },
     MissingDynamicTargetPathExpression {
         target_path: Vec<String>,
         expression: NodeId,

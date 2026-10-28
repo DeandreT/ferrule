@@ -55,6 +55,7 @@ error ordering, and additional schema/format limits.
 | Generated schema-shaped JSON | 64 MiB per document; 1 MiB embedded JSON schema; generated dynamic JSON loaders also share a 256 MiB execution byte budget |
 | Generated raw XML codecs and serialized XML output | 64 MiB per serialized document; 8 MiB embedded XML schema; input/output-set APIs have separate aggregate and artifact-count checks |
 | Generated flat CSV output | 64 MiB encoded UTF-8 output, including headers, quoting, line endings, and optional BOM |
+| Path-bearing CSV document output | 4,096 documents; 4,096 UTF-8 bytes per path; 64 MiB per document and 256 MiB across the output list, before return or filesystem publication |
 | Ordinary filesystem CSV | No general 64 MiB input/output cap; parsed rows and complete serialized output remain materialized |
 | Ordinary JSON and JSON Lines files | Whole text is read; no general 64 MiB file cap at these ordinary readers |
 | Local JSON5 input | File and text readers cap original UTF-8 bytes at 64 MiB, including a leading BOM; 128-container input bound; distinct from strict JSON and generated JSON APIs |

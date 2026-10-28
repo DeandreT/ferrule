@@ -549,6 +549,7 @@ fn run_pipeline_value_with_pdf_reader(
                 options: selection.options,
                 current_datetime: &current_datetime,
                 additional: selection.request.target.is_some(),
+                row_documents: selection.row_documents,
             }
         })
         .collect::<Vec<_>>();
@@ -781,6 +782,7 @@ struct SelectedOutput<'a> {
     schema: &'a SchemaNode,
     options: &'a FormatOptions,
     destination: OutputDestination,
+    row_documents: bool,
 }
 
 fn select_outputs<'a>(
@@ -806,12 +808,16 @@ fn select_outputs<'a>(
             .iter()
             .find(|stage| stage.id == request.stage)
             .with_context(|| format!("selected output has unknown stage `{}`", request.stage))?;
-        let (name, schema, options, dynamic) = match &request.target {
+        let (name, schema, options, dynamic, row_documents) = match &request.target {
             None => (
                 stage.project.target.name.as_str(),
                 &stage.project.target,
                 &stage.project.target_options,
                 stage.project.root.produces_documents(),
+                matches!(
+                    stage.project.root.construction,
+                    mapping::ScopeConstruction::CopyCurrentRows
+                ),
             ),
             Some(name) => {
                 let target = stage
@@ -827,6 +833,10 @@ fn select_outputs<'a>(
                     &target.schema,
                     &target.options,
                     target.root.produces_documents(),
+                    matches!(
+                        target.root.construction,
+                        mapping::ScopeConstruction::CopyCurrentRows
+                    ),
                 )
             }
         };
@@ -841,6 +851,7 @@ fn select_outputs<'a>(
             schema,
             options,
             destination,
+            row_documents,
         });
     }
     Ok(outputs)

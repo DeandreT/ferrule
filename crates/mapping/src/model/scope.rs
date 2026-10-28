@@ -33,6 +33,9 @@ pub enum ScopeConstruction {
     CollectDocuments,
     /// Clone the current source item as one complete group.
     CopyCurrentSource,
+    /// Clone a fixed block of flat source rows as one path-bearing document.
+    /// This is distinct from copying one source group.
+    CopyCurrentRows,
     /// Evaluate one scalar expression as the scope's complete output item.
     Scalar { value: NodeId },
     /// Build a group while retaining the current source group's interleaved
@@ -137,8 +140,9 @@ pub struct Scope {
     /// Exactly one iteration form, or `None` for a non-iterating scope.
     pub iteration: ScopeIteration,
     /// Whether this scope constructs fields or preserves the complete current
-    /// source group. Copy construction is deliberately incompatible with
-    /// bindings, child scopes, generated sequences, joins, and grouping.
+    /// source group or row block. Group copies cannot use grouping; row copies
+    /// require fixed-block dynamic document iteration. Neither accepts bindings,
+    /// child scopes, generated sequences, or joins.
     pub construction: ScopeConstruction,
     pub filter: Option<NodeId>,
     /// Per-member predicate applied after grouping. A group survives when at

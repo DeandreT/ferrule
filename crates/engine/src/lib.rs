@@ -506,6 +506,8 @@ pub enum EngineError {
     MappedSequenceDynamicTarget,
     #[error("copy-current-source construction requires a group item, got {found}")]
     CopyCurrentSourceRequiresGroup { found: &'static str },
+    #[error("copy-current-rows construction requires a repeated collection of flat rows")]
+    InvalidCurrentRows,
     #[error("concatenated scope segment produced {found} instead of a group or repeated groups")]
     InvalidConcatenatedScopeItem { found: &'static str },
     #[error("document collection requires document sets, found {found}")]

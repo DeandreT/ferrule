@@ -10,6 +10,7 @@ mod adjacency_tree;
 mod aggregate;
 mod context;
 mod csv;
+mod csv_documents;
 mod descriptor_registry;
 mod dynamic_document;
 mod dynamic_source;
@@ -87,6 +88,9 @@ pub use csv::{
     CsvBoundaryError, CsvDocumentError, MAX_CSV_DOCUMENT_BYTES, PrimaryCsvDocumentError,
     serialize_csv, serialize_csv_bytes,
 };
+pub use csv_documents::{
+    CsvDocumentOutputError, serialize_csv_documents, serialize_csv_documents_bytes,
+};
 pub use document_source::{
     DEFAULT_LOCAL_DOCUMENT_BYTES, LocalFileError, LocalPrimaryFiles, MAX_SOURCE_DOCUMENTS,
     MAX_SOURCE_PATH_BYTES, PrimaryAcquisitionError, PrimaryAssemblyError, PrimaryDocument,
@@ -120,6 +124,7 @@ pub use format_csv::{
     from_bytes_with_options_bounded as parse_csv_rows_bytes,
     from_str_with_options_bounded as parse_csv_rows,
 };
+pub use format_csv::{CsvBytesDocument, CsvTextDocument};
 pub use format_edi::EdiFormatError;
 pub use format_json::source_document::{
     JsonSourceDocument, JsonSourceError, JsonSourceKind, JsonSourceLimits, JsonSourceValue,
@@ -306,6 +311,7 @@ pub enum RuntimeError {
     CopyCurrentSourceRequiresGroup {
         found: &'static str,
     },
+    InvalidCurrentRows,
     RecursiveFilterDepth {
         limit: usize,
     },
@@ -563,6 +569,9 @@ impl fmt::Display for RuntimeError {
             Self::CopyCurrentSourceRequiresGroup { found } => write!(
                 formatter,
                 "copy-current-source construction requires a group item, got {found}"
+            ),
+            Self::InvalidCurrentRows => formatter.write_str(
+                "copy-current-rows construction requires a repeated collection of flat rows",
             ),
             Self::RecursiveFilterDepth { limit } => write!(
                 formatter,
@@ -843,6 +852,7 @@ impl std::error::Error for RuntimeError {
             | Self::AggregateNonFinite { .. }
             | Self::AggregateUnsupportedScalar { .. }
             | Self::CopyCurrentSourceRequiresGroup { .. }
+            | Self::InvalidCurrentRows
             | Self::RecursiveFilterDepth { .. }
             | Self::RecursiveFilterRequiresGroup { .. }
             | Self::RecursiveFilterRequiresCollection { .. }

@@ -86,6 +86,15 @@ fn validate_program_proving_xml(
     capabilities: crate::OwnedCapabilities,
 ) -> Result<Option<ProvedXmlBoundary>, ProgramValidationError> {
     let xml = xml::validate_boundary(program)?;
+    if matches!(
+        program.root.construction,
+        TargetConstruction::CopyCurrentRows
+    ) && (!program.extra_sources.is_empty() || !program.extra_targets.is_empty())
+    {
+        return Err(ProgramValidationError::InvalidCopyCurrentRows {
+            target_path: Vec::new(),
+        });
+    }
     validate_schema_metadata("source", &program.source)?;
     for source in &program.extra_sources {
         validate_schema_metadata(&format!("extra source {:?}", source.name), &source.source)?;
@@ -1138,6 +1147,35 @@ fn validate_scope(
                     item_root_context,
                     &sequence_owner,
                 )?;
+            }
+        }
+        TargetConstruction::CopyCurrentRows => {
+            let valid = root_context
+                && schemas.document_root
+                && matches!(schemas.target_owner, TargetOwner::Primary)
+                && target_path.is_empty()
+                && scope.target_field.is_empty()
+                && ir::flat_row_schema_is_supported(target_node)
+                && scope_source.is_some_and(|source| {
+                    ir::flat_row_schema_is_supported(source.node())
+                        && source.node().kind == target_node.kind
+                })
+                && scope.iteration.as_ref().is_some_and(|iteration| {
+                    iteration
+                        .dynamic_document_iteration()
+                        .is_some_and(|source| source.source().path().is_empty())
+                        && matches!(
+                            iteration.grouping(),
+                            Some(crate::GroupingPlan::IntoBlocks { .. })
+                        )
+                        && iteration.output() == crate::IterationOutput::Repeated
+                })
+                && scope.bindings.is_empty()
+                && scope.children.is_empty();
+            if !valid {
+                return Err(ProgramValidationError::InvalidCopyCurrentRows {
+                    target_path: target_path.clone(),
+                });
             }
         }
         TargetConstruction::CopyCurrentSource => {

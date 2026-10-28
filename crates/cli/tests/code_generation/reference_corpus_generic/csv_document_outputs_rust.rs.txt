@@ -1,0 +1,35 @@
+use codegen_runtime::{ExecutionContext, Instance};
+use ferrule_generated_mapping as generated;
+use serde_json::{Value as Json, json};
+use std::{path::{Path, PathBuf}, io::Write};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let root=PathBuf::from(std::env::args_os().nth(1).ok_or("case directory")?);
+    let schema=std::fs::read_to_string(root.join("source-schema.json"))?;
+    let source=codegen_runtime::parse_json(&schema,&std::fs::read_to_string(root.join("source.json"))?)?;
+    let target=std::fs::read_to_string(root.join("target-schema.json"))?;
+    let execution=ExecutionContext::new(Path::new("corpus.mapping"));
+    let Instance::DocumentSet(members)=generated::execute_with_context(&source,&execution)? else {panic!("document set required")};
+    let mut expected=Vec::new();
+    for (member, text) in members.iter().zip(generated::execute_csv_documents(&source)?) {
+        assert_eq!(member.path(),text.path);
+        let value=codegen_runtime::serialize_json(&target,member.value())?;
+        expected.push(json!({"path":member.path(),"value":serde_json::from_str::<Json>(&value)?,"text":text.text}));
+    }
+    assert_eq!(expected.len(),members.len());
+    for api in 0..4 {
+        let actual=match api {
+            0=>generated::execute_csv_documents(&source)?.into_iter().map(|d|(d.path,d.text)).collect::<Vec<_>>(),
+            1=>generated::execute_csv_documents_with_context(&source,&execution)?.into_iter().map(|d|(d.path,d.text)).collect(),
+            2=>generated::execute_csv_documents_bytes(&source)?.into_iter().map(|d|(d.path,String::from_utf8(d.bytes).unwrap())).collect(),
+            _=>generated::execute_csv_documents_bytes_with_context(&source,&execution)?.into_iter().map(|d|(d.path,String::from_utf8(d.bytes).unwrap())).collect(),
+        };
+        assert_eq!(actual.len(),expected.len());
+        for (actual, expected) in actual.into_iter().zip(&expected) {
+            assert_eq!(actual.0,expected["path"].as_str().unwrap());
+            assert_eq!(actual.1,expected["text"].as_str().unwrap());
+        }
+    }
+    std::io::stdout().lock().write_all(&serde_json::to_vec(&expected)?)?;
+    Ok(())
+}

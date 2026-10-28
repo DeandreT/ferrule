@@ -544,13 +544,11 @@ pub fn import_db(db_path: &Path, table: &str) -> anyhow::Result<String> {
     Ok(serde_json::to_string_pretty(&schema)?)
 }
 
-fn write_output(
-    path: &Path,
+fn output_format<'a>(
+    path: &'a Path,
     schema: &SchemaNode,
-    instance: &Instance,
-    options: &FormatOptions,
-    current_datetime: &str,
-) -> anyhow::Result<usize> {
+    options: &'a FormatOptions,
+) -> anyhow::Result<SelectedFormat<'a>> {
     if options.sqlite_read.is_some() {
         bail!("`sqlite_read` is valid only for mapping sources");
     }
@@ -565,7 +563,17 @@ fn write_output(
     if options.local_xml_file_set {
         bail!("`local_xml_file_set` is input-only");
     }
-    let selected = format_selection::select(path, options, Direction::Output, false)?;
+    format_selection::select(path, options, Direction::Output, false)
+}
+
+fn write_output(
+    path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+    options: &FormatOptions,
+    current_datetime: &str,
+) -> anyhow::Result<usize> {
+    let selected = output_format(path, schema, options)?;
     if let SelectedFormat::Xbrl(xbrl) = selected {
         format_xbrl::write(path, schema, instance, xbrl)
             .with_context(|| format!("writing XBRL output {}", path.display()))?;

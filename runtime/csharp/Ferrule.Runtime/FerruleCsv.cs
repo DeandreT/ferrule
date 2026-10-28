@@ -94,6 +94,16 @@ public static class FerruleCsv
         return sink.ToArray();
     }
 
+    internal static byte[] SerializeBytesBounded(
+        FerruleInstance primary,
+        IReadOnlyList<FerruleCsvField> fields,
+        FerruleCsvWriteOptions? options,
+        int maximum)
+    {
+        using var sink = EncodeValidatedDocument(primary, fields, options, Math.Min(maximum, MaximumOutputBytes));
+        return sink.ToArray();
+    }
+
     /// <summary>Return the same bounded UTF-8 document as Unicode text.</summary>
     public static string Serialize(
         FerruleInstance primary,
@@ -107,7 +117,8 @@ public static class FerruleCsv
     private static BoundedUtf8Sink EncodeValidatedDocument(
         FerruleInstance primary,
         IReadOnlyList<FerruleCsvField> fields,
-        FerruleCsvWriteOptions? options)
+        FerruleCsvWriteOptions? options,
+        int maximum = MaximumOutputBytes)
     {
         ArgumentNullException.ThrowIfNull(primary);
         ArgumentNullException.ThrowIfNull(fields);
@@ -172,7 +183,7 @@ public static class FerruleCsv
         {
             throw unquotedFailure;
         }
-        var sink = new BoundedUtf8Sink();
+        var sink = new BoundedUtf8Sink(maximum);
         try
         {
             if (options.Utf8Bom)
@@ -504,15 +515,19 @@ public static class FerruleCsv
     {
         private static readonly UTF8Encoding Utf8 = new(false, true);
         private readonly MemoryStream _bytes = new();
+        private readonly int _maximum;
+
+        internal BoundedUtf8Sink(int maximum) { _maximum = maximum; }
 
         internal void Write(ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length > MaximumOutputBytes - _bytes.Length)
+            if (bytes.Length > _maximum - _bytes.Length)
             {
                 throw new FerruleCsvException(
                     FerruleCsvError.OutputTooLarge,
-                    "CSV output exceeds the 64 MiB UTF-8 byte limit.",
-                    maximum: MaximumOutputBytes);
+                    _maximum == MaximumOutputBytes ? "CSV output exceeds the 64 MiB UTF-8 byte limit."
+                        : $"CSV output exceeds the {_maximum}-byte UTF-8 limit.",
+                    maximum: _maximum);
             }
             _bytes.Write(bytes);
         }

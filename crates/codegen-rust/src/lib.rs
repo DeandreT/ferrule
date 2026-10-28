@@ -305,6 +305,25 @@ fn valid_package_name(name: &str) -> bool {
     PackageName::new(name).is_ok()
 }
 
+/// Emit typed input and bounded, ordered CSV document-list output APIs.
+/// The singular CSV and implicit JSON/XML boundaries are not selected.
+pub fn emit_with_csv_document_output(
+    program: &Program,
+    options: &Options,
+    policy: &CsvOutputPolicy,
+) -> Result<ArtifactSet, EmitError> {
+    codegen::validate_csv_document_output(program, policy)?;
+    let mut files =
+        emit_with_companions(program, options, CompanionSelection::TypedOnly)?.into_files();
+    let adapters = csv_api::render_documents(program, policy)?;
+    for file in &mut files {
+        if file.path.as_str() == "src/lib.rs" {
+            file.contents.extend_from_slice(adapters.as_bytes());
+        }
+    }
+    ArtifactSet::new(files).map_err(EmitError::from)
+}
+
 fn render_manifest(options: &Options) -> String {
     let dependency = match &options.runtime_dependency {
         RuntimeDependency::Path(path) => format!("path = {}", toml_string(path)),
@@ -737,6 +756,7 @@ fn expression_usage_with_roots(
             TargetConstruction::Group
             | TargetConstruction::CollectDocuments
             | TargetConstruction::CopyCurrentSource
+            | TargetConstruction::CopyCurrentRows
             | TargetConstruction::XmlMixedContent { .. }
             | TargetConstruction::PathHierarchy { .. }
             | TargetConstruction::OwnedPathHierarchy { .. } => {}
@@ -1859,6 +1879,9 @@ fn render_iteration_scope(
     child_names: &[String],
 ) -> Result<String, EmitError> {
     let mut output = String::new();
+    if matches!(scope.construction, TargetConstruction::CopyCurrentRows) {
+        output.push_str("    context.validate_flat_rows_source()?;\n");
+    }
     let sort = iteration.sort();
     let filter_before_sort = iteration.filter().is_some()
         && sort.is_some_and(|sort| sort.filter_order() == SortFilterOrder::FilterThenSort);
@@ -2560,6 +2583,12 @@ fn render_scope_item(
     if matches!(&scope.construction, TargetConstruction::CopyCurrentSource) {
         output.push_str(&format!(
             "{indent}let output = ({context}).copy_current_group()?;\n"
+        ));
+        return output;
+    }
+    if matches!(scope.construction, TargetConstruction::CopyCurrentRows) {
+        output.push_str(&format!(
+            "{indent}let output = ({context}).copy_current_rows()?;\n"
         ));
         return output;
     }

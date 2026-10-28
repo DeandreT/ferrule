@@ -27,6 +27,7 @@ mod constructed_parser_scalar;
 mod constructed_runtime_clock;
 mod constructed_variable_driver;
 mod csv_document;
+mod csv_document_output;
 mod db_query;
 mod db_where;
 mod document_collections;
@@ -1813,7 +1814,6 @@ fn import_resolved(
                         });
                     let flavor = text_el.and_then(|t| t.attribute("type")).unwrap_or("");
                     if flavor == "csv" {
-                        document_paths::warn(component, &edges.feeds, "CSV", &mut warnings);
                         match read_csv_component(&component, &mut warnings) {
                             Some(sc) => schema_components.push(sc),
                             None => warnings.push(format!("skipped csv component `{name}`")),
@@ -2525,15 +2525,27 @@ fn import_resolved(
                 ),
         )
     });
-    let mut root = build_target_scope(
-        &mapping_el,
-        target,
-        &structure,
-        resources,
-        &copy_all_targets,
-        eager_functions.as_ref(),
-        &mut builder,
-    );
+    let csv_documents = (connected_targets.len() == 1)
+        .then(|| csv_document_output::build(target, structure, &copy_all_targets, &mut builder))
+        .flatten();
+    let admitted_csv_outputs = csv_documents
+        .as_ref()
+        .map(|(_, key)| *key)
+        .into_iter()
+        .collect();
+    let mut root = if let Some((root, _)) = csv_documents {
+        root
+    } else {
+        build_target_scope(
+            &mapping_el,
+            target,
+            &structure,
+            resources,
+            &copy_all_targets,
+            eager_functions.as_ref(),
+            &mut builder,
+        )
+    };
     restore_scope_source_hints(&mut root, target, &scope_source_hints);
     let mut extra_targets = Vec::new();
     for (index, extra) in connected_targets.iter().copied().enumerate().skip(1) {
@@ -2684,6 +2696,23 @@ fn import_resolved(
             .then_some(node)
         })
         .collect::<Vec<_>>();
+    for component in structure.descendants().filter(|node| {
+        node.has_tag_name("component")
+            && node.attribute("library") == Some("text")
+            && node
+                .children()
+                .filter(|child| child.has_tag_name("data"))
+                .flat_map(|data| data.children())
+                .any(|text| text.has_tag_name("text") && text.attribute("type") == Some("csv"))
+    }) {
+        document_paths::warn_with_admitted_outputs(
+            component,
+            &edge_from,
+            "CSV",
+            &admitted_csv_outputs,
+            &mut warnings,
+        );
+    }
     warnings.extend(builder.warnings);
     let mut source_options = primary.options.clone();
     source_options.mfd_decimal_input_names =
