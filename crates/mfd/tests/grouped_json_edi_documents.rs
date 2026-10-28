@@ -760,6 +760,55 @@ fn invoked_date_fixture() -> Fixture {
     fixture
 }
 
+fn invoked_integer_fixture() -> Fixture {
+    let fixture = invoked_fixture();
+    let path = fixture.0.join("source.json");
+    let text = std::fs::read_to_string(&path)
+        .unwrap()
+        .replace("\"number\"", "\"integer\"");
+    std::fs::write(path, text).unwrap();
+    fixture.change(r#"<entry name="F2" inpkey="86"/>"#, r#"<entry name="F2"/>"#);
+    fixture.change(
+        r#"<vertex vertexkey="21"><edges><edge vertexkey="85"/></edges></vertex>"#,
+        "",
+    );
+    fixture.change(
+        r#"<vertex vertexkey="22"><edges><edge vertexkey="86"/></edges></vertex>"#,
+        r#"<vertex vertexkey="22"><edges><edge vertexkey="85"/></edges></vertex>"#,
+    );
+    fixture
+}
+
+fn invoked_date_prefix_fixture() -> Fixture {
+    let fixture = invoked_date_fixture();
+    fixture.change(r#"<component name="format-date" library="core" uid="601" kind="5"><sources><datapoint pos="0" key="601"/><datapoint pos="1" key="602"/><datapoint/></sources>"#,
+        r#"<component name="parse-date" library="core" uid="601" kind="5"><sources><datapoint pos="0" key="601"/><datapoint pos="1" key="602"/></sources>"#);
+    fixture
+}
+
+#[test]
+fn integer_source_schema_preserves_fractional_input_selection_but_truncates_its_value() {
+    let fixture = invoked_integer_fixture();
+    let imported = mfd::import_invoked_grouped_json_edi_document_with_options(
+        &fixture.0.join("mapping.mfd"),
+        &mfd::ImportOptions::default().with_package_root(&fixture.0),
+    )
+    .unwrap();
+    let truncates = |project: &mapping::Project| {
+        project.graph.nodes.values().any(|node| {
+            matches!(node, mapping::Node::Call { function, .. } if function == "decimal_truncate")
+        })
+    };
+    assert!(truncates(imported.document.project()));
+    let ordinary = invoked_fixture();
+    let floating = mfd::import_invoked_grouped_json_edi_document_with_options(
+        &ordinary.0.join("mapping.mfd"),
+        &mfd::ImportOptions::default().with_package_root(&ordinary.0),
+    )
+    .unwrap();
+    assert!(!truncates(floating.document.project()));
+}
+
 fn invoked_context_sum_fixture() -> Fixture {
     let fixture = invoked_fixture();
     fixture.change(

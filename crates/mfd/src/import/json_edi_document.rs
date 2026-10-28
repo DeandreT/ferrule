@@ -89,6 +89,7 @@ struct Builder {
     feeds: BTreeMap<u32, u32>,
     ports: BTreeMap<u32, Vec<String>>,
     port_kinds: BTreeMap<u32, String>,
+    integer_ports: BTreeSet<u32>,
     filename_port: Option<u32>,
     string_targets: BTreeSet<u32>,
     cache: BTreeMap<(u32, Option<u32>, Vec<String>, bool), NodeId>,
@@ -383,6 +384,34 @@ fn import_document_from_source(
             feeds: edges.feeds,
             ports: source.ports.clone(),
             port_kinds,
+            integer_ports: source
+                .ports
+                .iter()
+                .filter_map(|(port, path)| {
+                    let mut schema = &source.source_schema;
+                    let mut item_pending = schema.repeating;
+                    for part in path.iter().skip(2) {
+                        if item_pending && part == "Items" {
+                            item_pending = false;
+                        } else {
+                            schema = schema.child(part)?;
+                            item_pending = schema.repeating;
+                        }
+                    }
+                    match &schema.kind {
+                        SchemaKind::Scalar {
+                            ty: ScalarType::Int,
+                        } => Some(*port),
+                        SchemaKind::ScalarUnion { types }
+                            if types.contains(ScalarType::Int)
+                                && !types.contains(ScalarType::Float) =>
+                        {
+                            Some(*port)
+                        }
+                        _ => None,
+                    }
+                })
+                .collect(),
             filename_port: source.filename_output_port,
             string_targets: target_schema
                 .ports
@@ -1208,7 +1237,7 @@ impl Builder {
             path: vec!["Value".into()],
             frame: None,
         })?;
-        let number_value = self.call("decimal_from_nullable_text", vec![raw])?;
+        let number_value = self.numeric_source_value(number, raw)?;
         let subtotal = self.alloc(Node::Aggregate {
             function: AggregateOp::DecimalSum,
             collection: self.sibling_path(number, &context_path)?,
@@ -1590,7 +1619,7 @@ impl Builder {
                 frame: None,
             })?;
             return if self.port_kinds[&feed] == "number" {
-                let number = self.call("decimal_from_nullable_text", vec![value])?;
+                let number = self.numeric_source_value(feed, value)?;
                 self.call("string", vec![number])
             } else {
                 Ok(value)
@@ -1749,7 +1778,34 @@ impl Builder {
         for index in 0..count {
             args.push(self.compile(self.input(&f, index)?, leaf, anchor)?);
         }
+        if f.parsed.name == "parse-date"
+            && self
+                .functions
+                .get(&self.input(&f, 1)?)
+                .is_some_and(|picture| {
+                    picture
+                        .parsed
+                        .constant
+                        .as_ref()
+                        .is_some_and(|(text, ty)| ty == "string" && text == "[Y,4-4][M,2-2][D,2-2]")
+                })
+        {
+            // Native ParseDateTime consumes this fixed-width date prefix and
+            // leaves a formatted time suffix unread. Ordinary parse_date stays
+            // strict; qualify only the exact eight-character source picture.
+            let width = self.constant(Value::Int(8))?;
+            args[0] = self.call("left_utf16_lossy", vec![args[0], width])?;
+        }
         self.call(name, args)
+    }
+
+    fn numeric_source_value(&mut self, feed: u32, raw: NodeId) -> Result<NodeId, MfdError> {
+        let value = self.call("decimal_from_nullable_text", vec![raw])?;
+        if self.integer_ports.contains(&feed) {
+            self.call("decimal_truncate", vec![value])
+        } else {
+            Ok(value)
+        }
     }
 
     fn compile_udf(
@@ -2257,6 +2313,7 @@ mod grouped_owner_tests {
             feeds: BTreeMap::new(),
             ports: BTreeMap::new(),
             port_kinds: BTreeMap::new(),
+            integer_ports: BTreeSet::new(),
             filename_port: None,
             string_targets: BTreeSet::new(),
             cache: BTreeMap::new(),
