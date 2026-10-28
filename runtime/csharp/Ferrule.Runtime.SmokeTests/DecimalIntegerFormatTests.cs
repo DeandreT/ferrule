@@ -21,5 +21,17 @@ internal static partial class Program
             Equal(expected, FerruleFunctions.Call("format_decimal_integer", new[] { value }).StringValue);
         }
         Throws<FerruleRuntimeException>(() => FerruleFunctions.Call("format_decimal_integer", new[] { FerruleValue.FromInt64(1) }));
+        foreach (var (input, expected) in new[] {
+            ("1.9", "1"), ("-1.9", "-1"), ("0.9", "0"), ("-0.9", "0"),
+            ("9223372036854775808.9", "9223372036854775808"),
+            ("79228162514264337593543950335", "79228162514264337593543950335"),
+            ("0.0000000000000000000000000001", "0"),
+        })
+        {
+            var value = FerruleValue.FromDecimal(FerruleDecimal96.ParseExact(input));
+            Equal(expected, FerruleFunctions.Call("decimal_truncate", new[] { value }).DecimalValue.ToString());
+        }
+        Throws<FerruleRuntimeException>(() => FerruleFunctions.Call("decimal_truncate", Array.Empty<FerruleValue>()));
+        Throws<FerruleRuntimeException>(() => FerruleFunctions.Call("decimal_truncate", new[] { FerruleValue.FromInt64(1) }));
     }
 }

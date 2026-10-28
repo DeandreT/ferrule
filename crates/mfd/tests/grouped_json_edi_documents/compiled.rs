@@ -263,6 +263,26 @@ fn compile_conditional_consumers(fixture: Fixture, new: &str, expected: &[&str])
     compile_public_consumers(fixture, &rust, &csharp);
 }
 
+#[test]
+#[ignore = "compiles generated Rust and C# consumers; requires Cargo, .NET 10 and a coordinated host target"]
+fn integer_source_values_truncate_in_generated_rust_and_csharp() {
+    compile_conditional_consumers(
+        invoked_integer_fixture(),
+        r#"{"rows":[{"name":"a","qty":1.9},{"name":"a","qty":-1.9},{"name":"a","qty":-0.9},{"name":"a","qty":9223372036854775808.9}]}"#,
+        &["1", "-1", "0", "9223372036854775808"],
+    );
+}
+
+#[test]
+#[ignore = "compiles generated Rust and C# consumers; requires Cargo, .NET 10 and a coordinated host target"]
+fn fixed_date_prefix_parses_in_generated_rust_and_csharp() {
+    compile_conditional_consumers(
+        invoked_date_prefix_fixture(),
+        r#"{"rows":[{"name":"a","qty":"20261028235959"}]}"#,
+        &["2026-10-28"],
+    );
+}
+
 const RUST: &str = r###"
 use codegen_runtime::{Instance,Value,ExecutionContext,RuntimeParameters};
 use invoked_parameter_consumer as generated;
