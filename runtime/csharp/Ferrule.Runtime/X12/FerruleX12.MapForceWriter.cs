@@ -143,6 +143,7 @@ public static partial class FerruleX12
                 if (id == "ISA" && values[i].Length == 0)
                     values[i] = i switch { 10 => profile.OutputSyntax.Repetition?.ToString() ?? " ", 11 => profile.SelectedVersion.Interchange, 15 => profile.OutputSyntax.Component.ToString(), _ => "" };
             }
+            if (minimum == 0 && id is not ("ISA" or "GS" or "ST" or "SE" or "GE" or "IEA") && values.All(string.IsNullOrEmpty)) return;
             segments.Add(new(id, values)); return;
         }
         foreach (var child in node.Children)

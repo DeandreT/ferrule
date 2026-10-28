@@ -254,6 +254,20 @@ fn tokenize_for_completion(
         && isa12 < "00501"
     {
         None
+    } else if native
+        && isa11 == "U"
+        && isa12.len() == 5
+        && isa12.bytes().all(|byte| byte.is_ascii_digit())
+        && isa12 >= "00501"
+    {
+        // Completion consumes our already formatted native writer output, not
+        // arbitrary input. Its data syntax remains the explicitly configured
+        // syntax even when the mapped ISA11 retains the legacy U value.
+        configured
+            .ok_or(EdiFormatError::NotX12(
+                "native completion requires configured syntax",
+            ))?
+            .repetition
     } else {
         repetition_separator(isa11, isa12)?
     };
@@ -924,6 +938,10 @@ fn write_options_for_isa_profile(
         })?;
         let mut characters = isa11.chars();
         let valid_separator = isa11.is_empty()
+            // The explicit MapForce writer preserves its mapped legacy U
+            // identifier even in a 00501 envelope. Keep the configured data
+            // repetition syntax; ordinary X12 writers remain strict below.
+            || (native && isa11 == "U")
             || (characters
                 .next()
                 .is_some_and(|found| found == expected && !found.is_alphanumeric())
@@ -1694,6 +1712,58 @@ SV3*AD:D4341*450~
             } if element == "11" && value.is_empty()
         ));
         assert!(!out_path.exists());
+    }
+
+    #[test]
+    fn mapforce_writer_preserves_legacy_u_in_modern_envelopes_only_in_its_profile() {
+        let path = write_temp("native_modern_legacy_id", PO_850);
+        let mut instance = read(&path, &po_schema(), false).unwrap();
+        std::fs::remove_file(path).unwrap();
+        set_scalar(&mut instance, "ISA", "12", "00501");
+        let native = to_mapforce_document_string_with_syntax(
+            &po_schema(),
+            &instance,
+            Separators::default(),
+            Some("00501"),
+            None,
+        )
+        .unwrap();
+        assert!(native.contains("*U*00501*"));
+        let completed = to_mapforce_document_string_with_syntax(
+            &po_schema(),
+            &instance,
+            Separators::default(),
+            Some("00501"),
+            Some(Autocomplete {
+                current_datetime: "2026-10-28T00:00:00",
+                request_acknowledgement: true,
+                transaction_set: Some("850"),
+            }),
+        )
+        .unwrap();
+        assert!(completed.contains("*U*00501*"));
+        assert!(tokenize(&completed).is_err());
+        assert!(
+            to_document_string_with_syntax(
+                &po_schema(),
+                &instance,
+                Separators::default(),
+                Some("00501"),
+                None,
+            )
+            .is_err()
+        );
+        set_scalar(&mut instance, "ISA", "11", "!");
+        assert!(
+            to_mapforce_document_string_with_syntax(
+                &po_schema(),
+                &instance,
+                Separators::default(),
+                Some("00501"),
+                None,
+            )
+            .is_err()
+        );
     }
 
     /// The HIPAA pattern: sibling loops both triggered by `HL`, told apart
