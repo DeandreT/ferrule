@@ -1,10 +1,11 @@
 # XML target float conversion
 
-An explicitly enabled native XML target cast can fail while its binding is
-evaluated, before a later binding's arithmetic expression. Deferring that cast
-until output serialization changes which failure is reported. The bounded
-import path for [#1133](https://github.com/DeandreT/ferrule/issues/1133) retains
-that conversion as an internal `coerce_float` graph call.
+In the qualified native XML controls, the reported failure matches the first
+declared Amount feed. This identifies diagnostic selection, not the native
+application's internal evaluation timing. The bounded import path for
+[#1133](https://github.com/DeandreT/ferrule/issues/1133) reproduces that selection
+by evaluating an internal `coerce_float` graph call at the binding, rather than
+deferring the conversion to output serialization.
 
 ## Scalar behavior
 
@@ -41,6 +42,9 @@ acceptance are not qualified as lossless substitutes for the helper. Independent
 date-time lowering remains available without removing the float helper.
 Canonical generic Float schemas remain `xs:decimal`, so they do not introduce
 another double-only conversion during reimport.
+
+The [native target-casting controls](../conformance/xml-target-casting.md)
+record the value counterexamples and the distinct behavior with casting disabled.
 
 Extension export also refuses before publication when canonical port order
 would change a flat root's cross-field binding order. This check applies even
