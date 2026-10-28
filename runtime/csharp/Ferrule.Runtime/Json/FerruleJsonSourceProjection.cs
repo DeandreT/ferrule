@@ -168,7 +168,7 @@ public sealed class FerruleJsonSourceProjection
             return shape;
         }
         var member = Select(root, grouping.CollectionPath.Skip(1));
-        if (member.Kind != FerruleJsonSourceKind.Object || Select(member, grouping.KeyPath).Kind != FerruleJsonSourceKind.String)
+        if (member.Kind is not (FerruleJsonSourceKind.Object or FerruleJsonSourceKind.Array) || Select(member, grouping.KeyPath).Kind != FerruleJsonSourceKind.String)
             throw new FerruleJsonGroupingException("Plan");
     }
 

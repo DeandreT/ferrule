@@ -43,5 +43,16 @@ internal static partial class Program
         using var cursor = acquisition.GetEnumerator();
         Throws<FerruleJsonGroupingException>(() => cursor.MoveNext());
         Equal(false, cursor.MoveNext()); Equal(1, loaded.Count); Equal("first", loaded[0]);
+        var arrayPlan = FerruleJsonGroupingPreparation.Parse("""{"collection":["Root","rows"],"keys":["Items","key"]}""");
+        var arraySource = FerruleJsonSourceDocument.Parse("array.json", Encoding.UTF8.GetBytes("""{"rows":[{"key":"A"},{"key":"B"},{"key":"A"}]}"""));
+        var arrayResults = FerruleJsonSourceProjection.Parse(simpleShape).Acquire(() => "array.json", _ => ["array.json"], _ => arraySource, grouping: arrayPlan).ToArray();
+        Equal(1, arrayResults.Length);
+        var root = ((FerruleRepeated)GroupingField(arrayResults[0], "Root")).Items[0];
+        var groups = ((FerruleRepeated)GroupingField(root, "rows")).Items;
+        Equal(2, groups.Count);
+        foreach (var group in groups)
+            Equal(3, ((FerruleRepeated)GroupingField(GroupingField(group, FerruleJsonGroupingPreparation.MemberField), "Items")).Items.Count);
+        var numericArray = FerruleJsonSourceProjection.Parse(simpleShape.Replace("\"string\"", "\"number\""));
+        Throws<FerruleJsonGroupingException>(() => numericArray.Acquire(() => throw new Exception("filename evaluated"), _ => [], _ => throw new Exception("loaded"), grouping: arrayPlan));
     }
 }

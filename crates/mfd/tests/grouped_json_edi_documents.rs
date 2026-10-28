@@ -602,6 +602,138 @@ fn invoked_qualifier_fixture() -> Fixture {
     fixture
 }
 
+fn invoked_ancestor_guard_fixture() -> Fixture {
+    let fixture = invoked_qualifier_fixture();
+    let schema = fixture.0.join("source.json");
+    let mut value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&schema).unwrap()).unwrap();
+    let properties = value["properties"]["rows"]["items"]["properties"]
+        .as_object_mut()
+        .unwrap();
+    properties.remove("qty");
+    properties.insert("flag".into(), serde_json::json!({"type":"string"}));
+    properties.insert("details".into(), serde_json::json!({"type":"array","items":{"type":"object","properties":{"qty":{"type":"string"}}}}));
+    std::fs::write(schema, serde_json::to_string(&value).unwrap()).unwrap();
+    fixture.change(
+        r#"<entry name="array">"#,
+        r#"<entry name="array" outkey="201">"#,
+    );
+    fixture.change(r#"<entry name="qty" type="json-property"><entry name="string" outkey="22"/></entry>"#,
+        r#"<entry name="flag" type="json-property"><entry name="string" outkey="610"/></entry><entry name="details" type="json-property"><entry name="array"><entry name="item" type="json-item"><entry name="object" outkey="620"><entry name="qty" type="json-property"><entry name="string" outkey="22"/></entry></entry></entry></entry></entry>"#);
+    fixture.change(r#"<vertex vertexkey="20"><edges><edge vertexkey="101"/><edge vertexkey="83"/></edges></vertex>"#,
+        r#"<vertex vertexkey="201"><edges><edge vertexkey="101"/></edges></vertex><vertex vertexkey="620"><edges><edge vertexkey="83"/></edges></vertex>"#);
+    fixture.change(
+        r#"<vertex vertexkey="188"><edges><edge vertexkey="602"/></edges></vertex>"#,
+        "",
+    );
+    fixture.change(r#"<vertex vertexkey="22"><edges><edge vertexkey="186"/></edges></vertex>"#,
+        r#"<vertex vertexkey="22"><edges><edge vertexkey="186"/><edge vertexkey="602"/></edges></vertex>"#);
+    fixture.change(r#"<entry name="LIN">"#, r#"<entry name="LIN" inpkey="84">"#);
+    fixture.change("</children>", r#"<component name="empty" library="lang" uid="610" kind="5"><sources><datapoint pos="0" key="611"/></sources><targets><datapoint pos="0" key="612"/></targets></component>
+<component name="if-else" library="core" uid="611" kind="4"><sources><datapoint pos="0" key="613"/><datapoint pos="1" key="614"/><datapoint/></sources><targets><datapoint pos="0" key="615"/></targets></component></children>"#);
+    fixture.change(
+        r#"<vertex vertexkey="603"><edges><edge vertexkey="85"/></edges></vertex>"#,
+        "",
+    );
+    fixture.change("</vertices>", r#"<vertex vertexkey="610"><edges><edge vertexkey="611"/></edges></vertex><vertex vertexkey="612"><edges><edge vertexkey="613"/></edges></vertex><vertex vertexkey="603"><edges><edge vertexkey="614"/></edges></vertex><vertex vertexkey="615"><edges><edge vertexkey="84"/><edge vertexkey="85"/></edges></vertex></vertices>"#);
+    let config = fixture.0.join("850.Config");
+    let text = std::fs::read_to_string(&config).unwrap().replace(
+        r#"<Segment ref="LIN"/>"#,
+        r#"<Segment ref="LIN" maxOccurs="unbounded"/>"#,
+    );
+    std::fs::write(config, text).unwrap();
+    fixture
+}
+
+#[test]
+fn ancestor_empty_guard_preserves_occurrences_and_detail_ownership() {
+    let fixture = invoked_ancestor_guard_fixture();
+    let imported = mfd::import_invoked_grouped_json_edi_document_with_options(
+        &fixture.0.join("mapping.mfd"),
+        &mfd::ImportOptions::default().with_package_root(&fixture.0),
+    )
+    .unwrap();
+    let mut parameters = engine::RuntimeParameters::new();
+    parameters
+        .insert(
+            &imported.invocation.key_parameter,
+            Value::String("P".into()),
+        )
+        .unwrap();
+    let context = engine::ExecutionContext::new(&fixture.0).with_parameters(&parameters);
+    let grouped = mfd::ImportedGroupedJsonEdiDocument {
+        document: imported.document,
+        source: imported.source,
+        writer_minimums: imported.writer_minimums,
+    };
+    for (flag, count) in [
+        (r#""flag":"","#, 1),
+        (r#""flag":"","flag":"","#, 2),
+        (r#""flag":"x","#, 0),
+        ("", 0),
+        (r#""flag":null,"#, 0),
+    ] {
+        let text = format!(
+            r#"{{"rows":[{{"name":"a",{flag}"details":[{{"qty":"first"}},{{"qty":"second"}},{{"qty":null}}]}}]}}"#
+        );
+        let source = input(&grouped, &[&text]);
+        let Instance::DocumentSet(documents) =
+            engine::run_with_context(grouped.document.project(), &source, &context).unwrap()
+        else {
+            panic!("documents");
+        };
+        assert_eq!(documents.len(), 1);
+        let interchange = &documents[0]
+            .value()
+            .field("Interchange")
+            .unwrap()
+            .as_repeated()
+            .unwrap()[0];
+        let group = &interchange.field("Group").unwrap().as_repeated().unwrap()[0];
+        let message = group.field("Message_850").unwrap();
+        let message = message.as_repeated().map_or(message, |items| &items[0]);
+        let lines = message.field("Lines").unwrap().as_repeated().unwrap();
+        assert_eq!(lines.len(), 3);
+        for (index, line) in lines.iter().enumerate() {
+            let inner = line
+                .field("LIN")
+                .and_then(Instance::as_repeated)
+                .unwrap_or(&[]);
+            assert_eq!(inner.len(), if index == 2 { 0 } else { count }, "{text}");
+            for item in inner {
+                assert_eq!(
+                    item.field("F1").and_then(Instance::as_scalar),
+                    Some(&Value::String("QUAL".into()))
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn ancestor_guard_refuses_changed_condition_and_nonstring_qualifier() {
+    for (from, to) in [
+        (
+            r#"name="empty" library="lang" uid="610""#,
+            r#"name="string-length" library="core" uid="610""#,
+        ),
+        (
+            r#"value="QUAL" datatype="string""#,
+            r#"value="1" datatype="decimal""#,
+        ),
+    ] {
+        let fixture = invoked_ancestor_guard_fixture();
+        fixture.change(from, to);
+        assert!(
+            mfd::import_invoked_grouped_json_edi_document_with_options(
+                &fixture.0.join("mapping.mfd"),
+                &mfd::ImportOptions::default().with_package_root(&fixture.0),
+            )
+            .is_err()
+        );
+    }
+}
+
 fn invoked_date_fixture() -> Fixture {
     let fixture = invoked_fixture();
     let schema = fixture.0.join("source.json");
@@ -626,6 +758,114 @@ fn invoked_date_fixture() -> Fixture {
 <component name="format-date" library="core" uid="601" kind="5"><sources><datapoint pos="0" key="601"/><datapoint pos="1" key="602"/><datapoint/></sources><targets><datapoint pos="0" key="603"/></targets></component></children>"#);
     fixture.change("</vertices>", r#"<vertex vertexkey="600"><edges><edge vertexkey="602"/></edges></vertex><vertex vertexkey="603"><edges><edge vertexkey="85"/></edges></vertex></vertices>"#);
     fixture
+}
+
+fn invoked_context_sum_fixture() -> Fixture {
+    let fixture = invoked_fixture();
+    fixture.change(
+        r#"<entry name="Lines" inpkey="83">"#,
+        r#"<entry name="Lines">"#,
+    );
+    fixture.change(r#"<entry name="LIN" inpkey="84">"#, r#"<entry name="LIN">"#);
+    fixture.change(r#"<entry name="F2" inpkey="86"/>"#, r#"<entry name="F2"/>"#);
+    fixture.change(r#"<vertex vertexkey="20"><edges><edge vertexkey="83"/><edge vertexkey="84"/></edges></vertex>"#, r#"<vertex vertexkey="20"><edges><edge vertexkey="620"/></edges></vertex>"#);
+    fixture.change(
+        r#"<vertex vertexkey="21"><edges><edge vertexkey="85"/></edges></vertex>"#,
+        "",
+    );
+    fixture.change(
+        r#"<vertex vertexkey="22"><edges><edge vertexkey="86"/></edges></vertex>"#,
+        r#"<vertex vertexkey="22"><edges><edge vertexkey="621"/></edges></vertex>"#,
+    );
+    fixture.change("</children>", r#"<component name="sum" library="core" uid="620" kind="5"><sources><datapoint pos="0" key="620"/><datapoint pos="1" key="621"/></sources><targets><datapoint pos="0" key="622"/></targets></component></children>"#);
+    fixture.change(
+        "</vertices>",
+        r#"<vertex vertexkey="622"><edges><edge vertexkey="85"/></edges></vertex></vertices>"#,
+    );
+    fixture
+}
+
+#[test]
+fn context_sum_keeps_per_object_totals_and_evaluates_later_overflow() {
+    let fixture = invoked_context_sum_fixture();
+    let imported = mfd::import_invoked_grouped_json_edi_document_with_options(
+        &fixture.0.join("mapping.mfd"),
+        &mfd::ImportOptions::default().with_package_root(&fixture.0),
+    )
+    .unwrap();
+    let mut parameters = engine::RuntimeParameters::new();
+    parameters
+        .insert(
+            &imported.invocation.key_parameter,
+            Value::String("P".into()),
+        )
+        .unwrap();
+    let context = engine::ExecutionContext::new(&fixture.0).with_parameters(&parameters);
+    let grouped = mfd::ImportedGroupedJsonEdiDocument {
+        document: imported.document,
+        source: imported.source,
+        writer_minimums: imported.writer_minimums,
+    };
+    for (text, expected) in [
+        (r#"{"rows":[{"name":"a","qty":2,"qty":3}]}"#, "5"),
+        (
+            r#"{"rows":[{"name":"a","qty":2},{"name":"a","qty":3}]}"#,
+            "2",
+        ),
+        (r#"{"rows":[{"name":"a"},{"name":"a","qty":3}]}"#, "0"),
+        (
+            r#"{"rows":[{"name":"a","qty":0},{"name":"a","qty":3}]}"#,
+            "0",
+        ),
+    ] {
+        let source = input(&grouped, &[text]);
+        let Instance::DocumentSet(documents) =
+            engine::run_with_context(grouped.document.project(), &source, &context).unwrap()
+        else {
+            panic!("documents");
+        };
+        assert_eq!(documents.len(), 1);
+        let interchange = &documents[0]
+            .value()
+            .field("Interchange")
+            .unwrap()
+            .as_repeated()
+            .unwrap()[0];
+        let group = &interchange.field("Group").unwrap().as_repeated().unwrap()[0];
+        let message = group.field("Message_850").unwrap();
+        let message = message.as_repeated().map_or(message, |items| &items[0]);
+        let lines = message.field("Lines").unwrap().as_repeated().unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            lines[0]
+                .field("LIN")
+                .unwrap()
+                .field("F1")
+                .and_then(Instance::as_scalar),
+            Some(&Value::String(expected.into()))
+        );
+    }
+    let source = input(
+        &grouped,
+        &[r#"{"rows":[{"name":"a","qty":2},{"name":"a","qty":1e1000}]}"#],
+    );
+    assert!(engine::run_with_context(grouped.document.project(), &source, &context).is_err());
+}
+
+#[test]
+fn context_sum_rejects_a_numeric_context_pin() {
+    let fixture = invoked_context_sum_fixture();
+    fixture.change(
+        r#"<vertex vertexkey="20"><edges><edge vertexkey="620"/></edges></vertex>"#,
+        r#"<vertex vertexkey="22"><edges><edge vertexkey="620"/></edges></vertex>"#,
+    );
+    assert!(
+        mfd::import_invoked_grouped_json_edi_document_with_options(
+            &fixture.0.join("mapping.mfd"),
+            &mfd::ImportOptions::default().with_package_root(&fixture.0),
+        )
+        .is_err()
+    );
 }
 
 #[test]
