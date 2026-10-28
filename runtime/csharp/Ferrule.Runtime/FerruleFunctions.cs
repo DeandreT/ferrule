@@ -10,6 +10,7 @@ public static partial class FerruleFunctions
         return function switch
         {
             "decimal_from_nullable_text" => DecimalFromNullableText(arguments),
+            "decimal_truncate" => DecimalTruncate(arguments),
             "concat" => Concat(arguments),
             "upper" => UnaryString(function, arguments, FerruleUnicodeCasing.ToUpper),
             "lower" => UnaryString(function, arguments, FerruleUnicodeCasing.ToLower),

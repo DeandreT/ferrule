@@ -194,6 +194,7 @@ pub(crate) enum BuiltinId {
     IsNumeric,
     ToNumber,
     DecimalFromNullableText,
+    DecimalTruncate,
     Boolean,
     Positive,
     Floor,
@@ -850,6 +851,19 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Internal,
         "Parses bounded decimal numeric text, using zero for missing or JSON null. Plain decimal and exponent conversion policies remain distinct."
+    ),
+    builtin!(
+        DecimalTruncate,
+        "decimal_truncate",
+        "Truncate Decimal",
+        Conversion,
+        &[parameter("value", Decimal)],
+        BuiltinArity::fixed(1),
+        Decimal,
+        true,
+        true,
+        Internal,
+        "Drops the fractional part toward zero without narrowing the Decimal range."
     ),
     builtin!(
         Boolean,
