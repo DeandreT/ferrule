@@ -45,7 +45,7 @@ Every new `filter_map_v1` cell below is currently **Rejected by the exporter**, 
 | Reached or unselected `Raise` in a stage | Filter/map admits lazy Raise; current scalar UDF exporter rejects that node as context-sensitive or non-scalar | Rejected by current UDF export and by the transform guard; no substitution with an empty value |
 | Zero ordered captures | Stage signature still has item and original source position | Candidate UNVERIFIED |
 | One or multiple parent captures | Native evaluates once, in declaration order, checking each exact tag before the next capture | Candidate UNVERIFIED; ordinary fan-out wires do not prove once-only evaluation |
-| Captures on an empty range | Native still evaluates captures after an empty admitted source | Required distinction; UNVERIFIED in saved-design form |
+| Captures on an empty range | Native still evaluates captures after an empty admitted source | The complex-variable/full-row candidate succeeds with an empty output despite a capture that fails on a nonempty control; that candidate is Rejected. Separately guarded captures remain UNVERIFIED |
 | Parent Position capture | Resolves in its actual parent document/frame before stages | Candidate UNVERIFIED; cannot replace with an inner or compacted position |
 | Private or foreign owner capture | Model/native lexical admission forbids either private owner in captures/source bounds | Rejected; no implicit context fallback |
 | Mapper exact Int/Bool/String/finite Float | Ordinary return adapter precedes strict tag/finiteness checks | Scalar ports exist; complete strict boundary and original causes UNVERIFIED |
