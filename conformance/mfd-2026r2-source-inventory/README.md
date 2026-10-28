@@ -12,6 +12,7 @@ They do not change the canonical capability ledger or establish execution suppor
 | `com-api.json` | Separate public COM API catalog; release binding remains unestablished |
 | `com-name-alignment.json` | Name-only interface, enum and event comparison against the release-bound type library, preserving discrepancies and dump-rendering gaps |
 | `supporting.json` | Public I/O classes, wrapper-library exceptions and the named installation-artifact requests |
+| `schema-wrappers.json` | Four optional schema-wrapper source profiles, actual schema identities and build/dependency metadata; no compiled or runtime qualification |
 | `external-references.json` | Linked historical DOM algorithm and redirected .NET interface contract, kept separate from vendor claims |
 
 The manual reviews use the same pinned PDF and layout-text hashes as the original
@@ -41,9 +42,12 @@ name-table reads. Event-source names are compared separately from interface
 members. Signatures and enum values remain unqualified; name matches and
 accessor-record counts are not additive capabilities or ABI proof.
 
-The public supporting declarations are inventoried, but complete generated
-libraries and installed examples require release-bound artifacts. The requested
-bundles and their provenance requirements are listed in `supporting.json`.
+The public supporting declarations are inventoried. `schema-wrappers.json`
+records bounded source bundles for C#, Java and both C++ DOM options, including
+actual schema names and build dependencies. The requested compiled C# DLLs,
+complete API contracts and runtime behavior remain unqualified. Running the
+generated Java Ant default target executes the mapping; it is not a source-only
+inspection. The requests and provenance requirements are listed in `supporting.json`.
 Undocumented supporting classes are explicitly implementation-private and
 changeable in the manual; including them requires a bounded choice of generation
 fixtures and settings, not an assumption that all possible schema-generated
