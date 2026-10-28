@@ -402,6 +402,24 @@ fn adapt(
         }
         path.pop();
     }
+    fn empty(value: &Instance) -> bool {
+        match value {
+            Instance::Scalar(Value::Null | Value::JsonNull(_)) => true,
+            Instance::Scalar(Value::String(text)) => text.is_empty(),
+            Instance::Group(fields) => fields.iter().all(|(_, value)| empty(value)),
+            Instance::Repeated(items) | Instance::MappedSequence(items) => items.iter().all(empty),
+            _ => false,
+        }
+    }
+    if format_scalars
+        && minimum == 0
+        && cursor
+            .segment_id()
+            .is_some_and(|id| !matches!(id, "ISA" | "GS" | "ST" | "SE" | "GE" | "IEA"))
+        && output.iter().all(|(_, value)| empty(value))
+    {
+        return Ok(None);
+    }
     Ok(Some(Instance::Group(output.into())))
 }
 
@@ -465,6 +483,46 @@ mod tests {
         );
         let boundary = serde_json::json!({"version":"006040","schema":codegen_schema::encode(&schema,MAX_EMBEDDED_X12_SCHEMA_BYTES).unwrap(),"envelope_profile":"mapforce_interchanges","separators":{"element":"*","component":":","segment":"~","repetition":"^"},"constraints":[],"lexical_formats":[],"implied_decimals":[],"autocomplete":{"request_acknowledgement":true,"transaction_set":"850"},"lenient_segments":true});
         serde_json::json!({"boundary":boundary.to_string(),"minimums":[{"path":["Interchange","Group","Message_850","Rows"],"minimum":1},{"path":["Interchange","Group","Message_850","Rows","LIN"],"minimum":1}]}).to_string()
+    }
+
+    #[test]
+    fn optional_empty_segments_are_omitted_but_required_and_whitespace_remain() {
+        let wrapper: mapping::MapForceX12WriterDescriptor =
+            serde_json::from_str(&descriptor_text()).unwrap();
+        let profile = Profile::parse(&wrapper.boundary).unwrap();
+        let mut cursor = SchemaCursor::root(&profile.schema);
+        for index in [0, 1, 1, 1, 0] {
+            cursor = cursor.children().nth(index).unwrap();
+        }
+        let path = vec![
+            "Interchange".into(),
+            "Group".into(),
+            "Message_850".into(),
+            "Rows".into(),
+            "LIN".into(),
+        ];
+        for (value, minimum, present) in [
+            ("", 0, false),
+            ("", 1, true),
+            ("  ", 0, true),
+            ("VALUE", 0, true),
+        ] {
+            let input = group(vec![("E01", scalar(value))]);
+            let result = adapt(
+                cursor,
+                Some(&input),
+                &profile,
+                &BTreeMap::from([(path.clone(), minimum)]),
+                &mut path.clone(),
+                false,
+                &mut WriterBudget::default(),
+                0,
+                None,
+                true,
+            )
+            .unwrap();
+            assert_eq!(result.is_some(), present);
+        }
     }
     #[test]
     fn required_empty_line_and_short_automatic_group_time_are_explicit() {

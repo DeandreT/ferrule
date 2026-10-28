@@ -51,6 +51,17 @@ internal static partial class Program
         Equal(true, text.Contains("*270102*0405*", StringComparison.Ordinal));
         Equal(true, text.Contains("GS****20290304*1617*", StringComparison.Ordinal));
         Equal(true, calls.SequenceEqual(Enum.GetValues<FerruleMapForceX12ClockField>()));
+        var optionalBoundary = System.Text.Json.Nodes.JsonNode.Parse(boundary)!;
+        optionalBoundary["schema"] = JsonSerializer.Serialize(Node("Envelope", [Node("Interchange", [Fields("ISA", 16, true), Node("Group", [Fields("GS", 8, true), Node("Message_850", [Fields("ST", 2), Fields("G69", 1), Fields("SE", 2)], true), Fields("GE", 2, true)], true), Fields("IEA", 2, true)], true)]));
+        foreach (var (content, required, present) in new[] { ("", false, false), ("", true, true), ("  ", false, true), ("VALUE", false, true) })
+        {
+            var optionalMessage = Group(("ST", Group()), ("G69", Group(("E01", new FerruleScalar(FerruleValue.FromString(content))))));
+            var optionalBody = Group(("Interchange", Repeated(Group(("ISA", Repeated(Group())), ("Group", Repeated(Group(("GS", Repeated(Group())), ("Message_850", Repeated(optionalMessage)))))))));
+            object[] minimums = required ? [new { path = new[] { "Interchange", "Group", "Message_850", "G69" }, minimum = 1 }] : [];
+            string optionalDescriptor = JsonSerializer.Serialize(new { boundary = optionalBoundary.ToJsonString(), minimums });
+            string optionalText = Encoding.Latin1.GetString(FerruleX12.SerializeMapForceDocumentBytesWithClock(optionalDescriptor, optionalBody, context, _ => "2026-10-28T00:00:00"));
+            Equal(present, optionalText.Contains("G69", StringComparison.Ordinal));
+        }
         var source = FerruleX12.ParseLexicalSourceBytes(boundary, Encoding.UTF8.GetBytes(text.Replace("20290304", "bad-date", StringComparison.Ordinal)));
         static FerruleInstance Field(FerruleInstance value, string name) => ((FerruleGroup)value).Fields.Single(f => f.Name == name).Value;
         var sourceInterchange = ((FerruleRepeated)Field(source, "Interchange")).Items[0];
