@@ -95,10 +95,32 @@ or both source values are absent. Public regression fixtures are in
 typed/JSON controls are in `crates/mfd/tests/optional_cloned_feeds.rs` and
 `crates/cli/tests/code_generation/optional_cloned_feeds.rs`.
 
+## Explicit XML nil
+
+Ten separate controls make both source integers and the target Amount nillable.
+They distinguish two ordinary values, nil in either position, two nil values,
+and nil followed by an absent source field, for repeating and singular targets.
+Each direct wire still owns a distinct cloned entry; no `set-xsi-nil` function
+or same-connector fan-in is used.
+
+The isolated reference retained each explicit `xsi:nil="true"` as an Amount
+occurrence, in order, while the absent field produced no occurrence. All ten
+designs saved/reopened/resaved byte-identically. The five repeating outputs
+passed their XSDs. Four singular outputs contained two Amount occurrences and
+failed their XSDs, including the two-nil case; the nil-and-absent output passed.
+Nil does not remove an occurrence from the target cardinality.
+
+Native Ferrule and generated Rust/C# XML text/byte outputs retain the same
+complete values. Strict import still refuses all five singular designs. The
+public `xml_nil_cloned_feeds` tests retain exact typed XML-nil values and native
+export/re-import behavior. Their fixture JSON is only notation for constructing
+typed values, not evidence about JSON null or JSON mapping APIs. These controls
+do not establish other nil lexical forms, nested nil, coercion or error ordering.
+
 ## Remaining design gate
 
 [#241](https://github.com/DeandreT/ferrule/issues/241) remains open. These finite
-non-null constants and optional-element controls do not establish general null
+non-null constants, optional-element and explicit-nil controls do not establish general null
 handling, fallible-expression precedence or a new singular multiple-feed representation. No such shape is
 admitted by this observation. Distinct declared branch ownership belongs to
 [#239](https://github.com/DeandreT/ferrule/issues/239), not an inferred winner.

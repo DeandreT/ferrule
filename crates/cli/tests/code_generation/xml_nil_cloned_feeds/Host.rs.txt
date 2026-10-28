@@ -1,0 +1,31 @@
+use codegen_runtime::{Instance, Value, field, group, repeated, scalar};
+use std::fs;
+
+// The fixture's null marker constructs XML nil; it is not a JSON API input.
+fn typed(value: &serde_json::Value) -> Instance {
+    match value {
+        serde_json::Value::Object(fields) => group(fields.iter().map(|(name, value)| field(name.clone(), typed(value)))),
+        serde_json::Value::Array(items) => repeated(items.iter().map(typed)),
+        serde_json::Value::Null => scalar(Value::xml_nil()),
+        serde_json::Value::String(value) => scalar(Value::String(value.clone())),
+        serde_json::Value::Number(value) => scalar(Value::Int(value.as_i64().expect("authored integer"))),
+        _ => panic!("unexpected typed fixture scalar"),
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cases: Vec<serde_json::Value> = serde_json::from_slice(&fs::read("cases.json")?)?;
+    let mut outcomes = Vec::new();
+    for case in cases {
+        let source = typed(&case["input_typed"]);
+        let expected = typed(&case["expected_typed"]);
+        let actual = ferrule_generated_mapping::execute(&source);
+        outcomes.push((case["name"].clone(), source, actual, expected));
+    }
+    fs::write("complete-outcomes.txt", format!("{outcomes:#?}\n"))?;
+    assert_eq!(outcomes.len(), 5);
+    for (name, _, actual, expected) in outcomes {
+        assert_eq!(actual?, expected, "{name}");
+    }
+    Ok(())
+}
