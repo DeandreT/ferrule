@@ -152,13 +152,54 @@ unqualified. In particular, the observation does not prove whether the value
 sequence is cached or evaluated again by ItemAt. The native and Ferrule error
 categories remain distinct, and every existing export refusal remains in place.
 
+## Captures on an empty range
+
+Four further controls distinguish an empty `4..3` range from one item `4..4`.
+Both stage functions declare ordered item, source-position and capture inputs.
+Keep returns true; Map returns `item + capture`. The capture input and Map result
+are declared `double`; the variable and target Value fields use `xs:double`.
+The full-row output keeps the variable's dense row position, with no ItemAt
+consumer whose empty-input behavior could mask the result.
+
+The successful capture is the native decimal literal `1`. The failing capture
+is the same parent's `divide(1, 0)` result, wired to both stage capture inputs.
+The bounds and true literal are saved as `anySimpleType`, not the exact typed
+constants of the independently frozen Ferrule models. These declaration
+differences remain explicit; numeric agreement does not establish strict Float
+identity or adaptation equivalence.
+
+| Source range | Capture | Complete native outcome |
+| --- | --- | --- |
+| `4..4` | `1` | One row `(5,1)` |
+| `4..4` | `divide(1,0)` | Execution fails: `Numeric overflow.` |
+| `4..3` | `1` | Empty Output; no rows |
+| `4..3` | `divide(1,0)` | Empty Output; execution succeeds |
+
+Each design validated without errors or warnings, then was saved, reopened,
+re-saved and executed. Raw saved bytes differed, but all non-layout XML matched
+after removing only checked coordinate-only views and empty descriptions. All
+original design and resource hashes stayed unchanged. Successful complete
+outputs validated against the target schema. Original error messages were
+retained; a failed execution was not replaced by an empty or null output.
+
+The nonempty failure establishes that the bad capture is reachable. The empty
+success contradicts the frozen eager-capture contract: both failing Ferrule
+models fail in Capture at the capture expression, before either stage runs.
+**This complex-variable/full-row candidate does not preserve capture failure on
+an empty source.** The observation describes the visible result/error boundary,
+not proof of whether the reference skipped evaluation or suppressed an error.
+It does not determine once-only capture evaluation, capture ordering, caching,
+strict adaptation or the behavior of a separately guarded capture expression.
+The native overflow message and Ferrule divide-by-zero cause remain distinct.
+
 ## Remaining boundary
 
 The original identity variant is not a substitute for dense output positions:
 its predicate keeps every item, so original and filtered positions happen to
 agree. The unguarded complex-variable variant distinguishes the positions but
 fails the late-error/ItemAt control; the count-guarded variant matches that one
-late-error control. None establishes the full two-private-owner descriptor,
+late-error control. The full-row capture candidate also loses a failing capture
+on an empty source. None establishes the full two-private-owner descriptor,
 ordered captures,
 strict stage adaptation, late-error precedence, eager completion before a
 consumer, or shared work/cancellation limits. No importer or exporter admission
