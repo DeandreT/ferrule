@@ -1,0 +1,32 @@
+[
+  {
+    "name": "both-values",
+    "input_xml": "<Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><First>17</First><Second>29</Second><Label>safe</Label></Envelope>",
+    "input_typed": {"First":17,"Second":29,"Label":"safe"},
+    "expected_typed": {"Amount":[17,29],"Label":"safe"}
+  },
+  {
+    "name": "nil-first",
+    "input_xml": "<Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><First xsi:nil=\"true\"/><Second>29</Second><Label>safe</Label></Envelope>",
+    "input_typed": {"First":null,"Second":29,"Label":"safe"},
+    "expected_typed": {"Amount":[null,29],"Label":"safe"}
+  },
+  {
+    "name": "nil-second",
+    "input_xml": "<Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><First>17</First><Second xsi:nil=\"true\"/><Label>safe</Label></Envelope>",
+    "input_typed": {"First":17,"Second":null,"Label":"safe"},
+    "expected_typed": {"Amount":[17,null],"Label":"safe"}
+  },
+  {
+    "name": "both-nil",
+    "input_xml": "<Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><First xsi:nil=\"true\"/><Second xsi:nil=\"true\"/><Label>safe</Label></Envelope>",
+    "input_typed": {"First":null,"Second":null,"Label":"safe"},
+    "expected_typed": {"Amount":[null,null],"Label":"safe"}
+  },
+  {
+    "name": "nil-and-absent",
+    "input_xml": "<Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><First xsi:nil=\"true\"/><Label>safe</Label></Envelope>",
+    "input_typed": {"First":null,"Label":"safe"},
+    "expected_typed": {"Amount":[null],"Label":"safe"}
+  }
+]

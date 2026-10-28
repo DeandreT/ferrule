@@ -290,6 +290,8 @@ mod xml_input_sets;
 mod xml_mixed_document_outputs;
 #[path = "code_generation/xml_multiple_named_document_outputs.rs"]
 mod xml_multiple_named_document_outputs;
+#[path = "code_generation/xml_nil_cloned_feeds.rs"]
+mod xml_nil_cloned_feeds;
 #[path = "code_generation/xml_output_sets.rs"]
 mod xml_output_sets;
 #[path = "code_generation/xml_owned_absence.rs"]
