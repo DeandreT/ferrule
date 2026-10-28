@@ -1,0 +1,40 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static FerruleInstance Instance(JsonElement value) => value.ValueKind switch {
+    JsonValueKind.Object => new FerruleGroup(value.EnumerateObject().Select(field => new FerruleField(field.Name, Instance(field.Value)))),
+    JsonValueKind.Array => new FerruleRepeated(value.EnumerateArray().Select(Instance)),
+    JsonValueKind.String => new FerruleScalar(FerruleValue.FromString(value.GetString()!)),
+    JsonValueKind.Number => new FerruleScalar(FerruleValue.FromInt64(value.GetInt64())),
+    _ => throw new InvalidOperationException("unexpected authored scalar"),
+};
+static object Raw(FerruleInstance value) => value switch {
+    FerruleScalar scalar => new { kind = "Scalar", scalarKind = scalar.Value.Kind.ToString(),
+        integer = scalar.Value.Kind == FerruleValueKind.Int64 ? (long?)scalar.Value.Int64Value : null,
+        text = scalar.Value.Kind == FerruleValueKind.String ? scalar.Value.StringValue : null },
+    FerruleGroup group => new { kind = "Group", origin = group.XmlTypeOrigin, fields = group.Fields.Select(field => new { field.Name, value = Raw(field.Value) }).ToArray() },
+    FerruleRepeated repeated => new { kind = "Repeated", items = repeated.Items.Select(Raw).ToArray() },
+    _ => throw new InvalidOperationException("unexpected instance class " + value.GetType().FullName),
+};
+using var cases = JsonDocument.Parse(File.ReadAllBytes("cases.json"));
+var outcomes = new List<object>();
+var good = true;
+foreach (var item in cases.RootElement.EnumerateArray()) {
+    var expected = Raw(Instance(item.GetProperty("expected_json")));
+    object actual;
+    string? json = null;
+    try {
+        actual = Raw(GeneratedMapping.Execute(Instance(item.GetProperty("input_json"))));
+        json = GeneratedMapping.ExecuteJson(item.GetProperty("input_json").GetRawText());
+        good &= JsonSerializer.Serialize(actual) == JsonSerializer.Serialize(expected);
+        good &= JsonNode.DeepEquals(JsonNode.Parse(json), JsonNode.Parse(item.GetProperty("expected_json").GetRawText()));
+    } catch (Exception error) {
+        actual = new { type = error.GetType().FullName, complete = error.ToString() };
+        good = false;
+    }
+    outcomes.Add(new { name = item.GetProperty("name").GetString(), actual, expected, json });
+}
+File.WriteAllText("complete-outcomes.json", JsonSerializer.Serialize(outcomes, new JsonSerializerOptions { WriteIndented = true }));
+if (outcomes.Count != 4 || !good) throw new InvalidOperationException("complete optional-clone outcomes differ");

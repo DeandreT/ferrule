@@ -70,10 +70,35 @@ The existing self-authored regressions cover the implementation boundaries:
 - `crates/cli/tests/code_generation/nested_clone_owners.rs`: compiled Rust/C#
   coverage of the existing declared-owner and repeating-binding contracts.
 
+## Optional source elements
+
+A separate eight-design control uses optional integer `First` and `Second`
+source elements, connected in that order to two distinct cloned `Amount`
+entries. The four source inputs contain both values, only First, only Second,
+or neither; each retains `Label=safe`. Four targets declare Amount repeating,
+and four declare it singular. This probes missing XML elements, not `xsi:nil`,
+JSON null, fallible expressions or competing wires to one connector.
+
+The isolated 2026r2 reference saved, reopened and resaved all eight designs
+without changing their saved bytes. Complete native output retained only the
+present Amount values, in declared order, followed by Label. Missing elements
+produced no empty Amount placeholder. All repeating outputs passed their target
+XSD. The singular both-present output failed its XSD; the other three singular
+outputs happened to satisfy it. Input-specific validity does not justify a
+schema-wide singular winner rule.
+
+Ferrule's repeating target retains the same complete outputs through native
+execution and generated Rust/C# XML text and byte APIs. Its strict importer
+continues to reject both singular bindings for every input, including when one
+or both source values are absent. Public regression fixtures are in
+`crates/mfd/tests/fixtures/optional_cloned_feeds`; the native and compiled
+typed/JSON controls are in `crates/mfd/tests/optional_cloned_feeds.rs` and
+`crates/cli/tests/code_generation/optional_cloned_feeds.rs`.
+
 ## Remaining design gate
 
 [#241](https://github.com/DeandreT/ferrule/issues/241) remains open. These finite
-non-null constants do not establish absent/null handling, fallible-expression
-precedence or a new singular multiple-feed representation. No such shape is
+non-null constants and optional-element controls do not establish general null
+handling, fallible-expression precedence or a new singular multiple-feed representation. No such shape is
 admitted by this observation. Distinct declared branch ownership belongs to
 [#239](https://github.com/DeandreT/ferrule/issues/239), not an inferred winner.
