@@ -11,18 +11,19 @@ use crate::float_cast_shape::plain_scope;
 
 pub(super) fn validate(project: &Project, targets: &[TargetExport<'_>]) -> Result<(), MfdError> {
     let affected = float_consumers(project);
-    if affected.is_empty() {
+    if affected.is_empty() && !project.uses_xml_scalar_output() {
         return Ok(());
     }
     for target in targets
         .iter()
         .filter(|target| target.format == SideFormat::Xml && plain_scope(target.root))
     {
-        if !target
-            .root
-            .bindings
-            .iter()
-            .any(|binding| affected.contains(&binding.node))
+        if target.options.xml_scalar_output.is_none()
+            && !target
+                .root
+                .bindings
+                .iter()
+                .any(|binding| affected.contains(&binding.node))
         {
             continue;
         }

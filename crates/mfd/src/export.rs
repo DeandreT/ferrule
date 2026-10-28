@@ -62,6 +62,7 @@ mod source;
 mod temperature_native;
 #[cfg(test)]
 mod tests;
+mod xml_scalar_output;
 
 #[cfg(test)]
 mod exception_presence_tests;
@@ -360,6 +361,9 @@ fn prepare_export_mode(
     path: &Path,
     filesystem: bool,
 ) -> Result<PreparedExport, MfdError> {
+    project
+        .validate_xml_scalar_output()
+        .map_err(|error| MfdError::Unsupported(error.to_string()))?;
     if let Some(input) = project.sqlite_read_inputs().first() {
         return Err(MfdError::UnsupportedInputProfile {
             input: match input.owner {
@@ -1088,6 +1092,11 @@ fn prepare_export_mode(
             )?
         };
         native_datetime_casts.apply_to_target(target_index, target.schema, &mut rendered)?;
+        xml_scalar_output::apply(
+            target.schema,
+            target.options.xml_scalar_output.as_ref(),
+            &mut rendered,
+        )?;
         native_database_xml.apply_to_target(
             target_index,
             path,

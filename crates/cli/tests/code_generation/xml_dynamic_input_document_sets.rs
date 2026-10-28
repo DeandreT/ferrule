@@ -215,6 +215,7 @@ fn native(project: &Project, directory: &Path, case: &str, context: bool) -> Tes
                     &project.target,
                     member.value(),
                     &format_xml::XmlWriteOptions {
+                        scalar_output: None,
                         declaration: true,
                         indent: true,
                         default_namespace: None,

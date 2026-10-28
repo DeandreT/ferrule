@@ -279,6 +279,7 @@ fn prepare(
                     &project.target,
                     member.value(),
                     &format_xml::XmlWriteOptions {
+                        scalar_output: None,
                         declaration: true,
                         indent: true,
                         default_namespace: None,

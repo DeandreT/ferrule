@@ -189,6 +189,7 @@ fn render_payload_with_limit(
     profile: BoundaryProfile<'_>,
 ) -> anyhow::Result<PayloadBytes> {
     let path = profile.identity(path, options)?;
+    cli::validate_xml_scalar_output_format(path, schema, options)?;
     options
         .validate_xml_schema_hint_options(true)
         .map_err(anyhow::Error::msg)?;

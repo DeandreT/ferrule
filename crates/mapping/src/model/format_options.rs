@@ -312,6 +312,9 @@ pub struct FormatOptions {
     /// on the document root without opening or resolving any schema location.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xml_schema_hints: Option<ir::XmlSchemaHints>,
+    /// Explicit target-only XML scalar policy; never inferred from a filename.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xml_scalar_output: Option<ir::XmlScalarOutputPolicy>,
     /// XML input: retain declared flat-root attributes outside the explicitly
     /// selected type's member set. This requires one closed typed XML document.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]

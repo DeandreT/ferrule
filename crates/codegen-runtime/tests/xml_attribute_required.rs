@@ -33,6 +33,7 @@ fn public_string_bytes_and_xml_codecs_keep_lenient_required_attribute_presence()
                     &schema,
                     &native,
                     &format_xml::XmlWriteOptions {
+                        scalar_output: None,
                         declaration: false,
                         indent: false,
                         default_namespace: None,

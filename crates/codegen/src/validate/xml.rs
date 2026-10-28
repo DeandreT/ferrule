@@ -271,6 +271,21 @@ fn unsupported_schema_feature(schema: &SchemaNode) -> Option<&'static str> {
     children.iter().find_map(unsupported_schema_feature)
 }
 
+/// Every scope renders through the ordinary bound-group item path.
+fn ordinary_document_scope(scope: &crate::TargetScope, depth: usize) -> bool {
+    depth <= ir::MAX_XML_SCALAR_OUTPUT_DOCUMENT_DEPTH
+        && matches!(scope.construction, crate::TargetConstruction::Group)
+        && !scope.produces_documents()
+        && scope
+            .iteration
+            .as_ref()
+            .is_none_or(|iteration| iteration.concatenated().is_none())
+        && scope
+            .children
+            .iter()
+            .all(|child| ordinary_document_scope(child, depth + 1))
+}
+
 /// Each admitted document adapter owns every named source and output policy.
 /// Returns the adapter classification this proof establishes.
 pub(super) fn validate_boundary(
@@ -282,6 +297,47 @@ pub(super) fn validate_boundary(
     let reject = |reason: &str| ProgramValidationError::InvalidXmlBoundary {
         reason: reason.to_owned(),
     };
+    if policy
+        .extra_outputs
+        .iter()
+        .any(|output| output.output.scalar_output.is_some())
+    {
+        return Err(reject(
+            "XML scalar output v1 does not support named targets",
+        ));
+    }
+    if let Some(scalar_output) = &policy.output.scalar_output {
+        if super::owned_sources::has_owned(program) {
+            return Err(reject(
+                "XML scalar output v1 does not support owned execution routes",
+            ));
+        }
+        let preservation = scalar_output
+            .validate_schema(&program.target)
+            .map_err(|error| reject(&error.to_string()))?;
+        let document = matches!(preservation, ir::XmlScalarPreservation::Document);
+        if document && !ordinary_document_scope(&program.root, 0) {
+            return Err(reject(
+                "XML scalar output requires ordinary constructed document scopes",
+            ));
+        }
+        if !program.extra_sources.is_empty()
+            || !program.extra_targets.is_empty()
+            || !policy.extra_inputs.is_empty()
+            || !policy.extra_outputs.is_empty()
+            || (!document
+                && (program.root.iteration.is_some()
+                    || program.root.repeating
+                    || !program.root.children.is_empty()
+                    || !matches!(program.root.construction, crate::TargetConstruction::Group)))
+            || policy.output.default_namespace.is_some()
+            || policy.output.schema_hints.is_some()
+        {
+            return Err(reject(
+                "XML scalar output v1 requires one flat constructed primary target",
+            ));
+        }
+    }
     let inputs = match policy.input.profile() {
         Some(crate::XmlInputProfile::RootView)
             if ir::xml_root_view_read_policy_is_supported(&program.source) =>

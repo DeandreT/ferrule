@@ -69,10 +69,16 @@ fn output_arguments(policy: &XmlOutputPolicy) -> Result<String, EmitError> {
         .map_err(|error| EmitError::SchemaSerialization(error.to_string()))?
         .map(|json| literal::string(&json))
         .unwrap_or_else(|| "null".into());
-    Ok(format!(
+    let mut args = format!(
         "{}, {}, {namespace}, {hints}",
         policy.declaration, policy.indent
-    ))
+    );
+    if let Some(scalar_output) = &policy.scalar_output {
+        let json = serde_json::to_string(scalar_output)
+            .map_err(|error| EmitError::SchemaSerialization(error.to_string()))?;
+        args.push_str(&format!(", {}", literal::string(&json)));
+    }
+    Ok(args)
 }
 
 /// Renders the proved XML adapter. Every route reads its classification and
@@ -267,6 +273,23 @@ fn render_single_document(
     }
 "#,
     );
+    if policy.output.scalar_output.is_some() {
+        output.push_str(
+            r#"
+    private static string SerializeXmlTarget(
+        global::Ferrule.Runtime.FerruleXmlOutputTarget target,
+        string descriptor, global::Ferrule.Runtime.FerruleInstance instance,
+        bool declaration, bool indent, string? defaultNamespace, string? hints,
+        string scalarOutput)
+    {
+        try { return global::Ferrule.Runtime.FerruleXml.SerializeDocumentEmbedded(
+            descriptor, instance, declaration, indent, defaultNamespace, hints, scalarOutput); }
+        catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)
+        { throw new global::Ferrule.Runtime.FerruleXmlOutputSetException(target, error); }
+    }
+"#,
+        );
+    }
     Ok(())
 }
 

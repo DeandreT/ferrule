@@ -217,6 +217,7 @@ fn serialize_xml(
     namespace: Option<&str>,
 ) -> Result<Value, EngineError> {
     let options = format_xml::XmlWriteOptions {
+        scalar_output: None,
         declaration,
         indent,
         default_namespace: namespace.map(str::to_owned),

@@ -549,6 +549,7 @@ fn output_format<'a>(
     schema: &SchemaNode,
     options: &'a FormatOptions,
 ) -> anyhow::Result<SelectedFormat<'a>> {
+    validate_xml_scalar_output_format(path, schema, options)?;
     if options.sqlite_read.is_some() {
         bail!("`sqlite_read` is valid only for mapping sources");
     }
@@ -2039,9 +2040,30 @@ fn is_recognized_instance_extension(extension: &str) -> bool {
 
 fn xml_write_options(options: &FormatOptions) -> format_xml::XmlWriteOptions {
     format_xml::XmlWriteOptions {
+        scalar_output: options.xml_scalar_output.clone(),
         schema_hints: options.xml_schema_hints.clone(),
         ..Default::default()
     }
+}
+
+fn validate_xml_scalar_output_format(
+    path: &Path,
+    schema: &SchemaNode,
+    options: &FormatOptions,
+) -> anyhow::Result<()> {
+    if let Some(policy) = &options.xml_scalar_output {
+        options
+            .validate_xml_scalar_output_options()
+            .map_err(anyhow::Error::msg)?;
+        policy.validate_schema(schema)?;
+        if path
+            .extension()
+            .is_some_and(|extension| !extension.eq_ignore_ascii_case("xml"))
+        {
+            bail!("explicit XML scalar output cannot be used with a non-XML output path");
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -770,6 +770,7 @@ fn run_case(
             &project.target,
             &expected,
             &format_xml::XmlWriteOptions {
+                scalar_output: None,
                 declaration: false,
                 indent: false,
                 default_namespace: None,
@@ -807,6 +808,7 @@ fn run_case(
             &project.target,
             &expected,
             &format_xml::XmlWriteOptions {
+                scalar_output: None,
                 declaration: false,
                 indent: false,
                 default_namespace: None,
@@ -3119,6 +3121,7 @@ fn run_multi_target_case(
     );
 
     let xml_options = format_xml::XmlWriteOptions {
+        scalar_output: None,
         declaration: false,
         indent: false,
         default_namespace: None,
@@ -3472,6 +3475,7 @@ fn run_xml_nil_case(
         &project.target,
         &expected,
         &format_xml::XmlWriteOptions {
+            scalar_output: None,
             declaration: false,
             indent: false,
             default_namespace: None,
@@ -3853,6 +3857,7 @@ fn run_failure_rule_case(
         &project.target,
         &expected,
         &format_xml::XmlWriteOptions {
+            scalar_output: None,
             declaration: false,
             indent: false,
             default_namespace: None,
@@ -4211,6 +4216,7 @@ fn run_dynamic_source_case(
         &project.target,
         &expected,
         &format_xml::XmlWriteOptions {
+            scalar_output: None,
             declaration: false,
             indent: false,
             default_namespace: None,
@@ -4648,6 +4654,7 @@ fn run_file_set_case(
         "{sample}: schema-shaped JSON transport changed file-set mapping output"
     );
     let xml_options = format_xml::XmlWriteOptions {
+        scalar_output: None,
         declaration: false,
         indent: false,
         default_namespace: None,

@@ -302,6 +302,8 @@ pub enum OwnedCapabilityContext {
 
 #[derive(Debug, Error, PartialEq)]
 pub enum EngineError {
+    #[error(transparent)]
+    XmlScalarOutput(#[from] mapping::XmlScalarOutputAdmissionError),
     #[error("graph node {node}: invocation counters require explicit host limits")]
     MissingInvocationCounters { node: NodeId },
     #[error("graph node {node}: counter {operand} expected {expected}, got {found}")]
@@ -870,6 +872,7 @@ fn run_outputs_internal(
     extras: Vec<(String, Instance)>,
     execution: Option<&ExecutionContext<'_>>,
 ) -> Result<ExecutionOutputs, EngineError> {
+    let preserve_scalars = project.validate_xml_scalar_output()?;
     let admission = source_ownership::admit_project(project, None)?;
     evaluate_run(
         project,
@@ -878,7 +881,7 @@ fn run_outputs_internal(
         execution,
         admission.used_owned,
         |program, context| {
-            let primary = eval_scope(
+            let primary = eval_scope::eval_scope_with_scalar_output(
                 program,
                 &project.root,
                 Some(&project.target),
@@ -887,6 +890,7 @@ fn run_outputs_internal(
                 &project.extra_sources,
                 execution.and_then(|execution| execution.dynamic_source_loader),
                 &TraceScope::primary(),
+                preserve_scalars,
             )?;
             let mut targets = Vec::with_capacity(project.extra_targets.len());
             for (index, target) in project.extra_targets.iter().enumerate() {
@@ -919,6 +923,7 @@ fn run_selected_target_internal(
     execution: Option<&ExecutionContext<'_>>,
     selection: TargetSelection<'_>,
 ) -> Result<SelectedTargetOutput, EngineError> {
+    let preserve_scalars = project.validate_xml_scalar_output()?;
     let named_target = required_sources::selected_target(project, selection)?;
     let admission = source_ownership::admit_project(project, Some(selection))?;
     evaluate_run(
@@ -928,7 +933,7 @@ fn run_selected_target_internal(
         execution,
         admission.used_owned,
         |program, context| match named_target {
-            None => eval_scope(
+            None => eval_scope::eval_scope_with_scalar_output(
                 program,
                 &project.root,
                 Some(&project.target),
@@ -937,6 +942,7 @@ fn run_selected_target_internal(
                 &project.extra_sources,
                 execution.and_then(|execution| execution.dynamic_source_loader),
                 &TraceScope::primary(),
+                preserve_scalars,
             )
             .map(SelectedTargetOutput::Primary),
             Some(target) => {

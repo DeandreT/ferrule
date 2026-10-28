@@ -176,6 +176,7 @@ fn output_xml(project: &Project, output: &Instance) -> Result<String, Box<dyn st
         &project.target,
         output,
         &format_xml::XmlWriteOptions {
+            scalar_output: None,
             declaration: false,
             indent: false,
             default_namespace: None,

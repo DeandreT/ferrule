@@ -356,6 +356,7 @@ pub(super) fn assert_case(
         &project.target,
         expected,
         &format_xml::XmlWriteOptions {
+            scalar_output: None,
             declaration: false,
             indent: false,
             default_namespace: None,

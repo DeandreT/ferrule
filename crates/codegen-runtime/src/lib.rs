@@ -217,7 +217,7 @@ pub use xml_boundary::{
     XmlOutputSetResourceError, XmlOutputTarget, admit_xml_document_set_names, parse_structured_xml,
     parse_structured_xml_bytes, parse_xml, parse_xml_bytes, parse_xml_document_set,
     preflight_xml_document_sets, preflight_xml_input_sizes, preflight_xml_input_sizes_with_budget,
-    serialize_xml_document, xml_input_indices,
+    serialize_xml_document, serialize_xml_document_with_scalar_output, xml_input_indices,
 };
 pub use xml_mixed_content::{
     OwnedXmlMixedContentExpression, OwnedXmlMixedContentReplacement, XmlMixedContentElement,
