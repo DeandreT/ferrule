@@ -64,7 +64,11 @@ public static partial class FerruleFunctions
     {
         var (value, picture) = FormatDateTimePictureArguments(arguments, function);
         FormattableDateTimePicture fields;
-        if (input == DateTimePictureInput.Date)
+        if (milliseconds)
+        {
+            fields = NativeMillisecondDateTimeFields(value, function);
+        }
+        else if (input == DateTimePictureInput.Date)
         {
             var (date, timezone) = SplitIsoTimezone(value, function, DateOrDateTimeDetail);
             ValidateIsoDate(date, function, DateOrDateTimeDetail);
@@ -99,6 +103,52 @@ public static partial class FerruleFunctions
 
         if (milliseconds) fields.Fraction = (fields.Fraction ?? string.Empty).PadRight(3, '0')[..3];
         return FerruleValue.FromString(RenderDateTimePicture(fields, picture, function));
+    }
+
+    private static FormattableDateTimePicture NativeMillisecondDateTimeFields(string input, string function)
+    {
+        string value = input.Trim();
+        int separator = value.IndexOf('T', StringComparison.Ordinal);
+        if (separator < 0) throw InvalidArgument(function, SupportedPictureDetail);
+        string date = value[..separator];
+        string time = value[(separator + 1)..];
+        ValidateIsoDate(date, function, DateTimeDetail);
+        var original = DateTimePictureDate(date);
+        if (!int.TryParse(original.Year, NumberStyles.None, CultureInfo.InvariantCulture, out int year) || year is < 1 or > 9999)
+            throw InvalidArgument(function, SupportedPictureDetail);
+        string? zone = null;
+        if (time.EndsWith('Z'))
+        {
+            zone = "Z";
+            time = time[..^1];
+        }
+        else
+        {
+            int index = time.IndexOfAny(['+', '-']);
+            if (index >= 0)
+            {
+                zone = time[index..];
+                time = time[..index];
+                if (zone.Length != 6 || zone[3] != ':' || !zone[1..3].All(char.IsAsciiDigit)
+                    || !zone[4..].All(char.IsAsciiDigit) || int.Parse(zone[4..], CultureInfo.InvariantCulture) > 59)
+                    throw InvalidArgument(function, SupportedPictureDetail);
+            }
+        }
+        bool midnight = time.StartsWith("24:00:00", StringComparison.Ordinal);
+        if (midnight) time = "00:00:00" + time[8..];
+        ValidateIsoTime(time, function, DateTimeDetail);
+        DateTime day;
+        try { day = new DateTime(year, (int)original.Month, (int)original.Day).AddDays(midnight ? 1 : 0); }
+        catch (ArgumentOutOfRangeException) { throw InvalidArgument(function, SupportedPictureDetail); }
+        var fields = new FormattableDateTimePicture
+        {
+            Year = day.Year.ToString(CultureInfo.InvariantCulture),
+            Month = (uint)day.Month,
+            Day = (uint)day.Day,
+        };
+        SetDateTimePictureTime(fields, time, function);
+        fields.Timezone = zone;
+        return fields;
     }
 
     private static (string Value, string Picture) FormatDateTimePictureArguments(

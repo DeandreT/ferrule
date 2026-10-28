@@ -14,6 +14,11 @@ internal static partial class Program
             ("2026-01-02T03:04:05.12", "2026-01-02T03:04:05.120Z"),
             ("2026-01-02T03:04:05.1234567", "2026-01-02T03:04:05.123Z"),
             ("2026-01-02T03:04:05.0009999", "2026-01-02T03:04:05.000Z"),
+            (" 2026-01-02T03:04:05 ", "2026-01-02T03:04:05.000Z"),
+            ("2026-01-02T24:00:00", "2026-01-03T00:00:00.000Z"),
+            ("2024-02-29T24:00:00.5", "2024-03-01T00:00:00.500Z"),
+            ("2026-12-31T24:00:00", "2027-01-01T00:00:00.000Z"),
+            ("2026-01-02T03:04:05+14:01", "2026-01-02T03:04:05.000Z"),
             ("2026-01-02T23:59:59.9999999-07:00", "2026-01-02T23:59:59.999Z"),
             ("2026-01-02T03:04:05.1234567+05:30", "2026-01-02T03:04:05.123Z"),
         })
@@ -23,6 +28,11 @@ internal static partial class Program
         }
         var normal = FerruleFunctions.Call("format_datetime", new[] { FerruleValue.FromString("2026-01-02T03:04:05.1234567"), FerruleValue.FromString(picture) });
         if (normal.StringValue != "2026-01-02T03:04:05.1234567Z") throw new InvalidOperationException("Ordinary formatter changed.");
+        var year = new[] { FerruleValue.FromString("0001-01-01T00:00:00"), FerruleValue.FromString("[Y]") };
+        Equal("1", FerruleFunctions.Call("format_datetime_milliseconds", year).StringValue);
+        Equal("0001", FerruleFunctions.Call("format_datetime", year).StringValue);
+        foreach (var invalid in new[] { "2026-01-02T24:01:00", "2026-01-02T24:00:01", "9999-12-31T24:00:00", "2026-01-02T03:04:05+99:99" })
+            Throws<FerruleRuntimeException>(() => FerruleFunctions.Call("format_datetime_milliseconds", new[] { FerruleValue.FromString(invalid), FerruleValue.FromString(picture) }));
         const string adjacent = "[Y,2-4][M,1-2][D,1-2]";
         Equal("2024-02-29", FerruleFunctions.Call("parse_date", new[] { FerruleValue.FromString("20240229"), FerruleValue.FromString(adjacent) }).StringValue);
         foreach (var invalid in new[] { "20260229", "20271331", "2027011", "202710310", "abcdefgh" })
