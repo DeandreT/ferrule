@@ -31,6 +31,7 @@ mod filtered_document_filename;
 mod first_presence;
 mod flextext;
 mod flextext_parser;
+mod float_cast_order;
 mod function;
 mod join;
 mod json_parser;
@@ -423,6 +424,7 @@ fn prepare_export_mode(
     scoped_exception_branches.validate_ports(&sources, &targets[0].ports)?;
 
     let native_datetime_casts = native_datetime_cast::NativeDatetimeCasts::plan(project, &targets);
+    float_cast_order::validate(project, &targets)?;
     for (name, options) in sources
         .iter()
         .map(|source| (source.name, source.options))

@@ -523,6 +523,12 @@ repeated target scopes when every selected leaf and graph consumer satisfies
 the closed-schema guards. Invalid lexical values retain the same typed local
 failure after reimport. This removes the IDoc sample's internal cast component;
 its separate EDI schema/layout blockers remain.
+Flat XML targets also preserve the evaluation-time conversion of proved direct
+String-to-`xs:double` feeds into repeated scalar fields, with either explicit
+`cast-in-subtree` metadata or the verified enabled default. The bounded
+[float-conversion contract](design/target-float-cast.md) keeps source ownership
+and failure order explicit. Its helper remains a Ferrule extension on export;
+strict native export refuses it while native value fidelity is unqualified.
 A bounded strict IDoc descriptor parser also retains supported group, segment,
 field, cardinality, and code-list metadata. Its canonical rendering reparses
 identically and projects to the same legacy schema and fixed-record layout.

@@ -65,6 +65,7 @@ public static partial class FerruleFunctions
             "datetime_from_parts" => DateTimeFromParts(arguments),
             "duration_from_parts" => DurationFromParts(arguments),
             "coerce_datetime" => CoerceDateTime(arguments),
+            "coerce_float" => CoerceFloat(arguments),
             "parse_date" => ParseDate(arguments),
             "parse_datetime" => ParseDateTime(arguments),
             "parse_time" => ParseTime(arguments),
