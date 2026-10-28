@@ -15,6 +15,7 @@ pub(crate) fn is_internal(name: &str) -> bool {
             | "json_parse_object_exists"
             | "flextext_parse_field"
             | "coerce_datetime"
+            | "coerce_float"
     )
 }
 
@@ -27,6 +28,7 @@ mod tests {
         assert!(is_internal("to_number"));
         assert!(is_internal("sqlite_multiply"));
         assert!(is_internal("coerce_datetime"));
+        assert!(is_internal("coerce_float"));
         assert!(!is_internal("to-number"));
         assert!(!is_internal("convertToISBN13"));
     }
