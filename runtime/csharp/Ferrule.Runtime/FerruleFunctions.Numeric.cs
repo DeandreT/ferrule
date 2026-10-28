@@ -78,6 +78,22 @@ public static partial class FerruleFunctions
         });
     }
 
+    private static FerruleValue CoerceFloat(IReadOnlyList<FerruleValue> arguments)
+    {
+        const string function = "coerce_float";
+        RequireArity(function, arguments, 1);
+        var value = arguments[0];
+        if (value.Kind != FerruleValueKind.String)
+        {
+            return value;
+        }
+        if (TryFiniteDouble(value.StringValue, out var number))
+        {
+            return FerruleValue.FromDouble(number);
+        }
+        throw InvalidArgument(function, "requires finite floating-point text");
+    }
+
     private static FerruleValue Positive(IReadOnlyList<FerruleValue> arguments)
     {
         RequireArity("positive", arguments, 1);

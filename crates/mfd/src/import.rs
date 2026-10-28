@@ -71,6 +71,7 @@ mod scope;
 mod sequence_scalar;
 mod source;
 mod source_node_function;
+mod target_float_cast;
 mod target_iteration;
 mod target_mixed_content;
 mod target_node_default;
@@ -2968,6 +2969,7 @@ fn build_target_scope_inner(
     let dynamic_target = dynamic_json::prepare_target(target, builder);
     let mut iterations = Vec::new();
     let mut bindings = Vec::new();
+    let mut float_cast_witnesses = Vec::new();
     let mut parser_object_targets = Vec::new();
     let mut group_projections = Vec::new();
     let mut structured_udf_targets = Vec::new();
@@ -3178,17 +3180,41 @@ fn build_target_scope_inner(
         } else {
             node
         };
+        let root_index = target_leaf
+            .chain()
+            .is_empty()
+            .then_some(scopes.root.bindings.len());
+        let cast_path = target_leaf.path();
         scopes.add_binding(
             target_leaf,
             node,
             BindingOccurrence::authored(target, input),
         );
+        if let Some(index) = root_index
+            && scopes.root.bindings.len() == index + 1
+        {
+            float_cast_witnesses.push(target_float_cast::Witness {
+                index,
+                input,
+                feed: from,
+                node,
+                path: cast_path,
+            });
+        }
     }
     dynamic_json::build_target(dynamic_target, target, builder, &mut scopes);
     compose_csv_target_rows(csv_singleton_bindings, builder, &mut scopes);
     target_node_default::install(target, structure, builder, &mut scopes);
     target_node_function::install(mapping, target, structure, resources, builder, &mut scopes);
     target_type_cast::install(target, structure, resources, builder, &mut scopes);
+    target_float_cast::install(
+        target,
+        structure,
+        resources,
+        builder,
+        &mut scopes.root,
+        &float_cast_witnesses,
+    );
     group_projection::install_optional_text_occurrences(target, builder, &mut scopes);
     ensure_singleton_csv_row_set(target, &mut scopes);
     scopes.root

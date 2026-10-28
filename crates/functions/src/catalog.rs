@@ -191,6 +191,7 @@ pub(crate) enum BuiltinId {
     String,
     IsNumeric,
     ToNumber,
+    CoerceFloat,
     DecimalFromNullableText,
     Boolean,
     Positive,
@@ -803,6 +804,19 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Internal,
         "Parses bounded decimal numeric text, using zero for missing or JSON null. Plain decimal and exponent conversion policies remain distinct."
+    ),
+    builtin!(
+        CoerceFloat,
+        "coerce_float",
+        "Coerce Float Text",
+        Conversion,
+        &[parameter("value", Any)],
+        BuiltinArity::fixed(1),
+        Any,
+        true,
+        true,
+        Internal,
+        "Parses finite floating-point text while leaving other scalar tags to their existing target policy."
     ),
     builtin!(
         Boolean,

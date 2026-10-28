@@ -645,6 +645,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "datetime_from_parts",
         "duration_from_parts",
         "coerce_datetime",
+        "coerce_float",
         "parse_date",
         "parse_datetime",
         "parse_time",
