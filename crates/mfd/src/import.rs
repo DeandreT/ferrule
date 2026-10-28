@@ -80,6 +80,7 @@ mod target_type_cast;
 mod udf;
 mod unused_xml_source;
 mod xml_root_view;
+mod xml_scalar_output;
 mod xml_serializer;
 
 pub use csv_document::{ImportedDocument, import_csv_document, import_csv_document_with_options};
@@ -1572,6 +1573,15 @@ fn import_resolved(
         .find(|n| n.is_element() && n.tag_name().name() == "structure")
         .ok_or(MfdError::NotMfd("wrapper has no structure"))?;
     let primary_source_hint = primary_source_hint(&mapping_el, &structure);
+    if mapping_el.descendants().any(|node| {
+        xml_scalar_output::xml_request_owner(node).is_some()
+            && node
+                .ancestors()
+                .find(|ancestor| ancestor.has_tag_name("structure"))
+                != Some(structure)
+    }) {
+        return Err(MfdError::Unsupported("XML scalar output inside a user function or outside the active structure cannot be retained safely".into()));
+    }
     let scope_source_hints = scope_source_hints(&structure);
     let selected_language = wrapper
         .children()
@@ -1613,6 +1623,9 @@ fn import_resolved(
     let inspect_unused_input = unused_xml_source::may_contain_unused_input(structure);
     let root_view_inventory = xml_root_view::Inventory::read(structure);
     if !retain_primary_filename
+        && !structure
+            .descendants()
+            .any(|node| xml_scalar_output::xml_request_owner(node).is_some())
         && matches!(selection, StageSelection::Ordinary)
         && edges.conflicts.is_empty()
         && !(item_ordered_exceptions && exception::item_ordered::has_exception(structure))
@@ -1664,7 +1677,15 @@ fn import_resolved(
                         &mut warnings,
                     ) {
                         Some(read) => {
-                            let sc = read.component;
+                            let mut sc = read.component;
+                            xml_scalar_output::read(
+                                component,
+                                &mut sc,
+                                read.schema_file_authoritative,
+                                read.authoritative_schema_bytes.as_deref(),
+                                resources,
+                                &mut warnings,
+                            );
                             xml_root_view::evidence(
                                 &root_view_findings,
                                 Some(&sc.schema),
@@ -1720,6 +1741,12 @@ fn import_resolved(
                             }
                         }
                         None => {
+                            if xml_scalar_output::requested(component) {
+                                return Err(crate::MfdError::Unsupported(
+                                    "XML cast request has no safely identifiable schema owner"
+                                        .into(),
+                                ));
+                            }
                             xml_root_view::evidence(
                                 &root_view_findings,
                                 None,
@@ -2735,6 +2762,21 @@ fn import_resolved(
         graph: builder.graph,
         root,
     };
+    let requests = structure
+        .descendants()
+        .filter_map(xml_scalar_output::xml_request_owner)
+        .map(|node| node.range().start)
+        .collect::<BTreeSet<_>>()
+        .len();
+    let retained = std::iter::once(&project.source_options)
+        .chain(std::iter::once(&project.target_options))
+        .chain(project.extra_sources.iter().map(|source| &source.options))
+        .chain(project.extra_targets.iter().map(|target| &target.options))
+        .filter(|options| options.xml_scalar_output.is_some())
+        .count();
+    if requests > retained {
+        return Err(crate::MfdError::Unsupported("XML scalar output request belongs to a transformed or unidentified component and cannot be retained safely".into()));
+    }
     exception::item_ordered::finish(&mut project, item_exception, &mut warnings);
     if let Some(filename) = primary_filename {
         let mut document =
@@ -2758,6 +2800,38 @@ fn import_resolved(
         }
     }
     enrich_unresolved_edi_source_schemas(&mut project);
+    // A flat request whose construction exceeds the root-only profile keeps
+    // its retained meaning through the document-wide profile when that admits it.
+    if matches!(
+        project.target_options.xml_scalar_output,
+        Some(ir::XmlScalarOutputPolicy::SuppressCastInSubtreeV1 { .. })
+    ) && project.validate_xml_scalar_output().is_err()
+    {
+        let flat = project
+            .target_options
+            .xml_scalar_output
+            .replace(ir::XmlScalarOutputPolicy::SuppressCastInDocumentV1 {});
+        if project.validate_xml_scalar_output().is_err() {
+            project.target_options.xml_scalar_output = flat;
+        }
+    }
+    if matches!(
+        project.target_options.xml_scalar_output,
+        Some(
+            ir::XmlScalarOutputPolicy::SuppressCastInSubtreeV1 { .. }
+                | ir::XmlScalarOutputPolicy::SuppressCastInDocumentV1 {}
+        )
+    ) && let Err(error) = project.validate_xml_scalar_output()
+        && error.owner == "target"
+    {
+        project.target_options.xml_scalar_output = Some(xml_scalar_output::unresolved(
+            ir::XmlScalarOutputUnresolvedReason::UnsupportedShape,
+            "suppressed target requires ordinary constructed output with no named endpoints",
+        ));
+        warnings.push(
+            "XML scalar output is unresolved: unsupported target construction or endpoints".into(),
+        );
+    }
     if matches!(selection, StageSelection::Ordinary) {
         unused_xml_source::classify(
             &mapping_el,

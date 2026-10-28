@@ -280,6 +280,8 @@ mod value_maps;
 mod variadic_logical;
 #[path = "code_generation/x12_mapforce_interchanges.rs"]
 mod x12_mapforce_interchanges;
+#[path = "code_generation/xml_cast_suppression.rs"]
+mod xml_cast_suppression;
 #[path = "code_generation/xml_dynamic_inputs.rs"]
 mod xml_dynamic_inputs;
 #[path = "code_generation/xml_dynamic_outputs.rs"]

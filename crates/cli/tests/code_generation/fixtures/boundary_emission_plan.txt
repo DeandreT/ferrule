@@ -6185,7 +6185,7 @@ lower        err:a34073f9d4b8e2b3 DynamicOwner
 lower        err:ce3200fd14fd5a72 DynamicOwner
 
 ## basic-owned-xml-document-set/nested (project)
-lower        ok:d37774a2fab4aec7
+lower        ok:527a700655758f2b
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
@@ -6203,7 +6203,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## basic-owned-xml-document-set/cross (project)
-lower        ok:633979a6b536063a
+lower        ok:3ea99d3f2b2d8dbe
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
@@ -6242,7 +6242,7 @@ rust_json5   ok:c56fc6abcdb1ed5e
 csharp_json5 ok:3a24542750fbf213
 
 ## xml-requests/base/ordinary (project)
-lower        ok:f045201b35c00da4
+lower        ok:a4af7e279e8c6a3a
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
@@ -6260,7 +6260,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/base/ordinary-hints (project)
-lower        ok:47647797ec0bc9d7
+lower        ok:66497f1aedba3b79
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
@@ -6332,7 +6332,7 @@ rust_json5   err:f3543d2f60b363d6 JSON5_Source_schema:_JSON5_schema_metadata
 csharp_json5 err:f3543d2f60b363d6 JSON5_boundary:_JSON5_Source_schema:_JSON5
 
 ## xml-requests/nested/ordinary (project)
-lower        ok:e8fbb94c38e35825
+lower        ok:fd42ee1700531bcb
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
@@ -6350,7 +6350,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/base/ordinary-depth-40 (project)
-lower        ok:1d51944802b7e5d4
+lower        ok:0de2e103fb188f7a
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
@@ -6410,7 +6410,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/dynamic_named_xml_input/named-target-hints (project)
-lower        ok:a3c83fae49429618
+lower        ok:e0dfc5af58c1cf42
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
@@ -6491,7 +6491,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/dynamic_named_xml_input_mixed/named-target-hints (project)
-lower        ok:e9142867dbf6d9dc
+lower        ok:7e64f7da34fc469e
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
@@ -6638,7 +6638,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/multiple_dynamic_named_inputs_static_primary_dynamic_named_xml_documents/named-target-hints (project)
-lower        ok:e6603974372a80f9
+lower        ok:a6ea04ba8b1fdc71
 validate     ok
 xml_mode     ok:Some(DynamicNamedInputStaticPrimaryDynamicNamedDocuments)
 plan         ok:DynamicNamedInputStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
@@ -6719,7 +6719,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/multiple_dynamic_named_xml_input_mixed/named-target-hints (project)
-lower        ok:6a985b6228fa8996
+lower        ok:af5e4b1c18ec114c
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
@@ -6866,7 +6866,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/one_dynamic_named_input_static_primary_dynamic_named_xml_documents/named-target-hints (project)
-lower        ok:c473566cb07ef036
+lower        ok:17ea0873d6635a76
 validate     ok
 xml_mode     ok:Some(DynamicNamedInputStaticPrimaryDynamicNamedDocuments)
 plan         ok:DynamicNamedInputStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
@@ -6923,7 +6923,7 @@ csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sour
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/root_view_primary_static_named_xml_output/named-target-hints (project)
-lower        ok:c59fae2094f251ca
+lower        ok:fdde1816c537594c
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single]
@@ -6959,7 +6959,7 @@ lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 lower        err:60e68680d8d21eba mapping_cannot_be_lowered_for_code
 
 ## xml-requests/root_view_static_named_xml_inputs/target-json (project)
-lower        ok:6e22e439d536c17d
+lower        ok:7f838224f49539bb
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[]
@@ -6995,7 +6995,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/root_view_three_static_named_xml_outputs/named-target-hints (project)
-lower        ok:25ae23d8ce826593
+lower        ok:4f8c2b48ceddd8d5
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single, Single]
@@ -7022,7 +7022,7 @@ lower        err:62d41142bcc1276e mapping_cannot_be_lowered_for_code
 lower        err:62d41142bcc1276e mapping_cannot_be_lowered_for_code
 
 ## xml-requests/root_view_two_static_named_xml_outputs/named-target-hints (project)
-lower        ok:e65ac0407804c6ae
+lower        ok:6357583e5766e1c2
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single]
@@ -7049,7 +7049,7 @@ lower        err:7e81f889ed27ca5b mapping_cannot_be_lowered_for_code
 lower        err:7e81f889ed27ca5b mapping_cannot_be_lowered_for_code
 
 ## xml-requests/root_view_two_static_named_xml_outputs_reversed/named-target-hints (project)
-lower        ok:e6279c7d14a1ec38
+lower        ok:d04843ac409b5b38
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single]
@@ -7085,7 +7085,7 @@ lower        err:e865b1a54eaa582e mapping_cannot_be_lowered_for_code
 lower        err:545b027a91152f97 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/root_view_two_static_structured_inputs_1_static_named_outputs/named-target-hints (project)
-lower        ok:e0f1c536972a3fa7
+lower        ok:9bda4d28d6dd2dd1
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[Single]
@@ -7121,7 +7121,7 @@ lower        err:764cd74c1c7f39fc mapping_cannot_be_lowered_for_code
 lower        err:963fda0564742a55 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/root_view_two_static_structured_inputs_2_static_named_outputs/named-target-hints (project)
-lower        ok:010fca632c854949
+lower        ok:3ed0f7e40a5830fd
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[Single, Single]
@@ -7217,7 +7217,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/static_named_inputs_static_primary_dynamic_named_xml_documents/named-target-hints (project)
-lower        ok:e4482c78584d31fd
+lower        ok:61ecd9a7e8a2e1cf
 validate     ok
 xml_mode     ok:Some(StaticNamedInputsStaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticNamedInputsStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
@@ -7298,7 +7298,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/static_named_xml_inputs/named-target-hints (project)
-lower        ok:4b87561c61cac8d8
+lower        ok:5a4e90ad611f1120
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
@@ -7355,7 +7355,7 @@ csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sour
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/static_named_xml_rootview/target-json (project)
-lower        ok:cdf3e0ecb03089ce
+lower        ok:3506d128434d5584
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[]
@@ -7391,7 +7391,7 @@ rust_json5   err:d4577c04ae099a32 JSON5_Source_schema:_JSON5_schema_metadata
 csharp_json5 err:d4577c04ae099a32 JSON5_boundary:_JSON5_Source_schema:_JSON5
 
 ## xml-requests/static_primary_dynamic_named_xml_documents/named-target-hints (project)
-lower        ok:a757ba0be57ac743
+lower        ok:4df00edb8b0e6aeb
 validate     ok
 xml_mode     ok:Some(StaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticPrimaryDynamicNamedDocuments/Structured/[List]
@@ -7448,7 +7448,7 @@ csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targ
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/static_primary_mixed_multiple_named_xml_documents/named-target-hints (project)
-lower        ok:8c9a828a9d1e909d
+lower        ok:fe84a0f045dd728d
 validate     ok
 xml_mode     ok:Some(StaticPrimaryMixedNamedXmlOutputs)
 plan         ok:StaticPrimaryMixedNamedXmlOutputs/Structured/[Single, List, List]
@@ -7505,7 +7505,7 @@ csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targ
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/static_primary_mixed_named_xml_documents/named-target-hints (project)
-lower        ok:e6b7a27f030bd1b0
+lower        ok:a45942e18419d23a
 validate     ok
 xml_mode     ok:Some(StaticPrimaryMixedNamedXmlOutputs)
 plan         ok:StaticPrimaryMixedNamedXmlOutputs/Structured/[Single, List]
@@ -7562,7 +7562,7 @@ csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targ
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/static_primary_multiple_dynamic_named_xml_documents/named-target-hints (project)
-lower        ok:ea4ed77c23cb25ff
+lower        ok:f644e5ed298d745f
 validate     ok
 xml_mode     ok:Some(StaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticPrimaryDynamicNamedDocuments/Structured/[List, List]
@@ -7664,7 +7664,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/unused_dynamic_named_xml_input/named-target-hints (project)
-lower        ok:8de4a85d6aeb9dae
+lower        ok:1af078ff95612024
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
@@ -10307,7 +10307,7 @@ rust_json5   err:f3eabe9cbf534630 JSON5_Source_schema:_JSON5_schema_SchemaNodes
 csharp_json5 err:f3eabe9cbf534630 JSON5_boundary:_JSON5_Source_schema:_JSON5
 
 ## xml-fixtures/dynamic_named_xml_input (project)
-lower        ok:57ec5aece2dc81b6
+lower        ok:a10e187f10732df8
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
@@ -10325,7 +10325,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/dynamic_named_xml_input_mixed (project)
-lower        ok:ad08bbb112ddd29c
+lower        ok:fd85a814b0f1fc6e
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
@@ -10343,7 +10343,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/dynamic_primary_xml_documents (project)
-lower        ok:a443aadcf1ca4ee9
+lower        ok:c48eb6befe2f6943
 validate     ok
 xml_mode     ok:Some(DynamicPrimaryDocuments)
 plan         ok:DynamicPrimaryDocuments/Structured/[]
@@ -10361,7 +10361,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/multiple_dynamic_named_inputs_dynamic_primary_xml_documents (project)
-lower        ok:1fc454b2ee2d5e3b
+lower        ok:419f98d278e2660f
 validate     ok
 xml_mode     ok:Some(DynamicNamedInputDynamicPrimaryDocuments)
 plan         ok:DynamicNamedInputDynamicPrimaryDocuments/Structured/[]
@@ -10379,7 +10379,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/multiple_dynamic_named_inputs_static_primary_dynamic_named_xml_documents (project)
-lower        ok:5f67c81044b66af3
+lower        ok:60de7f32a0dd9b6b
 validate     ok
 xml_mode     ok:Some(DynamicNamedInputStaticPrimaryDynamicNamedDocuments)
 plan         ok:DynamicNamedInputStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
@@ -10397,7 +10397,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/multiple_dynamic_named_xml_input_mixed (project)
-lower        ok:0af51e8b42855f60
+lower        ok:3e5a9bb60c9acbde
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
@@ -10415,7 +10415,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/nested_document_collection (project)
-lower        ok:babd4bb4a216c6cc
+lower        ok:12bdc63ed17eda72
 validate     ok
 xml_mode     ok:Some(DynamicPrimaryDocuments)
 plan         ok:DynamicPrimaryDocuments/Structured/[]
@@ -10433,7 +10433,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/one_dynamic_named_input_dynamic_primary_xml_documents (project)
-lower        ok:6ed8729d3f3376b3
+lower        ok:bb5a82bb7008b16f
 validate     ok
 xml_mode     ok:Some(DynamicNamedInputDynamicPrimaryDocuments)
 plan         ok:DynamicNamedInputDynamicPrimaryDocuments/Structured/[]
@@ -10451,7 +10451,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/one_dynamic_named_input_static_primary_dynamic_named_xml_documents (project)
-lower        ok:1d271d1de9a27744
+lower        ok:199a001faff349a4
 validate     ok
 xml_mode     ok:Some(DynamicNamedInputStaticPrimaryDynamicNamedDocuments)
 plan         ok:DynamicNamedInputStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
@@ -10469,7 +10469,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/root_view_primary_static_named_xml_output (project)
-lower        ok:8c71d82d34ffb5a4
+lower        ok:fa39e9eed0748c1e
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single]
@@ -10487,7 +10487,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/root_view_static_named_xml_inputs (project)
-lower        ok:6e22e439d536c17d
+lower        ok:7f838224f49539bb
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[]
@@ -10505,7 +10505,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/root_view_three_static_named_xml_outputs (project)
-lower        ok:76fa4d480b4c0eb3
+lower        ok:c76da2cdae5ffe75
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single, Single]
@@ -10523,7 +10523,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/root_view_two_static_named_xml_outputs (project)
-lower        ok:a5c483f6a257a64e
+lower        ok:beacd0d1f047df62
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single]
@@ -10541,7 +10541,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/root_view_two_static_named_xml_outputs_reversed (project)
-lower        ok:081dfd04c7aca186
+lower        ok:f227f3863f185536
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single]
@@ -10559,7 +10559,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/root_view_two_static_structured_inputs_1_static_named_outputs (project)
-lower        ok:fd5cf61b6b77eb7b
+lower        ok:198f6eefe551341d
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[Single]
@@ -10577,7 +10577,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/root_view_two_static_structured_inputs_2_static_named_outputs (project)
-lower        ok:c7fcc843e98b6713
+lower        ok:8f44f4d03ede3be7
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[Single, Single]
@@ -10595,7 +10595,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_named_inputs_dynamic_primary_xml_documents (project)
-lower        ok:b4b982bfb45f0111
+lower        ok:4283a56fabe18e53
 validate     ok
 xml_mode     ok:Some(StaticNamedInputsDynamicPrimaryDocuments)
 plan         ok:StaticNamedInputsDynamicPrimaryDocuments/Structured/[]
@@ -10613,7 +10613,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_named_inputs_static_primary_dynamic_named_xml_documents (project)
-lower        ok:d3731e2f6b85ba71
+lower        ok:c2042596b774dbdb
 validate     ok
 xml_mode     ok:Some(StaticNamedInputsStaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticNamedInputsStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
@@ -10631,7 +10631,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_named_xml_inputs (project)
-lower        ok:e1f397a9c141d1cf
+lower        ok:9ad954cfe46f8827
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
@@ -10649,7 +10649,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_named_xml_rootview (project)
-lower        ok:cdf3e0ecb03089ce
+lower        ok:3506d128434d5584
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[]
@@ -10667,7 +10667,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_primary_dynamic_named_xml_documents (project)
-lower        ok:d75d72f3335f2532
+lower        ok:eb8645f21403c6aa
 validate     ok
 xml_mode     ok:Some(StaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticPrimaryDynamicNamedDocuments/Structured/[List]
@@ -10685,7 +10685,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_primary_mixed_multiple_named_xml_documents (project)
-lower        ok:df622caddcc22103
+lower        ok:1962f8545e7f1cb3
 validate     ok
 xml_mode     ok:Some(StaticPrimaryMixedNamedXmlOutputs)
 plan         ok:StaticPrimaryMixedNamedXmlOutputs/Structured/[Single, List, List]
@@ -10703,7 +10703,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_primary_mixed_named_xml_documents (project)
-lower        ok:3b6b18fb155a72ae
+lower        ok:e7b0946e72b84978
 validate     ok
 xml_mode     ok:Some(StaticPrimaryMixedNamedXmlOutputs)
 plan         ok:StaticPrimaryMixedNamedXmlOutputs/Structured/[Single, List]
@@ -10721,7 +10721,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_primary_multiple_dynamic_named_xml_documents (project)
-lower        ok:d4b5e86be8851555
+lower        ok:1b317d1a7cd3856d
 validate     ok
 xml_mode     ok:Some(StaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticPrimaryDynamicNamedDocuments/Structured/[List, List]
@@ -10757,7 +10757,7 @@ rust_json5   err:7ea79af708bdf772 JSON5_Target_schema:_JSON5_schema_metadata
 csharp_json5 err:7ea79af708bdf772 JSON5_boundary:_JSON5_Target_schema:_JSON5
 
 ## xml-fixtures/unused_dynamic_named_xml_input (project)
-lower        ok:dd30ceced30f9e50
+lower        ok:57bd8cb745d870ce
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]

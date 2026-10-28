@@ -29,6 +29,7 @@ pub(super) struct ProducedItem {
 }
 
 pub(super) struct ItemEvaluator<'a> {
+    pub(super) preserve_scalars: Option<ir::XmlScalarPreservation<'a>>,
     pub(super) program: EvalProgram<'a>,
     pub(super) scope: &'a Scope,
     pub(super) trace_scope: &'a TraceScope,
@@ -95,6 +96,7 @@ impl ItemEvaluator<'_> {
         apply_filter: bool,
     ) -> Result<Option<Instance>, EngineError> {
         let Self {
+            preserve_scalars,
             program,
             scope,
             trace_scope,
@@ -270,7 +272,13 @@ impl ItemEvaluator<'_> {
                 &mut in_progress,
             )?;
             let target_field = target.and_then(|schema| schema.child(&binding.target_field));
-            let value = adapt_target_scalar(value, target_field);
+            let value = if preserve_scalars
+                .is_some_and(|preserve| preserve.preserves(&binding.target_field))
+            {
+                value
+            } else {
+                adapt_target_scalar(value, target_field)
+            };
             let repeating = target_field.is_some_and(|field| field.repeating);
             let value = match repeating {
                 true => match value {
@@ -348,7 +356,7 @@ impl ItemEvaluator<'_> {
         }
         for (index, child) in scope.children.iter().enumerate() {
             let child_target = target.and_then(|schema| schema.child(&child.target_field));
-            let child_instance = eval_scope(
+            let child_instance = super::eval_scope_with_scalar_output(
                 program,
                 child,
                 child_target,
@@ -357,6 +365,7 @@ impl ItemEvaluator<'_> {
                 extra_sources,
                 source_loader,
                 &trace_scope.child(&child.target_field, index),
+                preserve_scalars.and_then(ir::XmlScalarPreservation::for_child),
             )?;
             let traced_value = trace_field_value(&child_instance);
             before_target_write(

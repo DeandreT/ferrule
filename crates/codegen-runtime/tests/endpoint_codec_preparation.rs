@@ -395,6 +395,7 @@ fn xml_endpoint_per_call_cost_attribution() {
         measure(LARGE, || serialize(&large_instance)),
     );
     let options = format_xml::XmlWriteOptions {
+        scalar_output: None,
         declaration: true,
         indent: true,
         default_namespace: None,

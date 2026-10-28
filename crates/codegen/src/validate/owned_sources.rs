@@ -252,7 +252,7 @@ fn scope_has_owned(scope: &TargetScope) -> bool {
         || scope.children.iter().any(scope_has_owned)
         || matches!(&scope.construction, TargetConstruction::DynamicGroup { children, .. } if children.iter().any(|child| scope_has_owned(&child.scope)))
 }
-fn has_owned(program: &Program) -> bool {
+pub(super) fn has_owned(program: &Program) -> bool {
     program
         .expressions
         .iter()

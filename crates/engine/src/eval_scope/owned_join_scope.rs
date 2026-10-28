@@ -208,6 +208,7 @@ pub(super) fn eval_owned_join_scope<'a>(
         }
         let output = tuple.with_position(produced.len() + 1);
         let evaluator = ItemEvaluator {
+            preserve_scalars: None,
             program: program
                 .with_owned_join(&output)
                 .with_owned_trace_phase(crate::TraceOwnedPhase::Output),

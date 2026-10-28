@@ -210,6 +210,9 @@ pub fn validate_primary_document(document: &mapping::DocumentProject) -> Vec<Val
 
 fn validate_in_document_context(project: &Project, document_set: bool) -> Vec<ValidationIssue> {
     let mut issues = Vec::new();
+    if let Err(error) = project.validate_xml_scalar_output() {
+        issues.push(ValidationIssue::new("XML scalar output", error.to_string()));
+    }
     if project.root.produces_documents() && project.target_path.is_some() {
         issues.push(
             ValidationIssue::new(

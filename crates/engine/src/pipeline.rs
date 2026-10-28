@@ -413,6 +413,12 @@ fn plan_pipeline(pipeline: &Pipeline) -> Result<Plan, Vec<PipelineValidationIssu
 
     let mut ids = BTreeMap::new();
     for (index, stage) in pipeline.stages.iter().enumerate() {
+        if stage.project.uses_xml_scalar_output() {
+            issues.push(issue(
+                Some(stage.id.clone()),
+                "XML scalar output v1 does not support pipeline stages",
+            ));
+        }
         if stage.id.is_empty() || stage.id.contains('\0') || stage.id.len() > 256 {
             issues.push(issue(
                 Some(stage.id.clone()),

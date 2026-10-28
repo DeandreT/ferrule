@@ -132,7 +132,7 @@ fn lower_with_xml_request(
     if let Some(diagnostic) = owned_document_diagnostic(project, owned_joins) {
         return Err(LowerError::new(vec![diagnostic]));
     }
-    let xml_request = match xml_request {
+    let xml_request = match xml_request.filter(|_| !project.uses_xml_scalar_output()) {
         Some(request) => request,
         None => XmlRequest::classify(project)?,
     };

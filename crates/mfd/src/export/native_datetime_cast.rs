@@ -30,6 +30,7 @@ impl NativeDatetimeCasts {
         let mut bindings = Vec::new();
         for (target_index, target) in targets.iter().enumerate() {
             if target.format != SideFormat::Xml
+                || target.options.xml_scalar_output.is_some()
                 || target.root.construction != ScopeConstruction::Constructed
                 || target.dynamic_json.is_some()
                 || target.options.wsdl.is_some()

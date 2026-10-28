@@ -436,6 +436,10 @@ pub(super) fn saved_subjects() -> TestResult<Vec<(String, Project)>> {
         subjects.push((format!("markers/{mode}"), marker_project(options.clone())));
     }
     subjects.push(("markers/json".into(), json_marker_project()));
+    subjects.push((
+        "xml_cast_suppression/primary".into(),
+        super::xml_cast_suppression::project()?,
+    ));
     for explicit in [true, false] {
         subjects.push((
             format!("target_float_cast/explicit-{explicit}"),

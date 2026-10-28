@@ -1,0 +1,20 @@
+use std::fs;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let context = codegen_runtime::ExecutionContext::new(std::path::Path::new("mapping.json"));
+    let cases: Vec<serde_json::Value> = serde_json::from_slice(&fs::read("cases.json")?)?;
+    for case in cases {
+        let input = case["input"].as_str().unwrap();
+        let expected = case["expected"].as_str().unwrap();
+        assert_eq!(ferrule_generated_mapping::execute_xml(input)?, expected);
+        assert_eq!(ferrule_generated_mapping::execute_xml_bytes(input.as_bytes())?, expected.as_bytes());
+        assert_eq!(ferrule_generated_mapping::execute_xml_with_context(input, &context)?, expected);
+        let ferrule_generated_mapping::SelectedXmlBytesTargetOutput::Primary(bytes) =
+            ferrule_generated_mapping::execute_xml_bytes_selected_target(input.as_bytes(), codegen_runtime::TargetSelection::Primary)?
+        else { panic!("primary target expected"); };
+        assert_eq!(bytes, expected.as_bytes());
+        let json: serde_json::Value = serde_json::from_str(&ferrule_generated_mapping::execute_json(&case["json"].to_string())?)?;
+        assert!(json["Orders"]["Order"][0]["Price"].is_number(), "{json}");
+    }
+    Ok(())
+}

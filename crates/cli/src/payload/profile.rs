@@ -135,6 +135,7 @@ fn document_identity(options: &FormatOptions) -> anyhow::Result<&'static Path> {
     let identity = if options.xml_document {
         accepted.xml_document = true;
         accepted.xml_schema_hints = options.xml_schema_hints.clone();
+        accepted.xml_scalar_output = options.xml_scalar_output.clone();
         accepted.xml_allow_inactive_root_type_members =
             options.xml_allow_inactive_root_type_members;
         accepted.xml_root_view_read_policy = options.xml_root_view_read_policy;

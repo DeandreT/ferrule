@@ -529,6 +529,13 @@ String-to-`xs:double` feeds into repeated scalar fields, with either explicit
 [float-conversion contract](design/target-float-cast.md) keeps source ownership
 and failure order explicit. Its helper remains a Ferrule extension on export;
 strict native export refuses it while native value fidelity is unqualified.
+Explicit `suppress-cast-in-subtree` uses a separate
+[target-owned XML output policy](design/xml-cast-suppression.md). Supported flat
+String/double targets and ordinary nested documents preserve scalar text
+without altering the declared XSD.
+Unresolved shapes and overrides remain blocking, and missing metadata never
+enables this mode. Native export retains the suppression token and exact double
+declarations; ordinary XML and JSON writers keep their existing behavior.
 A bounded strict IDoc descriptor parser also retains supported group, segment,
 field, cardinality, and code-list metadata. Its canonical rendering reparses
 identically and projects to the same legacy schema and fixed-record layout.

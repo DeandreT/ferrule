@@ -456,6 +456,16 @@ pub struct Program {
 }
 
 impl Program {
+    /// Derived from validated target ownership; JSON keeps the declared schema.
+    pub fn xml_scalar_preservation(&self) -> Option<ir::XmlScalarPreservation<'_>> {
+        self.xml_boundary
+            .as_ref()?
+            .output
+            .scalar_output
+            .as_ref()?
+            .validate_schema(&self.target)
+            .ok()
+    }
     /// All retained compositions, including unselected direct-Program expressions.
     /// Common lowering has already pruned unreachable project expressions.
     pub fn filter_map_v1_sequences(&self) -> Vec<&GeneratedFilterMapV1> {
@@ -566,6 +576,7 @@ impl XmlInputPolicy {
 /// Literal output policy; schema locations are never opened or path-resolved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct XmlOutputPolicy {
+    pub scalar_output: Option<ir::XmlScalarOutputPolicy>,
     pub declaration: bool,
     pub indent: bool,
     pub default_namespace: Option<String>,
@@ -575,6 +586,7 @@ pub struct XmlOutputPolicy {
 impl Default for XmlOutputPolicy {
     fn default() -> Self {
         Self {
+            scalar_output: None,
             declaration: true,
             indent: true,
             default_namespace: None,
