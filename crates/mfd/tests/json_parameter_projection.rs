@@ -53,6 +53,78 @@ impl Drop for Fixture {
     }
 }
 
+fn parameter_filename_fixture() -> Fixture {
+    let fixture = Fixture::new();
+    fixture.change("</children>", r#"<component name="Physical" library="json" uid="4" kind="31"><properties DynamicFilenames="1" XSLTTargetEncoding="UTF-8"/><data><root><entry name="FileInstance" inpkey="150"><entry name="document"><entry name="root"><entry name="object" outkey="110"><entry name="key" type="json-property"><entry name="string" outkey="111"/></entry></entry></entry></entry></entry></root><json schema="schema.json"/></data></component></children>"#);
+    fixture.change(
+        "</vertices>",
+        r#"<vertex vertexkey="11"><edges><edge vertexkey="150"/></edges></vertex></vertices>"#,
+    );
+    fixture
+}
+
+#[test]
+fn explicit_parameter_filename_admission_keeps_both_source_identities() {
+    let fixture = parameter_filename_fixture();
+    let before = std::fs::read(fixture.0.join("mapping.mfd")).unwrap();
+    let options = mfd::ImportOptions::default().with_package_root(&fixture.0);
+    let imported = mfd::import_parameter_file_json_sources_with_options(
+        &fixture.0.join("mapping.mfd"),
+        &options,
+    )
+    .unwrap();
+    assert_eq!(imported.parameter.input_port, 50);
+    assert_eq!(imported.parameter.parameter_name, "Variables");
+    assert_eq!(imported.filename_member, "key");
+    assert_eq!(imported.physical.filename_input_port, 150);
+    assert_eq!(
+        imported.physical.filename_parameter,
+        "__ferrule_json_filename_150"
+    );
+    assert!(imported.physical.filename_preview.is_none());
+    assert_eq!(imported.physical.ports[&111], ["Documents", "Root", "key"]);
+    assert!(
+        mfd::import_json_source_projection_with_options(&fixture.0.join("mapping.mfd"), &options)
+            .is_err()
+    );
+    assert_eq!(
+        std::fs::read(fixture.0.join("mapping.mfd")).unwrap(),
+        before
+    );
+}
+
+#[test]
+fn parameter_filename_admission_rejects_wrong_owner_type_and_binding_collision() {
+    for (from, to) in [
+        (
+            r#"<vertex vertexkey="11"><edges><edge vertexkey="150"/></edges></vertex>"#,
+            r#"<vertex vertexkey="10"><edges><edge vertexkey="150"/></edges></vertex>"#,
+        ),
+        (
+            r#"<entry name="string" outkey="11"/>"#,
+            r#"<entry name="number" outkey="11"/>"#,
+        ),
+        (
+            r#"<entry name="string" outkey="111"/>"#,
+            r#"<entry name="string" outkey="11"/>"#,
+        ),
+        (
+            "</children>",
+            r#"<component name="Collision" library="core" uid="9" kind="6"><sources><datapoint/></sources><targets><datapoint pos="0" key="99"/></targets><data><input datatype="string"/><parameter usageKind="input" name="__ferrule_json_filename_150"/></data></component></children>"#,
+        ),
+    ] {
+        let fixture = parameter_filename_fixture();
+        fixture.change(from, to);
+        assert!(
+            mfd::import_parameter_file_json_sources_with_options(
+                &fixture.0.join("mapping.mfd"),
+                &mfd::ImportOptions::default().with_package_root(&fixture.0),
+            )
+            .is_err()
+        );
+    }
+}
+
 #[test]
 fn explicit_parameter_projection_keeps_identity_and_does_not_acquire_preview_files() {
     let fixture = Fixture::new();
