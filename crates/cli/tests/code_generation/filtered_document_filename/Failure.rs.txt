@@ -1,0 +1,27 @@
+use codegen_runtime::{ExecutionContext, RuntimeError, XmlBoundaryErrorKind};
+use ferrule_generated_mapping as generated;
+use std::{error::Error, path::{Path, PathBuf}};
+
+fn main()->Result<(),Box<dyn Error>> {
+    let root=PathBuf::from(std::env::args_os().nth(1).unwrap());
+    let input="<Input><Branch><Label>first.xml</Label><Person><First>A</First><Last>B</Last></Person></Branch><Branch><Label></Label><Person><First>C</First><Last>D</Last></Person></Branch></Input>";
+    let schema=std::fs::read_to_string(root.join("source-schema.json"))?;
+    let source=codegen_runtime::parse_structured_xml_bytes(&schema,input.as_bytes())?;
+    let actual=generated::execute(&source);
+    std::fs::write(root.join("rust-typed-failure.txt"),format!("{actual:#?}"))?;
+    assert_eq!(actual,Err(RuntimeError::EmptyDynamicTargetPath{node:EXPECTED_NODE}));
+    let context=ExecutionContext::new(Path::new("fixture"));
+    for api in 0..4 {
+        let error=match api {
+            0=>generated::execute_xml_documents(input).unwrap_err(),
+            1=>generated::execute_xml_documents_with_context(input,&context).unwrap_err(),
+            2=>generated::execute_xml_bytes_documents(input.as_bytes()).unwrap_err(),
+            _=>generated::execute_xml_bytes_documents_with_context(input.as_bytes(),&context).unwrap_err(),
+        };
+        std::fs::write(root.join(format!("rust-xml-failure-{api}.txt")),format!("{error:#?}"))?;
+        assert!(error.member.is_none());
+        assert_eq!(error.boundary.kind,XmlBoundaryErrorKind::Mapping);
+        assert_eq!(error.boundary.source().and_then(|e|e.downcast_ref::<RuntimeError>()),Some(&RuntimeError::EmptyDynamicTargetPath{node:EXPECTED_NODE}));
+    }
+    Ok(())
+}

@@ -128,6 +128,8 @@ mod extra_targets;
 mod failure_rules;
 #[path = "code_generation/filter_map_csharp.rs"]
 mod filter_map_csharp;
+#[path = "code_generation/filtered_document_filename.rs"]
+mod filtered_document_filename;
 #[path = "code_generation/format_guid_string.rs"]
 mod format_guid_string;
 #[path = "code_generation/generated_identities.rs"]

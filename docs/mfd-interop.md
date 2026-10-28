@@ -80,6 +80,19 @@ output scopes. A runtime-connected primary input filename or a target filename
 without a supported document driver produces a diagnostic rather than silently
 qualifying a mapping that uses only its saved preview path.
 
+One bounded filtered filename form is supported: a primary XML root contains
+repeating outer records, each record supplies a string filename expression,
+and `exists` on one direct nested collection filters that filename. The filter
+is evaluated in the outer record before its filename; a filtered-out empty
+filename does not produce a document or a path error. Admitted records retain
+their complete nested contents and document order. Negative filter outputs,
+unrelated or ambiguous drivers, conditioned source ports, ambiguous literal or
+pin declarations, and nested collections that could fall back to a same-named
+root collection remain unqualified.
+Export retains the equivalent `exists` guard on the filename. This form
+re-imports under the same bounded rule; other filtered filename shapes are
+refused rather than exported without their guard.
+
 Each physical MFD input connector may have one distinct source feed. The
 importer checks modern graph edges and legacy connections before lowering;
 identical records are idempotent. Distinct sources on one input produce a

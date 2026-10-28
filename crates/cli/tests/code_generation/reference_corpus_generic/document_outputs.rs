@@ -20,7 +20,7 @@ fn documents(project: &Project, value: &Instance) -> TestResult<Json> {
         .map(Json::Array)
 }
 
-pub(super) fn run_case(
+pub(crate) fn run_case(
     project: &Project,
     source: &Instance,
     extras: &[(String, Instance)],

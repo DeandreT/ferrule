@@ -38,6 +38,7 @@ mod external_scalar;
 mod external_udf;
 mod external_xslt;
 mod feed;
+mod filtered_document_filename;
 mod first_presence;
 mod flextext_parser;
 mod function;
@@ -2897,7 +2898,14 @@ fn build_target_scope_inner(
     if let Some(plan) = document_plan {
         plan.initialize(&mut scopes);
     }
-    let dynamic_document = document_plan.is_none().then(|| target
+    let filtered_filename = document_plan
+        .is_none()
+        .then(|| filtered_document_filename::prepare(target, structure, builder))
+        .flatten();
+    if let Some(plan) = &filtered_filename {
+        plan.install(&mut scopes);
+    }
+    let dynamic_document = (document_plan.is_none() && filtered_filename.is_none()).then(|| target
         .ports
         .iter()
         .find(|(_, path)| path.as_slice() == [schema::TARGET_DOCUMENT_PATH_PORT])
@@ -3055,9 +3063,12 @@ fn build_target_scope_inner(
     }
     materialize::eager_functions(builder, eager_functions);
     scalar_root::install(target, structure, resources, builder, &mut scopes);
-    let document_path = document_plan.map(|plan| plan.filename).or_else(|| {
-        dynamic_document.and_then(|feed| builder.binding_node_at_anchor(feed, &[], &[]))
-    });
+    let document_path = document_plan
+        .map(|plan| plan.filename)
+        .or_else(|| filtered_filename.as_ref().map(|plan| plan.filename))
+        .or_else(|| {
+            dynamic_document.and_then(|feed| builder.binding_node_at_anchor(feed, &[], &[]))
+        });
     if let Some(node) = document_path
         && !scopes.root.set_output_path(Some(node))
     {
