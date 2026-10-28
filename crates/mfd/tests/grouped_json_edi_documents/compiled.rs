@@ -183,6 +183,45 @@ fn date_format_executes_in_generated_rust_and_csharp() {
     );
 }
 
+#[test]
+#[ignore = "compiles generated Rust and C# consumers; requires Cargo, .NET 10 and a coordinated host target"]
+fn context_sum_executes_in_generated_rust_and_csharp() {
+    compile_conditional_consumers(
+        invoked_context_sum_fixture(),
+        r#"{"rows":[{"name":"a","qty":2,"qty":3},{"name":"a","qty":7}]}"#,
+        &["5"],
+    );
+}
+
+#[test]
+#[ignore = "compiles generated Rust and C# consumers; requires Cargo, .NET 10 and a coordinated host target"]
+fn ancestor_guard_executes_in_generated_rust_and_csharp() {
+    let old = r#"{"rows":[{"name":"a","qty":1},{"name":"b","qty":2}]}"#;
+    let new = r#"{"rows":[{"name":"a","flag":"","flag":"","details":[{"qty":"first"},{"qty":"second"},{"qty":null}]},{"name":"b","flag":"no","details":[{"qty":"other"}]}]}"#;
+    let rust = RUST.replace(old, new).replace("all.extend(results.iter()", r#"
+        for document in &results {
+            let interchange=&document.value().field("Interchange").unwrap().as_repeated().unwrap()[0];
+            let group=&interchange.field("Group").unwrap().as_repeated().unwrap()[0];
+            let message=group.field("Message_850").unwrap();
+            let message=message.as_repeated().map_or(message,|items|&items[0]);
+            let actual=message.field("Lines").unwrap().as_repeated().unwrap().iter().map(|line|line.field("LIN").and_then(Instance::as_repeated).map_or(0,|items|items.len())).collect::<Vec<_>>();
+            assert_eq!(actual,[2,2,0,0]);
+        }
+        all.extend(results.iter()"#);
+    let csharp = CSHARP.replace(&serde_json::to_string(old).unwrap(), &serde_json::to_string(new).unwrap()).replace("all.AddRange(result.Documents", r#"
+        FerruleInstance Field(FerruleInstance value,string name)=>((FerruleGroup)value).Fields.Single(field=>field.Name==name).Value;
+        foreach(var document in result.Documents) {
+            var interchange=((FerruleRepeated)Field(document.Value,"Interchange")).Items[0];
+            var group=((FerruleRepeated)Field(interchange,"Group")).Items[0];
+            var message=Field(group,"Message_850");
+            if(message is FerruleRepeated repeated)message=repeated.Items[0];
+            var actual=((FerruleRepeated)Field(message,"Lines")).Items.Select(line=>((FerruleGroup)line).Fields.SingleOrDefault(field=>field.Name=="LIN")?.Value is FerruleRepeated inner ? inner.Items.Count : 0).ToArray();
+            if(!actual.SequenceEqual(new[]{2,2,0,0}))throw new Exception("ancestor ownership");
+        }
+        all.AddRange(result.Documents"#);
+    compile_public_consumers(invoked_ancestor_guard_fixture(), &rust, &csharp);
+}
+
 fn compile_conditional_consumers(fixture: Fixture, new: &str, expected: &[&str]) {
     let old = r#"{"rows":[{"name":"a","qty":1},{"name":"b","qty":2}]}"#;
     let rust_expected = expected

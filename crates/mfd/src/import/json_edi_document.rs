@@ -918,6 +918,91 @@ impl Builder {
         .map(Some)
     }
 
+    fn ancestor_empty_group(&self, feed: u32, anchor: &[String]) -> Option<(u32, u32)> {
+        use super::udf::ScalarExpr;
+        self.parameter_key?;
+        let branch = self.functions.get(&feed)?;
+        if branch.parsed.library != "core"
+            || branch.parsed.name != "if-else"
+            || branch.parsed.kind != 4
+            || !branch.metadata_valid
+            || !branch.parsed.raw_single_output_valid
+            || branch.inputs.len() != 3
+            || branch.inputs[2].is_some()
+        {
+            return None;
+        }
+        let empty = self.functions.get(&self.input(branch, 0).ok()?)?;
+        if empty.parsed.library != "lang"
+            || empty.parsed.name != "empty"
+            || empty.parsed.kind != 5
+            || !empty.metadata_valid
+            || !empty.parsed.raw_single_output_valid
+            || empty.inputs.len() != 1
+        {
+            return None;
+        }
+        let guard = self.input(empty, 0).ok()?;
+        let call = self.udf_outputs.get(&self.input(branch, 1).ok()?)?;
+        let ScalarExpr::If {
+            condition,
+            then,
+            else_,
+        } = &call.expression
+        else {
+            return None;
+        };
+        let ScalarExpr::Call { function, args } = &**condition else {
+            return None;
+        };
+        if function != "not" || !matches!(&**then, ScalarExpr::Const(Value::Null)) {
+            return None;
+        }
+        let [ScalarExpr::Call { function, args }] = args.as_slice() else {
+            return None;
+        };
+        if function != "exists" {
+            return None;
+        }
+        let [ScalarExpr::Parameter(value_parameter)] = args.as_slice() else {
+            return None;
+        };
+        let ScalarExpr::Parameter(qualifier_parameter) = &**else_ else {
+            return None;
+        };
+        let value = self.feed(*call.inputs.get(value_parameter)?).ok()?;
+        let qualifier = self.feed(*call.inputs.get(qualifier_parameter)?).ok()?;
+        let literal = self.functions.get(&qualifier)?;
+        if literal.parsed.library != "core"
+            || literal.parsed.kind != 2
+            || !literal.literal_valid
+            || !literal.metadata_valid
+            || !literal
+                .parsed
+                .constant
+                .as_ref()
+                .is_some_and(|(_, ty)| ty == "string")
+        {
+            return None;
+        }
+        if self.port_kinds.get(&guard).map(String::as_str) != Some("string")
+            || self.port_kinds.get(&value).map(String::as_str) != Some("string")
+        {
+            return None;
+        }
+        let (_, guard_owner) = self.ports.get(&guard)?.split_last()?;
+        let (_, value_owner) = self.ports.get(&value)?.split_last()?;
+        // Admit only a direct value in this detail object and a guard in one
+        // enclosing object. Never search across unrelated siblings or rows.
+        if anchor != value_owner
+            || guard_owner.len() >= value_owner.len()
+            || !value_owner.starts_with(guard_owner)
+        {
+            return None;
+        }
+        Some((guard, value))
+    }
+
     fn bind_parameter_group(
         &mut self,
         filename: u32,
@@ -1082,6 +1167,67 @@ impl Builder {
             && self.input(function, 1).ok().is_some_and(|feed| {
                 self.port_kinds.get(&feed).map(String::as_str) == Some("number")
             })
+    }
+
+    fn context_sum_value(
+        &mut self,
+        feed: u32,
+        anchor: &[String],
+    ) -> Result<Option<NodeId>, MfdError> {
+        if self.parameter_key.is_none() {
+            return Ok(None);
+        }
+        let Some(function) = self.functions.get(&feed).cloned() else {
+            return Ok(None);
+        };
+        if function.parsed.library != "core"
+            || function.parsed.name != "sum"
+            || function.parsed.kind != 5
+            || !function.metadata_valid
+            || !function.parsed.raw_single_output_valid
+            || function.inputs.len() != 2
+            || function.inputs.iter().any(Option::is_none)
+        {
+            return Ok(None);
+        }
+        let context = self.input(&function, 0)?;
+        let number = self.input(&function, 1)?;
+        if self.port_kinds.get(&context).map(String::as_str) != Some("object")
+            || self.port_kinds.get(&number).map(String::as_str) != Some("number")
+        {
+            return Ok(None);
+        }
+        let context_path = self.ports[&context].clone();
+        if self.ports[&number]
+            .strip_prefix(context_path.as_slice())
+            .is_none_or(|suffix| suffix.len() != 1)
+        {
+            return Ok(None);
+        }
+        let raw = self.alloc(Node::SourceField {
+            path: vec!["Value".into()],
+            frame: None,
+        })?;
+        let number_value = self.call("decimal_from_nullable_text", vec![raw])?;
+        let subtotal = self.alloc(Node::Aggregate {
+            function: AggregateOp::DecimalSum,
+            collection: self.sibling_path(number, &context_path)?,
+            value: vec![],
+            expression: Some(number_value),
+            arg: None,
+        })?;
+        if anchor == context_path {
+            return Ok(Some(subtotal));
+        }
+        let text = self.call("string", vec![subtotal])?;
+        self.alloc(Node::Aggregate {
+            function: AggregateOp::FirstNonemptyText,
+            collection: self.relative_source(&context_path, anchor)?,
+            value: vec![],
+            expression: Some(text),
+            arg: None,
+        })
+        .map(Some)
     }
     fn bind_grouped_source(
         &mut self,
@@ -1673,6 +1819,18 @@ impl Builder {
         anchor: &[String],
         retain_empty: bool,
     ) -> Result<NodeId, MfdError> {
+        if let Some(sum) = self.context_sum_value(feed, anchor)? {
+            return Ok(sum);
+        }
+        if let Some((guard, _)) = self.ancestor_empty_group(feed, anchor)
+            && active_leaf == Some(guard)
+        {
+            // The enclosing group already admitted this exact guard occurrence.
+            // Evaluate its selected value in the retained detail frame, rather
+            // than collecting all sibling details through the ancestor frame.
+            let branch = self.functions[&feed].clone();
+            return self.reduced_value(self.input(&branch, 1)?, None, anchor, retain_empty);
+        }
         let dependencies = self.dependencies(feed, &mut BTreeSet::new())?;
         if dependencies.len() > 1 {
             if let Some(node) = self.sibling_udf_value(feed, active_leaf, anchor)? {
@@ -1864,7 +2022,31 @@ impl Builder {
                 }
             } else {
                 let dependencies = self.dependencies(feed, &mut BTreeSet::new())?;
-                if let Some((guard, _, _)) = self.sibling_string_conditional(feed) {
+                if let Some((guard, value)) = self.ancestor_empty_group(feed, anchor) {
+                    if !schema.repeating {
+                        return Err(refuse(
+                            "ancestor-controlled group requires a repeating target",
+                        ));
+                    }
+                    let guard_path = self.ports[&guard].clone();
+                    scope.iteration = ScopeIteration::Source(self.sibling_path(guard, anchor)?);
+                    let guard_value = self.compile(guard, Some(guard), &guard_path)?;
+                    let empty = self.call("is_empty", vec![guard_value])?;
+                    let selected = self.compile(value, Some(value), anchor)?;
+                    let first = self.constant(Value::Int(1))?;
+                    let selected = self.alloc(Node::Aggregate {
+                        function: AggregateOp::ItemAt,
+                        collection: self.sibling_path(value, anchor)?,
+                        value: vec![],
+                        expression: Some(selected),
+                        arg: Some(first),
+                    })?;
+                    let present = self.call("exists", vec![selected])?;
+                    scope.filter = Some(self.call("and", vec![empty, present])?);
+                    leaf = Some(guard);
+                    // Keep the detail anchor for child fields. The extra
+                    // ancestor-guard frame must not rebind their sibling reads.
+                } else if let Some((guard, _, _)) = self.sibling_string_conditional(feed) {
                     current = self.ports[&guard].clone();
                     leaf = Some(guard);
                     let value = self
