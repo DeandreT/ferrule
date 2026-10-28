@@ -18,6 +18,7 @@ internal static partial class Program
         DateTimePictureFunctions();
         DateTimeArithmeticFunctions();
         EdifactDateTimeFunction();
+        FloatTextCoercion();
     }
 
     private static void EdgeCharacterFunctions()

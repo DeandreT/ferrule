@@ -1,0 +1,27 @@
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+using var cases = JsonDocument.Parse(File.ReadAllBytes("cases.json"));
+var outcomes = new List<object>();
+var good = true;
+foreach (var item in cases.RootElement.EnumerateArray()) {
+    var input = item.GetProperty("input").GetString()!;
+    var expectedError = item.GetProperty("error").GetString();
+    foreach (var api in new[] { "text", "bytes" }) {
+        try {
+            var actual = api == "text" ? GeneratedMapping.ExecuteXml(input) : Encoding.UTF8.GetString(GeneratedMapping.ExecuteXmlBytes(Encoding.UTF8.GetBytes(input)));
+            good &= expectedError is null && actual == item.GetProperty("expected_xml").GetString();
+            outcomes.Add(new { name = item.GetProperty("name").GetString(), api, actual });
+        } catch (Exception error) {
+            var matching = error is FerruleXmlBoundaryException { Kind: FerruleXmlBoundaryErrorKind.Mapping, InnerException: FerruleRuntimeException runtime }
+                && (expectedError == "divide" && runtime.Error == FerruleRuntimeError.DivideByZero
+                    || expectedError == "cast" && runtime.Error == FerruleRuntimeError.FunctionInvalidArgument && runtime.Function == "coerce_float" && runtime.Detail == "requires finite floating-point text");
+            good &= matching;
+            outcomes.Add(new { name = item.GetProperty("name").GetString(), api, error = error.ToString() });
+        }
+    }
+}
+File.WriteAllText("complete-outcomes.json", JsonSerializer.Serialize(outcomes, new JsonSerializerOptions { WriteIndented = true }));
+if (outcomes.Count != 8 || !good) throw new InvalidOperationException("complete XML values or exact failure phases differed");

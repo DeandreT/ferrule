@@ -1,0 +1,6 @@
+[
+  {"name":"values","numerator":"34","denominator":"2","text":"29","error":null},
+  {"name":"cast","numerator":"34","denominator":"2","text":"not-a-number","error":"cast"},
+  {"name":"math","numerator":"1","denominator":"0","text":"29","error":"divide"},
+  {"name":"both","numerator":"1","denominator":"0","text":"not-a-number","error":"first"}
+]

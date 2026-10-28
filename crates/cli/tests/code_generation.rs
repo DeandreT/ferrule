@@ -266,6 +266,8 @@ mod string_int_range_boundaries;
 mod structured_xml_public;
 #[path = "code_generation/fixtures/structured_xml_snapshot.rs.txt"]
 mod structured_xml_snapshot;
+#[path = "code_generation/target_float_cast.rs"]
+mod target_float_cast;
 #[path = "code_generation/udf_multi_case_documents.rs"]
 mod udf_multi_case_documents;
 #[path = "code_generation/unicode_casing.rs"]
