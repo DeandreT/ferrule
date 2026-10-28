@@ -190,6 +190,8 @@ mod lookups;
 mod nested_array_wrappers;
 #[path = "code_generation/nested_clone_owners.rs"]
 mod nested_clone_owners;
+#[path = "code_generation/optional_cloned_feeds.rs"]
+mod optional_cloned_feeds;
 #[path = "code_generation/optional_parser_input.rs"]
 mod optional_parser_input;
 #[path = "code_generation/optional_runtime_defaults.rs"]

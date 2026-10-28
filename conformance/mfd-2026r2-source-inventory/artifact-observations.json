@@ -72,6 +72,10 @@
     ],
     "scope": "Candidate public declaration facts from these two source bundles only. No generated program was compiled or run. Lifetime, ownership, null/error behavior and undocumented overloads are not inferred."
   },
+  "schema_wrapper_source": {
+    "observation": "schema-wrappers.json",
+    "scope": "Separate optional schema-wrapper generation for C#, Java, C++/MSXML 6 and C++/Xerces 3.x. Source bundles and project metadata only; no compiled-library or execution qualification."
+  },
   "installed_declarations": [
     {
       "id": "installed.cpp.exception-inner",
@@ -126,7 +130,7 @@
   "remaining": [
     "Complete installed and generated supporting-artifact inventory",
     "Platform, registry, external-catalog and installation dependencies outside the copied application tree",
-    "Schema-wrapper bundles for C++, C# and Java",
+    "Complete schema-wrapper API/dependency contracts and requested compiled C# DLLs beyond the source observations in schema-wrappers.json",
     "Full public API, exception and execution contracts",
     "Independent completeness review and exact backend applicability",
     "Authenticode trust and native Windows ABI qualification where required"
