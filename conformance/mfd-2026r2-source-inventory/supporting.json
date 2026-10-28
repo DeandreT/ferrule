@@ -1187,7 +1187,10 @@
           1397
         ],
         "source_constraint": "Names come from the Library.xsd illustration; confirm actual schema/project identity and MSXML/Xerces settings. Resolve inner() from declarations, not a guessed pointer correction.",
-        "resolution": "not_obtained"
+        "resolution": "source_bundle_obtained",
+        "observation": "schema-wrappers.json",
+        "compiled_artifact_resolution": "not_obtained",
+        "resolution_boundary": "Source bundles for MSXML 6 and Xerces 3.x were obtained with Products and ProductValuePairs schema projects; Library is the manual's example name. No compiled artifacts or runtime contracts were qualified."
       },
       {
         "request_id": "csharp-schema-wrapper",
@@ -1207,7 +1210,10 @@
           1396
         ],
         "source_constraint": "YourSchema is a source placeholder, not a fixed shipped assembly. Resolve the actual generated schema name; retain exception declarations and dependencies privately.",
-        "resolution": "not_obtained"
+        "resolution": "partial_source_bundle_obtained",
+        "observation": "schema-wrappers.json",
+        "compiled_artifact_resolution": "not_obtained",
+        "resolution_boundary": "Generated sources, projects and schema solutions were obtained. The requested Altova.dll, AltovaXML.dll and actual schema DLLs were not built or obtained."
       },
       {
         "request_id": "java-schema-wrapper",
@@ -1236,7 +1242,10 @@
           "authored_summary": "The preceding generation table names com.altova, com.altova.xml and com.YourSchema and identifies the JAXP DOM boundary."
         },
         "source_constraint": "The schema package is generated, not a fixed installer artifact; resolve literal Java exception spellings against this build.",
-        "resolution": "not_obtained"
+        "resolution": "source_bundle_obtained",
+        "observation": "schema-wrappers.json",
+        "compiled_artifact_resolution": "not_obtained",
+        "resolution_boundary": "Source packages com.mapforce.Products and com.mapforce.ProductValuePairs plus Ant/Eclipse metadata were obtained. No classes/JAR or runtime contract was qualified."
       }
     ],
     "support_library_scope_constraint": {
