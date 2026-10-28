@@ -207,6 +207,7 @@ fn scope_roots(scope: &TargetScope, roots: &mut Vec<NodeId>) {
         TargetConstruction::Group
         | TargetConstruction::CollectDocuments
         | TargetConstruction::CopyCurrentSource
+        | TargetConstruction::CopyCurrentRows
         | TargetConstruction::XmlMixedContent { .. }
         | TargetConstruction::PathHierarchy { .. }
         | TargetConstruction::OwnedPathHierarchy { .. } => {}

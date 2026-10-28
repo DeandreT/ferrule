@@ -153,6 +153,7 @@ pub enum GenerationProfile {
     /// Typed entry points only.
     TypedOnly,
     CsvOutput,
+    CsvDocumentOutput,
     CsvDocument,
     RawDelimitedDocument,
     Json5,

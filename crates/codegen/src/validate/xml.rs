@@ -623,6 +623,17 @@ fn validate_mixed_named_output(program: &crate::Program) -> Result<bool, Program
 fn validate_dynamic_primary_output(
     program: &crate::Program,
 ) -> Result<bool, ProgramValidationError> {
+    if matches!(
+        program.root.construction,
+        crate::TargetConstruction::CopyCurrentRows
+    ) {
+        if program.xml_boundary.is_some() {
+            return Err(ProgramValidationError::InvalidXmlBoundary {
+                reason: "flat row documents require an explicit CSV output boundary".into(),
+            });
+        }
+        return Ok(false);
+    }
     if !program.root.produces_documents() {
         return Ok(false);
     }

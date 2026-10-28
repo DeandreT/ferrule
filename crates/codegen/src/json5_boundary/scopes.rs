@@ -42,6 +42,7 @@ pub(super) fn validate(
                 merge: _,
             }
             | TargetConstruction::CopyCurrentSource
+            | TargetConstruction::CopyCurrentRows
             | TargetConstruction::Scalar {
                 expression: _,
                 target_domain: _,

@@ -245,6 +245,32 @@ pub fn validate_csv_output(
     Ok(())
 }
 
+/// Separate admission for path-bearing flat row documents. The singular CSV
+/// contract above remains unchanged.
+pub fn validate_csv_document_output(
+    program: &Program,
+    policy: &CsvOutputPolicy,
+) -> Result<(), CsvOutputError> {
+    crate::validate_program(program).map_err(CsvOutputError::InvalidProgram)?;
+    policy.validate_dialect()?;
+    if program.xml_boundary.is_some() {
+        return Err(CsvOutputError::XmlBoundary);
+    }
+    if !program.extra_sources.is_empty() {
+        return Err(CsvOutputError::NamedInputs);
+    }
+    if !program.extra_targets.is_empty() {
+        return Err(CsvOutputError::NamedOutputs);
+    }
+    if !matches!(
+        program.root.construction,
+        crate::TargetConstruction::CopyCurrentRows
+    ) {
+        return Err(CsvOutputError::PrimaryRows);
+    }
+    Ok(())
+}
+
 fn has_dynamic_documents(scope: &TargetScope) -> bool {
     if let Some(iteration) = &scope.iteration {
         if iteration.dynamic_document_iteration().is_some() {

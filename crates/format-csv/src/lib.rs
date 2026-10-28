@@ -19,6 +19,7 @@ mod acquisition;
 mod bounded;
 mod bounded_read;
 mod byte_decoding;
+mod document_output;
 mod encoding;
 mod fixed_width;
 mod fixed_width_bounded;
@@ -35,6 +36,11 @@ pub use bounded_read::{
     from_str_with_options_bounded,
 };
 pub use byte_decoding::CsvByteDecodingPolicy;
+pub use document_output::{
+    CsvBytesDocument, CsvDocumentsError, CsvTextDocument, MAX_CSV_OUTPUT_DOCUMENT_BYTES,
+    MAX_CSV_OUTPUT_DOCUMENTS, MAX_CSV_OUTPUT_PATH_BYTES, MAX_CSV_OUTPUT_TOTAL_BYTES,
+    to_document_bytes, to_document_text, validate_document_output_metadata,
+};
 
 // Compatibility names retain the same concrete host/data types after their
 // format-neutral implementation moved to `document-source`.

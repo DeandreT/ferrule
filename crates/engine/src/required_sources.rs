@@ -112,6 +112,7 @@ impl<'a> Analysis<'a> {
             ScopeConstruction::Constructed
             | ScopeConstruction::CollectDocuments
             | ScopeConstruction::CopyCurrentSource
+            | ScopeConstruction::CopyCurrentRows
             | ScopeConstruction::XmlMixedContent { .. }
             | ScopeConstruction::Scalar { .. }
             | ScopeConstruction::RecursiveFilter { .. } => {}

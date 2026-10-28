@@ -245,6 +245,15 @@ impl ItemEvaluator<'_> {
             };
         }
 
+        if matches!(scope.construction, ScopeConstruction::CopyCurrentRows) {
+            return match context.last().copied() {
+                Some(current @ Instance::Repeated(rows)) if rows.iter().all(ir::is_flat_row) => {
+                    Ok(Some(current.clone()))
+                }
+                _ => Err(EngineError::InvalidCurrentRows),
+            };
+        }
+
         let mut fields = Vec::with_capacity(
             scope.bindings.len()
                 + scope.dynamic_bindings.len()

@@ -178,6 +178,9 @@ fn render_mapping(
         output.push_str(&format!(
             "    private static global::Ferrule.Runtime.FerruleInstance Scope_{scope_index}(\n        global::Ferrule.Runtime.ScopeContext context)\n    {{\n"
         ));
+        if matches!(scope.construction, TargetConstruction::CopyCurrentRows) {
+            output.push_str("        context.ValidateFlatRowsSource();\n");
+        }
         if let Some(iteration) = scope.iteration {
             if iteration.concatenated().is_some() {
                 render_concatenated_scope(iteration, &scope.segments, &mut output);
@@ -298,6 +301,10 @@ fn render_mapping(
         }
         if matches!(scope.construction, TargetConstruction::CopyCurrentSource) {
             output.push_str("        return context.CopyCurrentGroup();\n    }\n");
+            continue;
+        }
+        if matches!(scope.construction, TargetConstruction::CopyCurrentRows) {
+            output.push_str("        return context.CopyCurrentRows();\n    }\n");
             continue;
         }
         render_bound_group(scope_index, scope, &mut output);

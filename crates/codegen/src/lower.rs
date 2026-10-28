@@ -400,6 +400,7 @@ fn lower_scope(
             }
         }
         ScopeConstruction::CopyCurrentSource => crate::TargetConstruction::CopyCurrentSource,
+        ScopeConstruction::CopyCurrentRows => crate::TargetConstruction::CopyCurrentRows,
         ScopeConstruction::XmlMixedContent { elements } => {
             crate::TargetConstruction::XmlMixedContent {
                 elements: elements

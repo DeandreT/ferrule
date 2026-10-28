@@ -113,6 +113,11 @@ pub(crate) fn eval_scope(
             scope: trace_scope.source_scope.clone(),
         });
     }
+    if matches!(scope.construction, ScopeConstruction::CopyCurrentRows)
+        && !matches!(context.last().copied(), Some(Instance::Repeated(rows)) if rows.iter().all(ir::is_flat_row))
+    {
+        return Err(EngineError::InvalidCurrentRows);
+    }
     record(program.trace_sink, || TraceEvent::ScopeStarted {
         scope: trace_scope.clone(),
         iteration: scope_iteration(&scope.iteration).expect("owned iteration refused before trace"),

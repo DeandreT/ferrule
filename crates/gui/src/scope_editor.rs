@@ -668,6 +668,10 @@ pub(crate) fn show_scope_editor(
         );
         return None;
     }
+    if matches!(scope.construction, ScopeConstruction::CopyCurrentRows) {
+        ui.label("This scope writes whole CSV row blocks to named documents; its saved construction is read-only.");
+        return None;
+    }
 
     if let ScopeIteration::OwnedSource { source, .. } = &scope.iteration
         && let Some(dynamic) = source_paths.ownership().owned_dynamic_driver(&source.owner)

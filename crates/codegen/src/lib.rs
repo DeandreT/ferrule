@@ -52,7 +52,9 @@ pub use csv_json_boundary::{
     CsvJsonBoundaryError, CsvJsonBoundaryOwner, CsvJsonBoundaryPolicy, CsvJsonBoundaryProfile,
     NamedJsonTargetDescriptor, prepare_csv_json_boundary, prepare_csv_json_project_boundary,
 };
-pub use csv_output::{CsvOutputError, CsvOutputPolicy, validate_csv_output};
+pub use csv_output::{
+    CsvOutputError, CsvOutputPolicy, validate_csv_document_output, validate_csv_output,
+};
 pub use csv_x12_boundary::{
     CsvX12BoundaryError, CsvX12BoundaryPolicy, CsvX12BoundaryProfile, prepare_csv_x12_boundary,
     prepare_csv_x12_project_boundary,
