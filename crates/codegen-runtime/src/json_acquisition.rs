@@ -1,6 +1,6 @@
 //! Reached primary JSON acquisition composed with ordered typed projection.
 
-use std::{error::Error, fmt, iter::FusedIterator};
+use std::{convert::Infallible, error::Error, fmt, iter::FusedIterator};
 
 use ir::Instance;
 use mapping::JsonSourceShape;
@@ -80,19 +80,7 @@ impl<'a, F: 'a, E: 'a> JsonSourceAcquisition<'a, F, E> {
         limits: JsonProjectionLimits,
         maximum: usize,
     ) -> Result<Self, JsonAcquisitionError<F, E>> {
-        shape
-            .validate()
-            .map_err(|error| JsonAcquisitionError::Projection(JsonProjectionError::Plan(error)))?;
-        if limits.values > crate::MAX_JSON_PROJECTED_VALUES
-            || limits.name_bytes > crate::MAX_JSON_PROJECTED_NAME_BYTES
-        {
-            return Err(JsonAcquisitionError::Projection(
-                JsonProjectionError::InvalidLimits,
-            ));
-        }
-        if maximum > MAX_JSON_SOURCE_DOCUMENTS {
-            return Err(JsonAcquisitionError::InvalidLimit);
-        }
+        validate(shape, limits, maximum)?;
         Ok(Self {
             filename: Some(Box::new(filename)),
             select: Some(Box::new(move |path| {
@@ -119,6 +107,54 @@ impl<'a, F: 'a, E: 'a> JsonSourceAcquisition<'a, F, E> {
         self.grouping = Some(grouping);
         Ok(self)
     }
+}
+
+impl<'a, E: 'a> JsonSourceAcquisition<'a, Infallible, E> {
+    /// Load an already-selected ordered request stream. Selection remains lazy:
+    /// duplicates are separate requests, and a failure terminates the stream.
+    /// One document limit covers every request rather than resetting per name.
+    pub fn from_requests<I: Iterator<Item = Result<String, E>> + 'a>(
+        requests: I,
+        load: impl FnMut(&str) -> Result<JsonSourceDocument, E> + 'a,
+        shape: &'a JsonSourceShape,
+        limits: JsonProjectionLimits,
+        maximum: usize,
+    ) -> Result<Self, JsonAcquisitionError<Infallible, E>> {
+        validate(shape, limits, maximum)?;
+        Ok(Self {
+            filename: None,
+            select: None,
+            requests: Some(Box::new(requests)),
+            load: Box::new(load),
+            shape,
+            grouping: None,
+            limits,
+            maximum,
+            count: 0,
+            finished: false,
+        })
+    }
+}
+
+fn validate<F, E>(
+    shape: &JsonSourceShape,
+    limits: JsonProjectionLimits,
+    maximum: usize,
+) -> Result<(), JsonAcquisitionError<F, E>> {
+    shape
+        .validate()
+        .map_err(|error| JsonAcquisitionError::Projection(JsonProjectionError::Plan(error)))?;
+    if limits.values > crate::MAX_JSON_PROJECTED_VALUES
+        || limits.name_bytes > crate::MAX_JSON_PROJECTED_NAME_BYTES
+    {
+        return Err(JsonAcquisitionError::Projection(
+            JsonProjectionError::InvalidLimits,
+        ));
+    }
+    if maximum > MAX_JSON_SOURCE_DOCUMENTS {
+        return Err(JsonAcquisitionError::InvalidLimit);
+    }
+    Ok(())
 }
 
 impl<F, E> Iterator for JsonSourceAcquisition<'_, F, E> {
