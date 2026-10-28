@@ -160,6 +160,9 @@ pub(super) fn validate_scope(
         return;
     }
     let current_source = current_source_schema(project, schemas.parent_source, &scope.iteration);
+    if matches!(scope.construction, ScopeConstruction::CopyCurrentRows) {
+        super::copy_rows::validate(project, scope, target, schemas.owner, &location, issues);
+    }
     super::presence::validate(project, scope, target, &location, issues);
 
     let collects_documents = matches!(scope.construction, ScopeConstruction::CollectDocuments);

@@ -384,6 +384,24 @@ impl<'a> ScopeContext<'a> {
         Value::Null
     }
 
+    /// Clones exactly the innermost flat row block, without outward fallback.
+    pub fn validate_flat_rows_source(&self) -> Result<(), crate::RuntimeError> {
+        match self.primary_source {
+            Instance::Repeated(rows) if rows.iter().all(ir::is_flat_row) => Ok(()),
+            _ => Err(crate::RuntimeError::InvalidCurrentRows),
+        }
+    }
+
+    /// Clones exactly the innermost flat row block, without outward fallback.
+    pub fn copy_current_rows(&self) -> Result<Instance, crate::RuntimeError> {
+        match self.frames.last().map(|frame| frame.instance) {
+            Some(current @ Instance::Repeated(rows)) if rows.iter().all(ir::is_flat_row) => {
+                Ok(current.clone())
+            }
+            _ => Err(crate::RuntimeError::InvalidCurrentRows),
+        }
+    }
+
     /// Clones the innermost source group for independent target ownership.
     pub fn copy_current_group(&self) -> Result<Instance, crate::RuntimeError> {
         match self.frames.last().map(|frame| frame.instance) {

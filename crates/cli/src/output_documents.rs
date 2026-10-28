@@ -21,6 +21,7 @@ pub(super) struct TargetOutput<'a> {
     pub options: &'a FormatOptions,
     pub current_datetime: &'a str,
     pub additional: bool,
+    pub row_documents: bool,
 }
 
 pub(super) struct TargetWriteResult {
@@ -103,6 +104,7 @@ struct PlannedTarget<'a> {
     stage_base: PathBuf,
     dynamic: Option<(PathBuf, Vec<PathBuf>)>,
     files: Vec<PlannedFile<'a>>,
+    csv_documents: Option<Vec<format_csv::CsvBytesDocument>>,
 }
 
 struct PlannedFile<'a> {
@@ -140,11 +142,15 @@ impl<'a> PlannedTarget<'a> {
                         stage_path,
                         instance,
                     }],
+                    csv_documents: None,
                 })
             }
             (OutputDestination::DynamicBase(base), Instance::DocumentSet(documents)) => {
+                if target.row_documents {
+                    format_csv::validate_document_output_metadata(documents)?;
+                }
                 let relative_paths = validate_document_paths(documents)?;
-                let files = documents
+                let files: Vec<_> = documents
                     .iter()
                     .zip(&relative_paths)
                     .map(|(document, relative)| PlannedFile {
@@ -153,6 +159,28 @@ impl<'a> PlannedTarget<'a> {
                         instance: document.value(),
                     })
                     .collect();
+                let csv = files
+                    .iter()
+                    .map(|file| {
+                        super::output_format(&file.final_path, target.schema, target.options)
+                            .map(|format| matches!(format, super::SelectedFormat::Csv))
+                    })
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+                let csv_documents = if csv.iter().any(|csv| *csv)
+                    || files.is_empty()
+                        && target.options.tabular_kind == Some(mapping::TabularBoundaryKind::Csv)
+                {
+                    if !csv.iter().all(|csv| *csv) {
+                        bail!("CSV row documents require CSV output for every member");
+                    }
+                    Some(format_csv::to_document_bytes(
+                        target.schema,
+                        target.instance,
+                        &format_csv::CsvWriteOptions::from(target.options),
+                    )?)
+                } else {
+                    None
+                };
                 Ok(Self {
                     name: target.name,
                     schema: target.schema,
@@ -162,6 +190,7 @@ impl<'a> PlannedTarget<'a> {
                     stage_base: base.clone(),
                     dynamic: Some((base.clone(), relative_paths)),
                     files,
+                    csv_documents,
                 })
             }
             (OutputDestination::DynamicBase(_), _) => unreachable!("guarded above"),
@@ -381,7 +410,8 @@ impl<'a> StagedTarget<'a> {
         let render_result = target
             .files
             .iter()
-            .map(|file| {
+            .enumerate()
+            .map(|(index, file)| {
                 let staged_path = stage.join("new").join(&file.stage_path);
                 let parent = staged_path.parent().with_context(|| {
                     format!("staged output {} has no parent", staged_path.display())
@@ -390,13 +420,22 @@ impl<'a> StagedTarget<'a> {
                     format!("creating staged output directory {}", parent.display())
                 })?;
                 copy_existing_output(&file.final_path, &staged_path)?;
-                let records_written = write_output(
-                    &staged_path,
-                    target.schema,
-                    file.instance,
-                    target.options,
-                    target.current_datetime,
-                )?;
+                let records_written = if let Some(documents) = &target.csv_documents {
+                    std::fs::write(&staged_path, &documents[index].bytes)
+                        .with_context(|| format!("writing CSV output {}", staged_path.display()))?;
+                    file.instance
+                        .as_repeated()
+                        .context("CSV document requires repeated rows")?
+                        .len()
+                } else {
+                    write_output(
+                        &staged_path,
+                        target.schema,
+                        file.instance,
+                        target.options,
+                        target.current_datetime,
+                    )?
+                };
                 Ok(StagedFile {
                     final_path: file.final_path.clone(),
                     staged_path,
@@ -857,12 +896,11 @@ fn cleanup_stage_paths(stages: &[PathBuf]) {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(unix)]
     use super::{OutputDestination, TargetOutput, write_target_outputs};
     use super::{PublishFailure, restore_backups, rollback_publication};
     #[cfg(unix)]
-    use ir::{Instance, ScalarType, SchemaNode, Value};
-    #[cfg(unix)]
+    use ir::Value;
+    use ir::{DocumentMember, Instance, ScalarType, SchemaNode};
     use mapping::FormatOptions;
 
     fn test_root(label: &str) -> std::path::PathBuf {
@@ -904,6 +942,60 @@ mod tests {
             options,
             current_datetime: "2026-01-01T00:00:00Z",
             additional: false,
+            row_documents: false,
+        }
+    }
+
+    #[test]
+    fn row_document_limits_precede_native_path_normalization() {
+        let root = test_root("csv-metadata-first");
+        let destination = OutputDestination::DynamicBase(root.clone());
+        let schema =
+            SchemaNode::group("Row", vec![SchemaNode::scalar("Value", ScalarType::String)]);
+        let options = FormatOptions {
+            tabular_kind: Some(mapping::TabularBoundaryKind::Csv),
+            ..Default::default()
+        };
+        for oversized_count in [true, false] {
+            let documents = if oversized_count {
+                // Invalid native paths make ordering observable: the count cap
+                // must win before normalization or pairwise overlap checks.
+                vec![
+                    DocumentMember::new(".", Instance::Repeated(vec![])).unwrap();
+                    format_csv::MAX_CSV_OUTPUT_DOCUMENTS + 1
+                ]
+            } else {
+                vec![
+                    DocumentMember::new(
+                        format!("../{}", "x".repeat(format_csv::MAX_CSV_OUTPUT_PATH_BYTES)),
+                        Instance::Repeated(vec![]),
+                    )
+                    .unwrap(),
+                ]
+            };
+            let instance = Instance::DocumentSet(documents);
+            let target = TargetOutput {
+                destination: &destination,
+                name: "rows",
+                schema: &schema,
+                instance: &instance,
+                options: &options,
+                current_datetime: "2026-01-01T00:00:00Z",
+                additional: false,
+                row_documents: true,
+            };
+            let error = write_target_outputs(&[target], &[], &crate::execution_policy::TRUSTED)
+                .err()
+                .unwrap();
+            assert!(
+                match error.downcast_ref::<format_csv::CsvDocumentsError>() {
+                    Some(format_csv::CsvDocumentsError::TooManyDocuments { .. }) => oversized_count,
+                    Some(format_csv::CsvDocumentsError::PathTooLong { .. }) => !oversized_count,
+                    _ => false,
+                },
+                "{error:#}"
+            );
+            assert!(!root.exists());
         }
     }
 

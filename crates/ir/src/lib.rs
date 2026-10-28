@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 mod decimal;
 mod decimal_value;
+mod flat_rows;
 mod instance_group;
 mod primary_root;
 mod scalar_lexical;
@@ -28,6 +29,7 @@ pub use xml_schema_hints::{
 pub use decimal::{
     Decimal96, DecimalError, MAX_DECIMAL_COEFFICIENT, MAX_DECIMAL_LEXICAL_BYTES, MAX_DECIMAL_SCALE,
 };
+pub use flat_rows::{flat_row_schema_is_supported, is_flat_row};
 pub use instance_group::InstanceGroup;
 pub use primary_root::{
     MAX_PRIMARY_ROOT_FIELDS, MAX_PRIMARY_ROOT_IDENTITY_BYTES, MAX_PRIMARY_ROOT_PATH_BYTES,

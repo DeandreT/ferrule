@@ -1554,6 +1554,7 @@ pub enum TargetConstruction {
         merge: bool,
     },
     CopyCurrentSource,
+    CopyCurrentRows,
     Scalar {
         expression: NodeId,
         target_domain: ScalarTargetDomain,

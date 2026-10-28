@@ -323,6 +323,11 @@ fn validate_scope(
                 "owned adjacency-tree row collections are not exportable",
             ));
         }
+        ScopeConstruction::CopyCurrentRows => {
+            return Err(unsupported(
+                "flat row document construction is not exportable",
+            ));
+        }
         ScopeConstruction::Constructed
         | ScopeConstruction::CopyCurrentSource
         | ScopeConstruction::XmlMixedContent { .. } => {}

@@ -23,6 +23,8 @@ pub enum GenerateProfile {
     Ordinary,
     /// Plus a bounded flat CSV output adapter.
     CsvOutput,
+    /// Typed input with bounded path-bearing CSV document-list output.
+    CsvDocumentOutput,
     /// Complete single-document CSV input and output methods.
     CsvDocument,
     /// CSV input with unescaped CRLF text output.
@@ -78,6 +80,7 @@ impl GenerateProfile {
 enum ProfilePolicy {
     Ordinary,
     CsvOutput(codegen::CsvOutputPolicy),
+    CsvDocumentOutput(codegen::CsvOutputPolicy),
     CsvDocument(codegen::CsvDocumentBoundaryPolicy),
     Json5,
     X12(codegen::X12BoundaryPolicy),
@@ -219,7 +222,7 @@ fn admit_profile(
             }
             ProfilePolicy::Json5
         }
-        GenerateProfile::CsvOutput => {
+        GenerateProfile::CsvOutput | GenerateProfile::CsvDocumentOutput => {
             let policy = codegen::CsvOutputPolicy::from_format_options(&project.target_options)?;
             if let Some(path) = &project.target_path {
                 let path = Path::new(path);
@@ -231,7 +234,11 @@ fn admit_profile(
                     );
                 }
             }
-            ProfilePolicy::CsvOutput(policy)
+            if profile == GenerateProfile::CsvDocumentOutput {
+                ProfilePolicy::CsvDocumentOutput(policy)
+            } else {
+                ProfilePolicy::CsvOutput(policy)
+            }
         }
     })
 }
@@ -369,6 +376,9 @@ fn emit(
                 ProfilePolicy::CsvOutput(policy) => {
                     generator.emit_with_csv_output(program, policy)?
                 }
+                ProfilePolicy::CsvDocumentOutput(policy) => {
+                    generator.emit_with_csv_document_output(program, policy)?
+                }
                 ProfilePolicy::Ordinary => generator.emit(program)?,
                 ProfilePolicy::StaticDocuments(_)
                 | ProfilePolicy::CsvX12(_)
@@ -419,6 +429,9 @@ fn emit(
                 ProfilePolicy::Json5 => generator.emit_with_json5(program)?,
                 ProfilePolicy::CsvOutput(policy) => {
                     generator.emit_with_csv_output(program, policy)?
+                }
+                ProfilePolicy::CsvDocumentOutput(policy) => {
+                    generator.emit_with_csv_document_output(program, policy)?
                 }
                 ProfilePolicy::Ordinary => generator.emit(program)?,
             }

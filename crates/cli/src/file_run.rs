@@ -875,6 +875,7 @@ pub(crate) struct PlannedProjectTarget<'a> {
     options: &'a FormatOptions,
     pub(crate) destination: OutputDestination,
     primary: bool,
+    row_documents: bool,
 }
 
 struct WrittenTargets {
@@ -953,6 +954,10 @@ fn plan_primary_target<'a>(
         options: &project.target_options,
         destination,
         primary: true,
+        row_documents: matches!(
+            project.root.construction,
+            mapping::ScopeConstruction::CopyCurrentRows
+        ),
     })
 }
 
@@ -991,6 +996,10 @@ fn plan_named_target<'a>(
         options: &target.options,
         destination,
         primary: false,
+        row_documents: matches!(
+            target.root.construction,
+            mapping::ScopeConstruction::CopyCurrentRows
+        ),
     })
 }
 
@@ -1089,5 +1098,6 @@ fn target_write<'a>(
         options: target.options,
         current_datetime,
         additional: !target.primary,
+        row_documents: target.row_documents,
     }
 }

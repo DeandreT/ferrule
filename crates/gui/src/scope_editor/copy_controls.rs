@@ -14,7 +14,10 @@ pub(super) fn show_reason(ui: &mut Ui) {
 fn copied_ancestor<'a>(root: &'a Scope, chain: &[String]) -> Option<&'a Scope> {
     let mut scope = root;
     for next in chain.iter().map(Some).chain(std::iter::once(None)) {
-        if matches!(scope.construction, ScopeConstruction::CopyCurrentSource) {
+        if matches!(
+            scope.construction,
+            ScopeConstruction::CopyCurrentSource | ScopeConstruction::CopyCurrentRows
+        ) {
             return Some(scope);
         }
         let next = next?;
@@ -31,7 +34,10 @@ fn copied_ancestor<'a>(root: &'a Scope, chain: &[String]) -> Option<&'a Scope> {
 pub(crate) fn copied_ancestor_at_path<'a>(root: &'a Scope, path: &[usize]) -> Option<&'a Scope> {
     let mut scope = root;
     for next in path.iter().map(Some).chain(std::iter::once(None)) {
-        if matches!(scope.construction, ScopeConstruction::CopyCurrentSource) {
+        if matches!(
+            scope.construction,
+            ScopeConstruction::CopyCurrentSource | ScopeConstruction::CopyCurrentRows
+        ) {
             return Some(scope);
         }
         scope = scope.children.get(*next?)?;
@@ -52,6 +58,11 @@ pub(crate) fn check_static_binding(
     let Some(owner) = copied_ancestor(root, chain) else {
         return Ok(());
     };
+    if matches!(owner.construction, ScopeConstruction::CopyCurrentRows) {
+        return Err(format!(
+            "target field `{field}` belongs to a read-only CSV row document"
+        ));
+    }
     let name = if owner.target_field.is_empty() {
         "root"
     } else {
@@ -60,4 +71,21 @@ pub(crate) fn check_static_binding(
     Err(format!(
         "target field `{field}` belongs to the whole source group copy `{name}`; use a constructed target scope to bind individual fields"
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn csv_row_documents_block_bindings_and_child_construction() {
+        let scope = Scope {
+            construction: ScopeConstruction::CopyCurrentRows,
+            ..Scope::default()
+        };
+        assert!(check_static_binding(&scope, &[], "Value").is_err());
+        assert!(check_static_binding(&scope, &["Missing".into()], "Value").is_err());
+        assert!(copied_ancestor_at_path(&scope, &[]).is_some());
+        assert!(copied_ancestor_at_path(&scope, &[0]).is_some());
+    }
 }

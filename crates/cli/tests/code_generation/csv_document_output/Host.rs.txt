@@ -1,0 +1,37 @@
+use codegen_runtime::{Instance, Value, ExecutionContext, CsvDocumentOutputError};
+use ferrule_generated_mapping::*;
+
+fn row(code: &str, note: &str) -> Instance {
+    Instance::Group(vec![("Code".into(), Instance::Scalar(Value::String(code.into()))),
+        ("Note".into(), Instance::Scalar(Value::String(note.into())))].into())
+}
+
+fn main() {
+    let input = Instance::Repeated(vec![row("A", "one"), row("B", "semi;colon"),
+        row("C", "line\r\n\"Ω\""), row("D", ""), row("E", "tail")]);
+    let expected = vec![
+        ("batch-1.csv", "\u{feff}Code;Note\nA;one\nB;\"semi;colon\"\n"),
+        ("batch-2.csv", "\u{feff}Code;Note\nC;\"line\r\n\"\"Ω\"\"\"\nD;\n"),
+        ("batch-3.csv", "\u{feff}Code;Note\nE;tail\n"),
+    ];
+    let context = ExecutionContext::new(std::path::Path::new("rows"))
+        .with_current_datetime("2026-01-01T00:00:00Z");
+    for documents in [execute_csv_documents(&input).unwrap(), execute_csv_documents_with_context(&input, &context).unwrap()] {
+        assert_eq!(documents.iter().map(|d| (d.path.as_str(), d.text.as_str())).collect::<Vec<_>>(), expected);
+    }
+    for documents in [execute_csv_documents_bytes(&input).unwrap(), execute_csv_documents_bytes_with_context(&input, &context).unwrap()] {
+        assert_eq!(documents.iter().map(|d| (d.path.as_str(), std::str::from_utf8(&d.bytes).unwrap())).collect::<Vec<_>>(), expected);
+    }
+    assert!(execute_csv_documents(&Instance::Repeated(vec![])).unwrap().is_empty());
+    for bad in [row("A", "one"), Instance::DocumentSet(vec![])] {
+        assert!(matches!(execute_csv_documents(&bad), Err(CsvDocumentOutputError::Execution(codegen_runtime::RuntimeError::InvalidCurrentRows))));
+    }
+    let Instance::Repeated(mut rows) = input else { unreachable!() };
+    rows[4] = Instance::Group(vec![("Code".into(), Instance::Scalar(Value::String("bad".into())))].into());
+    let error = execute_csv_documents_bytes(&Instance::Repeated(rows)).unwrap_err();
+    assert!(matches!(&error, CsvDocumentOutputError::Output(_)));
+    assert!(error.to_string().contains("CSV document 2"), "{error}");
+    assert!(error.to_string().contains("missing column `Note`"), "{error}");
+    assert!(matches!(execute_csv_documents(&Instance::Repeated(vec![Instance::Scalar(Value::Null)])), Err(CsvDocumentOutputError::Execution(codegen_runtime::RuntimeError::InvalidCurrentRows))));
+    println!("csv documents passed");
+}

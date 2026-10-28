@@ -1,0 +1,39 @@
+using System.Text;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static FerruleInstance Row(string code, string note) => new FerruleGroup(new[] {
+    new FerruleField("Code", new FerruleScalar(FerruleValue.FromString(code))),
+    new FerruleField("Note", new FerruleScalar(FerruleValue.FromString(note))),
+});
+static void Require(bool condition, string label) { if (!condition) throw new Exception(label); }
+var rows = new[] { Row("A", "one"), Row("B", "semi;colon"), Row("C", "line\r\n\"Ω\""), Row("D", ""), Row("E", "tail") };
+var input = new FerruleRepeated(rows);
+var expected = new[] {
+    ("batch-1.csv", "\ufeffCode;Note\nA;one\nB;\"semi;colon\"\n"),
+    ("batch-2.csv", "\ufeffCode;Note\nC;\"line\r\n\"\"Ω\"\"\"\nD;\n"),
+    ("batch-3.csv", "\ufeffCode;Note\nE;tail\n"),
+};
+var context = new FerruleExecutionContext("rows", "rows", "2026-01-01T00:00:00Z", null);
+foreach (var docs in new[] { GeneratedMapping.ExecuteCsvDocuments(input), GeneratedMapping.ExecuteCsvDocuments(input, context) })
+    Require(docs.Select(d => (d.Path, d.Text)).SequenceEqual(expected), "complete text documents");
+foreach (var docs in new[] { GeneratedMapping.ExecuteCsvDocumentsBytes(input), GeneratedMapping.ExecuteCsvDocumentsBytes(input, context) })
+    Require(docs.Select(d => (d.Path, Encoding.UTF8.GetString(d.Bytes))).SequenceEqual(expected), "complete byte documents");
+Require(GeneratedMapping.ExecuteCsvDocuments(new FerruleRepeated(Array.Empty<FerruleInstance>())).Count == 0, "empty input");
+foreach (var bad in new FerruleInstance[] { Row("A", "one"), new FerruleDocumentSet(Array.Empty<FerruleDocument>()) }) {
+    try { GeneratedMapping.ExecuteCsvDocuments(bad); throw new Exception("missing invalid-input failure"); }
+    catch (FerruleRuntimeException error) { Require(error.Error == FerruleRuntimeError.InvalidCurrentRows, "invalid input"); }
+}
+rows[4] = new FerruleGroup(new[] { new FerruleField("Code", new FerruleScalar(FerruleValue.FromString("bad"))) });
+try { GeneratedMapping.ExecuteCsvDocumentsBytes(new FerruleRepeated(rows)); throw new Exception("missing late failure"); }
+catch (FerruleCsvDocumentsException error) {
+    Require(error.Document == 2 && error.InnerException is FerruleCsvException { Error: FerruleCsvError.MissingField, Row: 0, Field: "Note" }, "late failure cause");
+}
+try { GeneratedMapping.ExecuteCsvDocuments(new FerruleRepeated(new[] { new FerruleScalar(FerruleValue.Null) })); throw new Exception("missing invalid-row failure"); }
+catch (FerruleRuntimeException error) { Require(error.Error == FerruleRuntimeError.InvalidCurrentRows, "invalid-row error"); }
+var fields = new[] { new FerruleCsvField("Code", FerruleScalarType.String), new FerruleCsvField("Note", FerruleScalarType.String) };
+var documents = new FerruleDocumentSet(new[] { new FerruleDocument("same.csv", new FerruleRepeated(new[] { Row("A", "one") })), new FerruleDocument("same.csv", new FerruleRepeated(new[] { Row("B", "two") })) });
+Require(FerruleCsvDocuments.SerializeBytes(documents, fields).Count == 2, "logical duplicate paths");
+try { FerruleCsvDocuments.SerializeBytes(documents, fields, maximumTotalBytes: 25); throw new Exception("missing total-budget failure"); }
+catch (FerruleCsvDocumentsException error) { Require(error.Document == 1 && error.InnerException is FerruleCsvException { Error: FerruleCsvError.OutputTooLarge }, "shared total budget"); }
+Console.WriteLine("csv documents passed");

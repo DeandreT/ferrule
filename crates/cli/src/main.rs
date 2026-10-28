@@ -237,6 +237,9 @@ enum Command {
         /// Include bounded CSV output methods for a flat primary target.
         #[arg(long)]
         csv_output: bool,
+        /// Include bounded, path-bearing CSV document-list output methods.
+        #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters", "csv_document_adapters", "primary_documents"])]
+        csv_document_output: bool,
         /// Include singular JSON5 text and UTF-8 byte companion methods.
         #[arg(long, conflicts_with = "csv_output")]
         json5_adapters: bool,
@@ -851,6 +854,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             out,
             rust_runtime_path,
             csv_output,
+            csv_document_output,
             json5_adapters,
             x12_adapters,
             x12_source_envelope_profile,
@@ -919,6 +923,8 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                 cli::GenerateProfile::Json5
             } else if csv_output {
                 cli::GenerateProfile::CsvOutput
+            } else if csv_document_output {
+                cli::GenerateProfile::CsvDocumentOutput
             } else {
                 cli::GenerateProfile::Ordinary
             };
