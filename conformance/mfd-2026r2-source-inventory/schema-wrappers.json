@@ -1,0 +1,156 @@
+{
+  "format": "mapforce-enterprise-2026r2-schema-wrapper-observations",
+  "format_version": 1,
+  "inventory_complete": false,
+  "runtime_proof": false,
+  "status": "unassessed",
+  "applicability": "unknown",
+  "execution_evidence": [],
+  "purpose": "Bounded source-bundle and build-metadata observations. Proprietary source remains private; generated source availability is not compiled-library, API-completeness, schema-support or runtime qualification.",
+  "release": {
+    "observation": "artifact-observations.json",
+    "generator_version": "28.2.0.0",
+    "generator_sha256": "4dc5b2bf1fb9644ba8224a9df19b7f92cb014d7bad1f8a2a217541e0a69ddd55"
+  },
+  "documented_context": {
+    "sources": [
+      {"source_file": "cg_schema.html", "text_lines": [57071, 57153]},
+      {"source_file": "cg_integrating_code.html", "text_lines": [57659, 57733]}
+    ],
+    "boundary": "The pinned manual describes optional schema-wrapper generation and integration. Its illustrative Library/YourSchema names are not literal names of the observed products, and its broader behavior claims are not verified here."
+  },
+  "generation": {
+    "input": "Tutorial/ConvertProducts.mfd, Products.xsd, Products.xml and ProductValuePairs.xsd",
+    "environment": "Matched release executable in an isolated offline Wine prefix and virtual display",
+    "generate_wrapper_classes": true,
+    "input_integrity": "Original and staged design, schemas and input remained byte-identical; the declared mapping output was not created.",
+    "private_manifest_sha256": "1101c782bb8056df2a82cbba777af11de0aeebc813c889deb49ad25687d5f69d",
+    "messages": "All four selected profiles reported successful mapping validation and code generation with zero errors and warnings. These messages do not report generated-program execution.",
+    "scope": "Fresh source directories for C#, Java, C++/MSXML 6 and C++/Xerces 3.x. No application-wide default is inferred from the selected options."
+  },
+  "profiles": [
+    {
+      "id": "csharp",
+      "language": "csharp",
+      "xml_library": null,
+      "generated_file_count": 53,
+      "generated_bytes": 675498,
+      "compiled": false,
+      "executed": false,
+      "compiled_artifacts_observed": false,
+      "wrapper_sources": [
+        {"path": "Products/Products.cs", "sha256": "c3a8856beb072ef2f23adc200bb343cbaf668b10392d8522ff3e5477adfacca6"},
+        {"path": "ProductValuePairs/ProductValuePairs.cs", "sha256": "3f3057f66c5c6c6add757f19494a017970bf389789b913e68d9f99cc792bb54a"}
+      ],
+      "document_types": ["Products.Products", "ProductValuePairs.ProductValuePairs"],
+      "schema_projects": ["Products/Products.csproj", "ProductValuePairs/ProductValuePairs.csproj"],
+      "schema_solutions": ["Products/Products.sln", "ProductValuePairs/ProductValuePairs.sln"],
+      "namespace_boundary": "The wrapper files contain multiple namespaces, including Products.xs and ProductValuePairs.xs2. A file's first namespace is not the owner of every declaration; nested and supporting public types are not treated as a complete intended API."
+    },
+    {
+      "id": "java",
+      "language": "java",
+      "xml_library": null,
+      "generated_file_count": 212,
+      "generated_bytes": 691626,
+      "compiled": false,
+      "executed": false,
+      "compiled_artifacts_observed": false,
+      "wrapper_sources": [
+        {"path": "com/mapforce/Products/Products.java", "sha256": "243d208a93543acc1d813c098490b464fd304ae7b92e9957c6ec5d9e029d800c"},
+        {"path": "com/mapforce/ProductValuePairs/ProductValuePairs.java", "sha256": "8685483bf094c6c390ab7a762077e344e851a3a2b16da5d25ad4b52b606b023a"}
+      ],
+      "document_types": ["com.mapforce.Products.Products", "com.mapforce.ProductValuePairs.ProductValuePairs"],
+      "schema_packages": ["com.mapforce.Products", "com.mapforce.ProductValuePairs"],
+      "build_files": ["build.xml", ".project", ".classpath"]
+    },
+    {
+      "id": "cpp-msxml",
+      "language": "cpp",
+      "xml_library": "MSXML 6",
+      "generated_file_count": 180,
+      "generated_bytes": 820131,
+      "compiled": false,
+      "executed": false,
+      "compiled_artifacts_observed": false,
+      "wrapper_sources": [
+        {"path": "Products/Products.h", "sha256": "2de66848b192b300a5b24ba27b88ea92e19926e2f08a6250203d05bbcd7f8318"},
+        {"path": "ProductValuePairs/ProductValuePairs.h", "sha256": "35384d9aa345a6678e2556f954c07ceaa7cb13f6e26c06b33fa4c1854d9bd770"}
+      ],
+      "document_types": ["Products::CProducts", "ProductValuePairs::CProductValuePairs"],
+      "schema_projects": ["Products/Products.vcxproj", "ProductValuePairs/ProductValuePairs.vcxproj"],
+      "schema_solutions": ["Products/Products.slnx", "ProductValuePairs/ProductValuePairs.slnx"],
+      "external_dependencies": {"header_import": "msxml6.dll", "availability": "unverified"}
+    },
+    {
+      "id": "cpp-xerces",
+      "language": "cpp",
+      "xml_library": "Xerces 3.x",
+      "generated_file_count": 182,
+      "generated_bytes": 833214,
+      "compiled": false,
+      "executed": false,
+      "compiled_artifacts_observed": false,
+      "wrapper_sources": [
+        {"path": "Products/Products.h", "sha256": "11c8f1a8561929e00e4e6189cee5586bbb06519a470a65e29abfc1f19130ea33"},
+        {"path": "ProductValuePairs/ProductValuePairs.h", "sha256": "62d253d52e3edcd152a022632fd1bdcd4f51b87a6235142cf177dba202d8c6b5"}
+      ],
+      "document_types": ["Products::CProducts", "ProductValuePairs::CProductValuePairs"],
+      "schema_projects": ["Products/Products.vcxproj", "ProductValuePairs/ProductValuePairs.vcxproj"],
+      "schema_solutions": ["Products/Products.slnx", "ProductValuePairs/ProductValuePairs.slnx"],
+      "external_dependencies": {
+        "property_sheet": "Altova/altova.xerces.props",
+        "root_variable": "XERCES3",
+        "header_selected_libraries": {"_DEBUG": "xerces-c_3D", "otherwise": "xerces-c_3"},
+        "availability": "unverified",
+        "boundary": "The property sheet supplies external include/library directories. Header linker directives, not only project AdditionalDependencies, select the libraries."
+      }
+    }
+  ],
+  "build_metadata": {
+    "csharp": {
+      "project_count": 6,
+      "target_framework": ".NET Framework v4.8.1",
+      "library_projects": ["Altova", "AltovaXML", "AltovaFunctions", "Products", "ProductValuePairs"],
+      "application_project": "Mapping",
+      "boundary": "Library output declarations do not establish that Altova.dll, AltovaXML.dll or schema DLLs were built or obtained."
+    },
+    "cpp": {
+      "project_count_per_profile": 6,
+      "platform_toolset": "v145",
+      "library_configuration_type": "StaticLibrary",
+      "library_projects": ["Altova", "AltovaXML", "AltovaFunctions", "Products", "ProductValuePairs"],
+      "application_project": "Mapping",
+      "application_configuration_type": "Application",
+      "configurations": ["Debug", "Release", "Unicode Debug", "Unicode Release"],
+      "platforms": ["Win32", "x64"],
+      "use_of_mfc": "Static",
+      "character_sets": ["NotSet", "Unicode"],
+      "runtime_libraries": ["MultiThreaded", "MultiThreadedDebug"],
+      "boundary": "These are project declarations, not compiler, Windows SDK, MFC, linker, architecture or ABI qualification."
+    },
+    "java": {
+      "ant_project": "Mapping",
+      "encoding": "UTF-8",
+      "default_target": "test",
+      "default_target_depends_on": "compile",
+      "default_target_executes": "com.mapforce.MappingConsole",
+      "jar_target_filename": "Mapping.jar",
+      "explicit_source_target_release_version": null,
+      "eclipse_builder": "org.eclipse.jdt.core.javabuilder",
+      "eclipse_nature": "org.eclipse.jdt.core.javanature",
+      "eclipse_runtime_container": "org.eclipse.jdt.launching.JRE_CONTAINER",
+      "boundary": "The default Ant target executes the generated mapping, so it was not run for source inspection. No JAR/classes were obtained; the generic runtime container declares no exact Java version."
+    }
+  },
+  "source_discrepancies": [
+    "The observed C++ schema solutions use .slnx rather than the manual illustration's .sln.",
+    "The generated C# conversion/data-access exception declarations are in Altova.Types; the manual's Altova namespace wording is retained separately, not treated as an alias."
+  ],
+  "remaining": [
+    "Requested compiled C# support and schema DLLs have not been obtained.",
+    "Complete public API signatures, inheritance/nesting, ownership, lifetime, null/error behavior and schema-support boundaries remain unqualified.",
+    "External MSXML/Xerces, compiler, SDK and MFC dependencies and exact backend applicability remain unqualified.",
+    "Independent complete-product inventory review, generated-library execution and native Windows ABI qualification remain open."
+  ]
+}

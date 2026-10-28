@@ -8,6 +8,9 @@ use serde_json::Value;
 #[path = "source_inventory/com_names.rs"]
 mod com_names;
 
+#[path = "source_inventory/schema_wrappers.rs"]
+mod schema_wrappers;
+
 fn load(name: &str) -> Value {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../conformance/mfd-2026r2-source-inventory")
@@ -161,18 +164,21 @@ fn supporting_declarations_preserve_source_and_installer_boundaries() {
         .unwrap();
     assert_eq!(requests.len(), 6);
     for request in requests {
-        let expected = match request["request_id"].as_str().unwrap() {
-            "installer-release-manifest" => "partial_selected_members",
-            "csharp-convertproducts-io" | "java-convertproducts-io" => "source_bundle_obtained",
-            "cpp-schema-wrapper" | "csharp-schema-wrapper" | "java-schema-wrapper" => {
-                "not_obtained"
+        let (expected, observation) = match request["request_id"].as_str().unwrap() {
+            "installer-release-manifest" => {
+                ("partial_selected_members", "artifact-observations.json")
             }
+            "csharp-convertproducts-io" | "java-convertproducts-io" => {
+                ("source_bundle_obtained", "artifact-observations.json")
+            }
+            "cpp-schema-wrapper" | "java-schema-wrapper" => {
+                ("source_bundle_obtained", "schema-wrappers.json")
+            }
+            "csharp-schema-wrapper" => ("partial_source_bundle_obtained", "schema-wrappers.json"),
             other => panic!("unreviewed artifact request {other}"),
         };
         assert_eq!(request["resolution"], expected);
-        if expected != "not_obtained" {
-            assert_eq!(request["observation"], "artifact-observations.json");
-        }
+        assert_eq!(request["observation"], observation);
     }
     source_only(&supporting);
 }
