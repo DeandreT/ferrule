@@ -5,9 +5,10 @@ use std::process::ExitCode;
 
 use anyhow::{Context, bail};
 use clap::error::ErrorKind;
-use clap::{ArgAction, Parser, Subcommand, ValueEnum};
+use clap::{ArgAction, CommandFactory, Parser, Subcommand, ValueEnum};
 use serde_json::json;
 
+mod completions;
 mod generate_args;
 
 #[derive(Parser)]
@@ -350,6 +351,11 @@ enum Command {
         #[arg(long)]
         report_json: bool,
     },
+    /// Print a Bash, Zsh, Fish or PowerShell completion script to stdout.
+    Completions {
+        #[arg(value_enum)]
+        shell: completions::CompletionShell,
+    },
 }
 
 impl Command {
@@ -367,6 +373,7 @@ impl Command {
             Self::ImportDb { .. } => "import-db",
             Self::ImportMfd { .. } => "import-mfd",
             Self::ExportMfd { .. } => "export-mfd",
+            Self::Completions { .. } => "completions",
         }
     }
 }
@@ -484,7 +491,7 @@ fn json_diagnostics_requested(args: &[OsString]) -> bool {
 }
 
 fn command_name_from_args(args: &[OsString]) -> Option<&'static str> {
-    const COMMANDS: [&str; 12] = [
+    const COMMANDS: [&str; 13] = [
         "bundle-project",
         "run",
         "run-document",
@@ -497,6 +504,7 @@ fn command_name_from_args(args: &[OsString]) -> Option<&'static str> {
         "import-db",
         "import-mfd",
         "export-mfd",
+        "completions",
     ];
     let mut args = args.iter().skip(1);
     while let Some(arg) = args.next() {
@@ -1008,6 +1016,10 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             check,
             report_json,
         ),
+        Command::Completions { shell } => {
+            completions::write(shell, Cli::command(), &mut std::io::stdout().lock())?;
+            Ok(ExitCode::SUCCESS)
+        }
     }
 }
 
