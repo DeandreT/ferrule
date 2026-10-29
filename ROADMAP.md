@@ -1,214 +1,5 @@
 # Ferrule Compatibility and Product Roadmap
 
-Updated: 2026-10-14
-
-## Current Basic ownership milestone (2026-10-14)
-
-This [#697](https://github.com/DeandreT/ferrule/issues/697) snapshot records
-merged main [`d92a0bb`](https://github.com/DeandreT/ferrule/commit/d92a0bb67826d13fc3069c9b7c0acad85f7c4073).
-It supersedes the current-status claims in earlier dated sections, which retain
-their original evidence scope. Completed cohorts do not establish full parity.
-
-| Verified increment | Local evidence |
-| --- | --- |
-| Common sort, #667/PR684 | 437 common tests, including 33 Basic and 28 admission controls; production and strict checks. |
-| Rust sort and singleton projection, #668/PR695 and #693/PR712 | Current runtime checks passed 375 tests, including 90 Basic controls; the backend passed 164 active tests with ten ignored. All 24 filter and 26 sort generated calls passed; production and strict checks passed. |
-| C# sort and singleton projection, #669/PR700 and #694/PR716 | 164 backend tests and strict checks passed. All 45 runtime/generated commands passed, including 216 smoke controls, 44 public calls and 33 new focused singleton controls against the fresh runtime. |
-| Matched sort, #670/PR705 | The retained cohort qualified 16 genuine models/48 complete expected outcomes with all 37 commands passing. #701's harness scope correction is included in the same nine-file cohort. This precedes the later singleton runtime increments and supplies no fresh matched-sort credit for them. |
-| Current C05, nested, alias and filter comparisons after PR712/PR716 | Six fresh C05 trees match. All 18 complete typed outputs across the six frozen nested models are accepted after retained-capture reconciliation. Alias9 and filter36 also match; all ten alias and 16 filter commands passed. Each result keeps its finite scope. |
-| Common windows, #698/PR718 | Merged after all four local commands passed: production, exact 448-test inventory/full common tests and strict checks, including 40 Basic and 32 admission controls. This qualifies the common profile; generated window execution remains pending. |
-| Native windows and borrowed failure hooks, #676/PR682 and #685/PR690 | The later engine increment passed 533 library tests, including 77 trace controls, production compilation and strict checks. Public owned trace/debug admission remains closed. |
-| Compact GUI nodes, #406/PR410 | Icons are merged. PR700-baseline production, all 798 GUI tests and guards passed. The private-display walkthrough passed six of nine workflows; C02 failed on missing CJK glyphs, while C03 and C06 remain unverified. C09 passed protected-file checks, two normal GUI exits and full source guards. |
-
-### Delivery checklist
-
-- [x] Merge common, Rust and C# bounded sort/filter profiles, preserving ordinary
-  and default API behavior; retain #670's qualified PR705 matched cohort.
-- [x] Locally qualify and merge the separate
-  [#693 Rust](https://github.com/DeandreT/ferrule/issues/693) and
-  [#694 C#](https://github.com/DeandreT/ferrule/issues/694) singleton projection
-  fixes in PR712 and PR716.
-- [x] Qualify six complete C05 results and the original nine-call alias and
-  36-call filter cohorts against both current runtime corrections. Preserve the
-  earlier mismatches and each cohort's original scope.
-- [x] Accept all 18 complete typed results in the original six-model nested
-  cohort after retained-capture reconciliation. Only four C05 string expectations
-  changed in memory; no execution was replayed, and the original failure and
-  frozen fixtures remain preserved.
-- [x] Locally qualify [#698](https://github.com/DeandreT/ferrule/issues/698)'s
-  seven-role common window candidate with 448 tests, production and strict checks.
-- [x] Merge #698's verified common window profile in PR718.
-- [ ] Implement and qualify separate
-  [#702 Rust](https://github.com/DeandreT/ferrule/issues/702) and
-  [#703 C#](https://github.com/DeandreT/ferrule/issues/703) window increments using
-  the merged singleton runtime handoffs, followed by
-  [#704](https://github.com/DeandreT/ferrule/issues/704)'s matched window cohort.
-- [ ] Qualify [#709](https://github.com/DeandreT/ferrule/issues/709)'s CJK font
-  fallback and rerun C02. The scoped source proposal is accepted; font tests,
-  production compilation and desktop verification remain unrun.
-- [ ] Complete [#406](https://github.com/DeandreT/ferrule/issues/406)'s C03 named
-  endpoint hover/accessibility and C06 target-height/pin-edge workflow checks.
-- [ ] Complete the broader #612/#613 occurrence, provenance and failure cohorts,
-  then #606 observer activation and final Basic acceptance.
-
-The retained C05 observation exposed P2/P3 in the interpreter and S/S in the
-generated backends. After both corrections, the fresh six-call comparison now
-matches complete trees across the interpreter, Rust and C#. Current alias9 and
-filter36 also passed. The retained original18 comparison is now accepted after
-a narrowly scoped expectation reconciliation, qualifying that frozen positive
-cohort. The earlier PR705 matched-sort cohort retains its original runtime scope;
-these results grant no broader error, observer or whole-product parity.
-Generated window execution and sorted First await their backend increments;
-specialized ownership families retain their separate admission gates. Full sort, filter, error and total parity remain incomplete.
-
-[Current handoffs](docs/parallel-work.md#current-basic-milestone-handoffs-2026-10-14)
-identify file ownership, dependencies and independent qualification.
-
-## Current Basic ownership progress (2026-10-13)
-
-This [#679](https://github.com/DeandreT/ferrule/issues/679) coordination snapshot
-records published main [`23b6167`](https://github.com/DeandreT/ferrule/commit/23b6167895c832b30631289f201ba0bd6e8f2990).
-It replaces the current-status front for these lanes. Earlier dated sections below
-retain their original scope; completed increments do not establish whole-product
-parity.
-
-### Qualified generated root pins
-
-The finite #632 root-pin and #647 node-provenance results remain qualified;
-the original #640 corpus and error oracles remain historical records. Generated
-error scope metadata remains unknown/unavailable; no scope is inferred.
-
-The explicit Basic filter profiles are merged in
-[#644 / PR663](https://github.com/DeandreT/ferrule/pull/663) and
-[#645 / PR674](https://github.com/DeandreT/ferrule/pull/674), after the common
-[#657 / PR661](https://github.com/DeandreT/ferrule/pull/661) companion.
-[#662 / PR678](https://github.com/DeandreT/ferrule/pull/678) qualified the six-model
-filter corpus: 12 complete calls per executor, 36 total, with matched outputs and
-first errors. Its generic paired-position contract does not qualify the named
-legacy collection-path gap tracked in [#677](https://github.com/DeandreT/ferrule/issues/677).
-Original failed captures and corrected fixtures remain separate evidence.
-
-| Qualified lane | Local verification |
-| --- | --- |
-| Common filter admission | 423 common tests, including 23 admission controls, production and strict checks. |
-| Rust filters | 357 runtime tests; 158 Rust tests with nine ignored; 14 generated programs and 24 calls; production and strict checks. |
-| C# filters | 155 backend tests, including 77 owned controls; fresh Runtime95; 216 smoke controls and 16 public calls across eight hosts; production and strict checks. |
-| Matched filter corpus | Six models, 36 complete interpreter/Rust/C# outcomes, 12 per executor; all 16 build/run steps passed. |
-| Native observers | 521 engine tests, including 65 trace controls, production and strict checks after #673/PR675. Earlier #654/PR660 lifecycle checks also passed seven CLI and 28 GUI controls. |
-
-These results qualify their stated cohorts. `full_filter_parity=false`,
-`full_error_parity=false` and `total_parity=false`. Public owned trace/debug
-admission remains closed; grouping, generated/dynamic/document iteration and
-other specialized ownership families retain their separate gates.
-
-### Current delivery checklist
-
-- [x] Merge the explicit common, Rust and C# filter profiles and the finite
-  #662 matched filter corpus. Preserve ordinary/default API behavior.
-- [x] Merge expression/output/lifecycle/candidate/filter observations and
-  [#673 / PR675](https://github.com/DeandreT/ferrule/pull/675) native sort
-  observations, with authentic borrowed ownership context and closed public
-  observer gates.
-- [ ] Complete [#667](https://github.com/DeandreT/ferrule/issues/667), the active
-  common sort profile and named-input admission increment. After its merge,
-  implement [#668 Rust](https://github.com/DeandreT/ferrule/issues/668) and
-  [#669 C#](https://github.com/DeandreT/ferrule/issues/669) in parallel, then qualify
-  [#670](https://github.com/DeandreT/ferrule/issues/670)'s planned 16-case/48-call
-  matched sort corpus. Both filter orders and stable ties belong to this sequence;
-  generated windows and sorted First remain closed.
-- [ ] Complete the active [#676](https://github.com/DeandreT/ferrule/issues/676)
-  native WindowApplied receiving-context increment. It preserves the full
-  candidate count for eligible First and adds no generated window capability.
-- [ ] Run [#677](https://github.com/DeandreT/ferrule/issues/677)'s nine-call named
-  collection-path probe before production edits. Then qualify the independent
-  [#680 Rust](https://github.com/DeandreT/ferrule/issues/680) and
-  [#681 C#](https://github.com/DeandreT/ferrule/issues/681) runtime increments and
-  rerun the matched alias/filter controls. These are source plans, not executed
-  qualification.
-- [ ] Complete broader [#612](https://github.com/DeandreT/ferrule/issues/612)
-  occurrence/phase cohorts, [#613](https://github.com/DeandreT/ferrule/issues/613)
-  provenance/failures, and [#606](https://github.com/DeandreT/ferrule/issues/606)
-  error/debug/cancellation observers and final Basic acceptance. Public observer
-  activation requires its own checks.
-
-[Current handoffs](docs/parallel-work.md#current-basic-ownership-handoffs-2026-10-13)
-record exact source ownership and dependencies under #440/#641. Source preparation
-may proceed independently; shared roles require an explicit handoff, and each
-focused increment needs local qualification before publication.
-
-## Current public native ownership (2026-10-13)
-
-This [#624](https://github.com/DeandreT/ferrule/issues/624) snapshot is against
-merged main [`80274d0`](https://github.com/DeandreT/ferrule/commit/80274d0079f0adbe70004780701c7bf1cbbe0280),
-which includes [PR618](https://github.com/DeandreT/ferrule/pull/618),
-[PR625](https://github.com/DeandreT/ferrule/pull/625),
-[PR626](https://github.com/DeandreT/ferrule/pull/626) and
-[PR628](https://github.com/DeandreT/ferrule/pull/628). It records
-current native interpreter behavior and follow-ups. Earlier snapshots, emitter
-milestones and other workstreams below retain their recorded evidence scope.
-
-The public engine executes Basic static owned root reads and scoped borrowed
-collection walks, including owned fields and Structural, Selection and Output
-positions. Owned global failure rules, tracing and debugging remain refused.
-Grouping, joins, documents, dynamic loads, generated/function provenance and
-other specialized ownership domains keep their separate admission gates.
-Explicit nonrepeating root pins (#620), caller-owned scalar function arguments
-(#621) and Basic owned scalar target construction (#623) are implemented and
-merged in PR625, PR626 and PR628. PR628's native verification passed all 437
-engine library tests, including the exact 35-test core module, 18 source-ownership
-tests and 31 owned Basic tests. Production compilation and strict library/test
-checks also passed. Matched generated outcomes and the remaining occurrence,
-failure and observer qualification are still pending. The planned 18 matched
-native/Rust/C# calls remain unrun.
-
-[PR619](https://github.com/DeandreT/ferrule/pull/619) is closed without merging:
-PR618 superseded its private root executor. Its retained 407-test results apply
-only to that older private proposal and do not qualify current main.
-[#616](https://github.com/DeandreT/ferrule/issues/616) is closed as not planned;
-the public executor has no retained success-witness log to bound.
-
-### Current delivery checklist
-
-- [x] Implement public Basic roots, scoped walks and occurrence position phases
-  in merged PR618.
-- [x] Retire superseded PR619 and its private-only #616 retention work.
-- [x] Correct explicit nonrepeating root pins in
-  [#620 / PR625](https://github.com/DeandreT/ferrule/pull/625), preserving the
-  active-occurrence requirement for declared or actual repeating roots. Native
-  local checks passed; #620 is closed as completed.
-- [x] Admit caller-owned scalar arguments to ordinary functions in
-  [#621 / PR626](https://github.com/DeandreT/ferrule/pull/626), preserving isolated
-  function bodies and inherited specialized-context refusals. Native local
-  checks passed; #621 is closed as completed.
-- [ ] Measure and bound retained candidate/ancestry metadata in
-  [#622](https://github.com/DeandreT/ferrule/issues/622), then stream eligible
-  First/window paths where their phase semantics permit. The text-work limit
-  does not bound total input, output or resident memory. Keep measurement and
-  implementation together in focused increments. Measurements remain unrun.
-- [x] Support Basic owned scalar target construction in
-  [#623 / PR628](https://github.com/DeandreT/ferrule/pull/628), preserving the
-  existing constructor/conversion path and specialized refusals. Native local
-  checks passed; #623 is closed as completed.
-- [ ] Integrate stored-order global failure rules and exact row provenance in
-  [#613](https://github.com/DeandreT/ferrule/issues/613), preserving lazy messages
-  and typed failures. Assigned root-only
-  [#627](https://github.com/DeandreT/ferrule/issues/627) source work is in progress
-  after #623's admission handoff; row provenance remains closed.
-- [ ] Qualify the actual public occurrence and position-phase implementation in
-  [#612](https://github.com/DeandreT/ferrule/issues/612) against complete native
-  outputs/errors and matched generated controls.
-- [ ] Complete observer integration and final Basic acceptance in
-  [#606](https://github.com/DeandreT/ferrule/issues/606), using confirmed matched
-  execution from #612 and #613. Observer source work can proceed independently
-  once its context interface is agreed.
-
-[Current native contributor lanes](docs/parallel-work.md#current-public-native-ownership-lanes-2026-10-13)
-record source handoffs and the dependency diagram. Merged #620 precedes #623;
-overlapping
-admission, walker and scope-storage edits must be sequenced. Each increment needs
-its own local verification before publication. The current snapshot adds no
-current-main test credit from older private execution results.
-
 ## Goal
 
 Ferrule is an independent, portable data-mapping platform with an open project
@@ -222,15 +13,17 @@ design or exporting it again does not establish all of those promises. The
 [conformance inventory](conformance/README.md) remains incomplete; there is no
 supported whole-product parity percentage.
 
-Choose or claim an independent lane in [Parallel work](docs/parallel-work.md),
-which links scoped issues, ownership, dependencies, and shared verification rules.
+To pick up work, follow [Contributing](CONTRIBUTING.md). GitHub issues are the
+only live source for claims and status; [Parallel work](docs/parallel-work.md)
+covers shared-file handoffs and verification resources.
 
 The [explicit source ownership plan](docs/design/source-ownership.md) records
 owner/path contracts, core interpreter and Rust/C# prerequisites, and scoped
 operator qualification procedures with a dependency diagram.
 
 This roadmap is an execution plan. The complete earlier technical baseline and
-scorecard are preserved in [the dated history](docs/compatibility-baseline.md).
+scorecard are preserved in [the dated history](docs/compatibility-baseline.md);
+later dated coordination snapshots are under [History](#history).
 
 ## Basic owned-source public-family milestone
 
@@ -269,271 +62,10 @@ Coordinate common policy changes with both backend owners, and sequence edits to
 the same renderer and its source tests. Runtime contracts and generated interfaces
 must remain consistent with the admission profile they expose.
 
-[Parallel work](docs/parallel-work.md#basic-public-family-milestone-and-next-lanes)
+[Parallel work](docs/parallel-work.md#generated-code-source-ownership)
 describes the reusable file-ownership and dependency conventions. Use the
 [development procedures](docs/development.md) when changing a generated contract;
 track task status and result records in the associated issue.
-
-## Basic owned-source progress (2026-10-12)
-
-This focused [#578](https://github.com/DeandreT/ferrule/issues/578) snapshot is
-against merged main [`2d52eba`](https://github.com/DeandreT/ferrule/commit/2d52eba6166124d31996532b5fe46cdacb0ec405).
-It updates the [#519](https://github.com/DeandreT/ferrule/issues/519) Basic
-owned-source lane; the dated snapshots and other workstreams below retain their
-recorded scope.
-
-Main contains the shared ownership model, private emitter groundwork, and an
-additive neutral Basic validator. The public Basic emitter families remain
-unpublished. Existing ordinary generated interfaces retain their closed
-ownership admission rules.
-
-### Merged groundwork
-
-- [x] Merge the ownership IR and common admission foundation:
-  [#516 / PR535](https://github.com/DeandreT/ferrule/pull/535) and
-  [#536 / PR548](https://github.com/DeandreT/ferrule/pull/548).
-- [x] Merge the test-scoped private Rust Basic renderer:
-  [#517 / PR547](https://github.com/DeandreT/ferrule/pull/547).
-- [x] Merge private Rust failure groundwork:
-  [PR555](https://github.com/DeandreT/ferrule/pull/555). The ordinary source-rule
-  bridge in [#541](https://github.com/DeandreT/ferrule/issues/541) remains open.
-- [x] Merge the private C# Basic renderer and its corrected budget controls:
-  [#518 and #554 / PR563](https://github.com/DeandreT/ferrule/pull/563).
-- [x] Merge the neutral Basic admission API and its current-source verification:
-  [#576 / PR577](https://github.com/DeandreT/ferrule/pull/577).
-- [x] Merge the private C# checked-input bridge:
-  [#538 / PR579](https://github.com/DeandreT/ferrule/pull/579).
-- [x] Merge the private C# ordinary source-failure bridge and checked interactions:
-  [#542 / PR581](https://github.com/DeandreT/ferrule/pull/581).
-
-### Next delivery gates
-
-- [ ] Publish the private Rust checked-input bridge
-  [#537](https://github.com/DeandreT/ferrule/issues/537), preserving PR555's
-  failure groundwork, then publish the separate ordinary source-rule bridge
-  [#541](https://github.com/DeandreT/ferrule/issues/541).
-- [ ] Publish the additive Rust and C# Basic emitter APIs under
-  [#519](https://github.com/DeandreT/ferrule/issues/519) as separate PRs after
-  their shared prerequisites are qualified and merged.
-
-The unpublished C# public candidate has independent acceptance for 50 source
-controls, strict checks, and seven external consumers exercising 24 calls.
-
-The unpublished public Rust candidate has accepted checks for 17 source
-controls, four existing controls, strict checks, production compilation,
-public-symbol exposure, and the required test inventory. The
-[#580](https://github.com/DeandreT/ferrule/issues/580) fixture correction passed
-compilation and strict checks; independent result acceptance now covers all
-five external consumer modules / 14 calls. The earlier compile failure remains
-a failed verification record. Both public families remain unpublished on main.
-
-The Basic lane covers explicit static source ownership and its admitted scalar
-and collection contexts. Private inventory alignment in
-[#566](https://github.com/DeandreT/ferrule/issues/566) owns emitter changes and
-focused tests; its shared public admission gate stays read-only. Future public
-target ValueMap support belongs to
-[#582](https://github.com/DeandreT/ferrule/issues/582), preserving the current
-public refusal until that separate scope is qualified. This increment adds no
-CLI selection mode or broader GUI/native-workflow claim.
-
-[Basic contributor lanes](docs/parallel-work.md#basic-owned-source-contributor-lanes)
-record publication dependencies and file ownership. Same-language bridge and
-public-API edits must be sequenced; the Rust and C# public PRs can proceed in
-parallel once their shared gates pass.
-
-## Current contributor snapshot
-
-Snapshot: 2026-10-11 15:57:27 UTC, against merged main [`4e0f95d`](https://github.com/DeandreT/ferrule/commit/4e0f95de957c32e6381a1b66c5f0fe21be75da5c).
-Contributor availability below retains its 15:33 UTC snapshot.
-This focused refresh is [#417](https://github.com/DeandreT/ferrule/issues/417).
-The original [#89](https://github.com/DeandreT/ferrule/issues/89) backlog is complete;
-overall compatibility remains incomplete and the conformance survey is unchanged.
-The dated baseline, counts and diagrams below retain their original evidence scope.
-
-The current unassigned lanes are [#103](https://github.com/DeandreT/ferrule/issues/103),
-[#105](https://github.com/DeandreT/ferrule/issues/105),
-[#106](https://github.com/DeandreT/ferrule/issues/106),
-[#108](https://github.com/DeandreT/ferrule/issues/108),
-[#160](https://github.com/DeandreT/ferrule/issues/160),
-[#347](https://github.com/DeandreT/ferrule/issues/347) and
-[#387](https://github.com/DeandreT/ferrule/issues/387).
-[Parallel work](docs/parallel-work.md#available-contributor-lanes) records each
-scope and next gate. The claimed PDF isolation follow-ons under
-[#104](https://github.com/DeandreT/ferrule/issues/104) are maintainer work and are
-unavailable for a new independent claim.
-
-| Verified merged increment | Qualified scope | Remaining boundary |
-| --- | --- | --- |
-| [#405 / PR409](https://github.com/DeandreT/ferrule/pull/409) | Importer diagnostics | Broader importer behavior retains its existing contracts. |
-| [#391 / PR411](https://github.com/DeandreT/ferrule/pull/411) | Twelve routes, four attempted dynamic-source callbacks, 84 original records and 25 closed owners | Dependent source/ancestry propagation under #396/#398 is pending; this is no parser-memory or whole-product claim. |
-| [#394 / PR404](https://github.com/DeandreT/ferrule/pull/404) | Memory report and 31 accepted streaming controls; one 70-row preparation | The refreshed 140-owner resource campaign is unrun; no new memory trial is claimed. |
-
-| Active maintainer lane | Next gate / dependency |
-| --- | --- |
-| [#346 / PR413](https://github.com/DeandreT/ferrule/issues/346) | Native A: 397 tests, including 20 new tests, passed on `9d19`. Test-only successor `6534f9d` has 100 schemas/270 probes and awaits exact-head CI. Generated increment B's accepted design has 130 calls per language and waits for verified A merge before implementation. |
-| [#406 / PR410](https://github.com/DeandreT/ferrule/issues/406) | All three exact-head hosted checks and 751 GUI tests pass. The required alternate-display desktop walkthrough is pending. |
-| [#412](https://github.com/DeandreT/ferrule/issues/412) | All 15 controls/29 synthetic subcases matched once; independent review and complete evidence intake accepted. All 70 requests/140 physical owners remain unrun; fresh actor admission is required. This carries no kernel, PDF or resource credit. |
-| [#396](https://github.com/DeandreT/ferrule/issues/396) | Remaining dependent PDF source/ancestry propagation is pending; each focused head needs its own current checks. |
-| [#416](https://github.com/DeandreT/ferrule/issues/416) | Eighteen obsolete CSV test executables retired with complete originals retained; observed gain is about 1.14 GiB. Fresh per-actor capacity admission is still required; no build or request campaign is admitted. |
-
-Coordinate the compiler/artifact lane, alternate display and same-file edits before
-starting shared verification. Earlier #414/#415 local cache retirement observations
-do not replace fresh capacity admission. Hosted passes, source acceptance and
-physical walkthroughs remain separate gates.
-
-## Earlier baseline (2026-10-10)
-
-Status snapshot: 2026-10-10, against merged main
-[`6b94863`](https://github.com/DeandreT/ferrule/commit/6b94863beebbc90f0d094e1387391131f73c5a7c).
-The [live coordination issue](https://github.com/DeandreT/ferrule/issues/89) tracks
-later ownership and qualification changes. This two-document refresh is
-[#349](https://github.com/DeandreT/ferrule/issues/349), following merged
-[#337](https://github.com/DeandreT/ferrule/pull/337).
-
-PDF isolation design [#329](https://github.com/DeandreT/ferrule/pull/329) and the
-wire/library increment [#334](https://github.com/DeandreT/ferrule/pull/334) are
-merged; [#325](https://github.com/DeandreT/ferrule/issues/325) is closed. The 216
-local tests, 81 frozen wire cases, strict warnings and formatting pass; hosted
-validation remains pending or unknown. Worker-host
-[#326](https://github.com/DeandreT/ferrule/issues/326) is ongoing on
-`feat/pdf-worker-host`. The primary `ResourceSetup` association is corrected;
-11 worker and 52 regular CLI tests pass, alongside owned protocol, refusal,
-routing, cache and signal controls. Strict-lint correction
-[#348](https://github.com/DeandreT/ferrule/issues/348) and remaining host failure
-controls are pending before merge. The synthetic resource-setup fixture does
-not qualify a real resource-limit setup failure.
-Borrowed filesystem reader [#344](https://github.com/DeandreT/ferrule/issues/344)
-follows #326. GUI filesystem cancellation
-[#327](https://github.com/DeandreT/ferrule/issues/327) and explicit preview input
-acquisition [#340](https://github.com/DeandreT/ferrule/issues/340) follow #344;
-GUI preview ownership [#341](https://github.com/DeandreT/ferrule/issues/341)
-follows #327/#340. Resource qualification
-[#328](https://github.com/DeandreT/ferrule/issues/328) depends on #326.
-Its source-only plan has 20 recipes, 15 exact cases and
-82 planned requests; all execution remains unrun. It does not depend on #327.
-
-The [#309](https://github.com/DeandreT/ferrule/pull/309) duplication candidate
-passes all 753 GUI tests and strict warnings. All 67 native calls match their
-expectations: 60 successes and seven typed `MappingException` outcomes. Desktop
-[#316](https://github.com/DeandreT/ferrule/issues/316) has independently accepted
-all six phases with normal closure: Main copy/original/history/context has
-4/6/10/6 saved pairs; Named copy/history and original/context has 10/9.
-The total is 45 complete Project/layout pairs and 90 byte/JSON comparisons.
-#316 is closed; earlier failed attempts remain retained. Native
-Save/reopen/Save2 and main integration of #309 remain pending.
-
-The remaining baseline observations retain the date of the
-2026-10-10 10:53:09 UTC snapshot against main `0c7b2ca` in
-[#299](https://github.com/DeandreT/ferrule/issues/299). The preceding
-[#271](https://github.com/DeandreT/ferrule/issues/271) refresh merged in
-[#280](https://github.com/DeandreT/ferrule/pull/280), with three successful hosted jobs. The earlier
-[#252](https://github.com/DeandreT/ferrule/issues/252) snapshot merged in
-[#255](https://github.com/DeandreT/ferrule/pull/255); its dependency maps remain dated views.
-Memory-study [#249](https://github.com/DeandreT/ferrule/pull/249) and host-policy
-[#251](https://github.com/DeandreT/ferrule/pull/251) are merged with three successful
-hosted jobs each. Selected JSON APIs and their test-comparator correction are
-merged in [#262](https://github.com/DeandreT/ferrule/pull/262): all 229 independent
-native/Rust/C# calls pass. Bounded generated C# X12 options are merged in
-[#265](https://github.com/DeandreT/ferrule/pull/265). Both later PRs also have three
-successful hosted jobs. The #248 allocation campaign has eight measurements,
-eight independent verifiers and four trace decoders accepted. Its report source and
-one full rendered diagram are independently reviewed; the bounded report is
-merged in [#279](https://github.com/DeandreT/ferrule/pull/279), with three successful hosted jobs.
-
-#203's fixtures are merged in [#266](https://github.com/DeandreT/ferrule/pull/266),
-with all three hosted jobs successful. The 24 public interpreter comparisons,
-51 typed export refusals and 237 interchange library tests pass; fresh combined-
-main 24+51 checks, workspace strict warnings and formatting pass. The test-only
-parent-envelope correction #264 is closed. No faithful saved form is admitted.
-The selected JSON guide [#270](https://github.com/DeandreT/ferrule/pull/270) is merged
-in this main, closing #261. All three hosted jobs and fresh combined-main strict
-warnings and formatting pass. Issue/PR observations were fetched individually;
-they are not a claim that all remote state was observed simultaneously.
-
-#263's earlier 41 simulated controller-policy controls remain separate from
-#268's independently accepted 126 XML-oracle observations: 68 helper, 41 byte
-compatibility and 17 admission checks. After the read-only staging correction
-[#281](https://github.com/DeandreT/ferrule/issues/281), a saved-metadata fixture
-failed before its expected rejection; [#283](https://github.com/DeandreT/ferrule/issues/283)
-corrected it, and the same 41+17 controls passed fresh runs. The unchanged helper's
-68 observations are inherited, not rerun or added to the distinct total.
-The neutral [checkpoint report](docs/conformance/native-saved-design-reopen.md)
-is merged in [#287](https://github.com/DeandreT/ferrule/pull/287), with three successful
-hosted jobs. Read-only preparation passed, but the first native phase timed out at
-180 seconds with a 398-byte XML artifact and no first save or reopen. Later read-only
-#285 diagnostics also timed out; #291's presentation experiment refused its visible-UI
-requirement. All 16 modeled query controls pass. The new read-only observer's
-exception-path closure gap is tracked in [#302](https://github.com/DeandreT/ferrule/issues/302);
-its correction is source-reviewed and all three exception models match in a completed
-root-owned run, now independently accepted. These mocked branches do not
-prove a live helper, thread or cleanup path; fresh observer qualification remains
-pending. Live ownership/query/acknowledgment and native save/reopen
-remain unproved. Source review and proven cleanup do not turn these retained negatives
-into a completed native cycle.
-#253's three tests / 11 internal controls, all 344 engine tests, ordinary engine
-build and corrected workspace strict/format checks pass. The test-only let-chain
-prerequisite [#277](https://github.com/DeandreT/ferrule/issues/277) preserves the original
-warning failure and all observations. Both are merged in
-[#278](https://github.com/DeandreT/ferrule/pull/278), with three successful hosted jobs.
-The borrowed construction marker is not allocator telemetry or public/native parity.
-#201's accepted corpus contains 28 controls (10 admitted and 18 refused), 87 snapshots
-and 92 canvas tables. Three focused tests plan 29 duplication attempts. After #297
-restored the locked dependency, [#298](https://github.com/DeandreT/ferrule/issues/298)'s
-reviewed test-capture correction compiled and formatting passed. The first focused
-unit then failed at an independent input edit: the Project changed to the new source,
-but the test driver left the old canvas wire. The independently reviewed negative
-retained nine primary local engine previews, zero named previews, two duplication
-actions and 19 state records; 16 of 17 reached snapshot assertions matched before
-the wire failure. [#300](https://github.com/DeandreT/ferrule/issues/300) corrects the
-test driver's wire action and whole-checkpoint restoration;
-[#301](https://github.com/DeandreT/ferrule/issues/301) corrects the frozen named-context
-dispatch. The first paired source successor's type/module-path gaps and a later
-pre-compilation invocation refusal remain separate from the actual wire failure.
-The revised test-only source is independently reviewed, applied and formatted.
-A fresh root-owned selected test now passes all ten admitted cases and all 67 local
-engine previews (61 primary and six named), preserving the unchanged literals.
-Independent review of those complete results is pending in this dated snapshot.
-The refusal and keyboard tests, full GUI suite and two Main/Named physical sessions
-with ten checkpoint pairs remain pending qualification here. Public-codec
-materialization and all 29 modeled policy controls remain independently accepted.
-#288's admitted child output route retained the complete ten-case run; later gates
-still require fresh resource/source admission. These local engine previews do not
-establish physical session or native saved/reopen parity.
-No faithful new sequence saved
-form is admitted. Earlier #173/#175, #182/#187 and #212/#215
-snapshots remain historical records. This refresh preserves all three existing
-Mermaid fence bodies and their earlier rendering/zoom limits; the current table
-and prose dependencies do not establish a fresh render of those historical maps.
-Compact GUI #194 and guidance #210
-are merged in [#214](https://github.com/DeandreT/ferrule/pull/214). Fresh strict
-warnings, formatting, one affected unit check and the production build pass;
-earlier focused/full GUI and web-demo crate suites are retained separately.
-Finite desktop inspection and editor-driven identity Rust/C# generation pass.
-The two generated public String JSON calls each match the complete 172-byte
-independent golden with normal owned host closure; earlier GUI parts needed owned
-helper cleanup. Three earlier diagram fences rendered as three SVGs and six PNGs
-with owned helper cleanup. The #212 final two parallel diagrams rendered as two SVGs
-and four PNGs with owned helper cleanup; the unchanged roadmap fence reuses its
-earlier rendered evidence. That historical current map needs scrolling or zoom at
-1200 pixels, and the complete map's labels need zoom. All three hosted #214 jobs
-ran zero validation steps because
-of the account billing/spending restriction; those failures are not passes.
-
-| Area | Available now | Boundary to keep visible |
-| --- | --- | --- |
-| Mapping | Typed graphs and scopes; nested iteration, filters, grouping, sorting, windows, aggregates, bounded ordered scalar filter/map sequences, multi-source inner joins, UDFs, dynamic properties, and ordered targets | Scalar sequence native/Rust/C# execution and the compact GUI increment are qualified in #190/#192/#193/#194; saved-design interchange, broader desktop workflows and general higher-order shapes remain separate |
-| Error order | Global pre-target failure rules plus lazy, expression-owned Raise; bounded item-ordered XML exception import is explicit opt-in | Global and item-ordered failures are different; strict native export refuses unproved ordering |
-| Native editor | Compact icons with full hover/details, primary/named/function canvases, undo/layout, Preview/Run/debugging, stage snapshots, and guarded import/export | Local widget tests do not establish every desktop chooser/platform workflow |
-| Setup | Schema/layout import, CSV/fixed-width/FlexText/SQLite/Protocol Buffers setup, and flat XLSX worksheet settings | The flat workbook wizard does not author advanced hierarchical layouts |
-| Formats | XML, JSON, JSON5, tabular, database, EDI, structured text, binary, and document adapters | Direction and exact subset are in [Supported formats](docs/formats.md); some adapters are input-only |
-| JSON Schema | Per-resource reference policies, required-only object-reference siblings, exact intervals in String-or-Int and String-or-Float fields, signed-integer Float bound normalization, redundant scalar composition type siblings, outer scalar composition bounds, and explicit nested-array levels with per-level constraints and nullability | Scalar domains, array roles, and admission rules are in [Supported formats](docs/formats.md); broader compositions and restrictive intersections remain separately scoped |
-| Generated libraries | Deterministic Rust and package-free C#; typed, strict JSON, eligible XML, explicit optional JSON5 or bounded flat CSV companions, [flat CSV input to singular X12](docs/code-generation.md#flat-csv-input-to-x12), and [static JSON/X12 selected-document companions](docs/design/generated-x12-csharp.md#static-named-documents-and-selected-output) | Every static endpoint retains its own admitted boundary; supported emission, compiled calls, physical resource checks, and external execution are separate gates |
-| Large files | Per-boundary byte/item/work budgets, CSV temporary-row release and borrowed ordinary JSON output text | Input/target trees and output Strings remain materialized; the [historical output-set study](docs/performance/json-output-set-memory.md) and [matched writer comparison](docs/performance/borrowed-json-output-memory.md) establish no total-RAM cap or streaming |
-| `.mfd` | Repair-oriented default import, strict executable admission, native/extension export profiles, bounded serial chains, and guarded multi-source joins | General stage graphs, unsupported contexts, and unknown profiles remain explicit |
-
-See [Architecture](docs/architecture.md), [Code generation](docs/code-generation.md),
-[Memory use](docs/memory-and-limits.md), and [`.mfd` interoperability](docs/mfd-interop.md)
-for the contracts behind these summaries.
 
 ## Current Priorities
 
@@ -1204,22 +736,15 @@ their refusals.
   increment in [#334](https://github.com/DeandreT/ferrule/pull/334).
   The 216 local tests, 81 frozen wire cases, strict warnings and formatting pass;
   hosted validation remains pending or unknown.
-- [ ] Complete worker-host [#326](https://github.com/DeandreT/ferrule/issues/326),
-  ongoing on `feat/pdf-worker-host`. Initial worker/CLI and owned filesystem
-  controls pass; strict-lint correction #348, affected reruns and remaining
-  host failure controls are pending.
-- [ ] Add borrowed filesystem reader
-  [#344](https://github.com/DeandreT/ferrule/issues/344) after #326.
-- [ ] Complete GUI filesystem cancellation
-  [#327](https://github.com/DeandreT/ferrule/issues/327) after #326/#344.
-- [ ] Add explicit preview input acquisition
-  [#340](https://github.com/DeandreT/ferrule/issues/340) after #326/#344.
-- [ ] Complete GUI preview ownership
-  [#341](https://github.com/DeandreT/ferrule/issues/341) after #327/#340.
-- [ ] Execute resource qualification
-  [#328](https://github.com/DeandreT/ferrule/issues/328) after #326. Its source-only
-  plan has 20 recipes, 15 exact cases and 82 planned requests; all execution
-  remains unrun. This scope does not depend on #327.
+- [x] Complete the owned PDF worker follow-ons: worker host
+  [#326](https://github.com/DeandreT/ferrule/issues/326), borrowed filesystem
+  reader [#344](https://github.com/DeandreT/ferrule/issues/344), GUI filesystem
+  cancellation [#327](https://github.com/DeandreT/ferrule/issues/327), preview
+  input acquisition [#340](https://github.com/DeandreT/ferrule/issues/340), GUI
+  preview ownership [#341](https://github.com/DeandreT/ferrule/issues/341) and
+  resource qualification [#328](https://github.com/DeandreT/ferrule/issues/328).
+  The [PDF worker contract](docs/pdf-worker-contract.md) records the supported
+  boundary.
 - [ ] Add a typed query/write model before general database mutation modes.
 - [ ] Extend adapters and transport only with confinement, cancellation,
   original-error, resource, and publication contracts.
@@ -1338,3 +863,479 @@ Use the current source and focused contract documents linked above. The
 [historical reference topics](docs/compatibility-baseline.md#primary-references)
 remain preserved. Any external compatibility update must bind the exact
 primary documentation and application version used for that update.
+
+## History
+
+The dated snapshots below record earlier coordination rounds as they stood on
+their dates. Their checklists, next gates and availability statements are not
+current work: GitHub issues are the live source for claims and status, and most
+issues named here have since closed. Each snapshot keeps its original evidence
+scope.
+
+### Basic ownership milestone (2026-10-14)
+
+This [#697](https://github.com/DeandreT/ferrule/issues/697) snapshot records
+merged main [`d92a0bb`](https://github.com/DeandreT/ferrule/commit/d92a0bb67826d13fc3069c9b7c0acad85f7c4073).
+It supersedes the current-status claims in earlier dated sections, which retain
+their original evidence scope. Completed cohorts do not establish full parity.
+
+| Verified increment | Local evidence |
+| --- | --- |
+| Common sort, #667/PR684 | 437 common tests, including 33 Basic and 28 admission controls; production and strict checks. |
+| Rust sort and singleton projection, #668/PR695 and #693/PR712 | Current runtime checks passed 375 tests, including 90 Basic controls; the backend passed 164 active tests with ten ignored. All 24 filter and 26 sort generated calls passed; production and strict checks passed. |
+| C# sort and singleton projection, #669/PR700 and #694/PR716 | 164 backend tests and strict checks passed. All 45 runtime/generated commands passed, including 216 smoke controls, 44 public calls and 33 new focused singleton controls against the fresh runtime. |
+| Matched sort, #670/PR705 | The retained cohort qualified 16 genuine models/48 complete expected outcomes with all 37 commands passing. #701's harness scope correction is included in the same nine-file cohort. This precedes the later singleton runtime increments and supplies no fresh matched-sort credit for them. |
+| Current C05, nested, alias and filter comparisons after PR712/PR716 | Six fresh C05 trees match. All 18 complete typed outputs across the six frozen nested models are accepted after retained-capture reconciliation. Alias9 and filter36 also match; all ten alias and 16 filter commands passed. Each result keeps its finite scope. |
+| Common windows, #698/PR718 | Merged after all four local commands passed: production, exact 448-test inventory/full common tests and strict checks, including 40 Basic and 32 admission controls. This qualifies the common profile; generated window execution remains pending. |
+| Native windows and borrowed failure hooks, #676/PR682 and #685/PR690 | The later engine increment passed 533 library tests, including 77 trace controls, production compilation and strict checks. Public owned trace/debug admission remains closed. |
+| Compact GUI nodes, #406/PR410 | Icons are merged. PR700-baseline production, all 798 GUI tests and guards passed. The private-display walkthrough passed six of nine workflows; C02 failed on missing CJK glyphs, while C03 and C06 remain unverified. C09 passed protected-file checks, two normal GUI exits and full source guards. |
+
+#### Delivery checklist
+
+- [x] Merge common, Rust and C# bounded sort/filter profiles, preserving ordinary
+  and default API behavior; retain #670's qualified PR705 matched cohort.
+- [x] Locally qualify and merge the separate
+  [#693 Rust](https://github.com/DeandreT/ferrule/issues/693) and
+  [#694 C#](https://github.com/DeandreT/ferrule/issues/694) singleton projection
+  fixes in PR712 and PR716.
+- [x] Qualify six complete C05 results and the original nine-call alias and
+  36-call filter cohorts against both current runtime corrections. Preserve the
+  earlier mismatches and each cohort's original scope.
+- [x] Accept all 18 complete typed results in the original six-model nested
+  cohort after retained-capture reconciliation. Only four C05 string expectations
+  changed in memory; no execution was replayed, and the original failure and
+  frozen fixtures remain preserved.
+- [x] Locally qualify [#698](https://github.com/DeandreT/ferrule/issues/698)'s
+  seven-role common window candidate with 448 tests, production and strict checks.
+- [x] Merge #698's verified common window profile in PR718.
+- [ ] Implement and qualify separate
+  [#702 Rust](https://github.com/DeandreT/ferrule/issues/702) and
+  [#703 C#](https://github.com/DeandreT/ferrule/issues/703) window increments using
+  the merged singleton runtime handoffs, followed by
+  [#704](https://github.com/DeandreT/ferrule/issues/704)'s matched window cohort.
+- [ ] Qualify [#709](https://github.com/DeandreT/ferrule/issues/709)'s CJK font
+  fallback and rerun C02. The scoped source proposal is accepted; font tests,
+  production compilation and desktop verification remain unrun.
+- [ ] Complete [#406](https://github.com/DeandreT/ferrule/issues/406)'s C03 named
+  endpoint hover/accessibility and C06 target-height/pin-edge workflow checks.
+- [ ] Complete the broader #612/#613 occurrence, provenance and failure cohorts,
+  then #606 observer activation and final Basic acceptance.
+
+The retained C05 observation exposed P2/P3 in the interpreter and S/S in the
+generated backends. After both corrections, the fresh six-call comparison now
+matches complete trees across the interpreter, Rust and C#. Current alias9 and
+filter36 also passed. The retained original18 comparison is now accepted after
+a narrowly scoped expectation reconciliation, qualifying that frozen positive
+cohort. The earlier PR705 matched-sort cohort retains its original runtime scope;
+these results grant no broader error, observer or whole-product parity.
+Generated window execution and sorted First await their backend increments;
+specialized ownership families retain their separate admission gates. Full sort, filter, error and total parity remain incomplete.
+
+[Dated handoffs](https://github.com/DeandreT/ferrule/blob/d151ded4cf17ecd206146b718cc6ffce53b1adda/docs/parallel-work.md#current-basic-milestone-handoffs-2026-10-14)
+identify file ownership, dependencies and independent qualification.
+
+### Basic ownership progress (2026-10-13)
+
+This [#679](https://github.com/DeandreT/ferrule/issues/679) coordination snapshot
+records published main [`23b6167`](https://github.com/DeandreT/ferrule/commit/23b6167895c832b30631289f201ba0bd6e8f2990).
+It replaces the current-status front for these lanes. Earlier dated sections below
+retain their original scope; completed increments do not establish whole-product
+parity.
+
+#### Qualified generated root pins
+
+The finite #632 root-pin and #647 node-provenance results remain qualified;
+the original #640 corpus and error oracles remain historical records. Generated
+error scope metadata remains unknown/unavailable; no scope is inferred.
+
+The explicit Basic filter profiles are merged in
+[#644 / PR663](https://github.com/DeandreT/ferrule/pull/663) and
+[#645 / PR674](https://github.com/DeandreT/ferrule/pull/674), after the common
+[#657 / PR661](https://github.com/DeandreT/ferrule/pull/661) companion.
+[#662 / PR678](https://github.com/DeandreT/ferrule/pull/678) qualified the six-model
+filter corpus: 12 complete calls per executor, 36 total, with matched outputs and
+first errors. Its generic paired-position contract does not qualify the named
+legacy collection-path gap tracked in [#677](https://github.com/DeandreT/ferrule/issues/677).
+Original failed captures and corrected fixtures remain separate evidence.
+
+| Qualified lane | Local verification |
+| --- | --- |
+| Common filter admission | 423 common tests, including 23 admission controls, production and strict checks. |
+| Rust filters | 357 runtime tests; 158 Rust tests with nine ignored; 14 generated programs and 24 calls; production and strict checks. |
+| C# filters | 155 backend tests, including 77 owned controls; fresh Runtime95; 216 smoke controls and 16 public calls across eight hosts; production and strict checks. |
+| Matched filter corpus | Six models, 36 complete interpreter/Rust/C# outcomes, 12 per executor; all 16 build/run steps passed. |
+| Native observers | 521 engine tests, including 65 trace controls, production and strict checks after #673/PR675. Earlier #654/PR660 lifecycle checks also passed seven CLI and 28 GUI controls. |
+
+These results qualify their stated cohorts. `full_filter_parity=false`,
+`full_error_parity=false` and `total_parity=false`. Public owned trace/debug
+admission remains closed; grouping, generated/dynamic/document iteration and
+other specialized ownership families retain their separate gates.
+
+#### Delivery checklist
+
+- [x] Merge the explicit common, Rust and C# filter profiles and the finite
+  #662 matched filter corpus. Preserve ordinary/default API behavior.
+- [x] Merge expression/output/lifecycle/candidate/filter observations and
+  [#673 / PR675](https://github.com/DeandreT/ferrule/pull/675) native sort
+  observations, with authentic borrowed ownership context and closed public
+  observer gates.
+- [ ] Complete [#667](https://github.com/DeandreT/ferrule/issues/667), the active
+  common sort profile and named-input admission increment. After its merge,
+  implement [#668 Rust](https://github.com/DeandreT/ferrule/issues/668) and
+  [#669 C#](https://github.com/DeandreT/ferrule/issues/669) in parallel, then qualify
+  [#670](https://github.com/DeandreT/ferrule/issues/670)'s planned 16-case/48-call
+  matched sort corpus. Both filter orders and stable ties belong to this sequence;
+  generated windows and sorted First remain closed.
+- [ ] Complete the active [#676](https://github.com/DeandreT/ferrule/issues/676)
+  native WindowApplied receiving-context increment. It preserves the full
+  candidate count for eligible First and adds no generated window capability.
+- [ ] Run [#677](https://github.com/DeandreT/ferrule/issues/677)'s nine-call named
+  collection-path probe before production edits. Then qualify the independent
+  [#680 Rust](https://github.com/DeandreT/ferrule/issues/680) and
+  [#681 C#](https://github.com/DeandreT/ferrule/issues/681) runtime increments and
+  rerun the matched alias/filter controls. These are source plans, not executed
+  qualification.
+- [ ] Complete broader [#612](https://github.com/DeandreT/ferrule/issues/612)
+  occurrence/phase cohorts, [#613](https://github.com/DeandreT/ferrule/issues/613)
+  provenance/failures, and [#606](https://github.com/DeandreT/ferrule/issues/606)
+  error/debug/cancellation observers and final Basic acceptance. Public observer
+  activation requires its own checks.
+
+[Dated handoffs](https://github.com/DeandreT/ferrule/blob/d151ded4cf17ecd206146b718cc6ffce53b1adda/docs/parallel-work.md#current-basic-ownership-handoffs-2026-10-13)
+record exact source ownership and dependencies under #440/#641. Source preparation
+may proceed independently; shared roles require an explicit handoff, and each
+focused increment needs local qualification before publication.
+
+### Public native ownership (2026-10-13)
+
+This [#624](https://github.com/DeandreT/ferrule/issues/624) snapshot is against
+merged main [`80274d0`](https://github.com/DeandreT/ferrule/commit/80274d0079f0adbe70004780701c7bf1cbbe0280),
+which includes [PR618](https://github.com/DeandreT/ferrule/pull/618),
+[PR625](https://github.com/DeandreT/ferrule/pull/625),
+[PR626](https://github.com/DeandreT/ferrule/pull/626) and
+[PR628](https://github.com/DeandreT/ferrule/pull/628). It records
+current native interpreter behavior and follow-ups. Earlier snapshots, emitter
+milestones and other workstreams below retain their recorded evidence scope.
+
+The public engine executes Basic static owned root reads and scoped borrowed
+collection walks, including owned fields and Structural, Selection and Output
+positions. Owned global failure rules, tracing and debugging remain refused.
+Grouping, joins, documents, dynamic loads, generated/function provenance and
+other specialized ownership domains keep their separate admission gates.
+Explicit nonrepeating root pins (#620), caller-owned scalar function arguments
+(#621) and Basic owned scalar target construction (#623) are implemented and
+merged in PR625, PR626 and PR628. PR628's native verification passed all 437
+engine library tests, including the exact 35-test core module, 18 source-ownership
+tests and 31 owned Basic tests. Production compilation and strict library/test
+checks also passed. Matched generated outcomes and the remaining occurrence,
+failure and observer qualification are still pending. The planned 18 matched
+native/Rust/C# calls remain unrun.
+
+[PR619](https://github.com/DeandreT/ferrule/pull/619) is closed without merging:
+PR618 superseded its private root executor. Its retained 407-test results apply
+only to that older private proposal and do not qualify current main.
+[#616](https://github.com/DeandreT/ferrule/issues/616) is closed as not planned;
+the public executor has no retained success-witness log to bound.
+
+#### Delivery checklist
+
+- [x] Implement public Basic roots, scoped walks and occurrence position phases
+  in merged PR618.
+- [x] Retire superseded PR619 and its private-only #616 retention work.
+- [x] Correct explicit nonrepeating root pins in
+  [#620 / PR625](https://github.com/DeandreT/ferrule/pull/625), preserving the
+  active-occurrence requirement for declared or actual repeating roots. Native
+  local checks passed; #620 is closed as completed.
+- [x] Admit caller-owned scalar arguments to ordinary functions in
+  [#621 / PR626](https://github.com/DeandreT/ferrule/pull/626), preserving isolated
+  function bodies and inherited specialized-context refusals. Native local
+  checks passed; #621 is closed as completed.
+- [ ] Measure and bound retained candidate/ancestry metadata in
+  [#622](https://github.com/DeandreT/ferrule/issues/622), then stream eligible
+  First/window paths where their phase semantics permit. The text-work limit
+  does not bound total input, output or resident memory. Keep measurement and
+  implementation together in focused increments. Measurements remain unrun.
+- [x] Support Basic owned scalar target construction in
+  [#623 / PR628](https://github.com/DeandreT/ferrule/pull/628), preserving the
+  existing constructor/conversion path and specialized refusals. Native local
+  checks passed; #623 is closed as completed.
+- [ ] Integrate stored-order global failure rules and exact row provenance in
+  [#613](https://github.com/DeandreT/ferrule/issues/613), preserving lazy messages
+  and typed failures. Assigned root-only
+  [#627](https://github.com/DeandreT/ferrule/issues/627) source work is in progress
+  after #623's admission handoff; row provenance remains closed.
+- [ ] Qualify the actual public occurrence and position-phase implementation in
+  [#612](https://github.com/DeandreT/ferrule/issues/612) against complete native
+  outputs/errors and matched generated controls.
+- [ ] Complete observer integration and final Basic acceptance in
+  [#606](https://github.com/DeandreT/ferrule/issues/606), using confirmed matched
+  execution from #612 and #613. Observer source work can proceed independently
+  once its context interface is agreed.
+
+[Dated native contributor lanes](https://github.com/DeandreT/ferrule/blob/d151ded4cf17ecd206146b718cc6ffce53b1adda/docs/parallel-work.md#current-public-native-ownership-lanes-2026-10-13)
+record source handoffs and the dependency diagram. Merged #620 precedes #623;
+overlapping
+admission, walker and scope-storage edits must be sequenced. Each increment needs
+its own local verification before publication. The current snapshot adds no
+current-main test credit from older private execution results.
+
+### Basic owned-source progress (2026-10-12)
+
+This focused [#578](https://github.com/DeandreT/ferrule/issues/578) snapshot is
+against merged main [`2d52eba`](https://github.com/DeandreT/ferrule/commit/2d52eba6166124d31996532b5fe46cdacb0ec405).
+It updates the [#519](https://github.com/DeandreT/ferrule/issues/519) Basic
+owned-source lane; the dated snapshots and other workstreams below retain their
+recorded scope.
+
+Main contains the shared ownership model, private emitter groundwork, and an
+additive neutral Basic validator. The public Basic emitter families remain
+unpublished. Existing ordinary generated interfaces retain their closed
+ownership admission rules.
+
+#### Merged groundwork
+
+- [x] Merge the ownership IR and common admission foundation:
+  [#516 / PR535](https://github.com/DeandreT/ferrule/pull/535) and
+  [#536 / PR548](https://github.com/DeandreT/ferrule/pull/548).
+- [x] Merge the test-scoped private Rust Basic renderer:
+  [#517 / PR547](https://github.com/DeandreT/ferrule/pull/547).
+- [x] Merge private Rust failure groundwork:
+  [PR555](https://github.com/DeandreT/ferrule/pull/555). The ordinary source-rule
+  bridge in [#541](https://github.com/DeandreT/ferrule/issues/541) remains open.
+- [x] Merge the private C# Basic renderer and its corrected budget controls:
+  [#518 and #554 / PR563](https://github.com/DeandreT/ferrule/pull/563).
+- [x] Merge the neutral Basic admission API and its current-source verification:
+  [#576 / PR577](https://github.com/DeandreT/ferrule/pull/577).
+- [x] Merge the private C# checked-input bridge:
+  [#538 / PR579](https://github.com/DeandreT/ferrule/pull/579).
+- [x] Merge the private C# ordinary source-failure bridge and checked interactions:
+  [#542 / PR581](https://github.com/DeandreT/ferrule/pull/581).
+
+#### Delivery gates
+
+- [ ] Publish the private Rust checked-input bridge
+  [#537](https://github.com/DeandreT/ferrule/issues/537), preserving PR555's
+  failure groundwork, then publish the separate ordinary source-rule bridge
+  [#541](https://github.com/DeandreT/ferrule/issues/541).
+- [ ] Publish the additive Rust and C# Basic emitter APIs under
+  [#519](https://github.com/DeandreT/ferrule/issues/519) as separate PRs after
+  their shared prerequisites are qualified and merged.
+
+The unpublished C# public candidate has independent acceptance for 50 source
+controls, strict checks, and seven external consumers exercising 24 calls.
+
+The unpublished public Rust candidate has accepted checks for 17 source
+controls, four existing controls, strict checks, production compilation,
+public-symbol exposure, and the required test inventory. The
+[#580](https://github.com/DeandreT/ferrule/issues/580) fixture correction passed
+compilation and strict checks; independent result acceptance now covers all
+five external consumer modules / 14 calls. The earlier compile failure remains
+a failed verification record. Both public families remain unpublished on main.
+
+The Basic lane covers explicit static source ownership and its admitted scalar
+and collection contexts. Private inventory alignment in
+[#566](https://github.com/DeandreT/ferrule/issues/566) owns emitter changes and
+focused tests; its shared public admission gate stays read-only. Future public
+target ValueMap support belongs to
+[#582](https://github.com/DeandreT/ferrule/issues/582), preserving the current
+public refusal until that separate scope is qualified. This increment adds no
+CLI selection mode or broader GUI/native-workflow claim.
+
+[Dated Basic contributor lanes](https://github.com/DeandreT/ferrule/blob/d151ded4cf17ecd206146b718cc6ffce53b1adda/docs/parallel-work.md#basic-owned-source-contributor-lanes)
+record publication dependencies and file ownership. Same-language bridge and
+public-API edits must be sequenced; the Rust and C# public PRs can proceed in
+parallel once their shared gates pass.
+
+### Contributor snapshot (2026-10-11)
+
+Snapshot: 2026-10-11 15:57:27 UTC, against merged main [`4e0f95d`](https://github.com/DeandreT/ferrule/commit/4e0f95de957c32e6381a1b66c5f0fe21be75da5c).
+Contributor availability below retains its 15:33 UTC snapshot.
+This focused refresh is [#417](https://github.com/DeandreT/ferrule/issues/417).
+The original [#89](https://github.com/DeandreT/ferrule/issues/89) backlog is complete;
+overall compatibility remains incomplete and the conformance survey is unchanged.
+The dated baseline, counts and diagrams below retain their original evidence scope.
+
+The unassigned lanes at that snapshot were [#103](https://github.com/DeandreT/ferrule/issues/103),
+[#105](https://github.com/DeandreT/ferrule/issues/105),
+[#106](https://github.com/DeandreT/ferrule/issues/106),
+[#108](https://github.com/DeandreT/ferrule/issues/108),
+[#160](https://github.com/DeandreT/ferrule/issues/160),
+[#347](https://github.com/DeandreT/ferrule/issues/347) and
+[#387](https://github.com/DeandreT/ferrule/issues/387).
+[That snapshot's lane table](https://github.com/DeandreT/ferrule/blob/d151ded4cf17ecd206146b718cc6ffce53b1adda/docs/parallel-work.md#available-contributor-lanes) recorded each
+scope and next gate. The claimed PDF isolation follow-ons under
+[#104](https://github.com/DeandreT/ferrule/issues/104) are maintainer work and are
+unavailable for a new independent claim.
+
+| Verified merged increment | Qualified scope | Remaining boundary |
+| --- | --- | --- |
+| [#405 / PR409](https://github.com/DeandreT/ferrule/pull/409) | Importer diagnostics | Broader importer behavior retains its existing contracts. |
+| [#391 / PR411](https://github.com/DeandreT/ferrule/pull/411) | Twelve routes, four attempted dynamic-source callbacks, 84 original records and 25 closed owners | Dependent source/ancestry propagation under #396/#398 is pending; this is no parser-memory or whole-product claim. |
+| [#394 / PR404](https://github.com/DeandreT/ferrule/pull/404) | Memory report and 31 accepted streaming controls; one 70-row preparation | The refreshed 140-owner resource campaign is unrun; no new memory trial is claimed. |
+
+| Active maintainer lane | Next gate / dependency |
+| --- | --- |
+| [#346 / PR413](https://github.com/DeandreT/ferrule/issues/346) | Native A: 397 tests, including 20 new tests, passed on `9d19`. Test-only successor `6534f9d` has 100 schemas/270 probes and awaits exact-head CI. Generated increment B's accepted design has 130 calls per language and waits for verified A merge before implementation. |
+| [#406 / PR410](https://github.com/DeandreT/ferrule/issues/406) | All three exact-head hosted checks and 751 GUI tests pass. The required alternate-display desktop walkthrough is pending. |
+| [#412](https://github.com/DeandreT/ferrule/issues/412) | All 15 controls/29 synthetic subcases matched once; independent review and complete evidence intake accepted. All 70 requests/140 physical owners remain unrun; fresh actor admission is required. This carries no kernel, PDF or resource credit. |
+| [#396](https://github.com/DeandreT/ferrule/issues/396) | Remaining dependent PDF source/ancestry propagation is pending; each focused head needs its own current checks. |
+| [#416](https://github.com/DeandreT/ferrule/issues/416) | Eighteen obsolete CSV test executables retired with complete originals retained; observed gain is about 1.14 GiB. Fresh per-actor capacity admission is still required; no build or request campaign is admitted. |
+
+Coordinate the compiler/artifact lane, alternate display and same-file edits before
+starting shared verification. Earlier #414/#415 local cache retirement observations
+do not replace fresh capacity admission. Hosted passes, source acceptance and
+physical walkthroughs remain separate gates.
+
+### Baseline (2026-10-10)
+
+Status snapshot: 2026-10-10, against merged main
+[`6b94863`](https://github.com/DeandreT/ferrule/commit/6b94863beebbc90f0d094e1387391131f73c5a7c).
+The [live coordination issue](https://github.com/DeandreT/ferrule/issues/89) tracks
+later ownership and qualification changes. This two-document refresh is
+[#349](https://github.com/DeandreT/ferrule/issues/349), following merged
+[#337](https://github.com/DeandreT/ferrule/pull/337).
+
+PDF isolation design [#329](https://github.com/DeandreT/ferrule/pull/329) and the
+wire/library increment [#334](https://github.com/DeandreT/ferrule/pull/334) are
+merged; [#325](https://github.com/DeandreT/ferrule/issues/325) is closed. The 216
+local tests, 81 frozen wire cases, strict warnings and formatting pass; hosted
+validation remains pending or unknown. Worker-host
+[#326](https://github.com/DeandreT/ferrule/issues/326) is ongoing on
+`feat/pdf-worker-host`. The primary `ResourceSetup` association is corrected;
+11 worker and 52 regular CLI tests pass, alongside owned protocol, refusal,
+routing, cache and signal controls. Strict-lint correction
+[#348](https://github.com/DeandreT/ferrule/issues/348) and remaining host failure
+controls are pending before merge. The synthetic resource-setup fixture does
+not qualify a real resource-limit setup failure.
+Borrowed filesystem reader [#344](https://github.com/DeandreT/ferrule/issues/344)
+follows #326. GUI filesystem cancellation
+[#327](https://github.com/DeandreT/ferrule/issues/327) and explicit preview input
+acquisition [#340](https://github.com/DeandreT/ferrule/issues/340) follow #344;
+GUI preview ownership [#341](https://github.com/DeandreT/ferrule/issues/341)
+follows #327/#340. Resource qualification
+[#328](https://github.com/DeandreT/ferrule/issues/328) depends on #326.
+Its source-only plan has 20 recipes, 15 exact cases and
+82 planned requests; all execution remains unrun. It does not depend on #327.
+
+The [#309](https://github.com/DeandreT/ferrule/pull/309) duplication candidate
+passes all 753 GUI tests and strict warnings. All 67 native calls match their
+expectations: 60 successes and seven typed `MappingException` outcomes. Desktop
+[#316](https://github.com/DeandreT/ferrule/issues/316) has independently accepted
+all six phases with normal closure: Main copy/original/history/context has
+4/6/10/6 saved pairs; Named copy/history and original/context has 10/9.
+The total is 45 complete Project/layout pairs and 90 byte/JSON comparisons.
+#316 is closed; earlier failed attempts remain retained. Native
+Save/reopen/Save2 and main integration of #309 remain pending.
+
+The remaining baseline observations retain the date of the
+2026-10-10 10:53:09 UTC snapshot against main `0c7b2ca` in
+[#299](https://github.com/DeandreT/ferrule/issues/299). The preceding
+[#271](https://github.com/DeandreT/ferrule/issues/271) refresh merged in
+[#280](https://github.com/DeandreT/ferrule/pull/280), with three successful hosted jobs. The earlier
+[#252](https://github.com/DeandreT/ferrule/issues/252) snapshot merged in
+[#255](https://github.com/DeandreT/ferrule/pull/255); its dependency maps remain dated views.
+Memory-study [#249](https://github.com/DeandreT/ferrule/pull/249) and host-policy
+[#251](https://github.com/DeandreT/ferrule/pull/251) are merged with three successful
+hosted jobs each. Selected JSON APIs and their test-comparator correction are
+merged in [#262](https://github.com/DeandreT/ferrule/pull/262): all 229 independent
+native/Rust/C# calls pass. Bounded generated C# X12 options are merged in
+[#265](https://github.com/DeandreT/ferrule/pull/265). Both later PRs also have three
+successful hosted jobs. The #248 allocation campaign has eight measurements,
+eight independent verifiers and four trace decoders accepted. Its report source and
+one full rendered diagram are independently reviewed; the bounded report is
+merged in [#279](https://github.com/DeandreT/ferrule/pull/279), with three successful hosted jobs.
+
+#203's fixtures are merged in [#266](https://github.com/DeandreT/ferrule/pull/266),
+with all three hosted jobs successful. The 24 public interpreter comparisons,
+51 typed export refusals and 237 interchange library tests pass; fresh combined-
+main 24+51 checks, workspace strict warnings and formatting pass. The test-only
+parent-envelope correction #264 is closed. No faithful saved form is admitted.
+The selected JSON guide [#270](https://github.com/DeandreT/ferrule/pull/270) is merged
+in this main, closing #261. All three hosted jobs and fresh combined-main strict
+warnings and formatting pass. Issue/PR observations were fetched individually;
+they are not a claim that all remote state was observed simultaneously.
+
+#263's earlier 41 simulated controller-policy controls remain separate from
+#268's independently accepted 126 XML-oracle observations: 68 helper, 41 byte
+compatibility and 17 admission checks. After the read-only staging correction
+[#281](https://github.com/DeandreT/ferrule/issues/281), a saved-metadata fixture
+failed before its expected rejection; [#283](https://github.com/DeandreT/ferrule/issues/283)
+corrected it, and the same 41+17 controls passed fresh runs. The unchanged helper's
+68 observations are inherited, not rerun or added to the distinct total.
+The neutral [checkpoint report](docs/conformance/native-saved-design-reopen.md)
+is merged in [#287](https://github.com/DeandreT/ferrule/pull/287), with three successful
+hosted jobs. Read-only preparation passed, but the first native phase timed out at
+180 seconds with a 398-byte XML artifact and no first save or reopen. Later read-only
+#285 diagnostics also timed out; #291's presentation experiment refused its visible-UI
+requirement. All 16 modeled query controls pass. The new read-only observer's
+exception-path closure gap is tracked in [#302](https://github.com/DeandreT/ferrule/issues/302);
+its correction is source-reviewed and all three exception models match in a completed
+root-owned run, now independently accepted. These mocked branches do not
+prove a live helper, thread or cleanup path; fresh observer qualification remains
+pending. Live ownership/query/acknowledgment and native save/reopen
+remain unproved. Source review and proven cleanup do not turn these retained negatives
+into a completed native cycle.
+#253's three tests / 11 internal controls, all 344 engine tests, ordinary engine
+build and corrected workspace strict/format checks pass. The test-only let-chain
+prerequisite [#277](https://github.com/DeandreT/ferrule/issues/277) preserves the original
+warning failure and all observations. Both are merged in
+[#278](https://github.com/DeandreT/ferrule/pull/278), with three successful hosted jobs.
+The borrowed construction marker is not allocator telemetry or public/native parity.
+#201's accepted corpus contains 28 controls (10 admitted and 18 refused), 87 snapshots
+and 92 canvas tables. Three focused tests plan 29 duplication attempts. After #297
+restored the locked dependency, [#298](https://github.com/DeandreT/ferrule/issues/298)'s
+reviewed test-capture correction compiled and formatting passed. The first focused
+unit then failed at an independent input edit: the Project changed to the new source,
+but the test driver left the old canvas wire. The independently reviewed negative
+retained nine primary local engine previews, zero named previews, two duplication
+actions and 19 state records; 16 of 17 reached snapshot assertions matched before
+the wire failure. [#300](https://github.com/DeandreT/ferrule/issues/300) corrects the
+test driver's wire action and whole-checkpoint restoration;
+[#301](https://github.com/DeandreT/ferrule/issues/301) corrects the frozen named-context
+dispatch. The first paired source successor's type/module-path gaps and a later
+pre-compilation invocation refusal remain separate from the actual wire failure.
+The revised test-only source is independently reviewed, applied and formatted.
+A fresh root-owned selected test now passes all ten admitted cases and all 67 local
+engine previews (61 primary and six named), preserving the unchanged literals.
+Independent review of those complete results is pending in this dated snapshot.
+The refusal and keyboard tests, full GUI suite and two Main/Named physical sessions
+with ten checkpoint pairs remain pending qualification here. Public-codec
+materialization and all 29 modeled policy controls remain independently accepted.
+#288's admitted child output route retained the complete ten-case run; later gates
+still require fresh resource/source admission. These local engine previews do not
+establish physical session or native saved/reopen parity.
+No faithful new sequence saved
+form is admitted. Earlier #173/#175, #182/#187 and #212/#215
+snapshots remain historical records. This refresh preserves all three existing
+Mermaid fence bodies and their earlier rendering/zoom limits; the current table
+and prose dependencies do not establish a fresh render of those historical maps.
+Compact GUI #194 and guidance #210
+are merged in [#214](https://github.com/DeandreT/ferrule/pull/214). Fresh strict
+warnings, formatting, one affected unit check and the production build pass;
+earlier focused/full GUI and web-demo crate suites are retained separately.
+Finite desktop inspection and editor-driven identity Rust/C# generation pass.
+The two generated public String JSON calls each match the complete 172-byte
+independent golden with normal owned host closure; earlier GUI parts needed owned
+helper cleanup. Three earlier diagram fences rendered as three SVGs and six PNGs
+with owned helper cleanup. The #212 final two parallel diagrams rendered as two SVGs
+and four PNGs with owned helper cleanup; the unchanged roadmap fence reuses its
+earlier rendered evidence. That historical current map needs scrolling or zoom at
+1200 pixels, and the complete map's labels need zoom. All three hosted #214 jobs
+ran zero validation steps because
+of the account billing/spending restriction; those failures are not passes.
+
+| Area | Available now | Boundary to keep visible |
+| --- | --- | --- |
+| Mapping | Typed graphs and scopes; nested iteration, filters, grouping, sorting, windows, aggregates, bounded ordered scalar filter/map sequences, multi-source inner joins, UDFs, dynamic properties, and ordered targets | Scalar sequence native/Rust/C# execution and the compact GUI increment are qualified in #190/#192/#193/#194; saved-design interchange, broader desktop workflows and general higher-order shapes remain separate |
+| Error order | Global pre-target failure rules plus lazy, expression-owned Raise; bounded item-ordered XML exception import is explicit opt-in | Global and item-ordered failures are different; strict native export refuses unproved ordering |
+| Native editor | Compact icons with full hover/details, primary/named/function canvases, undo/layout, Preview/Run/debugging, stage snapshots, and guarded import/export | Local widget tests do not establish every desktop chooser/platform workflow |
+| Setup | Schema/layout import, CSV/fixed-width/FlexText/SQLite/Protocol Buffers setup, and flat XLSX worksheet settings | The flat workbook wizard does not author advanced hierarchical layouts |
+| Formats | XML, JSON, JSON5, tabular, database, EDI, structured text, binary, and document adapters | Direction and exact subset are in [Supported formats](docs/formats.md); some adapters are input-only |
+| JSON Schema | Per-resource reference policies, required-only object-reference siblings, exact intervals in String-or-Int and String-or-Float fields, signed-integer Float bound normalization, redundant scalar composition type siblings, outer scalar composition bounds, and explicit nested-array levels with per-level constraints and nullability | Scalar domains, array roles, and admission rules are in [Supported formats](docs/formats.md); broader compositions and restrictive intersections remain separately scoped |
+| Generated libraries | Deterministic Rust and package-free C#; typed, strict JSON, eligible XML, explicit optional JSON5 or bounded flat CSV companions, [flat CSV input to singular X12](docs/code-generation.md#flat-csv-input-to-x12), and [static JSON/X12 selected-document companions](docs/design/generated-x12-csharp.md#static-named-documents-and-selected-output) | Every static endpoint retains its own admitted boundary; supported emission, compiled calls, physical resource checks, and external execution are separate gates |
+| Large files | Per-boundary byte/item/work budgets, CSV temporary-row release and borrowed ordinary JSON output text | Input/target trees and output Strings remain materialized; the [historical output-set study](docs/performance/json-output-set-memory.md) and [matched writer comparison](docs/performance/borrowed-json-output-memory.md) establish no total-RAM cap or streaming |
+| `.mfd` | Repair-oriented default import, strict executable admission, native/extension export profiles, bounded serial chains, and guarded multi-source joins | General stage graphs, unsupported contexts, and unknown profiles remain explicit |
+
+See [Architecture](docs/architecture.md), [Code generation](docs/code-generation.md),
+[Memory use](docs/memory-and-limits.md), and [`.mfd` interoperability](docs/mfd-interop.md)
+for the contracts behind these summaries.

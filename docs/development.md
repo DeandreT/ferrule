@@ -7,10 +7,10 @@ compatibility contracts live in [Supported formats](formats.md),
 
 ## Coordinate issue work
 
-Use [Parallel work](parallel-work.md) to choose an available scoped issue and
-check shared source/build/display ownership. Assign the issue to yourself before
-starting; maintainer work uses `DeandreT`. If assignment is unavailable to you,
-ask the maintainer to assign it first. Open a scoped issue for a new gap before
+[Contributing](../CONTRIBUTING.md) covers finding, claiming and delivering an
+issue. [Parallel work](parallel-work.md) covers shared-file handoffs and shared
+build/display resources. GitHub issues are the only live claim and status
+source: get assigned before editing, open a scoped issue for a new gap before
 implementation, agree on overlapping files, and link the implementing PR.
 
 Keep issue comments concise: result, evidence link, blocker, and next step.
@@ -54,7 +54,7 @@ command in the checkout, so do not pass a `+toolchain` override.
 
 ```sh
 cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets --locked -- -D warnings
 ```
 
 Start with the affected package or integration target. For example:
@@ -85,10 +85,8 @@ cargo test --workspace --doc --locked \
   --exclude codegen-rust --exclude codegen-csharp
 ```
 
-Removing `WAYLAND_DISPLAY` and `WAYLAND_SOCKET` avoids reusing these ambient
-Wayland handles during a local alternate-display run. The
-[current CI workflow](../.github/workflows/ci.yml) clears `WAYLAND_DISPLAY`
-only; this local example adds the socket guard.
+Removing `WAYLAND_DISPLAY` and `WAYLAND_SOCKET` keeps the run off an ambient
+Wayland session, as the [CI workflow](../.github/workflows/ci.yml) does.
 
 Those exclusions are not generated-backend qualification. Changes to lowering,
 runtime primitives, emitters, or public adapters need their focused Rust and
@@ -103,6 +101,36 @@ Format capability tables and workspace component lists in the guides and site
 are generated from [shared technical references](reference/README.md). Edit
 their TOML source and run `cargo run -p reference-docs`;
 `cargo test -p reference-docs` fails while a generated region is stale.
+
+### Before requesting review
+
+Run the checks that match your change locally, on the head you will push. They
+mirror the [CI](../.github/workflows/ci.yml) and
+[codegen CI](../.github/workflows/codegen.yml) workflows; a passing subset of
+focused tests does not replace them.
+
+- [ ] Every Rust change: `cargo fmt --all --check`,
+  `cargo clippy --workspace --all-targets --locked -- -D warnings`, and the
+  alternate-display `cargo nextest run --workspace` subset and
+  `cargo test --doc --workspace` commands above.
+- [ ] `crates/web-demo` or a crate it depends on
+  (`cargo tree -p web-demo --target wasm32-unknown-unknown` lists them):
+  `cargo build -p web-demo --target wasm32-unknown-unknown --release --locked`.
+- [ ] `codegen`, `codegen-runtime`, `codegen-rust`, `codegen-csharp`,
+  `runtime/`, generated contracts, or a crate they depend on
+  (`cargo tree -p codegen` and `cargo tree -p cli --features codegen-tests`
+  list them):
+  `cargo clippy -p cli --test code_generation --features codegen-tests --locked -- -D warnings`,
+  `cargo nextest run --locked -p codegen -p codegen-runtime -p codegen-rust -p codegen-csharp`,
+  their `cargo test --doc` run, the C# runtime smoke tests and the CLI generated
+  integration target, as the codegen workflow runs them. Its mappings job also
+  runs the compiled boundary regressions and cohort consumers, which the default
+  run skips, with `--run-ignored only`; use the commands from those workflow
+  steps. The pinned .NET SDK is
+  in [Toolchain baselines](toolchains.md).
+- [ ] `scripts/ci/`: `bash -n scripts/ci/*.sh` and the `scripts/ci/test-*.py`
+  suites the workflows run.
+- [ ] Generated technical references: `cargo test -p reference-docs`.
 
 ### Run the PDF worker from a build
 
