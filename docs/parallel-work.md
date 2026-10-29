@@ -1,54 +1,125 @@
 # Parallel Work
 
-The [coordination issue](https://github.com/DeandreT/ferrule/issues/89) tracks
-bounded work from the [roadmap](../ROADMAP.md). Issues define the problem,
-in/out of scope, likely files and acceptance checks; this page helps contributors
-choose a lane and avoid conflicting changes.
+GitHub issues are the only live source for claims and status. This page explains
+how contributors find, claim and hand off issues, and how they share files and
+verification resources without conflicting changes. [Contributing](../CONTRIBUTING.md)
+is the short path; [Development](development.md) lists the checks.
+
+## Find an unclaimed lane
+
+A lane is one open issue with a stated outcome, reserved paths, exclusions and
+acceptance criteria. Coordination issues group independent lanes; for example,
+[#1090](https://github.com/DeandreT/ferrule/issues/1090) indexes the incoming
+contributor lanes. An index row describes a lane's scope; open the issue itself
+for its current state, assignee and comments.
+
+- An open issue without an assignee is unclaimed.
+- `help wanted` marks issues suited to an outside contributor. An unassigned
+  issue without that label may need maintainer-only resources, such as a licensed
+  reference application or a CI runner; ask in the issue before claiming it.
+- `deferred` issues are recorded backlog and are not available for implementation.
+
+```sh
+gh issue list --state open --label "help wanted" --search "no:assignee"
+gh issue list --state open --search "no:assignee"
+```
 
 ## Claim a lane
 
-1. Read the issue and its linked contracts. Check current assignees and comments.
-2. Assign the issue to yourself before starting. Maintainer work is assigned to
-   `DeandreT`; an unassigned `help wanted` issue is available. If you cannot set
-   an assignee, ask the maintainer to assign you in the issue before proceeding.
-3. State the files or modules you plan to own and any shared verification slot
-   you will need. Agree on overlapping edits before changing the same source.
-4. Keep one bounded result per PR and link its issue. For a newly discovered
-   gap, open a scoped issue before implementing it; do not silently widen the
-   issue you claimed.
-5. Leave concise updates in first person (I/me): result, evidence link, blocker,
-   and next step. Release ownership when pausing or handing off so another
-   contributor can take it.
+1. Read the issue, its linked contracts and its comments.
+2. Comment on the issue with the files you plan to change, within its reserved
+   paths, and any shared resource you need.
+3. Get assigned before editing. Assign yourself if you can; otherwise the
+   maintainer assigns you in response to your comment. Maintainer work is
+   assigned to `DeandreT`.
+4. Keep one bounded result per PR and link the issue. For a newly discovered gap,
+   open a separately scoped issue rather than widening the one you claimed.
+5. Leave concise updates in the issue: result, evidence link, blocker and next
+   step. When you pause or stop, say so in the issue so the assignment can be
+   released and another contributor can take the lane.
 
-## Next acceptance gates
+## Work in a separate branch and worktree
 
-- [ ] Complete worker host #326, ongoing on `feat/pdf-worker-host`. Initial
-  worker/CLI and owned filesystem controls pass; #348 strict-lint correction,
-  affected reruns and remaining host failure controls are pending.
-- [ ] Add borrowed filesystem reader #344 after #326.
-- [ ] Complete GUI filesystem cancellation #327 after #326/#344.
-- [ ] Add explicit preview input acquisition #340 after #326/#344.
-- [ ] Complete GUI preview ownership #341 after #327/#340.
-- [ ] Qualify #263's individually admitted native save/reopen/save2 cycle after exact
-  owned-window proof. Native 180-second timeout, #285 diagnostics and #291 presentation refusal
-  remain negatives; modeled 16 query checks and helper source do not prove live ownership.
-- [ ] Settle #241's explicit competing-feed contract before admission and execution.
-- [ ] Review and publish #336's scoped main 4d32a3a two-document refresh;
-  preserve unrelated lanes and the same historical fences.
+Start each lane from current `main` in its own worktree:
 
-## Dependencies and shared areas
+```sh
+git fetch origin
+git worktree add ../ferrule-<topic> -b <type>/<topic> origin/main
+```
 
-Shared-file changes need explicit coordination even when the issues are otherwise
-independent. Examples include app/workspace and test registrations, the workbook
-draft, the JSON Schema facade, generated runtime/adapter modules, and CLI input
-or artifact staging. Record a bounded file/function ownership split or sequence
-the edits; preserve the other issue's complete behavior and tests.
+Use a descriptive branch such as `fix/<topic>`, `feat/<topic>`, `docs/<topic>`
+or `test/<topic>`. Never work in another contributor's checkout or branch. Give
+each worktree its own Cargo target directory; the default `target/` inside the
+worktree does this. Sharing one target directory between checkouts can leave
+stale artifacts that look fresh. Remove the worktree and branch after the PR merges.
+
+## Shared files and handoffs
+
+An issue's reserved paths belong to its assignee. Files outside every lane are
+shared entry points, not parallel ownership. Examples include the workspace
+`Cargo.toml` and `Cargo.lock`, crate `lib.rs`/`main.rs` module registrations,
+app/workspace and test registrations, generated
+[technical references](reference/README.md), CI definitions, the workbook draft,
+the JSON Schema facade, generated runtime/adapter modules, and CLI input or
+artifact staging.
+
+Before editing a shared file, agree a handoff in the issue: the file or function
+you will change, who edits it and in which order. The maintainer integrates
+registrations that a lane cannot make inside its own paths. Preserve the other
+issue's complete behavior and tests, and rebase after a handoff merges.
+
+## Generated-code source ownership
+
+The Rust and C# public Basic emitter families share the common source-ownership
+model and admission policy. Each backend owns its renderer and language-specific
+runtime integration. The
+[roadmap contract](../ROADMAP.md)
+describes target ValueMap, retained-input and failure boundaries.
+
+| Component | Implementation responsibility | Coordination rule |
+| --- | --- | --- |
+| Common admission | `crates/codegen/src/capabilities.rs` (capability set and preset table), `crates/codegen/src/validate/owned_sources/` and `crates/codegen/src/tests/basic_owned_emission.rs` | Add a new capability as its own field, table column and `owned_sources` module; agree changes to a shared gate with both backend owners. |
+| Rust Basic renderer | `crates/codegen-rust/src/owned_basic.rs` and `crates/codegen-rust/src/tests/owned_basic.rs` | Sequence renderer and source-test edits within the Rust lane. |
+| C# Basic renderer | `crates/codegen-csharp/src/owned_basic.rs` and `crates/codegen-csharp/src/tests/owned_basic.rs` | Sequence renderer and source-test edits within the C# lane. |
+| Runtime and public interfaces | Each backend's runtime and emission entry points | Preserve each preset's capability set, generated symbols and caller contracts. |
+| Documentation | Capability contracts and reusable contributor procedures | Describe implemented behavior; keep task progress, result records and handoff state in issues. |
+
+The public Basic path validates common admission before backend rendering.
+Private ordinary failure-map admission remains a separate profile from the
+shared/public failure gate. A private renderer change must preserve the public
+gate's complete typed refusal and the ordinary emitter's admission behavior.
+
+Target ValueMaps retain potential input edges and runtime error priority.
+Retained inventory preserves stored calls and actual referenced bodies, while
+failure diagnostics retain rule, expression and source-context origins. Changes
+to these contracts need coordinated source ownership even when the languages
+can be implemented independently.
+
+```mermaid
+flowchart LR
+    Ownership[Source ownership model] --> Admission[Common Basic admission]
+    Admission --> Rust[Rust Basic emitter]
+    Admission --> CSharp[C# Basic emitter]
+    Rust --> RustRuntime[Rust runtime contract]
+    CSharp --> CSharpRuntime[C# runtime contract]
+    RustRuntime --> Interfaces[Generated caller interfaces]
+    CSharpRuntime --> Interfaces
+```
+
+The diagram shows shared policy prerequisites and separate backend contracts.
+File ownership in the table adds serialization requirements for overlapping
+changes.
 
 ## Verification resources
 
+- Run the checks for your change locally before requesting review; see
+  [Development](development.md#run-the-appropriate-checks).
 - Reserve one build lane when contributors share Cargo artifacts. Check disk
   space before and after substantial builds, reuse compatible caches, and use
   bounded jobs and incremental settings. See [Development](development.md#build-space-and-desktop-isolation).
+- Reuse build artifacts only within the source profile that produced them. Source
+  timestamps and manifest paths alone do not establish which source produced
+  cached executable bytes.
 - Reserve graphical or external-application sessions separately. Use an alternate
   display and an isolated chooser/session route; never drive another contributor's
   process or the user's active desktop. Bind the executable to the tested source
@@ -61,15 +132,14 @@ the edits; preserve the other issue's complete behavior and tests.
 
 ## Complete or hand off
 
-A PR should describe the concrete resulting behavior, link the issue and record
-which acceptance checks ran, with evidence or a precise blocker for checks still
-open. Update only the corresponding roadmap/conformance gate after its required
-evidence exists. Preserve earlier failures and narrower supported profiles.
+A PR summarizes the changes it makes and links its issue. Keep it short and leave
+out test-result narration; reviewers expect the relevant local checks to have
+passed. Mention a limitation or blocker only when it affects review. Record
+qualification evidence and remaining acceptance checks in the issue or the
+lane's qualification document, and update the corresponding roadmap or
+conformance gate only after its required evidence exists. Preserve earlier
+failures and narrower supported profiles.
 
 The [conformance inventory](../conformance/README.md) remains incomplete. Do not
 rewrite the protected survey as part of ordinary feature or coordination work,
 mark unknown cells supported, or infer whole-product parity from a local cohort.
-The coverage index in #95 keeps helper-only and compiled public-route evidence
-separate; #133 records the completed #116–#119 slices without closing every XML
-gap. Design-only #102 ends with an agreed follow-on plan rather than unreviewed
-code.

@@ -1,7 +1,5 @@
 # Ferrule Compatibility and Product Roadmap
 
-Updated: 2026-10-14
-
 ## Goal
 
 Ferrule is an independent, portable data-mapping platform with an open project
@@ -15,8 +13,9 @@ design or exporting it again does not establish all of those promises. The
 [conformance inventory](conformance/README.md) remains incomplete; there is no
 supported whole-product parity percentage.
 
-Choose or claim an independent lane in [Parallel work](docs/parallel-work.md),
-which links scoped issues, ownership, dependencies, and shared verification rules.
+To pick up work, follow [Contributing](CONTRIBUTING.md). GitHub issues are the
+only live source for claims and status; [Parallel work](docs/parallel-work.md)
+covers shared-file handoffs and verification resources.
 
 The [explicit source ownership plan](docs/design/source-ownership.md) records
 owner/path contracts, core interpreter and Rust/C# prerequisites, and scoped
@@ -61,7 +60,7 @@ Coordinate common policy changes with both backend owners, and sequence edits to
 the same renderer and its source tests. Runtime contracts and generated interfaces
 must remain consistent with the admission profile they expose.
 
-[Parallel work](docs/parallel-work.md)
+[Parallel work](docs/parallel-work.md#generated-code-source-ownership)
 describes the reusable file-ownership and dependency conventions. Use the
 [development procedures](docs/development.md) when changing a generated contract;
 track task status and result records in the associated issue.
@@ -217,22 +216,6 @@ their refusals.
 
 ### C. Connectors and Format Breadth
 
-- [ ] Complete worker-host [#326](https://github.com/DeandreT/ferrule/issues/326),
-  ongoing on `feat/pdf-worker-host`. Initial worker/CLI and owned filesystem
-  controls pass; strict-lint correction #348, affected reruns and remaining
-  host failure controls are pending.
-- [ ] Add borrowed filesystem reader
-  [#344](https://github.com/DeandreT/ferrule/issues/344) after #326.
-- [ ] Complete GUI filesystem cancellation
-  [#327](https://github.com/DeandreT/ferrule/issues/327) after #326/#344.
-- [ ] Add explicit preview input acquisition
-  [#340](https://github.com/DeandreT/ferrule/issues/340) after #326/#344.
-- [ ] Complete GUI preview ownership
-  [#341](https://github.com/DeandreT/ferrule/issues/341) after #327/#340.
-- [ ] Execute resource qualification
-  [#328](https://github.com/DeandreT/ferrule/issues/328) after #326. Its source-only
-  plan has 20 recipes, 15 exact cases and 82 planned requests; all execution
-  remains unrun. This scope does not depend on #327.
 - [ ] Add a typed query/write model before general database mutation modes.
 - [ ] Extend adapters and transport only with confinement, cancellation,
   original-error, resource, and publication contracts.
