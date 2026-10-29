@@ -64,7 +64,7 @@ for a complete format standard or another product.
 | Format | Profile |
 | --- | --- |
 | XML | XSD 1.1 wildcard exclusions (`notNamespace`, `notQName`) and `xs:any` inside `xs:all` |
-| XML | Strict wildcards whose matching declaration set is not closed, and same-local-name strict declarations with incompatible typed shapes |
+| XML | Strict wildcards whose matching declaration set is not closed, same-local-name strict declarations with incompatible typed shapes, strict wildcards that follow a single-occurrence declaration of a name they match, and strict wildcards outside a choice whose port shares a local name with a declaration covering only some of its namespaces |
 | XML | Element wildcard occurrences other than `1..1`, `0..1`, or `0..unbounded`, and optional single-occurrence `skip` wildcards |
 | XML | Sibling elements or attributes that differ only by namespace, because mapping paths use local field names |
 | XML | External DTD subsets and external entities, which are never loaded |
@@ -142,6 +142,13 @@ for a complete format standard or another product.
   resolved to exact singular or repeating typed choices, and namespace-aware
   attribute wildcards are supported. Lax processing gives resolved declarations
   typed mapping fields and reserves the generic fallback for undeclared names.
+  An extra occurrence of a single-occurrence declared element is a generic
+  item after the typed field takes the first one; reads refuse extras the
+  wildcard cannot keep, such as names outside its namespace constraint. A
+  wildcard's typed port for a declaration the type already declares yields to
+  that declaration for the namespaces it covers. A strict wildcard after a
+  single-occurrence declaration of the same name is refused, because it has
+  no generic fallback for that declaration's extra occurrences.
   Strict attribute processing rejects undeclared runtime names. XSD 1.1
   exclusions, unordered wildcard compositors, and unresolved strict declaration
   sets remain outside the subset.

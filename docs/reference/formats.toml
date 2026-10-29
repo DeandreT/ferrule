@@ -34,7 +34,7 @@ evidence = [
 ]
 unsupported = [
     "XSD 1.1 wildcard exclusions (`notNamespace`, `notQName`) and `xs:any` inside `xs:all`",
-    "Strict wildcards whose matching declaration set is not closed, and same-local-name strict declarations with incompatible typed shapes",
+    "Strict wildcards whose matching declaration set is not closed, same-local-name strict declarations with incompatible typed shapes, strict wildcards that follow a single-occurrence declaration of a name they match, and strict wildcards outside a choice whose port shares a local name with a declaration covering only some of its namespaces",
     "Element wildcard occurrences other than `1..1`, `0..1`, or `0..unbounded`, and optional single-occurrence `skip` wildcards",
     "Sibling elements or attributes that differ only by namespace, because mapping paths use local field names",
     "External DTD subsets and external entities, which are never loaded",

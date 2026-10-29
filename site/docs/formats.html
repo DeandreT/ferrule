@@ -83,7 +83,7 @@
           <thead><tr><th>Format</th><th>Profile</th></tr></thead>
           <tbody>
             <tr><td>XML</td><td>XSD 1.1 wildcard exclusions (<code>notNamespace</code>, <code>notQName</code>) and <code>xs:any</code> inside <code>xs:all</code></td></tr>
-            <tr><td>XML</td><td>Strict wildcards whose matching declaration set is not closed, and same-local-name strict declarations with incompatible typed shapes</td></tr>
+            <tr><td>XML</td><td>Strict wildcards whose matching declaration set is not closed, same-local-name strict declarations with incompatible typed shapes, strict wildcards that follow a single-occurrence declaration of a name they match, and strict wildcards outside a choice whose port shares a local name with a declaration covering only some of its namespaces</td></tr>
             <tr><td>XML</td><td>Element wildcard occurrences other than <code>1..1</code>, <code>0..1</code>, or <code>0..unbounded</code>, and optional single-occurrence <code>skip</code> wildcards</td></tr>
             <tr><td>XML</td><td>Sibling elements or attributes that differ only by namespace, because mapping paths use local field names</td></tr>
             <tr><td>XML</td><td>External DTD subsets and external entities, which are never loaded</td></tr>

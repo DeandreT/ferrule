@@ -28,7 +28,8 @@ use crate::declaration::validate_schema;
 mod scalar_output;
 
 use generic::{
-    push_generic_attributes, read_generic_element, read_group_fields, write_generic_element,
+    GenericSiblings, push_generic_attributes, read_generic_element, read_group_fields,
+    surplus_wildcard, write_generic_element,
 };
 
 const MAX_XML_RECURSION_DEPTH: usize = 64;
@@ -205,6 +206,14 @@ pub enum XmlFormatError {
     KnownXmlWildcardElementRequiresTypedField { name: String, namespace: String },
     #[error("single-occurrence xs:any wildcard matched more than one child element")]
     XmlWildcardCardinality,
+    #[error(
+        "extra occurrence of declared element `{name}` in namespace `{namespace}` cannot be kept by the xs:any wildcard: {reason}"
+    )]
+    UnrepresentableXmlWildcardSurplusElement {
+        name: String,
+        namespace: String,
+        reason: &'static str,
+    },
     #[error("xs:anyAttribute wildcard cannot be represented: {reason}")]
     UnsupportedXmlAttributeWildcard { reason: &'static str },
     #[error(
@@ -1153,7 +1162,7 @@ fn write_node<W: std::io::Write>(
                 instance,
                 recursion_depth,
                 inherited_namespace,
-                &[],
+                GenericSiblings::default(),
             )?;
             return Ok(());
         }
@@ -1169,7 +1178,7 @@ fn write_node<W: std::io::Write>(
                 item,
                 recursion_depth,
                 inherited_namespace,
-                &[],
+                GenericSiblings::default(),
             )?;
         }
         return Ok(());
@@ -1474,6 +1483,7 @@ fn write_group_child<W: std::io::Write>(
             instance if !child_schema.repeating => std::slice::from_ref(instance),
             other => return Err(shape_error(child_schema, "generic XML elements", other)),
         };
+        let written = GenericSiblings::written_before_wildcard(siblings, fields);
         for item in items {
             write_generic_element(
                 writer,
@@ -1482,7 +1492,10 @@ fn write_group_child<W: std::io::Write>(
                 item,
                 recursion_depth,
                 inherited_namespace,
-                siblings,
+                GenericSiblings {
+                    elements: siblings,
+                    written: &written,
+                },
             )?;
         }
         return Ok(());
@@ -1753,6 +1766,9 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
         ));
     };
     let mut ends_with_element = false;
+    // Single-occurrence children already written; a later item with the same
+    // name is an extra occurrence held by the wildcard, as on read.
+    let mut written = Vec::<&str>::new();
     for (index, item) in items.iter().enumerate() {
         let Instance::Group(item_fields) = item else {
             return Err(invalid_mixed_content(
@@ -1836,6 +1852,19 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                     format!("item {index} names undeclared child `{name}`"),
                 )
             })?;
+        let item_value = item_fields
+            .iter()
+            .find(|(name, _)| name == XML_MIXED_CONTENT_VALUE_FIELD)
+            .map(|(_, instance)| instance);
+        let child_schema = match surplus_wildcard(child_schema, children, &written, item_value)? {
+            Some(wildcard) => wildcard,
+            None => {
+                if child_schema.name != XML_ELEMENTS_FIELD && !child_schema.repeating {
+                    written.push(child_schema.name.as_str());
+                }
+                child_schema
+            }
+        };
         let exact_child;
         let child_schema = if child_schema.xml_name_alternatives.is_empty() {
             child_schema
@@ -1895,7 +1924,10 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                 child_instance,
                 child_depth,
                 inherited_namespace,
-                children,
+                GenericSiblings {
+                    elements: children,
+                    written: &written,
+                },
             )?;
         } else {
             write_single_node(

@@ -50,6 +50,37 @@ These facts describe the code this design builds on.
   - A `strict` wildcard becomes typed alternatives only (`parse_strict_wildcard`)
     and retains no generic group. It refuses when an unresolved include or
     import could match, or when no declaration matches.
+  - A projected port whose expanded name a declared sibling already uses,
+    such as `<xs:element ref="Head"/>` beside the wildcard, yields to that
+    sibling (`xsd/wildcard_ports.rs`). While the complex type is parsed, each
+    projected port carries the wildcard's mode in
+    `xml_wildcard_process_contents`, and the wildcard's own choice carries a
+    reserved member, so both are identified exactly. Named complex types keep
+    their unresolved content for use as an extension base, so a derived type
+    resolves the base's ports against its own elements. The marks are cleared
+    when the type is complete. Names compare by `xml_namespace_matches`, and
+    same-local names in different namespaces still merge into one port with
+    name alternatives.
+    - A repeating sibling holds every occurrence. The wildcard's choice keeps
+      its name while the members stay adjacent and no other choice owns it,
+      so retained element order still interleaves them; otherwise the group
+      writes in schema order.
+    - A sibling after the wildcard, or an alternative in the same
+      `xs:choice`, takes precedence, so the wildcard never matches its name.
+    - A single-occurrence sibling before the wildcard in a sequence leaves
+      its extra occurrences to the wildcard. A `lax` projection drops the port
+      and its choice member, so the generic fallback receives them. A
+      `strict` projection has no fallback and is refused with
+      `UnsupportedXmlWildcard`, also when its port merged into that sibling.
+      The refusal comes from parsing the declaration, so it also fails a
+      document whose wildcard projects such a global declaration.
+    - These rules apply to the namespaces the declared siblings cover. A port
+      with name alternatives may be covered only partly. In one `xs:choice`
+      it keeps the other namespaces, which then merge into the declared
+      element as name alternatives. Elsewhere a `lax` projection drops the
+      port and the generic fallback receives the other namespaces, while a
+      `strict` projection would need a second port with the same local name
+      and is refused.
   - Supported occurrences are `1..1`, `0..1` (not `skip`) and `0..unbounded`.
   - The importer refuses `xs:any` inside `xs:all`, multiple element wildcards
     in one type, and a `skip` wildcard beside declared elements.
@@ -69,16 +100,30 @@ These facts describe the code this design builds on.
   - `lax`/`strict` generic groups receive only elements and attributes that
     match no typed field. `skip` attribute groups keep every attribute.
   - A non-repeating typed field takes only its first matching element. A
-    surplus occurrence of that name reaches neither the typed field nor a
-    `lax`/`strict` generic group. With retained element order it is written
-    back as a copy of the first value; otherwise it is dropped
-    ([#1142](https://github.com/DeandreT/ferrule/issues/1142)).
+    later occurrence of that name is a surplus occurrence. A `lax` generic
+    group takes it through its usual checks as a generic item, which keeps
+    its place in retained element order. The reader refuses it with
+    `UnrepresentableXmlWildcardSurplusElement` when the group is unordered
+    and the typed field follows the wildcard, since writing would put the
+    extra occurrence first, and in a `strict` generic group. The importer
+    never builds such a group, so this applies only to hand-built schemas.
   - Element read order (`read_group_fields`, then `read_generic_element`):
-    strict-undeclared, then namespace (`XmlWildcardNamespaceMismatch`).
-    Attribute read order: namespace, then strict-undeclared.
+    strict-undeclared (a surplus occurrence in a `strict` group reports
+    `UnrepresentableXmlWildcardSurplusElement` instead), then namespace
+    (`XmlWildcardNamespaceMismatch`), then, for a surplus occurrence in an
+    unordered group whose typed field follows the wildcard,
+    `UnrepresentableXmlWildcardSurplusElement`. Attribute read order:
+    namespace, then strict-undeclared.
   - Element write order (`write_generic_element`): name syntax, namespace,
     known typed field (`lax`/`strict`,
-    `KnownXmlWildcardElementRequiresTypedField`), strict. Attribute write order
+    `KnownXmlWildcardElementRequiresTypedField`), strict. The known typed
+    field check admits a single-occurrence field's name once that field's own
+    element has been written: earlier in the ordered stream, or, without
+    retained order, from a populated field before the wildcard. A `strict`
+    group then reports `UnrepresentableXmlWildcardSurplusElement`. In an
+    ordered stream, an item that repeats an already written single-occurrence
+    field goes to a `lax`/`strict` wildcard and must hold a generic element
+    value; otherwise it reports the same error. Attribute write order
     (`push_generic_attributes`): name syntax, namespace, strict, known declared
     attribute (`lax`/`strict` only, `DuplicateField`), duplicate expanded name.
     `skip` attribute groups never check declared names.
@@ -279,13 +324,10 @@ Attribution rules:
   exclusions. Reads and writes are therefore symmetric.
 - `skip` attribute wildcards without exclusions keep their current behavior.
 
-**Prerequisite.** A surplus occurrence of a non-repeating declared element is
-currently neither typed nor attributed to the wildcard (see
-[Current behavior](#current-behavior)). An excluded sibling name such as the
-second `<t:Head/>` in E2 would therefore never reach the exclusion check.
-The native codec scope depends on a separate fix that either routes such
-occurrences through the wildcard checks or refuses them:
-[#1142](https://github.com/DeandreT/ferrule/issues/1142).
+**Surplus occurrences.** A surplus occurrence of a non-repeating declared
+element reaches the generic group's checks (see
+[Current behavior](#current-behavior)), so an excluded sibling name such as
+the second `<t:Head/>` in E2 reaches the exclusion check.
 
 Exclusions apply only to the wildcard's own matches. Descendants of generic
 elements stay unconstrained. The `xsi` attribute handling, and the reader's
@@ -352,9 +394,7 @@ own scope merges with the matching tests.
    `wildcard_namespace_attribute`, which serves both `xs:any` and
    `xs:anyAttribute`, gains a refusing `Not` arm. MFD export refuses exclusion
    metadata atomically. No importer change.
-2. **Native codec.** Depends on the surplus-occurrence fix
-   ([#1142](https://github.com/DeandreT/ferrule/issues/1142)) described under
-   [Reading and writing](#reading-and-writing). Covers `format-xml`
+2. **Native codec.** Covers `format-xml`
    resolution, the reader/writer checks, XSD export (including the canonical
    `attribute()` form with exclusions), and the frozen fixtures below. It also
    narrows the unsupported row: edit `docs/reference/formats.toml`, regenerate
@@ -438,7 +478,7 @@ type. The lax projection adds no typed fields.
 | `<t:Head/><t:Global/>` | `XmlWildcardExcludedName { Global, T }` |
 | `<t:Head/><t:Root/>` | `XmlWildcardExcludedName { Root, T }` |
 | `<t:Head/><b:X/>` | `XmlWildcardNamespaceMismatch` |
-| `<t:Head/><t:Head/>` | `XmlWildcardExcludedName { Head, T }` (requires the surplus-occurrence prerequisite) |
+| `<t:Head/><t:Head/>` | `XmlWildcardExcludedName { Head, T }` |
 
 Writing a generic `{Tail, T}` reports the exclusion error. Export writes the
 four names as explicit QNames, and re-import gives the same schema.
