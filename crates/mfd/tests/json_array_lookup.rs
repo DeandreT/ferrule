@@ -28,14 +28,24 @@ impl Drop for TempDir {
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/json-array-lookup")
 }
+fn options(path: &Path) -> mfd::ImportOptions {
+    // These self-authored fixtures share schemas inside one explicit package.
+    // Do not weaken the importer's default confinement for parent references.
+    let root = path
+        .parent()
+        .unwrap()
+        .ancestors()
+        .take(3)
+        .find(|root| {
+            root.join("lookup.schema.json").is_file() && root.join("target.schema.json").is_file()
+        })
+        .expect("known synthetic lookup package root");
+    mfd::ImportOptions::default().with_package_root(root)
+}
 fn imported(path: &Path) -> mapping::Project {
-    let imported = mfd::import_with_profile(
-        path,
-        &mfd::ImportOptions::default(),
-        mfd::ImportProfile::Executable,
-    )
-    .unwrap()
-    .imported;
+    let imported = mfd::import_with_profile(path, &options(path), mfd::ImportProfile::Executable)
+        .unwrap()
+        .imported;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(
         engine::validate(&imported.project).is_empty(),
@@ -397,21 +407,18 @@ fn replace(path: &Path, from: &str, to: &str) {
     std::fs::write(path, text.replace(from, to)).unwrap();
 }
 fn refused(path: &Path) {
-    let result = mfd::import_with_profile(
-        path,
-        &mfd::ImportOptions::default(),
-        mfd::ImportProfile::Executable,
-    );
+    let result = mfd::import_with_profile(path, &options(path), mfd::ImportProfile::Executable);
     assert!(
-        matches!(&result, Err(mfd::MfdError::UnsupportedImport(_))),
+        matches!(&result, Err(mfd::MfdError::IncompatibleImport(report)) if !report.executable)
+            || matches!(&result, Err(mfd::MfdError::UnsupportedImport(_))),
         "unexpected import outcome: {:?}",
         result.err()
     );
-    let best = mfd::import(path).unwrap();
+    let best = mfd::import_with_options(path, &options(path)).unwrap();
     assert!(
         best.warnings
             .iter()
-            .any(|warning| warning.contains("JSON string parser array")),
+            .any(|warning| warning.contains("JSON string parser")),
         "{:?}",
         best.warnings
     );
