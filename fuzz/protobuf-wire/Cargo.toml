@@ -1,0 +1,31 @@
+[package]
+name = "protobuf-wire-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-only"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# Standalone harness: an empty workspace table keeps this package and its
+# lockfile out of the root ferrule workspace.
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+format-protobuf = { path = "../../crates/format-protobuf" }
+ir = { path = "../../crates/ir" }
+libfuzzer-sys = "0.4"
+
+[[bin]]
+name = "decode"
+path = "fuzz_targets/decode.rs"
+test = false
+doc = false
+bench = false
+
+[profile.release]
+debug = 1
