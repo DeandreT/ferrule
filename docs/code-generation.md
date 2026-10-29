@@ -1169,6 +1169,14 @@ with embedded family-specific schemas and options; their package-free codecs
 handle X12, EDIFACT, HL7 v2, TRADACOMS, and IDoc. Each layer keeps its own admission ahead of the
 layer below it.
 
+An explicit filename-endpoint `DocumentProject` may instead read one direct EDI
+document and return one strict JSON document through those primary EDI byte APIs.
+Its retained output filename is available through `evaluate_output_filename` /
+`EvaluateOutputFilename`; the library never publishes it. Both filenames must
+resolve before the input host is called. This opt-in plan does not admit mixed
+formats for existing same-format document projects. See the
+[MFD filename route](mfd-interop.md#import) for import and transport boundaries.
+
 The Basic owned mappings render their own complete compilation unit, which
 may append the separate partial declaration of the owned JSON documents; they
 are assembled with the ordinary project file and take no companions. When a

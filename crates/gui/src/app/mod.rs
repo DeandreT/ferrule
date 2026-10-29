@@ -1206,6 +1206,9 @@ impl FerruleApp {
                 Ok(project) => Ok((project, None)),
                 // A document project keeps its filename plan beside the project.
                 Err(error) => match mapping::document_project_file::decode_bytes(&bytes) {
+                    Ok(document) if document.output_filename().is_some() => anyhow::bail!(
+                        "connected output filename plans require run-document or a generated host; the editor cannot retain this transport yet"
+                    ),
                     Ok(document) => Ok((
                         document.project().clone(),
                         Some(document.primary_source().clone()),
