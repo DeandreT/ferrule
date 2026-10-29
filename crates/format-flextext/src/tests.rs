@@ -778,3 +778,32 @@ fn many_wide_fixed_width_records_stop_at_the_output_limit() {
         "x  \nx  "
     );
 }
+
+#[test]
+fn undelimited_fixed_width_length_errors_name_the_command_path() {
+    let layout = FlexTextLayout::new(
+        "document",
+        FlexCommand::FixedWidthRecords {
+            name: "rows".into(),
+            fields: vec![
+                FixedWidthRecordField::new("value", ScalarType::String, nonzero(3)).unwrap(),
+            ],
+            fill_char: ' ',
+            record_delimiters: false,
+            treat_empty_as_absent: false,
+        },
+        FlexLineEnding::Lf,
+        false,
+    )
+    .unwrap();
+    match from_str("abcd", &layout.schema(), &layout) {
+        Err(FlexTextError::Data { path, message }) => {
+            assert_eq!(path, "document/rows");
+            assert!(
+                message.contains("not a multiple of record width 3"),
+                "{message}"
+            );
+        }
+        other => panic!("expected a data error, got {other:?}"),
+    }
+}
