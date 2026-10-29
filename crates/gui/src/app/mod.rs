@@ -1807,3 +1807,6 @@ mod project_commands_tests;
 
 #[cfg(test)]
 mod primary_document_tests;
+
+#[cfg(test)]
+mod keyboard_accessibility_tests;
