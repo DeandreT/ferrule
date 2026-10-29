@@ -104,7 +104,7 @@ pub fn to_string(
     )?;
     let line_ending = layout.output_line_ending().as_str();
     let rendered = render_command(layout.command(), value, layout.root_name(), 1, line_ending)?;
-    let rendered = normalize_line_endings(&rendered, line_ending)?;
+    let rendered = normalize_line_endings(&rendered, line_ending, layout.root_name())?;
     let mut output = String::new();
     if layout.write_bom() {
         output.push('\u{feff}');
@@ -829,8 +829,8 @@ fn render_split_many(
         let text = render_command(child, child_value, &item_path, depth + 1, line_ending)?;
         match splitter {
             ManySplitter::Delimiter(delimiter) => {
-                let normalized_text = normalize_line_endings(&text, line_ending)?;
-                let normalized_delimiter = normalize_line_endings(delimiter, line_ending)?;
+                let normalized_text = normalize_line_endings(&text, line_ending, &item_path)?;
+                let normalized_delimiter = normalize_line_endings(delimiter, line_ending, path)?;
                 if normalized_text.contains(&normalized_delimiter) {
                     return Err(data_error(
                         &item_path,
@@ -1235,12 +1235,22 @@ fn logical_line_count(value: &str) -> usize {
     }
 }
 
-fn normalize_line_endings(input: &str, ending: &str) -> Result<String, FlexTextError> {
+/// Writes every LF or CRLF break with the layout's ending. Under LF output a
+/// carriage return left directly before a break would read back as part of a
+/// CRLF break, so that data is refused rather than silently lost.
+fn normalize_line_endings(input: &str, ending: &str, path: &str) -> Result<String, FlexTextError> {
     let mut output = String::with_capacity(input.len());
     let mut rest = input;
     while let Some(index) = rest.find('\n') {
         let before = &rest[..index];
-        push_bounded(&mut output, before.strip_suffix('\r').unwrap_or(before))?;
+        let line = before.strip_suffix('\r').unwrap_or(before);
+        if ending == "\n" && line.ends_with('\r') {
+            return Err(data_error(
+                path,
+                "a carriage return before a line break cannot be written with LF line endings",
+            ));
+        }
+        push_bounded(&mut output, line)?;
         push_bounded(&mut output, ending)?;
         rest = &rest[index + 1..];
     }

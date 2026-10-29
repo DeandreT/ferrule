@@ -310,9 +310,6 @@ struct LayoutStats {
     depth: usize,
     string_bytes: usize,
     regexes: HashSet<String>,
-    /// Whether a string the writer emits verbatim (a split delimiter or a
-    /// record separator) holds a carriage return.
-    carriage_return: bool,
 }
 
 impl LayoutStats {
@@ -326,7 +323,6 @@ impl LayoutStats {
     }
 
     fn emitted(&mut self, value: &str) -> usize {
-        self.carriage_return |= value.contains('\r');
         value.len()
     }
 
@@ -695,7 +691,7 @@ fn check_render(layout: &FlexTextLayout, instance: &Instance) -> Result<usize, S
                 "{}-byte output exceeds {MAX_OUTPUT_BYTES}",
                 body.len()
             );
-            check_line_endings(body, layout, instance);
+            check_line_endings(body, layout);
             if output.len() <= MAX_INPUT_BYTES {
                 // The output need not read back to the same instance; it must
                 // still satisfy every reading invariant.
@@ -718,46 +714,14 @@ fn check_render(layout: &FlexTextLayout, instance: &Instance) -> Result<usize, S
 }
 
 /// LF output has no `\r\n` and CRLF output ends every line with `\r\n`.
-///
-/// Writing removes exactly one `\r` before each `\n`, so a carriage return
-/// from the data or from a layout string that sits before a line break
-/// survives as `\r\n` in LF output (DeandreT/ferrule#1152). LF output may
-/// hold `\r\n` only when such a carriage return exists; remove this
-/// exemption when #1152 lands.
-fn check_line_endings(output: &str, layout: &FlexTextLayout, instance: &Instance) {
+fn check_line_endings(output: &str, layout: &FlexTextLayout) {
     let ending = layout.output_line_ending();
-    let mut carriage_return_source = None;
     for (index, _) in output.match_indices('\n') {
         let carriage_return = index > 0 && output.as_bytes()[index - 1] == b'\r';
-        if carriage_return && ending == FlexLineEnding::Lf {
-            let source = *carriage_return_source.get_or_insert_with(|| {
-                LayoutStats::of(layout).carriage_return || holds_carriage_return(instance)
-            });
-            assert!(
-                source,
-                "LF output has `\\r\\n` at byte {index} without a carriage return to keep"
-            );
-            continue;
-        }
         assert_eq!(
             carriage_return,
             ending == FlexLineEnding::Crlf,
             "line ending at byte {index} does not follow {ending:?}"
         );
     }
-}
-
-fn holds_carriage_return(instance: &Instance) -> bool {
-    let mut pending = vec![instance];
-    while let Some(node) = pending.pop() {
-        match node {
-            Instance::Group(fields) => pending.extend(fields.iter().map(|(_, value)| value)),
-            Instance::Repeated(items) | Instance::MappedSequence(items) => {
-                pending.extend(items.iter());
-            }
-            Instance::Scalar(Value::String(value)) if value.contains('\r') => return true,
-            Instance::Scalar(_) | Instance::DocumentSet(_) => {}
-        }
-    }
-    false
 }
