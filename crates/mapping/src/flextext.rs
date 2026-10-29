@@ -587,6 +587,7 @@ pub enum FlexTextLayoutError {
     EmptyName(&'static str),
     EmptyString(&'static str),
     StringTooLong(&'static str),
+    RegexPatternTooLong,
     TooManyStringBytes,
     DuplicateName(String),
     DuplicateSwitchPrefix(String),
@@ -611,6 +612,10 @@ impl std::fmt::Display for FlexTextLayoutError {
             Self::StringTooLong(kind) => write!(
                 formatter,
                 "{kind} exceeds the {MAX_FLEXTEXT_LAYOUT_STRING_BYTES}-byte limit"
+            ),
+            Self::RegexPatternTooLong => write!(
+                formatter,
+                "switch regular expression exceeds the {MAX_FLEXTEXT_REGEX_PATTERN_BYTES}-byte pattern limit"
             ),
             Self::TooManyStringBytes => write!(
                 formatter,
@@ -798,9 +803,7 @@ fn validate_command(
 
 fn validate_switch_regex(pattern: &str) -> Result<(), FlexTextLayoutError> {
     if pattern.len() > MAX_FLEXTEXT_REGEX_PATTERN_BYTES {
-        return Err(FlexTextLayoutError::StringTooLong(
-            "switch regular expression",
-        ));
+        return Err(FlexTextLayoutError::RegexPatternTooLong);
     }
     regex::RegexBuilder::new(pattern)
         .size_limit(MAX_FLEXTEXT_REGEX_COMPILED_BYTES)
@@ -1028,6 +1031,22 @@ mod tests {
             FlexTextLayout::new("root", command, FlexLineEnding::Lf, false),
             Err(FlexTextLayoutError::LayoutTooDeep)
         ));
+    }
+
+    #[test]
+    fn overlong_switch_regex_names_the_pattern_limit() {
+        let error = SwitchArm::new_contains_regex(
+            "a".repeat(MAX_FLEXTEXT_REGEX_PATTERN_BYTES + 1),
+            FlexCommand::store("value", ScalarType::String, None),
+        )
+        .unwrap_err();
+        assert_eq!(error, FlexTextLayoutError::RegexPatternTooLong);
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "switch regular expression exceeds the {MAX_FLEXTEXT_REGEX_PATTERN_BYTES}-byte pattern limit"
+            )
+        );
     }
 
     #[test]
