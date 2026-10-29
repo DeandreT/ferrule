@@ -9,6 +9,8 @@ use super::schema::{SchemaComponent, parse_u32, schema_node_at};
 #[path = "json_parser_array.rs"]
 mod array;
 pub(super) use array::install as install_array_records;
+#[path = "json_parser_lookup.rs"]
+mod lookup;
 
 pub(super) struct Recipe {
     pub(super) input: u32,
@@ -20,6 +22,7 @@ pub(super) struct Recipe {
     pub(super) runtime_scalar_outputs: BTreeSet<u32>,
     pub(super) required_string_inputs: Vec<super::constructed_parser_scalar::RequiredStringInput>,
     pub(super) optional_string_inputs: Vec<super::optional_parser_input::OptionalStringInput>,
+    pub(super) lookup_pins: lookup::RawPins,
 }
 
 /// A saved string parser with no declared outputs cannot supply a value to the
@@ -147,6 +150,7 @@ pub(super) fn read(
         object_outputs,
         required_string_inputs,
         optional_string_inputs,
+        lookup_pins: lookup::read_pins(*component),
         outputs,
     }))
 }
@@ -287,7 +291,7 @@ impl GraphBuilder<'_> {
         let path = parser.outputs.get(&output)?.clone();
         if array::record_path(&parser.schema, &path).is_some() {
             self.warnings.push(format!(
-                "JSON string parser array output `{output}` requires a direct connection to a repeating record target; scalar use was skipped"
+                "JSON string parser array output `{output}` requires a direct repeating record target or an owned equality-filter lookup in the primary-item frame; unsupported scalar use was skipped"
             ));
             return None;
         }
