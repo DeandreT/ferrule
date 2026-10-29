@@ -75,6 +75,40 @@ Ordinary import keeps the partial mapping with that diagnostic. Unconnected
 wrapper ports and static preview/output path metadata do not introduce
 filename-driven document behavior.
 
+For one connected EDI input filename and one connected strict JSON output
+filename, select the explicit document route:
+
+```sh
+ferrule import-mfd --mfd design.mfd --out document.json --filename-document
+ferrule run-document --project document.json --input-root inputs \
+  --param InputFile=input.hl7 --param OutputFile=output.json
+ferrule generate --project document.json --primary-documents --language csharp --out generated
+```
+
+Use the parameter names declared by the design. The import retains both
+filename expressions as graph identities in `DocumentProject`; they are not
+business fields or replacement static paths. Only literal strings and required
+global string parameters are admitted. Saved parameter and instance previews
+never supply execution values. The input host receives the exact filename text
+and the plan's `Direct` selection, and must select exactly one document. The
+mapping runs once and returns one complete strict JSON document. Native and
+generated Rust/C# primary EDI byte entry points use the retained JSON output
+policy for these explicit plans. `evaluate_output_filename` /
+`EvaluateOutputFilename` exposes the output transport separately; library hosts
+own publication. The CLI resolves its connected output relative to the saved
+document project and refuses an `--output` override rather than dropping the
+connection.
+
+This route refuses wildcard selection, empty/wildcard/control-character filename
+text, source-dependent filenames, wrapper controls, connected filename output
+ports, ambiguous declarations, named endpoints, and repeated document roots.
+Unsupported plans and filename values refuse before host calls. Path containment,
+URI policy and physical I/O remain host-owned; the CLI's input host only reads
+beneath its explicit local root. Ordinary import and the repair-oriented CSV
+filename-retention API retain their existing behavior.
+The editor refuses plans with connected output filenames rather than opening or
+saving them with that transport removed. Use the CLI or a generated host.
+
 XML imports retain their supported static connected paths and document-driven
 output scopes. A runtime-connected primary input filename or a target filename
 without a supported document driver produces a diagnostic rather than silently

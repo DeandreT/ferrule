@@ -191,6 +191,9 @@ pub fn validate_primary_document(document: &mapping::DocumentProject) -> Vec<Val
                 &project.target_options,
             ),
         ] {
+            if side == "target EDI boundary" && document.output_filename().is_some() {
+                continue;
+            }
             let result = if side == "source EDI boundary" {
                 format_edi::document::validate_input(schema, options, kind)
             } else {

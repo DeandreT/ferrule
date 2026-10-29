@@ -23,21 +23,62 @@ pub(crate) fn emit(
     let input = crate::literal::string(&serde_json::to_string(&policy.source).expect("options"));
     let output = crate::literal::string(&serde_json::to_string(&policy.target).expect("options"));
     let kind = crate::literal::string(&format!("{:?}", policy.kind));
+    let json_output = document.output_filename().is_some();
+    let filename = if json_output {
+        format!(
+            r#"{{ var outputFilename = EvaluateOutputFilename(execution);
+        var inputFilename = EvaluatePrimaryFilename(execution);
+        foreach (var (node, text) in new (uint, string)[] {{ ({input_node}u, inputFilename), ({output_node}u, outputFilename) }})
+            if (text.Length == 0 || text.IndexOfAny(['*', '?']) >= 0 || global::System.Linq.Enumerable.Any(text, char.IsControl))
+                throw new FilenameEndpointException(node);
+        return inputFilename; }}"#,
+            input_node = match document.primary_filename() {
+                codegen::PrimaryFilenamePlan::Literal { node, .. }
+                | codegen::PrimaryFilenamePlan::Parameter { node, .. } => node,
+            },
+            output_node = match document.output_filename().expect("output filename") {
+                codegen::PrimaryFilenamePlan::Literal { node, .. }
+                | codegen::PrimaryFilenamePlan::Parameter { node, .. } => node,
+            }
+        )
+    } else {
+        "EvaluatePrimaryFilename(execution)".into()
+    };
+    let output_setup = if json_output {
+        String::new()
+    } else {
+        format!("var output = new global::Ferrule.Runtime.FerruleEdi({target}, {output}, {kind});")
+    };
+    let serialize: String = if json_output {
+        "SerializeJsonBytesOutputs(ExecuteOutputs(source, execution)).Primary".into()
+    } else {
+        "output.Serialize(ExecuteOutputs(source, execution).Primary, execution.CurrentDateTime)"
+            .into()
+    };
+    let endpoint_error = if json_output {
+        r#"public sealed class FilenameEndpointException(uint node) : global::System.Exception($"filename endpoint node {node} requires nonempty text without wildcards or control characters")
+    {
+        public uint Node { get; } = node;
+    }"#
+    } else {
+        ""
+    };
     let code = format!(
         r#"
     public static readonly global::Ferrule.Runtime.FerrulePrimaryFileSelection PrimaryFileSelection = {selection};
     public const global::Ferrule.Runtime.FerruleDocumentShape PrimaryDocumentShape = {shape};
+    {endpoint_error}
     public static byte[] ExecutePrimaryEdiDocumentBytes(global::Ferrule.Runtime.FerruleExecutionContext execution,
         global::Ferrule.Runtime.IFerrulePrimarySourceHost host, int maximum)
     {{
         global::System.ArgumentNullException.ThrowIfNull(execution);
         global::System.ArgumentNullException.ThrowIfNull(host);
         var input = new global::Ferrule.Runtime.FerruleEdi({source}, {input}, {kind}, input: true);
-        var output = new global::Ferrule.Runtime.FerruleEdi({target}, {output}, {kind});
+        {output_setup}
         var budget = new global::Ferrule.Runtime.FerruleEdiInputBudget();
-        var source = global::Ferrule.Runtime.FerrulePrimaryDocuments.AcquireDocuments(() => EvaluatePrimaryFilename(execution),
+        var source = global::Ferrule.Runtime.FerrulePrimaryDocuments.AcquireDocuments(() => {filename},
             PrimaryFileSelection, host, PrimaryDocumentShape, maximum, data => {{ budget.Charge(data.Bytes.Length); return input.Parse(data.Bytes); }});
-        return output.Serialize(ExecuteOutputs(source, execution).Primary, execution.CurrentDateTime);
+        return {serialize};
     }}
 "#,
         selection = crate::primary_csv_document::selection_literal(document),

@@ -377,6 +377,32 @@ fn publish_mfd_import(
     Ok(imported.warnings)
 }
 
+/// Imports explicit EDI input/JSON output filename endpoints as a document plan.
+/// Publication requires complete admission; connected filenames are never rebased.
+pub fn import_mfd_filename_document(
+    mfd_path: &Path,
+    out_path: &Path,
+    package_root: Option<&Path>,
+    package_manifest: Option<&Path>,
+    edi_catalog_roots: &[PathBuf],
+    json_schema_catalog_roots: &[PathBuf],
+    item_ordered_exceptions: bool,
+) -> anyhow::Result<Vec<String>> {
+    let mut options = mfd_import_options(
+        package_root,
+        package_manifest,
+        edi_catalog_roots,
+        json_schema_catalog_roots,
+    )?;
+    if item_ordered_exceptions {
+        options = options.with_item_ordered_exceptions();
+    }
+    let imported = mfd::import_filename_document_with_options(mfd_path, &options)?;
+    let json = mapping::document_project_file::encode_pretty(&imported.document)?;
+    std::fs::write(out_path, json).with_context(|| format!("writing {}", out_path.display()))?;
+    Ok(imported.warnings)
+}
+
 /// Imports a bounded serial XML `.mfd` design as a runnable typed pipeline.
 /// The complete pipeline is validated before its JSON file is written.
 pub fn import_mfd_pipeline(

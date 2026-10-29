@@ -9,6 +9,7 @@ pub enum EdiBoundaryError {
     Format(format_edi::EdiFormatError),
     InputTooLarge { bytes: usize, maximum: usize },
     Execution(RuntimeError),
+    JsonOutput(crate::JsonBoundaryError),
 }
 impl fmt::Display for EdiBoundaryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -19,6 +20,7 @@ impl fmt::Display for EdiBoundaryError {
                 write!(f, "EDI input is {bytes} bytes; maximum is {maximum}")
             }
             Self::Execution(e) => e.fmt(f),
+            Self::JsonOutput(e) => e.fmt(f),
         }
     }
 }
@@ -27,6 +29,7 @@ impl Error for EdiBoundaryError {
         match self {
             Self::Format(error) => Some(error),
             Self::Execution(error) => Some(error),
+            Self::JsonOutput(error) => Some(error),
             Self::Descriptor(_) | Self::InputTooLarge { .. } => None,
         }
     }
@@ -136,6 +139,12 @@ impl<E: Error + 'static> Error for PrimaryEdiDocumentError<E> {
     }
 }
 pub use mapping::EdiBoundaryKind as PrimaryEdiKind;
+
+/// Refuse wildcard/cardinality inference before an explicit filename host call.
+pub fn validate_filename_endpoint(node: u32, text: &str) -> Result<(), RuntimeError> {
+    mapping::DocumentProject::validate_endpoint_text(node, text)
+        .map_err(|_| RuntimeError::InvalidFilenameEndpoint { node })
+}
 
 /// Opt-in wire envelope validation for adapters that require complete EDIFACT.
 pub fn validate_edifact_envelope(bytes: &[u8]) -> Result<(), EdiBoundaryError> {

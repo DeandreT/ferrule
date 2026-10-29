@@ -84,6 +84,9 @@ pub struct DocumentProject {
     format: DocumentProjectFormat,
     project: Project,
     primary_source: PrimarySourcePlan,
+    /// Explicit single-document output transport, not a mapped business field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    output_filename: Option<NodeId>,
 }
 
 /// A source-independent filename. The parameter's retained preview is not a
@@ -100,11 +103,16 @@ pub enum PrimaryFilenameError {
     NonString { node: NodeId },
     InvalidParameterName { node: NodeId },
     UnsupportedExpression { node: NodeId },
+    InvalidEndpointText { node: NodeId },
 }
 
 impl fmt::Display for PrimaryFilenameError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidEndpointText { node } => write!(
+                f,
+                "filename endpoint node {node} requires nonempty text without wildcards or control characters"
+            ),
             Self::MissingNode { node } => write!(f, "primary filename node {node} does not exist"),
             Self::NonString { node } => write!(f, "primary filename node {node} must be a string"),
             Self::InvalidParameterName { node } => {
@@ -131,7 +139,25 @@ impl DocumentProject {
             format: DocumentProjectFormat::V1,
             project,
             primary_source,
+            output_filename: None,
         }
+    }
+
+    pub fn with_output_filename(mut self, filename: NodeId) -> Self {
+        self.output_filename = Some(filename);
+        self
+    }
+
+    pub fn output_filename(&self) -> Option<NodeId> {
+        self.output_filename
+    }
+
+    pub fn global_output_filename(
+        &self,
+    ) -> Result<Option<GlobalFilename<'_>>, PrimaryFilenameError> {
+        self.output_filename
+            .map(|node| self.filename(node))
+            .transpose()
     }
 
     pub fn project(&self) -> &Project {
@@ -145,7 +171,10 @@ impl DocumentProject {
     /// Classifies the initial literal/global-parameter profile without executing
     /// a graph node, reading a preview value, or opening a source document.
     pub fn global_filename(&self) -> Result<GlobalFilename<'_>, PrimaryFilenameError> {
-        let node = self.primary_source.filename;
+        self.filename(self.primary_source.filename)
+    }
+
+    fn filename(&self, node: NodeId) -> Result<GlobalFilename<'_>, PrimaryFilenameError> {
         match self.project.graph.nodes.get(&node) {
             None => Err(PrimaryFilenameError::MissingNode { node }),
             Some(Node::Const {
@@ -168,10 +197,21 @@ impl DocumentProject {
         }
     }
 
+    /// The explicit single-document route never infers wildcard selection.
+    /// All other path interpretation belongs to the execution host.
+    pub fn validate_endpoint_text(node: NodeId, text: &str) -> Result<(), PrimaryFilenameError> {
+        if text.is_empty() || text.contains(['*', '?']) || text.chars().any(char::is_control) {
+            Err(PrimaryFilenameError::InvalidEndpointText { node })
+        } else {
+            Ok(())
+        }
+    }
+
     /// Preserve acquisition dependencies as well as all ordinary mapping roots.
     /// An unsupported expression must not disappear merely because it is refused.
     pub fn prune_unreachable_nodes(&mut self) {
-        self.project
-            .prune_unreachable_nodes_with_roots([self.primary_source.filename]);
+        self.project.prune_unreachable_nodes_with_roots(
+            std::iter::once(self.primary_source.filename).chain(self.output_filename),
+        );
     }
 }

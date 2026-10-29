@@ -73,6 +73,25 @@ fn wildcard_project(directory: &Path) -> anyhow::Result<PathBuf> {
 
 const GROUPED: &str = "Key,Text,Count,Status\nk2,b+f,27,ok\nk1,a+c,4,ok\nk3,e,5,ok\n";
 
+#[test]
+fn connected_output_filename_plans_do_not_lose_transport_on_editor_load() -> anyhow::Result<()> {
+    let directory = TestDir::new()?;
+    let document = projects::document("parameter_wildcard");
+    let output = document.primary_source().filename;
+    let document = document.with_output_filename(output);
+    let path = directory.0.join("connected-output.json");
+    let bytes = mapping::document_project_file::encode_pretty(&document)?;
+    std::fs::write(&path, &bytes)?;
+    let mut app = FerruleApp::default();
+    let before = mapping::project_file::encode_pretty(&app.project)?;
+    app.load_project_from(&path);
+    assert_eq!(mapping::project_file::encode_pretty(&app.project)?, before);
+    assert!(app.primary_document.is_none());
+    assert!(app.status.starts_with("failed to load"));
+    assert_eq!(std::fs::read_to_string(path)?, bytes);
+    Ok(())
+}
+
 fn run_values(app: &mut FerruleApp) {
     for (name, value) in [("Input", "in/*.csv"), ("Status", "ok")] {
         app.host_parameters.entries.push(HostParameterEntry {
