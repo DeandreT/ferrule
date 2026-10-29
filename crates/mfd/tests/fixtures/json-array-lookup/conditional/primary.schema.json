@@ -1,0 +1,12 @@
+{
+  "type":"object",
+  "properties":{
+    "Items":{"type":"array","items":{"type":"object","properties":{
+      "Ordinal":{"type":"integer"},
+      "TagA":{"type":["string","null"]},"ValueA":{"type":["string","null"]},
+      "TagB":{"type":["string","null"]},"ValueB":{"type":["string","null"]}
+    },"required":["Ordinal"],"additionalProperties":false}},
+    "Other":{"type":"array","items":{"type":"object","properties":{"ValueB":{"type":"string"}},"additionalProperties":false}}
+  },
+  "additionalProperties":false
+}

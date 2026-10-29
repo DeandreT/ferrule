@@ -1,0 +1,20 @@
+[
+  {
+    "name":"nested primary ownership across interchanges groups messages and details",
+    "input":"ISA*00*          *00*          *ZZ*SYNTHETICFROM  *ZZ*SYNTHETICTO    *261029*1200*^*00501*000000001*0*T*:~GS*IB*FROM*TO*20261029*1200*1*X*005010~ST*888*0001~LIN*7*B~LIN*2*A~LIN*9*B~SE*5*0001~ST*888*0002~LIN*4* A ~LIN*6*007~SE*4*0002~GE*2*1~GS*IB*FROM*TO*20261029*1200*2*X*005010~ST*888*0003~LIN*3*C~LIN*5*A~SE*4*0003~GE*1*2~IEA*2*000000001~ISA*00*          *00*          *ZZ*SYNTHETICFROM  *ZZ*SYNTHETICTO    *261029*1200*^*00501*000000002*0*T*:~GS*IB*FROM*TO*20261029*1200*3*X*005010~ST*888*0004~LIN*8*D~LIN*10*~SE*4*0004~GE*1*3~IEA*1*000000002~",
+    "lookup":"{\"Rows\":[{\"Code\":\"A\",\"Value\":\"alpha-first\"},{\"Code\":\"B\",\"Value\":\"beta-first\"},{\"Code\":\"B\",\"Value\":\"beta-later\"},{\"Code\":\"A\",\"Value\":\"alpha-later\"},{\"Code\":\"007\",\"Value\":\"exact\"},{\"Code\":\"C\"},{\"Code\":\"C\",\"Value\":\"never\"},{\"Code\":\"D\",\"Value\":null},{\"Code\":\"D\",\"Value\":\"never\"}]}",
+    "expected":{"Results":[{"Code":"B","Ordinal":7,"Found":"beta-first"},{"Code":"A","Ordinal":2,"Found":"alpha-first"},{"Code":"B","Ordinal":9,"Found":"beta-first"},{"Code":" A ","Ordinal":4},{"Code":"007","Ordinal":6,"Found":"exact"},{"Code":"C","Ordinal":3},{"Code":"A","Ordinal":5,"Found":"alpha-first"},{"Code":"D","Ordinal":8,"Found":null},{"Ordinal":10}]}
+  },
+  {
+    "name":"nested empty detail leaves lookup undemanded",
+    "input":"ISA*00*          *00*          *ZZ*SYNTHETICFROM  *ZZ*SYNTHETICTO    *261029*1200*^*00501*000000001*0*T*:~GS*IB*FROM*TO*20261029*1200*1*X*005010~ST*888*0001~SE*2*0001~GE*1*1~IEA*1*000000001~",
+    "lookup":"invalid but undemanded",
+    "expected":{"Results":[]}
+  },
+  {
+    "name":"nested lookup still fully validates later nonmatching fields",
+    "input":"ISA*00*          *00*          *ZZ*SYNTHETICFROM  *ZZ*SYNTHETICTO    *261029*1200*^*00501*000000001*0*T*:~GS*IB*FROM*TO*20261029*1200*1*X*005010~ST*888*0001~LIN*1*A~SE*3*0001~GE*1*1~IEA*1*000000001~",
+    "lookup":"{\"Rows\":[{\"Code\":\"A\",\"Value\":\"ok\"},{\"Code\":\"Z\",\"Unused\":\"invalid\"}]}",
+    "error":"input does not match the JSON schema"
+  }
+]
