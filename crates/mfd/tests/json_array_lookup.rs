@@ -486,6 +486,20 @@ fn unsupported_ownership_cardinality_shared_predicates_and_connected_unused_port
         ),
     ] {
         let dir = copy_fixture();
+        if file == "mapping.mfd" && to.contains("<edge vertexkey=\"32\"/>") {
+            replace(
+                &dir.0.join(file),
+                "<vertex vertexkey=\"3\"><edges><edge vertexkey=\"32\"/></edges></vertex>",
+                "",
+            );
+        }
+        if file == "mapping.mfd" && to.contains("<edge vertexkey=\"31\"/>") {
+            replace(
+                &dir.0.join(file),
+                "<vertex vertexkey=\"2\"><edges><edge vertexkey=\"31\"/><edge vertexkey=\"41\"/></edges></vertex>",
+                "<vertex vertexkey=\"2\"><edges><edge vertexkey=\"41\"/></edges></vertex>",
+            );
+        }
         replace(&dir.0.join(file), from, to);
         refused(&dir.0.join("mapping.mfd"));
     }
