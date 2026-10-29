@@ -31,7 +31,10 @@ pub use grid::{from_bytes_grid, read_grid};
 pub use hierarchical::{
     from_bytes_hierarchical, read_hierarchical, to_bytes_hierarchical, write_hierarchical,
 };
-pub use update::{update, update_with_options};
+pub use update::{
+    HierarchicalUpdateError, HierarchicalUpdateRefusal, update, update_hierarchical,
+    update_hierarchical_bytes, update_with_options,
+};
 pub use worksheet_set::{from_bytes_worksheet_set, read_worksheet_set};
 
 #[derive(Debug, Error)]
